@@ -70,6 +70,14 @@ struct SceneKitView: UIViewRepresentable {
             DispatchQueue.main.async {
                 scnView.scene = scene
                 coordinator.scene = scene
+                
+                // Update camera movement manager with scene and boundaries
+                self.cameraMovementManager.setSceneView(scnView)
+                
+                // Make sure boundaries are calculated after scene is set
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.cameraMovementManager.updateBoundaries()
+                }
             }
             
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

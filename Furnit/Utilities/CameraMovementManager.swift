@@ -4,6 +4,7 @@ import SwiftUI
 class CameraMovementManager: ObservableObject {
     // Camera movement properties
     weak var sceneView: SCNView?
+    private var boundaryManager: BoundaryManager?
     private var displayLink: CADisplayLink?
     private var currentJoystickOffset: CGSize = .zero
     
@@ -25,6 +26,29 @@ class CameraMovementManager: ObservableObject {
     // Set the scene view reference for camera manipulation
     func setSceneView(_ sceneView: SCNView) {
         self.sceneView = sceneView
+        
+        // Initialize boundary manager with the scene view
+        boundaryManager = BoundaryManager(scnView: sceneView)
+        
+        // Calculate room boundaries when scene is available
+        if let scene = sceneView.scene {
+            print("🎬 Scene available, calculating boundaries...")
+            boundaryManager?.calculateRoomBounds(from: scene)
+        } else {
+            print("⚠️ Scene not available yet when setting up camera movement manager")
+        }
+    }
+    
+    // Method to recalculate boundaries when scene becomes available
+    func updateBoundaries() {
+        guard let sceneView = sceneView,
+              let scene = sceneView.scene else { 
+            print("⚠️ Cannot update boundaries - scene not available")
+            return 
+        }
+        
+        print("🔄 Updating camera movement boundaries...")
+        boundaryManager?.calculateRoomBounds(from: scene)
     }
     
     // Update joystick input from the virtual joystick
@@ -48,16 +72,17 @@ class CameraMovementManager: ObservableObject {
         let cameraTransform = cameraNode.transform
         
         // Extract camera's forward and right vectors from transform matrix
+        // In SceneKit, the camera looks down the negative Z axis by default
         let forwardVector = SCNVector3(
-            -cameraTransform.m31, // Forward is negative Z in camera space
-            0, // Keep movement horizontal
-            -cameraTransform.m33
+            -cameraTransform.m31, // Forward X component
+            0, // Keep movement horizontal (no Y movement)
+            -cameraTransform.m33  // Forward Z component
         )
         
         let rightVector = SCNVector3(
-            cameraTransform.m11, // Right is positive X in camera space
-            0, // Keep movement horizontal
-            cameraTransform.m13
+            cameraTransform.m11, // Right X component  
+            0, // Keep movement horizontal (no Y movement)
+            cameraTransform.m13  // Right Z component
         )
         
         // Normalize vectors for consistent movement speed
@@ -71,15 +96,26 @@ class CameraMovementManager: ObservableObject {
             normalizedForward.z * forwardBackward + normalizedRight.z * leftRight
         )
         
-        // Apply movement to camera position
-        let newPosition = SCNVector3(
+        // Calculate proposed new position
+        let proposedPosition = SCNVector3(
             cameraNode.position.x + movementDelta.x,
             cameraNode.position.y, // Keep same height
             cameraNode.position.z + movementDelta.z
         )
         
-        // Update camera position smoothly
-        cameraNode.position = newPosition
+        // Apply boundary constraints to prevent moving through walls
+        let constrainedPosition = boundaryManager?.constrainCameraPosition(proposedPosition) ?? proposedPosition
+        
+        // Debug logging to understand boundary constraints
+        if proposedPosition.x != constrainedPosition.x || proposedPosition.z != constrainedPosition.z {
+            print("🚧 Wall hit! Proposed: (\(proposedPosition.x), \(proposedPosition.z)) -> Constrained: (\(constrainedPosition.x), \(constrainedPosition.z))")
+        }
+        
+        // Only update camera position if it's different (prevents unnecessary updates)
+        if constrainedPosition.x != cameraNode.position.x || 
+           constrainedPosition.z != cameraNode.position.z {
+            cameraNode.position = constrainedPosition
+        }
     }
     
     // Helper function to normalize a 3D vector

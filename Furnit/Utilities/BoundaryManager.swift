@@ -68,6 +68,9 @@ class BoundaryManager {
             minZ: minZ + padding,
             maxZ: maxZ - padding
         )
+        
+        // Debug logging to verify boundary calculation
+        print("🏠 Room bounds calculated: X(\(minX + padding) to \(maxX - padding)), Z(\(minZ + padding) to \(maxZ - padding))")
     }
     
     func constrainCameraPosition(_ position: SCNVector3) -> SCNVector3 {
