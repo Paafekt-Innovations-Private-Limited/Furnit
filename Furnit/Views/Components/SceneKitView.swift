@@ -4,6 +4,7 @@ import SceneKit
 struct SceneKitView: UIViewRepresentable {
     let model: USDZModel
     let cameraMovementManager: CameraMovementManager
+    let arObjectPlacementManager: ARObjectPlacementManager?
     
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -18,11 +19,14 @@ struct SceneKitView: UIViewRepresentable {
         scnView.backgroundColor = UIColor.black
         scnView.rendersContinuously = false
         
-        context.coordinator.setupGestures(for: scnView)
+        context.coordinator.setupGestures(for: scnView, arObjectPlacementManager: arObjectPlacementManager)
         loadScene(into: scnView, coordinator: context.coordinator)
         
         // Set up camera movement manager with the scene view
         cameraMovementManager.setSceneView(scnView)
+        
+        // Set up AR object placement manager with the scene view
+        arObjectPlacementManager?.setSceneView(scnView)
         
         return scnView
     }
@@ -35,10 +39,17 @@ struct SceneKitView: UIViewRepresentable {
     
     class Coordinator {
         var gestureHandlers: GestureHandlers?
+        var arObjectGestureHandler: ARObjectGestureHandler?
         var scene: SCNScene?
         
-        func setupGestures(for scnView: SCNView) {
+        func setupGestures(for scnView: SCNView, arObjectPlacementManager: ARObjectPlacementManager?) {
             gestureHandlers = GestureHandlers(scnView: scnView)
+            
+            // Setup AR object manipulation gestures
+            if let arManager = arObjectPlacementManager {
+                arObjectGestureHandler = ARObjectGestureHandler(scnView: scnView, arManager: arManager)
+                arObjectGestureHandler?.setupGestures()
+            }
         }
     }
     
@@ -206,6 +217,248 @@ struct SceneKitView: UIViewRepresentable {
         fillLightNode.position = SCNVector3(x: -3, y: 5, z: 8)
         fillLightNode.look(at: SCNVector3(0, 0, 0))
         scene.rootNode.addChildNode(fillLightNode)
+    }
+}
+
+// MARK: - AR Object Gesture Handler
+class ARObjectGestureHandler {
+    private weak var scnView: SCNView?
+    private weak var arManager: ARObjectPlacementManager?
+    
+    private var selectedObject: SCNNode?
+    private var initialTouchPoint: CGPoint = .zero
+    private var initialObjectPosition: SCNVector3 = SCNVector3Zero
+    private var isDragging = false
+    
+    init(scnView: SCNView, arManager: ARObjectPlacementManager) {
+        self.scnView = scnView
+        self.arManager = arManager
+    }
+    
+    func setupGestures() {
+        guard let scnView = scnView else { return }
+        
+        // Pan gesture for moving objects
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
+        scnView.addGestureRecognizer(panGesture)
+        
+        // Tap gesture for selecting objects
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTapGesture(_:)))
+        scnView.addGestureRecognizer(tapGesture)
+        
+        // Pinch gesture for scaling objects
+        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
+        scnView.addGestureRecognizer(pinchGesture)
+        
+        // Rotation gesture for rotating objects
+        let rotationGesture = UIRotationGestureRecognizer(target: self, action: #selector(handleRotationGesture(_:)))
+        scnView.addGestureRecognizer(rotationGesture)
+        
+        print("✨ AR object manipulation gestures setup complete")
+    }
+    
+    @objc private func handleTapGesture(_ gesture: UITapGestureRecognizer) {
+        guard let scnView = scnView else { return }
+        
+        let touchLocation = gesture.location(in: scnView)
+        let hitResults = scnView.hitTest(touchLocation, options: [:])
+        
+        // Clear previous selection
+        clearSelection()
+        
+        // Find AR objects (persistent or active)
+        for hitResult in hitResults {
+            let node = hitResult.node
+            
+            // Check if this is an AR object by checking if it's managed by ARObjectPlacementManager
+            if isARObject(node) {
+                selectObject(node)
+                break
+            }
+        }
+    }
+    
+    @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
+        guard let scnView = scnView,
+              let selectedObject = selectedObject else { return }
+        
+        let touchLocation = gesture.location(in: scnView)
+        
+        switch gesture.state {
+        case .began:
+            initialTouchPoint = touchLocation
+            initialObjectPosition = selectedObject.position
+            isDragging = true
+            
+        case .changed:
+            let translation = CGPoint(
+                x: touchLocation.x - initialTouchPoint.x,
+                y: touchLocation.y - initialTouchPoint.y
+            )
+            
+            // Convert screen translation to 3D world coordinates
+            let worldTranslation = convertScreenToWorldTranslation(translation, for: selectedObject)
+            
+            selectedObject.position = SCNVector3(
+                initialObjectPosition.x + worldTranslation.x,
+                initialObjectPosition.y + worldTranslation.y,
+                initialObjectPosition.z + worldTranslation.z
+            )
+            
+        case .ended, .cancelled:
+            isDragging = false
+            print("📋 Moved AR object to position: \(selectedObject.position)")
+            
+        default:
+            break
+        }
+    }
+    
+    @objc private func handlePinchGesture(_ gesture: UIPinchGestureRecognizer) {
+        guard let selectedObject = selectedObject else { return }
+        
+        switch gesture.state {
+        case .changed:
+            let scale = Float(gesture.scale)
+            let currentScale = selectedObject.scale
+            
+            // Apply scaling with limits
+            let newScale = SCNVector3(
+                max(0.5, min(3.0, currentScale.x * scale)), // Limit scale between 0.5x and 3.0x
+                max(0.5, min(3.0, currentScale.y * scale)),
+                max(0.5, min(3.0, currentScale.z * scale))
+            )
+            
+            selectedObject.scale = newScale
+            gesture.scale = 1.0 // Reset gesture scale
+            
+        case .ended:
+            print("🔍 Scaled AR object to: \(selectedObject.scale)")
+            
+        default:
+            break
+        }
+    }
+    
+    @objc private func handleRotationGesture(_ gesture: UIRotationGestureRecognizer) {
+        guard let selectedObject = selectedObject else { return }
+        
+        switch gesture.state {
+        case .changed:
+            // Apply rotation around Y axis (vertical rotation)
+            let rotationY = Float(gesture.rotation)
+            selectedObject.eulerAngles.y += rotationY
+            gesture.rotation = 0.0 // Reset gesture rotation
+            
+        case .ended:
+            print("🌀 Rotated AR object to: \(selectedObject.eulerAngles)")
+            
+        default:
+            break
+        }
+    }
+    
+    private func isARObject(_ node: SCNNode) -> Bool {
+        // Check if node name contains AR object identifiers
+        guard let nodeName = node.name else { return false }
+        return nodeName.contains("ar_object_") || nodeName.contains("_interactive")
+    }
+    
+    private func selectObject(_ node: SCNNode) {
+        selectedObject = node
+        
+        // Add visual selection indicator
+        addSelectionIndicator(to: node)
+        
+        // Add haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+        
+        print("✨ Selected AR object: \(node.name ?? "Unknown")")
+    }
+    
+    private func clearSelection() {
+        if let selected = selectedObject {
+            removeSelectionIndicator(from: selected)
+        }
+        selectedObject = nil
+    }
+    
+    private func addSelectionIndicator(to node: SCNNode) {
+        // Remove existing selection indicator
+        removeSelectionIndicator(from: node)
+        
+        // Create selection outline
+        guard let geometry = node.geometry else { return }
+        
+        let selectionNode = SCNNode(geometry: geometry)
+        selectionNode.name = "selection_indicator"
+        
+        // Create wireframe material for selection
+        let selectionMaterial = SCNMaterial()
+        selectionMaterial.diffuse.contents = UIColor.cyan.withAlphaComponent(0.3)
+        selectionMaterial.emission.contents = UIColor.cyan.withAlphaComponent(0.5)
+        selectionMaterial.fillMode = .lines
+        selectionMaterial.isDoubleSided = true
+        
+        selectionNode.geometry?.materials = [selectionMaterial]
+        selectionNode.scale = SCNVector3(1.05, 1.05, 1.05) // Slightly larger for visibility
+        
+        node.addChildNode(selectionNode)
+        
+        // Add pulsing animation
+        let pulseAction = SCNAction.sequence([
+            SCNAction.scale(to: 1.1, duration: 0.5),
+            SCNAction.scale(to: 1.05, duration: 0.5)
+        ])
+        let repeatAction = SCNAction.repeatForever(pulseAction)
+        selectionNode.runAction(repeatAction, forKey: "selection_pulse")
+    }
+    
+    private func removeSelectionIndicator(from node: SCNNode) {
+        let selectionNodes = node.childNodes.filter { $0.name == "selection_indicator" }
+        for selectionNode in selectionNodes {
+            selectionNode.removeAllActions()
+            selectionNode.removeFromParentNode()
+        }
+    }
+    
+    private func convertScreenToWorldTranslation(_ screenTranslation: CGPoint, for node: SCNNode) -> SCNVector3 {
+        guard let scnView = scnView,
+              let cameraNode = scnView.scene?.rootNode.childNodes.first(where: { $0.camera != nil }) else {
+            return SCNVector3Zero
+        }
+        
+        // Get camera transform
+        let cameraTransform = cameraNode.transform
+        
+        // Calculate right and up vectors from camera
+        let rightVector = SCNVector3(cameraTransform.m11, cameraTransform.m12, cameraTransform.m13)
+        let upVector = SCNVector3(cameraTransform.m21, cameraTransform.m22, cameraTransform.m23)
+        
+        // Scale translation based on distance from camera
+        let distance = distanceBetweenNodes(cameraNode, node)
+        let scaleFactor = distance * 0.001 // Adjust scaling as needed
+        
+        // Convert screen translation to world coordinates
+        let worldTranslation = SCNVector3(
+            rightVector.x * Float(screenTranslation.x) * scaleFactor + upVector.x * Float(-screenTranslation.y) * scaleFactor,
+            rightVector.y * Float(screenTranslation.x) * scaleFactor + upVector.y * Float(-screenTranslation.y) * scaleFactor,
+            rightVector.z * Float(screenTranslation.x) * scaleFactor + upVector.z * Float(-screenTranslation.y) * scaleFactor
+        )
+        
+        return worldTranslation
+    }
+    
+    private func distanceBetweenNodes(_ node1: SCNNode, _ node2: SCNNode) -> Float {
+        let position1 = node1.position
+        let position2 = node2.position
+        
+        return sqrt(
+            pow(position2.x - position1.x, 2) +
+            pow(position2.y - position1.y, 2) +
+            pow(position2.z - position1.z, 2)
+        )
     }
 }
 
