@@ -5,6 +5,11 @@ struct SceneKitView: UIViewRepresentable {
     let model: USDZModel
     let cameraMovementManager: CameraMovementManager
     
+    // AR functionality (optional)
+    let scnViewCaptureManager: SCNViewCaptureManager
+    var arObjectPlacementManager: ARObjectPlacementManager?
+    var isARActive: Bool = false
+    
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
@@ -24,6 +29,9 @@ struct SceneKitView: UIViewRepresentable {
         // Set up camera movement manager with the scene view
         cameraMovementManager.setSceneView(scnView)
         
+        // Set up SCNView capture manager for AR functionality
+        scnViewCaptureManager.setSceneView(scnView)
+        
         return scnView
     }
     
@@ -36,9 +44,25 @@ struct SceneKitView: UIViewRepresentable {
     class Coordinator {
         var gestureHandlers: GestureHandlers?
         var scene: SCNScene?
+        weak var arObjectPlacementManager: ARObjectPlacementManager?
         
         func setupGestures(for scnView: SCNView) {
             gestureHandlers = GestureHandlers(scnView: scnView)
+            
+            // Add tap gesture for AR object placement
+            let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+            scnView.addGestureRecognizer(tapGesture)
+        }
+        
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            // Handle AR object placement if AR is active
+            Task { @MainActor in
+                if let arManager = arObjectPlacementManager,
+                   arManager.isReadyToPlace {
+                    let location = gesture.location(in: gesture.view)
+                    let _ = arManager.handleTapToPlace(at: location)
+                }
+            }
         }
     }
     
@@ -70,6 +94,12 @@ struct SceneKitView: UIViewRepresentable {
             DispatchQueue.main.async {
                 scnView.scene = scene
                 coordinator.scene = scene
+                
+                // Set up AR manager if provided
+                if let arManager = self.arObjectPlacementManager {
+                    coordinator.arObjectPlacementManager = arManager
+                    arManager.setSceneReferences(sceneView: scnView, scene: scene)
+                }
                 
                 // Update camera movement manager with scene and boundaries
                 self.cameraMovementManager.setSceneView(scnView)
