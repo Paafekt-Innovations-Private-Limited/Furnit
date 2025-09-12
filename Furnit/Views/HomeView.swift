@@ -2,6 +2,8 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var modelManager = USDZModelManager()
+    @Environment(\.appState) private var appState
+    @State private var showingSettings = false
     
     var body: some View {
         NavigationStack {
@@ -23,6 +25,20 @@ struct HomeView: View {
             }
             .navigationTitle("3D Room Models")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.title3)
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
+            }
         }
     }
 }

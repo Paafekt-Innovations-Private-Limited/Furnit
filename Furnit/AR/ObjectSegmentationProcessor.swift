@@ -16,10 +16,23 @@ class ObjectSegmentationProcessor: ObservableObject {
     private var mlModel: MLModel?
     private var vnModel: VNCoreMLModel?
     
-    // Furniture class labels for DeepLabV3
-    // DeepLabV3 uses PASCAL VOC classes - chair (9), dining table (11), sofa (15)
-    private let furnitureClassLabels = [9, 11, 15] // chair, dining table, sofa
-    private let classNames = [9: "chair", 11: "table", 15: "sofa"]
+    // Furniture class labels for DeepLabV3  
+    // DeepLabV3 uses PASCAL VOC classes - expanded to include more furniture items
+    private let furnitureClassLabels = [
+        9,  // chair - basic seating furniture
+        11, // dining table - tables for dining
+        18, // sofa - couches and sofas  
+        16, // potted plant - decorative furniture/accessories
+        20  // tv monitor - entertainment furniture
+    ]
+    
+    // PASCAL VOC 2012 class names for debugging
+    private let pascalVOCClasses = [
+        0: "background", 1: "aeroplane", 2: "bicycle", 3: "bird", 4: "boat", 
+        5: "bottle", 6: "bus", 7: "car", 8: "cat", 9: "chair", 
+        10: "cow", 11: "dining table", 12: "dog", 13: "horse", 14: "motorbike", 
+        15: "person", 16: "potted plant", 17: "sheep", 18: "sofa", 19: "train", 20: "tv monitor"
+    ]
     
     init() {
         loadSegmentationModel()
@@ -27,18 +40,60 @@ class ObjectSegmentationProcessor: ObservableObject {
     
     // Load the CoreML segmentation model
     private func loadSegmentationModel() {
+        // First, let's debug what's actually in the bundle
+        print("🔍 Bundle debugging:")
+        print("   Main bundle path: \(Bundle.main.bundlePath)")
+        
+        // List all .mlmodel files in the bundle
+        let mlmodelPaths = Bundle.main.paths(forResourcesOfType: "mlmodel", inDirectory: nil)
+        print("   Found .mlmodel files: \(mlmodelPaths)")
+        
+        // Also check for .mlmodelc (compiled model) files
+        let mlmodelcPaths = Bundle.main.paths(forResourcesOfType: "mlmodelc", inDirectory: nil)
+        print("   Found .mlmodelc files: \(mlmodelcPaths)")
+        
         // Try to load DeepLabV3 model from the main bundle
-        guard let modelURL = Bundle.main.url(forResource: "DeepLabV3", withExtension: "mlmodel") else {
-            print("⚠️ DeepLabV3.mlmodel not found in bundle - using mock implementation")
-            print("📥 To enable full AR functionality, add DeepLabV3.mlmodel to Xcode project")
-            print("   Download from: https://docs-assets.developer.apple.com/ml-res/models/DeepLabV3.mlmodel")
-            errorMessage = "AR model not available - add to project"
+        var modelURL: URL?
+        
+        // First try .mlmodelc (compiled model - this is what Xcode produces)
+        if let url = Bundle.main.url(forResource: "DeepLabV3", withExtension: "mlmodelc") {
+            modelURL = url
+            print("✅ Found DeepLabV3.mlmodelc at: \(url)")
+        }
+        // Fallback to .mlmodel (original uncompiled model)
+        else if let url = Bundle.main.url(forResource: "DeepLabV3", withExtension: "mlmodel") {
+            modelURL = url
+            print("✅ Found DeepLabV3.mlmodel at: \(url)")
+        }
+        else {
+            print("⚠️ DeepLabV3 model not found in bundle")
+            print("🔍 Available bundle resources:")
+            
+            // List all resources in bundle for debugging
+            if let bundleURL = Bundle.main.resourceURL {
+                do {
+                    let resources = try FileManager.default.contentsOfDirectory(at: bundleURL, includingPropertiesForKeys: nil)
+                    let modelFiles = resources.filter { url in
+                        url.pathExtension == "mlmodel" || url.pathExtension == "mlmodelc"
+                    }
+                    print("   ML model files found: \(modelFiles)")
+                } catch {
+                    print("   Could not list bundle resources: \(error)")
+                }
+            }
+            
+            errorMessage = "AR model not found in bundle"
+            return
+        }
+        
+        guard let finalModelURL = modelURL else {
+            print("⚠️ No model URL available")
             return
         }
         
         do {
             // Load the CoreML model
-            let mlModel = try MLModel(contentsOf: modelURL)
+            let mlModel = try MLModel(contentsOf: finalModelURL)
             print("✅ DeepLabV3 CoreML model loaded successfully")
             
             // Create Vision Core ML model wrapper
@@ -75,17 +130,36 @@ class ObjectSegmentationProcessor: ObservableObject {
                 if let error = error {
                     self?.errorMessage = "Segmentation failed: \(error.localizedDescription)"
                     self?.isProcessing = false
+                    print("⚠️ Vision request error: \(error.localizedDescription)")
                     return
                 }
                 
                 self?.processingStatus = "Processing segmentation..."
                 
-                // Process the segmentation results
-                if let results = request.results as? [VNPixelBufferObservation],
-                   let segmentationBuffer = results.first?.pixelBuffer {
+                // Debug: Log the actual result types we're getting
+                print("🔍 Vision request completed. Result count: \(request.results?.count ?? 0)")
+                if let results = request.results {
+                    for (index, result) in results.enumerated() {
+                        print("   Result \(index): \(type(of: result))")
+                    }
+                }
+                
+                // DeepLabV3 returns VNCoreMLFeatureValueObservation with MLMultiArray
+                if let results = request.results as? [VNCoreMLFeatureValueObservation],
+                   let featureValue = results.first?.featureValue,
+                   let multiArray = featureValue.multiArrayValue {
+                    print("✅ Got MLMultiArray segmentation results: \(multiArray.shape)")
+                    self?.processSegmentationMultiArray(multiArray, originalImage: image)
+                } else if let results = request.results as? [VNPixelBufferObservation],
+                          let segmentationBuffer = results.first?.pixelBuffer {
+                    // Fallback to pixel buffer processing (some models use this format)
+                    print("✅ Got pixel buffer segmentation results")
                     self?.processSegmentationResults(segmentationBuffer, originalImage: image)
                 } else {
-                    self?.errorMessage = "Failed to get segmentation results"
+                    // Enhanced error logging
+                    let resultTypes = request.results?.map { type(of: $0) } ?? []
+                    self?.errorMessage = "Unexpected Vision result format. Got: \(resultTypes)"
+                    print("⚠️ Failed to get segmentation results. Result types: \(resultTypes)")
                     self?.isProcessing = false
                 }
             }
@@ -148,12 +222,19 @@ class ObjectSegmentationProcessor: ObservableObject {
         let segmentationData = baseAddress.assumingMemoryBound(to: UInt8.self)
         var furniturePixelCount = 0
         
+        // Debug: Count all detected classes
+        var classPixelCounts: [Int: Int] = [:]
+        
         // Extract furniture pixels based on class labels
         for i in 0..<(width * height) {
             let pixelValue = segmentationData[i]
+            let classIndex = Int(pixelValue)
+            
+            // Count pixels for each class
+            classPixelCounts[classIndex, default: 0] += 1
             
             // Check if pixel belongs to furniture class
-            if furnitureClassLabels.contains(Int(pixelValue)) {
+            if furnitureClassLabels.contains(classIndex) {
                 maskData[i] = 255 // White for furniture
                 furniturePixelCount += 1
             } else {
@@ -161,10 +242,129 @@ class ObjectSegmentationProcessor: ObservableObject {
             }
         }
         
+        // Debug: Print detected classes and their pixel counts
+        print("🔍 Segmentation Analysis:")
+        print("   Image size: \(width)x\(height) = \(width * height) pixels")
+        print("   Detected classes with >0.1% coverage:")
+        let totalPixels = width * height
+        let sortedClasses = classPixelCounts.sorted { $0.value > $1.value }
+        
+        for (classIndex, pixelCount) in sortedClasses {
+            let percentage = Double(pixelCount) / Double(totalPixels) * 100
+            if percentage > 0.1 {
+                let className = getClassName(for: classIndex)
+                print("     Class \(classIndex) (\(className)): \(pixelCount) pixels (\(String(format: "%.1f", percentage))%)")
+            }
+        }
+        
+        // Debug furniture detection specifically
+        let furniturePixels = furnitureClassLabels.reduce(0) { sum, classLabel in
+            sum + (classPixelCounts[classLabel] ?? 0)
+        }
+        let furniturePercentage = Double(furniturePixels) / Double(totalPixels) * 100
+        print("   Furniture pixels (classes 9,11,16,18,20): \(furniturePixels) (\(String(format: "%.3f", furniturePercentage))%)")
+        
         // Check if we found any furniture objects
         let furnitureRatio = Double(furniturePixelCount) / Double(width * height)
         if furnitureRatio < 0.01 { // Less than 1% furniture pixels
             errorMessage = "No furniture detected. Please point camera at furniture objects."
+            isProcessing = false
+            return
+        }
+        
+        // Apply morphological operations to clean up the mask
+        let cleanedMask = applyMorphologicalOperations(maskData, width: width, height: height)
+        
+        // Create segmented image with transparent background
+        if let segmentedUIImage = createSegmentedImage(originalImage: originalImage,
+                                                      mask: cleanedMask,
+                                                      width: width,
+                                                      height: height) {
+            segmentedImage = segmentedUIImage
+            processingStatus = "Segmentation complete - Ready to place"
+        } else {
+            errorMessage = "Failed to create segmented image"
+        }
+        
+        isProcessing = false
+    }
+    
+    // Process MLMultiArray segmentation results from DeepLabV3
+    private func processSegmentationMultiArray(_ multiArray: MLMultiArray, originalImage: UIImage) {
+        processingStatus = "Extracting furniture from MLMultiArray..."
+        
+        // DeepLabV3 outputs 513x513 array of class indices
+        let shape = multiArray.shape
+        guard shape.count >= 2 else {
+            errorMessage = "Invalid MLMultiArray shape: \(shape)"
+            isProcessing = false
+            return
+        }
+        
+        let width = shape[1].intValue  // Should be 513
+        let height = shape[0].intValue // Should be 513
+        let totalPixels = width * height
+        
+        print("🔍 Processing MLMultiArray segmentation:")
+        print("   Array shape: \(shape)")
+        print("   Dimensions: \(width)x\(height) = \(totalPixels) pixels")
+        print("   Data type: \(multiArray.dataType.rawValue)")
+        
+        // Convert MLMultiArray to pointer for efficient access
+        guard let dataPointer = try? UnsafeBufferPointer<Int32>(multiArray) else {
+            errorMessage = "Failed to access MLMultiArray data"
+            isProcessing = false
+            return
+        }
+        
+        // Create binary mask for furniture objects
+        let maskData = UnsafeMutablePointer<UInt8>.allocate(capacity: totalPixels)
+        defer { maskData.deallocate() }
+        
+        var furniturePixelCount = 0
+        var classPixelCounts: [Int: Int] = [:]
+        
+        // Process each pixel in the segmentation array
+        for i in 0..<totalPixels {
+            let classIndex = Int(dataPointer[i])
+            
+            // Count pixels for each detected class
+            classPixelCounts[classIndex, default: 0] += 1
+            
+            // Check if pixel belongs to furniture class
+            if furnitureClassLabels.contains(classIndex) {
+                maskData[i] = 255 // White for furniture
+                furniturePixelCount += 1
+            } else {
+                maskData[i] = 0 // Black for background
+            }
+        }
+        
+        // Debug: Print detected classes and their pixel counts
+        print("🔍 MLMultiArray Segmentation Analysis:")
+        print("   Image size: \(width)x\(height) = \(totalPixels) pixels")
+        print("   Detected classes with >0.1% coverage:")
+        let sortedClasses = classPixelCounts.sorted { $0.value > $1.value }
+        
+        for (classIndex, pixelCount) in sortedClasses {
+            let percentage = Double(pixelCount) / Double(totalPixels) * 100
+            if percentage > 0.1 {
+                let className = getClassName(for: classIndex)
+                print("     Class \(classIndex) (\(className)): \(pixelCount) pixels (\(String(format: "%.1f", percentage))%)")
+            }
+        }
+        
+        // Debug furniture detection specifically
+        let furniturePixels = furnitureClassLabels.reduce(0) { sum, classLabel in
+            sum + (classPixelCounts[classLabel] ?? 0)
+        }
+        let furniturePercentage = Double(furniturePixels) / Double(totalPixels) * 100
+        print("   Furniture pixels (classes 9,11,16,18,20): \(furniturePixels) (\(String(format: "%.3f", furniturePercentage))%)")
+        
+        // Check if we found any furniture objects
+        let furnitureRatio = Double(furniturePixelCount) / Double(totalPixels)
+        if furnitureRatio < 0.01 { // Less than 1% furniture pixels
+            errorMessage = "No furniture detected in image. Try pointing at chairs, tables, or sofas."
             isProcessing = false
             return
         }
@@ -350,6 +550,11 @@ class ObjectSegmentationProcessor: ObservableObject {
         isProcessing = false
         
         return UIImage(cgImage: finalCGImage)
+    }
+    
+    // Helper function to get class name for debugging
+    private func getClassName(for classIndex: Int) -> String {
+        return pascalVOCClasses[classIndex] ?? "unknown(\(classIndex))"
     }
 }
 

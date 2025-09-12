@@ -13,7 +13,7 @@ struct ModelViewerView: View {
     @State private var joystickOffset: CGSize = .zero
     
     // AR functionality state
-    @StateObject private var scnViewCaptureManager = SCNViewCaptureManager()
+    @StateObject private var arKitCameraManager = ARKitCameraManager()
     @StateObject private var objectSegmentationProcessor = ObjectSegmentationProcessor()
     @StateObject private var arObjectPlacementManager = ARObjectPlacementManager()
     @State private var isARActive = false
@@ -26,7 +26,6 @@ struct ModelViewerView: View {
                 SceneKitView(
                     model: model, 
                     cameraMovementManager: cameraMovementManager,
-                    scnViewCaptureManager: scnViewCaptureManager,
                     arObjectPlacementManager: arObjectPlacementManager,
                     isARActive: isARActive
                 )
@@ -222,19 +221,27 @@ struct ModelViewerView: View {
         }
     }
     
-    // Start AR mode and snapshot capture
+    // Start AR mode and ARKit camera session
     private func startARMode() {
         isARActive = true
-        arStatusMessage = "Preparing AR mode..."
+        arStatusMessage = "Starting ARKit camera..."
         
-        // Start capture session (immediate for SCNView)
-        scnViewCaptureManager.startSession()
+        // Start ARKit session for camera frame access
+        arKitCameraManager.startSession()
         
         // Clear any existing AR objects
         arObjectPlacementManager.resetForNewSession()
         
-        // Start AR processing pipeline
+        // Wait for ARKit to initialize, then begin AR processing
         Task {
+            // Give ARKit time to initialize and start receiving frames
+            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
+            
+            await MainActor.run {
+                arStatusMessage = "Ready - tap to capture furniture"
+            }
+            
+            // Start AR processing pipeline
             await performARCapture()
         }
     }
@@ -245,56 +252,61 @@ struct ModelViewerView: View {
         isProcessingAR = false
         arStatusMessage = "Point at furniture objects"
         
-        // Stop capture session
-        scnViewCaptureManager.stopSession()
+        // Stop ARKit session
+        arKitCameraManager.stopSession()
         
         // Clear AR objects
         arObjectPlacementManager.clearAllObjects()
     }
     
-    // Perform AR capture and processing
+    // Perform AR capture and processing using ARKit camera frames
     private func performARCapture() async {
-        arStatusMessage = "Positioning camera for furniture capture..."
+        await MainActor.run {
+            arStatusMessage = "Ready - tap to capture furniture"
+        }
         
-        // Wait a moment for AR camera positioning to complete
-        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        // Wait for user to tap (this will be triggered by AR button or gesture)
+        // For now, automatically capture after a short delay for testing
+        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
         
-        arStatusMessage = "Capturing snapshot..."
-        isProcessingAR = true
+        await MainActor.run {
+            arStatusMessage = "Capturing ARKit frame..."
+            isProcessingAR = true
+        }
         
-        // Capture snapshot from SCNView
-        guard let capturedImage = await scnViewCaptureManager.capturePhoto() else {
+        // Capture current frame from ARKit session - no continuation leak!
+        guard let capturedImage = await MainActor.run(body: { arKitCameraManager.captureCurrentFrame() }) else {
             await MainActor.run {
-                arStatusMessage = "Failed to capture snapshot"
+                arStatusMessage = arKitCameraManager.errorMessage ?? "Failed to capture frame"
                 isProcessingAR = false
             }
             return
         }
         
         await MainActor.run {
-            arStatusMessage = "Processing image..."
+            arStatusMessage = "Processing image for furniture..."
         }
         
-        // Process image for furniture segmentation
+        // Process ARKit camera frame for furniture segmentation
         guard let segmentedImage = await objectSegmentationProcessor.processImage(capturedImage) else {
             await MainActor.run {
-                arStatusMessage = "No furniture detected"
+                arStatusMessage = objectSegmentationProcessor.errorMessage ?? "No furniture detected"
                 isProcessingAR = false
             }
             return
         }
         
         await MainActor.run {
-            // Prepare for object placement
+            // Prepare for object placement in 3D scene
             arObjectPlacementManager.prepareForPlacement(with: segmentedImage)
-            arStatusMessage = "Ready to place furniture"
+            arStatusMessage = "Tap to place furniture in room"
             isProcessingAR = false
         }
     }
     
     // Clean up AR resources
     private func cleanupAR() {
-        scnViewCaptureManager.stopSession()
+        arKitCameraManager.stopSession()
         arObjectPlacementManager.clearAllObjects()
     }
 }

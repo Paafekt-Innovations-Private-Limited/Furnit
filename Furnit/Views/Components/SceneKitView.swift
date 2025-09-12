@@ -4,11 +4,11 @@ import SceneKit
 struct SceneKitView: UIViewRepresentable {
     let model: USDZModel
     let cameraMovementManager: CameraMovementManager
+    let arObjectPlacementManager: ARObjectPlacementManager
+    let isARActive: Bool
     
-    // AR functionality (optional)
-    let scnViewCaptureManager: SCNViewCaptureManager
-    var arObjectPlacementManager: ARObjectPlacementManager?
-    var isARActive: Bool = false
+    // Access quality settings from environment
+    @Environment(\.appState) private var appState
     
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -19,9 +19,16 @@ struct SceneKitView: UIViewRepresentable {
         
         scnView.allowsCameraControl = false
         scnView.autoenablesDefaultLighting = false
-        scnView.antialiasingMode = .multisampling4X
+        
+        // Apply quality settings for antialiasing
+        let quality = appState.currentQuality
+        scnView.antialiasingMode = getAntialiasingMode(for: quality)
+        
         scnView.backgroundColor = UIColor.black
         scnView.rendersContinuously = false
+        
+        // Log quality setting being applied
+        print("🎨 Applying quality setting: \(quality.displayName)")
         
         context.coordinator.setupGestures(for: scnView)
         loadScene(into: scnView, coordinator: context.coordinator)
@@ -29,15 +36,21 @@ struct SceneKitView: UIViewRepresentable {
         // Set up camera movement manager with the scene view
         cameraMovementManager.setSceneView(scnView)
         
-        // Set up SCNView capture manager for AR functionality
-        scnViewCaptureManager.setSceneView(scnView)
-        
         return scnView
     }
     
     func updateUIView(_ uiView: SCNView, context: Context) {
         if uiView.scene == nil {
             loadScene(into: uiView, coordinator: context.coordinator)
+        }
+        
+        // Update antialiasing if quality setting changed
+        let currentQuality = appState.currentQuality
+        let newAntialiasingMode = getAntialiasingMode(for: currentQuality)
+        
+        if uiView.antialiasingMode != newAntialiasingMode {
+            uiView.antialiasingMode = newAntialiasingMode
+            print("🔄 Updated antialiasing mode to: \(currentQuality.displayName)")
         }
     }
     
@@ -95,11 +108,9 @@ struct SceneKitView: UIViewRepresentable {
                 scnView.scene = scene
                 coordinator.scene = scene
                 
-                // Set up AR manager if provided
-                if let arManager = self.arObjectPlacementManager {
-                    coordinator.arObjectPlacementManager = arManager
-                    arManager.setSceneReferences(sceneView: scnView, scene: scene)
-                }
+                // Set up AR manager
+                coordinator.arObjectPlacementManager = self.arObjectPlacementManager
+                self.arObjectPlacementManager.setSceneReferences(sceneView: scnView, scene: scene)
                 
                 // Update camera movement manager with scene and boundaries
                 self.cameraMovementManager.setSceneView(scnView)
@@ -209,21 +220,24 @@ struct SceneKitView: UIViewRepresentable {
     }
     
     private func setupLighting(for scene: SCNScene) {
+        let quality = appState.currentQuality
+        let lightingMultiplier = quality.lightingIntensity
+        
         scene.lightingEnvironment.contents = UIColor.systemBackground
-        scene.lightingEnvironment.intensity = 0.8
+        scene.lightingEnvironment.intensity = CGFloat(0.8 * lightingMultiplier)
         
         let ambientLightNode = SCNNode()
         ambientLightNode.light = SCNLight()
         ambientLightNode.light!.type = .ambient
         ambientLightNode.light!.color = UIColor(white: 0.6, alpha: 1.0)
-        ambientLightNode.light!.intensity = 300
+        ambientLightNode.light!.intensity = CGFloat(300 * lightingMultiplier)
         scene.rootNode.addChildNode(ambientLightNode)
         
         let keyLightNode = SCNNode()
         keyLightNode.light = SCNLight()
         keyLightNode.light!.type = .directional
         keyLightNode.light!.color = UIColor.white
-        keyLightNode.light!.intensity = 800
+        keyLightNode.light!.intensity = CGFloat(800 * lightingMultiplier)
         keyLightNode.position = SCNVector3(x: 5, y: 10, z: 5)
         keyLightNode.look(at: SCNVector3(0, 0, 0))
         scene.rootNode.addChildNode(keyLightNode)
@@ -232,10 +246,24 @@ struct SceneKitView: UIViewRepresentable {
         fillLightNode.light = SCNLight()
         fillLightNode.light!.type = .directional
         fillLightNode.light!.color = UIColor(white: 0.9, alpha: 1.0)
-        fillLightNode.light!.intensity = 400
+        fillLightNode.light!.intensity = CGFloat(400 * lightingMultiplier)
         fillLightNode.position = SCNVector3(x: -3, y: 5, z: 8)
         fillLightNode.look(at: SCNVector3(0, 0, 0))
         scene.rootNode.addChildNode(fillLightNode)
+        
+        print("💡 Applied lighting intensity: \(lightingMultiplier)x for \(quality.displayName) quality")
+    }
+    
+    // Helper method to get SCNAntialiasingMode from quality setting
+    private func getAntialiasingMode(for quality: AssetQuality) -> SCNAntialiasingMode {
+        switch quality {
+        case .standard:
+            return .multisampling2X
+        case .high:
+            return .multisampling4X
+        case .best:
+            return .multisampling4X // .multisampling8X is not available on all devices
+        }
     }
 }
 
