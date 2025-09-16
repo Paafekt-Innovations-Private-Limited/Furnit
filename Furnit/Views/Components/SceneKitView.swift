@@ -115,6 +115,11 @@ struct SceneKitView: UIViewRepresentable {
                 // Update camera movement manager with scene and boundaries
                 self.cameraMovementManager.setSceneView(scnView)
                 
+                // Set up camera movement callback (removed validateObjectVisibility to prevent scaling issues)
+                self.cameraMovementManager.onCameraMove = {
+                    // Camera movement callback - ready for future enhancements
+                }
+                
                 // Make sure boundaries are calculated after scene is set
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.cameraMovementManager.updateBoundaries()
@@ -211,10 +216,16 @@ struct SceneKitView: UIViewRepresentable {
         )
         cameraNode.look(at: lookAtPoint)
         
-        // Configure camera properties for room viewing
+        // Configure camera properties for room viewing with AR object support
         cameraNode.camera?.fieldOfView = 75 // Wider field of view for room interiors
-        cameraNode.camera?.zNear = 0.1
-        cameraNode.camera?.zFar = Double(max(roomSize.x, max(roomSize.y, roomSize.z)) * 3)
+        cameraNode.camera?.zNear = 0.01 // Very close near plane for AR objects
+        
+        // Calculate appropriate far plane that ensures AR objects remain visible
+        let maxRoomDimension = max(roomSize.x, max(roomSize.y, roomSize.z))
+        let arObjectRange: Double = 100.0 // Extra range for AR objects placed outside room bounds
+        cameraNode.camera?.zFar = Double(maxRoomDimension * 3) + arObjectRange
+        
+        print("📷 Camera configured - zNear: \(cameraNode.camera?.zNear ?? 0), zFar: \(cameraNode.camera?.zFar ?? 0)")
         
         scene.rootNode.addChildNode(cameraNode)
     }

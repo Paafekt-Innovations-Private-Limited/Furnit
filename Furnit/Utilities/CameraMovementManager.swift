@@ -12,6 +12,9 @@ class CameraMovementManager: ObservableObject {
     private let movementSpeed: Float = 0.05 // Units per frame
     private let smoothingFactor: Float = 0.8 // Movement smoothing (0.0 = instant, 1.0 = no movement)
     
+    // Callback for camera movement notifications
+    var onCameraMove: (() -> Void)?
+    
     init() {
         // Set up display link for smooth continuous movement
         displayLink = CADisplayLink(target: self, selector: #selector(updateCameraPosition))
@@ -115,6 +118,9 @@ class CameraMovementManager: ObservableObject {
         if constrainedPosition.x != cameraNode.position.x || 
            constrainedPosition.z != cameraNode.position.z {
             cameraNode.position = constrainedPosition
+            
+            // Notify that camera has moved
+            onCameraMove?()
         }
     }
     

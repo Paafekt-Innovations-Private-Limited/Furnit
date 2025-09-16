@@ -91,7 +91,40 @@ class ARKitCameraManager: NSObject, ObservableObject {
     
     // MARK: - Frame Capture
     
-    // Capture current camera frame for furniture segmentation
+    // Capture current camera frame for backend API (full resolution)
+    func captureCurrentFrameForAPI() -> UIImage? {
+        guard let currentFrame = latestFrame else {
+            errorMessage = "No camera frame available - ensure AR session is running"
+            print("⚠️ No current frame available for capture")
+            return nil
+        }
+        
+        print("📷 Capturing current ARKit camera frame for 3D generation...")
+        
+        // Convert ARFrame's camera image to UIImage without resizing
+        guard let rawUIImage = convertPixelBufferToUIImage(currentFrame.capturedImage) else {
+            errorMessage = "Failed to convert camera frame to image"
+            print("⚠️ Failed to convert ARFrame to UIImage")
+            return nil
+        }
+        
+        // Fix orientation without resizing for backend API
+        guard let orientationFixedImage = fixImageOrientation(rawUIImage) else {
+            errorMessage = "Failed to fix image orientation"
+            print("⚠️ Failed to fix image orientation")
+            return nil
+        }
+        
+        // Store captured image
+        capturedImage = orientationFixedImage
+        
+        print("✅ ARKit frame captured successfully for 3D generation")
+        print("   Image size: \(orientationFixedImage.size)")
+        print("   Image orientation: \(orientationFixedImage.imageOrientation.rawValue)")
+        return orientationFixedImage
+    }
+    
+    // Capture current camera frame for furniture segmentation (legacy for DeepLabV3)
     // This is synchronous and doesn't use continuations - no more leaks!
     func captureCurrentFrame() -> UIImage? {
         guard let currentFrame = latestFrame else {
@@ -146,7 +179,30 @@ class ARKitCameraManager: NSObject, ObservableObject {
         return uiImage
     }
     
-    // Preprocess image for DeepLabV3 segmentation
+    // Fix image orientation without resizing (for backend API)
+    private func fixImageOrientation(_ image: UIImage) -> UIImage? {
+        // If orientation is already correct, return as-is
+        if image.imageOrientation == .up {
+            return image
+        }
+        
+        // Create graphics context with original size
+        UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
+        defer { UIGraphicsEndImageContext() }
+        
+        // Draw image in original size (this automatically fixes orientation)
+        image.draw(in: CGRect(origin: .zero, size: image.size))
+        
+        // Get the orientation-fixed image
+        guard let fixedImage = UIGraphicsGetImageFromCurrentImageContext() else {
+            print("⚠️ Failed to create orientation-fixed image from graphics context")
+            return nil
+        }
+        
+        return fixedImage
+    }
+    
+    // Preprocess image for DeepLabV3 segmentation (legacy method)
     // DeepLabV3 requires exactly 513x513 pixels with standard orientation
     private func preprocessImageForSegmentation(_ image: UIImage) -> UIImage? {
         let targetSize = CGSize(width: 513, height: 513)

@@ -14,7 +14,8 @@ struct ModelViewerView: View {
     
     // AR functionality state
     @StateObject private var arKitCameraManager = ARKitCameraManager()
-    @StateObject private var objectSegmentationProcessor = ObjectSegmentationProcessor()
+    @StateObject private var ar3DModelProcessor = AR3DModelProcessor()
+    @StateObject private var arProcessingStateManager = ARProcessingStateManager()
     @StateObject private var arObjectPlacementManager = ARObjectPlacementManager()
     @State private var isARActive = false
     @State private var arStatusMessage = "Point at furniture objects"
@@ -48,6 +49,8 @@ struct ModelViewerView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             setupARManagers()
+            // Configure 3D model processor with quality settings
+            ar3DModelProcessor.setQualitySettings(AppStateManager.shared.qualitySettings)
         }
         .onDisappear {
             cleanupAR()
@@ -170,31 +173,64 @@ struct ModelViewerView: View {
                 Spacer()
                 
                 VStack(spacing: 12) {
-                    Text(arStatusMessage)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                    
-                    if isProcessingAR {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(0.8)
+                    VStack(spacing: 4) {
+                        Text(arProcessingStateManager.currentState.displayMessage)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                        
+                        if let secondaryMessage = arProcessingStateManager.currentState.secondaryMessage {
+                            Text(secondaryMessage)
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                                .multilineTextAlignment(.center)
+                        }
                     }
                     
-                    if arObjectPlacementManager.isReadyToPlace {
-                        Text("Tap to place furniture")
-                            .font(.caption)
-                            .foregroundColor(.white)
-                            .opacity(0.8)
+                    if arProcessingStateManager.currentState.showsProgress {
+                        VStack(spacing: 8) {
+                            ProgressView(value: arProcessingStateManager.currentState.progressValue)
+                                .progressViewStyle(LinearProgressViewStyle(tint: .white))
+                                .frame(width: 120, height: 4)
+                            
+                            if arProcessingStateManager.currentState.isProcessing {
+                                HStack(spacing: 4) {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .scaleEffect(0.6)
+                                    
+                                    let elapsed = arProcessingStateManager.formattedElapsedTime
+                                    if !elapsed.isEmpty {
+                                        Text(elapsed)
+                                            .font(.caption2)
+                                            .foregroundColor(.white.opacity(0.7))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if arProcessingStateManager.currentState.isReadyToPlace {
+                        HStack(spacing: 8) {
+                            Image(systemName: "hand.tap")
+                                .foregroundColor(.white)
+                                .font(.caption)
+                            
+                            Text("Tap anywhere to place")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                                .opacity(0.8)
+                        }
+                        .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: arProcessingStateManager.currentState)
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(arObjectPlacementManager.isReadyToPlace ? Color.blue.opacity(0.8) : Color.black.opacity(0.7))
+                        .fill(arProcessingStateManager.currentState.statusColor.opacity(0.8))
                 )
-                .animation(.easeInOut(duration: 0.3), value: arObjectPlacementManager.isReadyToPlace)
+                .animation(.easeInOut(duration: 0.3), value: arProcessingStateManager.currentState)
                 
                 Spacer()
             }
@@ -226,6 +262,10 @@ struct ModelViewerView: View {
         isARActive = true
         arStatusMessage = "Starting ARKit camera..."
         
+        // Initialize AR processing state
+        arProcessingStateManager.reset()
+        arProcessingStateManager.startARSession()
+        
         // Start ARKit session for camera frame access
         arKitCameraManager.startSession()
         
@@ -239,6 +279,7 @@ struct ModelViewerView: View {
             
             await MainActor.run {
                 arStatusMessage = "Ready - tap to capture furniture"
+                arProcessingStateManager.updateState(.pointing)
             }
             
             // Start AR processing pipeline
@@ -252,6 +293,9 @@ struct ModelViewerView: View {
         isProcessingAR = false
         arStatusMessage = "Point at furniture objects"
         
+        // Reset AR processing state
+        arProcessingStateManager.reset()
+        
         // Stop ARKit session
         arKitCameraManager.stopSession()
         
@@ -259,10 +303,11 @@ struct ModelViewerView: View {
         arObjectPlacementManager.clearAllObjects()
     }
     
-    // Perform AR capture and processing using ARKit camera frames
+    // Perform AR capture and processing using backend API
     private func performARCapture() async {
         await MainActor.run {
             arStatusMessage = "Ready - tap to capture furniture"
+            arProcessingStateManager.updateState(.pointing)
         }
         
         // Wait for user to tap (this will be triggered by AR button or gesture)
@@ -271,35 +316,42 @@ struct ModelViewerView: View {
         
         await MainActor.run {
             arStatusMessage = "Capturing ARKit frame..."
+            arProcessingStateManager.beginCapture()
             isProcessingAR = true
         }
         
-        // Capture current frame from ARKit session - no continuation leak!
-        guard let capturedImage = await MainActor.run(body: { arKitCameraManager.captureCurrentFrame() }) else {
+        // Capture current frame from ARKit session (full resolution for API)
+        guard let capturedImage = await MainActor.run(body: { arKitCameraManager.captureCurrentFrameForAPI() }) else {
             await MainActor.run {
-                arStatusMessage = arKitCameraManager.errorMessage ?? "Failed to capture frame"
+                let errorMsg = arKitCameraManager.errorMessage ?? "Failed to capture frame"
+                arStatusMessage = errorMsg
+                arProcessingStateManager.setError(errorMsg)
                 isProcessingAR = false
             }
             return
         }
         
         await MainActor.run {
-            arStatusMessage = "Processing image for furniture..."
+            arStatusMessage = "Uploading image for 3D generation..."
+            arProcessingStateManager.beginUpload()
         }
         
-        // Process ARKit camera frame for furniture segmentation
-        guard let segmentedImage = await objectSegmentationProcessor.processImage(capturedImage) else {
+        // Process image using backend API for 3D model generation
+        guard let generated3DModel = await ar3DModelProcessor.processImage(capturedImage) else {
             await MainActor.run {
-                arStatusMessage = objectSegmentationProcessor.errorMessage ?? "No furniture detected"
+                let errorMsg = ar3DModelProcessor.errorMessage ?? "3D generation failed"
+                arStatusMessage = errorMsg
+                arProcessingStateManager.setError(errorMsg)
                 isProcessingAR = false
             }
             return
         }
         
         await MainActor.run {
-            // Prepare for object placement in 3D scene
-            arObjectPlacementManager.prepareForPlacement(with: segmentedImage)
-            arStatusMessage = "Tap to place furniture in room"
+            // Prepare for object placement in 3D scene with generated model
+            arObjectPlacementManager.prepareForPlacement(with3DModel: generated3DModel)
+            arStatusMessage = "Tap to place 3D model in room"
+            arProcessingStateManager.readyForPlacement()
             isProcessingAR = false
         }
     }
@@ -308,5 +360,7 @@ struct ModelViewerView: View {
     private func cleanupAR() {
         arKitCameraManager.stopSession()
         arObjectPlacementManager.clearAllObjects()
+        arProcessingStateManager.reset()
+        ar3DModelProcessor.reset()
     }
 }
