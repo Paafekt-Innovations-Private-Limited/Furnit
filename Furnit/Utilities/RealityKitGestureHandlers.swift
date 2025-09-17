@@ -129,9 +129,11 @@ class RealityKitGestureHandlers {
                 // Apply total rotation from initial transform to prevent drift
                 let totalRotationQuat = simd_quatf(angle: cumulativeRotationY, axis: SIMD3<Float>(0, 1, 0))
                 
-                // Create new transform with only rotation changed, preserving current position
-                var newTransform = cameraAnchor.transform
+                // Create new transform with rotation changed, but preserve initial position (tripod effect)
+                var newTransform = Transform()
+                newTransform.translation = initialCameraTransform.translation  // Use initial position to prevent drift
                 newTransform.rotation = totalRotationQuat * initialCameraTransform.rotation
+                newTransform.scale = initialCameraTransform.scale
                 cameraAnchor.transform = newTransform
                 
                 print("📷 Camera rotation: \(incrementalRotation) radians (delta), \(cumulativeRotationY) total")
