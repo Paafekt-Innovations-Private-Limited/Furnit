@@ -1,6 +1,63 @@
 import Foundation
 import SwiftUI
 
+// Movement speed levels for camera navigation
+enum MovementSpeed: String, CaseIterable, Identifiable {
+    case slow = "slow"
+    case normal = "normal"
+    case fast = "fast"
+
+    var id: String { rawValue }
+
+    // Display names for UI
+    var displayName: String {
+        switch self {
+        case .slow:
+            return "Slow"
+        case .normal:
+            return "Normal"
+        case .fast:
+            return "Fast"
+        }
+    }
+
+    // Description for each speed level
+    var description: String {
+        switch self {
+        case .slow:
+            return "Precise control for detailed exploration"
+        case .normal:
+            return "Balanced speed for comfortable navigation"
+        case .fast:
+            return "Quick movement for faster exploration"
+        }
+    }
+
+    // Icon for each speed level
+    var icon: String {
+        switch self {
+        case .slow:
+            return "tortoise.fill"
+        case .normal:
+            return "figure.walk"
+        case .fast:
+            return "hare.fill"
+        }
+    }
+
+    // Actual speed value in units per frame
+    var speedValue: Float {
+        switch self {
+        case .slow:
+            return 0.002
+        case .normal:
+            return 0.003
+        case .fast:
+            return 0.005
+        }
+    }
+}
+
 // Quality levels for 3D asset rendering
 enum AssetQuality: String, CaseIterable, Identifiable {
     case standard = "standard"
@@ -77,9 +134,17 @@ class QualitySettings: ObservableObject {
             }
         }
     }
-    
-    // UserDefaults key for persistence
+
+    // Current selected movement speed (published for UI updates)
+    @Published var selectedMovementSpeed: MovementSpeed {
+        didSet {
+            saveMovementSpeed()
+        }
+    }
+
+    // UserDefaults keys for persistence
     private let qualityKey = "selected_asset_quality"
+    private let movementSpeedKey = "selected_movement_speed"
     
     // Initialize with saved quality or default to high
     init() {
@@ -91,12 +156,26 @@ class QualitySettings: ObservableObject {
             // Default to standard quality if no saved preference
             self.selectedQuality = .standard
         }
+
+        if let savedMovementSpeed = UserDefaults.standard.string(forKey: movementSpeedKey),
+           let speed = MovementSpeed(rawValue: savedMovementSpeed) {
+            self.selectedMovementSpeed = speed
+        } else {
+            // Default to normal speed if no saved preference
+            self.selectedMovementSpeed = .normal
+        }
     }
     
     // Save quality setting to UserDefaults
     private func saveQuality() {
         UserDefaults.standard.set(selectedQuality.rawValue, forKey: qualityKey)
         print("💾 Saved quality setting: \(selectedQuality.displayName)")
+    }
+
+    // Save movement speed setting to UserDefaults
+    private func saveMovementSpeed() {
+        UserDefaults.standard.set(selectedMovementSpeed.rawValue, forKey: movementSpeedKey)
+        print("💾 Saved movement speed setting: \(selectedMovementSpeed.displayName)")
     }
     
     // Get all available quality options for UI
@@ -115,14 +194,26 @@ class QualitySettings: ObservableObject {
             print("⚠️ Attempted to select unavailable quality: \(quality.displayName)")
             return
         }
-        
+
         selectedQuality = quality
         print("🎨 Quality changed to: \(quality.displayName)")
+    }
+
+    // Select movement speed
+    func selectMovementSpeed(_ speed: MovementSpeed) {
+        selectedMovementSpeed = speed
+        print("🏃 Movement speed changed to: \(speed.displayName)")
+    }
+
+    // Check if a specific movement speed is selected
+    func isMovementSpeedSelected(_ speed: MovementSpeed) -> Bool {
+        return selectedMovementSpeed == speed
     }
     
     // Reset to default quality
     func resetToDefault() {
         selectedQuality = .high
+        selectedMovementSpeed = .normal
     }
 }
 

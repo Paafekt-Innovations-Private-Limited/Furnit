@@ -14,7 +14,7 @@ class RealityKitCameraMovementManager: ObservableObject {
     private weak var cameraAnchor: AnchorEntity?
     
     // Movement configuration
-    private let movementSpeed: Float = 0.02 // Units per frame - slower for better control
+    private var movementSpeed: Float = 0.003 // Units per frame - much slower for precise control
     private let smoothingFactor: Float = 0.8 // Movement smoothing (0.0 = instant, 1.0 = no movement)
     
     // Callback for camera movement notifications
@@ -34,30 +34,25 @@ class RealityKitCameraMovementManager: ObservableObject {
     // Set the ARView reference for camera manipulation
     func setARView(_ arView: ARView) {
         self.arView = arView
-        
-        // Initialize boundary manager with the ARView
-        boundaryManager = RealityKitBoundaryManager(arView: arView)
-        
-        // Don't create world anchor here - it will be shared via setWorldAnchor()
-        // The world anchor will be created by gesture handlers first
-        
-        // Calculate room boundaries when scene is available
-        if !arView.scene.anchors.isEmpty {
-            print("🎬 Scene available, calculating boundaries...")
-            // Use the first anchor directly, not the first model entity
-            // This ensures all child entities are included in bounds calculation
-            if let firstAnchor = arView.scene.anchors.first {
-                boundaryManager?.calculateRoomBounds(from: firstAnchor)
-            }
-        } else {
-            print("⚠️ Scene not available yet when setting up camera movement manager")
-        }
+        print("📱 Camera movement manager ARView set")
     }
     
     // Set camera anchor reference for direct camera control
     func setCameraAnchor(_ anchor: AnchorEntity) {
         self.cameraAnchor = anchor
         print("🎮 Camera movement manager now using camera anchor for direct control")
+    }
+
+    // Set boundary manager reference (shared from RealityKitView)
+    func setBoundaryManager(_ manager: RealityKitBoundaryManager) {
+        self.boundaryManager = manager
+        print("🏠 Camera movement manager using shared boundary manager")
+    }
+
+    // Update movement speed from settings
+    func updateMovementSpeed(_ speed: MovementSpeed) {
+        movementSpeed = speed.speedValue
+        print("🏃 Camera movement speed updated to: \(speed.displayName) (\(speed.speedValue))")
     }
     
     // Helper to find first model entity in anchor hierarchy
@@ -75,23 +70,9 @@ class RealityKitCameraMovementManager: ObservableObject {
         return nil
     }
     
-    // Method to recalculate boundaries when scene becomes available
+    // Method to recalculate boundaries when scene becomes available (now handled by shared boundary manager)
     func updateBoundaries() {
-        guard let arView = arView else {
-            print("⚠️ Cannot update boundaries - ARView not available")
-            return
-        }
-        
-        if !arView.scene.anchors.isEmpty {
-            print("🔄 Updating camera movement boundaries...")
-            // Use the first anchor directly, not the first model entity
-            // This ensures all child entities are included in bounds calculation
-            if let firstAnchor = arView.scene.anchors.first {
-                boundaryManager?.calculateRoomBounds(from: firstAnchor)
-            }
-        } else {
-            print("⚠️ Cannot update boundaries - no anchors in scene")
-        }
+        print("🔄 Boundary updates now handled by shared boundary manager")
     }
     
     // Update joystick input from the virtual joystick
@@ -148,15 +129,18 @@ class RealityKitCameraMovementManager: ObservableObject {
             currentCameraPosition.z + cameraMovementDelta.z
         )
         
-        // Apply boundary constraints
+        // Apply boundary constraints if boundary manager is available
         if let boundaryManager = boundaryManager {
+            let originalProposedPosition = proposedCameraPosition
             proposedCameraPosition = boundaryManager.constrainCameraPosition(proposedCameraPosition)
-            
+
             // Debug logging when movement is constrained
-            if proposedCameraPosition.x != currentCameraPosition.x + cameraMovementDelta.x || 
-               proposedCameraPosition.z != currentCameraPosition.z + cameraMovementDelta.z {
-                print("🚧 Wall hit! Camera movement constrained")
+            if proposedCameraPosition.x != originalProposedPosition.x ||
+               proposedCameraPosition.z != originalProposedPosition.z {
+                print("🚧 Wall hit! Camera movement constrained from \(originalProposedPosition) to \(proposedCameraPosition)")
             }
+        } else {
+            print("⚠️ No boundary manager available - camera movement not constrained")
         }
         
         // Only update camera position if it's different (prevents unnecessary updates)

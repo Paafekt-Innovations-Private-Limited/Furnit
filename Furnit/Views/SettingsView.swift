@@ -44,15 +44,22 @@ struct SettingsView: View {
                     Text("App Information")
                 }
                 
-                // Future Settings Placeholder
+                // Movement Speed Settings Section
                 Section {
-                    Text("More settings coming soon...")
-                        .foregroundColor(.secondary)
-                        .font(.footnote)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 20)
+                    ForEach(MovementSpeed.allCases) { speed in
+                        MovementSpeedOptionView(
+                            speed: speed,
+                            isSelected: appState.qualitySettings.isMovementSpeedSelected(speed),
+                            onSelect: {
+                                appState.updateMovementSpeed(speed)
+                            }
+                        )
+                    }
                 } header: {
-                    Text("Additional Settings")
+                    Text("Movement Speed")
+                } footer: {
+                    Text("Controls how fast the camera moves when using the joystick. Choose the speed that feels most comfortable for you.")
+                        .font(.footnote)
                 }
             }
             .navigationTitle("Settings")
@@ -127,6 +134,49 @@ struct QualityOptionView: View {
             }
         }
         .opacity(quality.isAvailable ? 1.0 : 0.6)
+    }
+}
+
+// Custom view for each movement speed option
+struct MovementSpeedOptionView: View {
+    let speed: MovementSpeed
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        HStack {
+            // Speed icon
+            Image(systemName: speed.icon)
+                .foregroundColor(.blue)
+                .font(.title2)
+                .frame(width: 24, height: 24)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(speed.displayName)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    Spacer()
+
+                    // Selection indicator
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(.title3)
+                    }
+                }
+
+                Text(speed.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle()) // Make entire area tappable
+        .onTapGesture {
+            onSelect()
+        }
     }
 }
 

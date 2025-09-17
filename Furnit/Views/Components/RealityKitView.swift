@@ -44,6 +44,10 @@ struct RealityKitView: UIViewRepresentable {
         // Update rendering quality if settings changed
         let currentQuality = appState.currentQuality
         configureRenderingQuality(arView: uiView, quality: currentQuality)
+
+        // Update movement speed if settings changed (only when actually different)
+        let currentMovementSpeed = appState.currentMovementSpeed
+        cameraMovementManager.updateMovementSpeed(currentMovementSpeed)
     }
     
     class Coordinator {
@@ -124,6 +128,12 @@ struct RealityKitView: UIViewRepresentable {
                     let boundaryManager = RealityKitBoundaryManager(arView: arView)
                     boundaryManager.calculateRoomBounds(from: modelEntity)
                     coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
+
+                    // Share boundary manager with camera movement manager to prevent duplication
+                    self.cameraMovementManager.setBoundaryManager(boundaryManager)
+
+                    // Set initial movement speed from settings
+                    self.cameraMovementManager.updateMovementSpeed(appState.currentMovementSpeed)
                     
                     // Position custom camera inside the room bounds
                     if let cameraAnchor = coordinator.cameraAnchor {

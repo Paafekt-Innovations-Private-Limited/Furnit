@@ -30,12 +30,24 @@ class AppStateManager: ObservableObject {
     var currentQuality: AssetQuality {
         return qualitySettings.selectedQuality
     }
+
+    // Convenience method to get current movement speed
+    var currentMovementSpeed: MovementSpeed {
+        return qualitySettings.selectedMovementSpeed
+    }
     
     // Update quality setting with validation
     func updateQuality(_ quality: AssetQuality) {
         // Ensure UI updates by sending change notification
         objectWillChange.send()
         qualitySettings.selectQuality(quality)
+    }
+
+    // Update movement speed setting with UI notifications
+    func updateMovementSpeed(_ speed: MovementSpeed) {
+        // Ensure UI updates by sending change notification
+        objectWillChange.send()
+        qualitySettings.selectMovementSpeed(speed)
     }
     
     // Get formatted app version string
