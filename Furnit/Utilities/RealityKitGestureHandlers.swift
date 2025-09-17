@@ -6,11 +6,21 @@ class RealityKitGestureHandlers {
     weak var arView: ARView?
     private var boundaryManager: RealityKitBoundaryManager?
     
-    // World transformation approach - since ARView.cameraTransform is read-only
-    private(set) var worldAnchor: AnchorEntity?
-    private var initialWorldTransform: Transform = Transform.identity
+    // Store gesture recognizers to prevent deallocation
+    private var singlePanGesture: UIPanGestureRecognizer?
+    private var doublePanGesture: UIPanGestureRecognizer?
+    private var pinchGesture: UIPinchGestureRecognizer?
+    private var rotationGesture: UIRotationGestureRecognizer?
+    
+    // Custom camera control for non-AR mode - direct camera manipulation
+    private weak var cameraEntity: PerspectiveCamera?
+    private weak var cameraAnchor: AnchorEntity?
+    private var initialCameraTransform: Transform = Transform.identity
     private var lastPanTranslation: CGPoint = .zero
     private var initialTouchPoint: CGPoint?
+    
+    // Separate rotation tracking to prevent conflicts with position updates
+    private var cumulativeRotationY: Float = 0.0 // Track total Y-axis rotation
     
     // Pan gesture configuration
     private let panSensitivity: Float = 0.005
@@ -26,34 +36,11 @@ class RealityKitGestureHandlers {
         self.boundaryManager = manager
     }
     
-    // Set up world anchor that will hold all content for transformation
-    func setupWorldAnchor() {
-        guard let arView = arView else { return }
-        
-        // Create world anchor if it doesn't exist
-        if worldAnchor == nil {
-            worldAnchor = AnchorEntity(.world(transform: matrix_identity_float4x4))
-            arView.scene.addAnchor(worldAnchor!)
-            print("🌍 World anchor created for gesture-based navigation")
-        }
-        
-        // Move existing anchors to world anchor for unified transformation
-        let existingAnchors = Array(arView.scene.anchors)
-        for anchor in existingAnchors {
-            if anchor !== worldAnchor {
-                // Remove from scene and add to world anchor
-                arView.scene.removeAnchor(anchor)
-                worldAnchor?.addChild(anchor)
-            }
-        }
-    }
-    
-    // Add entity to world anchor for gesture control
-    func addToWorld(_ entity: Entity) {
-        if worldAnchor == nil {
-            setupWorldAnchor()
-        }
-        worldAnchor?.addChild(entity)
+    // Set camera references for direct camera control in non-AR mode
+    func setCameraReferences(camera: PerspectiveCamera, cameraAnchor: AnchorEntity) {
+        self.cameraEntity = camera
+        self.cameraAnchor = cameraAnchor
+        print("📷 Camera references set for direct camera control")
     }
     
     // Set up gesture recognizers for camera control
@@ -61,27 +48,35 @@ class RealityKitGestureHandlers {
         guard let arView = arView else { return }
         
         // Single-finger pan gesture for rotation and forward/back movement
-        let singlePanGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
-        singlePanGesture.maximumNumberOfTouches = 1
-        singlePanGesture.minimumNumberOfTouches = 1
-        arView.addGestureRecognizer(singlePanGesture)
+        singlePanGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePanGesture(_:)))
+        singlePanGesture?.maximumNumberOfTouches = 1
+        singlePanGesture?.minimumNumberOfTouches = 1
+        if let singlePan = singlePanGesture {
+            arView.addGestureRecognizer(singlePan)
+        }
         
         // Two-finger pan gesture for position movement (left/right/up/down)
-        let doublePanGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePositionPanGesture(_:)))
-        doublePanGesture.minimumNumberOfTouches = 2
-        doublePanGesture.maximumNumberOfTouches = 2
-        arView.addGestureRecognizer(doublePanGesture)
+        doublePanGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePositionPanGesture(_:)))
+        doublePanGesture?.minimumNumberOfTouches = 2
+        doublePanGesture?.maximumNumberOfTouches = 2
+        if let doublePan = doublePanGesture {
+            arView.addGestureRecognizer(doublePan)
+        }
         
         // Pinch gesture for zoom
-        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
-        arView.addGestureRecognizer(pinchGesture)
+        pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
+        if let pinch = pinchGesture {
+            arView.addGestureRecognizer(pinch)
+        }
         
         // Keep rotation gesture as fallback for advanced users
-        let rotationGesture = UIRotationGestureRecognizer(target: self, action: #selector(handleRotationGesture(_:)))
-        arView.addGestureRecognizer(rotationGesture)
+        rotationGesture = UIRotationGestureRecognizer(target: self, action: #selector(handleRotationGesture(_:)))
+        if let rotation = rotationGesture {
+            arView.addGestureRecognizer(rotation)
+        }
         
-        // Ensure gestures work together properly
-        singlePanGesture.require(toFail: doublePanGesture)
+        // Remove the require(toFail:) that was preventing gestures from working
+        // Allow both single and double pan gestures to work independently
         
         print("🎮 RealityKit gesture recognizers set up with intuitive controls")
         print("   Single finger: horizontal=rotate, vertical=forward/back")
@@ -90,85 +85,95 @@ class RealityKitGestureHandlers {
     
     // Handle pan gesture with intuitive controls: horizontal = rotation, vertical = movement
     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
-        guard let arView = arView, let worldAnchor = worldAnchor else { return }
+        print("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
+        guard let arView = arView, let cameraAnchor = cameraAnchor else { 
+            print("⚠️ Pan gesture guard failed - arView: \(arView != nil), cameraAnchor: \(cameraAnchor != nil)")
+            return 
+        }
         
         let translation = gesture.translation(in: arView)
         
         switch gesture.state {
         case .began:
-            initialWorldTransform = worldAnchor.transform
+            initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = gesture.location(in: arView)
             lastPanTranslation = translation
+            cumulativeRotationY = 0.0 // Reset cumulative rotation
             
         case .changed:
+            print("🔥 CAMERA GESTURE CHANGED STATE - translation: \(translation)")
+            
             // Calculate incremental change since last update
             let deltaTranslation = CGPoint(
                 x: translation.x - lastPanTranslation.x,
                 y: translation.y - lastPanTranslation.y
             )
             
-            // Determine if gesture is primarily horizontal or vertical
-            let deltaX = Float(translation.x)
-            let deltaY = Float(translation.y)
+            print("🔥 Delta translation: \(deltaTranslation), lastPan: \(lastPanTranslation)")
+            
+            // Determine if gesture is primarily horizontal or vertical using incremental delta
+            let deltaX = Float(deltaTranslation.x)
+            let deltaY = Float(deltaTranslation.y)
             let isHorizontalGesture = abs(deltaX) > abs(deltaY)
             
+            // Debug logging to track gesture detection
+            print("🎯 Camera gesture delta: deltaX=\(deltaX), deltaY=\(deltaY), isHorizontal=\(isHorizontalGesture)")
+            
             if isHorizontalGesture {
-                // Horizontal swipe = Rotate around Y-axis (look left/right)
-                // Use incremental change, not total translation
+                // Horizontal swipe = Rotate camera around Y-axis (look left/right)
+                // Use cumulative rotation from initial transform to prevent drift
                 let incrementalRotation = Float(deltaTranslation.x) * rotationSensitivity
+                cumulativeRotationY += -incrementalRotation // Accumulate rotation
                 
-                // Apply incremental rotation to current transform
-                let rotationQuat = simd_quatf(angle: -incrementalRotation, axis: SIMD3<Float>(0, 1, 0))
+                // Apply total rotation from initial transform to prevent drift
+                let totalRotationQuat = simd_quatf(angle: cumulativeRotationY, axis: SIMD3<Float>(0, 1, 0))
                 
-                // Use current world transform, not initial
-                var newTransform = worldAnchor.transform
-                newTransform.rotation = rotationQuat * newTransform.rotation
-                worldAnchor.transform = newTransform
+                // Create new transform with only rotation changed, preserving current position
+                var newTransform = cameraAnchor.transform
+                newTransform.rotation = totalRotationQuat * initialCameraTransform.rotation
+                cameraAnchor.transform = newTransform
                 
-                print("🔄 Horizontal rotation: \(incrementalRotation) radians (incremental)")
+                print("📷 Camera rotation: \(incrementalRotation) radians (delta), \(cumulativeRotationY) total")
                 
             } else {
-                // Vertical swipe = Move forward/backward
-                let movementDelta = deltaY * panSensitivity // No inversion needed for forward/back
+                // Vertical swipe = Move camera forward/backward
+                let movementDelta = Float(translation.y) * panSensitivity
                 
-                // Get camera's current transform for directional reference
-                let cameraTransform = arView.cameraTransform
+                // Get camera's current rotation for directional movement
+                let currentRotation = cameraAnchor.transform.rotation
                 
-                // Calculate forward direction (camera looks down negative Z)
+                // Calculate forward direction (camera looks down negative Z in local space)
                 let cameraForward = normalize(SIMD3<Float>(
-                    cameraTransform.matrix.columns.2.x,
+                    currentRotation.act(SIMD3<Float>(0, 0, -1)).x,
                     0, // Keep movement horizontal
-                    cameraTransform.matrix.columns.2.z
+                    currentRotation.act(SIMD3<Float>(0, 0, -1)).z
                 ))
                 
-                // Calculate world movement (opposite direction for intuitive control)
-                let worldMovement = cameraForward * movementDelta
-                var newPosition = initialWorldTransform.translation + worldMovement
+                // Calculate camera movement in forward/backward direction from initial position
+                let cameraMovement = cameraForward * movementDelta
+                var newPosition = initialCameraTransform.translation + cameraMovement
                 
                 // Apply boundary constraints if available
                 if let boundaryManager = boundaryManager {
-                    // Calculate effective camera position for boundary checking
-                    let effectiveCameraPos = cameraTransform.translation - worldMovement
-                    let constrainedCameraPos = boundaryManager.constrainCameraPosition(effectiveCameraPos)
-                    let constraintDelta = constrainedCameraPos - cameraTransform.translation
-                    newPosition = initialWorldTransform.translation - constraintDelta
+                    newPosition = boundaryManager.constrainCameraPosition(newPosition)
                 }
                 
-                // Apply the new world transform
-                var newTransform = initialWorldTransform
+                // Apply the new camera position while preserving current rotation
+                var newTransform = cameraAnchor.transform
                 newTransform.translation = newPosition
-                worldAnchor.transform = newTransform
+                cameraAnchor.transform = newTransform
                 
-                print("⬆️ Vertical movement: \(movementDelta)")
+                print("📷 Camera movement: \(movementDelta) from initial position")
             }
             
             // Update last translation for next incremental calculation
             lastPanTranslation = translation
             
         case .ended, .cancelled:
-            initialWorldTransform = worldAnchor.transform
+            initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = nil
             lastPanTranslation = .zero
+            cumulativeRotationY = 0.0 // Reset cumulative rotation for next gesture
             
         default:
             break
@@ -177,54 +182,50 @@ class RealityKitGestureHandlers {
     
     // Handle two-finger pan gesture for position movement (strafe left/right/up/down)
     @objc private func handlePositionPanGesture(_ gesture: UIPanGestureRecognizer) {
-        guard let arView = arView, let worldAnchor = worldAnchor else { return }
+        guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
         
         let translation = gesture.translation(in: arView)
         
         switch gesture.state {
         case .began:
-            initialWorldTransform = worldAnchor.transform
+            initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = gesture.location(in: arView)
             
         case .changed:
-            // Two-finger pan for direct position movement (strafe)
+            // Two-finger pan for direct camera position movement (strafe)
             let deltaX = Float(translation.x) * panSensitivity
             let deltaY = Float(-translation.y) * panSensitivity // Invert Y for natural up/down
             
             // Get camera's current transform for directional reference
-            let cameraTransform = arView.cameraTransform
+            let cameraTransform = cameraAnchor.transform
             
-            // Calculate camera's right and up vectors
+            // Calculate camera's right and up vectors in world space
             let cameraRight = normalize(SIMD3<Float>(
-                cameraTransform.matrix.columns.0.x,
+                cameraTransform.rotation.act(SIMD3<Float>(1, 0, 0)).x,
                 0, // Keep horizontal movement
-                cameraTransform.matrix.columns.0.z
+                cameraTransform.rotation.act(SIMD3<Float>(1, 0, 0)).z
             ))
             
             let cameraUp = SIMD3<Float>(0, 1, 0) // World up for vertical movement
             
-            // Calculate world movement (inverse for intuitive control)
-            let worldMovement = -(cameraRight * deltaX + cameraUp * deltaY)
-            var newPosition = initialWorldTransform.translation + worldMovement
+            // Calculate camera movement (direct camera control)
+            let cameraMovement = cameraRight * deltaX + cameraUp * deltaY
+            var newPosition = initialCameraTransform.translation + cameraMovement
             
             // Apply boundary constraints if available
             if let boundaryManager = boundaryManager {
-                // Calculate effective camera position for boundary checking
-                let effectiveCameraPos = cameraTransform.translation - worldMovement
-                let constrainedCameraPos = boundaryManager.constrainCameraPosition(effectiveCameraPos)
-                let constraintDelta = constrainedCameraPos - cameraTransform.translation
-                newPosition = initialWorldTransform.translation - constraintDelta
+                newPosition = boundaryManager.constrainCameraPosition(newPosition)
             }
             
-            // Apply the new world transform
-            var newTransform = initialWorldTransform
+            // Apply the new camera position
+            var newTransform = initialCameraTransform
             newTransform.translation = newPosition
-            worldAnchor.transform = newTransform
+            cameraAnchor.transform = newTransform
             
-            print("✋ Two-finger position movement: (\(deltaX), \(deltaY))")
+            print("📷 Two-finger camera movement: (\(deltaX), \(deltaY))")
             
         case .ended, .cancelled:
-            initialWorldTransform = worldAnchor.transform
+            initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = nil
             
         default:
@@ -232,13 +233,13 @@ class RealityKitGestureHandlers {
         }
     }
     
-    // Handle pinch gesture for zoom (world scale/movement for zoom effect)
+    // Handle pinch gesture for zoom (camera movement for zoom effect)
     @objc private func handlePinchGesture(_ gesture: UIPinchGestureRecognizer) {
-        guard let arView = arView, let worldAnchor = worldAnchor else { return }
+        guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
         
         switch gesture.state {
         case .began:
-            initialWorldTransform = worldAnchor.transform
+            initialCameraTransform = cameraAnchor.transform
             
         case .changed:
             // Calculate zoom factor (scale change from initial)
@@ -246,78 +247,79 @@ class RealityKitGestureHandlers {
             let zoomFactor = (scale - 1.0) * 0.5 // Reduce sensitivity
             
             // Get camera's current transform for directional reference
-            let cameraTransform = arView.cameraTransform
+            let cameraTransform = cameraAnchor.transform
             
-            // Move world backward/forward along camera's view direction (inverse for zoom effect)
+            // Move camera forward/backward along its view direction for zoom effect
             let forward = normalize(SIMD3<Float>(
-                cameraTransform.matrix.columns.2.x,
-                cameraTransform.matrix.columns.2.y,
-                cameraTransform.matrix.columns.2.z
+                cameraTransform.rotation.act(SIMD3<Float>(0, 0, -1)).x,
+                cameraTransform.rotation.act(SIMD3<Float>(0, 0, -1)).y,
+                cameraTransform.rotation.act(SIMD3<Float>(0, 0, -1)).z
             ))
             
-            // World moves opposite to create zoom effect
-            let worldMovement = -forward * Float(zoomFactor)
-            var newPosition = initialWorldTransform.translation + worldMovement
+            // Camera moves forward/backward for zoom effect
+            let cameraMovement = forward * Float(zoomFactor)
+            var newPosition = initialCameraTransform.translation + cameraMovement
             
-            // Apply boundary constraints (simulate camera constraint)
+            // Apply boundary constraints
             if let boundaryManager = boundaryManager {
-                let effectiveCameraPos = cameraTransform.translation - worldMovement
-                let constrainedCameraPos = boundaryManager.constrainCameraPosition(effectiveCameraPos)
-                let constraintDelta = constrainedCameraPos - cameraTransform.translation
-                newPosition = initialWorldTransform.translation - constraintDelta
+                newPosition = boundaryManager.constrainCameraPosition(newPosition)
             }
             
-            // Apply the new world transform
-            var newTransform = initialWorldTransform
+            // Apply the new camera position
+            var newTransform = initialCameraTransform
             newTransform.translation = newPosition
-            worldAnchor.transform = newTransform
+            cameraAnchor.transform = newTransform
+            
+            print("📷 Camera zoom: \(zoomFactor)")
             
         case .ended, .cancelled:
-            initialWorldTransform = worldAnchor.transform
+            initialCameraTransform = cameraAnchor.transform
             
         default:
             break
         }
     }
     
-    // Handle rotation gesture for world rotation (inverse of camera rotation)
+    // Handle rotation gesture for direct camera rotation
     @objc private func handleRotationGesture(_ gesture: UIRotationGestureRecognizer) {
-        guard let arView = arView, let worldAnchor = worldAnchor else { return }
+        guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
         
         switch gesture.state {
         case .began:
-            initialWorldTransform = worldAnchor.transform
+            initialCameraTransform = cameraAnchor.transform
             
         case .changed:
             // Apply rotation around Y axis (horizontal rotation)
             let rotation = Float(gesture.rotation) * rotationSensitivity
             
-            // Rotate world opposite to camera rotation for intuitive control
-            let rotationQuat = simd_quatf(angle: -rotation, axis: SIMD3<Float>(0, 1, 0))
+            // Rotate camera directly for intuitive control
+            let rotationQuat = simd_quatf(angle: rotation, axis: SIMD3<Float>(0, 1, 0))
             
-            // Apply rotation to world anchor
-            var newTransform = initialWorldTransform
-            newTransform.rotation = rotationQuat * initialWorldTransform.rotation
-            worldAnchor.transform = newTransform
+            // Apply rotation to camera anchor
+            var newTransform = initialCameraTransform
+            newTransform.rotation = rotationQuat * initialCameraTransform.rotation
+            cameraAnchor.transform = newTransform
+            
+            print("📷 Camera rotation gesture: \(rotation) radians")
             
         case .ended, .cancelled:
-            initialWorldTransform = worldAnchor.transform
+            initialCameraTransform = cameraAnchor.transform
             
         default:
             break
         }
     }
     
-    // Reset world to default position (simulates camera reset)
+    // Reset camera to default position and orientation
     func resetCameraPosition() {
-        guard let arView = arView, let worldAnchor = worldAnchor else { return }
+        guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
         
-        // Reset world anchor to identity transform with animation
+        // Reset camera anchor to default transform with animation
         UIView.animate(withDuration: 0.5) {
-            worldAnchor.transform = Transform(.identity)
+            cameraAnchor.transform = Transform(rotation: simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0)), translation: SIMD3<Float>(0, 1.5, 3))
         }
         
-        print("📷 World reset to default position (camera view reset)")
+        print("📷 Camera reset to default position and orientation")
     }
     
     // Enable/disable gestures based on AR state
@@ -330,6 +332,7 @@ class RealityKitGestureHandlers {
         
         print("🎮 Gestures \(enabled ? "enabled" : "disabled")")
     }
+    
 }
 
 // MARK: - Helper functions

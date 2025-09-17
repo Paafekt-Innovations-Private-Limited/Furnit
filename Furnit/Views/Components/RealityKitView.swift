@@ -16,10 +16,10 @@ struct RealityKitView: UIViewRepresentable {
     }
     
     func makeUIView(context: Context) -> ARView {
-        let arView = ARView(frame: .zero)
+        // Use .nonAR mode for custom camera control that allows rotation without moving position
+        let arView = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         
-        // Configure ARView for room viewing
-        arView.automaticallyConfigureSession = false
+        // Configure ARView for room viewing in non-AR mode
         arView.renderOptions.insert(.disablePersonOcclusion)
         arView.renderOptions.insert(.disableMotionBlur)
         
@@ -29,8 +29,9 @@ struct RealityKitView: UIViewRepresentable {
         
         print("🎨 Applying quality setting: \(quality.displayName)")
         
-        // Set up coordinator
+        // Set up coordinator and custom camera for non-AR mode
         context.coordinator.setupGestures(for: arView)
+        context.coordinator.setupCustomCamera(for: arView)
         loadModel(into: arView, coordinator: context.coordinator)
         
         // Set up camera movement manager with the ARView
@@ -50,12 +51,37 @@ struct RealityKitView: UIViewRepresentable {
         var scene: RealityKit.Scene?
         weak var arObjectPlacementManager: ARObjectPlacementManager?
         
+        // Custom camera control for non-AR mode
+        var cameraEntity: PerspectiveCamera?
+        var cameraAnchor: AnchorEntity?
+        
         func setupGestures(for arView: ARView) {
             gestureHandlers = RealityKitGestureHandlers(arView: arView)
             
             // Add tap gesture for AR object placement
             let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
             arView.addGestureRecognizer(tapGesture)
+        }
+        
+        // Set up custom camera for non-AR mode with controllable rotation
+        func setupCustomCamera(for arView: ARView) {
+            // Create perspective camera entity with reasonable field of view
+            cameraEntity = PerspectiveCamera()
+            cameraEntity?.camera.fieldOfViewInDegrees = 75.0
+            
+            // Create camera anchor at a default position inside the room
+            cameraAnchor = AnchorEntity(world: SIMD3<Float>(0, 1.5, 3))
+            
+            // Add camera entity to anchor
+            if let camera = cameraEntity, let anchor = cameraAnchor {
+                anchor.addChild(camera)
+                arView.scene.addAnchor(anchor)
+                
+                // Pass camera references to gesture handlers for direct camera control
+                gestureHandlers?.setCameraReferences(camera: camera, cameraAnchor: anchor)
+                
+                print("📷 Custom camera set up for non-AR mode at position: \(anchor.transform.translation)")
+            }
         }
         
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
@@ -86,85 +112,49 @@ struct RealityKitView: UIViewRepresentable {
                     
                     // Calculate model bounds for camera positioning
                     let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
-                    setupCamera(for: arView, with: bounds)
-                    setupLighting(for: arView)
                     
-                    // Set up gesture handlers and world anchor first
-                    coordinator.gestureHandlers?.setupWorldAnchor()
-                    
-                    // Add model to world anchor for gesture control
-                    coordinator.gestureHandlers?.addToWorld(modelEntity)
+                    // In non-AR mode, simply add model to scene directly (no world anchor needed)
+                    let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+                    modelAnchor.addChild(modelEntity)
+                    arView.scene.addAnchor(modelAnchor)
                     coordinator.scene = arView.scene
                     
-                    // Set up boundary manager first
+                    // Set up boundary manager for camera constraints
                     let boundaryManager = RealityKitBoundaryManager(arView: arView)
                     boundaryManager.calculateRoomBounds(from: modelEntity)
                     coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
                     
-                    // Calculate initial safe camera position using boundary manager
-                    let targetPosition = SIMD3<Float>(0, 1.5, 0) // Default target
-                    let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: targetPosition)
-                    
-                    print("📷 Safe camera position calculated: \(safeCameraPosition)")
-                    print("   Room center: \(boundaryManager.getRoomCenter())")
-                    print("   Room dimensions: \(boundaryManager.getRoomDimensions())")
-                    
-                    // Position world anchor to place camera at safe position
-                    // Since camera is at origin, we move world content to opposite position
-                    if let gestureHandlers = coordinator.gestureHandlers,
-                       let worldAnchor = gestureHandlers.worldAnchor {
-                        var worldTransform = worldAnchor.transform
-                        worldTransform.translation = -safeCameraPosition
-                        worldAnchor.transform = worldTransform
-                        print("🌍 World anchor positioned for safe camera placement")
+                    // Position custom camera inside the room bounds
+                    if let cameraAnchor = coordinator.cameraAnchor {
+                        let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.5, 0))
+                        cameraAnchor.transform.translation = safeCameraPosition
                         
-                        // Validate camera is now within bounds by calculating effective position
-                        // Camera is at origin, but we need to check relative to the moved world content
-                        let cameraPositionInWorldSpace = arView.cameraTransform.translation
-                        let worldAnchorPosition = worldAnchor.transform.translation
-                        let effectiveCameraPosition = cameraPositionInWorldSpace - worldAnchorPosition
+                        // Make camera look at the room center
+                        let roomCenter = boundaryManager.getRoomCenter()
+                        cameraAnchor.look(at: roomCenter, from: safeCameraPosition, relativeTo: nil)
                         
-                        let isWithinBounds = boundaryManager.isPositionWithinBounds(effectiveCameraPosition)
-                        print("✅ Camera within bounds check: \(isWithinBounds)")
-                        print("   Camera in world space: \(cameraPositionInWorldSpace)")
-                        print("   World anchor position: \(worldAnchorPosition)")
-                        print("   Effective camera position: \(effectiveCameraPosition)")
-                        
-                        if !isWithinBounds {
-                            print("⚠️ Camera still outside bounds after positioning")
-                            if let bounds = boundaryManager.getCurrentBounds() {
-                                print("   Bounds: min(\(bounds.min)), max(\(bounds.max))")
-                            }
-                        }
+                        print("📷 Custom camera positioned at: \(safeCameraPosition)")
+                        print("📷 Camera looking at room center: \(roomCenter)")
                     }
                     
-                    // Set up AR manager with world anchor reference
+                    // Set up lighting
+                    setupLighting(for: arView)
+                    
+                    // Set up AR object placement manager with scene references
                     coordinator.arObjectPlacementManager = self.arObjectPlacementManager
                     self.arObjectPlacementManager.setSceneReferences(arView: arView, scene: arView.scene)
                     
-                    // Pass world anchor reference to object placement manager
-                    if let gestureHandlers = coordinator.gestureHandlers,
-                       let worldAnchor = gestureHandlers.worldAnchor {
-                        self.arObjectPlacementManager.setWorldAnchor(worldAnchor)
-                    }
-                    
-                    // Update camera movement manager to use same world anchor as gesture handlers
+                    // Set up camera movement manager with custom camera references
                     self.cameraMovementManager.setARView(arView)
                     
-                    // Share the world anchor between gesture handlers and camera movement manager
-                    if let gestureHandlers = coordinator.gestureHandlers,
-                       let worldAnchor = gestureHandlers.worldAnchor {
-                        self.cameraMovementManager.setWorldAnchor(worldAnchor)
+                    // Share camera references with camera movement manager for joystick control
+                    if let cameraAnchor = coordinator.cameraAnchor {
+                        self.cameraMovementManager.setCameraAnchor(cameraAnchor)
                     }
                     
                     // Set up camera movement callback
                     self.cameraMovementManager.onCameraMove = {
                         // Camera movement callback - ready for future enhancements
-                    }
-                    
-                    // Calculate boundaries after scene is set
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        self.cameraMovementManager.updateBoundaries()
                     }
                     
                     print("✅ RealityKit model loaded successfully")

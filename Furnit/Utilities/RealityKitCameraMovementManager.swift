@@ -10,11 +10,11 @@ class RealityKitCameraMovementManager: ObservableObject {
     private var displayLink: CADisplayLink?
     private var currentJoystickOffset: CGSize = .zero
     
-    // World anchor for gesture-based navigation
-    private var worldAnchor: AnchorEntity?
+    // Custom camera control for non-AR mode
+    private weak var cameraAnchor: AnchorEntity?
     
     // Movement configuration
-    private let movementSpeed: Float = 0.05 // Units per frame
+    private let movementSpeed: Float = 0.02 // Units per frame - slower for better control
     private let smoothingFactor: Float = 0.8 // Movement smoothing (0.0 = instant, 1.0 = no movement)
     
     // Callback for camera movement notifications
@@ -44,41 +44,20 @@ class RealityKitCameraMovementManager: ObservableObject {
         // Calculate room boundaries when scene is available
         if !arView.scene.anchors.isEmpty {
             print("🎬 Scene available, calculating boundaries...")
-            if let firstAnchor = arView.scene.anchors.first,
-               let modelEntity = findFirstModelEntity(in: firstAnchor) {
-                boundaryManager?.calculateRoomBounds(from: modelEntity)
+            // Use the first anchor directly, not the first model entity
+            // This ensures all child entities are included in bounds calculation
+            if let firstAnchor = arView.scene.anchors.first {
+                boundaryManager?.calculateRoomBounds(from: firstAnchor)
             }
         } else {
             print("⚠️ Scene not available yet when setting up camera movement manager")
         }
     }
     
-    // Set up world anchor that will hold all content for transformation
-    private func setupWorldAnchor() {
-        guard let arView = arView else { return }
-        
-        // Create world anchor if it doesn't exist
-        if worldAnchor == nil {
-            worldAnchor = AnchorEntity(.world(transform: matrix_identity_float4x4))
-            arView.scene.addAnchor(worldAnchor!)
-            print("🌍 World anchor created for joystick-based navigation")
-        }
-    }
-    
-    // Add entity to world anchor for joystick control
-    func addToWorld(_ entity: Entity) {
-        // Ensure world anchor is set via setWorldAnchor() before using this method
-        guard let worldAnchor = worldAnchor else {
-            print("⚠️ World anchor not set - call setWorldAnchor() first")
-            return
-        }
-        worldAnchor.addChild(entity)
-    }
-    
-    // Set world anchor reference (to share with gesture handlers)
-    func setWorldAnchor(_ anchor: AnchorEntity) {
-        self.worldAnchor = anchor
-        print("🎮 Camera movement manager now using shared world anchor")
+    // Set camera anchor reference for direct camera control
+    func setCameraAnchor(_ anchor: AnchorEntity) {
+        self.cameraAnchor = anchor
+        print("🎮 Camera movement manager now using camera anchor for direct control")
     }
     
     // Helper to find first model entity in anchor hierarchy
@@ -105,9 +84,10 @@ class RealityKitCameraMovementManager: ObservableObject {
         
         if !arView.scene.anchors.isEmpty {
             print("🔄 Updating camera movement boundaries...")
-            if let firstAnchor = arView.scene.anchors.first,
-               let modelEntity = findFirstModelEntity(in: firstAnchor) {
-                boundaryManager?.calculateRoomBounds(from: modelEntity)
+            // Use the first anchor directly, not the first model entity
+            // This ensures all child entities are included in bounds calculation
+            if let firstAnchor = arView.scene.anchors.first {
+                boundaryManager?.calculateRoomBounds(from: firstAnchor)
             }
         } else {
             print("⚠️ Cannot update boundaries - no anchors in scene")
@@ -119,9 +99,9 @@ class RealityKitCameraMovementManager: ObservableObject {
         currentJoystickOffset = offset
     }
     
-    // Continuous world position updates based on joystick input (inverse of camera movement)
+    // Continuous camera position updates based on joystick input (direct camera movement)
     @objc private func updateCameraPosition() {
-        guard let arView = arView, let worldAnchor = worldAnchor else { return }
+        guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
         
         // Skip if no joystick input
         guard abs(currentJoystickOffset.width) > 1 || abs(currentJoystickOffset.height) > 1 else { return }
@@ -131,14 +111,14 @@ class RealityKitCameraMovementManager: ObservableObject {
         let leftRight = Float(currentJoystickOffset.width) * movementSpeed
         
         // Get camera's current transform for directional movement
-        let cameraTransform = arView.cameraTransform
+        let cameraTransform = cameraAnchor.transform
         
-        // Extract camera's forward and right vectors from transform
+        // Extract camera's forward and right vectors from camera's rotation
         // In RealityKit, the camera looks down the negative Z axis by default
         let forwardVector = SIMD3<Float>(
-            -cameraTransform.rotation.act(SIMD3<Float>(0, 0, -1)).x, // Forward X component
+            cameraTransform.rotation.act(SIMD3<Float>(0, 0, -1)).x, // Forward X component
             0, // Keep movement horizontal (no Y movement)
-            -cameraTransform.rotation.act(SIMD3<Float>(0, 0, -1)).z  // Forward Z component
+            cameraTransform.rotation.act(SIMD3<Float>(0, 0, -1)).z  // Forward Z component
         )
         
         let rightVector = SIMD3<Float>(
@@ -151,60 +131,60 @@ class RealityKitCameraMovementManager: ObservableObject {
         let normalizedForward = normalize(forwardVector)
         let normalizedRight = normalize(rightVector)
         
-        // Calculate movement delta based on joystick input (inverse for world movement)
-        let worldMovementDelta = SIMD3<Float>(
-            -(normalizedForward.x * forwardBackward + normalizedRight.x * leftRight),
+        // Calculate movement delta based on joystick input (direct camera movement)
+        let cameraMovementDelta = SIMD3<Float>(
+            normalizedForward.x * forwardBackward + normalizedRight.x * leftRight,
             0, // No vertical movement
-            -(normalizedForward.z * forwardBackward + normalizedRight.z * leftRight)
+            normalizedForward.z * forwardBackward + normalizedRight.z * leftRight
         )
         
-        // Get current world anchor position
-        let currentWorldPosition = worldAnchor.transform.translation
+        // Get current camera position
+        let currentCameraPosition = cameraAnchor.transform.translation
         
-        // Calculate proposed new world position
-        let proposedWorldPosition = SIMD3<Float>(
-            currentWorldPosition.x + worldMovementDelta.x,
-            currentWorldPosition.y, // Keep same height
-            currentWorldPosition.z + worldMovementDelta.z
+        // Calculate proposed new camera position
+        var proposedCameraPosition = SIMD3<Float>(
+            currentCameraPosition.x + cameraMovementDelta.x,
+            currentCameraPosition.y, // Keep same height
+            currentCameraPosition.z + cameraMovementDelta.z
         )
         
-        // Apply boundary constraints (simulate camera constraint by checking effective camera position)
-        let effectiveCameraPos = cameraTransform.translation - worldMovementDelta
-        let constrainedCameraPos = boundaryManager?.constrainCameraPosition(effectiveCameraPos) ?? effectiveCameraPos
-        let constraintDelta = constrainedCameraPos - cameraTransform.translation
-        let constrainedWorldPosition = currentWorldPosition - constraintDelta
-        
-        // Debug logging to understand boundary constraints
-        if proposedWorldPosition.x != constrainedWorldPosition.x || proposedWorldPosition.z != constrainedWorldPosition.z {
-            print("🚧 Wall hit! World movement constrained")
+        // Apply boundary constraints
+        if let boundaryManager = boundaryManager {
+            proposedCameraPosition = boundaryManager.constrainCameraPosition(proposedCameraPosition)
+            
+            // Debug logging when movement is constrained
+            if proposedCameraPosition.x != currentCameraPosition.x + cameraMovementDelta.x || 
+               proposedCameraPosition.z != currentCameraPosition.z + cameraMovementDelta.z {
+                print("🚧 Wall hit! Camera movement constrained")
+            }
         }
         
-        // Only update world position if it's different (prevents unnecessary updates)
-        if constrainedWorldPosition.x != currentWorldPosition.x || 
-           constrainedWorldPosition.z != currentWorldPosition.z {
+        // Only update camera position if it's different (prevents unnecessary updates)
+        if proposedCameraPosition.x != currentCameraPosition.x || 
+           proposedCameraPosition.z != currentCameraPosition.z {
             
-            // Create new transform with updated position
-            var newTransform = worldAnchor.transform
-            newTransform.translation = constrainedWorldPosition
+            // Create new transform preserving current rotation but updating position
+            var newTransform = cameraAnchor.transform
+            newTransform.translation = proposedCameraPosition
             
-            // Apply the new world transform
-            worldAnchor.transform = newTransform
+            // Apply the new camera transform (position only, rotation preserved)
+            cameraAnchor.transform = newTransform
             
             // Notify that camera has moved
             onCameraMove?()
         }
     }
     
-    // Reset world to default position (simulates camera reset)
+    // Reset camera to default position and orientation
     func resetCameraPosition() {
-        guard let arView = arView, let worldAnchor = worldAnchor else { return }
+        guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
         
-        // Reset world anchor to identity transform with animation
+        // Reset camera anchor to default transform with animation
         UIView.animate(withDuration: 0.5) {
-            worldAnchor.transform = Transform(.identity)
+            cameraAnchor.transform = Transform(rotation: simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0)), translation: SIMD3<Float>(0, 1.5, 3))
         }
         
-        print("📷 World reset to default position (camera view reset)")
+        print("📷 Camera reset to default position and orientation")
     }
     
     // Enable/disable camera movement
