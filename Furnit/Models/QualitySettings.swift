@@ -49,11 +49,11 @@ enum MovementSpeed: String, CaseIterable, Identifiable {
     var speedValue: Float {
         switch self {
         case .slow:
-            return 0.002
+            return 0.001     // Extremely precise control for detailed exploration
         case .normal:
-            return 0.003
+            return 0.0015    // Comfortable but controlled navigation
         case .fast:
-            return 0.005
+            return 0.002     // Responsive but still very controllable
         }
     }
 }
