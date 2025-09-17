@@ -79,11 +79,12 @@ class RealityKitGestureHandlers {
         // Allow both single and double pan gestures to work independently
         
         print("🎮 RealityKit gesture recognizers set up with intuitive controls")
-        print("   Single finger: horizontal=rotate, vertical=forward/back")
+        print("   Single finger: horizontal=rotate, vertical=up/down height")
         print("   Two fingers: drag=position, pinch=zoom, rotate=turn")
+        print("   Joystick: forward/backward/left/right movement")
     }
     
-    // Handle pan gesture with intuitive controls: horizontal = rotation, vertical = movement
+    // Handle pan gesture with intuitive controls: horizontal = rotation, vertical = height
     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
         print("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
         guard let arView = arView, let cameraAnchor = cameraAnchor else { 
@@ -136,34 +137,24 @@ class RealityKitGestureHandlers {
                 print("📷 Camera rotation: \(incrementalRotation) radians (delta), \(cumulativeRotationY) total")
                 
             } else {
-                // Vertical swipe = Move camera forward/backward
-                let movementDelta = Float(translation.y) * panSensitivity
+                // Vertical swipe = Move camera up/down (height adjustment)
+                let heightDelta = Float(-translation.y) * panSensitivity // Invert Y for natural up/down
                 
-                // Get camera's current rotation for directional movement
-                let currentRotation = cameraAnchor.transform.rotation
-                
-                // Calculate forward direction (camera looks down negative Z in local space)
-                let cameraForward = normalize(SIMD3<Float>(
-                    currentRotation.act(SIMD3<Float>(0, 0, -1)).x,
-                    0, // Keep movement horizontal
-                    currentRotation.act(SIMD3<Float>(0, 0, -1)).z
-                ))
-                
-                // Calculate camera movement in forward/backward direction from initial position
-                let cameraMovement = cameraForward * movementDelta
-                var newPosition = initialCameraTransform.translation + cameraMovement
+                // Calculate new camera height from initial position
+                var newPosition = initialCameraTransform.translation
+                newPosition.y = initialCameraTransform.translation.y + heightDelta
                 
                 // Apply boundary constraints if available
                 if let boundaryManager = boundaryManager {
                     newPosition = boundaryManager.constrainCameraPosition(newPosition)
                 }
                 
-                // Apply the new camera position while preserving current rotation
+                // Apply the new camera position while preserving current rotation and X/Z position
                 var newTransform = cameraAnchor.transform
                 newTransform.translation = newPosition
                 cameraAnchor.transform = newTransform
                 
-                print("📷 Camera movement: \(movementDelta) from initial position")
+                print("📷 Camera height adjustment: \(heightDelta), new Y: \(newPosition.y)")
             }
             
             // Update last translation for next incremental calculation
@@ -314,9 +305,9 @@ class RealityKitGestureHandlers {
     func resetCameraPosition() {
         guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
         
-        // Reset camera anchor to default transform with animation
+        // Reset camera anchor to default transform with animation at eye level
         UIView.animate(withDuration: 0.5) {
-            cameraAnchor.transform = Transform(rotation: simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0)), translation: SIMD3<Float>(0, 1.5, 3))
+            cameraAnchor.transform = Transform(rotation: simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0)), translation: SIMD3<Float>(0, 1.2, 3))
         }
         
         print("📷 Camera reset to default position and orientation")

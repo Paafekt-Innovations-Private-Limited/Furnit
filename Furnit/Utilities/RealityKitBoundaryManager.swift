@@ -194,8 +194,9 @@ class RealityKitBoundaryManager {
         let roomCenter = getRoomCenter()
         let roomSize = getRoomDimensions()
         
-        // Position camera inside room, at reasonable height and distance from center
-        let cameraHeight = bounds.min.y + (roomSize.y * 0.4) // 40% up from floor
+        // Position camera inside room at lower height and reasonable distance from center
+        let eyeLevelHeight: Float = 1.2 // Lower viewing height in meters
+        let cameraHeight = bounds.min.y + eyeLevelHeight // Height from floor
         let viewingDistance = min(roomSize.x, roomSize.z) * 0.3 // 30% of smaller horizontal dimension
         
         let safePosition = SIMD3<Float>(

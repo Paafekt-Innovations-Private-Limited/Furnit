@@ -69,11 +69,12 @@ struct RealityKitView: UIViewRepresentable {
             cameraEntity = PerspectiveCamera()
             cameraEntity?.camera.fieldOfViewInDegrees = 75.0
             
-            // Create camera anchor at a default position inside the room
-            cameraAnchor = AnchorEntity(world: SIMD3<Float>(0, 1.5, 3))
+            // Create camera anchor at lower height inside the room
+            cameraAnchor = AnchorEntity(world: SIMD3<Float>(0, 1.2, 3))
             
-            // Add camera entity to anchor
+            // Add camera entity to anchor with no offset (prevents orbital rotation)
             if let camera = cameraEntity, let anchor = cameraAnchor {
+                camera.position = SIMD3<Float>(0, 0, 0) // No offset from anchor center
                 anchor.addChild(camera)
                 arView.scene.addAnchor(anchor)
                 
@@ -111,7 +112,7 @@ struct RealityKitView: UIViewRepresentable {
                     let modelEntity = try await Entity.load(contentsOf: tempURL)
                     
                     // Calculate model bounds for camera positioning
-                    let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
+                    let _ = modelEntity.components[ModelComponent.self]?.mesh.bounds
                     
                     // In non-AR mode, simply add model to scene directly (no world anchor needed)
                     let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
@@ -126,7 +127,7 @@ struct RealityKitView: UIViewRepresentable {
                     
                     // Position custom camera inside the room bounds
                     if let cameraAnchor = coordinator.cameraAnchor {
-                        let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.5, 0))
+                        let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.2, 0))
                         cameraAnchor.transform.translation = safeCameraPosition
                         
                         // Make camera look at the room center

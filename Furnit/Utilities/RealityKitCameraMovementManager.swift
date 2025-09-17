@@ -179,9 +179,9 @@ class RealityKitCameraMovementManager: ObservableObject {
     func resetCameraPosition() {
         guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
         
-        // Reset camera anchor to default transform with animation
+        // Reset camera anchor to default transform with animation at eye level
         UIView.animate(withDuration: 0.5) {
-            cameraAnchor.transform = Transform(rotation: simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0)), translation: SIMD3<Float>(0, 1.5, 3))
+            cameraAnchor.transform = Transform(rotation: simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0)), translation: SIMD3<Float>(0, 1.2, 3))
         }
         
         print("📷 Camera reset to default position and orientation")
