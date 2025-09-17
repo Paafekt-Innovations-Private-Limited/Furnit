@@ -18,9 +18,12 @@ class RealityKitGestureHandlers {
     private var initialCameraTransform: Transform = Transform.identity
     private var lastPanTranslation: CGPoint = .zero
     private var initialTouchPoint: CGPoint?
+
+    // Accumulated rotation state to prevent flickering and maintain smooth rotation
+    private var accumulatedYaw: Float = 0.0    // Horizontal rotation around Y-axis
+    private var accumulatedPitch: Float = 0.0  // Vertical rotation around X-axis
     
-    // Separate rotation tracking to prevent conflicts with position updates
-    private var cumulativeRotationY: Float = 0.0 // Track total Y-axis rotation
+    // Note: Using total translation from gesture start instead of cumulative tracking for smoother rotation
     
     // Pan gesture configuration
     private let panSensitivity: Float = 0.005
@@ -79,95 +82,75 @@ class RealityKitGestureHandlers {
         // Allow both single and double pan gestures to work independently
         
         print("🎮 RealityKit gesture recognizers set up with intuitive controls")
-        print("   Single finger: horizontal=rotate, vertical=up/down height")
+        print("   Single finger: drag=look around (horizontal+vertical rotation)")
         print("   Two fingers: drag=position, pinch=zoom, rotate=turn")
         print("   Joystick: forward/backward/left/right movement")
+        print("   Note: Very small single finger movements adjust height")
     }
     
-    // Handle pan gesture with intuitive controls: horizontal = rotation, vertical = height
+    // Handle pan gesture with intuitive controls: drag to look around (horizontal + vertical rotation)
     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
         print("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
-        guard let arView = arView, let cameraAnchor = cameraAnchor else { 
+        guard let arView = arView, let cameraAnchor = cameraAnchor else {
             print("⚠️ Pan gesture guard failed - arView: \(arView != nil), cameraAnchor: \(cameraAnchor != nil)")
-            return 
+            return
         }
-        
+
         let translation = gesture.translation(in: arView)
-        
+
         switch gesture.state {
         case .began:
+            // Store initial position but don't reset accumulated rotation
             initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = gesture.location(in: arView)
             lastPanTranslation = translation
-            cumulativeRotationY = 0.0 // Reset cumulative rotation
-            
+
         case .changed:
             print("🔥 CAMERA GESTURE CHANGED STATE - translation: \(translation)")
-            
-            // Calculate incremental change since last update
+
+            // Calculate incremental rotation delta since last update
             let deltaTranslation = CGPoint(
                 x: translation.x - lastPanTranslation.x,
                 y: translation.y - lastPanTranslation.y
             )
-            
-            print("🔥 Delta translation: \(deltaTranslation), lastPan: \(lastPanTranslation)")
-            
-            // Determine if gesture is primarily horizontal or vertical using incremental delta
-            let deltaX = Float(deltaTranslation.x)
-            let deltaY = Float(deltaTranslation.y)
-            let isHorizontalGesture = abs(deltaX) > abs(deltaY)
-            
-            // Debug logging to track gesture detection
-            print("🎯 Camera gesture delta: deltaX=\(deltaX), deltaY=\(deltaY), isHorizontal=\(isHorizontalGesture)")
-            
-            if isHorizontalGesture {
-                // Horizontal swipe = Rotate camera around Y-axis (look left/right)
-                // Use cumulative rotation from initial transform to prevent drift
-                let incrementalRotation = Float(deltaTranslation.x) * rotationSensitivity
-                cumulativeRotationY += -incrementalRotation // Accumulate rotation
-                
-                // Apply total rotation from initial transform to prevent drift
-                let totalRotationQuat = simd_quatf(angle: cumulativeRotationY, axis: SIMD3<Float>(0, 1, 0))
-                
-                // Create new transform with rotation changed, but preserve initial position (tripod effect)
-                var newTransform = Transform()
-                newTransform.translation = initialCameraTransform.translation  // Use initial position to prevent drift
-                newTransform.rotation = totalRotationQuat * initialCameraTransform.rotation
-                newTransform.scale = initialCameraTransform.scale
-                cameraAnchor.transform = newTransform
-                
-                print("📷 Camera rotation: \(incrementalRotation) radians (delta), \(cumulativeRotationY) total")
-                
-            } else {
-                // Vertical swipe = Move camera up/down (height adjustment)
-                let heightDelta = Float(-translation.y) * panSensitivity // Invert Y for natural up/down
-                
-                // Calculate new camera height from initial position
-                var newPosition = initialCameraTransform.translation
-                newPosition.y = initialCameraTransform.translation.y + heightDelta
-                
-                // Apply boundary constraints if available
-                if let boundaryManager = boundaryManager {
-                    newPosition = boundaryManager.constrainCameraPosition(newPosition)
-                }
-                
-                // Apply the new camera position while preserving current rotation and X/Z position
-                var newTransform = cameraAnchor.transform
-                newTransform.translation = newPosition
-                cameraAnchor.transform = newTransform
-                
-                print("📷 Camera height adjustment: \(heightDelta), new Y: \(newPosition.y)")
-            }
-            
+
+            // Convert delta to rotation increments
+            let deltaYaw = Float(deltaTranslation.x) * rotationSensitivity * 0.5   // Horizontal rotation
+            let deltaPitch = Float(deltaTranslation.y) * rotationSensitivity * 0.5 // Vertical rotation
+
+            // Update accumulated rotation values
+            accumulatedYaw += -deltaYaw  // Negative for natural direction
+            accumulatedPitch += -deltaPitch // Negative for natural direction
+
+            // Apply pitch limits to prevent over-rotation and tilting (45 degrees up/down max)
+            let maxPitch: Float = Float.pi / 4.0 // 45 degrees
+            accumulatedPitch = max(-maxPitch, min(maxPitch, accumulatedPitch))
+
+            // Create rotation quaternions from accumulated values (prevents tilting by only using yaw and pitch)
+            let yawRotation = simd_quatf(angle: accumulatedYaw, axis: SIMD3<Float>(0, 1, 0))     // Horizontal only
+            let pitchRotation = simd_quatf(angle: accumulatedPitch, axis: SIMD3<Float>(1, 0, 0)) // Vertical only
+
+            // Combine rotations: apply pitch first, then yaw (no roll component to prevent tilting)
+            let combinedRotation = yawRotation * pitchRotation
+
+            // Create new transform with accumulated rotation, preserving position
+            var newTransform = Transform()
+            newTransform.translation = initialCameraTransform.translation  // Lock position
+            newTransform.rotation = combinedRotation  // Apply accumulated rotation (no roll/tilt)
+            newTransform.scale = initialCameraTransform.scale
+            cameraAnchor.transform = newTransform
+
+            print("📷 Accumulated rotation: Yaw=\(accumulatedYaw), Pitch=\(accumulatedPitch)")
+
             // Update last translation for next incremental calculation
             lastPanTranslation = translation
-            
+
         case .ended, .cancelled:
+            // Update initial transform to current state to preserve rotation for next gesture
             initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = nil
             lastPanTranslation = .zero
-            cumulativeRotationY = 0.0 // Reset cumulative rotation for next gesture
-            
+
         default:
             break
         }
@@ -306,13 +289,20 @@ class RealityKitGestureHandlers {
     // Reset camera to default position and orientation
     func resetCameraPosition() {
         guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
-        
+
+        // Reset accumulated rotation values
+        accumulatedYaw = 0.0
+        accumulatedPitch = 0.0
+
         // Reset camera anchor to default transform with animation at eye level
         UIView.animate(withDuration: 0.5) {
             cameraAnchor.transform = Transform(rotation: simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0)), translation: SIMD3<Float>(0, 1.2, 3))
         }
-        
-        print("📷 Camera reset to default position and orientation")
+
+        // Update initial transform after reset
+        initialCameraTransform = cameraAnchor.transform
+
+        print("📷 Camera reset to default position and orientation with cleared rotation state")
     }
     
     // Enable/disable gestures based on AR state

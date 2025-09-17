@@ -130,12 +130,12 @@ struct RealityKitView: UIViewRepresentable {
                         let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.2, 0))
                         cameraAnchor.transform.translation = safeCameraPosition
                         
-                        // Make camera look at the room center
-                        let roomCenter = boundaryManager.getRoomCenter()
-                        cameraAnchor.look(at: roomCenter, from: safeCameraPosition, relativeTo: nil)
+                        // Set initial camera to look straight ahead instead of at room center
+                        // This prevents the camera from looking up at tall rooms
+                        cameraAnchor.transform.rotation = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
                         
                         print("📷 Custom camera positioned at: \(safeCameraPosition)")
-                        print("📷 Camera looking at room center: \(roomCenter)")
+                        print("📷 Camera set to look straight ahead (0° pitch)")
                     }
                     
                     // Set up lighting
