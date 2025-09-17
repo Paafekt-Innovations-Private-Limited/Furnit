@@ -126,21 +126,21 @@ class QualitySettings: ObservableObject {
     }
 }
 
-// Extension for SceneKit rendering configuration
+// Extension for RealityKit rendering configuration
 extension AssetQuality {
-    // SceneKit antialiasing mode based on quality
-    var antialiasingMode: String {
+    // RealityKit rendering scale factor based on quality
+    var renderScale: Float {
         switch self {
         case .standard:
-            return "multisampling2X"
+            return 0.75
         case .high:
-            return "multisampling4X" 
+            return 1.0 
         case .best:
-            return "multisampling8X"
+            return 1.25
         }
     }
     
-    // Lighting intensity multiplier
+    // Lighting intensity multiplier for RealityKit
     var lightingIntensity: Float {
         switch self {
         case .standard:
@@ -164,7 +164,7 @@ extension AssetQuality {
         }
     }
     
-    // Shadow quality level
+    // Shadow quality level for RealityKit
     var shadowQuality: String {
         switch self {
         case .standard:
@@ -173,6 +173,18 @@ extension AssetQuality {
             return "medium"
         case .best:
             return "high"
+        }
+    }
+    
+    // LOD (Level of Detail) bias for model quality
+    var lodBias: Float {
+        switch self {
+        case .standard:
+            return 1.5 // Lower detail at distance
+        case .high:
+            return 1.0 // Normal detail
+        case .best:
+            return 0.5 // Higher detail at distance
         }
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
-import SceneKit
-import ModelIO
+import RealityKit
+import simd
 
 // AR 3D Model Processor - replaces ObjectSegmentationProcessor
 // Handles backend API integration for 3D model generation from images
@@ -10,7 +10,7 @@ class AR3DModelProcessor: ObservableObject {
     // Published properties for UI updates
     @Published var isProcessing = false
     @Published var processingState: ARProcessingState = .idle
-    @Published var generatedModel: SCNNode?
+    @Published var generatedModel: Entity?
     @Published var errorMessage: String?
     
     // API client for backend communication
@@ -49,7 +49,7 @@ class AR3DModelProcessor: ObservableObject {
     }
     
     // Process image using backend API instead of local segmentation
-    func processImage(_ image: UIImage) async -> SCNNode? {
+    func processImage(_ image: UIImage) async -> Entity? {
         // Check if processing should proceed
         guard shouldProcessImage() else {
             return nil
@@ -92,8 +92,8 @@ class AR3DModelProcessor: ObservableObject {
             // Store model data for placement
             modelData = modelFileData
             
-            // Convert USDZ data to SceneKit node
-            guard let sceneNode = await loadUSDZModel(from: modelFileData) else {
+            // Convert USDZ data to RealityKit Entity
+            guard let modelEntity = await loadUSDZModel(from: modelFileData) else {
                 errorMessage = "Failed to load 3D model from USDZ data"
                 processingState = .error("Failed to load 3D model")
                 isProcessing = false
@@ -101,15 +101,15 @@ class AR3DModelProcessor: ObservableObject {
             }
             
             // Prepare model for AR placement
-            let processedNode = preprocessModelForAR(sceneNode)
+            let processedEntity = preprocessModelForAR(modelEntity)
             
             // Update state
-            generatedModel = processedNode
+            generatedModel = processedEntity
             processingState = .ready
             isProcessing = false
             
             print("✅ 3D model ready for AR placement")
-            return processedNode
+            return processedEntity
             
         } catch {
             print("⚠️ 3D model generation failed: \(error)")
@@ -120,76 +120,68 @@ class AR3DModelProcessor: ObservableObject {
         }
     }
     
-    // Load USDZ model from data and convert to SceneKit node
-    private func loadUSDZModel(from data: Data) async -> SCNNode? {
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    // Create temporary file for USDZ data
-                    let tempURL = FileManager.default.temporaryDirectory
-                        .appendingPathComponent("ar_model_\(UUID().uuidString).usdz")
-                    
-                    // Write USDZ data to temporary file with explicit permissions
-                    try data.write(to: tempURL, options: [.atomicWrite])
-                    
-                    print("💾 USDZ data written to: \(tempURL)")
-                    print("   File exists: \(FileManager.default.fileExists(atPath: tempURL.path))")
-                    print("   File size: \(data.count) bytes")
-                    
-                    // Load using SceneKit directly with proper loading options
-                    let loadingOptions: [SCNSceneSource.LoadingOption: Any] = [
-                        .checkConsistency: true,
-                        // .convertUnitsToMeters: true,  // Removed - was causing tiny models
-                        .convertToYUp: true,
-                        .createNormalsIfAbsent: true,
-                        .flattenScene: false
-                    ]
-                    
-                    // Load USDZ scene directly using SceneKit
-                    let scene = try SCNScene(url: tempURL, options: loadingOptions)
-                    
-                    print("✅ USDZ scene loaded successfully using SceneKit")
-                    print("   Root node child count: \(scene.rootNode.childNodes.count)")
-                    
-                    // Get the root node with all its children
-                    let rootNode = scene.rootNode.clone()
-                    
-                    // Log node hierarchy for debugging
-                    self.logNodeHierarchy(rootNode, indent: "")
-                    
-                    // Clean up temporary file
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        try? FileManager.default.removeItem(at: tempURL)
-                    }
-                    
-                    continuation.resume(returning: rootNode)
-                    
-                } catch {
-                    print("⚠️ Failed to load USDZ model: \(error)")
-                    continuation.resume(returning: SCNNode())
-                }
+    // Load USDZ model from data and convert to RealityKit Entity
+    private func loadUSDZModel(from data: Data) async -> Entity? {
+        do {
+            // Create temporary file for USDZ data
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ar_model_\(UUID().uuidString).usdz")
+            
+            // Write USDZ data to temporary file
+            try data.write(to: tempURL, options: [.atomicWrite])
+            
+            print("💾 USDZ data written to: \(tempURL)")
+            print("   File exists: \(FileManager.default.fileExists(atPath: tempURL.path))")
+            print("   File size: \(data.count) bytes")
+            
+            // Load USDZ model using RealityKit's Entity loading
+            let modelEntity = try await Entity.load(contentsOf: tempURL)
+            
+            print("✅ USDZ model loaded successfully using RealityKit")
+            
+            // Log entity hierarchy for debugging
+            logEntityHierarchy(modelEntity, indent: "")
+            
+            // Clean up temporary file
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                try? FileManager.default.removeItem(at: tempURL)
             }
+            
+            return modelEntity
+            
+        } catch {
+            print("⚠️ Failed to load USDZ model with RealityKit: \(error)")
+            return nil
         }
     }
     
     // Preprocess the loaded model for AR placement with proper container structure
-    private func preprocessModelForAR(_ node: SCNNode) -> SCNNode {
-        print("🔧 Preprocessing 3D model for AR placement (using original scale)")
+    private func preprocessModelForAR(_ entity: Entity) -> Entity {
+        print("🔧 Preprocessing 3D model for AR placement (using RealityKit)")
         
-        // Create a container node that will be positioned at the placement point
-        let containerNode = SCNNode()
-        containerNode.name = "AR_Model_Container"
+        // Create a container entity that will be positioned at the placement point
+        let containerEntity = Entity()
+        containerEntity.name = "AR_Model_Container"
         
         // Clone the original model to avoid modifying the original
-        let modelNode = node.clone()
+        let modelEntity = entity.clone(recursive: true)
         
         // Calculate bounding box to understand model dimensions
-        let (minBound, maxBound) = modelNode.boundingBox
-        let size = SCNVector3(
-            maxBound.x - minBound.x,
-            maxBound.y - minBound.y,
-            maxBound.z - minBound.z
-        )
+        let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
+        let size: SIMD3<Float>
+        let minBound: SIMD3<Float>
+        let maxBound: SIMD3<Float>
+        
+        if let bounds = bounds {
+            minBound = bounds.min
+            maxBound = bounds.max
+            size = maxBound - minBound
+        } else {
+            // Default bounds if no model component found
+            minBound = SIMD3<Float>(-0.5, 0, -0.5)
+            maxBound = SIMD3<Float>(0.5, 1, 0.5)
+            size = SIMD3<Float>(1, 1, 1)
+        }
         
         print("   Original size: \(size)")
         print("   Original bounding box: min(\(minBound)), max(\(maxBound))")
@@ -202,13 +194,13 @@ class AR3DModelProcessor: ObservableObject {
             // Model is tiny (less than 10cm) - likely wrong units, scale up to furniture size
             let targetSize: Float = 1.0  // 1 meter for typical furniture
             let scaleFactor = targetSize / maxDimension
-            modelNode.scale = SCNVector3(scaleFactor, scaleFactor, scaleFactor)
+            modelEntity.scale = SIMD3<Float>(scaleFactor, scaleFactor, scaleFactor)
             print("   Model too small (\(maxDimension)m), scaling up by \(scaleFactor)x")
         } else if maxDimension > 10.0 {
             // Model is huge (larger than 10 meters) - scale down to reasonable size
             let targetSize: Float = 2.0  // 2 meters max for furniture
             let scaleFactor = targetSize / maxDimension
-            modelNode.scale = SCNVector3(scaleFactor, scaleFactor, scaleFactor)
+            modelEntity.scale = SIMD3<Float>(scaleFactor, scaleFactor, scaleFactor)
             print("   Model too large (\(maxDimension)m), scaling down by \(scaleFactor)x")
         } else {
             // Model size is reasonable (0.1m to 10m) - use original scale
@@ -218,89 +210,94 @@ class AR3DModelProcessor: ObservableObject {
         // Position model so its bottom sits at the container's origin (Y=0)
         // This ensures the furniture sits on the floor rather than floating
         let bottomY = minBound.y
-        modelNode.position = SCNVector3(
+        modelEntity.position = SIMD3<Float>(
             0,        // Center horizontally
             -bottomY, // Lift model so bottom is at Y=0 
             0         // Center depth-wise
         )
         
-        print("   Model positioned with bottom at floor: \(modelNode.position)")
+        print("   Model positioned with bottom at floor: \(modelEntity.position)")
         
         // Add the model to the container
-        containerNode.addChildNode(modelNode)
+        containerEntity.addChild(modelEntity)
         
         // Enhance materials for AR display
-        enhanceMaterialsForAR(containerNode)
-        
-        // Add subtle ambient lighting
-        addAmbientLighting(to: containerNode)
+        enhanceMaterialsForAR(containerEntity)
         
         // Log container structure for debugging
-        logNodeHierarchy(containerNode, indent: "   Container: ")
+        logEntityHierarchy(containerEntity, indent: "   Container: ")
         
-        return containerNode
+        return containerEntity
     }
     
     // Enhance materials for better AR visualization
-    private func enhanceMaterialsForAR(_ node: SCNNode) {
-        node.enumerateChildNodes { childNode, _ in
-            if let geometry = childNode.geometry {
-                for material in geometry.materials {
-                    // Ensure materials render well in AR environment
-                    if material.lightingModel == .constant {
-                        material.lightingModel = .blinn
-                    }
+    private func enhanceMaterialsForAR(_ entity: Entity) {
+        // Recursively enhance materials for all child entities
+        enhanceMaterialsRecursively(entity)
+        
+        print("✨ Enhanced entity hierarchy for AR display")
+    }
+    
+    // Recursively enhance materials for entity and its children
+    private func enhanceMaterialsRecursively(_ entity: Entity) {
+        // Enhance materials for current entity
+        if var modelComponent = entity.components[ModelComponent.self] {
+            var materials = modelComponent.materials
+            
+            for i in 0..<materials.count {
+                // RealityKit uses PBR materials - enhance for AR display
+                if let material = materials[i] as? SimpleMaterial {
+                    var enhancedMaterial = material
                     
-                    // Adjust transparency handling
-                    if material.transparency < 1.0 {
-                        material.blendMode = .alpha
-                        material.writesToDepthBuffer = false
-                    }
+                    // Set reasonable default values for better AR visualization
+                    // SimpleMaterial uses MaterialScalarParameter for metallic and roughness
+                    enhancedMaterial.metallic = MaterialScalarParameter(floatLiteral: 0.1)
+                    enhancedMaterial.roughness = MaterialScalarParameter(floatLiteral: 0.3)
                     
-                    // Enhance ambient reflection
-                    if material.ambient.contents == nil {
-                        material.ambient.contents = UIColor(white: 0.2, alpha: 1.0)
-                    }
+                    materials[i] = enhancedMaterial
+                } else if let material = materials[i] as? PhysicallyBasedMaterial {
+                    var enhancedMaterial = material
+                    
+                    // Enhance PBR material properties
+                    // Set reasonable default values for metallic and roughness
+                    enhancedMaterial.metallic = PhysicallyBasedMaterial.Metallic(floatLiteral: 0.6)
+                    enhancedMaterial.roughness = PhysicallyBasedMaterial.Roughness(floatLiteral: 0.2)
+                    
+                    materials[i] = enhancedMaterial
                 }
             }
+            
+            modelComponent.materials = materials
+            entity.components.set(modelComponent)
         }
         
-        print("✨ Enhanced \(node.childNodes.count) child nodes for AR display")
+        // Recursively process children
+        for child in entity.children {
+            enhanceMaterialsRecursively(child)
+        }
     }
     
-    // Add subtle ambient lighting to the model
-    private func addAmbientLighting(to node: SCNNode) {
-        let ambientLight = SCNLight()
-        ambientLight.type = .ambient
-        ambientLight.color = UIColor(white: 0.3, alpha: 1.0)
-        ambientLight.intensity = 200
-        
-        let lightNode = SCNNode()
-        lightNode.light = ambientLight
-        node.addChildNode(lightNode)
-        
-        print("💡 Added ambient lighting to 3D model")
-    }
+    // Note: Ambient lighting is handled at the ARView level in RealityKit
     
-    // Log node hierarchy for debugging
-    private func logNodeHierarchy(_ node: SCNNode, indent: String) {
-        print("\(indent)Node: \(node.name ?? "unnamed")")
+    // Log entity hierarchy for debugging
+    private func logEntityHierarchy(_ entity: Entity, indent: String) {
+        print("\(indent)Entity: \(entity.name)")
         
-        if let geometry = node.geometry {
-            print("\(indent)  Geometry: \(type(of: geometry))")
-            print("\(indent)  Materials: \(geometry.materials.count)")
+        if let modelComponent = entity.components[ModelComponent.self] {
+            print("\(indent)  Model: \(type(of: modelComponent.mesh))")
+            print("\(indent)  Materials: \(modelComponent.materials.count)")
         }
         
-        if !node.childNodes.isEmpty {
-            print("\(indent)  Children: \(node.childNodes.count)")
-            for child in node.childNodes {
-                logNodeHierarchy(child, indent: indent + "    ")
+        if !entity.children.isEmpty {
+            print("\(indent)  Children: \(entity.children.count)")
+            for child in entity.children {
+                logEntityHierarchy(child, indent: indent + "    ")
             }
         }
     }
     
     // Get the generated model for placement
-    func getGeneratedModel() -> SCNNode? {
+    func getGeneratedModel() -> Entity? {
         return generatedModel
     }
     

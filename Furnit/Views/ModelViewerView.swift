@@ -1,5 +1,5 @@
 import SwiftUI
-import SceneKit
+import RealityKit
 import Combine
 
 struct ModelViewerView: View {
@@ -9,14 +9,14 @@ struct ModelViewerView: View {
     @Environment(\.dismiss) private var dismiss
     
     // Camera movement state
-    @StateObject private var cameraMovementManager = CameraMovementManager()
+    @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
     @State private var joystickOffset: CGSize = .zero
     
     // AR functionality state
     @StateObject private var arKitCameraManager = ARKitCameraManager()
     @StateObject private var ar3DModelProcessor = AR3DModelProcessor()
     @StateObject private var arProcessingStateManager = ARProcessingStateManager()
-    @StateObject private var arObjectPlacementManager = ARObjectPlacementManager()
+    @StateObject private var arObjectPlacementManager = RealityKitObjectPlacementManager()
     @State private var isARActive = false
     @State private var arStatusMessage = "Point at furniture objects"
     @State private var isProcessingAR = false
@@ -24,7 +24,7 @@ struct ModelViewerView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                SceneKitView(
+                RealityKitView(
                     model: model, 
                     cameraMovementManager: cameraMovementManager,
                     arObjectPlacementManager: arObjectPlacementManager,
@@ -243,7 +243,7 @@ struct ModelViewerView: View {
     
     // Setup AR managers with scene references
     private func setupARManagers() {
-        // Setup will be completed when SceneKitView is ready
+        // Setup will be completed when RealityKitView is ready
     }
     
     // Toggle AR mode on/off
