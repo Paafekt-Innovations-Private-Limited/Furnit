@@ -21,8 +21,9 @@ class RealityKitObjectPlacementManager: ObservableObject {
     private let placementHeight: Float = 0.05 // Small lift above floor for visual clarity
     
     // Placement distance constraints for better user experience
-    private let maxPlacementDistance: Float = 50.0 // Maximum distance from camera for placement
-    private let preferredPlacementDistance: Float = 3.0 // Preferred distance when using fallback placement
+    private let maxPlacementDistance: Float = 8.0 // Maximum distance from camera for placement (reduced from 50.0)
+    private let preferredPlacementDistance: Float = 2.5 // Preferred distance when using fallback placement (reduced from 3.0)
+    private let minPlacementDistance: Float = 1.0 // Minimum distance to avoid placing too close to camera
     
     init() {}
     
@@ -117,14 +118,25 @@ class RealityKitObjectPlacementManager: ObservableObject {
             // Place on floor - find intersection with floor plane
             placementPosition = calculateFloorPlacement(cameraPosition: cameraPosition, worldDirection: worldDirection)
         } else {
-            // Place at eye level in front of camera
+            // Place at eye level in front of camera at better viewing distance
             placementPosition = cameraPosition + worldDirection * preferredPlacementDistance
         }
-        
+
+        // Ensure minimum distance from camera for visibility
+        let distanceFromCamera = simd_length(placementPosition - cameraPosition)
+        if distanceFromCamera < minPlacementDistance {
+            let direction = simd_normalize(placementPosition - cameraPosition)
+            placementPosition = cameraPosition + direction * minPlacementDistance
+            print("📐 Adjusted placement to minimum distance: \(minPlacementDistance)m")
+        }
+
         print("🎯 Fallback placement: camera(\(cameraPosition)), direction(\(worldDirection))")
         print("   Tapping floor: \(isTappingFloor), final position: \(placementPosition)")
-        
-        return placementPosition
+
+        // Validate placement position is reasonable and within view
+        let validatedPosition = validatePlacementPosition(placementPosition, cameraPosition: cameraPosition)
+
+        return validatedPosition
     }
     
     // Convert screen point to world direction for raycasting
@@ -217,7 +229,10 @@ class RealityKitObjectPlacementManager: ObservableObject {
     private func place3DModel(_ model: Entity, at position: SIMD3<Float>, in scene: RealityKit.Scene) -> Bool {
         // Clone the model to avoid modifying the original
         let placedModelEntity = model.clone(recursive: true)
-        
+
+        // Ensure model has proper scale and materials for visibility
+        adjustModelForVisibility(placedModelEntity)
+
         // Set position on the model entity directly
         placedModelEntity.position = position
         
@@ -251,9 +266,18 @@ class RealityKitObjectPlacementManager: ObservableObject {
         isReadyToPlace = false
         generatedModel = nil
         
+        // Add debug visualization to help locate placed objects
+        addDebugVisualization(for: placedModelEntity, at: position)
+
         print("✅ 3D model placed successfully at position: \(position)")
         print("   Model has \(placedModelEntity.children.count) child entities")
-        
+        print("   Model scale: \(placedModelEntity.scale)")
+        print("   Model bounds: \(getEntityBounds(placedModelEntity))")
+        print("   Distance from camera: \(simd_length(position - (arView?.cameraTransform.translation ?? SIMD3<Float>(0, 0, 0))))m")
+
+        // Log detailed entity hierarchy for debugging
+        logEntityHierarchy(placedModelEntity, level: 0)
+
         return true
     }
     
@@ -266,7 +290,189 @@ class RealityKitObjectPlacementManager: ObservableObject {
         // TODO: Implement shadow plane with correct RealityKit material API
         print("🔧 Shadow plane temporarily disabled - material API needs fixing")
     }
-    
+
+    // Add debug visualization to help locate placed objects
+    private func addDebugVisualization(for entity: Entity, at position: SIMD3<Float>) {
+        guard let scene = scene else { return }
+
+        // Create debug sphere at placement position
+        let debugSphere = ModelEntity(
+            mesh: .generateSphere(radius: 0.05),
+            materials: [SimpleMaterial(color: .red, roughness: 0.5, isMetallic: false)]
+        )
+        debugSphere.name = "debug_sphere"
+        debugSphere.position = position + SIMD3<Float>(0, 0.1, 0) // Slightly above placed object
+
+        // Create debug anchor for the sphere
+        let debugAnchor = AnchorEntity(.world(transform: Transform(translation: debugSphere.position).matrix))
+        debugAnchor.addChild(debugSphere)
+        scene.addAnchor(debugAnchor)
+
+        print("🔴 Debug sphere added at: \(debugSphere.position)")
+
+        // Remove debug sphere after 10 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+            scene.removeAnchor(debugAnchor)
+            print("🔴 Debug sphere removed")
+        }
+    }
+
+    // Get entity bounds for debugging
+    private func getEntityBounds(_ entity: Entity) -> String {
+        if let modelComponent = entity.components[ModelComponent.self] {
+            let bounds = modelComponent.mesh.bounds
+            let size = bounds.max - bounds.min
+            return "size(\(size)), min(\(bounds.min)), max(\(bounds.max))"
+        }
+
+        // Check children for bounds
+        for child in entity.children {
+            if let modelComponent = child.components[ModelComponent.self] {
+                let bounds = modelComponent.mesh.bounds
+                let size = bounds.max - bounds.min
+                return "child size(\(size)), min(\(bounds.min)), max(\(bounds.max))"
+            }
+        }
+
+        return "no bounds found"
+    }
+
+    // Log detailed entity hierarchy for debugging visibility issues
+    private func logEntityHierarchy(_ entity: Entity, level: Int) {
+        let indent = String(repeating: "  ", count: level)
+        let hasModel = entity.components.has(ModelComponent.self)
+        let materialCount = entity.components[ModelComponent.self]?.materials.count ?? 0
+
+        print("\(indent)🔍 Entity: \(entity.name.isEmpty ? "unnamed" : entity.name)")
+        print("\(indent)   - Has ModelComponent: \(hasModel)")
+        print("\(indent)   - Material count: \(materialCount)")
+        print("\(indent)   - Position: \(entity.position)")
+        print("\(indent)   - Scale: \(entity.scale)")
+        print("\(indent)   - Children: \(entity.children.count)")
+
+        if hasModel, let modelComponent = entity.components[ModelComponent.self] {
+            let bounds = modelComponent.mesh.bounds
+            print("\(indent)   - Bounds: min(\(bounds.min)), max(\(bounds.max))")
+
+            for (index, material) in modelComponent.materials.enumerated() {
+                if let simpleMaterial = material as? SimpleMaterial {
+                    print("\(indent)   - Material \(index): color=\(simpleMaterial.color), roughness=\(simpleMaterial.roughness)")
+                } else {
+                    print("\(indent)   - Material \(index): type=\(type(of: material))")
+                }
+            }
+        }
+
+        // Recursively log children
+        for child in entity.children {
+            logEntityHierarchy(child, level: level + 1)
+        }
+    }
+
+    // Validate placement position is reasonable and within camera view
+    private func validatePlacementPosition(_ position: SIMD3<Float>, cameraPosition: SIMD3<Float>) -> SIMD3<Float> {
+        var validatedPosition = position
+
+        // Ensure object is not too close or too far from camera
+        let distance = simd_length(position - cameraPosition)
+        let minDistance: Float = 0.5 // 50cm minimum
+        let maxDistance: Float = 8.0 // 8m maximum
+
+        if distance < minDistance {
+            // Too close - move further away
+            let direction = simd_normalize(position - cameraPosition)
+            validatedPosition = cameraPosition + direction * minDistance
+            print("📐 Object too close (\(distance)m), moved to \(minDistance)m")
+        } else if distance > maxDistance {
+            // Too far - bring closer
+            let direction = simd_normalize(position - cameraPosition)
+            validatedPosition = cameraPosition + direction * maxDistance
+            print("📐 Object too far (\(distance)m), moved to \(maxDistance)m")
+        }
+
+        // Ensure object is at reasonable height (not underground or floating too high)
+        let minHeight: Float = 0.0  // Floor level
+        let maxHeight: Float = 3.0  // 3m ceiling
+
+        if validatedPosition.y < minHeight {
+            validatedPosition.y = minHeight
+            print("📐 Object below floor, moved to floor level")
+        } else if validatedPosition.y > maxHeight {
+            validatedPosition.y = maxHeight
+            print("📐 Object above ceiling, moved to ceiling level")
+        }
+
+        if validatedPosition != position {
+            print("✅ Position validated: \(position) → \(validatedPosition)")
+        }
+
+        return validatedPosition
+    }
+
+    // Adjust model scale and materials for better visibility
+    private func adjustModelForVisibility(_ entity: Entity) {
+        // Fix scale hierarchy issues first
+        fixEntityScaleHierarchy(entity)
+
+        // Check if entity has model component and get bounds
+        if let modelComponent = entity.components[ModelComponent.self] {
+            let bounds = modelComponent.mesh.bounds
+            let size = bounds.max - bounds.min
+            let maxDimension = max(size.x, max(size.y, size.z))
+
+            print("📏 Original model size: \(size), max dimension: \(maxDimension)")
+
+            // If model is too small (less than 10cm), scale it up
+            if maxDimension < 0.1 {
+                let scaleFactor: Float = 0.5 / maxDimension // Scale to 50cm
+                entity.scale = SIMD3<Float>(scaleFactor, scaleFactor, scaleFactor)
+                print("🔧 Scaled up tiny model by factor: \(scaleFactor)")
+            }
+            // If model is extremely large (more than 5m), scale it down
+            else if maxDimension > 5.0 {
+                let scaleFactor: Float = 2.0 / maxDimension // Scale to 2m
+                entity.scale = SIMD3<Float>(scaleFactor, scaleFactor, scaleFactor)
+                print("🔧 Scaled down large model by factor: \(scaleFactor)")
+            }
+
+            // Ensure model has materials
+            if modelComponent.materials.isEmpty {
+                var updatedComponent = modelComponent
+                updatedComponent.materials = [SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)]
+                entity.components.set(updatedComponent)
+                print("🎨 Added default material to placed model")
+            }
+        }
+
+        // Recursively adjust child entities
+        for child in entity.children {
+            adjustModelForVisibility(child)
+        }
+    }
+
+    // Fix entity scale hierarchy issues that make models invisible
+    private func fixEntityScaleHierarchy(_ entity: Entity) {
+        let currentScale = entity.scale
+        let minVisibleScale: Float = 0.1 // Any scale smaller than this is problematic
+
+        // Check if any component of the scale is too small
+        if currentScale.x < minVisibleScale || currentScale.y < minVisibleScale || currentScale.z < minVisibleScale {
+            print("⚠️ Found problematic scale on entity '\(entity.name.isEmpty ? "unnamed" : entity.name)': \(currentScale)")
+
+            // Reset to reasonable scale - preserve proportions but make visible
+            let scaleFactor: Float = 1.0 / max(currentScale.x, max(currentScale.y, currentScale.z))
+            let correctedScale = currentScale * scaleFactor
+            entity.scale = correctedScale
+
+            print("🔧 Corrected entity scale from \(currentScale) to \(correctedScale)")
+        }
+
+        // Recursively fix child entities
+        for child in entity.children {
+            fixEntityScaleHierarchy(child)
+        }
+    }
+
     // Remove specific AR object
     func removeObject(_ objectId: UUID) {
         if let index = placedObjects.firstIndex(where: { $0.id == objectId }) {

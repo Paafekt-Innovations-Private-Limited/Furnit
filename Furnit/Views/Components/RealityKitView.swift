@@ -54,10 +54,13 @@ struct RealityKitView: UIViewRepresentable {
         var gestureHandlers: RealityKitGestureHandlers?
         var scene: RealityKit.Scene?
         weak var arObjectPlacementManager: ARObjectPlacementManager?
-        
+
         // Custom camera control for non-AR mode
         var cameraEntity: PerspectiveCamera?
         var cameraAnchor: AnchorEntity?
+
+        // World anchor for object placement (the model anchor)
+        var worldAnchor: AnchorEntity?
         
         func setupGestures(for arView: ARView) {
             gestureHandlers = RealityKitGestureHandlers(arView: arView)
@@ -114,15 +117,26 @@ struct RealityKitView: UIViewRepresentable {
             Task { @MainActor in
                 do {
                     let modelEntity = try await Entity.load(contentsOf: tempURL)
-                    
+
+                    // Ensure model has proper materials for visibility
+                    ensureModelHasMaterials(modelEntity)
+
                     // Calculate model bounds for camera positioning
-                    let _ = modelEntity.components[ModelComponent.self]?.mesh.bounds
+                    let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
+                    if let bounds = bounds {
+                        print("📦 Model bounds after loading: min(\(bounds.min)), max(\(bounds.max))")
+                    } else {
+                        print("📦 Model bounds after loading: no bounds")
+                    }
                     
                     // In non-AR mode, simply add model to scene directly (no world anchor needed)
                     let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
                     modelAnchor.addChild(modelEntity)
                     arView.scene.addAnchor(modelAnchor)
                     coordinator.scene = arView.scene
+
+                    // Store the model anchor for object placement
+                    coordinator.worldAnchor = modelAnchor
                     
                     // Set up boundary manager for camera constraints
                     let boundaryManager = RealityKitBoundaryManager(arView: arView)
@@ -154,6 +168,12 @@ struct RealityKitView: UIViewRepresentable {
                     // Set up AR object placement manager with scene references
                     coordinator.arObjectPlacementManager = self.arObjectPlacementManager
                     self.arObjectPlacementManager.setSceneReferences(arView: arView, scene: arView.scene)
+
+                    // Connect world anchor to object placement manager for proper scene integration
+                    if let worldAnchor = coordinator.worldAnchor {
+                        self.arObjectPlacementManager.setWorldAnchor(worldAnchor)
+                        print("🌍 Connected world anchor to object placement manager")
+                    }
                     
                     // Set up camera movement manager with custom camera references
                     self.cameraMovementManager.setARView(arView)
@@ -258,13 +278,27 @@ struct RealityKitView: UIViewRepresentable {
         keyLightEntity.orientation = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(1, 0, 0))
         keyLightEntity.position = SIMD3<Float>(5, 10, 5)
         
+        // Create additional light specifically for placed 3D objects
+        let objectLightComponent = DirectionalLightComponent(
+            color: .white,
+            intensity: Float(1500 * lightingMultiplier), // Brighter for 3D objects
+            isRealWorldProxy: false
+        )
+
+        let objectLightEntity = Entity()
+        objectLightEntity.components.set(objectLightComponent)
+        objectLightEntity.orientation = simd_quatf(angle: .pi / 6, axis: SIMD3<Float>(1, 0, 0)) // 30 degrees down
+        objectLightEntity.position = SIMD3<Float>(0, 8, 2) // Above and slightly forward
+
         // Add lights to scene
         let lightingAnchor = AnchorEntity(.world(transform: matrix_identity_float4x4))
         lightingAnchor.addChild(ambientLightEntity)
         lightingAnchor.addChild(keyLightEntity)
+        lightingAnchor.addChild(objectLightEntity)
         arView.scene.addAnchor(lightingAnchor)
-        
+
         print("💡 Applied lighting intensity: \(lightingMultiplier)x for \(quality.displayName) quality")
+        print("💡 Added dedicated lighting for placed 3D objects")
     }
     
     // Configure rendering quality based on user settings
@@ -288,6 +322,33 @@ struct RealityKitView: UIViewRepresentable {
         }
         
         print("🔄 Updated rendering quality to: \(quality.displayName)")
+    }
+
+    // Ensure loaded model has proper materials for visibility
+    private func ensureModelHasMaterials(_ entity: Entity) {
+        // Check if entity itself has a model component and materials
+        if var modelComponent = entity.components[ModelComponent.self] {
+            if modelComponent.materials.isEmpty {
+                // Add default material if none exists
+                let defaultMaterial = SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)
+                modelComponent.materials = [defaultMaterial]
+                entity.components.set(modelComponent)
+                print("🎨 Added default white material to model entity")
+            } else {
+                print("🎨 Model has \(modelComponent.materials.count) existing materials")
+                // Ensure materials are not transparent
+                for (index, material) in modelComponent.materials.enumerated() {
+                    if let simpleMaterial = material as? SimpleMaterial {
+                        print("🎨 Material \(index): color=\(simpleMaterial.color), roughness=\(simpleMaterial.roughness)")
+                    }
+                }
+            }
+        }
+
+        // Recursively check child entities
+        for child in entity.children {
+            ensureModelHasMaterials(child)
+        }
     }
 }
 
