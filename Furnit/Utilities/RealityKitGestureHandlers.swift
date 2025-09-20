@@ -90,7 +90,7 @@ class RealityKitGestureHandlers {
     
     // Handle pan gesture with intuitive controls: drag to look around (horizontal + vertical rotation)
     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
-        print("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
+        // print("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
         guard let arView = arView, let cameraAnchor = cameraAnchor else {
             print("⚠️ Pan gesture guard failed - arView: \(arView != nil), cameraAnchor: \(cameraAnchor != nil)")
             return
@@ -106,7 +106,7 @@ class RealityKitGestureHandlers {
             lastPanTranslation = translation
 
         case .changed:
-            print("🔥 CAMERA GESTURE CHANGED STATE - translation: \(translation)")
+            // print("🔥 CAMERA GESTURE CHANGED STATE - translation: \(translation)")
 
             // Calculate incremental rotation delta since last update
             let deltaTranslation = CGPoint(
@@ -140,7 +140,7 @@ class RealityKitGestureHandlers {
             newTransform.scale = initialCameraTransform.scale
             cameraAnchor.transform = newTransform
 
-            print("📷 Accumulated rotation: Yaw=\(accumulatedYaw), Pitch=\(accumulatedPitch)")
+            // print("📷 Accumulated rotation: Yaw=\(accumulatedYaw), Pitch=\(accumulatedPitch)")
 
             // Update last translation for next incremental calculation
             lastPanTranslation = translation
@@ -197,9 +197,9 @@ class RealityKitGestureHandlers {
             var newTransform = initialCameraTransform
             newTransform.translation = newPosition
             cameraAnchor.transform = newTransform
-            
-            print("📷 Two-finger camera movement: (\(deltaX), \(deltaY))")
-            
+
+            // print("📷 Two-finger camera movement: (\(deltaX), \(deltaY))")
+
         case .ended, .cancelled:
             initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = nil
@@ -245,9 +245,9 @@ class RealityKitGestureHandlers {
             var newTransform = initialCameraTransform
             newTransform.translation = newPosition
             cameraAnchor.transform = newTransform
-            
-            print("📷 Camera zoom: \(zoomFactor)")
-            
+
+            // print("📷 Camera zoom: \(zoomFactor)")
+
         case .ended, .cancelled:
             initialCameraTransform = cameraAnchor.transform
             
@@ -275,9 +275,9 @@ class RealityKitGestureHandlers {
             var newTransform = initialCameraTransform
             newTransform.rotation = rotationQuat * initialCameraTransform.rotation
             cameraAnchor.transform = newTransform
-            
-            print("📷 Camera rotation gesture: \(rotation) radians")
-            
+
+            // print("📷 Camera rotation gesture: \(rotation) radians")
+
         case .ended, .cancelled:
             initialCameraTransform = cameraAnchor.transform
             

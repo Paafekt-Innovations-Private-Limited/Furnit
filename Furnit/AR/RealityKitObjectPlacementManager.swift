@@ -103,41 +103,39 @@ class RealityKitObjectPlacementManager: ObservableObject {
         return calculateFallbackPlacement(for: screenPoint, in: arView)
     }
     
-    // Calculate fallback placement position in front of camera
+    // Calculate fallback placement position (furniture always goes on floor)
     private func calculateFallbackPlacement(for screenPoint: CGPoint, in arView: ARView) -> SIMD3<Float> {
         let cameraTransform = arView.cameraTransform
         let cameraPosition = cameraTransform.translation
-        
+
         // Convert screen point to world direction
         let worldDirection = screenPointToWorldDirection(screenPoint, in: arView)
-        
-        // Determine if user is tapping in lower half of screen (floor) or upper half (wall/air)
-        let viewportSize = arView.bounds.size
-        let isTappingFloor = screenPoint.y > viewportSize.height * 0.6 // Lower 40% of screen
-        
-        var placementPosition: SIMD3<Float>
-        
-        if isTappingFloor {
-            // Place on floor - find intersection with floor plane
-            placementPosition = calculateFloorPlacement(cameraPosition: cameraPosition, worldDirection: worldDirection)
-        } else {
-            // Place at eye level in front of camera at better viewing distance
-            placementPosition = cameraPosition + worldDirection * preferredPlacementDistance
-        }
-
-        // Ensure minimum distance from camera for visibility
-        let distanceFromCamera = simd_length(placementPosition - cameraPosition)
-        if distanceFromCamera < minPlacementDistance {
-            let direction = simd_normalize(placementPosition - cameraPosition)
-            placementPosition = cameraPosition + direction * minPlacementDistance
-            print("📐 Adjusted placement to minimum distance: \(minPlacementDistance)m")
-        }
 
         print("🎯 Fallback placement: camera(\(cameraPosition)), direction(\(worldDirection))")
-        print("   Tapping floor: \(isTappingFloor), final position: \(placementPosition)")
+        print("   Furniture placement: ALWAYS on floor (ignoring tap location)")
+
+        // For furniture, ALWAYS place on floor regardless of where user taps
+        // This ensures consistent, predictable placement for furniture objects
+        let placementPosition = calculateFloorPlacement(cameraPosition: cameraPosition, worldDirection: worldDirection)
+
+        // Ensure minimum distance from camera for visibility (but keep on floor)
+        let distanceFromCamera = simd_length(placementPosition - cameraPosition)
+        var finalPosition = placementPosition
+
+        if distanceFromCamera < minPlacementDistance {
+            let horizontalDirection = normalize(SIMD3<Float>(worldDirection.x, 0, worldDirection.z))
+            finalPosition = SIMD3<Float>(
+                cameraPosition.x + horizontalDirection.x * minPlacementDistance,
+                placementPosition.y, // Keep same floor height
+                cameraPosition.z + horizontalDirection.z * minPlacementDistance
+            )
+            print("📐 Adjusted furniture to minimum distance: \(minPlacementDistance)m, keeping floor level")
+        }
+
+        print("   🪑 Final furniture position: \(finalPosition) (Y=floor)")
 
         // Validate placement position is reasonable and within view
-        let validatedPosition = validatePlacementPosition(placementPosition, cameraPosition: cameraPosition)
+        let validatedPosition = validatePlacementPosition(finalPosition, cameraPosition: cameraPosition)
 
         return validatedPosition
     }
@@ -169,63 +167,91 @@ class RealityKitObjectPlacementManager: ObservableObject {
         return worldDirection
     }
     
-    // Calculate placement on floor plane
+    // Calculate placement on floor plane (furniture always goes on floor)
     private func calculateFloorPlacement(cameraPosition: SIMD3<Float>, worldDirection: SIMD3<Float>) -> SIMD3<Float> {
-        // Detect floor height from scene or use reasonable default
-        let floorHeight = detectFloorHeight() ?? 0.0
-        
-        // Calculate intersection of camera ray with floor plane (Y = floorHeight)
-        // Ray equation: P = cameraPosition + t * worldDirection
-        // Plane equation: Y = floorHeight
-        // Solve for t: floorHeight = cameraPosition.y + t * worldDirection.y
-        
+        // Get reliable floor height (always returns a value, defaults to 0.0)
+        let floorHeight = detectFloorHeight()
+        let furnitureGroundClearance: Float = 0.01 // Small clearance above floor
+
+        print("🏠 Calculating floor placement with floor height: \(floorHeight)")
+
+        // Try to intersect camera ray with floor plane for natural placement
         if abs(worldDirection.y) > 0.001 { // Avoid division by zero
             let t = (floorHeight - cameraPosition.y) / worldDirection.y
-            
-            // Only use positive t (forward direction) and reasonable distance
-            if t > 0 && t <= 6.0 { // Limit to 6 units for floor placement
-                return SIMD3<Float>(
+
+            // Use positive t (forward direction) with reasonable distance limits
+            if t > 0.5 && t <= 8.0 { // Min 0.5m, max 8m for floor placement
+                let intersectionPoint = SIMD3<Float>(
                     cameraPosition.x + worldDirection.x * t,
-                    floorHeight + placementHeight, // Slightly above floor
+                    floorHeight + furnitureGroundClearance,
                     cameraPosition.z + worldDirection.z * t
                 )
+
+                print("🎯 Floor intersection found at distance: \(t)m, position: \(intersectionPoint)")
+                return intersectionPoint
+            } else {
+                print("⚠️ Floor intersection too close (\(t)m) or too far, using horizontal placement")
             }
+        } else {
+            print("⚠️ Camera pointing horizontally, cannot intersect floor plane")
         }
-        
-        // Fallback: place on floor at preferred distance horizontally
+
+        // Fallback: Place horizontally at comfortable distance on floor
         let horizontalDirection = normalize(SIMD3<Float>(worldDirection.x, 0, worldDirection.z))
-        let floorPlacementDistance = min(preferredPlacementDistance, 4.0) // Cap at 4 units for floor placement
-        return SIMD3<Float>(
-            cameraPosition.x + horizontalDirection.x * floorPlacementDistance,
-            floorHeight + placementHeight,
-            cameraPosition.z + horizontalDirection.z * floorPlacementDistance
+        let safeDistance: Float = 2.5 // Comfortable viewing distance for furniture
+        let floorPosition = SIMD3<Float>(
+            cameraPosition.x + horizontalDirection.x * safeDistance,
+            floorHeight + furnitureGroundClearance,
+            cameraPosition.z + horizontalDirection.z * safeDistance
         )
+
+        print("🎯 Horizontal floor placement at: \(floorPosition)")
+        return floorPosition
     }
     
-    // Detect floor height from scene geometry or use default
-    private func detectFloorHeight() -> Float? {
-        guard let scene = scene else { return nil }
-        
-        // Look for anchors with low Y coordinates to find floor
-        var minY: Float = Float.greatestFiniteMagnitude
-        var hasGeometry = false
-        
-        for anchor in scene.anchors {
-            if let modelEntity = anchor.children.first(where: { $0.components.has(ModelComponent.self) }) {
-                let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
-                if let bounds = bounds {
-                    let worldMin = anchor.transform.matrix * SIMD4<Float>(bounds.min, 1)
-                    
-                    if worldMin.y < minY {
-                        minY = worldMin.y
-                        hasGeometry = true
-                    }
+    // Detect floor height from scene geometry or use default (always returns a value)
+    private func detectFloorHeight() -> Float {
+        guard let scene = scene else {
+            print("🏠 No scene available, using default floor height: 0.0")
+            return 0.0
+        }
+
+        // First try: Look for ARKit plane anchors (floor detection)
+        if let arView = arView {
+            let planeAnchors = arView.scene.anchors.compactMap { $0 as? AnchorEntity }
+            for anchor in planeAnchors {
+                // Check if this is a horizontal plane (floor)
+                let transform = anchor.transform
+                let yPosition = transform.translation.y
+
+                // Floor planes should be roughly horizontal and below camera
+                if yPosition < 1.0 && yPosition > -1.0 { // Within reasonable floor range
+                    print("🏠 Found ARKit plane at height: \(yPosition)")
+                    return yPosition
                 }
             }
         }
-        
-        // Return detected floor height or reasonable default
-        return hasGeometry ? minY : 0.0
+
+        // Second try: Look for existing objects to determine floor level
+        var lowestObjectY: Float = Float.greatestFiniteMagnitude
+        var hasObjects = false
+
+        for placedObject in placedObjects {
+            let objectY = placedObject.entity.position.y
+            if objectY < lowestObjectY {
+                lowestObjectY = objectY
+                hasObjects = true
+            }
+        }
+
+        if hasObjects {
+            print("🏠 Detected floor from existing objects at height: \(lowestObjectY)")
+            return lowestObjectY
+        }
+
+        // Fallback: Use world origin as floor level (most reliable)
+        print("🏠 Using default floor height: 0.0 (world origin)")
+        return 0.0
     }
     
     // Place 3D model from backend API in the scene
@@ -233,11 +259,42 @@ class RealityKitObjectPlacementManager: ObservableObject {
         // Clone the model to avoid modifying the original
         let placedModelEntity = model.clone(recursive: true)
 
-        // Ensure model has proper scale and materials for visibility
-        adjustModelForVisibility(placedModelEntity)
+        // Detect and correct hierarchy position offsets internally within the model
+        detectAndCorrectHierarchyOffsets(for: placedModelEntity)
+
+        // Reset all scales to unity and get original mesh dimensions
+        resetAllEntityScales(in: placedModelEntity)
+
+        guard let originalMeshSize = calculateEntityBounds(placedModelEntity) else {
+            print("⚠️ Could not calculate entity bounds, using default scale")
+            return false
+        }
+
+        // Apply single root-level scale for target sizing
+        let targetSize: Float = 1.8 // Target 1.8 meters for largest dimension
+        applyTargetScale(to: placedModelEntity, targetSize: targetSize, originalBounds: originalMeshSize)
+
+        // Fix materials to preserve colors and ensure visibility
+        fixModelMaterials(for: placedModelEntity)
+
+        // Use the original calculated position (respecting user tap when available)
+        let basePosition = position
+        print("🎯 Base calculated position: \(basePosition)")
+
+        // Apply bounds-aware floor grounding to ensure furniture sits ON the floor
+        let floorHeight = detectFloorHeight()
+        let furnitureGroundClearance: Float = 0.01 // Small clearance above floor
+        let groundedPosition = calculateGroundedPosition(
+            basePosition: basePosition,
+            entity: placedModelEntity,
+            floorHeight: floorHeight,
+            clearance: furnitureGroundClearance
+        )
+
+        print("🎯 Final grounded position: \(groundedPosition)")
 
         // Set position on the model entity directly
-        placedModelEntity.position = position
+        placedModelEntity.position = groundedPosition
         
         // Create anchor entity for tracking (use world anchor or create independent)
         let anchorEntity: AnchorEntity
@@ -258,9 +315,7 @@ class RealityKitObjectPlacementManager: ObservableObject {
             id: UUID(),
             entity: placedModelEntity,
             anchorEntity: anchorEntity,
-            originalImage: nil,
-            position: position,
-            is3DModel: true
+            originalImage: nil
         )
         
         placedObjects.append(placedObject)
@@ -269,14 +324,13 @@ class RealityKitObjectPlacementManager: ObservableObject {
         isReadyToPlace = false
         generatedModel = nil
         
-        // Add debug visualization to help locate placed objects
-        addDebugVisualization(for: placedModelEntity, at: position)
+        // Clean placement completed without debug clutter
 
-        print("✅ 3D model placed successfully at position: \(position)")
+        print("✅ 3D model placed successfully at position: \(groundedPosition)")
         print("   Model has \(placedModelEntity.children.count) child entities")
         print("   Model scale: \(placedModelEntity.scale)")
         print("   Model bounds: \(getEntityBounds(placedModelEntity))")
-        print("   Distance from camera: \(simd_length(position - (arView?.cameraTransform.translation ?? SIMD3<Float>(0, 0, 0))))m")
+        print("   Distance from camera: \(simd_length(groundedPosition - (arView?.cameraTransform.translation ?? SIMD3<Float>(0, 0, 0))))m")
 
         // Log detailed entity hierarchy for debugging
         logEntityHierarchy(placedModelEntity, level: 0)
@@ -300,49 +354,61 @@ class RealityKitObjectPlacementManager: ObservableObject {
         print("🔧 Shadow plane temporarily disabled - material API needs fixing")
     }
 
-    // Add debug visualization to help locate placed objects
-    private func addDebugVisualization(for entity: Entity, at position: SIMD3<Float>) {
-        guard let scene = scene else { return }
 
-        // Create debug sphere at placement position
-        let debugSphere = ModelEntity(
-            mesh: .generateSphere(radius: 0.05),
-            materials: [SimpleMaterial(color: .red, roughness: 0.5, isMetallic: false)]
-        )
-        debugSphere.name = "debug_sphere"
-        debugSphere.position = position + SIMD3<Float>(0, 0.1, 0) // Slightly above placed object
 
-        // Create debug anchor for the sphere
-        let debugAnchor = AnchorEntity(.world(transform: Transform(translation: debugSphere.position).matrix))
-        debugAnchor.addChild(debugSphere)
-        scene.addAnchor(debugAnchor)
-
-        print("🔴 Debug sphere added at: \(debugSphere.position)")
-
-        // Remove debug sphere after 10 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
-            scene.removeAnchor(debugAnchor)
-            print("🔴 Debug sphere removed")
-        }
+    // Debug visualizations removed for clean AR experience
+    private func addModelBoundsVisualization(for entity: Entity, at position: SIMD3<Float>) {
+        // Debug visualization removed for clean AR experience
     }
 
-    // Get entity bounds for debugging
+    private func addMicroScaleDebugMarkers(for entity: Entity, at position: SIMD3<Float>) {
+        // Debug visualization removed for clean AR experience
+    }
+
+    // Get a guaranteed visible position directly in front of camera for testing
+    private func getGuaranteedVisiblePosition() -> SIMD3<Float> {
+        // Get current camera position from ARView
+        guard let arView = arView else {
+            print("⚠️ No ARView available, using default position")
+            return SIMD3<Float>(0, 1, -2) // Default position in front of origin
+        }
+
+        // Get camera transform
+        let cameraTransform = arView.cameraTransform
+        let cameraPosition = cameraTransform.translation
+
+        // Calculate forward direction from camera (negative Z in camera space)
+        let rotationMatrix = cameraTransform.matrix
+        let forwardDirection = -normalize(SIMD3<Float>(
+            rotationMatrix.columns.2.x,
+            rotationMatrix.columns.2.y,
+            rotationMatrix.columns.2.z
+        ))
+
+        // Place object 2 meters in front of camera at eye level
+        let testPosition = cameraPosition + (forwardDirection * 2.0)
+
+        print("🎯 Guaranteed position: \(testPosition)")
+        return testPosition
+    }
+
+    // Get bounds description for logging
     private func getEntityBounds(_ entity: Entity) -> String {
-        if let modelComponent = entity.components[ModelComponent.self] {
-            let bounds = modelComponent.mesh.bounds
-            let size = bounds.max - bounds.min
-            return "size(\(size)), min(\(bounds.min)), max(\(bounds.max))"
-        }
-
-        // Check children for bounds
-        for child in entity.children {
-            if let modelComponent = child.components[ModelComponent.self] {
-                let bounds = modelComponent.mesh.bounds
-                let size = bounds.max - bounds.min
-                return "child size(\(size)), min(\(bounds.min)), max(\(bounds.max))"
+        func findBounds(_ entity: Entity) -> BoundingBox? {
+            if let modelComponent = entity.components[ModelComponent.self] {
+                return modelComponent.mesh.bounds
             }
+            for child in entity.children {
+                if let bounds = findBounds(child) {
+                    return bounds
+                }
+            }
+            return nil
         }
 
+        if let bounds = findBounds(entity) {
+            return "min(\(bounds.min)), max(\(bounds.max))"
+        }
         return "no bounds found"
     }
 
@@ -352,7 +418,9 @@ class RealityKitObjectPlacementManager: ObservableObject {
         let hasModel = entity.components.has(ModelComponent.self)
         let materialCount = entity.components[ModelComponent.self]?.materials.count ?? 0
 
-        print("\(indent)🔍 Entity: \(entity.name.isEmpty ? "unnamed" : entity.name)")
+        let entityAddress = Unmanaged.passUnretained(entity).toOpaque()
+
+        print("\(indent)🔍 Entity: \(entity.name.isEmpty ? "unnamed" : entity.name) [\(entityAddress)]")
         print("\(indent)   - Has ModelComponent: \(hasModel)")
         print("\(indent)   - Material count: \(materialCount)")
         print("\(indent)   - Position: \(entity.position)")
@@ -363,12 +431,9 @@ class RealityKitObjectPlacementManager: ObservableObject {
             let bounds = modelComponent.mesh.bounds
             print("\(indent)   - Bounds: min(\(bounds.min)), max(\(bounds.max))")
 
+            // Log material information
             for (index, material) in modelComponent.materials.enumerated() {
-                if let simpleMaterial = material as? SimpleMaterial {
-                    print("\(indent)   - Material \(index): color=\(simpleMaterial.color), roughness=\(simpleMaterial.roughness)")
-                } else {
-                    print("\(indent)   - Material \(index): type=\(type(of: material))")
-                }
+                print("\(indent)   - Material \(index): \(type(of: material))")
             }
         }
 
@@ -378,94 +443,311 @@ class RealityKitObjectPlacementManager: ObservableObject {
         }
     }
 
-    // Validate placement position is reasonable and within camera view
+    // Scale calculation and material validation methods continue below...
+    // (Note: Debug visualization methods have been removed for clean AR experience)
+
+    // Detect and correct hierarchy position offsets that can cause objects to be placed incorrectly
+    private func detectAndCorrectHierarchyOffsets(for entity: Entity) {
+        print("🔍 Detecting and fixing hierarchy position offsets...")
+
+        // Define threshold for problematic position offsets (anything > 5 meters)
+        let offsetThreshold: Float = 5.0
+        var correctedCount = 0
+
+        // Recursively search for and fix entities with large position offsets
+        func findAndFixOffsets(_ currentEntity: Entity, accumulated: SIMD3<Float> = SIMD3<Float>(0, 0, 0)) {
+            let currentPosition = currentEntity.position
+            let newAccumulated = accumulated + currentPosition
+
+            // Check if this entity has a significant offset
+            let offsetMagnitude = simd_length(currentPosition)
+            if offsetMagnitude > offsetThreshold {
+                print("🚨 Found large position offset in entity '\(currentEntity.name)':")
+                print("   Original position: \(currentPosition)")
+                print("   Offset magnitude: \(offsetMagnitude)m")
+
+                // Reset to zero position - the parent hierarchy should handle positioning
+                currentEntity.position = SIMD3<Float>(0, 0, 0)
+                correctedCount += 1
+
+                print("   ✅ Reset position to origin")
+            }
+
+            // Continue recursively with children
+            for child in currentEntity.children {
+                findAndFixOffsets(child, accumulated: newAccumulated)
+            }
+        }
+
+        // Start recursive search
+        findAndFixOffsets(entity)
+
+        if correctedCount > 0 {
+            print("✅ No significant hierarchy offsets detected - no correction needed")
+        } else {
+            print("🔧 Corrected \(correctedCount) entities with large position offsets")
+        }
+    }
+
+    // Validate and ensure placement position is reasonable for AR viewing
     private func validatePlacementPosition(_ position: SIMD3<Float>, cameraPosition: SIMD3<Float>) -> SIMD3<Float> {
         var validatedPosition = position
 
-        // Ensure object is not too close or too far from camera
+        // Ensure object is within reasonable distance from camera
         let distance = simd_length(position - cameraPosition)
-        let minDistance: Float = 0.5 // 50cm minimum
-        let maxDistance: Float = 8.0 // 8m maximum
+        let maxDistance: Float = 8.0   // 8 meters max for furniture
+        let minDistance: Float = 1.0   // 1 meter min for furniture viewing
 
-        if distance < minDistance {
-            // Too close - move further away
-            let direction = simd_normalize(position - cameraPosition)
-            validatedPosition = cameraPosition + direction * minDistance
-            print("📐 Object too close (\(distance)m), moved to \(minDistance)m")
-        } else if distance > maxDistance {
-            // Too far - bring closer
-            let direction = simd_normalize(position - cameraPosition)
-            validatedPosition = cameraPosition + direction * maxDistance
-            print("📐 Object too far (\(distance)m), moved to \(maxDistance)m")
+        if distance > maxDistance {
+            let horizontalDirection = normalize(SIMD3<Float>(position.x - cameraPosition.x, 0, position.z - cameraPosition.z))
+            validatedPosition = SIMD3<Float>(
+                cameraPosition.x + horizontalDirection.x * maxDistance,
+                position.y, // Keep floor height
+                cameraPosition.z + horizontalDirection.z * maxDistance
+            )
+            print("📐 Furniture too far (\(distance)m), moved to \(maxDistance)m (keeping floor level)")
+        } else if distance < minDistance {
+            let horizontalDirection = normalize(SIMD3<Float>(position.x - cameraPosition.x, 0, position.z - cameraPosition.z))
+            validatedPosition = SIMD3<Float>(
+                cameraPosition.x + horizontalDirection.x * minDistance,
+                position.y, // Keep floor height
+                cameraPosition.z + horizontalDirection.z * minDistance
+            )
+            print("📐 Furniture too close (\(distance)m), moved to \(minDistance)m (keeping floor level)")
         }
 
-        // Ensure object is at reasonable height (not underground or floating too high)
-        let minHeight: Float = 0.0  // Floor level
-        let maxHeight: Float = 3.0  // 3m ceiling
+        // Note: Floor grounding is now handled at entity placement time with bounds awareness
+        // This validation only handles distance constraints, not floor positioning
 
-        if validatedPosition.y < minHeight {
-            validatedPosition.y = minHeight
-            print("📐 Object below floor, moved to floor level")
-        } else if validatedPosition.y > maxHeight {
-            validatedPosition.y = maxHeight
-            print("📐 Object above ceiling, moved to ceiling level")
+        // Sanity check: ensure Y coordinate is reasonable (basic validation)
+        if validatedPosition.y < -2.0 || validatedPosition.y > 5.0 {
+            validatedPosition.y = 0.5 // Default to reasonable height above world origin
+            print("📐 Position Y coordinate invalid (\(position.y)), reset to safe default (0.5)")
         }
 
-        if validatedPosition != position {
-            print("✅ Position validated: \(position) → \(validatedPosition)")
-        }
-
+        print("✅ Validated furniture position: \(validatedPosition) (bounds-aware grounding will be applied)")
         return validatedPosition
     }
 
-    // Adjust model scale and materials for better visibility
-    private func adjustModelForVisibility(_ entity: Entity) {
-        // Fix scale hierarchy issues first
-        fixEntityScaleHierarchy(entity)
+    // Reset all entity scales in hierarchy to unity (1,1,1)
+    private func resetAllEntityScales(in entity: Entity) {
+        print("🔍 Resetting ALL entity scales to (1,1,1) throughout hierarchy...")
 
-        // Check if entity has model component and get bounds
-        if let modelComponent = entity.components[ModelComponent.self] {
-            let bounds = modelComponent.mesh.bounds
-            let size = bounds.max - bounds.min
-            let maxDimension = max(size.x, max(size.y, size.z))
+        // Recursively reset all scales to unity
+        func resetEntityScale(_ entity: Entity) {
+            let originalScale = entity.scale
+            entity.scale = SIMD3<Float>(1, 1, 1)
 
-            print("📏 Original model size: \(size), max dimension: \(maxDimension)")
+            print("🔧 Reset entity '\(entity.name.isEmpty ? "" : entity.name)' scale:")
+            print("   Before: \(originalScale)")
+            print("   After: \(entity.scale)")
 
-            // If model is too small (less than 10cm), scale it up
-            if maxDimension < 0.1 {
-                let scaleFactor: Float = 0.5 / maxDimension // Scale to 50cm
-                entity.scale = SIMD3<Float>(scaleFactor, scaleFactor, scaleFactor)
-                print("🔧 Scaled up tiny model by factor: \(scaleFactor)")
-            }
-            // If model is extremely large (more than 5m), scale it down
-            else if maxDimension > 5.0 {
-                let scaleFactor: Float = 2.0 / maxDimension // Scale to 2m
-                entity.scale = SIMD3<Float>(scaleFactor, scaleFactor, scaleFactor)
-                print("🔧 Scaled down large model by factor: \(scaleFactor)")
-            }
-
-            // Ensure model has materials
-            if modelComponent.materials.isEmpty {
-                var updatedComponent = modelComponent
-                updatedComponent.materials = [SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)]
-                entity.components.set(updatedComponent)
-                print("🎨 Added default material to placed model")
+            // Recursively process children
+            for child in entity.children {
+                resetEntityScale(child)
             }
         }
 
-        // Recursively adjust child entities
-        for child in entity.children {
-            adjustModelForVisibility(child)
+        // Start the recursive reset
+        resetEntityScale(entity)
+        print("✅ Scale reset complete - all entities now at unity scale")
+    }
+
+    // Calculate final entity bounds after scale reset
+    private func calculateEntityBounds(_ entity: Entity) -> SIMD3<Float>? {
+        // Find the first ModelComponent in the hierarchy to get bounds
+        func findModelBounds(_ entity: Entity) -> BoundingBox? {
+            if let modelComponent = entity.components[ModelComponent.self] {
+                return modelComponent.mesh.bounds
+            }
+            for child in entity.children {
+                if let bounds = findModelBounds(child) {
+                    return bounds
+                }
+            }
+            return nil
+        }
+
+        if let bounds = findModelBounds(entity) {
+            let dimensions = bounds.extents
+            print("📏 Found ModelComponent bounds at unity scale: \(dimensions)")
+            return dimensions
+        }
+
+        print("⚠️ No ModelComponent bounds found")
+        return nil
+    }
+
+    // Calculate floor-grounded position accounting for object bottom bounds
+    // This ensures the bottom of the furniture touches the floor instead of the center/anchor point
+    private func calculateGroundedPosition(basePosition: SIMD3<Float>, entity: Entity, floorHeight: Float, clearance: Float) -> SIMD3<Float> {
+        // Get object bounds to calculate bottom offset
+        if let unscaledBounds = calculateEntityBounds(entity) {
+            // Get the entity's actual scale factor to calculate scaled bounds
+            let entityScale = entity.scale
+
+            // Calculate scaled bounds (account for the actual applied scale)
+            let scaledBounds = SIMD3<Float>(
+                unscaledBounds.x * entityScale.x,
+                unscaledBounds.y * entityScale.y,
+                unscaledBounds.z * entityScale.z
+            )
+
+            // Calculate the bottom extent of the scaled object (assuming anchor is at center)
+            let bottomOffset = scaledBounds.y / 2.0 // Half height from center to bottom
+
+            // Adjust Y position so the bottom of the object sits on the floor
+            // Formula: objectCenter.y = floorHeight + clearance + bottomOffset
+            let groundedY = floorHeight + clearance + bottomOffset
+
+            print("📏 Grounding object:")
+            print("   Unscaled bounds.y=\(unscaledBounds.y), entity scale=\(entityScale.y)")
+            print("   Scaled bounds.y=\(scaledBounds.y), bottomOffset=\(bottomOffset)")
+            print("   Original Y: \(basePosition.y) -> Grounded Y: \(groundedY)")
+
+            return SIMD3<Float>(basePosition.x, groundedY, basePosition.z)
+        } else {
+            // No bounds available, use original position
+            print("⚠️ No bounds available for grounding, using original position")
+            return basePosition
         }
     }
 
-    // Fix entity scale hierarchy issues that make models invisible
-    private func fixEntityScaleHierarchy(_ entity: Entity) {
-        let currentScale = entity.scale
-        let minVisibleScale: Float = 0.1 // Any scale smaller than this is problematic
+    // Apply smart scaling based on calculated bounds
+    private func applyTargetScale(to entity: Entity, targetSize: Float, originalBounds: SIMD3<Float>) {
+        // Calculate the maximum dimension to scale uniformly
+        let maxDimension = max(originalBounds.x, max(originalBounds.y, originalBounds.z))
 
-        // Check if any component of the scale is too small
-        if currentScale.x < minVisibleScale || currentScale.y < minVisibleScale || currentScale.z < minVisibleScale {
+        // Calculate scale factor to achieve target size
+        let scaleFactor = targetSize / maxDimension
+        let finalScale = SIMD3<Float>(scaleFactor, scaleFactor, scaleFactor)
+
+        // Apply the calculated scale to the root entity
+        entity.scale = finalScale
+
+        print("🎯 Applied single root-level scale:")
+        print("   Original mesh size: \(originalBounds)")
+        print("   Max dimension: \(maxDimension)m")
+        print("   Target size: \(targetSize)m")
+        print("   Root scale factor: \(scaleFactor)")
+        print("   Final root entity scale: \(finalScale)")
+    }
+
+    // Fix material validation and enhancement
+    private func fixModelMaterials(for entity: Entity) {
+        print("🔧 Fixing materials throughout entity hierarchy...")
+
+        // Recursively process entity hierarchy for material fixes
+        func processEntityMaterials(_ entity: Entity, level: Int = 0) {
+            let entityDisplayName = entity.name.isEmpty ? "unnamed" : entity.name
+
+            // Check if entity has ModelComponent with materials
+            if let modelComponent = entity.components[ModelComponent.self] {
+                print("🎯 Processing materials for entity '\(entityDisplayName)' at address: \(Unmanaged.passUnretained(entity).toOpaque())")
+                print("   📋 Original material count: \(modelComponent.materials.count)")
+
+                var updatedMaterials: [Material] = []
+                var materialChanged = false
+
+                // Process each material
+                for (index, material) in modelComponent.materials.enumerated() {
+                    print("   📋 Original material \(index): \(type(of: material))")
+
+                    if let fixedMaterial = validateAndFixMaterial(material, index: index, entityName: entityDisplayName) {
+                        updatedMaterials.append(fixedMaterial)
+                        materialChanged = true
+                        print("   🔄 Replaced material \(index) with \(type(of: fixedMaterial))")
+                    } else {
+                        updatedMaterials.append(material)
+                        print("   ✅ Kept original material \(index)")
+                    }
+                }
+
+                // Apply updated materials if any changes were made
+                if materialChanged {
+                    var updatedModelComponent = modelComponent
+                    updatedModelComponent.materials = updatedMaterials
+                    entity.components[ModelComponent.self] = updatedModelComponent
+                    print("   📝 Updated materials array with \(updatedMaterials.count) materials")
+                    print("   ✅ Applied updated ModelComponent with fixed materials")
+                }
+            }
+
+            // Recursively process children
+            for child in entity.children {
+                processEntityMaterials(child, level: level + 1)
+            }
+        }
+
+        // Start processing from root entity
+        processEntityMaterials(entity)
+        print("✅ Material fixes complete")
+    }
+
+    // Validate and fix individual materials (preserve good materials, only fix problematic ones)
+    private func validateAndFixMaterial(_ material: Material, index: Int, entityName: String) -> Material? {
+        if let pbrMaterial = material as? PhysicallyBasedMaterial {
+            print("🔍 Inspecting PhysicallyBasedMaterial \(index) on entity '\(entityName)'")
+
+            // First check if the material has a good texture - if so, preserve it completely
+            if let baseTexture = pbrMaterial.baseColor.texture {
+                print("   🖼️ Found texture - preserving PBR material as-is (no conversion needed)")
+                print("   ✅ Material has texture, skipping all modifications")
+                return nil // Keep original PBR material unchanged
+            }
+
+            // No texture, check if the color is problematic
+            let baseColorTint = pbrMaterial.baseColor.tint
+            print("   🎨 No texture found, checking color: \(baseColorTint)")
+
+            // Check if color needs enhancement (more conservative check)
+            if shouldEnhanceColor(baseColorTint) {
+                print("   ⚠️ Color appears problematic, applying enhancement...")
+
+                // Only now convert to UnlitMaterial with enhanced color
+                let enhancedColor = enhanceColorIfNeeded(baseColorTint)
+                let preservedMaterial = UnlitMaterial(color: enhancedColor)
+
+                print("   🔧 Converted PBR → UnlitMaterial with enhanced color: \(enhancedColor)")
+                print("   🌟 Material should now be visible and realistic")
+                return preservedMaterial
+            } else {
+                print("   ✅ Color looks good, preserving original PBR material")
+                return nil // Keep original PBR material unchanged
+            }
+
+        } else if let simpleMaterial = material as? SimpleMaterial {
+            print("🔍 Inspecting SimpleMaterial \(index) on entity '\(entityName)'")
+
+            // SimpleMaterials from RealityKit are typically well-formed
+            // Only apply fixes if there are obvious issues
+            print("   ✅ SimpleMaterial appears healthy")
+            return nil // No fix needed for SimpleMaterials
+
+        } else {
+            // Other material types (UnlitMaterial, VideoMaterial, etc.)
+            print("🔍 Found other material type \(type(of: material)) \(index) on entity '\(entityName)'")
+            print("   ⚠️ Unknown material type - using fallback SimpleMaterial for safety")
+
+            // Create safe fallback for unknown material types using dark grey UnlitMaterial
+            let darkGreyColor = UIColor(red: 0.3, green: 0.3, blue: 0.3, alpha: 1.0)
+            let fallbackMaterial = UnlitMaterial(color: darkGreyColor)
+
+            print("   🔧 Converted unknown → UnlitMaterial")
+            print("   🌟 Material should now be guaranteed visible")
+
+            return fallbackMaterial
+        }
+    }
+
+    // Fix problematic entity scales in hierarchy
+    private func fixEntityScaleHierarchy(_ entity: Entity) {
+        // Check if entity has problematic scale values
+        let currentScale = entity.scale
+        let hasProblematicScale = currentScale.x < 0.001 || currentScale.y < 0.001 || currentScale.z < 0.001 ||
+                                 currentScale.x > 1000 || currentScale.y > 1000 || currentScale.z > 1000
+
+        if hasProblematicScale {
             print("⚠️ Found problematic scale on entity '\(entity.name.isEmpty ? "unnamed" : entity.name)': \(currentScale)")
 
             // Reset to reasonable scale - preserve proportions but make visible
@@ -488,57 +770,125 @@ class RealityKitObjectPlacementManager: ObservableObject {
             let object = placedObjects[index]
             scene?.removeAnchor(object.anchorEntity)
             placedObjects.remove(at: index)
-            
+
             print("🗑️ Removed AR object with ID: \(objectId)")
         }
     }
-    
+
     // Clear all placed AR objects
     func clearAllObjects() {
         for placedObject in placedObjects {
             scene?.removeAnchor(placedObject.anchorEntity)
         }
         placedObjects.removeAll()
-        
-        isReadyToPlace = false
-        generatedModel = nil
-        
-        print("🧹 Cleared all AR objects")
+
+        print("🗑️ Cleared all \(placedObjects.count) AR objects")
     }
-    
+
     // Reset for new AR session
     func resetForNewSession() {
         clearAllObjects()
-        print("🔄 Reset RealityKit placement manager for new session")
+        isReadyToPlace = false
+        generatedModel = nil
+
+        print("🔄 Reset placement manager for new AR session")
     }
-    
-    // Monitor placed objects to ensure they remain visible when camera moves
-    func validateObjectVisibility() {
-        guard let arView = arView else { return }
-        
+
+    // Diagnose object visibility
+    func diagnoseObjectVisibility() {
+        guard let arView = arView else {
+            print("📊 No ARView available for diagnosis")
+            return
+        }
+
         let cameraPosition = arView.cameraTransform.translation
         var invisibleCount = 0
-        
+
+        print("📊 Diagnosing visibility of \(placedObjects.count) placed objects...")
+
         for placedObject in placedObjects {
-            let distance = simd_length(placedObject.position - cameraPosition)
-            
+            let distance = simd_length(placedObject.entity.position - cameraPosition)
+
             // Check if object is beyond reasonable viewing distance
             if distance > 200.0 {
-                print("⚠️ Object at \(placedObject.position) is \(distance) units from camera - may be invisible")
+                print("⚠️ Object at \(placedObject.entity.position) is \(distance) units from camera - may be invisible")
                 invisibleCount += 1
             }
-            
-            // Ensure object is still in scene
-            if scene!.anchors.first(where: { $0 === placedObject.anchorEntity }) == nil {
-                print("⚠️ Object anchor has been removed from scene - re-adding")
-                scene?.addAnchor(placedObject.anchorEntity)
-            }
         }
-        
+
         if invisibleCount > 0 {
-            print("📊 Visibility check: \(invisibleCount)/\(placedObjects.count) objects may be invisible")
+            print("🚨 Found \(invisibleCount) potentially invisible objects")
+        } else {
+            print("✅ All objects appear to be within reasonable viewing distance")
         }
     }
+
+    // Check if color needs enhancement (conservative approach)
+    private func shouldEnhanceColor(_ color: UIColor) -> Bool {
+        // Extract RGB components to check if color is truly problematic
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+
+        // Only enhance colors that are truly problematic:
+        // 1. Nearly invisible (very dark) - all RGB < 0.15
+        let isNearlyInvisible = red < 0.15 && green < 0.15 && blue < 0.15
+
+        // 2. Pure grey from failed processing - very low saturation AND low brightness
+        let maxComponent = max(red, max(green, blue))
+        let minComponent = min(red, min(green, blue))
+        let isProcessingGrey = (maxComponent - minComponent) < 0.05 && maxComponent < 0.3
+
+        // 3. Completely white/transparent (indicates missing material data)
+        let isWhiteOrTransparent = (red > 0.95 && green > 0.95 && blue > 0.95) || alpha < 0.1
+
+        let needsEnhancement = isNearlyInvisible || isProcessingGrey || isWhiteOrTransparent
+
+        if needsEnhancement {
+            print("   🔍 Color needs enhancement - RGB(\(red), \(green), \(blue)), Alpha(\(alpha))")
+            print("      Nearly invisible: \(isNearlyInvisible), Processing grey: \(isProcessingGrey), White/transparent: \(isWhiteOrTransparent)")
+        } else {
+            print("   ✅ Color looks good - RGB(\(red), \(green), \(blue)), keeping original")
+        }
+
+        return needsEnhancement
+    }
+
+    // Smart color enhancement for dark/grey materials from Stable Fast 3D
+    private func enhanceColorIfNeeded(_ originalColor: UIColor) -> UIColor {
+        // Extract RGB components to check if color is too dark or grey
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        originalColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+
+        // Check if color is too dark (all RGB values < 0.3) or too grey
+        let isDark = red < 0.3 && green < 0.3 && blue < 0.3
+        let maxComponent = max(red, max(green, blue))
+        let minComponent = min(red, min(green, blue))
+        let isGrey = (maxComponent - minComponent) < 0.1 && maxComponent < 0.5
+
+        if isDark || isGrey {
+            // Define realistic dark grey furniture color palette
+            let furnitureColors = [
+                UIColor(red: 0.25, green: 0.25, blue: 0.25, alpha: 1.0), // Dark charcoal
+                UIColor(red: 0.35, green: 0.35, blue: 0.35, alpha: 1.0), // Medium charcoal
+                UIColor(red: 0.3, green: 0.32, blue: 0.33, alpha: 1.0),  // Dark slate grey
+                UIColor(red: 0.28, green: 0.3, blue: 0.32, alpha: 1.0),  // Steel grey
+                UIColor(red: 0.32, green: 0.31, blue: 0.3, alpha: 1.0)   // Anthracite grey
+            ]
+
+            // Use object count to vary colors across different placed objects
+            let colorIndex = placedObjects.count % furnitureColors.count
+            let enhancedColor = furnitureColors[colorIndex]
+
+            print("   🎨 Enhanced problematic color RGB(\(red), \(green), \(blue)) → dark grey \(enhancedColor)")
+            return enhancedColor
+        }
+
+        // Color is already good, return original
+        return originalColor
+    }
+
+    // The next methods continue with the proper implementation...
+    // (Note: All duplicate methods have been removed to resolve compilation errors)
 }
 
 // MARK: - RealityKit Placed Object Model
@@ -547,53 +897,9 @@ struct RealityKitPlacedObject: Identifiable {
     let entity: Entity
     let anchorEntity: AnchorEntity
     let originalImage: UIImage?
-    let position: SIMD3<Float>
-    let is3DModel: Bool
-    let createdAt = Date()
-    
-    // Compatibility properties for existing code
-    var node: Entity { return entity }
-    
-    // Calculate estimated dimensions
-    var estimatedSize: CGSize {
-        if is3DModel {
-            // For 3D models, calculate from bounding box
-            if let modelComponent = entity.components[ModelComponent.self] {
-                let bounds = modelComponent.mesh.bounds
-                let size = bounds.max - bounds.min
-                return CGSize(width: CGFloat(size.x), height: CGFloat(size.y))
-            }
-        }
-        return CGSize(width: 1.0, height: 1.0)
-    }
-    
-    // Get object type description
-    var objectType: String {
-        return is3DModel ? "3D Model" : "Segmented Image"
-    }
-}
 
-// MARK: - Extensions for SIMD math operations
-extension SIMD3 where Scalar == Float {
-    static func + (left: SIMD3<Float>, right: SIMD3<Float>) -> SIMD3<Float> {
-        return SIMD3<Float>(left.x + right.x, left.y + right.y, left.z + right.z)
-    }
-    
-    static func - (left: SIMD3<Float>, right: SIMD3<Float>) -> SIMD3<Float> {
-        return SIMD3<Float>(left.x - right.x, left.y - right.y, left.z - right.z)
-    }
-    
-    static func * (vector: SIMD3<Float>, scalar: Float) -> SIMD3<Float> {
-        return SIMD3<Float>(vector.x * scalar, vector.y * scalar, vector.z * scalar)
-    }
-    
-    var length: Float {
-        return sqrt(x * x + y * y + z * z)
-    }
-    
-    var normalized: SIMD3<Float> {
-        let len = length
-        return len > 0 ? SIMD3<Float>(x / len, y / len, z / len) : SIMD3<Float>(0, 0, 0)
+    var position: SIMD3<Float> {
+        return entity.position
     }
 }
 
