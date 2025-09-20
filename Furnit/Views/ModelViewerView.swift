@@ -20,6 +20,8 @@ struct ModelViewerView: View {
     @State private var isARActive = false
     @State private var arStatusMessage = "Point at furniture objects"
     @State private var isProcessingAR = false
+    @State private var shouldRestartScanning = false
+    @State private var isInContinuousMode = false // Track if we're in continuous scanning mode
     
     var body: some View {
         GeometryReader { geometry in
@@ -55,6 +57,12 @@ struct ModelViewerView: View {
         .onDisappear {
             cleanupAR()
         }
+        .onChange(of: shouldRestartScanning) { _, newValue in
+            if newValue {
+                restartARScanning()
+                shouldRestartScanning = false // Reset the trigger
+            }
+        }
     }
     
     private func isLandscape(geometry: GeometryProxy) -> Bool {
@@ -76,7 +84,10 @@ struct ModelViewerView: View {
             HStack {
                 VStack(spacing: 16) {
                     // AR Button at bottom-left
-                    ARButton(isARActive: $isARActive) {
+                    ARButton(isARActive: Binding(
+                        get: { isARActive && !isInContinuousMode },
+                        set: { _ in toggleARMode() }
+                    )) {
                         toggleARMode()
                     }
                 }
@@ -113,7 +124,10 @@ struct ModelViewerView: View {
             // Right side controls - info, joystick, and AR button
             VStack(spacing: 16) {
                 // AR Button at bottom-left (moved to right side in landscape)
-                ARButton(isARActive: $isARActive) {
+                ARButton(isARActive: Binding(
+                    get: { isARActive && !isInContinuousMode },
+                    set: { _ in toggleARMode() }
+                )) {
                     toggleARMode()
                 }
                 
@@ -243,29 +257,49 @@ struct ModelViewerView: View {
     
     // Setup AR managers with scene references
     private func setupARManagers() {
-        // Setup will be completed when RealityKitView is ready
+        // Setup callback for object placement to automatically return to scanning mode
+        arObjectPlacementManager.onObjectPlaced = {
+            DispatchQueue.main.async {
+                self.shouldRestartScanning = true
+                print("🔄 Object placement callback triggered - will restart scanning")
+            }
+        }
+        print("✅ Set up AR managers with continuous scanning mode")
     }
     
     // Toggle AR mode on/off
     private func toggleARMode() {
         if isARActive {
-            // Stop AR mode
-            stopARMode()
+            // If in continuous mode, first capture should disable continuous mode and show stop button
+            if isInContinuousMode {
+                isInContinuousMode = false
+                print("📱 Button changed to stop icon - entering processing mode")
+                // Start new capture process
+                Task {
+                    await performARCapture()
+                }
+            } else {
+                // Stop AR mode completely
+                stopARMode()
+                print("📱 Button pressed - stopping AR mode")
+            }
         } else {
             // Start AR mode
             startARMode()
+            print("📱 Button pressed - starting AR mode")
         }
     }
     
     // Start AR mode and ARKit camera session
     private func startARMode() {
         isARActive = true
+        isInContinuousMode = false // Reset continuous mode when starting fresh
         arStatusMessage = "Starting ARKit camera..."
-        
+
         // Initialize AR processing state
         arProcessingStateManager.reset()
         arProcessingStateManager.startARSession()
-        
+
         // Start ARKit session for camera frame access
         arKitCameraManager.startSession()
         
@@ -291,16 +325,37 @@ struct ModelViewerView: View {
     private func stopARMode() {
         isARActive = false
         isProcessingAR = false
+        isInContinuousMode = false // Reset continuous mode when stopping
         arStatusMessage = "Point at furniture objects"
-        
+
         // Reset AR processing state
         arProcessingStateManager.reset()
-        
+
         // Stop ARKit session
         arKitCameraManager.stopSession()
-        
+
         // Clear AR objects
         arObjectPlacementManager.clearAllObjects()
+    }
+
+    // Restart AR scanning mode after object placement (keeps session active)
+    private func restartARScanning() {
+        // Reset processing state to scanning mode (but keep AR active)
+        isProcessingAR = false
+        arStatusMessage = "Point at furniture objects"
+
+        // Reset AR processing state to pointing (ready for next scan)
+        arProcessingStateManager.startARSession()
+
+        // Reset object placement manager for next object (keep placed objects)
+        arObjectPlacementManager.isReadyToPlace = false
+
+        // Enable continuous scanning mode - this makes button show as camera icon
+        // while keeping AR session active for seamless scanning workflow
+        isInContinuousMode = true
+
+        print("🔄 Restarted AR scanning mode - ready for next object")
+        print("📱 Button reverted to camera icon for continuous scanning")
     }
     
     // Perform AR capture and processing using backend API

@@ -16,9 +16,12 @@ class RealityKitObjectPlacementManager: ObservableObject {
     // World anchor reference for navigation compatibility
     weak var worldAnchor: AnchorEntity?
     
-    // Object placement properties  
+    // Object placement properties
     private var generatedModel: Entity? // 3D model from backend API
     private let placementHeight: Float = 0.05 // Small lift above floor for visual clarity
+
+    // Callback for successful object placement (to trigger return to scanning mode)
+    var onObjectPlaced: (() -> Void)?
     
     // Placement distance constraints for better user experience
     private let maxPlacementDistance: Float = 8.0 // Maximum distance from camera for placement (reduced from 50.0)
@@ -277,6 +280,12 @@ class RealityKitObjectPlacementManager: ObservableObject {
 
         // Log detailed entity hierarchy for debugging
         logEntityHierarchy(placedModelEntity, level: 0)
+
+        // Trigger callback to return to scanning mode after successful placement
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.onObjectPlaced?()
+            print("🔄 Triggered callback to return to AR scanning mode")
+        }
 
         return true
     }

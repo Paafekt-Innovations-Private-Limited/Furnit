@@ -6,7 +6,7 @@ import UIKit
 @MainActor
 class Stable3DAPIClient: ObservableObject {
     // API base URL for the backend service
-    private let baseURL = "https://cff7e33424500.notebooks.jarvislabs.net/proxy/8000"
+    private let baseURL = "https://32deb03431020.notebooks.jarvislabs.net/proxy/8000"
     
     // URLSession for API requests with proper configuration
     private let urlSession: URLSession
