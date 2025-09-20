@@ -7,6 +7,8 @@ enum ARProcessingState: Equatable {
     case idle
     case pointing
     case capturing
+    case detectingQR
+    case downloadingAsset(progress: Double)
     case uploading
     case processing(progress: Double)
     case baking
@@ -23,6 +25,16 @@ enum ARProcessingState: Equatable {
             return "Point at furniture objects"
         case .capturing:
             return "Capturing image..."
+        case .detectingQR:
+            return "Scanning for QR codes..."
+        case .downloadingAsset(let progress):
+            if progress > 0.8 {
+                return "Almost ready..."
+            } else if progress > 0.5 {
+                return "Downloading 3D model..."
+            } else {
+                return "Connecting to server..."
+            }
         case .uploading:
             return "Uploading to server..."
         case .processing(let progress):
@@ -53,6 +65,10 @@ enum ARProcessingState: Equatable {
             return "Aim camera at chairs, tables, or sofas"
         case .capturing:
             return "Hold steady while capturing"
+        case .detectingQR:
+            return "Looking for QR codes with 3D asset links"
+        case .downloadingAsset(let progress):
+            return "Progress: \(Int(progress * 100))%"
         case .uploading:
             return "Sending image for processing"
         case .processing(let progress):
@@ -69,7 +85,7 @@ enum ARProcessingState: Equatable {
     // Whether to show progress indicator
     var showsProgress: Bool {
         switch self {
-        case .capturing, .uploading, .processing, .baking, .downloading:
+        case .capturing, .detectingQR, .downloadingAsset, .uploading, .processing, .baking, .downloading:
             return true
         default:
             return false
@@ -81,10 +97,14 @@ enum ARProcessingState: Equatable {
         switch self {
         case .capturing:
             return 0.1
+        case .detectingQR:
+            return 0.15
+        case .downloadingAsset(let progress):
+            return 0.2 + (progress * 0.7) // Map to 20%-90% range for QR asset download
         case .uploading:
             return 0.2
         case .processing(let progress):
-            return 0.2 + (progress * 0.7) // Map to 20%-90% range
+            return 0.2 + (progress * 0.7) // Map to 20%-90% range for backend processing
         case .baking:
             return 0.9
         case .downloading:
@@ -107,7 +127,7 @@ enum ARProcessingState: Equatable {
     // Whether AR processing is currently active
     var isProcessing: Bool {
         switch self {
-        case .capturing, .uploading, .processing, .baking, .downloading:
+        case .capturing, .detectingQR, .downloadingAsset, .uploading, .processing, .baking, .downloading:
             return true
         default:
             return false
@@ -124,7 +144,7 @@ enum ARProcessingState: Equatable {
         switch self {
         case .idle, .pointing:
             return .blue
-        case .capturing, .uploading, .processing, .baking, .downloading:
+        case .capturing, .detectingQR, .downloadingAsset, .uploading, .processing, .baking, .downloading:
             return .orange
         case .ready:
             return .green
@@ -140,6 +160,10 @@ enum ARProcessingState: Equatable {
             return "viewfinder"
         case .capturing:
             return "camera.fill"
+        case .detectingQR:
+            return "qrcode.viewfinder"
+        case .downloadingAsset:
+            return "square.and.arrow.down"
         case .uploading:
             return "icloud.and.arrow.up"
         case .processing, .baking:
@@ -156,9 +180,9 @@ enum ARProcessingState: Equatable {
     // Animation style for progress indicator
     var progressAnimation: Animation? {
         switch self {
-        case .capturing, .uploading, .downloading:
+        case .capturing, .detectingQR, .uploading, .downloading:
             return .easeInOut(duration: 0.5).repeatForever(autoreverses: true)
-        case .processing, .baking:
+        case .downloadingAsset, .processing, .baking:
             return .linear(duration: 1.0).repeatForever(autoreverses: false)
         default:
             return .easeInOut(duration: 0.3)
@@ -236,7 +260,22 @@ extension ARProcessingStateManager {
     func beginCapture() {
         updateState(.capturing)
     }
-    
+
+    // Begin QR code detection
+    func beginQRDetection() {
+        updateState(.detectingQR)
+    }
+
+    // Begin asset download from QR code URL
+    func beginAssetDownload(progress: Double = 0.0) {
+        updateState(.downloadingAsset(progress: progress))
+    }
+
+    // Update asset download progress
+    func updateAssetDownloadProgress(_ progress: Double) {
+        updateState(.downloadingAsset(progress: progress))
+    }
+
     // Begin upload process
     func beginUpload() {
         updateState(.uploading)

@@ -17,6 +17,8 @@ struct ModelViewerView: View {
     @StateObject private var ar3DModelProcessor = AR3DModelProcessor()
     @StateObject private var arProcessingStateManager = ARProcessingStateManager()
     @StateObject private var arObjectPlacementManager = RealityKitObjectPlacementManager()
+    @StateObject private var qrCodeDetectionService = QRCodeDetectionService()
+    @StateObject private var assetDownloadService = AssetDownloadService()
     @State private var isARActive = false
     @State private var arStatusMessage = "Point at furniture objects"
     @State private var isProcessingAR = false
@@ -386,11 +388,88 @@ struct ModelViewerView: View {
             return
         }
         
+        // First, check for QR codes in the captured image
+        await MainActor.run {
+            arStatusMessage = "Scanning for QR codes..."
+            arProcessingStateManager.beginQRDetection()
+        }
+
+        let qrResult = await qrCodeDetectionService.detectQRCode(in: capturedImage)
+
+        if qrResult.hasQRCode, let qrURL = qrResult.extractedURL {
+            // QR code found with valid URL - download asset directly
+            print("🔍 QR code detected with URL: \(qrURL.absoluteString)")
+
+            await MainActor.run {
+                arStatusMessage = "QR code found! Downloading 3D model..."
+                arProcessingStateManager.beginAssetDownload()
+            }
+
+            // Validate it's a 3D asset URL using enhanced validation
+            if await qrCodeDetectionService.isValid3DAssetURL(qrURL) {
+                // Monitor download progress
+                let progressCancellable = assetDownloadService.$downloadProgress
+                    .sink { progress in
+                        Task { @MainActor in
+                            arProcessingStateManager.updateAssetDownloadProgress(progress)
+                        }
+                    }
+
+                // Download the 3D asset
+                let downloadResult = await assetDownloadService.download3DAsset(from: qrURL)
+
+                // Cancel progress monitoring
+                progressCancellable.cancel()
+
+                if downloadResult.success, let downloadedEntity = downloadResult.entity {
+                    // Successfully downloaded 3D asset
+                    await MainActor.run {
+                        arObjectPlacementManager.prepareForPlacement(with3DModel: downloadedEntity)
+                        arStatusMessage = "3D model ready! Tap to place"
+                        arProcessingStateManager.readyForPlacement()
+                        isProcessingAR = false
+                    }
+
+                    // Clean up downloaded file if needed
+                    if let fileURL = downloadResult.fileURL {
+                        assetDownloadService.cleanupDownloadedFile(at: fileURL)
+                    }
+
+                    print("✅ QR code workflow completed successfully")
+                    return
+
+                } else {
+                    // Download failed, fall back to backend processing
+                    let errorMsg = downloadResult.errorMessage ?? "Failed to download 3D model"
+                    print("⚠️ QR asset download failed: \(errorMsg). Falling back to backend processing.")
+
+                    await MainActor.run {
+                        arStatusMessage = "Download failed, generating 3D model..."
+                    }
+                }
+            } else {
+                // Not a 3D asset URL, fall back to backend processing
+                print("⚠️ QR URL is not a 3D asset. Falling back to backend processing.")
+
+                await MainActor.run {
+                    arStatusMessage = "QR code found but not a 3D asset, generating model..."
+                }
+            }
+        } else {
+            // No QR code found, proceed with backend processing
+            print("📱 No QR code detected, proceeding with backend 3D generation")
+
+            await MainActor.run {
+                arStatusMessage = "No QR code found, generating 3D model..."
+            }
+        }
+
+        // Backend processing workflow (original flow)
         await MainActor.run {
             arStatusMessage = "Uploading image for 3D generation..."
             arProcessingStateManager.beginUpload()
         }
-        
+
         // Process image using backend API for 3D model generation
         guard let generated3DModel = await ar3DModelProcessor.processImage(capturedImage) else {
             await MainActor.run {
