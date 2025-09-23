@@ -87,7 +87,10 @@ struct ModelViewerView: View {
                 VStack(spacing: 16) {
                     // AR Button at bottom-left
                     ARButton(isARActive: Binding(
-                        get: { isARActive && !isInContinuousMode },
+                        get: {
+                            // Show red (active) only when processing, blue when ready to start
+                            isProcessingAR
+                        },
                         set: { _ in toggleARMode() }
                     )) {
                         toggleARMode()
@@ -127,7 +130,10 @@ struct ModelViewerView: View {
             VStack(spacing: 16) {
                 // AR Button at bottom-left (moved to right side in landscape)
                 ARButton(isARActive: Binding(
-                    get: { isARActive && !isInContinuousMode },
+                    get: {
+                        // Show red (active) only when processing, blue when ready to start
+                        isProcessingAR
+                    },
                     set: { _ in toggleARMode() }
                 )) {
                     toggleARMode()
@@ -259,66 +265,60 @@ struct ModelViewerView: View {
     
     // Setup AR managers with scene references
     private func setupARManagers() {
-        // Setup callback for object placement to automatically return to scanning mode
+        // Setup callback for object placement to clean up UI state only
         arObjectPlacementManager.onObjectPlaced = {
             DispatchQueue.main.async {
-                self.shouldRestartScanning = true
-                print("🔄 Object placement callback triggered - will restart scanning")
+                // Reset AR processing state to end current session
+                self.arProcessingStateManager.reset()
+
+                // Reset UI state flags to end AR mode
+                self.isProcessingAR = false
+                self.isInContinuousMode = false
+                self.isARActive = false
+
+                print("✅ Object placed - AR session completed, user can manually start next scan")
             }
         }
         print("✅ Set up AR managers with continuous scanning mode")
     }
     
-    // Toggle AR mode on/off
+    // Simple toggle: Blue button starts everything, Red button stops everything
     private func toggleARMode() {
-        if isARActive {
-            // If in continuous mode, first capture should disable continuous mode and show stop button
-            if isInContinuousMode {
-                isInContinuousMode = false
-                print("📱 Button changed to stop icon - entering processing mode")
-                // Start new capture process
-                Task {
-                    await performARCapture()
-                }
-            } else {
-                // Stop AR mode completely
-                stopARMode()
-                print("📱 Button pressed - stopping AR mode")
-            }
+        if isProcessingAR {
+            // Red button pressed - stop/cancel everything
+            stopARMode()
+            print("📱 Red button pressed - stopping AR processing")
         } else {
-            // Start AR mode
+            // Blue button pressed - start AR mode (which auto-starts processing)
             startARMode()
-            print("📱 Button pressed - starting AR mode")
+            print("📱 Blue button pressed - starting AR mode with automatic processing")
         }
     }
     
-    // Start AR mode and ARKit camera session
+    // Start AR mode and automatically begin capture process
     private func startARMode() {
         isARActive = true
         isInContinuousMode = false // Reset continuous mode when starting fresh
+        isProcessingAR = true // Immediately show red button (stop available)
         arStatusMessage = "Starting ARKit camera..."
 
         // Initialize AR processing state
         arProcessingStateManager.reset()
         arProcessingStateManager.startARSession()
 
-        // Start ARKit session for camera frame access
-        arKitCameraManager.startSession()
-        
-        // Clear any existing AR objects
-        arObjectPlacementManager.resetForNewSession()
-        
-        // Wait for ARKit to initialize, then begin AR processing
+        // Keep existing placed objects visible - don't clear them
+        // Only reset placement state for new capture, not existing objects
+        arObjectPlacementManager.isReadyToPlace = false
+
+        // Lightweight restart - directly start capture process without camera session delays
         Task {
-            // Give ARKit time to initialize and start receiving frames
-            try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
-            
             await MainActor.run {
-                arStatusMessage = "Ready - tap to capture furniture"
+                arStatusMessage = "Starting capture for next object..."
                 arProcessingStateManager.updateState(.pointing)
+                print("🎯 Lightweight AR restart - starting capture process immediately")
             }
-            
-            // Start AR processing pipeline
+
+            // Directly trigger capture process (camera will start if needed)
             await performARCapture()
         }
     }
@@ -333,38 +333,60 @@ struct ModelViewerView: View {
         // Reset AR processing state
         arProcessingStateManager.reset()
 
-        // Stop ARKit session
+        // Stop ARKit session with explicit cleanup
         arKitCameraManager.stopSession()
 
-        // Clear AR objects
+        // Clear AR objects and reset placement state
         arObjectPlacementManager.clearAllObjects()
+        arObjectPlacementManager.isReadyToPlace = false
+
+        // Reset any ongoing AR services
+        qrCodeDetectionService.reset()
+        ar3DModelProcessor.reset()
+
+        print("🛑 AR mode stopped completely with full cleanup")
     }
 
-    // Restart AR scanning mode after object placement (keeps session active)
+    // Restart AR scanning mode after object placement
     private func restartARScanning() {
-        // Reset processing state to scanning mode (but keep AR active)
+        // Reset processing state to scanning mode
         isProcessingAR = false
         arStatusMessage = "Point at furniture objects"
+
+        // Restart AR session since it was stopped after capture
+        isARActive = true
+        isInContinuousMode = true
 
         // Reset AR processing state to pointing (ready for next scan)
         arProcessingStateManager.startARSession()
 
+        // Restart ARKit camera session for next capture
+        arKitCameraManager.startSession()
+
         // Reset object placement manager for next object (keep placed objects)
         arObjectPlacementManager.isReadyToPlace = false
 
-        // Enable continuous scanning mode - this makes button show as camera icon
-        // while keeping AR session active for seamless scanning workflow
-        isInContinuousMode = true
-
-        print("🔄 Restarted AR scanning mode - ready for next object")
-        print("📱 Button reverted to camera icon for continuous scanning")
+        print("🔄 Restarted AR scanning mode with camera session - ready for next object")
+        print("📱 Button shows camera icon for continuous scanning")
     }
     
     // Perform AR capture and processing using backend API
     private func performARCapture() async {
+        // Start camera session if not already running (for subsequent captures)
         await MainActor.run {
-            arStatusMessage = "Ready - tap to capture furniture"
+            if !arKitCameraManager.isSessionRunning {
+                arStatusMessage = "Starting camera for capture..."
+                arKitCameraManager.startSession()
+                print("📷 Started camera session for capture")
+            } else {
+                arStatusMessage = "Ready - tap to capture furniture"
+            }
             arProcessingStateManager.updateState(.pointing)
+        }
+
+        // Give camera a moment to initialize if just started
+        if !arKitCameraManager.isSessionRunning {
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
         }
         
         // Wait for user to tap (this will be triggered by AR button or gesture)
@@ -384,8 +406,19 @@ struct ModelViewerView: View {
                 arStatusMessage = errorMsg
                 arProcessingStateManager.setError(errorMsg)
                 isProcessingAR = false
+
+                // Stop physical camera session on capture error to prevent resource waste
+                arKitCameraManager.stopSession()
+                print("📷 Physical camera session stopped due to capture error")
             }
             return
+        }
+
+        // Stop physical camera session immediately after successful image capture
+        // This prevents unnecessary battery drain during processing
+        await MainActor.run {
+            arKitCameraManager.stopSession()
+            print("📷 Physical camera session stopped immediately after image capture")
         }
         
         // First, check for QR codes in the captured image
@@ -428,6 +461,9 @@ struct ModelViewerView: View {
                         arStatusMessage = "3D model ready! Tap to place"
                         arProcessingStateManager.readyForPlacement()
                         isProcessingAR = false
+
+                        // Camera session was already stopped after capture
+                        print("✅ QR asset download completed, ready for placement")
                     }
 
                     // Clean up downloaded file if needed
@@ -477,6 +513,9 @@ struct ModelViewerView: View {
                 arStatusMessage = errorMsg
                 arProcessingStateManager.setError(errorMsg)
                 isProcessingAR = false
+
+                // Camera session was already stopped after capture
+                print("❌ 3D model generation failed")
             }
             return
         }
@@ -487,14 +526,29 @@ struct ModelViewerView: View {
             arStatusMessage = "Tap to place 3D model in room"
             arProcessingStateManager.readyForPlacement()
             isProcessingAR = false
+
+            // Camera session was already stopped after capture
+            print("✅ 3D model generation completed, ready for placement")
         }
     }
     
     // Clean up AR resources
     private func cleanupAR() {
+        // Ensure camera session is completely stopped
         arKitCameraManager.stopSession()
+
+        // Reset all AR-related state
+        isARActive = false
+        isProcessingAR = false
+        isInContinuousMode = false
+
+        // Clear AR objects and reset managers
         arObjectPlacementManager.clearAllObjects()
+        arObjectPlacementManager.isReadyToPlace = false
         arProcessingStateManager.reset()
         ar3DModelProcessor.reset()
+        qrCodeDetectionService.reset()
+
+        print("🧹 Complete AR cleanup performed on view dismissal")
     }
 }
