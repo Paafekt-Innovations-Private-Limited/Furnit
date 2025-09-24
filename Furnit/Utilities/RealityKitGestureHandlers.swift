@@ -16,6 +16,9 @@ class RealityKitGestureHandlers {
     private var rotationGesture: UIRotationGestureRecognizer?
     private var longPressGesture: UILongPressGestureRecognizer?
     private var objectManipulationPanGesture: UIPanGestureRecognizer?
+
+    // Haptic feedback generator for object selection
+    private let hapticFeedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
     
     // Custom camera control for non-AR mode - direct camera manipulation
     private weak var cameraEntity: PerspectiveCamera?
@@ -37,6 +40,9 @@ class RealityKitGestureHandlers {
     init(arView: ARView) {
         self.arView = arView
         setupGestureRecognizers()
+
+        // Prepare haptic feedback generator for lower latency
+        hapticFeedbackGenerator.prepare()
     }
     
     // Set boundary manager for camera constraints
@@ -141,9 +147,13 @@ class RealityKitGestureHandlers {
         if let placementManager = objectPlacementManager {
             let success = placementManager.handleLongPress(at: location)
             if success {
+                // Trigger haptic feedback for successful object selection
+                hapticFeedbackGenerator.impactOccurred()
+
                 // Enable object manipulation gestures, disable camera gestures
                 enableObjectManipulationMode(true)
                 print("🎯 Long press successful - object selected for manipulation")
+                print("📳 Haptic feedback triggered for object selection")
             } else {
                 print("📍 Long press found no objects to manipulate")
             }
