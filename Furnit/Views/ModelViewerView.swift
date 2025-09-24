@@ -24,6 +24,13 @@ struct ModelViewerView: View {
     @State private var isProcessingAR = false
     @State private var shouldRestartScanning = false
     @State private var isInContinuousMode = false // Track if we're in continuous scanning mode
+
+    // Object manipulation state
+    @State private var showDeleteConfirmation = false
+    private var gestureHandlers: RealityKitGestureHandlers? {
+        // Access gesture handlers through the coordinator
+        return nil // TODO: We'll need to access this through RealityKitView
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -67,6 +74,14 @@ struct ModelViewerView: View {
                 restartARScanning()
                 shouldRestartScanning = false // Reset the trigger
             }
+        }
+        .alert("Delete Object", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                deleteSelectedObject()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Are you sure you want to delete this object? This action cannot be undone.")
         }
     }
     
@@ -304,59 +319,149 @@ struct ModelViewerView: View {
                 .transition(.opacity)
             }
 
-            // Show manipulation instructions when manipulating object
+            // Show manipulation instructions and control buttons when manipulating object
             if arObjectPlacementManager.isManipulatingObject {
-                HStack {
-                    Spacer()
+                ZStack {
+                    // Main instruction overlay (top center)
+                    VStack {
+                        HStack {
+                            Spacer()
 
-                    VStack(spacing: 12) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "hand.point.up.left.fill")
-                                .foregroundColor(.white)
-                                .font(.headline)
+                            VStack(spacing: 12) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "hand.point.up.left.fill")
+                                        .foregroundColor(.white)
+                                        .font(.headline)
 
-                            Text("Object Selected")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .fontWeight(.semibold)
+                                    Text("Object Selected")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                        .fontWeight(.semibold)
+                                }
+
+                                VStack(spacing: 6) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "arrow.left.and.right")
+                                            .foregroundColor(.white.opacity(0.8))
+                                            .font(.caption)
+
+                                        Text("Swipe horizontally to rotate")
+                                            .font(.caption)
+                                            .foregroundColor(.white.opacity(0.8))
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.green.opacity(0.9))
+                            )
+
+                            Spacer()
                         }
 
-                        VStack(spacing: 6) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.left.and.right")
-                                    .foregroundColor(.white.opacity(0.8))
-                                    .font(.caption)
+                        Spacer()
+                    }
 
-                                Text("Swipe horizontally to rotate")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.8))
+                    // Control buttons (bottom right)
+                    VStack {
+                        Spacer()
+
+                        HStack {
+                            Spacer()
+
+                            VStack(spacing: 12) {
+                                // Show Controls Button
+                                Button(action: {
+                                    // Placeholder for future functionality
+                                    print("🎮 Show controls tapped - functionality to be implemented")
+                                }) {
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.white)
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.black.opacity(0.7))
+                                        .clipShape(Circle())
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                                        )
+                                }
+
+                                // Cancel Button
+                                Button(action: {
+                                    cancelManipulation()
+                                }) {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.black.opacity(0.7))
+                                        .clipShape(Circle())
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                                        )
+                                }
+
+                                // Delete Button
+                                Button(action: {
+                                    showDeleteConfirmation = true
+                                }) {
+                                    Image(systemName: "trash.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.white)
+                                        .frame(width: 50, height: 50)
+                                        .background(Color.red.opacity(0.8))
+                                        .clipShape(Circle())
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                                        )
+                                }
                             }
-
-                            HStack(spacing: 8) {
-                                Image(systemName: "hand.raised.fill")
-                                    .foregroundColor(.white.opacity(0.8))
-                                    .font(.caption)
-
-                                Text("Release to finish")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.8))
-                            }
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 100) // Space above the bottom UI elements
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.green.opacity(0.9))
-                    )
-                    .animation(.easeInOut(duration: 0.3), value: arObjectPlacementManager.isManipulatingObject)
-
-                    Spacer()
                 }
                 .transition(.scale.combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.3), value: arObjectPlacementManager.isManipulatingObject)
             }
 
             Spacer()
+        }
+    }
+
+    // MARK: - Object Manipulation Actions
+
+    // Cancel object manipulation mode
+    private func cancelManipulation() {
+        // For now, directly call the object placement manager
+        // In the future, we could access gesture handlers through RealityKitView
+        arObjectPlacementManager.endObjectManipulation()
+        print("❌ Object manipulation cancelled by user")
+    }
+
+    // Delete the currently selected object
+    private func deleteSelectedObject() {
+        guard let selectedObject = arObjectPlacementManager.selectedObject else {
+            print("⚠️ No object selected for deletion")
+            return
+        }
+
+        print("🗑️ Starting object deletion process...")
+
+        // End manipulation mode FIRST to clean up UI state
+        arObjectPlacementManager.endObjectManipulation()
+
+        // Small delay to ensure UI state is updated before removing object
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            // Remove the object from the placement manager
+            self.arObjectPlacementManager.removeObject(selectedObject.id)
+
+            print("🗑️ Selected object deleted successfully")
         }
     }
 

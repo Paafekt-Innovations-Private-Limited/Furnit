@@ -173,10 +173,8 @@ class RealityKitGestureHandlers {
             gesture.setTranslation(.zero, in: arView)
 
         case .ended, .cancelled:
-            // End manipulation mode when user lifts finger
-            placementManager.endObjectManipulation()
-            enableObjectManipulationMode(false)
-            print("✅ Object manipulation ended")
+            // Keep manipulation mode active - user must explicitly cancel via buttons
+            print("🔄 Object manipulation gesture ended - staying in manipulation mode")
 
         default:
             break
@@ -193,6 +191,38 @@ class RealityKitGestureHandlers {
 
         print("🎯 Object manipulation mode: \(enabled ? "ENABLED" : "DISABLED")")
         print("   Camera gestures: \(enabled ? "DISABLED" : "ENABLED")")
+    }
+
+    // Public method to cancel object manipulation (called by Cancel button)
+    @MainActor func cancelObjectManipulation() {
+        guard let placementManager = objectPlacementManager else { return }
+
+        placementManager.endObjectManipulation()
+        enableObjectManipulationMode(false)
+
+        print("❌ Object manipulation cancelled by user")
+    }
+
+    // Public method to delete selected object (called by Delete button)
+    @MainActor func deleteSelectedObject() {
+        guard let placementManager = objectPlacementManager,
+              let selectedObject = placementManager.selectedObject else {
+            print("⚠️ No object selected for deletion")
+            return
+        }
+
+        print("🗑️ Gesture handler: Starting object deletion...")
+
+        // End manipulation mode FIRST to clean up gesture state
+        placementManager.endObjectManipulation()
+        enableObjectManipulationMode(false)
+
+        // Small delay to ensure gesture state is cleaned up before removing object
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            // Remove the object from the placement manager
+            placementManager.removeObject(selectedObject.id)
+            print("🗑️ Gesture handler: Object deletion completed")
+        }
     }
 
     // Handle pan gesture with intuitive controls: drag to look around (horizontal + vertical rotation)

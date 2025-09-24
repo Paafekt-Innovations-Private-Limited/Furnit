@@ -774,13 +774,31 @@ class RealityKitObjectPlacementManager: ObservableObject {
 
     // Remove specific AR object
     func removeObject(_ objectId: UUID) {
-        if let index = placedObjects.firstIndex(where: { $0.id == objectId }) {
-            let object = placedObjects[index]
-            scene?.removeAnchor(object.anchorEntity)
-            placedObjects.remove(at: index)
-
-            print("🗑️ Removed AR object with ID: \(objectId)")
+        guard let index = placedObjects.firstIndex(where: { $0.id == objectId }) else {
+            print("⚠️ Object with ID \(objectId) not found for deletion")
+            return
         }
+
+        let object = placedObjects[index]
+
+        print("🗑️ Removing object from scene...")
+
+        // Remove the entity from its parent anchor first
+        object.entity.removeFromParent()
+
+        // If the object has its own anchor (not shared with world anchor), remove it
+        if object.anchorEntity != worldAnchor {
+            scene?.removeAnchor(object.anchorEntity)
+            print("🗑️ Removed object's individual anchor from scene")
+        } else {
+            print("🗑️ Object was using world anchor - entity removed from parent")
+        }
+
+        // Remove from our tracking array
+        placedObjects.remove(at: index)
+
+        print("🗑️ Successfully removed AR object with ID: \(objectId)")
+        print("🗑️ Remaining objects count: \(placedObjects.count)")
     }
 
     // Clear all placed AR objects
