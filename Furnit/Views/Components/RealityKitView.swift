@@ -30,7 +30,7 @@ struct RealityKitView: UIViewRepresentable {
         print("🎨 Applying quality setting: \(quality.displayName)")
         
         // Set up coordinator and custom camera for non-AR mode
-        context.coordinator.setupGestures(for: arView)
+        context.coordinator.setupGestures(for: arView, placementManager: arObjectPlacementManager)
         context.coordinator.setupCustomCamera(for: arView)
         loadModel(into: arView, coordinator: context.coordinator)
         
@@ -62,9 +62,12 @@ struct RealityKitView: UIViewRepresentable {
         // World anchor for object placement (the model anchor)
         var worldAnchor: AnchorEntity?
         
-        func setupGestures(for arView: ARView) {
+        func setupGestures(for arView: ARView, placementManager: ARObjectPlacementManager) {
             gestureHandlers = RealityKitGestureHandlers(arView: arView)
-            
+
+            // Connect object placement manager to gesture handlers for manipulation support
+            gestureHandlers?.setObjectPlacementManager(placementManager)
+
             // Add tap gesture for AR object placement
             let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
             arView.addGestureRecognizer(tapGesture)

@@ -46,6 +46,9 @@ struct ModelViewerView: View {
                 if isARActive {
                     arStatusOverlay
                 }
+
+                // Object manipulation guidance overlay
+                objectManipulationGuidanceOverlay
             }
         }
         .navigationBarHidden(true)
@@ -82,33 +85,37 @@ struct ModelViewerView: View {
             
             Spacer()
             
-            // Bottom controls - info, joystick, and AR button
+            // Bottom controls - info, joystick, and AR button (hidden during object manipulation)
             HStack {
                 VStack(spacing: 16) {
-                    // AR Button at bottom-left
-                    ARButton(isARActive: Binding(
-                        get: {
-                            // Show red (active) only when processing, blue when ready to start
-                            isProcessingAR
-                        },
-                        set: { _ in toggleARMode() }
-                    )) {
-                        toggleARMode()
+                    // AR Button at bottom-left (hidden during object manipulation)
+                    if !arObjectPlacementManager.isManipulatingObject {
+                        ARButton(isARActive: Binding(
+                            get: {
+                                // Show red (active) only when processing, blue when ready to start
+                                isProcessingAR
+                            },
+                            set: { _ in toggleARMode() }
+                        )) {
+                            toggleARMode()
+                        }
                     }
                 }
-                
+
                 VStack(spacing: 16) {
                     if !isARActive {
                         modelInfoPanel
                     }
-                    
-                    // Joystick for camera movement (bottom center in portrait)
-                    VirtualJoystick(joystickOffset: $joystickOffset)
-                        .onChange(of: joystickOffset) { _, newOffset in
-                            cameraMovementManager.updateJoystickInput(newOffset)
-                        }
+
+                    // Joystick for camera movement (hidden during object manipulation)
+                    if !arObjectPlacementManager.isManipulatingObject {
+                        VirtualJoystick(joystickOffset: $joystickOffset)
+                            .onChange(of: joystickOffset) { _, newOffset in
+                                cameraMovementManager.updateJoystickInput(newOffset)
+                            }
+                    }
                 }
-                
+
                 Spacer()
             }
             .padding()
@@ -126,31 +133,35 @@ struct ModelViewerView: View {
             
             Spacer()
             
-            // Right side controls - info, joystick, and AR button
+            // Right side controls - info, joystick, and AR button (hidden during object manipulation)
             VStack(spacing: 16) {
-                // AR Button at bottom-left (moved to right side in landscape)
-                ARButton(isARActive: Binding(
-                    get: {
-                        // Show red (active) only when processing, blue when ready to start
-                        isProcessingAR
-                    },
-                    set: { _ in toggleARMode() }
-                )) {
-                    toggleARMode()
+                // AR Button at bottom-left (moved to right side in landscape, hidden during object manipulation)
+                if !arObjectPlacementManager.isManipulatingObject {
+                    ARButton(isARActive: Binding(
+                        get: {
+                            // Show red (active) only when processing, blue when ready to start
+                            isProcessingAR
+                        },
+                        set: { _ in toggleARMode() }
+                    )) {
+                        toggleARMode()
+                    }
                 }
-                
+
                 Spacer()
-                
+
                 if !isARActive {
                     modelInfoPanel
                 }
-                
-                // Joystick for camera movement (right side in landscape)
-                VirtualJoystick(joystickOffset: $joystickOffset)
-                    .onChange(of: joystickOffset) { _, newOffset in
-                        cameraMovementManager.updateJoystickInput(newOffset)
-                    }
-                
+
+                // Joystick for camera movement (right side in landscape, hidden during object manipulation)
+                if !arObjectPlacementManager.isManipulatingObject {
+                    VirtualJoystick(joystickOffset: $joystickOffset)
+                        .onChange(of: joystickOffset) { _, newOffset in
+                            cameraMovementManager.updateJoystickInput(newOffset)
+                        }
+                }
+
                 Spacer()
             }
             .padding()
@@ -260,7 +271,95 @@ struct ModelViewerView: View {
             Spacer().frame(height: 120) // Space above bottom controls
         }
     }
-    
+
+    // MARK: - Object Manipulation Guidance Overlay
+    private var objectManipulationGuidanceOverlay: some View {
+        VStack {
+            // Show guidance when objects are present but not being manipulated
+            if !arObjectPlacementManager.placedObjects.isEmpty && !arObjectPlacementManager.isManipulatingObject && !isARActive {
+                HStack {
+                    Spacer()
+
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "hand.tap.fill")
+                                .foregroundColor(.white)
+                                .font(.caption)
+
+                            Text("Long press on object to manipulate")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.blue.opacity(0.8))
+                    )
+                    .animation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: arObjectPlacementManager.placedObjects.count)
+
+                    Spacer()
+                }
+                .transition(.opacity)
+            }
+
+            // Show manipulation instructions when manipulating object
+            if arObjectPlacementManager.isManipulatingObject {
+                HStack {
+                    Spacer()
+
+                    VStack(spacing: 12) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "hand.point.up.left.fill")
+                                .foregroundColor(.white)
+                                .font(.headline)
+
+                            Text("Object Selected")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .fontWeight(.semibold)
+                        }
+
+                        VStack(spacing: 6) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.left.and.right")
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .font(.caption)
+
+                                Text("Swipe horizontally to rotate")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
+
+                            HStack(spacing: 8) {
+                                Image(systemName: "hand.raised.fill")
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .font(.caption)
+
+                                Text("Release to finish")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.green.opacity(0.9))
+                    )
+                    .animation(.easeInOut(duration: 0.3), value: arObjectPlacementManager.isManipulatingObject)
+
+                    Spacer()
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
+
+            Spacer()
+        }
+    }
+
     // MARK: - AR Functionality
     
     // Setup AR managers with scene references

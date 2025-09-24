@@ -8,20 +8,28 @@ class RealityKitObjectPlacementManager: ObservableObject {
     // Published properties for UI updates
     @Published var placedObjects: [RealityKitPlacedObject] = []
     @Published var isReadyToPlace = false
-    
+
+    // Object manipulation properties
+    @Published var isManipulatingObject = false // Track if we're in manipulation mode
+    @Published var selectedObject: RealityKitPlacedObject? // Currently selected object for manipulation
+
     // Scene references
     weak var arView: ARView?
     weak var scene: RealityKit.Scene?
-    
+
     // World anchor reference for navigation compatibility
     weak var worldAnchor: AnchorEntity?
-    
+
     // Object placement properties
     private var generatedModel: Entity? // 3D model from backend API
     private let placementHeight: Float = 0.05 // Small lift above floor for visual clarity
 
     // Callback for successful object placement (to trigger return to scanning mode)
     var onObjectPlaced: (() -> Void)?
+
+    // Callbacks for manipulation mode changes
+    var onManipulationStart: (() -> Void)?
+    var onManipulationEnd: (() -> Void)?
     
     // Placement distance constraints for better user experience
     private let maxPlacementDistance: Float = 8.0 // Maximum distance from camera for placement (reduced from 50.0)
@@ -885,6 +893,128 @@ class RealityKitObjectPlacementManager: ObservableObject {
 
         // Color is already good, return original
         return originalColor
+    }
+
+    // MARK: - Object Manipulation Methods
+
+    // Handle long press gesture to select objects for manipulation
+    func handleLongPress(at screenPoint: CGPoint) -> Bool {
+        guard let arView = arView else {
+            print("⚠️ No ARView available for hit testing")
+            return false
+        }
+
+        // Perform hit test to find which object was touched
+        if let hitObject = hitTestPlacedObjects(at: screenPoint, in: arView) {
+            startObjectManipulation(object: hitObject)
+            return true
+        }
+
+        print("📍 Long press hit test found no placed objects at point: \(screenPoint)")
+        return false
+    }
+
+    // Hit test to find which placed object was touched
+    private func hitTestPlacedObjects(at screenPoint: CGPoint, in arView: ARView) -> RealityKitPlacedObject? {
+        // Convert screen point to world ray for hit testing
+        let raycastResults = arView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .any)
+
+        // Check each placed object to see if the ray intersects with it
+        for placedObject in placedObjects {
+            if isEntityHit(entity: placedObject.entity, screenPoint: screenPoint, arView: arView) {
+                print("🎯 Hit test found placed object at: \(placedObject.entity.position)")
+                return placedObject
+            }
+        }
+
+        return nil
+    }
+
+    // Check if a specific entity is hit by the screen point
+    private func isEntityHit(entity: Entity, screenPoint: CGPoint, arView: ARView) -> Bool {
+        // Get entity's world position and bounds
+        guard let entityBounds = calculateEntityBounds(entity) else {
+            print("⚠️ No bounds available for entity hit testing")
+            return false
+        }
+
+        let entityPosition = entity.position
+        let entityScale = entity.scale
+
+        // Calculate scaled bounds for hit testing
+        let scaledBounds = SIMD3<Float>(
+            entityBounds.x * entityScale.x,
+            entityBounds.y * entityScale.y,
+            entityBounds.z * entityScale.z
+        )
+
+        // Simple distance-based hit test (more accurate than ray intersection for complex models)
+        let cameraTransform = arView.cameraTransform
+        let cameraPosition = cameraTransform.translation
+
+        // Calculate approximate hit sphere radius based on object size
+        let hitRadius = max(scaledBounds.x, max(scaledBounds.y, scaledBounds.z)) / 2.0
+
+        // Project screen point to world direction
+        let worldDirection = screenPointToWorldDirection(screenPoint, in: arView)
+
+        // Calculate closest point on camera ray to entity center
+        let toEntity = entityPosition - cameraPosition
+        let projectionLength = dot(toEntity, worldDirection)
+
+        // Ensure projection is in front of camera
+        if projectionLength > 0 {
+            let closestPoint = cameraPosition + worldDirection * projectionLength
+            let distanceToEntity = simd_length(closestPoint - entityPosition)
+
+            print("🎯 Hit test: entity at \(entityPosition), hit distance: \(distanceToEntity), radius: \(hitRadius)")
+
+            // Check if hit point is within entity bounds
+            return distanceToEntity <= hitRadius
+        }
+
+        return false
+    }
+
+    // Start object manipulation mode
+    private func startObjectManipulation(object: RealityKitPlacedObject) {
+        selectedObject = object
+        isManipulatingObject = true
+        onManipulationStart?()
+
+        print("🎯 Started manipulating object at position: \(object.entity.position)")
+        print("✋ Object manipulation mode active - camera controls disabled")
+    }
+
+    // End object manipulation mode
+    func endObjectManipulation() {
+        selectedObject = nil
+        isManipulatingObject = false
+        onManipulationEnd?()
+
+        print("✅ Ended object manipulation mode - camera controls re-enabled")
+    }
+
+    // Handle pan gesture for object rotation during manipulation mode
+    func handleObjectRotation(translation: CGPoint) {
+        guard let selectedObject = selectedObject else {
+            print("⚠️ No object selected for rotation")
+            return
+        }
+
+        // Convert horizontal translation to rotation angle
+        let rotationSensitivity: Float = 0.01
+        let rotationAngle = Float(translation.x) * rotationSensitivity
+
+        // Apply rotation around Y-axis (vertical axis) to the selected object
+        let currentRotation = selectedObject.entity.transform.rotation
+        let yAxisRotation = simd_quatf(angle: rotationAngle, axis: SIMD3<Float>(0, 1, 0))
+        let newRotation = yAxisRotation * currentRotation
+
+        // Update the object's rotation
+        selectedObject.entity.transform.rotation = newRotation
+
+        print("🔄 Rotating object by \(rotationAngle) radians around Y-axis")
     }
 
     // The next methods continue with the proper implementation...

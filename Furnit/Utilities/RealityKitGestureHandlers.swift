@@ -5,12 +5,17 @@ import UIKit
 class RealityKitGestureHandlers {
     weak var arView: ARView?
     private var boundaryManager: RealityKitBoundaryManager?
-    
+
+    // Object placement manager reference for object manipulation
+    weak var objectPlacementManager: RealityKitObjectPlacementManager?
+
     // Store gesture recognizers to prevent deallocation
     private var singlePanGesture: UIPanGestureRecognizer?
     private var doublePanGesture: UIPanGestureRecognizer?
     private var pinchGesture: UIPinchGestureRecognizer?
     private var rotationGesture: UIRotationGestureRecognizer?
+    private var longPressGesture: UILongPressGestureRecognizer?
+    private var objectManipulationPanGesture: UIPanGestureRecognizer?
     
     // Custom camera control for non-AR mode - direct camera manipulation
     private weak var cameraEntity: PerspectiveCamera?
@@ -38,7 +43,13 @@ class RealityKitGestureHandlers {
     func setBoundaryManager(_ manager: RealityKitBoundaryManager) {
         self.boundaryManager = manager
     }
-    
+
+    // Set object placement manager for object manipulation
+    func setObjectPlacementManager(_ manager: RealityKitObjectPlacementManager) {
+        self.objectPlacementManager = manager
+        print("🎯 Object placement manager set for manipulation handling")
+    }
+
     // Set camera references for direct camera control in non-AR mode
     func setCameraReferences(camera: PerspectiveCamera, cameraAnchor: AnchorEntity) {
         self.cameraEntity = camera
@@ -77,17 +88,113 @@ class RealityKitGestureHandlers {
         if let rotation = rotationGesture {
             arView.addGestureRecognizer(rotation)
         }
-        
-        // Remove the require(toFail:) that was preventing gestures from working
-        // Allow both single and double pan gestures to work independently
-        
+
+        // Long press gesture for object manipulation
+        longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPressGesture(_:)))
+        longPressGesture?.minimumPressDuration = 0.8 // 800ms for long press
+        if let longPress = longPressGesture {
+            arView.addGestureRecognizer(longPress)
+        }
+
+        // Object manipulation pan gesture (separate from camera pan)
+        objectManipulationPanGesture = UIPanGestureRecognizer(target: self, action: #selector(handleObjectManipulationPan(_:)))
+        objectManipulationPanGesture?.maximumNumberOfTouches = 1
+        objectManipulationPanGesture?.minimumNumberOfTouches = 1
+        if let objPan = objectManipulationPanGesture {
+            arView.addGestureRecognizer(objPan)
+        }
+
+        // Set up gesture priorities to prevent conflicts
+        setupGesturePriorities()
+
         print("🎮 RealityKit gesture recognizers set up with intuitive controls")
         print("   Single finger: drag=look around (horizontal+vertical rotation)")
         print("   Two fingers: drag=position, pinch=zoom, rotate=turn")
+        print("   Long press: select object for manipulation")
+        print("   During manipulation: horizontal swipe=rotate object")
         print("   Joystick: forward/backward/left/right movement")
         print("   Note: Very small single finger movements adjust height")
     }
     
+    // Set up gesture priorities to prevent conflicts
+    private func setupGesturePriorities() {
+        // Object manipulation pan should be disabled when not manipulating
+        objectManipulationPanGesture?.isEnabled = false
+
+        print("🎯 Gesture priorities configured - object manipulation initially disabled")
+    }
+
+    // MARK: - Object Manipulation Gesture Handlers
+
+    // Handle long press gesture for object selection
+    @MainActor @objc private func handleLongPressGesture(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+
+        guard let arView = arView else {
+            print("⚠️ Long press gesture: no ARView available")
+            return
+        }
+
+        let location = gesture.location(in: arView)
+
+        // Try to select an object for manipulation
+        if let placementManager = objectPlacementManager {
+            let success = placementManager.handleLongPress(at: location)
+            if success {
+                // Enable object manipulation gestures, disable camera gestures
+                enableObjectManipulationMode(true)
+                print("🎯 Long press successful - object selected for manipulation")
+            } else {
+                print("📍 Long press found no objects to manipulate")
+            }
+        } else {
+            print("⚠️ No object placement manager available for long press handling")
+        }
+    }
+
+    // Handle pan gesture for object rotation during manipulation
+    @MainActor @objc private func handleObjectManipulationPan(_ gesture: UIPanGestureRecognizer) {
+        guard let placementManager = objectPlacementManager,
+              placementManager.isManipulatingObject else {
+            print("⚠️ Object manipulation pan called but no object is being manipulated")
+            return
+        }
+
+        let translation = gesture.translation(in: arView)
+
+        switch gesture.state {
+        case .began:
+            print("🔄 Started object rotation gesture")
+
+        case .changed:
+            // Handle horizontal swipe for object rotation
+            placementManager.handleObjectRotation(translation: translation)
+            // Reset translation to get incremental changes
+            gesture.setTranslation(.zero, in: arView)
+
+        case .ended, .cancelled:
+            // End manipulation mode when user lifts finger
+            placementManager.endObjectManipulation()
+            enableObjectManipulationMode(false)
+            print("✅ Object manipulation ended")
+
+        default:
+            break
+        }
+    }
+
+    // Enable/disable object manipulation mode
+    private func enableObjectManipulationMode(_ enabled: Bool) {
+        // Enable/disable appropriate gestures
+        objectManipulationPanGesture?.isEnabled = enabled
+        singlePanGesture?.isEnabled = !enabled  // Disable camera rotation during object manipulation
+        doublePanGesture?.isEnabled = !enabled // Disable camera movement during object manipulation
+        pinchGesture?.isEnabled = !enabled     // Disable camera zoom during object manipulation
+
+        print("🎯 Object manipulation mode: \(enabled ? "ENABLED" : "DISABLED")")
+        print("   Camera gestures: \(enabled ? "DISABLED" : "ENABLED")")
+    }
+
     // Handle pan gesture with intuitive controls: drag to look around (horizontal + vertical rotation)
     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
         // print("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
