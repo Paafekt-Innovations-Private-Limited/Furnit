@@ -165,8 +165,13 @@ class RealityKitGestureHandlers {
     // Handle pan gesture for object rotation during manipulation
     @MainActor @objc private func handleObjectManipulationPan(_ gesture: UIPanGestureRecognizer) {
         guard let placementManager = objectPlacementManager,
-              placementManager.isManipulatingObject else {
-            print("⚠️ Object manipulation pan called but no object is being manipulated")
+              placementManager.isManipulatingObject,
+              gesture.isEnabled else {
+            // Only log warnings if gesture is enabled (unexpected behavior)
+            // If gesture is disabled, this is expected during mode transitions
+            if gesture.isEnabled {
+                print("⚠️ Object manipulation pan called but no object is being manipulated")
+            }
             return
         }
 
@@ -191,16 +196,55 @@ class RealityKitGestureHandlers {
         }
     }
 
+    // Reset gesture recognizer states to prevent conflicts
+    private func resetGestureStates() {
+        // Cancel any active object manipulation gestures
+        if let objectPan = objectManipulationPanGesture {
+            if objectPan.state == .changed || objectPan.state == .began {
+                print("🔄 Resetting active object manipulation gesture state")
+                objectPan.isEnabled = false
+                // Small delay to ensure state is properly reset
+                DispatchQueue.main.async {
+                    objectPan.isEnabled = true
+                }
+            }
+        }
+
+        // Ensure camera gestures are in clean state
+        [singlePanGesture, doublePanGesture, pinchGesture].forEach { gesture in
+            gesture?.isEnabled = gesture?.isEnabled ?? true // Refresh state
+        }
+
+        print("🔧 Gesture states reset for clean transitions")
+    }
+
     // Enable/disable object manipulation mode
     private func enableObjectManipulationMode(_ enabled: Bool) {
-        // Enable/disable appropriate gestures
-        objectManipulationPanGesture?.isEnabled = enabled
-        singlePanGesture?.isEnabled = !enabled  // Disable camera rotation during object manipulation
-        doublePanGesture?.isEnabled = !enabled // Disable camera movement during object manipulation
-        pinchGesture?.isEnabled = !enabled     // Disable camera zoom during object manipulation
+        if enabled {
+            // Enabling object manipulation - immediate switch
+            objectManipulationPanGesture?.isEnabled = true
+            singlePanGesture?.isEnabled = false  // Disable camera rotation during object manipulation
+            doublePanGesture?.isEnabled = false // Disable camera movement during object manipulation
+            pinchGesture?.isEnabled = false     // Disable camera zoom during object manipulation
 
-        print("🎯 Object manipulation mode: \(enabled ? "ENABLED" : "DISABLED")")
-        print("   Camera gestures: \(enabled ? "DISABLED" : "ENABLED")")
+            print("🎯 Object manipulation mode: ENABLED")
+            print("   Camera gestures: DISABLED")
+        } else {
+            // Disabling object manipulation - clean transition back to camera control
+            resetGestureStates()
+
+            // Small delay to ensure clean gesture state transition
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.objectManipulationPanGesture?.isEnabled = false
+                self.singlePanGesture?.isEnabled = true   // Re-enable camera rotation
+                self.doublePanGesture?.isEnabled = true  // Re-enable camera movement
+                self.pinchGesture?.isEnabled = true      // Re-enable camera zoom
+
+                print("🎯 Object manipulation mode: DISABLED")
+                print("   Camera gestures: RE-ENABLED")
+                print("🎮 Camera rotation should now work normally")
+            }
+        }
     }
 
     // Public method to cancel object manipulation (called by Cancel button)

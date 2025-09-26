@@ -1035,6 +1035,38 @@ class RealityKitObjectPlacementManager: ObservableObject {
         print("🔄 Rotating object by \(rotationAngle) radians around Y-axis")
     }
 
+    // Handle joystick input for object movement during manipulation mode
+    func handleObjectMovement(translation: CGSize) {
+        guard let selectedObject = selectedObject else {
+            print("⚠️ No object selected for movement")
+            return
+        }
+
+        // Convert joystick input to world movement
+        let movementSensitivity: Float = 0.002 // Adjust for smooth movement
+        let deltaX = Float(translation.width) * movementSensitivity   // Left/Right movement
+        let deltaZ = Float(-translation.height) * movementSensitivity // Forward/Backward movement (inverted Y)
+
+        // Get current object position
+        let currentPosition = selectedObject.entity.position
+
+        // Calculate new position (move in world coordinates, keep same height)
+        let newPosition = SIMD3<Float>(
+            currentPosition.x + deltaX,
+            currentPosition.y, // Maintain current height (no vertical movement)
+            currentPosition.z + deltaZ
+        )
+
+        // Update the object's position
+        selectedObject.entity.position = newPosition
+
+        // Only log significant movements to avoid spam
+        let movementMagnitude = sqrt(deltaX * deltaX + deltaZ * deltaZ)
+        if movementMagnitude > 0.001 {
+            print("🕹️ Moving object: deltaX=\(deltaX), deltaZ=\(deltaZ), newPos=\(newPosition)")
+        }
+    }
+
     // The next methods continue with the proper implementation...
     // (Note: All duplicate methods have been removed to resolve compilation errors)
 }

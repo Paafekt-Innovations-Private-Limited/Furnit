@@ -27,6 +27,9 @@ struct ModelViewerView: View {
 
     // Object manipulation state
     @State private var showDeleteConfirmation = false
+    @State private var showObjectMovementJoystick = false
+    @State private var objectMovementJoystickOffset: CGSize = .zero
+
     private var gestureHandlers: RealityKitGestureHandlers? {
         // Access gesture handlers through the coordinator
         return nil // TODO: We'll need to access this through RealityKitView
@@ -372,21 +375,24 @@ struct ModelViewerView: View {
                             Spacer()
 
                             VStack(spacing: 12) {
-                                // Show Controls Button
+                                // Show Controls Button (toggles object movement joystick)
                                 Button(action: {
-                                    // Placeholder for future functionality
-                                    print("🎮 Show controls tapped - functionality to be implemented")
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        showObjectMovementJoystick.toggle()
+                                    }
+                                    print("🎮 Object movement joystick: \(showObjectMovementJoystick ? "SHOWN" : "HIDDEN")")
                                 }) {
-                                    Image(systemName: "gearshape.fill")
+                                    Image(systemName: showObjectMovementJoystick ? "xmark" : "gamecontroller.fill")
                                         .font(.system(size: 20))
                                         .foregroundColor(.white)
                                         .frame(width: 50, height: 50)
-                                        .background(Color.black.opacity(0.7))
+                                        .background(showObjectMovementJoystick ? Color.blue.opacity(0.8) : Color.black.opacity(0.7))
                                         .clipShape(Circle())
                                         .overlay(
                                             Circle()
                                                 .stroke(Color.white.opacity(0.3), lineWidth: 1)
                                         )
+                                        .animation(.easeInOut(duration: 0.2), value: showObjectMovementJoystick)
                                 }
 
                                 // Cancel Button
@@ -425,6 +431,41 @@ struct ModelViewerView: View {
                             .padding(.bottom, 100) // Space above the bottom UI elements
                         }
                     }
+                    // Object movement joystick (bottom center when controls are active)
+                    if showObjectMovementJoystick {
+                        VStack {
+                            Spacer()
+
+                            HStack {
+                                Spacer()
+
+                                VStack(spacing: 8) {
+                                    // Joystick title/instruction
+                                    Text("Move Object")
+                                        .font(.caption)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Color.black.opacity(0.6))
+                                        )
+
+                                    // The actual joystick for object movement
+                                    VirtualJoystick(joystickOffset: $objectMovementJoystickOffset)
+                                        .onChange(of: objectMovementJoystickOffset) { _, newOffset in
+                                            // Connect joystick input to object movement
+                                            arObjectPlacementManager.handleObjectMovement(translation: newOffset)
+                                        }
+                                }
+
+                                Spacer()
+                            }
+                            .padding(.bottom, 120) // Space above bottom UI elements
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .animation(.easeInOut(duration: 0.3), value: showObjectMovementJoystick)
+                    }
                 }
                 .transition(.scale.combined(with: .opacity))
                 .animation(.easeInOut(duration: 0.3), value: arObjectPlacementManager.isManipulatingObject)
@@ -438,6 +479,9 @@ struct ModelViewerView: View {
 
     // Cancel object manipulation mode
     private func cancelManipulation() {
+        // Hide movement joystick if it's showing
+        showObjectMovementJoystick = false
+
         // For now, directly call the object placement manager
         // In the future, we could access gesture handlers through RealityKitView
         arObjectPlacementManager.endObjectManipulation()
@@ -452,6 +496,9 @@ struct ModelViewerView: View {
         }
 
         print("🗑️ Starting object deletion process...")
+
+        // Hide movement joystick if it's showing
+        showObjectMovementJoystick = false
 
         // End manipulation mode FIRST to clean up UI state
         arObjectPlacementManager.endObjectManipulation()
