@@ -12,6 +12,10 @@ struct ModelViewerView: View {
     @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
     @State private var joystickOffset: CGSize = .zero
     
+    // Camera overlay state
+    @State private var showCameraOverlay = false
+    @State private var capturedOverlayImage: UIImage?
+    
     // AR functionality state
     @StateObject private var arKitCameraManager = ARKitCameraManager()
     @StateObject private var ar3DModelProcessor = AR3DModelProcessor()
@@ -23,29 +27,26 @@ struct ModelViewerView: View {
     @State private var arStatusMessage = "Point at furniture objects"
     @State private var isProcessingAR = false
     @State private var shouldRestartScanning = false
-    @State private var isInContinuousMode = false // Track if we're in continuous scanning mode
+    @State private var isInContinuousMode = false
 
     // Object manipulation state
     @State private var showDeleteConfirmation = false
     @State private var showObjectMovementJoystick = false
     @State private var objectMovementJoystickOffset: CGSize = .zero
-
-    private var gestureHandlers: RealityKitGestureHandlers? {
-        // Access gesture handlers through the coordinator
-        return nil // TODO: We'll need to access this through RealityKitView
-    }
     
     var body: some View {
         GeometryReader { geometry in
             ZStack {
+                // Main 3D room view
                 RealityKitView(
-                    model: model, 
+                    model: model,
                     cameraMovementManager: cameraMovementManager,
                     arObjectPlacementManager: arObjectPlacementManager,
                     isARActive: isARActive
                 )
-                    .ignoresSafeArea(.all)
+                .ignoresSafeArea(.all)
                 
+                // Regular controls
                 if isLandscape(geometry: geometry) {
                     landscapeControls
                 } else {
@@ -59,6 +60,16 @@ struct ModelViewerView: View {
 
                 // Object manipulation guidance overlay
                 objectManipulationGuidanceOverlay
+                
+                // Simple camera overlay - Image Plate style floating window
+                if showCameraOverlay {
+                    SimpleCameraOverlay(
+                        capturedImage: $capturedOverlayImage,
+                        isShowingCamera: $showCameraOverlay
+                    )
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(100)
+                }
             }
         }
         .navigationBarHidden(true)
@@ -66,16 +77,22 @@ struct ModelViewerView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             setupARManagers()
-            // Configure 3D model processor with quality settings
             ar3DModelProcessor.setQualitySettings(AppStateManager.shared.qualitySettings)
         }
         .onDisappear {
             cleanupAR()
         }
+        .onChange(of: capturedOverlayImage) { _, newImage in
+            if let image = newImage {
+                // Handle the captured image if needed
+                print("📸 Image captured from SimpleCameraOverlay")
+                // You can process the image here if needed
+            }
+        }
         .onChange(of: shouldRestartScanning) { _, newValue in
             if newValue {
                 restartARScanning()
-                shouldRestartScanning = false // Reset the trigger
+                shouldRestartScanning = false
             }
         }
         .alert("Delete Object", isPresented: $showDeleteConfirmation) {
@@ -103,29 +120,32 @@ struct ModelViewerView: View {
             
             Spacer()
             
-            // Bottom controls - info, joystick, and AR button (hidden during object manipulation)
-            HStack {
+            // Bottom controls
+            HStack(alignment: .bottom) {
+                // Left side - Camera overlay button
                 VStack(spacing: 16) {
-                    // AR Button at bottom-left (hidden during object manipulation)
                     if !arObjectPlacementManager.isManipulatingObject {
-                        ARButton(isARActive: Binding(
-                            get: {
-                                // Show red (active) only when processing, blue when ready to start
-                                isProcessingAR
-                            },
-                            set: { _ in toggleARMode() }
-                        )) {
-                            toggleARMode()
+                        CameraOverlayButton {
+                            showCameraOverlay.toggle()
+                            // Reset captured image when opening camera
+                            if showCameraOverlay {
+                                capturedOverlayImage = nil
+                            }
                         }
                     }
+                    
+                    Spacer()
                 }
-
+                
+                Spacer()
+                
+                // Center/Right side - Info and joystick
                 VStack(spacing: 16) {
-                    if !isARActive {
+                    if !isARActive && !arObjectPlacementManager.isManipulatingObject {
                         modelInfoPanel
                     }
 
-                    // Joystick for camera movement (hidden during object manipulation)
+                    // Joystick for camera movement
                     if !arObjectPlacementManager.isManipulatingObject {
                         VirtualJoystick(joystickOffset: $joystickOffset)
                             .onChange(of: joystickOffset) { _, newOffset in
@@ -133,8 +153,6 @@ struct ModelViewerView: View {
                             }
                     }
                 }
-
-                Spacer()
             }
             .padding()
         }
@@ -142,7 +160,7 @@ struct ModelViewerView: View {
     
     private var landscapeControls: some View {
         HStack {
-            // Left side controls - back button
+            // Left side controls
             VStack {
                 backButton
                 Spacer()
@@ -151,50 +169,53 @@ struct ModelViewerView: View {
             
             Spacer()
             
-            // Right side controls - info, joystick, and AR button (hidden during object manipulation)
+            // Right side controls
             VStack(spacing: 16) {
-                // AR Button at bottom-left (moved to right side in landscape, hidden during object manipulation)
+                // Camera overlay button at top
                 if !arObjectPlacementManager.isManipulatingObject {
-                    ARButton(isARActive: Binding(
-                        get: {
-                            // Show red (active) only when processing, blue when ready to start
-                            isProcessingAR
-                        },
-                        set: { _ in toggleARMode() }
-                    )) {
-                        toggleARMode()
+                    CameraOverlayButton {
+                        showCameraOverlay.toggle()
+                        // Reset captured image when opening camera
+                        if showCameraOverlay {
+                            capturedOverlayImage = nil
+                        }
                     }
                 }
 
                 Spacer()
 
-                if !isARActive {
+                if !isARActive && !arObjectPlacementManager.isManipulatingObject {
                     modelInfoPanel
                 }
 
-                // Joystick for camera movement (right side in landscape, hidden during object manipulation)
+                // Joystick for camera movement at bottom
                 if !arObjectPlacementManager.isManipulatingObject {
                     VirtualJoystick(joystickOffset: $joystickOffset)
                         .onChange(of: joystickOffset) { _, newOffset in
                             cameraMovementManager.updateJoystickInput(newOffset)
                         }
                 }
-
-                Spacer()
             }
             .padding()
         }
     }
     
     private var backButton: some View {
-        Button("Back") {
+        Button(action: {
             dismiss()
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Back")
+                    .font(.system(size: 16))
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(20)
         }
-        .foregroundColor(.white)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.7))
-        .cornerRadius(20)
     }
     
     private var modelInfoPanel: some View {
@@ -286,14 +307,13 @@ struct ModelViewerView: View {
                 Spacer()
             }
             
-            Spacer().frame(height: 120) // Space above bottom controls
+            Spacer().frame(height: 120)
         }
     }
 
     // MARK: - Object Manipulation Guidance Overlay
     private var objectManipulationGuidanceOverlay: some View {
         VStack {
-            // Show guidance when objects are present but not being manipulated
             if !arObjectPlacementManager.placedObjects.isEmpty && !arObjectPlacementManager.isManipulatingObject && !isARActive {
                 HStack {
                     Spacer()
@@ -322,10 +342,8 @@ struct ModelViewerView: View {
                 .transition(.opacity)
             }
 
-            // Show manipulation instructions and control buttons when manipulating object
             if arObjectPlacementManager.isManipulatingObject {
                 ZStack {
-                    // Main instruction overlay (top center)
                     VStack {
                         HStack {
                             Spacer()
@@ -367,7 +385,6 @@ struct ModelViewerView: View {
                         Spacer()
                     }
 
-                    // Control buttons (bottom right)
                     VStack {
                         Spacer()
 
@@ -375,7 +392,6 @@ struct ModelViewerView: View {
                             Spacer()
 
                             VStack(spacing: 12) {
-                                // Show Controls Button (toggles object movement joystick)
                                 Button(action: {
                                     withAnimation(.easeInOut(duration: 0.3)) {
                                         showObjectMovementJoystick.toggle()
@@ -395,7 +411,6 @@ struct ModelViewerView: View {
                                         .animation(.easeInOut(duration: 0.2), value: showObjectMovementJoystick)
                                 }
 
-                                // Cancel Button
                                 Button(action: {
                                     cancelManipulation()
                                 }) {
@@ -411,7 +426,6 @@ struct ModelViewerView: View {
                                         )
                                 }
 
-                                // Delete Button
                                 Button(action: {
                                     showDeleteConfirmation = true
                                 }) {
@@ -428,10 +442,10 @@ struct ModelViewerView: View {
                                 }
                             }
                             .padding(.trailing, 20)
-                            .padding(.bottom, 100) // Space above the bottom UI elements
+                            .padding(.bottom, 100)
                         }
                     }
-                    // Object movement joystick (bottom center when controls are active)
+                    
                     if showObjectMovementJoystick {
                         VStack {
                             Spacer()
@@ -440,7 +454,6 @@ struct ModelViewerView: View {
                                 Spacer()
 
                                 VStack(spacing: 8) {
-                                    // Joystick title/instruction
                                     Text("Move Object")
                                         .font(.caption)
                                         .foregroundColor(.white)
@@ -451,17 +464,15 @@ struct ModelViewerView: View {
                                                 .fill(Color.black.opacity(0.6))
                                         )
 
-                                    // The actual joystick for object movement
                                     VirtualJoystick(joystickOffset: $objectMovementJoystickOffset)
                                         .onChange(of: objectMovementJoystickOffset) { _, newOffset in
-                                            // Connect joystick input to object movement
                                             arObjectPlacementManager.handleObjectMovement(translation: newOffset)
                                         }
                                 }
 
                                 Spacer()
                             }
-                            .padding(.bottom, 120) // Space above bottom UI elements
+                            .padding(.bottom, 120)
                         }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .animation(.easeInOut(duration: 0.3), value: showObjectMovementJoystick)
@@ -476,19 +487,12 @@ struct ModelViewerView: View {
     }
 
     // MARK: - Object Manipulation Actions
-
-    // Cancel object manipulation mode
     private func cancelManipulation() {
-        // Hide movement joystick if it's showing
         showObjectMovementJoystick = false
-
-        // For now, directly call the object placement manager
-        // In the future, we could access gesture handlers through RealityKitView
         arObjectPlacementManager.endObjectManipulation()
         print("❌ Object manipulation cancelled by user")
     }
 
-    // Delete the currently selected object
     private func deleteSelectedObject() {
         guard let selectedObject = arObjectPlacementManager.selectedObject else {
             print("⚠️ No object selected for deletion")
@@ -496,134 +500,84 @@ struct ModelViewerView: View {
         }
 
         print("🗑️ Starting object deletion process...")
-
-        // Hide movement joystick if it's showing
         showObjectMovementJoystick = false
-
-        // End manipulation mode FIRST to clean up UI state
         arObjectPlacementManager.endObjectManipulation()
 
-        // Small delay to ensure UI state is updated before removing object
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            // Remove the object from the placement manager
             self.arObjectPlacementManager.removeObject(selectedObject.id)
-
             print("🗑️ Selected object deleted successfully")
         }
     }
 
     // MARK: - AR Functionality
-    
-    // Setup AR managers with scene references
     private func setupARManagers() {
-        // Setup callback for object placement to clean up UI state only
         arObjectPlacementManager.onObjectPlaced = {
             DispatchQueue.main.async {
-                // Reset AR processing state to end current session
                 self.arProcessingStateManager.reset()
-
-                // Reset UI state flags to end AR mode
                 self.isProcessingAR = false
                 self.isInContinuousMode = false
                 self.isARActive = false
-
-                print("✅ Object placed - AR session completed, user can manually start next scan")
+                print("✅ Object placed - AR session completed")
             }
         }
         print("✅ Set up AR managers with continuous scanning mode")
     }
     
-    // Simple toggle: Blue button starts everything, Red button stops everything
     private func toggleARMode() {
         if isProcessingAR {
-            // Red button pressed - stop/cancel everything
             stopARMode()
             print("📱 Red button pressed - stopping AR processing")
         } else {
-            // Blue button pressed - start AR mode (which auto-starts processing)
             startARMode()
             print("📱 Blue button pressed - starting AR mode with automatic processing")
         }
     }
     
-    // Start AR mode and automatically begin capture process
     private func startARMode() {
         isARActive = true
-        isInContinuousMode = false // Reset continuous mode when starting fresh
-        isProcessingAR = true // Immediately show red button (stop available)
+        isInContinuousMode = false
+        isProcessingAR = true
         arStatusMessage = "Starting ARKit camera..."
-
-        // Initialize AR processing state
         arProcessingStateManager.reset()
         arProcessingStateManager.startARSession()
-
-        // Keep existing placed objects visible - don't clear them
-        // Only reset placement state for new capture, not existing objects
         arObjectPlacementManager.isReadyToPlace = false
 
-        // Lightweight restart - directly start capture process without camera session delays
         Task {
             await MainActor.run {
                 arStatusMessage = "Starting capture for next object..."
                 arProcessingStateManager.updateState(.pointing)
                 print("🎯 Lightweight AR restart - starting capture process immediately")
             }
-
-            // Directly trigger capture process (camera will start if needed)
             await performARCapture()
         }
     }
     
-    // Stop AR mode and clean up
     private func stopARMode() {
         isARActive = false
         isProcessingAR = false
-        isInContinuousMode = false // Reset continuous mode when stopping
+        isInContinuousMode = false
         arStatusMessage = "Point at furniture objects"
-
-        // Reset AR processing state
         arProcessingStateManager.reset()
-
-        // Stop ARKit session with explicit cleanup
         arKitCameraManager.stopSession()
-
-        // Clear AR objects and reset placement state
         arObjectPlacementManager.clearAllObjects()
         arObjectPlacementManager.isReadyToPlace = false
-
-        // Reset any ongoing AR services
         qrCodeDetectionService.reset()
         ar3DModelProcessor.reset()
-
         print("🛑 AR mode stopped completely with full cleanup")
     }
 
-    // Restart AR scanning mode after object placement
     private func restartARScanning() {
-        // Reset processing state to scanning mode
         isProcessingAR = false
         arStatusMessage = "Point at furniture objects"
-
-        // Restart AR session since it was stopped after capture
         isARActive = true
         isInContinuousMode = true
-
-        // Reset AR processing state to pointing (ready for next scan)
         arProcessingStateManager.startARSession()
-
-        // Restart ARKit camera session for next capture
         arKitCameraManager.startSession()
-
-        // Reset object placement manager for next object (keep placed objects)
         arObjectPlacementManager.isReadyToPlace = false
-
         print("🔄 Restarted AR scanning mode with camera session - ready for next object")
-        print("📱 Button shows camera icon for continuous scanning")
     }
     
-    // Perform AR capture and processing using backend API
     private func performARCapture() async {
-        // Start camera session if not already running (for subsequent captures)
         await MainActor.run {
             if !arKitCameraManager.isSessionRunning {
                 arStatusMessage = "Starting camera for capture..."
@@ -635,14 +589,11 @@ struct ModelViewerView: View {
             arProcessingStateManager.updateState(.pointing)
         }
 
-        // Give camera a moment to initialize if just started
         if !arKitCameraManager.isSessionRunning {
-            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
         
-        // Wait for user to tap (this will be triggered by AR button or gesture)
-        // For now, automatically capture after a short delay for testing
-        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
         
         await MainActor.run {
             arStatusMessage = "Capturing ARKit frame..."
@@ -650,29 +601,23 @@ struct ModelViewerView: View {
             isProcessingAR = true
         }
         
-        // Capture current frame from ARKit session (full resolution for API)
         guard let capturedImage = await MainActor.run(body: { arKitCameraManager.captureCurrentFrameForAPI() }) else {
             await MainActor.run {
                 let errorMsg = arKitCameraManager.errorMessage ?? "Failed to capture frame"
                 arStatusMessage = errorMsg
                 arProcessingStateManager.setError(errorMsg)
                 isProcessingAR = false
-
-                // Stop physical camera session on capture error to prevent resource waste
                 arKitCameraManager.stopSession()
                 print("📷 Physical camera session stopped due to capture error")
             }
             return
         }
 
-        // Stop physical camera session immediately after successful image capture
-        // This prevents unnecessary battery drain during processing
         await MainActor.run {
             arKitCameraManager.stopSession()
             print("📷 Physical camera session stopped immediately after image capture")
         }
         
-        // First, check for QR codes in the captured image
         await MainActor.run {
             arStatusMessage = "Scanning for QR codes..."
             arProcessingStateManager.beginQRDetection()
@@ -681,7 +626,6 @@ struct ModelViewerView: View {
         let qrResult = await qrCodeDetectionService.detectQRCode(in: capturedImage)
 
         if qrResult.hasQRCode, let qrURL = qrResult.extractedURL {
-            // QR code found with valid URL - download asset directly
             print("🔍 QR code detected with URL: \(qrURL.absoluteString)")
 
             await MainActor.run {
@@ -689,9 +633,7 @@ struct ModelViewerView: View {
                 arProcessingStateManager.beginAssetDownload()
             }
 
-            // Validate it's a 3D asset URL using enhanced validation
             if await qrCodeDetectionService.isValid3DAssetURL(qrURL) {
-                // Monitor download progress
                 let progressCancellable = assetDownloadService.$downloadProgress
                     .sink { progress in
                         Task { @MainActor in
@@ -699,25 +641,18 @@ struct ModelViewerView: View {
                         }
                     }
 
-                // Download the 3D asset
                 let downloadResult = await assetDownloadService.download3DAsset(from: qrURL)
-
-                // Cancel progress monitoring
                 progressCancellable.cancel()
 
                 if downloadResult.success, let downloadedEntity = downloadResult.entity {
-                    // Successfully downloaded 3D asset
                     await MainActor.run {
                         arObjectPlacementManager.prepareForPlacement(with3DModel: downloadedEntity)
                         arStatusMessage = "3D model ready! Tap to place"
                         arProcessingStateManager.readyForPlacement()
                         isProcessingAR = false
-
-                        // Camera session was already stopped after capture
                         print("✅ QR asset download completed, ready for placement")
                     }
 
-                    // Clean up downloaded file if needed
                     if let fileURL = downloadResult.fileURL {
                         assetDownloadService.cleanupDownloadedFile(at: fileURL)
                     }
@@ -726,7 +661,6 @@ struct ModelViewerView: View {
                     return
 
                 } else {
-                    // Download failed, fall back to backend processing
                     let errorMsg = downloadResult.errorMessage ?? "Failed to download 3D model"
                     print("⚠️ QR asset download failed: \(errorMsg). Falling back to backend processing.")
 
@@ -735,7 +669,6 @@ struct ModelViewerView: View {
                     }
                 }
             } else {
-                // Not a 3D asset URL, fall back to backend processing
                 print("⚠️ QR URL is not a 3D asset. Falling back to backend processing.")
 
                 await MainActor.run {
@@ -743,7 +676,6 @@ struct ModelViewerView: View {
                 }
             }
         } else {
-            // No QR code found, proceed with backend processing
             print("📱 No QR code detected, proceeding with backend 3D generation")
 
             await MainActor.run {
@@ -751,55 +683,68 @@ struct ModelViewerView: View {
             }
         }
 
-        // Backend processing workflow (original flow)
         await MainActor.run {
             arStatusMessage = "Uploading image for 3D generation..."
             arProcessingStateManager.beginUpload()
         }
 
-        // Process image using backend API for 3D model generation
         guard let generated3DModel = await ar3DModelProcessor.processImage(capturedImage) else {
             await MainActor.run {
                 let errorMsg = ar3DModelProcessor.errorMessage ?? "3D generation failed"
                 arStatusMessage = errorMsg
                 arProcessingStateManager.setError(errorMsg)
                 isProcessingAR = false
-
-                // Camera session was already stopped after capture
                 print("❌ 3D model generation failed")
             }
             return
         }
         
         await MainActor.run {
-            // Prepare for object placement in 3D scene with generated model
             arObjectPlacementManager.prepareForPlacement(with3DModel: generated3DModel)
             arStatusMessage = "Tap to place 3D model in room"
             arProcessingStateManager.readyForPlacement()
             isProcessingAR = false
-
-            // Camera session was already stopped after capture
             print("✅ 3D model generation completed, ready for placement")
         }
     }
     
-    // Clean up AR resources
     private func cleanupAR() {
-        // Ensure camera session is completely stopped
         arKitCameraManager.stopSession()
-
-        // Reset all AR-related state
         isARActive = false
         isProcessingAR = false
         isInContinuousMode = false
-
-        // Clear AR objects and reset managers
         arObjectPlacementManager.clearAllObjects()
         arObjectPlacementManager.isReadyToPlace = false
         arProcessingStateManager.reset()
         ar3DModelProcessor.reset()
         qrCodeDetectionService.reset()
-
         print("🧹 Complete AR cleanup performed on view dismissal")
+    }
+}
+
+// Camera overlay button
+struct CameraOverlayButton: View {
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "camera.viewfinder")
+                .font(.title2)
+                .foregroundColor(.white)
+                .frame(width: 60, height: 60)
+                .background(
+                    LinearGradient(
+                        colors: [Color.purple, Color.blue],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                )
+        }
     }
 }

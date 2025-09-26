@@ -8,6 +8,7 @@ struct RealityKitView: UIViewRepresentable {
     let arObjectPlacementManager: ARObjectPlacementManager
     let isARActive: Bool
     
+    
     // Access quality settings from environment
     @Environment(\.appState) private var appState
     
@@ -35,7 +36,7 @@ struct RealityKitView: UIViewRepresentable {
         loadModel(into: arView, coordinator: context.coordinator)
         
         // Set up camera movement manager with the ARView
-        cameraMovementManager.setARView(arView)
+        cameraMovementManager.setupARView(arView)
         
         return arView
     }
@@ -47,7 +48,14 @@ struct RealityKitView: UIViewRepresentable {
 
         // Update movement speed if settings changed (only when actually different)
         let currentMovementSpeed = appState.currentMovementSpeed
-        cameraMovementManager.updateMovementSpeed(currentMovementSpeed)
+        switch currentMovementSpeed {
+        case .slow:
+            cameraMovementManager.setSpeed(.slow)
+        case .normal:
+            cameraMovementManager.setSpeed(.normal)
+        case .fast:
+            cameraMovementManager.setSpeed(.fast)
+        }
     }
     
     class Coordinator {
@@ -147,10 +155,17 @@ struct RealityKitView: UIViewRepresentable {
                     coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
 
                     // Share boundary manager with camera movement manager to prevent duplication
+                    self.cameraMovementManager.setupARView(arView)
                     self.cameraMovementManager.setBoundaryManager(boundaryManager)
-
                     // Set initial movement speed from settings
-                    self.cameraMovementManager.updateMovementSpeed(appState.currentMovementSpeed)
+                    switch appState.currentMovementSpeed {
+                    case .slow:
+                        self.cameraMovementManager.setSpeed(.slow)
+                    case .normal:
+                        self.cameraMovementManager.setSpeed(.normal)
+                    case .fast:
+                        self.cameraMovementManager.setSpeed(.fast)
+                    }
                     
                     // Position custom camera inside the room bounds
                     if let cameraAnchor = coordinator.cameraAnchor {
@@ -179,7 +194,7 @@ struct RealityKitView: UIViewRepresentable {
                     }
                     
                     // Set up camera movement manager with custom camera references
-                    self.cameraMovementManager.setARView(arView)
+                    self.cameraMovementManager.setupARView(arView)
                     
                     // Share camera references with camera movement manager for joystick control
                     if let cameraAnchor = coordinator.cameraAnchor {
@@ -262,7 +277,7 @@ struct RealityKitView: UIViewRepresentable {
         // Create ambient light
         let ambientLightComponent = DirectionalLightComponent(
             color: .white,
-            intensity: Float(300 * lightingMultiplier),
+            intensity: Float(300 * 3.0),
             isRealWorldProxy: false
         )
         
