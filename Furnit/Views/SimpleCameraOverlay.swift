@@ -10,6 +10,13 @@ struct SimpleCameraOverlay: View {
     @StateObject private var camera = U2NetCameraModel()
     @State private var dragOffset = CGSize.zero
     @State private var position = CGPoint(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2)
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScaleValue: CGFloat = 1.0
+    
+    // Define min and max sizes for the camera preview
+    private let minSize = CGSize(width: 160, height: 120)  // Minimum size
+    private let maxSize = CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)  // Full screen size
+    private let baseSize = CGSize(width: 320, height: 240) // Default size
     
     var body: some View {
         // Small floating window with live segmented furniture
@@ -45,23 +52,37 @@ struct SimpleCameraOverlay: View {
                     }
             )
             
-            // Live segmented camera feed (small window)
+            // Live segmented camera feed (resizable window)
             ZStack {
                 if let segmented = camera.segmentedImage {
                     // Show segmented image with transparency already applied
                     Image(uiImage: segmented)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 320, height: 240)
+                        .frame(width: currentSize.width, height: currentSize.height)
                 } else {
                     // Show camera preview while waiting for segmentation
                     CameraPreviewLayer(session: camera.session)
-                        .frame(width: 320, height: 240)
+                        .frame(width: currentSize.width, height: currentSize.height)
                 }
             }
-            .frame(width: 320, height: 240)
+            .frame(width: currentSize.width, height: currentSize.height)
             .background(Color.clear)
             .clipped()
+            .gesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        let delta = value / lastScaleValue
+                        lastScaleValue = value
+                        
+                        let newScale = scale * delta
+                        let clampedScale = max(minScale, min(maxScale, newScale))
+                        scale = clampedScale
+                    }
+                    .onEnded { value in
+                        lastScaleValue = 1.0
+                    }
+            )
         }
         .cornerRadius(8)
         .overlay(
@@ -81,6 +102,31 @@ struct SimpleCameraOverlay: View {
             camera.stopSession()
         }
     }
+    
+    // Computed properties for current size and scale limits
+    private var currentSize: CGSize {
+        CGSize(
+            width: baseSize.width * scale,
+            height: baseSize.height * scale
+        )
+    }
+    
+    private var minScale: CGFloat {
+        min(minSize.width / baseSize.width, minSize.height / baseSize.height)
+    }
+    
+    private var maxScale: CGFloat {
+        // Allow much larger scaling - up to 5x the base size or screen size, whichever is larger
+        let screenWidth = UIScreen.main.bounds.width
+        let screenHeight = UIScreen.main.bounds.height
+        
+        // Calculate scale factors for width and height
+        let widthScale = screenWidth / baseSize.width
+        let heightScale = screenHeight / baseSize.height
+        
+        // Use the larger scale to allow maximum expansion, then multiply by 1.2 for extra room
+        return max(widthScale, heightScale) * 1.2
+    }
 }
 
 // Camera Preview Layer
@@ -88,13 +134,12 @@ struct CameraPreviewLayer: UIViewRepresentable {
     let session: AVCaptureSession
     
     func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 240))
+        let view = UIView()
         view.backgroundColor = .black
         
         // Create and add preview layer
         DispatchQueue.main.async {
             let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-            previewLayer.frame = view.bounds
             previewLayer.videoGravity = .resizeAspectFill
             previewLayer.connection?.videoOrientation = .portrait
             view.layer.addSublayer(previewLayer)
