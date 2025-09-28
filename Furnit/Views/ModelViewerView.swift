@@ -12,12 +12,11 @@ struct ModelViewerView: View {
     @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
     @State private var joystickOffset: CGSize = .zero
     
-    // Camera overlay state
-    @State private var showCameraOverlay = false
-    @State private var capturedOverlayImage: UIImage?
+    // Camera preview state (using your existing SimpleCameraOverlay)
+    @State private var showingCameraPreview = false
+    @State private var capturedImageFromPreview: UIImage?
     
-    // AR functionality state
-    @StateObject private var arKitCameraManager = ARKitCameraManager()
+    // AR functionality state (SimpleCameraOverlay handles camera)
     @StateObject private var ar3DModelProcessor = AR3DModelProcessor()
     @StateObject private var arProcessingStateManager = ARProcessingStateManager()
     @StateObject private var arObjectPlacementManager = RealityKitObjectPlacementManager()
@@ -33,20 +32,32 @@ struct ModelViewerView: View {
     @State private var showDeleteConfirmation = false
     @State private var showObjectMovementJoystick = false
     @State private var objectMovementJoystickOffset: CGSize = .zero
+
+    private var gestureHandlers: RealityKitGestureHandlers? {
+        return nil // TODO: We'll need to access this through RealityKitView
+    }
     
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Main 3D room view
                 RealityKitView(
                     model: model,
                     cameraMovementManager: cameraMovementManager,
                     arObjectPlacementManager: arObjectPlacementManager,
                     isARActive: isARActive
                 )
-                .ignoresSafeArea(.all)
+                    .ignoresSafeArea(.all)
                 
-                // Regular controls
+                // Use your existing SimpleCameraOverlay when AR is active
+                if showingCameraPreview {
+                    SimpleCameraOverlay(
+                        capturedImage: $capturedImageFromPreview,
+                        isShowingCamera: $showingCameraPreview
+                    )
+                    .zIndex(100) // Ensure it's on top
+                    .transition(.opacity)
+                }
+                
                 if isLandscape(geometry: geometry) {
                     landscapeControls
                 } else {
@@ -60,16 +71,6 @@ struct ModelViewerView: View {
 
                 // Object manipulation guidance overlay
                 objectManipulationGuidanceOverlay
-                
-                // Simple camera overlay - Image Plate style floating window
-                if showCameraOverlay {
-                    SimpleCameraOverlay(
-                        capturedImage: $capturedOverlayImage,
-                        isShowingCamera: $showCameraOverlay
-                    )
-                    .transition(.scale.combined(with: .opacity))
-                    .zIndex(100)
-                }
             }
         }
         .navigationBarHidden(true)
@@ -82,17 +83,20 @@ struct ModelViewerView: View {
         .onDisappear {
             cleanupAR()
         }
-        .onChange(of: capturedOverlayImage) { _, newImage in
-            if let image = newImage {
-                // Handle the captured image if needed
-                print("📸 Image captured from SimpleCameraOverlay")
-                // You can process the image here if needed
-            }
-        }
         .onChange(of: shouldRestartScanning) { _, newValue in
             if newValue {
                 restartARScanning()
                 shouldRestartScanning = false
+            }
+        }
+        .onChange(of: capturedImageFromPreview) { _, newImage in
+            if let image = newImage {
+                // Process the captured/segmented image from SimpleCameraOverlay
+                Task {
+                    await performARProcessingWithSegmentedImage(image)
+                }
+                // Reset for next capture
+                capturedImageFromPreview = nil
             }
         }
         .alert("Delete Object", isPresented: $showDeleteConfirmation) {
@@ -120,39 +124,36 @@ struct ModelViewerView: View {
             
             Spacer()
             
-            // Bottom controls
-            HStack(alignment: .bottom) {
-                // Left side - Camera overlay button
+            // Bottom controls - info, joystick, and AR button
+            HStack {
                 VStack(spacing: 16) {
+                    // AR Button at bottom-left
                     if !arObjectPlacementManager.isManipulatingObject {
-                        CameraOverlayButton {
-                            showCameraOverlay.toggle()
-                            // Reset captured image when opening camera
-                            if showCameraOverlay {
-                                capturedOverlayImage = nil
-                            }
+                        ARButton(isARActive: Binding(
+                            get: { showingCameraPreview },  // Show active state when camera preview is showing
+                            set: { _ in toggleARMode() }
+                        )) {
+                            toggleARMode()
                         }
                     }
-                    
-                    Spacer()
                 }
-                
-                Spacer()
-                
-                // Center/Right side - Info and joystick
+
                 VStack(spacing: 16) {
                     if !isARActive && !arObjectPlacementManager.isManipulatingObject {
                         modelInfoPanel
                     }
 
-                    // Joystick for camera movement
+                    // Joystick for camera movement (NO AMPLIFICATION)
                     if !arObjectPlacementManager.isManipulatingObject {
                         VirtualJoystick(joystickOffset: $joystickOffset)
                             .onChange(of: joystickOffset) { _, newOffset in
+                                // Direct input without amplification
                                 cameraMovementManager.updateJoystickInput(newOffset)
                             }
                     }
                 }
+
+                Spacer()
             }
             .padding()
         }
@@ -160,7 +161,7 @@ struct ModelViewerView: View {
     
     private var landscapeControls: some View {
         HStack {
-            // Left side controls
+            // Left side controls - back button
             VStack {
                 backButton
                 Spacer()
@@ -171,14 +172,13 @@ struct ModelViewerView: View {
             
             // Right side controls
             VStack(spacing: 16) {
-                // Camera overlay button at top
+                // AR Button at top
                 if !arObjectPlacementManager.isManipulatingObject {
-                    CameraOverlayButton {
-                        showCameraOverlay.toggle()
-                        // Reset captured image when opening camera
-                        if showCameraOverlay {
-                            capturedOverlayImage = nil
-                        }
+                    ARButton(isARActive: Binding(
+                        get: { showingCameraPreview },  // Show active state when camera preview is showing
+                        set: { _ in toggleARMode() }
+                    )) {
+                        toggleARMode()
                     }
                 }
 
@@ -188,13 +188,32 @@ struct ModelViewerView: View {
                     modelInfoPanel
                 }
 
-                // Joystick for camera movement at bottom
+                // Joystick with visual feedback (NO AMPLIFICATION)
                 if !arObjectPlacementManager.isManipulatingObject {
-                    VirtualJoystick(joystickOffset: $joystickOffset)
-                        .onChange(of: joystickOffset) { _, newOffset in
-                            cameraMovementManager.updateJoystickInput(newOffset)
+                    VStack(spacing: 4) {
+                        // Show movement indicator
+                        if joystickOffset != .zero {
+                            Text("Moving")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.6))
+                                .animation(.easeInOut(duration: 0.2), value: joystickOffset)
                         }
+                        
+                        VirtualJoystick(joystickOffset: $joystickOffset)
+                            .onChange(of: joystickOffset) { _, newOffset in
+                                // Direct input without amplification - fixed in camera manager
+                                cameraMovementManager.updateJoystickInput(newOffset)
+                            }
+                            .frame(width: 120, height: 120)
+                            .overlay(
+                                Circle()
+                                    .stroke(joystickOffset != .zero ? Color.blue : Color.white.opacity(0.3), lineWidth: 2)
+                                    .animation(.easeInOut(duration: 0.2), value: joystickOffset)
+                            )
+                    }
                 }
+
+                Spacer()
             }
             .padding()
         }
@@ -524,106 +543,73 @@ struct ModelViewerView: View {
     }
     
     private func toggleARMode() {
-        if isProcessingAR {
+        if showingCameraPreview {
+            // Stop camera preview and processing
+            showingCameraPreview = false
             stopARMode()
-            print("📱 Red button pressed - stopping AR processing")
+            print("📱 Camera preview stopped")
         } else {
-            startARMode()
-            print("📱 Blue button pressed - starting AR mode with automatic processing")
+            // Start camera preview with SimpleCameraOverlay
+            showingCameraPreview = true
+            isARActive = true
+            arStatusMessage = "Live furniture segmentation"
+            print("📱 SimpleCameraOverlay started - live segmentation active")
         }
     }
     
     private func startARMode() {
+        // Show the SimpleCameraOverlay floating window
+        showingCameraPreview = true
         isARActive = true
-        isInContinuousMode = false
-        isProcessingAR = true
-        arStatusMessage = "Starting ARKit camera..."
-        arProcessingStateManager.reset()
-        arProcessingStateManager.startARSession()
-        arObjectPlacementManager.isReadyToPlace = false
-
-        Task {
-            await MainActor.run {
-                arStatusMessage = "Starting capture for next object..."
-                arProcessingStateManager.updateState(.pointing)
-                print("🎯 Lightweight AR restart - starting capture process immediately")
-            }
-            await performARCapture()
-        }
+        arStatusMessage = "Live furniture segmentation"
+        print("📷 SimpleCameraOverlay activated with U2-Net segmentation")
     }
     
     private func stopARMode() {
+        // Hide camera preview
+        showingCameraPreview = false
         isARActive = false
         isProcessingAR = false
         isInContinuousMode = false
         arStatusMessage = "Point at furniture objects"
         arProcessingStateManager.reset()
-        arKitCameraManager.stopSession()
         arObjectPlacementManager.clearAllObjects()
         arObjectPlacementManager.isReadyToPlace = false
         qrCodeDetectionService.reset()
         ar3DModelProcessor.reset()
-        print("🛑 AR mode stopped completely with full cleanup")
+        print("🛑 AR mode and camera preview stopped")
     }
 
     private func restartARScanning() {
+        // Simply show the camera preview again
+        showingCameraPreview = true
         isProcessingAR = false
         arStatusMessage = "Point at furniture objects"
         isARActive = true
-        isInContinuousMode = true
-        arProcessingStateManager.startARSession()
-        arKitCameraManager.startSession()
         arObjectPlacementManager.isReadyToPlace = false
-        print("🔄 Restarted AR scanning mode with camera session - ready for next object")
+        print("🔄 SimpleCameraOverlay restarted for next capture")
     }
     
-    private func performARCapture() async {
-        await MainActor.run {
-            if !arKitCameraManager.isSessionRunning {
-                arStatusMessage = "Starting camera for capture..."
-                arKitCameraManager.startSession()
-                print("📷 Started camera session for capture")
-            } else {
-                arStatusMessage = "Ready - tap to capture furniture"
-            }
-            arProcessingStateManager.updateState(.pointing)
-        }
-
-        if !arKitCameraManager.isSessionRunning {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-        }
-        
-        try? await Task.sleep(nanoseconds: 2_000_000_000)
+    // Process the segmented image from SimpleCameraOverlay
+    private func performARProcessingWithSegmentedImage(_ segmentedImage: UIImage) async {
+        isProcessingAR = true
+        showingCameraPreview = false // Hide camera overlay during processing
         
         await MainActor.run {
-            arStatusMessage = "Capturing ARKit frame..."
+            arStatusMessage = "Processing segmented furniture..."
             arProcessingStateManager.beginCapture()
-            isProcessingAR = true
         }
         
-        guard let capturedImage = await MainActor.run(body: { arKitCameraManager.captureCurrentFrameForAPI() }) else {
-            await MainActor.run {
-                let errorMsg = arKitCameraManager.errorMessage ?? "Failed to capture frame"
-                arStatusMessage = errorMsg
-                arProcessingStateManager.setError(errorMsg)
-                isProcessingAR = false
-                arKitCameraManager.stopSession()
-                print("📷 Physical camera session stopped due to capture error")
-            }
-            return
-        }
-
-        await MainActor.run {
-            arKitCameraManager.stopSession()
-            print("📷 Physical camera session stopped immediately after image capture")
-        }
+        // The image is already segmented by U2-Net in SimpleCameraOverlay
+        print("📸 Received pre-segmented furniture image from SimpleCameraOverlay")
         
+        // Check for QR codes first
         await MainActor.run {
             arStatusMessage = "Scanning for QR codes..."
             arProcessingStateManager.beginQRDetection()
         }
 
-        let qrResult = await qrCodeDetectionService.detectQRCode(in: capturedImage)
+        let qrResult = await qrCodeDetectionService.detectQRCode(in: segmentedImage)
 
         if qrResult.hasQRCode, let qrURL = qrResult.extractedURL {
             print("🔍 QR code detected with URL: \(qrURL.absoluteString)")
@@ -656,39 +642,35 @@ struct ModelViewerView: View {
                     if let fileURL = downloadResult.fileURL {
                         assetDownloadService.cleanupDownloadedFile(at: fileURL)
                     }
-
-                    print("✅ QR code workflow completed successfully")
                     return
-
                 } else {
                     let errorMsg = downloadResult.errorMessage ?? "Failed to download 3D model"
                     print("⚠️ QR asset download failed: \(errorMsg). Falling back to backend processing.")
-
                     await MainActor.run {
                         arStatusMessage = "Download failed, generating 3D model..."
                     }
                 }
             } else {
                 print("⚠️ QR URL is not a 3D asset. Falling back to backend processing.")
-
                 await MainActor.run {
                     arStatusMessage = "QR code found but not a 3D asset, generating model..."
                 }
             }
         } else {
             print("📱 No QR code detected, proceeding with backend 3D generation")
-
             await MainActor.run {
                 arStatusMessage = "No QR code found, generating 3D model..."
             }
         }
 
+        // Backend processing with the segmented image
         await MainActor.run {
-            arStatusMessage = "Uploading image for 3D generation..."
+            arStatusMessage = "Uploading segmented furniture for 3D generation..."
             arProcessingStateManager.beginUpload()
         }
 
-        guard let generated3DModel = await ar3DModelProcessor.processImage(capturedImage) else {
+        // Process segmented image using backend API
+        guard let generated3DModel = await ar3DModelProcessor.processImage(segmentedImage) else {
             await MainActor.run {
                 let errorMsg = ar3DModelProcessor.errorMessage ?? "3D generation failed"
                 arStatusMessage = errorMsg
@@ -704,47 +686,26 @@ struct ModelViewerView: View {
             arStatusMessage = "Tap to place 3D model in room"
             arProcessingStateManager.readyForPlacement()
             isProcessingAR = false
-            print("✅ 3D model generation completed, ready for placement")
+            print("✅ 3D model generation completed from segmented image")
         }
     }
     
     private func cleanupAR() {
-        arKitCameraManager.stopSession()
+        // Hide camera overlay
+        showingCameraPreview = false
+        
+        // Reset all AR-related state
         isARActive = false
         isProcessingAR = false
         isInContinuousMode = false
+
+        // Clear AR objects and reset managers
         arObjectPlacementManager.clearAllObjects()
         arObjectPlacementManager.isReadyToPlace = false
         arProcessingStateManager.reset()
         ar3DModelProcessor.reset()
         qrCodeDetectionService.reset()
-        print("🧹 Complete AR cleanup performed on view dismissal")
-    }
-}
 
-// Camera overlay button
-struct CameraOverlayButton: View {
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "camera.viewfinder")
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 60, height: 60)
-                .background(
-                    LinearGradient(
-                        colors: [Color.purple, Color.blue],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                )
-        }
+        print("🧹 Complete AR cleanup performed on view dismissal")
     }
 }
