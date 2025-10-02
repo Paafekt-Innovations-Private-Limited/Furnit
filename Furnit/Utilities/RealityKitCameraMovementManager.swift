@@ -4,11 +4,11 @@ import SwiftUI
 import simd
 
 class RealityKitCameraMovementManager: ObservableObject {
-    // Define MovementSpeed enum locally
+    // Define MovementSpeed enum locally with BALANCED values for smooth movement
     enum MovementSpeed: Float {
-        case slow = 0.0008
-        case normal = 0.0015
-        case fast = 0.003
+        case slow = 0.0016   // 2x original for gentle movement
+        case normal = 0.003  // 2x original for comfortable cruising
+        case fast = 0.006    // 2x original for quicker navigation
     }
     
     // Camera movement properties
@@ -23,15 +23,15 @@ class RealityKitCameraMovementManager: ObservableObject {
     // Current speed setting
     @Published var currentSpeed: MovementSpeed = .normal
     
-    // Movement configuration - INCREASED BASE SPEED
-    private var movementSpeed: Float = 0.02 // Increased from 0.003 for more responsive movement
-    private let joystickSensitivity: Float = 0.001 // Additional multiplier for joystick input
-    private let joystickDeadZone: Float = 5.0 // Dead zone threshold (was 1, now 5)
+    // Movement configuration - BALANCED FOR SMOOTH MOVEMENT
+    private var movementSpeed: Float = 0.04 // Moderate speed for smooth control
+    private let joystickSensitivity: Float = 0.001 // Keep original sensitivity
+    private let joystickDeadZone: Float = 5.0 // Dead zone threshold
     
     // Smooth movement
     private var targetVelocity: SIMD2<Float> = .zero
     private var currentVelocity: SIMD2<Float> = .zero
-    private let smoothingFactor: Float = 0.15 // Lower = smoother movement
+    private let smoothingFactor: Float = 0.18 // Balanced for smooth transitions
     
     // Callback for camera movement notifications
     var onCameraMove: (() -> Void)?
@@ -76,8 +76,8 @@ class RealityKitCameraMovementManager: ObservableObject {
     }
     
     func setSpeed(_ speed: MovementSpeed) {
-        // Map enum to actual speed values with better scaling
-        movementSpeed = speed.rawValue * 10.0  // Scale up the raw values for better movement
+        // Map enum to actual speed values with moderate scaling for smooth movement
+        movementSpeed = speed.rawValue * 20.0  // Balanced multiplier for smooth control
         currentSpeed = speed
         print("🏃 Speed set to \(speed) (\(movementSpeed))")
     }

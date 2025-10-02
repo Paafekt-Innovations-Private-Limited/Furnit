@@ -15,6 +15,9 @@ struct ModelViewerView: View {
     // Camera preview state (using your existing SimpleCameraOverlay)
     @State private var showingCameraPreview = false
     @State private var capturedImageFromPreview: UIImage?
+    @State private var isInitializingCamera = false
+    @State private var cameraInitProgress: Double = 0.0
+    @State private var initializationTimer: Timer?
     
     // AR functionality state (SimpleCameraOverlay handles camera)
     @StateObject private var ar3DModelProcessor = AR3DModelProcessor()
@@ -47,6 +50,11 @@ struct ModelViewerView: View {
                     isARActive: isARActive
                 )
                     .ignoresSafeArea(.all)
+                
+                // Camera initialization overlay
+                if isInitializingCamera {
+                    cameraInitializationOverlay
+                }
                 
                 // Use your existing SimpleCameraOverlay when AR is active
                 if showingCameraPreview {
@@ -253,6 +261,98 @@ struct ModelViewerView: View {
         .padding(.vertical, 12)
         .background(Color.black.opacity(0.7))
         .cornerRadius(16)
+    }
+    
+    // MARK: - Camera Initialization Overlay
+    private var cameraInitializationOverlay: some View {
+        ZStack {
+            // Semi-transparent background
+            Color.black.opacity(0.7)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    // Allow canceling by tapping outside
+                    cancelCameraInitialization()
+                }
+            
+            VStack(spacing: 24) {
+                // Camera icon with pulse animation
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 50))
+                    .foregroundColor(.white)
+                    .scaleEffect(isInitializingCamera ? 1.1 : 1.0)
+                    .animation(
+                        .easeInOut(duration: 0.8).repeatForever(autoreverses: true),
+                        value: isInitializingCamera
+                    )
+                
+                VStack(spacing: 12) {
+                    Text("Initializing Camera")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    
+                    Text("Starting U²-Net segmentation...")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.8))
+                }
+                
+                // Progress bar
+                VStack(spacing: 8) {
+                    ProgressView(value: cameraInitProgress)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .white))
+                        .frame(width: 200)
+                        .scaleEffect(x: 1, y: 2)
+                    
+                    Text("\(Int(cameraInitProgress * 100))%")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                
+                // Loading indicators
+                HStack(spacing: 8) {
+                    ForEach(0..<3, id: \.self) { index in
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 8, height: 8)
+                            .opacity(isInitializingCamera ? 1.0 : 0.3)
+                            .animation(
+                                .easeInOut(duration: 0.6)
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(index) * 0.2),
+                                value: isInitializingCamera
+                            )
+                    }
+                }
+                
+                // Cancel button
+                Button(action: {
+                    cancelCameraInitialization()
+                }) {
+                    Text("Cancel")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                        )
+                }
+                .padding(.top, 8)
+            }
+            .padding(32)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.black.opacity(0.9))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
+            )
+            .onTapGesture {
+                // Prevent closing when tapping on the dialog
+            }
+        }
+        .transition(.opacity)
     }
     
     // MARK: - AR Status Overlay
@@ -549,25 +649,73 @@ struct ModelViewerView: View {
             stopARMode()
             print("📱 Camera preview stopped")
         } else {
-            // Start camera preview with SimpleCameraOverlay
-            showingCameraPreview = true
-            isARActive = true
-            arStatusMessage = "Live furniture segmentation"
-            print("📱 SimpleCameraOverlay started - live segmentation active")
+            // Start camera initialization with progress
+            startCameraInitialization()
         }
     }
     
-    private func startARMode() {
-        // Show the SimpleCameraOverlay floating window
-        showingCameraPreview = true
+    private func startCameraInitialization() {
+        isInitializingCamera = true
+        cameraInitProgress = 0.0
         isARActive = true
-        arStatusMessage = "Live furniture segmentation"
-        print("📷 SimpleCameraOverlay activated with U2-Net segmentation")
+        
+        // Simulate camera initialization with progress updates
+        initializationTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+            self.cameraInitProgress += 0.02
+            
+            // Add progress milestones
+            if self.cameraInitProgress >= 0.3 && self.cameraInitProgress < 0.32 {
+                print("📷 Camera permissions checked")
+            } else if self.cameraInitProgress >= 0.6 && self.cameraInitProgress < 0.62 {
+                print("🤖 Loading U²-Net model")
+            } else if self.cameraInitProgress >= 0.9 && self.cameraInitProgress < 0.92 {
+                print("✅ Segmentation ready")
+            }
+            
+            if self.cameraInitProgress >= 1.0 {
+                timer.invalidate()
+                self.initializationTimer = nil
+                
+                // Complete initialization
+                withAnimation(.easeOut(duration: 0.3)) {
+                    self.isInitializingCamera = false
+                }
+                
+                // Show camera overlay after a brief delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.showingCameraPreview = true
+                    self.arStatusMessage = "Live furniture segmentation"
+                    print("📷 SimpleCameraOverlay activated with U²-Net segmentation")
+                }
+            }
+        }
+    }
+    
+    private func cancelCameraInitialization() {
+        // Stop the timer
+        initializationTimer?.invalidate()
+        initializationTimer = nil
+        
+        // Reset states
+        withAnimation(.easeOut(duration: 0.2)) {
+            isInitializingCamera = false
+            cameraInitProgress = 0.0
+            isARActive = false
+        }
+        
+        print("❌ Camera initialization cancelled")
+    }
+    
+    private func startARMode() {
+        // This can be called directly if needed
+        startCameraInitialization()
     }
     
     private func stopARMode() {
         // Hide camera preview
         showingCameraPreview = false
+        isInitializingCamera = false
+        cameraInitProgress = 0.0
         isARActive = false
         isProcessingAR = false
         isInContinuousMode = false
@@ -691,8 +839,10 @@ struct ModelViewerView: View {
     }
     
     private func cleanupAR() {
-        // Hide camera overlay
+        // Hide camera overlay and reset initialization
         showingCameraPreview = false
+        isInitializingCamera = false
+        cameraInitProgress = 0.0
         
         // Reset all AR-related state
         isARActive = false

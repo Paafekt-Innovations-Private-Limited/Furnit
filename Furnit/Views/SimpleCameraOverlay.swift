@@ -13,6 +13,11 @@ struct SimpleCameraOverlay: View {
     @State private var scale: CGFloat = 1.0
     @State private var lastScaleValue: CGFloat = 1.0
     
+    // Vertical position constraints
+    @State private var verticalOffset: CGFloat = 0
+    private let minVerticalPosition: CGFloat = 100 // Minimum distance from top
+    private let maxVerticalPosition: CGFloat = UIScreen.main.bounds.height - 200 // Max distance from bottom
+    
     // Define min and max sizes for the camera preview
     private let minSize = CGSize(width: 160, height: 120)  // Minimum size
     private let maxSize = CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)  // Full screen size
@@ -21,13 +26,18 @@ struct SimpleCameraOverlay: View {
     var body: some View {
         // Small floating window with live segmented furniture
         VStack(spacing: 0) {
-            // Title bar for dragging
+            // Title bar for dragging horizontally
             HStack {
                 Text("Live Furniture")
                     .font(.caption)
                     .foregroundColor(.white)
                 
                 Spacer()
+                
+                // Vertical position indicator
+                Image(systemName: "arrow.up.and.down")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
                 
                 Button(action: {
                     isShowingCamera = false
@@ -43,11 +53,16 @@ struct SimpleCameraOverlay: View {
             .gesture(
                 DragGesture()
                     .onChanged { value in
-                        dragOffset = value.translation
+                        // Horizontal movement only on title bar
+                        dragOffset = CGSize(
+                            width: value.translation.width,
+                            height: 0
+                        )
                     }
                     .onEnded { value in
                         position.x += value.translation.width
-                        position.y += value.translation.height
+                        // Constrain horizontal position
+                        position.x = max(currentSize.width/2, min(UIScreen.main.bounds.width - currentSize.width/2, position.x))
                         dragOffset = .zero
                     }
             )
@@ -65,6 +80,52 @@ struct SimpleCameraOverlay: View {
                     CameraPreviewLayer(session: camera.session)
                         .frame(width: currentSize.width, height: currentSize.height)
                 }
+                
+                // Vertical drag handle on the left side
+                HStack {
+                    // Left drag handle for vertical movement
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.1), Color.white.opacity(0.3), Color.white.opacity(0.1)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 20)
+                        .overlay(
+                            VStack {
+                                Image(systemName: "chevron.up")
+                                    .font(.caption2)
+                                    .foregroundColor(.white.opacity(0.5))
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .font(.caption2)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding(.vertical, 8)
+                        )
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    // Update vertical position
+                                    let newY = position.y + value.translation.height
+                                    // Apply constraints
+                                    if newY >= minVerticalPosition && newY <= maxVerticalPosition {
+                                        verticalOffset = value.translation.height
+                                    }
+                                }
+                                .onEnded { value in
+                                    let newY = position.y + value.translation.height
+                                    // Apply constraints and update position
+                                    position.y = max(minVerticalPosition, min(maxVerticalPosition, newY))
+                                    verticalOffset = 0
+                                }
+                        )
+                    
+                    Spacer()
+                }
+                .frame(width: currentSize.width, height: currentSize.height)
             }
             .frame(width: currentSize.width, height: currentSize.height)
             .background(Color.clear)
@@ -83,6 +144,41 @@ struct SimpleCameraOverlay: View {
                         lastScaleValue = 1.0
                     }
             )
+            
+            // Bottom resize handle
+            HStack {
+                Spacer()
+                
+                // Capture button
+                Button(action: {
+                    if let currentImage = camera.segmentedImage {
+                        capturedImage = currentImage
+                        print("📸 Captured segmented furniture image")
+                    }
+                }) {
+                    Image(systemName: "camera.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal)
+                
+                // Resize handle
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(8)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                // Diagonal resize
+                                let scaleChange = (value.translation.width + value.translation.height) / 200
+                                let newScale = scale + scaleChange
+                                scale = max(minScale, min(maxScale, newScale))
+                            }
+                    )
+            }
+            .frame(height: 30)
+            .background(Color.black.opacity(0.6))
         }
         .cornerRadius(8)
         .overlay(
@@ -90,7 +186,10 @@ struct SimpleCameraOverlay: View {
                 .stroke(Color.white.opacity(0.3), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 5)
-        .position(x: position.x + dragOffset.width, y: position.y + dragOffset.height)
+        .position(
+            x: position.x + dragOffset.width,
+            y: position.y + dragOffset.height + verticalOffset
+        )
         .onAppear {
             camera.checkCameraPermission()
             // Add delay to ensure camera initializes properly
@@ -129,7 +228,7 @@ struct SimpleCameraOverlay: View {
     }
 }
 
-// Camera Preview Layer
+// Camera Preview Layer (same as before)
 struct CameraPreviewLayer: UIViewRepresentable {
     let session: AVCaptureSession
     
@@ -166,8 +265,9 @@ struct CameraPreviewLayer: UIViewRepresentable {
     }
 }
 
-// U2-Net Camera Model for Furniture Segmentation
+// U2-Net Camera Model remains the same...
 class U2NetCameraModel: NSObject, ObservableObject {
+    // ... (rest of the U2NetCameraModel code remains unchanged)
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "videoQueue", qos: .userInitiated)
@@ -292,6 +392,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
         }
     }
     
+    // ... (rest of the processing methods remain unchanged)
     private func processWithU2Net(pixelBuffer: CVPixelBuffer) {
         // Throttle processing for performance
         let now = Date()
