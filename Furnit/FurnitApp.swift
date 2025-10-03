@@ -1,28 +1,32 @@
-//
-//  FurnitApp.swift
-//  Furnit
-//
-//  Created by Sitaramaswamy Ponnamanda on 07/09/25.
-//
-
 import SwiftUI
 
+// In FurnitApp.swift
 @main
 struct FurnitApp: App {
-    // Global app state manager
-    private let appStateManager = AppStateManager.shared
+    @StateObject private var authManager = AuthenticationManager()
+    @StateObject private var appStateManager = AppStateManager.shared
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(\.appState, appStateManager)
-                .onAppear {
-                    // Mark app as launched on first startup
-                    if appStateManager.isFirstLaunch {
-                        appStateManager.markAsLaunched()
-                        print("🎉 Welcome to Furnit! First launch detected.")
-                    }
-                }
+            RootView() // Use a wrapper instead
+                .environmentObject(authManager)
+                .environmentObject(appStateManager)
+                .preferredColorScheme(.dark)
+        }
+    }
+}
+
+// Create a new RootView
+struct RootView: View {
+    @EnvironmentObject var authManager: AuthenticationManager
+    
+    var body: some View {
+        Group {
+            if authManager.isAuthenticated {
+                HomeViewWithProfile(authManager: authManager)
+            } else {
+                LoginView()
+            }
         }
     }
 }
