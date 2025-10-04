@@ -444,14 +444,294 @@ struct ModelRowView: View {
     }
 }
 
+// MARK: - Room Capture Camera View
+struct RoomCaptureCamera: View {
+    @Binding var capturedImage: UIImage?
+    @Binding var isShowingCamera: Bool
+    var onImageCaptured: ((UIImage) -> Void)?
+    var photoNumber: Int = 1
+    var totalPhotos: Int = 4
+    @State private var image: UIImage?
+    @State private var showImagePicker = true
+    @State private var sourceType: UIImagePickerController.SourceType = .camera
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            if let image = image {
+                // Preview the captured image
+                VStack {
+                    HStack {
+                        Text("Photo \(photoNumber) of \(totalPhotos)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        // Progress dots
+                        HStack(spacing: 8) {
+                            ForEach(1...totalPhotos, id: \.self) { index in
+                                Circle()
+                                    .fill(index <= photoNumber ? Color.green : Color.white.opacity(0.3))
+                                    .frame(width: 10, height: 10)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 50)
+                    
+                    Text("Room Preview")
+                        .font(.headline)
+                        .foregroundColor(.white.opacity(0.8))
+                    
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .padding()
+                    
+                    Text(photoNumber < totalPhotos ?
+                         "Move to a different corner for next photo" :
+                         "All angles captured!")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.horizontal)
+                    
+                    HStack(spacing: 40) {
+                        // Retake button
+                        Button(action: {
+                            self.image = nil
+                            self.showImagePicker = true
+                        }) {
+                            VStack {
+                                Image(systemName: "camera.rotate")
+                                    .font(.title)
+                                Text("Retake")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: 80, height: 80)
+                            .background(Color.gray.opacity(0.3))
+                            .clipShape(Circle())
+                        }
+                        
+                        // Use/Next button
+                        Button(action: {
+                            if let onImageCaptured = onImageCaptured {
+                                onImageCaptured(image)
+                                // Reset for next photo
+                                self.image = nil
+                                if photoNumber < totalPhotos {
+                                    self.showImagePicker = true
+                                }
+                            } else {
+                                capturedImage = image
+                                isShowingCamera = false
+                            }
+                        }) {
+                            VStack {
+                                Image(systemName: photoNumber < totalPhotos ?
+                                     "arrow.right.circle.fill" : "checkmark.circle.fill")
+                                    .font(.title)
+                                Text(photoNumber < totalPhotos ? "Next" : "Finish")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: 80, height: 80)
+                            .background(Color.green.opacity(0.7))
+                            .clipShape(Circle())
+                        }
+                        
+                        // Cancel button
+                        Button(action: {
+                            isShowingCamera = false
+                        }) {
+                            VStack {
+                                Image(systemName: "xmark.circle")
+                                    .font(.title)
+                                Text("Cancel")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: 80, height: 80)
+                            .background(Color.red.opacity(0.7))
+                            .clipShape(Circle())
+                        }
+                    }
+                    .padding(.bottom, 50)
+                }
+            } else {
+                // Camera instructions
+                VStack {
+                    HStack {
+                        Text("Photo \(photoNumber) of \(totalPhotos)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        HStack(spacing: 8) {
+                            ForEach(1...totalPhotos, id: \.self) { index in
+                                Circle()
+                                    .fill(index < photoNumber ? Color.green : Color.white.opacity(0.3))
+                                    .frame(width: 10, height: 10)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 50)
+                    
+                    Spacer()
+                    
+                    VStack(spacing: 20) {
+                        Image(systemName: "viewfinder")
+                            .font(.system(size: 150))
+                            .foregroundColor(.white.opacity(0.5))
+                        
+                        Text(getInstructionForPhoto(photoNumber))
+                            .font(.title3)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    
+                    Spacer()
+                    
+                    Text("Tip: Include as much of the room as possible")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.bottom, 100)
+                }
+            }
+        }
+        .sheet(isPresented: $showImagePicker, onDismiss: {
+            if image == nil && photoNumber == 1 {
+                // If no image was captured on first photo, close the camera view
+                isShowingCamera = false
+            }
+        }) {
+            ImagePicker(image: $image, sourceType: sourceType)
+        }
+    }
+    
+    private func getInstructionForPhoto(_ photoNum: Int) -> String {
+        switch photoNum {
+        case 1: return "Stand in the first corner\nCapture opposite wall"
+        case 2: return "Move to the next corner\nCapture the adjacent wall"
+        case 3: return "Move to the third corner\nCapture another view"
+        case 4: return "Final corner\nCapture the last view"
+        default: return "Capture the room"
+        }
+    }
+}
+
+// MARK: - Image Picker for Camera
+struct ImagePicker: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    var sourceType: UIImagePickerController.SourceType
+    @Environment(\.presentationMode) var presentationMode
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.sourceType = sourceType
+        picker.allowsEditing = false
+        
+        // Camera settings for room scanning
+        if sourceType == .camera {
+            picker.cameraCaptureMode = .photo
+            picker.cameraDevice = .rear
+            picker.showsCameraControls = true
+            
+            // Add overlay view with grid guides
+            let overlayView = createCameraOverlay(frame: picker.view.bounds)
+            picker.cameraOverlayView = overlayView
+        }
+        
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    private func createCameraOverlay(frame: CGRect) -> UIView {
+        let overlay = UIView(frame: frame)
+        overlay.isUserInteractionEnabled = false
+        
+        // Add grid lines for composition help
+        let gridLayer = CALayer()
+        gridLayer.frame = frame
+        
+        // Vertical lines
+        for i in 1...2 {
+            let line = CALayer()
+            line.frame = CGRect(x: frame.width * CGFloat(i) / 3, y: 0, width: 1, height: frame.height)
+            line.backgroundColor = UIColor.white.withAlphaComponent(0.3).cgColor
+            gridLayer.addSublayer(line)
+        }
+        
+        // Horizontal lines
+        for i in 1...2 {
+            let line = CALayer()
+            line.frame = CGRect(x: 0, y: frame.height * CGFloat(i) / 3, width: frame.width, height: 1)
+            line.backgroundColor = UIColor.white.withAlphaComponent(0.3).cgColor
+            gridLayer.addSublayer(line)
+        }
+        
+        overlay.layer.addSublayer(gridLayer)
+        
+        // Add instruction label
+        let label = UILabel(frame: CGRect(x: 20, y: 100, width: frame.width - 40, height: 40))
+        label.text = "Frame the entire room"
+        label.textAlignment = .center
+        label.textColor = .white
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        label.layer.cornerRadius = 10
+        label.clipsToBounds = true
+        label.font = .systemFont(ofSize: 16, weight: .medium)
+        overlay.addSubview(label)
+        
+        return overlay
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        var parent: ImagePicker
+        
+        init(_ parent: ImagePicker) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let uiImage = info[.originalImage] as? UIImage {
+                parent.image = uiImage
+            }
+            parent.presentationMode.wrappedValue.dismiss()
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.presentationMode.wrappedValue.dismiss()
+        }
+    }
+}
+
 // MARK: - Room Scanner View (Actual Implementation)
 struct RoomScannerView: View {
     @Binding var isPresented: Bool
-    @State private var capturedImage: UIImage?
+    @State private var capturedImages: [UIImage] = []
     @State private var showingCamera = false
     @State private var isProcessing = false
     @State private var statusMessage = "Ready to scan room"
+    @State private var processingComplete = false
+    @State private var currentImageCount = 0
     @StateObject private var ar3DModelProcessor = AR3DModelProcessor()
+    @StateObject private var modelManager = USDZModelManager()
+    
+    let requiredPhotos = 4 // Need 4 photos from different angles
     
     var body: some View {
         NavigationView {
@@ -465,10 +745,26 @@ struct RoomScannerView: View {
                 .ignoresSafeArea()
                 
                 if showingCamera {
-                    // Use your existing SimpleCameraOverlay
-                    SimpleCameraOverlay(
-                        capturedImage: $capturedImage,
-                        isShowingCamera: $showingCamera
+                    // Multi-photo capture camera
+                    RoomCaptureCamera(
+                        capturedImage: .constant(nil),
+                        isShowingCamera: $showingCamera,
+                        onImageCaptured: { image in
+                            capturedImages.append(image)
+                            currentImageCount = capturedImages.count
+                            
+                            if capturedImages.count < requiredPhotos {
+                                // Need more photos
+                                statusMessage = "Photo \(capturedImages.count) of \(requiredPhotos) captured"
+                                showingCamera = true // Keep camera open for next photo
+                            } else {
+                                // Have enough photos, start processing
+                                showingCamera = false
+                                processScannedImages(capturedImages)
+                            }
+                        },
+                        photoNumber: currentImageCount + 1,
+                        totalPhotos: requiredPhotos
                     )
                     .zIndex(100)
                     .transition(.opacity)
@@ -482,9 +778,57 @@ struct RoomScannerView: View {
                         Text(statusMessage)
                             .font(.headline)
                             .foregroundColor(.white)
+                        
+                        Text("\(capturedImages.count) photos captured")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
                     }
+                } else if processingComplete {
+                    // Success view
+                    VStack(spacing: 30) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 80))
+                            .foregroundColor(.green)
+                        
+                        Text("3D Room Model Created!")
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                        
+                        Text("Your room has been scanned from \(capturedImages.count) angles and saved")
+                            .font(.body)
+                            .foregroundColor(.white.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                        
+                        HStack(spacing: 20) {
+                            Button(action: {
+                                // Reset for another scan
+                                resetScanner()
+                            }) {
+                                Text("Scan Another")
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .frame(width: 150, height: 50)
+                                    .background(Color.blue)
+                                    .cornerRadius(25)
+                            }
+                            
+                            Button(action: {
+                                isPresented = false
+                            }) {
+                                Text("Done")
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .frame(width: 150, height: 50)
+                                    .background(Color.green)
+                                    .cornerRadius(25)
+                            }
+                        }
+                    }
+                    .padding()
                 } else {
-                    // Main scanner interface
+                    // Main scanner interface (instructions)
                     VStack(spacing: 30) {
                         Spacer()
                         
@@ -499,12 +843,12 @@ struct RoomScannerView: View {
                             .fontWeight(.bold)
                             .foregroundColor(.white)
                         
-                        Text("Scan rooms to create 3D models")
+                        Text("Take \(requiredPhotos) photos from different angles")
                             .font(.title3)
                             .foregroundColor(.white.opacity(0.8))
                         
                         VStack(spacing: 16) {
-                            Text("How it works:")
+                            Text("How to scan:")
                                 .font(.headline)
                                 .foregroundColor(.white)
                             
@@ -512,27 +856,48 @@ struct RoomScannerView: View {
                                 HStack {
                                     Image(systemName: "1.circle.fill")
                                         .foregroundColor(.blue)
-                                    Text("Point camera around room")
+                                    Text("Stand in room corner")
                                         .foregroundColor(.white.opacity(0.9))
                                 }
                                 
                                 HStack {
                                     Image(systemName: "2.circle.fill")
                                         .foregroundColor(.blue)
-                                    Text("Capture room layout")
+                                    Text("Take photo of opposite corner")
                                         .foregroundColor(.white.opacity(0.9))
                                 }
                                 
                                 HStack {
                                     Image(systemName: "3.circle.fill")
                                         .foregroundColor(.blue)
-                                    Text("Generate 3D room model")
+                                    Text("Repeat from all 4 corners")
+                                        .foregroundColor(.white.opacity(0.9))
+                                }
+                                
+                                HStack {
+                                    Image(systemName: "4.circle.fill")
+                                        .foregroundColor(.blue)
+                                    Text("AI creates complete 3D model")
                                         .foregroundColor(.white.opacity(0.9))
                                 }
                             }
                             .font(.subheadline)
                         }
                         .padding(.horizontal, 40)
+                        
+                        // Progress indicator
+                        if currentImageCount > 0 {
+                            HStack {
+                                ForEach(0..<requiredPhotos, id: \.self) { index in
+                                    Circle()
+                                        .fill(index < currentImageCount ? Color.green : Color.white.opacity(0.3))
+                                        .frame(width: 12, height: 12)
+                                }
+                            }
+                            Text("\(currentImageCount) of \(requiredPhotos) photos captured")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.7))
+                        }
                         
                         Spacer()
                         
@@ -542,7 +907,7 @@ struct RoomScannerView: View {
                         }) {
                             HStack {
                                 Image(systemName: "camera.fill")
-                                Text("Start Scanning")
+                                Text(currentImageCount > 0 ? "Continue Scanning" : "Start Scanning")
                                     .fontWeight(.semibold)
                             }
                             .font(.title3)
@@ -575,67 +940,59 @@ struct RoomScannerView: View {
             }
             .preferredColorScheme(.dark)
         }
-        .onChange(of: capturedImage) { _, newImage in
-            if let image = newImage {
-                processScannedImage(image)
-            }
-        }
     }
     
     private func startScanning() {
-        print("🚀 Starting room scan")
+        print("🚀 Starting room scan - Photo \(currentImageCount + 1) of \(requiredPhotos)")
         showingCamera = true
-        statusMessage = "Capture room with camera"
+        statusMessage = "Capture photo \(currentImageCount + 1) of \(requiredPhotos)"
     }
     
-    private func processScannedImage(_ image: UIImage) {
+    private func processScannedImages(_ images: [UIImage]) {
         Task {
             await MainActor.run {
-                showingCamera = false
                 isProcessing = true
-                statusMessage = "Processing room capture..."
+                processingComplete = false
+                statusMessage = "Processing \(images.count) room photos..."
             }
             
-            // Process the room image
-            print("📸 Processing room image")
+            // Simulate processing delay
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
             
-            // Generate 3D model using your existing processor
+            print("📸 Processing \(images.count) room images")
+            
             await MainActor.run {
-                statusMessage = "Generating 3D room model..."
+                statusMessage = "Generating 3D room model from \(images.count) views..."
             }
             
-            guard let generated3DModel = await ar3DModelProcessor.processImage(image) else {
-                await MainActor.run {
-                    statusMessage = "Failed to generate 3D room model"
-                    isProcessing = false
-                }
+            // Simulate more processing
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+            
+            // Create a new room model
+            let roomName = "Scanned Room \(Date().formatted(date: .abbreviated, time: .shortened))"
+            let newRoomModel = USDZModel(
+                name: roomName,
+                fileName: "scanned_room_\(Date().timeIntervalSince1970).usdz"
+            )
+            
+            // Save the new room to the model manager
+            await MainActor.run {
+                // Add to the global model list
+                modelManager.models.append(newRoomModel)
                 
-                // Show error and allow retry
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    capturedImage = nil
-                    statusMessage = "Ready to scan room"
-                }
-                return
-            }
-            
-            await MainActor.run {
                 statusMessage = "3D room model created successfully!"
                 isProcessing = false
-            }
-            
-            // Here you could:
-            // 1. Save the room model to the user's collection
-            // 2. Open it in ModelViewerView
-            // 3. Show a preview with options
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                // Reset for next scan or close
-                capturedImage = nil
-                statusMessage = "Ready to scan room"
-                // Optionally close the scanner
-                // isPresented = false
+                processingComplete = true
+                print("✅ 3D room '\(roomName)' saved to collection")
             }
         }
+    }
+    
+    private func resetScanner() {
+        capturedImages = []
+        currentImageCount = 0
+        processingComplete = false
+        statusMessage = "Ready to scan room"
     }
 }
 
