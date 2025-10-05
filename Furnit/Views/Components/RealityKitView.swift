@@ -115,111 +115,202 @@ struct RealityKitView: UIViewRepresentable {
         }
     }
     
+    // In RealityKitView.swift, replace your existing loadModel function with this:
+
     private func loadModel(into arView: ARView, coordinator: Coordinator) {
-        guard let dataAsset = model.dataAsset else {
-            print("Failed to load data asset for model: \(model.name)")
-            return
-        }
-        
-        do {
-            let tempURL = createTemporaryFile(from: dataAsset.data, fileName: "\(model.fileName).usdz")
+        // Check if this is a dollhouse model (stored in Documents)
+        if model.fileName.contains("dollhouse_") {
+            print("🏠 Loading dollhouse model: \(model.fileName)")
             
-            // Load USDZ model using RealityKit's Entity loading
-            Task { @MainActor in
-                do {
-                    let modelEntity = try await Entity.load(contentsOf: tempURL)
-
-                    // Ensure model has proper materials for visibility
-                    ensureModelHasMaterials(modelEntity)
-
-                    // Calculate model bounds for camera positioning
-                    let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
-                    if let bounds = bounds {
-                        print("📦 Model bounds after loading: min(\(bounds.min)), max(\(bounds.max))")
-                    } else {
-                        print("📦 Model bounds after loading: no bounds")
-                    }
-                    
-                    // In non-AR mode, simply add model to scene directly (no world anchor needed)
-                    let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
-                    modelAnchor.addChild(modelEntity)
-                    arView.scene.addAnchor(modelAnchor)
-                    coordinator.scene = arView.scene
-
-                    // Store the model anchor for object placement
-                    coordinator.worldAnchor = modelAnchor
-                    
-                    // Set up boundary manager for camera constraints
-                    let boundaryManager = RealityKitBoundaryManager(arView: arView)
-                    boundaryManager.calculateRoomBounds(from: modelEntity)
-                    coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
-
-                    // Share boundary manager with camera movement manager to prevent duplication
-                    self.cameraMovementManager.setupARView(arView)
-                    self.cameraMovementManager.setBoundaryManager(boundaryManager)
-                    // Set initial movement speed from settings
-                    switch appState.currentMovementSpeed {
-                    case .slow:
-                        self.cameraMovementManager.setSpeed(.slow)
-                    case .normal:
-                        self.cameraMovementManager.setSpeed(.normal)
-                    case .fast:
-                        self.cameraMovementManager.setSpeed(.fast)
-                    }
-                    
-                    // Position custom camera inside the room bounds
-                    if let cameraAnchor = coordinator.cameraAnchor {
-                        let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.2, 0))
-                        cameraAnchor.transform.translation = safeCameraPosition
+            // Get Documents directory
+            let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let fileURL = documentsURL.appendingPathComponent(model.fileName)
+            
+            print("📁 Dollhouse path: \(fileURL.path)")
+            print("📁 File exists: \(FileManager.default.fileExists(atPath: fileURL.path))")
+            
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                Task { @MainActor in
+                    do {
+                        let modelEntity = try await Entity.load(contentsOf: fileURL)
                         
-                        // Set initial camera to look straight ahead instead of at room center
-                        // This prevents the camera from looking up at tall rooms
-                        cameraAnchor.transform.rotation = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
+//                            Kishore
+//                            // Fix rotation ONLY for dollhouse models
+//                            modelEntity.orientation = simd_quatf(angle: -.pi/2, axis: [1, 0, 0])
+//                            print("🔄 Applied dollhouse rotation fix")
+                        // Ensure model has proper materials for visibility
+                        ensureModelHasMaterials(modelEntity)
                         
-                        print("📷 Custom camera positioned at: \(safeCameraPosition)")
-                        print("📷 Camera set to look straight ahead (0° pitch)")
+                        // Scale up dollhouse models (they're small from SceneKit export)
+                        modelEntity.scale = SIMD3<Float>(repeating: 2.0)
+                        
+                        // Calculate model bounds for camera positioning
+                        let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
+                        if let bounds = bounds {
+                            print("📦 Dollhouse bounds: min(\(bounds.min)), max(\(bounds.max))")
+                        }
+                        
+                        // Create anchor and add model
+                        let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+                        modelAnchor.addChild(modelEntity)
+                        arView.scene.addAnchor(modelAnchor)
+                        coordinator.scene = arView.scene
+                        coordinator.worldAnchor = modelAnchor
+                        
+                        // Set up boundary manager for camera constraints
+                        let boundaryManager = RealityKitBoundaryManager(arView: arView)
+                        boundaryManager.calculateRoomBounds(from: modelEntity)
+                        coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
+                        
+                        // Share boundary manager with camera movement manager
+                        self.cameraMovementManager.setupARView(arView)
+                        self.cameraMovementManager.setBoundaryManager(boundaryManager)
+                        
+                        // Set initial movement speed from settings
+                        switch appState.currentMovementSpeed {
+                        case .slow:
+                            self.cameraMovementManager.setSpeed(.slow)
+                        case .normal:
+                            self.cameraMovementManager.setSpeed(.normal)
+                        case .fast:
+                            self.cameraMovementManager.setSpeed(.fast)
+                        }
+                        
+                        // Position camera inside the dollhouse room
+                        if let cameraAnchor = coordinator.cameraAnchor {
+                            // Dollhouse rooms need camera positioned inside, at eye level
+                            let safeCameraPosition = SIMD3<Float>(0, 1.5, 0) // Start at center, eye level
+                            cameraAnchor.transform.translation = safeCameraPosition
+                            cameraAnchor.transform.rotation = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
+                            
+                            print("📷 Camera positioned inside dollhouse at: \(safeCameraPosition)")
+                        }
+                        
+                        // Set up lighting
+                        setupLighting(for: arView)
+                        
+                        // Set up AR object placement manager (even though not used for dollhouses)
+                        coordinator.arObjectPlacementManager = self.arObjectPlacementManager
+                        self.arObjectPlacementManager.setSceneReferences(arView: arView, scene: arView.scene)
+                        
+                        if let worldAnchor = coordinator.worldAnchor {
+                            self.arObjectPlacementManager.setWorldAnchor(worldAnchor)
+                        }
+                        
+                        // Connect camera references for joystick control
+                        if let cameraAnchor = coordinator.cameraAnchor {
+                            self.cameraMovementManager.setCameraAnchor(cameraAnchor)
+                        }
+                        
+                        // Set up camera movement callback
+                        self.cameraMovementManager.onCameraMove = {
+                            // Camera movement callback - ready for future enhancements
+                        }
+                        
+                        print("✅ Dollhouse model loaded successfully")
+                        
+                    } catch {
+                        print("❌ Error loading dollhouse model: \(error)")
                     }
-                    
-                    // Set up lighting
-                    setupLighting(for: arView)
-                    
-                    // Set up AR object placement manager with scene references
-                    coordinator.arObjectPlacementManager = self.arObjectPlacementManager
-                    self.arObjectPlacementManager.setSceneReferences(arView: arView, scene: arView.scene)
-
-                    // Connect world anchor to object placement manager for proper scene integration
-                    if let worldAnchor = coordinator.worldAnchor {
-                        self.arObjectPlacementManager.setWorldAnchor(worldAnchor)
-                        print("🌍 Connected world anchor to object placement manager")
-                    }
-                    
-                    // Set up camera movement manager with custom camera references
-                    self.cameraMovementManager.setupARView(arView)
-                    
-                    // Share camera references with camera movement manager for joystick control
-                    if let cameraAnchor = coordinator.cameraAnchor {
-                        self.cameraMovementManager.setCameraAnchor(cameraAnchor)
-                    }
-                    
-                    // Set up camera movement callback
-                    self.cameraMovementManager.onCameraMove = {
-                        // Camera movement callback - ready for future enhancements
-                    }
-                    
-                    print("✅ RealityKit model loaded successfully")
-                    
-                } catch {
-                    print("Error loading USDZ model with RealityKit: \(error.localizedDescription)")
                 }
-                
-                // Clean up temporary file
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    try? FileManager.default.removeItem(at: tempURL)
-                }
+            } else {
+                print("❌ Dollhouse file not found at: \(fileURL.path)")
             }
             
-        } catch {
-            print("Error creating temporary file: \(error.localizedDescription)")
+        } else {
+            // Regular model loading from bundle
+            guard let dataAsset = model.dataAsset else {
+                print("Failed to load data asset for model: \(model.name)")
+                return
+            }
+            
+            do {
+                let tempURL = createTemporaryFile(from: dataAsset.data, fileName: "\(model.fileName).usdz")
+                
+                Task { @MainActor in
+                    do {
+                        let modelEntity = try await Entity.load(contentsOf: tempURL)
+                        
+                        // Rest of your existing regular model loading code...
+                        ensureModelHasMaterials(modelEntity)
+                        
+                        // Calculate model bounds for camera positioning
+                        let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
+                        if let bounds = bounds {
+                            print("📦 Model bounds after loading: min(\(bounds.min)), max(\(bounds.max))")
+                        } else {
+                            print("📦 Model bounds after loading: no bounds")
+                        }
+                        
+                        let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+                        modelAnchor.addChild(modelEntity)
+                        arView.scene.addAnchor(modelAnchor)
+                        coordinator.scene = arView.scene
+                        coordinator.worldAnchor = modelAnchor
+                        
+                        // Set up boundary manager for camera constraints
+                        let boundaryManager = RealityKitBoundaryManager(arView: arView)
+                        boundaryManager.calculateRoomBounds(from: modelEntity)
+                        coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
+                        
+                        self.cameraMovementManager.setupARView(arView)
+                        self.cameraMovementManager.setBoundaryManager(boundaryManager)
+                        
+                        // Set initial movement speed from settings
+                        switch appState.currentMovementSpeed {
+                        case .slow:
+                            self.cameraMovementManager.setSpeed(.slow)
+                        case .normal:
+                            self.cameraMovementManager.setSpeed(.normal)
+                        case .fast:
+                            self.cameraMovementManager.setSpeed(.fast)
+                        }
+                        
+                        // Position custom camera inside the room bounds
+                        if let cameraAnchor = coordinator.cameraAnchor {
+                            let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.2, 0))
+                            cameraAnchor.transform.translation = safeCameraPosition
+                            cameraAnchor.transform.rotation = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
+                            
+                            print("📷 Custom camera positioned at: \(safeCameraPosition)")
+                        }
+                        
+                        // Set up lighting
+                        setupLighting(for: arView)
+                        
+                        // Set up AR object placement manager
+                        coordinator.arObjectPlacementManager = self.arObjectPlacementManager
+                        self.arObjectPlacementManager.setSceneReferences(arView: arView, scene: arView.scene)
+                        
+                        if let worldAnchor = coordinator.worldAnchor {
+                            self.arObjectPlacementManager.setWorldAnchor(worldAnchor)
+                            print("🌍 Connected world anchor to object placement manager")
+                        }
+                        
+                        // Connect camera references for joystick control
+                        if let cameraAnchor = coordinator.cameraAnchor {
+                            self.cameraMovementManager.setCameraAnchor(cameraAnchor)
+                        }
+                        
+                        self.cameraMovementManager.onCameraMove = {
+                            // Camera movement callback
+                        }
+                        
+                        print("✅ RealityKit model loaded successfully")
+                        
+                    } catch {
+                        print("Error loading USDZ model with RealityKit: \(error.localizedDescription)")
+                    }
+                    
+                    // Clean up temporary file
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        try? FileManager.default.removeItem(at: tempURL)
+                    }
+                }
+                
+            } catch {
+                print("Error creating temporary file: \(error.localizedDescription)")
+            }
         }
     }
     

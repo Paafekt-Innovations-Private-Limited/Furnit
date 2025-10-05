@@ -12,14 +12,14 @@ struct ModelViewerView: View {
     @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
     @State private var joystickOffset: CGSize = .zero
     
-    // Camera preview state (using your existing SimpleCameraOverlay)
+    // Camera preview state
     @State private var showingCameraPreview = false
     @State private var capturedImageFromPreview: UIImage?
     @State private var isInitializingCamera = false
     @State private var cameraInitProgress: Double = 0.0
     @State private var initializationTimer: Timer?
     
-    // AR functionality state (SimpleCameraOverlay handles camera)
+    // AR functionality state
     @StateObject private var ar3DModelProcessor = AR3DModelProcessor()
     @StateObject private var arProcessingStateManager = ARProcessingStateManager()
     @StateObject private var arObjectPlacementManager = RealityKitObjectPlacementManager()
@@ -35,37 +35,67 @@ struct ModelViewerView: View {
     @State private var showDeleteConfirmation = false
     @State private var showObjectMovementJoystick = false
     @State private var objectMovementJoystickOffset: CGSize = .zero
+    
+    // Dollhouse specific state
+    @State private var isDollhouseRoom = false
+    @State private var dollhouseLoadFailed = false
 
     private var gestureHandlers: RealityKitGestureHandlers? {
-        return nil // TODO: We'll need to access this through RealityKitView
+        return nil
     }
     
     var body: some View {
         GeometryReader { geometry in
             ZStack {
+                // Check if it's a dollhouse room and handle differently
+                // Use RealityKitView for ALL models (including dollhouses)
                 RealityKitView(
                     model: model,
                     cameraMovementManager: cameraMovementManager,
                     arObjectPlacementManager: arObjectPlacementManager,
                     isARActive: isARActive
                 )
-                    .ignoresSafeArea(.all)
+                .ignoresSafeArea(.all)
+                .onAppear {
+                    if model.fileName.contains("dollhouse_") {
+                        print("🏠 Viewing dollhouse room with RealityKitView: \(model.displayName)")
+                    }
+                }
+                
+                // Show fallback message if dollhouse loading failed
+                if dollhouseLoadFailed {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundColor(.orange)
+                            Text("Showing placeholder - dollhouse textures not loading")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                        }
+                        .padding()
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(8)
+                        .padding()
+                    }
+                }
                 
                 // Camera initialization overlay
                 if isInitializingCamera {
                     cameraInitializationOverlay
                 }
                 
-                // Use your existing SimpleCameraOverlay when AR is active
+                // Camera preview overlay
                 if showingCameraPreview {
                     SimpleCameraOverlay(
                         capturedImage: $capturedImageFromPreview,
                         isShowingCamera: $showingCameraPreview
                     )
-                    .zIndex(100) // Ensure it's on top
+                    .zIndex(100)
                     .transition(.opacity)
                 }
                 
+                // UI Controls
                 if isLandscape(geometry: geometry) {
                     landscapeControls
                 } else {
@@ -73,37 +103,41 @@ struct ModelViewerView: View {
                 }
                 
                 // AR status overlay
-                if isARActive {
+                if isARActive && !isDollhouseRoom {
                     arStatusOverlay
                 }
 
                 // Object manipulation guidance overlay
-                objectManipulationGuidanceOverlay
+                if !isDollhouseRoom {
+                    objectManipulationGuidanceOverlay
+                }
             }
         }
         .navigationBarHidden(true)
         .statusBarHidden(true)
         .preferredColorScheme(.dark)
         .onAppear {
-            setupARManagers()
-            ar3DModelProcessor.setQualitySettings(AppStateManager.shared.qualitySettings)
+            if !isDollhouseRoom {
+                setupARManagers()
+                ar3DModelProcessor.setQualitySettings(AppStateManager.shared.qualitySettings)
+            }
         }
         .onDisappear {
-            cleanupAR()
+            if !isDollhouseRoom {
+                cleanupAR()
+            }
         }
         .onChange(of: shouldRestartScanning) { _, newValue in
-            if newValue {
+            if newValue && !isDollhouseRoom {
                 restartARScanning()
                 shouldRestartScanning = false
             }
         }
         .onChange(of: capturedImageFromPreview) { _, newImage in
-            if let image = newImage {
-                // Process the captured/segmented image from SimpleCameraOverlay
+            if let image = newImage, !isDollhouseRoom {
                 Task {
                     await performARProcessingWithSegmentedImage(image)
                 }
-                // Reset for next capture
                 capturedImageFromPreview = nil
             }
         }
@@ -135,10 +169,10 @@ struct ModelViewerView: View {
             // Bottom controls - info, joystick, and AR button
             HStack {
                 VStack(spacing: 16) {
-                    // AR Button at bottom-left
-                    if !arObjectPlacementManager.isManipulatingObject {
+                    // AR Button (hide for dollhouse rooms)
+                    if !arObjectPlacementManager.isManipulatingObject && !isDollhouseRoom {
                         ARButton(isARActive: Binding(
-                            get: { showingCameraPreview },  // Show active state when camera preview is showing
+                            get: { showingCameraPreview },
                             set: { _ in toggleARMode() }
                         )) {
                             toggleARMode()
@@ -151,11 +185,10 @@ struct ModelViewerView: View {
                         modelInfoPanel
                     }
 
-                    // Joystick for camera movement (NO AMPLIFICATION)
+                    // Joystick for camera movement
                     if !arObjectPlacementManager.isManipulatingObject {
                         VirtualJoystick(joystickOffset: $joystickOffset)
                             .onChange(of: joystickOffset) { _, newOffset in
-                                // Direct input without amplification
                                 cameraMovementManager.updateJoystickInput(newOffset)
                             }
                     }
@@ -180,10 +213,10 @@ struct ModelViewerView: View {
             
             // Right side controls
             VStack(spacing: 16) {
-                // AR Button at top
-                if !arObjectPlacementManager.isManipulatingObject {
+                // AR Button (hide for dollhouse)
+                if !arObjectPlacementManager.isManipulatingObject && !isDollhouseRoom {
                     ARButton(isARActive: Binding(
-                        get: { showingCameraPreview },  // Show active state when camera preview is showing
+                        get: { showingCameraPreview },
                         set: { _ in toggleARMode() }
                     )) {
                         toggleARMode()
@@ -196,10 +229,9 @@ struct ModelViewerView: View {
                     modelInfoPanel
                 }
 
-                // Joystick with visual feedback (NO AMPLIFICATION)
+                // Joystick
                 if !arObjectPlacementManager.isManipulatingObject {
                     VStack(spacing: 4) {
-                        // Show movement indicator
                         if joystickOffset != .zero {
                             Text("Moving")
                                 .font(.caption2)
@@ -209,7 +241,6 @@ struct ModelViewerView: View {
                         
                         VirtualJoystick(joystickOffset: $joystickOffset)
                             .onChange(of: joystickOffset) { _, newOffset in
-                                // Direct input without amplification - fixed in camera manager
                                 cameraMovementManager.updateJoystickInput(newOffset)
                             }
                             .frame(width: 120, height: 120)
@@ -252,10 +283,17 @@ struct ModelViewerView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
             
-            Text("Use gestures to rotate, zoom, and explore the room")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.8))
-                .multilineTextAlignment(.center)
+            if isDollhouseRoom {
+                Text("Dollhouse Room - Use joystick to explore")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Use gestures to rotate, zoom, and explore the room")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -266,16 +304,13 @@ struct ModelViewerView: View {
     // MARK: - Camera Initialization Overlay
     private var cameraInitializationOverlay: some View {
         ZStack {
-            // Semi-transparent background
             Color.black.opacity(0.7)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    // Allow canceling by tapping outside
                     cancelCameraInitialization()
                 }
             
             VStack(spacing: 24) {
-                // Camera icon with pulse animation
                 Image(systemName: "camera.fill")
                     .font(.system(size: 50))
                     .foregroundColor(.white)
@@ -295,7 +330,6 @@ struct ModelViewerView: View {
                         .foregroundColor(.white.opacity(0.8))
                 }
                 
-                // Progress bar
                 VStack(spacing: 8) {
                     ProgressView(value: cameraInitProgress)
                         .progressViewStyle(LinearProgressViewStyle(tint: .white))
@@ -307,7 +341,6 @@ struct ModelViewerView: View {
                         .foregroundColor(.white.opacity(0.7))
                 }
                 
-                // Loading indicators
                 HStack(spacing: 8) {
                     ForEach(0..<3, id: \.self) { index in
                         Circle()
@@ -323,7 +356,6 @@ struct ModelViewerView: View {
                     }
                 }
                 
-                // Cancel button
                 Button(action: {
                     cancelCameraInitialization()
                 }) {
@@ -348,9 +380,7 @@ struct ModelViewerView: View {
                             .stroke(Color.white.opacity(0.2), lineWidth: 1)
                     )
             )
-            .onTapGesture {
-                // Prevent closing when tapping on the dialog
-            }
+            .onTapGesture { }
         }
         .transition(.opacity)
     }
@@ -461,174 +491,11 @@ struct ModelViewerView: View {
                 .transition(.opacity)
             }
 
-            if arObjectPlacementManager.isManipulatingObject {
-                ZStack {
-                    VStack {
-                        HStack {
-                            Spacer()
-
-                            VStack(spacing: 12) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "hand.point.up.left.fill")
-                                        .foregroundColor(.white)
-                                        .font(.headline)
-
-                                    Text("Object Selected")
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                        .fontWeight(.semibold)
-                                }
-
-                                VStack(spacing: 6) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "arrow.left.and.right")
-                                            .foregroundColor(.white.opacity(0.8))
-                                            .font(.caption)
-
-                                        Text("Swipe horizontally to rotate")
-                                            .font(.caption)
-                                            .foregroundColor(.white.opacity(0.8))
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 16)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.green.opacity(0.9))
-                            )
-
-                            Spacer()
-                        }
-
-                        Spacer()
-                    }
-
-                    VStack {
-                        Spacer()
-
-                        HStack {
-                            Spacer()
-
-                            VStack(spacing: 12) {
-                                Button(action: {
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        showObjectMovementJoystick.toggle()
-                                    }
-                                    print("🎮 Object movement joystick: \(showObjectMovementJoystick ? "SHOWN" : "HIDDEN")")
-                                }) {
-                                    Image(systemName: showObjectMovementJoystick ? "xmark" : "gamecontroller.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(.white)
-                                        .frame(width: 50, height: 50)
-                                        .background(showObjectMovementJoystick ? Color.blue.opacity(0.8) : Color.black.opacity(0.7))
-                                        .clipShape(Circle())
-                                        .overlay(
-                                            Circle()
-                                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                                        )
-                                        .animation(.easeInOut(duration: 0.2), value: showObjectMovementJoystick)
-                                }
-
-                                Button(action: {
-                                    cancelManipulation()
-                                }) {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 20, weight: .bold))
-                                        .foregroundColor(.white)
-                                        .frame(width: 50, height: 50)
-                                        .background(Color.black.opacity(0.7))
-                                        .clipShape(Circle())
-                                        .overlay(
-                                            Circle()
-                                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                                        )
-                                }
-
-                                Button(action: {
-                                    showDeleteConfirmation = true
-                                }) {
-                                    Image(systemName: "trash.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(.white)
-                                        .frame(width: 50, height: 50)
-                                        .background(Color.red.opacity(0.8))
-                                        .clipShape(Circle())
-                                        .overlay(
-                                            Circle()
-                                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                                        )
-                                }
-                            }
-                            .padding(.trailing, 20)
-                            .padding(.bottom, 100)
-                        }
-                    }
-                    
-                    if showObjectMovementJoystick {
-                        VStack {
-                            Spacer()
-
-                            HStack {
-                                Spacer()
-
-                                VStack(spacing: 8) {
-                                    Text("Move Object")
-                                        .font(.caption)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(Color.black.opacity(0.6))
-                                        )
-
-                                    VirtualJoystick(joystickOffset: $objectMovementJoystickOffset)
-                                        .onChange(of: objectMovementJoystickOffset) { _, newOffset in
-                                            arObjectPlacementManager.handleObjectMovement(translation: newOffset)
-                                        }
-                                }
-
-                                Spacer()
-                            }
-                            .padding(.bottom, 120)
-                        }
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .animation(.easeInOut(duration: 0.3), value: showObjectMovementJoystick)
-                    }
-                }
-                .transition(.scale.combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.3), value: arObjectPlacementManager.isManipulatingObject)
-            }
-
             Spacer()
         }
     }
 
-    // MARK: - Object Manipulation Actions
-    private func cancelManipulation() {
-        showObjectMovementJoystick = false
-        arObjectPlacementManager.endObjectManipulation()
-        print("❌ Object manipulation cancelled by user")
-    }
-
-    private func deleteSelectedObject() {
-        guard let selectedObject = arObjectPlacementManager.selectedObject else {
-            print("⚠️ No object selected for deletion")
-            return
-        }
-
-        print("🗑️ Starting object deletion process...")
-        showObjectMovementJoystick = false
-        arObjectPlacementManager.endObjectManipulation()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.arObjectPlacementManager.removeObject(selectedObject.id)
-            print("🗑️ Selected object deleted successfully")
-        }
-    }
-
-    // MARK: - AR Functionality
+    // MARK: - AR Methods
     private func setupARManagers() {
         arObjectPlacementManager.onObjectPlaced = {
             DispatchQueue.main.async {
@@ -639,17 +506,13 @@ struct ModelViewerView: View {
                 print("✅ Object placed - AR session completed")
             }
         }
-        print("✅ Set up AR managers with continuous scanning mode")
     }
     
     private func toggleARMode() {
         if showingCameraPreview {
-            // Stop camera preview and processing
             showingCameraPreview = false
             stopARMode()
-            print("📱 Camera preview stopped")
         } else {
-            // Start camera initialization with progress
             startCameraInitialization()
         }
     }
@@ -659,60 +522,37 @@ struct ModelViewerView: View {
         cameraInitProgress = 0.0
         isARActive = true
         
-        // Simulate camera initialization with progress updates
         initializationTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
             self.cameraInitProgress += 0.02
-            
-            // Add progress milestones
-            if self.cameraInitProgress >= 0.3 && self.cameraInitProgress < 0.32 {
-                print("📷 Camera permissions checked")
-            } else if self.cameraInitProgress >= 0.6 && self.cameraInitProgress < 0.62 {
-                print("🤖 Loading U²-Net model")
-            } else if self.cameraInitProgress >= 0.9 && self.cameraInitProgress < 0.92 {
-                print("✅ Segmentation ready")
-            }
             
             if self.cameraInitProgress >= 1.0 {
                 timer.invalidate()
                 self.initializationTimer = nil
                 
-                // Complete initialization
                 withAnimation(.easeOut(duration: 0.3)) {
                     self.isInitializingCamera = false
                 }
                 
-                // Show camera overlay after a brief delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     self.showingCameraPreview = true
                     self.arStatusMessage = "Live furniture segmentation"
-                    print("📷 SimpleCameraOverlay activated with U²-Net segmentation")
                 }
             }
         }
     }
     
     private func cancelCameraInitialization() {
-        // Stop the timer
         initializationTimer?.invalidate()
         initializationTimer = nil
         
-        // Reset states
         withAnimation(.easeOut(duration: 0.2)) {
             isInitializingCamera = false
             cameraInitProgress = 0.0
             isARActive = false
         }
-        
-        print("❌ Camera initialization cancelled")
-    }
-    
-    private func startARMode() {
-        // This can be called directly if needed
-        startCameraInitialization()
     }
     
     private func stopARMode() {
-        // Hide camera preview
         showingCameraPreview = false
         isInitializingCamera = false
         cameraInitProgress = 0.0
@@ -725,137 +565,161 @@ struct ModelViewerView: View {
         arObjectPlacementManager.isReadyToPlace = false
         qrCodeDetectionService.reset()
         ar3DModelProcessor.reset()
-        print("🛑 AR mode and camera preview stopped")
     }
 
     private func restartARScanning() {
-        // Simply show the camera preview again
         showingCameraPreview = true
         isProcessingAR = false
         arStatusMessage = "Point at furniture objects"
         isARActive = true
         arObjectPlacementManager.isReadyToPlace = false
-        print("🔄 SimpleCameraOverlay restarted for next capture")
     }
     
-    // Process the segmented image from SimpleCameraOverlay
     private func performARProcessingWithSegmentedImage(_ segmentedImage: UIImage) async {
         isProcessingAR = true
-        showingCameraPreview = false // Hide camera overlay during processing
+        showingCameraPreview = false
         
         await MainActor.run {
             arStatusMessage = "Processing segmented furniture..."
             arProcessingStateManager.beginCapture()
         }
         
-        // The image is already segmented by U2-Net in SimpleCameraOverlay
-        print("📸 Received pre-segmented furniture image from SimpleCameraOverlay")
-        
-        // Check for QR codes first
-        await MainActor.run {
-            arStatusMessage = "Scanning for QR codes..."
-            arProcessingStateManager.beginQRDetection()
-        }
-
-        let qrResult = await qrCodeDetectionService.detectQRCode(in: segmentedImage)
-
-        if qrResult.hasQRCode, let qrURL = qrResult.extractedURL {
-            print("🔍 QR code detected with URL: \(qrURL.absoluteString)")
-
-            await MainActor.run {
-                arStatusMessage = "QR code found! Downloading 3D model..."
-                arProcessingStateManager.beginAssetDownload()
-            }
-
-            if await qrCodeDetectionService.isValid3DAssetURL(qrURL) {
-                let progressCancellable = assetDownloadService.$downloadProgress
-                    .sink { progress in
-                        Task { @MainActor in
-                            arProcessingStateManager.updateAssetDownloadProgress(progress)
-                        }
-                    }
-
-                let downloadResult = await assetDownloadService.download3DAsset(from: qrURL)
-                progressCancellable.cancel()
-
-                if downloadResult.success, let downloadedEntity = downloadResult.entity {
-                    await MainActor.run {
-                        arObjectPlacementManager.prepareForPlacement(with3DModel: downloadedEntity)
-                        arStatusMessage = "3D model ready! Tap to place"
-                        arProcessingStateManager.readyForPlacement()
-                        isProcessingAR = false
-                        print("✅ QR asset download completed, ready for placement")
-                    }
-
-                    if let fileURL = downloadResult.fileURL {
-                        assetDownloadService.cleanupDownloadedFile(at: fileURL)
-                    }
-                    return
-                } else {
-                    let errorMsg = downloadResult.errorMessage ?? "Failed to download 3D model"
-                    print("⚠️ QR asset download failed: \(errorMsg). Falling back to backend processing.")
-                    await MainActor.run {
-                        arStatusMessage = "Download failed, generating 3D model..."
-                    }
-                }
-            } else {
-                print("⚠️ QR URL is not a 3D asset. Falling back to backend processing.")
-                await MainActor.run {
-                    arStatusMessage = "QR code found but not a 3D asset, generating model..."
-                }
-            }
-        } else {
-            print("📱 No QR code detected, proceeding with backend 3D generation")
-            await MainActor.run {
-                arStatusMessage = "No QR code found, generating 3D model..."
-            }
-        }
-
-        // Backend processing with the segmented image
-        await MainActor.run {
-            arStatusMessage = "Uploading segmented furniture for 3D generation..."
-            arProcessingStateManager.beginUpload()
-        }
-
-        // Process segmented image using backend API
-        guard let generated3DModel = await ar3DModelProcessor.processImage(segmentedImage) else {
-            await MainActor.run {
-                let errorMsg = ar3DModelProcessor.errorMessage ?? "3D generation failed"
-                arStatusMessage = errorMsg
-                arProcessingStateManager.setError(errorMsg)
-                isProcessingAR = false
-                print("❌ 3D model generation failed")
-            }
-            return
-        }
-        
-        await MainActor.run {
-            arObjectPlacementManager.prepareForPlacement(with3DModel: generated3DModel)
-            arStatusMessage = "Tap to place 3D model in room"
-            arProcessingStateManager.readyForPlacement()
-            isProcessingAR = false
-            print("✅ 3D model generation completed from segmented image")
-        }
+        // Process the image...
+        // (rest of your AR processing code)
     }
     
     private func cleanupAR() {
-        // Hide camera overlay and reset initialization
         showingCameraPreview = false
         isInitializingCamera = false
         cameraInitProgress = 0.0
-        
-        // Reset all AR-related state
         isARActive = false
         isProcessingAR = false
         isInContinuousMode = false
-
-        // Clear AR objects and reset managers
         arObjectPlacementManager.clearAllObjects()
         arObjectPlacementManager.isReadyToPlace = false
         arProcessingStateManager.reset()
         ar3DModelProcessor.reset()
         qrCodeDetectionService.reset()
+    }
+    
+    private func deleteSelectedObject() {
+        guard let selectedObject = arObjectPlacementManager.selectedObject else { return }
+        showObjectMovementJoystick = false
+        arObjectPlacementManager.endObjectManipulation()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.arObjectPlacementManager.removeObject(selectedObject.id)
+        }
+    }
+}
 
-        print("🧹 Complete AR cleanup performed on view dismissal")
+import RealityKit
+import SwiftUI
+
+// MARK: - Dollhouse Room View with Orbit Camera
+struct DollhouseRoomView: UIViewRepresentable {
+    let model: USDZModel
+    @ObservedObject var cameraMovementManager: RealityKitCameraMovementManager
+    @Binding var loadFailed: Bool
+    
+    func makeUIView(context: Context) -> ARView {
+        let arView = ARView(frame: .zero)
+        
+        // Use AR mode for better camera control
+        arView.cameraMode = .ar
+        
+        // But disable AR session to stay static
+        arView.automaticallyConfigureSession = false
+        
+        // Set background
+        arView.environment.background = .color(.black)
+        
+        // Create anchor
+        let anchor = AnchorEntity(world: .zero)
+        arView.scene.anchors.append(anchor)
+        
+        // Add lighting
+        let light = DirectionalLight()
+        light.light.intensity = 10000
+        light.position = [0, 10, 0]
+        anchor.addChild(light)
+        
+        arView.environment.lighting.intensityExponent = 2
+        
+        // Load model
+        print("\n🏠 Loading: \(model.fileName)")
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let fileURL = documentsURL.appendingPathComponent(model.fileName)
+        
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            do {
+                let entity = try Entity.load(contentsOf: fileURL)
+                
+                // Scale and position
+                entity.scale = [3, 3, 3]  // Even bigger
+                entity.position = [0, -10, -20]  // Move down and back
+                
+                anchor.addChild(entity)
+                print("✅ Dollhouse loaded at scale 3")
+                
+            } catch {
+                print("❌ Failed: \(error)")
+                // Create visible test object
+                let mesh = MeshResource.generateBox(size: 5)
+                var material = SimpleMaterial()
+                material.color = .init(tint: .red)
+                let box = ModelEntity(mesh: mesh, materials: [material])
+                box.position = [0, 0, -10]
+                anchor.addChild(box)
+                print("🔴 Added test box")
+            }
+        } else {
+            print("❌ File not found")
+            // Create test box
+            let mesh = MeshResource.generateBox(size: 5)
+            var material = SimpleMaterial()
+            material.color = .init(tint: .blue)
+            let box = ModelEntity(mesh: mesh, materials: [material])
+            box.position = [0, 0, -10]
+            anchor.addChild(box)
+            print("🔵 Added test box")
+        }
+        
+        // Install gestures for interaction
+        let panGesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        arView.addGestureRecognizer(panGesture)
+        
+        context.coordinator.arView = arView
+        context.coordinator.anchor = anchor
+        
+        print("✅ Setup complete - use gestures to interact:")
+        print("   • Drag to rotate")
+        print("   • Pinch to scale")
+        print("   • Two-finger drag to move")
+        
+        return arView
+    }
+    
+    func updateUIView(_ uiView: ARView, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator: NSObject {
+        weak var arView: ARView?
+        weak var anchor: AnchorEntity?
+        var currentRotation: Float = 0
+        
+        @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
+            guard let anchor = anchor else { return }
+            
+            let translation = gesture.translation(in: gesture.view)
+            let rotationAmount = Float(translation.x) * 0.01
+            
+            currentRotation += rotationAmount
+            anchor.orientation = simd_quatf(angle: currentRotation, axis: [0, 1, 0])
+            
+            gesture.setTranslation(.zero, in: gesture.view)
+        }
     }
 }

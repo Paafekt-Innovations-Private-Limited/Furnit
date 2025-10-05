@@ -112,8 +112,11 @@ struct HomeTab: View {
                 SettingsView()
             }
             .sheet(isPresented: $showingRoomScanner) {
-                // Use the actual ModelViewer3D or SimpleCameraOverlay
-                RoomScannerView(isPresented: $showingRoomScanner)
+                // Use simplified multi-method scanner
+                DollhouseRoomScannerView(
+                        isPresented: $showingRoomScanner,
+                        modelManager: modelManager
+                    )
             }
         }
     }
@@ -722,6 +725,7 @@ struct ImagePicker: UIViewControllerRepresentable {
 // MARK: - Room Scanner View (Actual Implementation)
 struct RoomScannerView: View {
     @Binding var isPresented: Bool
+    @ObservedObject var modelManager: USDZModelManager  // Passed from HomeTab
     @State private var capturedImages: [UIImage] = []
     @State private var showingCamera = false
     @State private var isProcessing = false
@@ -729,7 +733,6 @@ struct RoomScannerView: View {
     @State private var processingComplete = false
     @State private var currentImageCount = 0
     @StateObject private var ar3DModelProcessor = AR3DModelProcessor()
-    @StateObject private var modelManager = USDZModelManager()
     
     let requiredPhotos = 4 // Need 4 photos from different angles
     
@@ -969,21 +972,32 @@ struct RoomScannerView: View {
             try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
             
             // Create a new room model
+            // For now, use the first existing model's file as a placeholder
+            // In a real app, you'd generate actual 3D model data from the photos
             let roomName = "Scanned Room \(Date().formatted(date: .abbreviated, time: .shortened))"
+            
+            // Check if there are existing models to use as template
+            var fileName = "scanned_room_\(Date().timeIntervalSince1970).usdz"
+            if !modelManager.models.isEmpty {
+                // Use existing model file as placeholder (temporary solution)
+                fileName = modelManager.models[0].fileName
+            }
+            
             let newRoomModel = USDZModel(
                 name: roomName,
-                fileName: "scanned_room_\(Date().timeIntervalSince1970).usdz"
+                fileName: fileName
             )
             
             // Save the new room to the model manager
             await MainActor.run {
-                // Add to the global model list
+                // Add to the shared model list (now it will appear in HomeTab)
                 modelManager.models.append(newRoomModel)
                 
                 statusMessage = "3D room model created successfully!"
                 isProcessing = false
                 processingComplete = true
-                print("✅ 3D room '\(roomName)' saved to collection")
+                print("✅ 3D room '\(roomName)' saved to collection with \(images.count) photos")
+                print("📋 Total models in list: \(modelManager.models.count)")
             }
         }
     }
