@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct ContentView: View {
     @StateObject private var authManager = AuthenticationManager()
@@ -85,6 +86,10 @@ struct HomeTab: View {
             }
             .navigationTitle("3D Room Models")
             .navigationBarTitleDisplayMode(.large)
+            .onAppear {
+                // Refresh model list to pick up any new dollhouse files
+                modelManager.refreshModels()
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     // Camera button in toolbar
@@ -420,11 +425,11 @@ struct ModelRowView: View {
     
     var body: some View {
         HStack {
-            Image(systemName: "cube.fill")
-                .foregroundColor(.blue)
+            Image(systemName: model.isDollhouse ? "house.fill" : "cube.fill")
+                .foregroundColor(model.isDollhouse ? .green : .blue)
                 .font(.title2)
                 .frame(width: 40, height: 40)
-                .background(Color.blue.opacity(0.1))
+                .background((model.isDollhouse ? Color.green : Color.blue).opacity(0.1))
                 .cornerRadius(8)
             
             VStack(alignment: .leading, spacing: 4) {
@@ -432,12 +437,23 @@ struct ModelRowView: View {
                     .font(.headline)
                     .foregroundColor(.primary)
                 
-                Text("3D Room Model")
+                Text(model.isDollhouse ? "2.5D Dollhouse Room" : "3D Room Model")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
             
             Spacer()
+            
+            if model.isDollhouse {
+                Text("2.5D")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(4)
+            }
             
             Image(systemName: "chevron.right")
                 .foregroundColor(.secondary)

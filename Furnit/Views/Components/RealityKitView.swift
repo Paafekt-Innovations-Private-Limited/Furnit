@@ -83,18 +83,22 @@ struct RealityKitView: UIViewRepresentable {
         
         // Set up custom camera for non-AR mode with controllable rotation
         func setupCustomCamera(for arView: ARView) {
+            print("🎥 [RealityKitView.Coordinator] setupCustomCamera called")
+            
             // Create perspective camera entity with reasonable field of view
             cameraEntity = PerspectiveCamera()
             cameraEntity?.camera.fieldOfViewInDegrees = 75.0
             
             // Create camera anchor at lower height inside the room
             cameraAnchor = AnchorEntity(world: SIMD3<Float>(0, 1.2, 3))
+            print("🎥 [RealityKitView.Coordinator] Created camera anchor at: \(cameraAnchor?.transform.translation ?? SIMD3<Float>(0,0,0))")
             
             // Add camera entity to anchor with no offset (prevents orbital rotation)
             if let camera = cameraEntity, let anchor = cameraAnchor {
                 camera.position = SIMD3<Float>(0, 0, 0) // No offset from anchor center
                 anchor.addChild(camera)
                 arView.scene.addAnchor(anchor)
+                print("🎥 [RealityKitView.Coordinator] Camera entity added to anchor and anchor added to scene")
                 
                 // Pass camera references to gesture handlers for direct camera control
                 gestureHandlers?.setCameraReferences(camera: camera, cameraAnchor: anchor)
@@ -166,14 +170,17 @@ struct RealityKitView: UIViewRepresentable {
                         self.cameraMovementManager.setupARView(arView)
                         self.cameraMovementManager.setBoundaryManager(boundaryManager)
                         
-                        // Set initial movement speed from settings
+                        // Set initial movement speed from settings - use faster speed for dollhouse
                         switch appState.currentMovementSpeed {
                         case .slow:
-                            self.cameraMovementManager.setSpeed(.slow)
+                            self.cameraMovementManager.setSpeed(.normal)  // Bump up slow to normal for dollhouse
+                            print("🏠 Dollhouse speed: Using normal speed instead of slow")
                         case .normal:
-                            self.cameraMovementManager.setSpeed(.normal)
+                            self.cameraMovementManager.setSpeed(.fast)   // Bump up normal to fast for dollhouse
+                            print("🏠 Dollhouse speed: Using fast speed instead of normal")
                         case .fast:
-                            self.cameraMovementManager.setSpeed(.fast)
+                            self.cameraMovementManager.setSpeed(.fast)   // Keep fast as fast
+                            print("🏠 Dollhouse speed: Using fast speed")
                         }
                         
                         // Position camera inside the dollhouse room
@@ -197,9 +204,16 @@ struct RealityKitView: UIViewRepresentable {
                             self.arObjectPlacementManager.setWorldAnchor(worldAnchor)
                         }
                         
-                        // Connect camera references for joystick control
+                        // Connect camera references for joystick control - AFTER all setup is complete
                         if let cameraAnchor = coordinator.cameraAnchor {
+                            print("🎮 [RealityKitView] Setting camera anchor for DOLLHOUSE model")
                             self.cameraMovementManager.setCameraAnchor(cameraAnchor)
+                            
+                            // DON'T override the dollhouse speed - it was already set correctly above
+                            print("🔧 [DOLLHOUSE] Keeping dollhouse speed as set above (no override)")
+                            
+                        } else {
+                            print("❌ [RealityKitView] No camera anchor found for DOLLHOUSE model!")
                         }
                         
                         // Set up camera movement callback
@@ -289,7 +303,10 @@ struct RealityKitView: UIViewRepresentable {
                         
                         // Connect camera references for joystick control
                         if let cameraAnchor = coordinator.cameraAnchor {
+                            print("🎮 [RealityKitView] Setting camera anchor for REGULAR model")
                             self.cameraMovementManager.setCameraAnchor(cameraAnchor)
+                        } else {
+                            print("❌ [RealityKitView] No camera anchor found for REGULAR model!")
                         }
                         
                         self.cameraMovementManager.onCameraMove = {

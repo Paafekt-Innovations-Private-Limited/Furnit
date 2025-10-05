@@ -4,11 +4,11 @@ import SwiftUI
 import simd
 
 class RealityKitCameraMovementManager: ObservableObject {
-    // Define MovementSpeed enum locally with BALANCED values for smooth movement
+    // Define MovementSpeed enum locally with ENHANCED values for noticeable movement
     enum MovementSpeed: Float {
-        case slow = 0.0016   // 2x original for gentle movement
-        case normal = 0.003  // 2x original for comfortable cruising
-        case fast = 0.006    // 2x original for quicker navigation
+        case slow = 0.004     // 2.5x original for gentle but noticeable movement  
+        case normal = 0.008   // 2.7x original for comfortable cruising
+        case fast = 0.016     // 2.7x original for quicker navigation
     }
     
     // Camera movement properties
@@ -23,8 +23,8 @@ class RealityKitCameraMovementManager: ObservableObject {
     // Current speed setting
     @Published var currentSpeed: MovementSpeed = .normal
     
-    // Movement configuration - BALANCED FOR SMOOTH MOVEMENT
-    private var movementSpeed: Float = 0.04 // Moderate speed for smooth control
+    // Movement configuration - ENHANCED FOR NOTICEABLE MOVEMENT
+    private var movementSpeed: Float = 0.08  // 2x increased for more noticeable movement
     private let joystickSensitivity: Float = 0.001 // Keep original sensitivity
     private let joystickDeadZone: Float = 5.0 // Dead zone threshold
     
@@ -61,7 +61,8 @@ class RealityKitCameraMovementManager: ObservableObject {
     // Set camera anchor reference for direct camera control
     func setCameraAnchor(_ anchor: AnchorEntity) {
         self.cameraAnchor = anchor
-        print("🎮 Camera movement manager now using camera anchor for direct control")
+        print("🎮 [CameraMovementManager] setCameraAnchor called - Camera anchor is now set!")
+        print("🎮 [CameraMovementManager] Camera anchor position: \(anchor.transform.translation)")
     }
 
     // Set boundary manager reference (shared from RealityKitView)
@@ -76,14 +77,23 @@ class RealityKitCameraMovementManager: ObservableObject {
     }
     
     func setSpeed(_ speed: MovementSpeed) {
-        // Map enum to actual speed values with moderate scaling for smooth movement
-        movementSpeed = speed.rawValue * 20.0  // Balanced multiplier for smooth control
+        // Map enum to actual speed values with enhanced multiplier for noticeable movement
+        movementSpeed = speed.rawValue * 30.0  // Increased from 20.0 to 30.0 for more noticeable movement
         currentSpeed = speed
         print("🏃 Speed set to \(speed) (\(movementSpeed))")
     }
     
+    // Set speed specifically for dollhouse rooms (much faster)
+    func setDollhouseSpeed() {
+        // Use much higher speed for dollhouse rooms to make movement more noticeable
+        movementSpeed = 0.3  // 5x faster than normal speed
+        currentSpeed = .normal
+        print("🏠 Dollhouse speed set to \(movementSpeed) (enhanced for better visibility)")
+    }
+    
     // Update joystick input from the virtual joystick
     func updateJoystickInput(_ offset: CGSize) {
+        print("🎮 [CameraMovementManager] updateJoystickInput called with: \(offset)")
         currentJoystickOffset = offset
         
         // Calculate target velocity based on joystick position
@@ -92,6 +102,7 @@ class RealityKitCameraMovementManager: ObservableObject {
         
         // Apply dead zone
         let magnitude = sqrt(x * x + y * y)
+        print("🎮 [CameraMovementManager] Joystick magnitude: \(magnitude), deadZone: \(joystickDeadZone)")
         
         if magnitude > joystickDeadZone {
             // Normalize and apply sensitivity
@@ -99,6 +110,7 @@ class RealityKitCameraMovementManager: ObservableObject {
             let normalizedY = y / 30.0
             
             targetVelocity = SIMD2<Float>(normalizedX, normalizedY)
+            print("🎮 [CameraMovementManager] Target velocity set: \(targetVelocity)")
             
             // Debug output for significant movements
             if abs(normalizedX) > 0.3 || abs(normalizedY) > 0.3 {
@@ -106,12 +118,21 @@ class RealityKitCameraMovementManager: ObservableObject {
             }
         } else {
             targetVelocity = .zero
+            print("🎮 [CameraMovementManager] Input below deadzone - target velocity set to zero")
         }
     }
     
     // Continuous camera position updates based on joystick input
     @objc private func updateCameraPosition() {
-        guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
+        guard let arView = arView, let cameraAnchor = cameraAnchor else { 
+            if arView == nil {
+                print("⚠️ [CameraMovementManager] updateCameraPosition: No ARView")
+            }
+            if cameraAnchor == nil {
+                print("⚠️ [CameraMovementManager] updateCameraPosition: No camera anchor")
+            }
+            return 
+        }
         
         // Smooth velocity transition
         currentVelocity = mix(currentVelocity, targetVelocity, t: smoothingFactor)
@@ -124,6 +145,8 @@ class RealityKitCameraMovementManager: ObservableObject {
             }
             return
         }
+        
+        print("🎮 [CameraMovementManager] Moving camera - currentVelocity: \(currentVelocity)")
         
         // Convert joystick input to movement vectors
         let forwardBackward = -currentVelocity.y * movementSpeed  // Negative for intuitive movement
@@ -182,6 +205,8 @@ class RealityKitCameraMovementManager: ObservableObject {
         if proposedCameraPosition.x != currentCameraPosition.x ||
            proposedCameraPosition.z != currentCameraPosition.z {
             
+            print("📍 [CameraMovementManager] Moving camera from \(currentCameraPosition) to \(proposedCameraPosition)")
+            
             // Create new transform preserving rotation
             var newTransform = cameraAnchor.transform
             newTransform.translation = proposedCameraPosition
@@ -191,6 +216,8 @@ class RealityKitCameraMovementManager: ObservableObject {
             
             // Notify that camera has moved
             onCameraMove?()
+        } else {
+            print("📍 [CameraMovementManager] No position change - staying at \(currentCameraPosition)")
         }
     }
     

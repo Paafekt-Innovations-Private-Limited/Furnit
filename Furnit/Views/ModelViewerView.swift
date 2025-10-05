@@ -57,8 +57,14 @@ struct ModelViewerView: View {
                 )
                 .ignoresSafeArea(.all)
                 .onAppear {
-                    if model.fileName.contains("dollhouse_") {
+                    // Initialize dollhouse state
+                    isDollhouseRoom = model.fileName.contains("dollhouse_")
+                    
+                    if isDollhouseRoom {
                         print("🏠 Viewing dollhouse room with RealityKitView: \(model.displayName)")
+                    } else {
+                        setupARManagers()
+                        ar3DModelProcessor.setQualitySettings(AppStateManager.shared.qualitySettings)
                     }
                 }
                 
@@ -288,6 +294,14 @@ struct ModelViewerView: View {
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.8))
                     .multilineTextAlignment(.center)
+                
+                // Debug indicator for joystick activity
+                if joystickOffset != .zero {
+                    Text("🎮 Joystick: \(String(format: "%.1f", joystickOffset.width)), \(String(format: "%.1f", joystickOffset.height))")
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                        .padding(.top, 2)
+                }
             } else {
                 Text("Use gestures to rotate, zoom, and explore the room")
                     .font(.caption)
