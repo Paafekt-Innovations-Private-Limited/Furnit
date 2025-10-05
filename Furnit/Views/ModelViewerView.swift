@@ -39,15 +39,10 @@ struct ModelViewerView: View {
     // Dollhouse specific state
     @State private var isDollhouseRoom = false
     @State private var dollhouseLoadFailed = false
-
-    private var gestureHandlers: RealityKitGestureHandlers? {
-        return nil
-    }
     
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Check if it's a dollhouse room and handle differently
                 // Use RealityKitView for ALL models (including dollhouses)
                 RealityKitView(
                     model: model,
@@ -56,17 +51,6 @@ struct ModelViewerView: View {
                     isARActive: isARActive
                 )
                 .ignoresSafeArea(.all)
-                .onAppear {
-                    // Initialize dollhouse state
-                    isDollhouseRoom = model.fileName.contains("dollhouse_")
-                    
-                    if isDollhouseRoom {
-                        print("🏠 Viewing dollhouse room with RealityKitView: \(model.displayName)")
-                    } else {
-                        setupARManagers()
-                        ar3DModelProcessor.setQualitySettings(AppStateManager.shared.qualitySettings)
-                    }
-                }
                 
                 // Show fallback message if dollhouse loading failed
                 if dollhouseLoadFailed {
@@ -123,12 +107,21 @@ struct ModelViewerView: View {
         .statusBarHidden(true)
         .preferredColorScheme(.dark)
         .onAppear {
-            if !isDollhouseRoom {
+            // Initialize dollhouse state
+            isDollhouseRoom = model.fileName.contains("dollhouse_")
+            
+            if isDollhouseRoom {
+                // Fully reset for clean state on each dollhouse entry
+                cameraMovementManager.resetForNewView()
+                print("🏠 Viewing dollhouse room: \(model.displayName)")
+                print("🔄 Fully reset camera manager for clean initialization")
+            } else {
                 setupARManagers()
                 ar3DModelProcessor.setQualitySettings(AppStateManager.shared.qualitySettings)
             }
         }
         .onDisappear {
+            // Clean up
             if !isDollhouseRoom {
                 cleanupAR()
             }
@@ -154,6 +147,10 @@ struct ModelViewerView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Are you sure you want to delete this object? This action cannot be undone.")
+        }
+        // Monitor camera readiness for debugging
+        .onChange(of: cameraMovementManager.isReady) { _, isReady in
+            print("📷 Camera readiness changed: \(isReady)")
         }
     }
     
@@ -191,12 +188,30 @@ struct ModelViewerView: View {
                         modelInfoPanel
                     }
 
-                    // Joystick for camera movement
+                    // Joystick for camera movement - uses manager's isReady state
                     if !arObjectPlacementManager.isManipulatingObject {
                         VirtualJoystick(joystickOffset: $joystickOffset)
+                            .disabled(!cameraMovementManager.isReady)
+                            .opacity(cameraMovementManager.isReady ? 1.0 : 0.5)
                             .onChange(of: joystickOffset) { _, newOffset in
-                                cameraMovementManager.updateJoystickInput(newOffset)
+                                if cameraMovementManager.isReady {
+                                    cameraMovementManager.updateJoystickInput(newOffset)
+                                } else {
+                                    print("⚠️ Joystick input ignored - camera not ready")
+                                }
                             }
+                            .overlay(
+                                Group {
+                                    if !cameraMovementManager.isReady {
+                                        Text("Loading...")
+                                            .font(.caption2)
+                                            .foregroundColor(.white.opacity(0.6))
+                                            .padding(4)
+                                            .background(Color.black.opacity(0.5))
+                                            .cornerRadius(4)
+                                    }
+                                }
+                            )
                     }
                 }
 
@@ -235,10 +250,10 @@ struct ModelViewerView: View {
                     modelInfoPanel
                 }
 
-                // Joystick
+                // Joystick - uses manager's isReady state
                 if !arObjectPlacementManager.isManipulatingObject {
                     VStack(spacing: 4) {
-                        if joystickOffset != .zero {
+                        if joystickOffset != .zero && cameraMovementManager.isReady {
                             Text("Moving")
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.6))
@@ -246,14 +261,37 @@ struct ModelViewerView: View {
                         }
                         
                         VirtualJoystick(joystickOffset: $joystickOffset)
+                            .disabled(!cameraMovementManager.isReady)
+                            .opacity(cameraMovementManager.isReady ? 1.0 : 0.5)
                             .onChange(of: joystickOffset) { _, newOffset in
-                                cameraMovementManager.updateJoystickInput(newOffset)
+                                if cameraMovementManager.isReady {
+                                    cameraMovementManager.updateJoystickInput(newOffset)
+                                } else {
+                                    print("⚠️ Joystick input ignored - camera not ready")
+                                }
                             }
                             .frame(width: 120, height: 120)
                             .overlay(
                                 Circle()
-                                    .stroke(joystickOffset != .zero ? Color.blue : Color.white.opacity(0.3), lineWidth: 2)
+                                    .stroke(
+                                        cameraMovementManager.isReady ?
+                                        (joystickOffset != .zero ? Color.blue : Color.white.opacity(0.3)) :
+                                        Color.gray.opacity(0.3),
+                                        lineWidth: 2
+                                    )
                                     .animation(.easeInOut(duration: 0.2), value: joystickOffset)
+                            )
+                            .overlay(
+                                Group {
+                                    if !cameraMovementManager.isReady {
+                                        Text("Loading...")
+                                            .font(.caption2)
+                                            .foregroundColor(.white.opacity(0.6))
+                                            .padding(4)
+                                            .background(Color.black.opacity(0.5))
+                                            .cornerRadius(4)
+                                    }
+                                }
                             )
                     }
                 }
@@ -295,13 +333,21 @@ struct ModelViewerView: View {
                     .foregroundColor(.white.opacity(0.8))
                     .multilineTextAlignment(.center)
                 
-                // Debug indicator for joystick activity
-                if joystickOffset != .zero {
-                    Text("🎮 Joystick: \(String(format: "%.1f", joystickOffset.width)), \(String(format: "%.1f", joystickOffset.height))")
+                #if DEBUG
+                // Debug info for troubleshooting
+                VStack(spacing: 2) {
+                    if joystickOffset != .zero && cameraMovementManager.isReady {
+                        Text("🎮 Joystick: \(String(format: "%.1f", joystickOffset.width)), \(String(format: "%.1f", joystickOffset.height))")
+                            .font(.caption2)
+                            .foregroundColor(.green)
+                    }
+                    
+                    Text("Ready: \(cameraMovementManager.isReady ? "✅" : "⏳")")
                         .font(.caption2)
-                        .foregroundColor(.green)
-                        .padding(.top, 2)
+                        .foregroundColor(cameraMovementManager.isReady ? .green : .yellow)
                 }
+                .padding(.top, 2)
+                #endif
             } else {
                 Text("Use gestures to rotate, zoom, and explore the room")
                     .font(.caption)
@@ -622,118 +668,6 @@ struct ModelViewerView: View {
         arObjectPlacementManager.endObjectManipulation()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             self.arObjectPlacementManager.removeObject(selectedObject.id)
-        }
-    }
-}
-
-import RealityKit
-import SwiftUI
-
-// MARK: - Dollhouse Room View with Orbit Camera
-struct DollhouseRoomView: UIViewRepresentable {
-    let model: USDZModel
-    @ObservedObject var cameraMovementManager: RealityKitCameraMovementManager
-    @Binding var loadFailed: Bool
-    
-    func makeUIView(context: Context) -> ARView {
-        let arView = ARView(frame: .zero)
-        
-        // Use AR mode for better camera control
-        arView.cameraMode = .ar
-        
-        // But disable AR session to stay static
-        arView.automaticallyConfigureSession = false
-        
-        // Set background
-        arView.environment.background = .color(.black)
-        
-        // Create anchor
-        let anchor = AnchorEntity(world: .zero)
-        arView.scene.anchors.append(anchor)
-        
-        // Add lighting
-        let light = DirectionalLight()
-        light.light.intensity = 10000
-        light.position = [0, 10, 0]
-        anchor.addChild(light)
-        
-        arView.environment.lighting.intensityExponent = 2
-        
-        // Load model
-        print("\n🏠 Loading: \(model.fileName)")
-        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let fileURL = documentsURL.appendingPathComponent(model.fileName)
-        
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            do {
-                let entity = try Entity.load(contentsOf: fileURL)
-                
-                // Scale and position
-                entity.scale = [3, 3, 3]  // Even bigger
-                entity.position = [0, -10, -20]  // Move down and back
-                
-                anchor.addChild(entity)
-                print("✅ Dollhouse loaded at scale 3")
-                
-            } catch {
-                print("❌ Failed: \(error)")
-                // Create visible test object
-                let mesh = MeshResource.generateBox(size: 5)
-                var material = SimpleMaterial()
-                material.color = .init(tint: .red)
-                let box = ModelEntity(mesh: mesh, materials: [material])
-                box.position = [0, 0, -10]
-                anchor.addChild(box)
-                print("🔴 Added test box")
-            }
-        } else {
-            print("❌ File not found")
-            // Create test box
-            let mesh = MeshResource.generateBox(size: 5)
-            var material = SimpleMaterial()
-            material.color = .init(tint: .blue)
-            let box = ModelEntity(mesh: mesh, materials: [material])
-            box.position = [0, 0, -10]
-            anchor.addChild(box)
-            print("🔵 Added test box")
-        }
-        
-        // Install gestures for interaction
-        let panGesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
-        arView.addGestureRecognizer(panGesture)
-        
-        context.coordinator.arView = arView
-        context.coordinator.anchor = anchor
-        
-        print("✅ Setup complete - use gestures to interact:")
-        print("   • Drag to rotate")
-        print("   • Pinch to scale")
-        print("   • Two-finger drag to move")
-        
-        return arView
-    }
-    
-    func updateUIView(_ uiView: ARView, context: Context) {}
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-    
-    class Coordinator: NSObject {
-        weak var arView: ARView?
-        weak var anchor: AnchorEntity?
-        var currentRotation: Float = 0
-        
-        @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
-            guard let anchor = anchor else { return }
-            
-            let translation = gesture.translation(in: gesture.view)
-            let rotationAmount = Float(translation.x) * 0.01
-            
-            currentRotation += rotationAmount
-            anchor.orientation = simd_quatf(angle: currentRotation, axis: [0, 1, 0])
-            
-            gesture.setTranslation(.zero, in: gesture.view)
         }
     }
 }

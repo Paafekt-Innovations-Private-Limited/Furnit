@@ -4,11 +4,11 @@ import SwiftUI
 import simd
 
 class RealityKitCameraMovementManager: ObservableObject {
-    // Define MovementSpeed enum locally with ENHANCED values for noticeable movement
+    // Define MovementSpeed enum locally with BALANCED values for smooth movement
     enum MovementSpeed: Float {
-        case slow = 0.004     // 2.5x original for gentle but noticeable movement  
-        case normal = 0.008   // 2.7x original for comfortable cruising
-        case fast = 0.016     // 2.7x original for quicker navigation
+        case slow = 0.0016   // 2x original for gentle movement
+        case normal = 0.003  // 2x original for comfortable cruising
+        case fast = 0.006    // 2x original for quicker navigation
     }
     
     // Camera movement properties
@@ -23,8 +23,11 @@ class RealityKitCameraMovementManager: ObservableObject {
     // Current speed setting
     @Published var currentSpeed: MovementSpeed = .normal
     
-    // Movement configuration - ENHANCED FOR NOTICEABLE MOVEMENT
-    private var movementSpeed: Float = 0.08  // 2x increased for more noticeable movement
+    // Ready state for joystick
+    @Published var isReady: Bool = false
+    
+    // Movement configuration - BALANCED FOR SMOOTH MOVEMENT
+    private var movementSpeed: Float = 0.04 // Moderate speed for smooth control
     private let joystickSensitivity: Float = 0.001 // Keep original sensitivity
     private let joystickDeadZone: Float = 5.0 // Dead zone threshold
     
@@ -51,18 +54,67 @@ class RealityKitCameraMovementManager: ObservableObject {
     // Set the ARView reference for camera manipulation
     func setARView(_ arView: ARView) {
         self.arView = arView
-        print("📱 Camera movement manager ARView set")
+        print("📱 [CameraMovementManager] ARView set: \(arView)")
+        print("   Current state - ARView: \(self.arView != nil), CameraAnchor: \(self.cameraAnchor != nil)")
+        checkReadiness()
     }
-    
-    func setupARView(_ arView: ARView) {
-        setARView(arView)
-    }
-    
-    // Set camera anchor reference for direct camera control
+
     func setCameraAnchor(_ anchor: AnchorEntity) {
         self.cameraAnchor = anchor
-        print("🎮 [CameraMovementManager] setCameraAnchor called - Camera anchor is now set!")
-        print("🎮 [CameraMovementManager] Camera anchor position: \(anchor.transform.translation)")
+        print("🎮 [CameraMovementManager] setCameraAnchor called")
+        print("   Camera anchor position: \(anchor.position)")
+        print("   Current state - ARView: \(self.arView != nil), CameraAnchor: \(self.cameraAnchor != nil)")
+        checkReadiness()
+    }
+    
+    
+    
+    // Helper method to check if everything is ready
+    private func checkReadiness() {
+        // Only set ready if BOTH are properly initialized
+        let ready = arView != nil && cameraAnchor != nil
+        
+        if ready != isReady {
+            DispatchQueue.main.async {
+                self.isReady = ready
+                print("✅ Camera movement manager readiness changed to: \(ready)")
+                if ready {
+                    print("   ARView: \(self.arView != nil), CameraAnchor: \(self.cameraAnchor != nil)")
+                }
+            }
+        }
+    }
+    
+    // Reset just the ready state without clearing references (DEPRECATED - use resetForNewView)
+    func resetReadyState() {
+        DispatchQueue.main.async {
+            self.isReady = false
+            print("🔄 Camera manager ready state reset (keeping ARView and anchor references)")
+        }
+    }
+    
+    // Reset ready state AND clear references for clean reinitialization
+    func resetForNewView() {
+        DispatchQueue.main.async {
+            // Clear all references
+            self.arView = nil
+            self.cameraAnchor = nil
+            self.boundaryManager = nil
+            
+            // Reset movement state
+            self.currentVelocity = .zero
+            self.targetVelocity = .zero
+            self.currentJoystickOffset = .zero
+            
+            // Reset ready state
+            self.isReady = false
+            
+            print("🔄 Camera manager fully reset for new view")
+            print("   - Cleared ARView reference")
+            print("   - Cleared camera anchor reference")
+            print("   - Cleared boundary manager")
+            print("   - Reset velocities")
+        }
     }
 
     // Set boundary manager reference (shared from RealityKitView)
@@ -77,24 +129,16 @@ class RealityKitCameraMovementManager: ObservableObject {
     }
     
     func setSpeed(_ speed: MovementSpeed) {
-        // Map enum to actual speed values with enhanced multiplier for noticeable movement
-        movementSpeed = speed.rawValue * 30.0  // Increased from 20.0 to 30.0 for more noticeable movement
+        // Map enum to actual speed values with moderate scaling for smooth movement
+        movementSpeed = speed.rawValue * 20.0  // Balanced multiplier for smooth control
         currentSpeed = speed
         print("🏃 Speed set to \(speed) (\(movementSpeed))")
     }
     
-    // Set speed specifically for dollhouse rooms (much faster)
-    func setDollhouseSpeed() {
-        // Use much higher speed for dollhouse rooms to make movement more noticeable
-        movementSpeed = 0.3  // 5x faster than normal speed
-        currentSpeed = .normal
-        print("🏠 Dollhouse speed set to \(movementSpeed) (enhanced for better visibility)")
-    }
-    
     // Update joystick input from the virtual joystick
     func updateJoystickInput(_ offset: CGSize) {
+        // Print debug info for joystick input
         print("🎮 [CameraMovementManager] updateJoystickInput called with: \(offset)")
-        currentJoystickOffset = offset
         
         // Calculate target velocity based on joystick position
         let x = Float(offset.width)
@@ -120,18 +164,24 @@ class RealityKitCameraMovementManager: ObservableObject {
             targetVelocity = .zero
             print("🎮 [CameraMovementManager] Input below deadzone - target velocity set to zero")
         }
+        
+        currentJoystickOffset = offset
     }
     
     // Continuous camera position updates based on joystick input
     @objc private func updateCameraPosition() {
-        guard let arView = arView, let cameraAnchor = cameraAnchor else { 
-            if arView == nil {
+        guard arView != nil else {
+            if targetVelocity != .zero {
                 print("⚠️ [CameraMovementManager] updateCameraPosition: No ARView")
             }
-            if cameraAnchor == nil {
+            return
+        }
+        
+        guard let cameraAnchor = cameraAnchor else {
+            if targetVelocity != .zero {
                 print("⚠️ [CameraMovementManager] updateCameraPosition: No camera anchor")
             }
-            return 
+            return
         }
         
         // Smooth velocity transition
@@ -146,6 +196,7 @@ class RealityKitCameraMovementManager: ObservableObject {
             return
         }
         
+        // Print current velocity for debugging
         print("🎮 [CameraMovementManager] Moving camera - currentVelocity: \(currentVelocity)")
         
         // Convert joystick input to movement vectors
@@ -197,6 +248,7 @@ class RealityKitCameraMovementManager: ObservableObject {
             // Debug logging when movement is constrained
             if proposedCameraPosition.x != originalProposedPosition.x ||
                proposedCameraPosition.z != originalProposedPosition.z {
+                print("🚧 Camera position constrained: \(originalProposedPosition) -> \(proposedCameraPosition)")
                 print("🚧 Boundary hit - movement constrained")
             }
         }
@@ -205,8 +257,6 @@ class RealityKitCameraMovementManager: ObservableObject {
         if proposedCameraPosition.x != currentCameraPosition.x ||
            proposedCameraPosition.z != currentCameraPosition.z {
             
-            print("📍 [CameraMovementManager] Moving camera from \(currentCameraPosition) to \(proposedCameraPosition)")
-            
             // Create new transform preserving rotation
             var newTransform = cameraAnchor.transform
             newTransform.translation = proposedCameraPosition
@@ -214,16 +264,20 @@ class RealityKitCameraMovementManager: ObservableObject {
             // Apply the new camera transform
             cameraAnchor.transform = newTransform
             
+            // Debug output for camera movement
+            print("📍 [CameraMovementManager] Moving camera from \(currentCameraPosition) to \(proposedCameraPosition)")
+            
             // Notify that camera has moved
             onCameraMove?()
-        } else {
-            print("📍 [CameraMovementManager] No position change - staying at \(currentCameraPosition)")
         }
     }
     
     // Reset camera to default position and orientation
     func resetCameraPosition() {
-        guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
+        guard arView != nil, let cameraAnchor = cameraAnchor else {
+            print("⚠️ Cannot reset camera - missing references")
+            return
+        }
         
         // Reset camera anchor to default transform
         UIView.animate(withDuration: 0.5) {
@@ -250,6 +304,11 @@ class RealityKitCameraMovementManager: ObservableObject {
             targetVelocity = .zero
         }
         print("🎮 Camera movement \(enabled ? "enabled" : "disabled")")
+    }
+    
+    // Get boundary manager for external use (renamed to avoid conflict)
+    func getBoundaryManager() -> RealityKitBoundaryManager? {
+        return self.boundaryManager
     }
 }
 
