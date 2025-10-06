@@ -48,9 +48,9 @@ class DollhouseCreator {
         walls[0].eulerAngles = SCNVector3(0, 0, -Float.pi/2)
         walls[0].name = "FrontWall"
         
-        // Right wall - Y rotated 90° clockwise
+        // Right wall - texture rotated 90° anticlockwise
         walls[1].position = SCNVector3(Float(roomWidth/2), 0, 0)
-        walls[1].eulerAngles = SCNVector3(0, -Float.pi/2, 0)
+        walls[1].eulerAngles = SCNVector3(0, -Float.pi/2, Float.pi/2)
         walls[1].name = "RightWall"
         
         // Back wall
@@ -155,6 +155,43 @@ class DollhouseCreator {
         
         return node
     }
+    
+    
+    // Create wall with two physical planes back-to-back
+//    private static func createWall(width: CGFloat, height: CGFloat, image: UIImage, name: String = "Wall") -> SCNNode {
+//        print("  Creating double-sided \(name): \(width)x\(height)")
+//        
+//        let containerNode = SCNNode()
+//        containerNode.name = name
+//        
+//        let offset: Float = 0.001
+//        
+//        // Front plane
+//        let frontPlane = SCNPlane(width: width, height: height)
+//        let frontMaterial = SCNMaterial()
+//        frontMaterial.diffuse.contents = image
+//        frontMaterial.lightingModel = .constant
+//        frontPlane.materials = [frontMaterial]
+//        
+//        let frontNode = SCNNode(geometry: frontPlane)
+//        frontNode.position = SCNVector3(0, 0, offset)
+//        
+//        // Back plane
+//        let backPlane = SCNPlane(width: width, height: height)
+//        let backMaterial = SCNMaterial()
+//        backMaterial.diffuse.contents = image
+//        backMaterial.lightingModel = .constant
+//        backPlane.materials = [backMaterial]
+//        
+//        let backNode = SCNNode(geometry: backPlane)
+//        backNode.position = SCNVector3(0, 0, -offset)
+//        backNode.eulerAngles = SCNVector3(0, Float.pi, 0)
+//        
+//        containerNode.addChildNode(frontNode)
+//        containerNode.addChildNode(backNode)
+//        
+//        return containerNode
+//    }
     
     // Create floor - single plane with isDoubleSided
     private static func createFloor(width: CGFloat, depth: CGFloat, image: UIImage) -> SCNNode {
