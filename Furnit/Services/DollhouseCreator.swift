@@ -2,7 +2,7 @@ import SwiftUI
 import SceneKit
 import UIKit
 
-// MARK: - 2.5D Dollhouse Creator with Debug Logging
+// MARK: - 2.5D Dollhouse Creator with Corrected Wall Orientations
 class DollhouseCreator {
     
     // Creates a USDZ file from photos using SceneKit
@@ -25,10 +25,10 @@ class DollhouseCreator {
         let scene = SCNScene()
         print("✅ Created SCNScene")
         
-        // Room dimensions
-        let roomWidth: CGFloat = 10
-        let roomHeight: CGFloat = 6
-        let roomDepth: CGFloat = 10
+        // Room dimensions - smaller and more realistic
+        let roomWidth: CGFloat = 4
+        let roomHeight: CGFloat = 3
+        let roomDepth: CGFloat = 4
         print("📐 Room dimensions: \(roomWidth)x\(roomHeight)x\(roomDepth)")
         
         // Create individual walls
@@ -42,42 +42,51 @@ class DollhouseCreator {
             createCeiling(width: roomWidth, depth: roomDepth, image: photos[5])
         ]
         
-        // Position walls
+        // Position walls - vertical, only rotating around Y-axis to face inward
+        // Front wall - faces into room (no rotation needed)
+        // Front wall - faces into room with 90° clockwise rotation
         walls[0].position = SCNVector3(0, 0, -roomDepth/2)
-        walls[0].eulerAngles = SCNVector3(0, 0, 0)
+        walls[0].eulerAngles = SCNVector3(0, 0, -CGFloat.pi/2)  // Changed: added Z-axis rotation
         walls[0].name = "FrontWall"
         
+        // Right wall - rotate 90° around Y-axis
         walls[1].position = SCNVector3(roomWidth/2, 0, 0)
         walls[1].eulerAngles = SCNVector3(0, CGFloat.pi/2, 0)
         walls[1].name = "RightWall"
         
+        // Back wall - rotate 180° around Y-axis
         walls[2].position = SCNVector3(0, 0, roomDepth/2)
         walls[2].eulerAngles = SCNVector3(0, CGFloat.pi, 0)
         walls[2].name = "BackWall"
         
+        // Left wall - rotate -90° around Y-axis
         walls[3].position = SCNVector3(-roomWidth/2, 0, 0)
         walls[3].eulerAngles = SCNVector3(0, -CGFloat.pi/2, 0)
         walls[3].name = "LeftWall"
         
+        // Floor - horizontal at bottom
         walls[4].position = SCNVector3(0, -roomHeight/2, 0)
         walls[4].name = "Floor"
         
+        // Ceiling - horizontal at top
         walls[5].position = SCNVector3(0, roomHeight/2, 0)
         walls[5].name = "Ceiling"
         
         // Add all walls to scene
         for wall in walls {
             scene.rootNode.addChildNode(wall)
-            print("  ✅ Added \(wall.name ?? "wall") to scene")
+            print("  ✅ Added \(wall.name ?? "wall") to scene at position: \(wall.position)")
         }
         
-        // Add camera
+        // Add camera at comfortable viewing position
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
         cameraNode.camera?.fieldOfView = 60
-        cameraNode.position = SCNVector3(0, 0, 0)
+        // Position camera outside and above the room center
+        cameraNode.position = SCNVector3(0, roomHeight * 0.3, roomDepth * 0.9)
+        cameraNode.look(at: SCNVector3(0, 0, 0))
         scene.rootNode.addChildNode(cameraNode)
-        print("📷 Added camera at origin")
+        print("📷 Added camera at position: \(cameraNode.position)")
         
         // Add ambient light
         let lightNode = SCNNode()
@@ -89,10 +98,14 @@ class DollhouseCreator {
         print("💡 Added ambient light")
         
         // Get documents directory
-        let documentsPath = FileManager.default.urls(
+        guard let documentsPath = FileManager.default.urls(
             for: .documentDirectory,
             in: .userDomainMask
-        ).first!
+        ).first else {
+            print("❌ Could not access Documents directory")
+            return nil
+        }
+        
         print("📁 Documents path: \(documentsPath.path)")
         
         let exportURL = documentsPath.appendingPathComponent(fileName)
@@ -111,7 +124,7 @@ class DollhouseCreator {
             options: nil,
             delegate: nil,
             progressHandler: { totalProgress, error, stop in
-                print("  Export progress: \(totalProgress * 100)%")
+                print("  Export progress: \(Int(totalProgress * 100))%")
                 if let error = error {
                     print("  ❌ Export error: \(error)")
                 }
@@ -119,6 +132,9 @@ class DollhouseCreator {
         )
         
         if success {
+            // Wait briefly for file system to finalize write
+            Thread.sleep(forTimeInterval: 0.2)
+            
             // Verify file was created
             if FileManager.default.fileExists(atPath: exportURL.path) {
                 let fileSize = (try? FileManager.default.attributesOfItem(atPath: exportURL.path)[.size] as? Int) ?? 0
@@ -126,10 +142,15 @@ class DollhouseCreator {
                 print("  📏 File size: \(fileSize) bytes")
                 print("  📍 Location: \(exportURL.path)")
                 
-                // List all files in documents
-                listDocumentsDirectory()
-                
-                return exportURL
+                // Verify file has content
+                if fileSize > 0 {
+                    listDocumentsDirectory()
+                    print("========== DOLLHOUSE CREATION SUCCESS ==========\n")
+                    return exportURL
+                } else {
+                    print("❌ File created but has 0 bytes")
+                    return nil
+                }
             } else {
                 print("❌ File write succeeded but file doesn't exist!")
                 return nil
@@ -143,19 +164,34 @@ class DollhouseCreator {
     // List all files in documents directory for debugging
     private static func listDocumentsDirectory() {
         print("\n📂 Documents Directory Contents:")
-        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        guard let documentsURL = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first else {
+            print("  ❌ Could not access Documents directory")
+            return
+        }
+        
         do {
-            let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsURL, includingPropertiesForKeys: nil)
-            for fileURL in fileURLs {
-                let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int) ?? 0
-                print("  - \(fileURL.lastPathComponent) (\(size) bytes)")
+            let fileURLs = try FileManager.default.contentsOfDirectory(
+                at: documentsURL,
+                includingPropertiesForKeys: [.fileSizeKey]
+            )
+            
+            if fileURLs.isEmpty {
+                print("  (Directory is empty)")
+            } else {
+                for fileURL in fileURLs {
+                    let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                    print("  - \(fileURL.lastPathComponent) (\(size) bytes)")
+                }
             }
         } catch {
             print("  Error listing files: \(error)")
         }
     }
     
-    // Create a wall with texture
+    // Create a wall with texture - SCNPlane is vertical by default
     private static func createWall(width: CGFloat, height: CGFloat, image: UIImage, name: String = "Wall") -> SCNNode {
         print("  Creating \(name): \(width)x\(height) with image \(image.size)")
         
@@ -174,7 +210,7 @@ class DollhouseCreator {
         return node
     }
     
-    // Create floor
+    // Create floor - horizontal plane
     private static func createFloor(width: CGFloat, depth: CGFloat, image: UIImage) -> SCNNode {
         print("  Creating Floor: \(width)x\(depth) with image \(image.size)")
         
@@ -188,13 +224,14 @@ class DollhouseCreator {
         plane.materials = [material]
         
         let node = SCNNode(geometry: plane)
+        // Rotate 90° down to make it horizontal
         node.eulerAngles = SCNVector3(-CGFloat.pi/2, 0, 0)
         node.name = "Floor"
         
         return node
     }
     
-    // Create ceiling
+    // Create ceiling - horizontal plane
     private static func createCeiling(width: CGFloat, depth: CGFloat, image: UIImage) -> SCNNode {
         print("  Creating Ceiling: \(width)x\(depth) with image \(image.size)")
         
@@ -208,6 +245,7 @@ class DollhouseCreator {
         plane.materials = [material]
         
         let node = SCNNode(geometry: plane)
+        // Rotate 90° up to make it horizontal
         node.eulerAngles = SCNVector3(CGFloat.pi/2, 0, 0)
         node.name = "Ceiling"
         
@@ -215,7 +253,7 @@ class DollhouseCreator {
     }
 }
 
-// MARK: - Enhanced Dollhouse Scanner with Debug
+// MARK: - Enhanced Dollhouse Scanner with Proper Integration
 struct DollhouseRoomScannerView: View {
     @Binding var isPresented: Bool
     @ObservedObject var modelManager: USDZModelManager
@@ -405,31 +443,40 @@ struct DollhouseRoomScannerView: View {
                 .font(.system(size: 80))
                 .foregroundColor(generatedModelURL != nil ? .green : .orange)
             
-            Text(generatedModelURL != nil ? "2.5D Room Created!" : "Room Saved (Using Placeholder)")
+            Text(generatedModelURL != nil ? "2.5D Room Created!" : "Error Creating Room")
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .foregroundColor(.white)
             
-            if generatedModelURL != nil {
-                Text("USDZ file created at:\n\(generatedModelURL!.lastPathComponent)")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.8))
-                    .multilineTextAlignment(.center)
+            if let url = generatedModelURL {
+                VStack(spacing: 10) {
+                    Text("USDZ file saved successfully!")
+                        .font(.body)
+                        .foregroundColor(.white.opacity(0.9))
+                    
+                    Text(url.lastPathComponent)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
             } else {
-                Text("Photos captured but USDZ creation failed.\nUsing existing model as placeholder.")
+                Text("Room creation failed. Please try again.")
                     .font(.body)
                     .foregroundColor(.orange)
                     .multilineTextAlignment(.center)
+                    .padding()
             }
             
             Button(action: {
+                print("🏠 Dismissing scanner - returning to home view")
                 isPresented = false
             }) {
-                Text("View in Collection")
+                Text(generatedModelURL != nil ? "View in Collection" : "Go Back")
                     .font(.headline)
                     .foregroundColor(.white)
                     .frame(width: 200, height: 50)
-                    .background(Color.green)
+                    .background(generatedModelURL != nil ? Color.green : Color.blue)
                     .cornerRadius(25)
             }
         }
@@ -470,66 +517,72 @@ struct DollhouseRoomScannerView: View {
         print("📊 Photo count: \(capturedPhotos.count)")
         
         DispatchQueue.global(qos: .userInitiated).async {
-            let fileName = "dollhouse_\(Date().timeIntervalSince1970).usdz"
+            let timestamp = Date().timeIntervalSince1970
+            let fileName = "dollhouse_\(timestamp).usdz"
             print("📝 Generating filename: \(fileName)")
             
-            generatedModelURL = DollhouseCreator.createDollhouseFile(
+            let url = DollhouseCreator.createDollhouseFile(
                 from: capturedPhotos,
                 fileName: fileName
             )
             
             DispatchQueue.main.async {
-                if let url = generatedModelURL {
+                generatedModelURL = url
+                
+                if let url = url {
                     print("✅ SUCCESS: USDZ created at \(url.path)")
-                    saveToCollection(usdzURL: url)
+                    saveToCollection(usdzURL: url, fileName: fileName)
                 } else {
-                    print("⚠️ WARNING: USDZ creation failed, using fallback")
-                    saveToCollectionWithFallback()
+                    print("❌ FAILURE: USDZ creation failed")
+                    errorMessage = "Failed to create 2.5D room model"
                 }
+                
+                isProcessing = false
+                scanComplete = true
             }
         }
     }
     
-    private func saveToCollection(usdzURL: URL) {
-        let roomName = "2.5D Room - \(Date().formatted(date: .abbreviated, time: .shortened))"
-        
-        let newModel = USDZModel(
-            name: roomName,
-            fileName: usdzURL.lastPathComponent
-        )
-        
+    private func saveToCollection(usdzURL: URL, fileName: String) {
         print("\n💾 SAVING TO COLLECTION")
-        print("  Name: \(roomName)")
-        print("  File: \(usdzURL.lastPathComponent)")
+        print("  File: \(fileName)")
+        print("  Full path: \(usdzURL.path)")
         print("  Models before: \(modelManager.models.count)")
         
-        modelManager.models.append(newModel)
+        // Verify file exists before notifying
+        guard FileManager.default.fileExists(atPath: usdzURL.path) else {
+            print("❌ File doesn't exist at path: \(usdzURL.path)")
+            errorMessage = "File was created but cannot be found"
+            return
+        }
         
-        print("  Models after: \(modelManager.models.count)")
+        // Get file size for verification
+        if let fileSize = try? FileManager.default.attributesOfItem(atPath: usdzURL.path)[.size] as? Int {
+            print("  ✅ File verified: \(fileSize) bytes")
+        }
         
-        isProcessing = false
-        scanComplete = true
-    }
-    
-    private func saveToCollectionWithFallback() {
-        let roomName = "2.5D Room - \(Date().formatted(date: .abbreviated, time: .shortened))"
-        
-        // Use existing model as fallback
-        let fallbackFile = modelManager.models.first?.fileName ?? "room.usdz"
-        
-        let newModel = USDZModel(
-            name: roomName,
-            fileName: fallbackFile
+        // Notify the model manager to add this new model
+        print("📢 Posting notification to USDZModelManager...")
+        NotificationCenter.default.post(
+            name: USDZModelManager.didAddModelNotification,
+            object: nil,
+            userInfo: ["fileName": fileName]
         )
         
-        print("\n⚠️ FALLBACK SAVE")
-        print("  Name: \(roomName)")
-        print("  Fallback file: \(fallbackFile)")
+        // Also trigger a refresh for good measure
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            print("🔄 Triggering manual refresh...")
+            self.modelManager.refreshModels()
+            print("  Models after refresh: \(self.modelManager.models.count)")
+            
+            // List the models to verify
+            print("📋 Current models:")
+            for (index, model) in self.modelManager.models.enumerated() {
+                print("  \(index + 1). \(model.displayName) - \(model.fileName)")
+            }
+        }
         
-        modelManager.models.append(newModel)
-        
-        isProcessing = false
-        scanComplete = true
+        print("✅ Save process complete")
     }
     
     private func resetScanner() {
@@ -537,5 +590,45 @@ struct DollhouseRoomScannerView: View {
         currentPhotoIndex = 0
         scanComplete = false
         generatedModelURL = nil
+        errorMessage = nil
+        print("🔄 Scanner reset")
     }
 }
+
+// MARK: - Image Picker
+//struct ImagePicker: UIViewControllerRepresentable {
+//    @Binding var image: UIImage?
+//    let sourceType: UIImagePickerController.SourceType
+//    
+//    func makeUIViewController(context: Context) -> UIImagePickerController {
+//        let picker = UIImagePickerController()
+//        picker.sourceType = sourceType
+//        picker.delegate = context.coordinator
+//        return picker
+//    }
+//    
+//    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+//    
+//    func makeCoordinator() -> Coordinator {
+//        Coordinator(self)
+//    }
+//    
+//    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+//        let parent: ImagePicker
+//        
+//        init(_ parent: ImagePicker) {
+//            self.parent = parent
+//        }
+//        
+//        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+//            if let image = info[.originalImage] as? UIImage {
+//                parent.image = image
+//            }
+//            picker.dismiss(animated: true)
+//        }
+//        
+//        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+//            picker.dismiss(animated: true)
+//        }
+//    }
+//}

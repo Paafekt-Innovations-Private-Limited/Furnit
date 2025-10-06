@@ -1,406 +1,397 @@
 import SwiftUI
 import RealityKit
 import ARKit
-import Combine
 
 struct RealityKitView: UIViewRepresentable {
     let model: USDZModel
-    @ObservedObject var cameraMovementManager: RealityKitCameraMovementManager
-    @ObservedObject var arObjectPlacementManager: RealityKitObjectPlacementManager
+    let cameraMovementManager: CameraMovementManager
+    let arObjectPlacementManager: ARObjectPlacementManager
     let isARActive: Bool
     
+    
+    // Access quality settings from environment
+    @Environment(\.appState) private var appState
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
     func makeUIView(context: Context) -> ARView {
-        let arView = ARView(frame: .zero)
+        // Use .nonAR mode for custom camera control that allows rotation without moving position
+        let arView = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         
-        // Configure AR session
-        if isARActive {
-            let config = ARWorldTrackingConfiguration()
-            config.planeDetection = [.horizontal]
-            arView.session.run(config)
-        } else {
-            // Non-AR mode
-            arView.cameraMode = .nonAR
-        }
+        // Configure ARView for room viewing in non-AR mode
+        arView.renderOptions.insert(.disablePersonOcclusion)
+        arView.renderOptions.insert(.disableMotionBlur)
         
-        // Set the ARView reference immediately for proper timing
+        // Apply quality settings
+        let quality = appState.currentQuality
+        configureRenderingQuality(arView: arView, quality: quality)
+        
+        print("🎨 Applying quality setting: \(quality.displayName)")
+        
+        // Set up coordinator and custom camera for non-AR mode
+        context.coordinator.setupGestures(for: arView, placementManager: arObjectPlacementManager)
+        context.coordinator.setupCustomCamera(for: arView)
+        loadModel(into: arView, coordinator: context.coordinator)
+        
+        // Set up camera movement manager with the ARView
         cameraMovementManager.setARView(arView)
-        print("🎮 [RealityKitView] ARView set in camera movement manager (sync)")
-        
-        // Set up the scene
-        setupScene(arView: arView, context: context)
-        
-        // Setup gesture handlers with the ARView
-        context.coordinator.setupGestureHandlers(for: arView)
         
         return arView
     }
     
     func updateUIView(_ uiView: ARView, context: Context) {
-        // CRITICAL: Ensure ARView reference is always current
-        if cameraMovementManager.arView !== uiView {
-            print("🔄 [RealityKitView] Updating ARView reference in movement manager")
-            cameraMovementManager.setARView(uiView)
+        // Update rendering quality if settings changed
+        let currentQuality = appState.currentQuality
+        configureRenderingQuality(arView: uiView, quality: currentQuality)
+
+        // Update movement speed if settings changed (only when actually different)
+        let currentMovementSpeed = appState.currentMovementSpeed
+        switch currentMovementSpeed {
+        case .slow:
+            cameraMovementManager.setSpeed(.slow)
+        case .normal:
+            cameraMovementManager.setSpeed(.normal)
+        case .fast:
+            cameraMovementManager.setSpeed(.fast)
+        }
+    }
+    
+    class Coordinator {
+        var gestureHandlers: RealityKitGestureHandlers?
+        var scene: RealityKit.Scene?
+        weak var arObjectPlacementManager: ARObjectPlacementManager?
+
+        // Custom camera control for non-AR mode
+        var cameraEntity: PerspectiveCamera?
+        var cameraAnchor: AnchorEntity?
+
+        // World anchor for object placement (the model anchor)
+        var worldAnchor: AnchorEntity?
+        
+        func setupGestures(for arView: ARView, placementManager: ARObjectPlacementManager) {
+            gestureHandlers = RealityKitGestureHandlers(arView: arView)
+
+            // Connect object placement manager to gesture handlers for manipulation support
+            gestureHandlers?.setObjectPlacementManager(placementManager)
+
+            // Add tap gesture for AR object placement
+            let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+            arView.addGestureRecognizer(tapGesture)
+        }
+        
+        // Set up custom camera for non-AR mode with controllable rotation
+        func setupCustomCamera(for arView: ARView) {
+            // Create perspective camera entity with reasonable field of view
+            cameraEntity = PerspectiveCamera()
+            cameraEntity?.camera.fieldOfViewInDegrees = 75.0
             
-            // Also update coordinator's reference
-            if context.coordinator.arView !== uiView {
-                context.coordinator.arView = uiView
-                context.coordinator.setupGestureHandlers(for: uiView)
+            // Create camera anchor at lower height inside the room
+            cameraAnchor = AnchorEntity(world: SIMD3<Float>(0, 1.2, 3))
+            
+            // Add camera entity to anchor with no offset (prevents orbital rotation)
+            if let camera = cameraEntity, let anchor = cameraAnchor {
+                camera.position = SIMD3<Float>(0, 0, 0) // No offset from anchor center
+                anchor.addChild(camera)
+                arView.scene.addAnchor(anchor)
+                
+                // Pass camera references to gesture handlers for direct camera control
+                gestureHandlers?.setCameraReferences(camera: camera, cameraAnchor: anchor)
+                
+                print("📷 Custom camera set up for non-AR mode at position: \(anchor.transform.translation)")
             }
         }
         
-        // Update AR session if needed
-        if isARActive {
-            if uiView.session.configuration == nil {
-                let config = ARWorldTrackingConfiguration()
-                config.planeDetection = [.horizontal]
-                uiView.session.run(config)
-            }
-        } else {
-            if uiView.session.configuration != nil {
-                uiView.session.pause()
+        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
+            // Handle AR object placement if AR is active
+            Task { @MainActor in
+                if let arManager = arObjectPlacementManager,
+                   arManager.isReadyToPlace {
+                    let location = gesture.location(in: gesture.view)
+                    let _ = arManager.handleTapToPlace(at: location)
+                }
             }
         }
     }
     
-    func makeCoordinator() -> Coordinator {
-        Coordinator(
-            model: model,
-            cameraMovementManager: cameraMovementManager,
-            arObjectPlacementManager: arObjectPlacementManager
-        )
-    }
-    
-    private func setupScene(arView: ARView, context: Context) {
-        // Check if it's a dollhouse room
+    private func loadModel(into arView: ARView, coordinator: Coordinator) {
         let isDollhouse = model.fileName.contains("dollhouse_")
-        
-        print("🔍 [setupScene] isDollhouse: \(isDollhouse), isARActive: \(isARActive)")
-        
-        // Create main anchor
-        let anchor = AnchorEntity(world: .zero)
-        arView.scene.anchors.append(anchor)
-        
-        // Set up lighting
-        setupLighting(arView: arView, isDollhouse: isDollhouse)
-        
-        // Load the model AND set up boundaries FIRST
-        if isDollhouse {
-            loadDollhouseModel(arView: arView, anchor: anchor, context: context)
-        } else {
-            loadRegularModel(arView: arView, anchor: anchor, context: context)
-        }
-        
-        // Set up camera for non-AR mode
-        // Set up camera immediately for better timing
-        print("🔍 [setupScene] About to check camera setup - isARActive: \(isARActive)")
-        if !isARActive || isDollhouse {
-            print("✅ [setupScene] Calling setupCamera")
-            setupCamera(arView: arView, anchor: anchor, isDollhouse: isDollhouse, context: context)
-        } else {
-            print("❌ [setupScene] Skipping setupCamera because isARActive = true")
-        }
-    }
-    
-    private func setupLighting(arView: ARView, isDollhouse: Bool) {
-        // Configure lighting based on model type
-        if isDollhouse {
-            // Brighter lighting for dollhouse interiors
-            arView.environment.lighting.intensityExponent = 2.0
             
-            // Add directional light
-            let light = DirectionalLight()
-            light.light.intensity = 10000
-            light.light.isRealWorldProxy = false
-            light.position = [0, 10, 0]
-            light.look(at: [0, 0, 0], from: light.position, relativeTo: nil)
-            
-            // Add to scene
-            let lightAnchor = AnchorEntity(world: light.position)
-            lightAnchor.addChild(light)
-            arView.scene.anchors.append(lightAnchor)
-            
-            print("💡 Added dedicated lighting for dollhouse")
-        } else {
-            // Standard lighting for regular models
-            arView.environment.lighting.intensityExponent = 1.0
-        }
-    }
-    
-    private func loadDollhouseModel(arView: ARView, anchor: AnchorEntity, context: Context) {
-        print("🏠 Loading dollhouse model: \(model.fileName)")
-        
-        // Get documents directory URL
-        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let fileURL = documentsURL.appendingPathComponent(model.fileName)
-        
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            do {
-                // Load the USDZ file
-                let entity = try Entity.load(contentsOf: fileURL)
-                
-                // Scale and position for dollhouse
-                entity.scale = [1, 1, 1]
-                entity.position = [0, 0, 0]
-                
-                // Add to anchor
-                anchor.addChild(entity)
-                
-                // Set up boundary manager for dollhouse
-                setupBoundaryManager(arView: arView, modelEntity: entity)
-                
-                print("✅ Dollhouse model loaded successfully")
-                
-            } catch {
-                print("❌ Failed to load dollhouse: \(error)")
-                // Add placeholder
-                addPlaceholderModel(to: anchor)
-            }
-        } else {
-            print("❌ Dollhouse file not found: \(fileURL.path)")
-            // Add placeholder
-            addPlaceholderModel(to: anchor)
-        }
-    }
-    
-    private func loadRegularModel(arView: ARView, anchor: AnchorEntity, context: Context) {
-        print("📦 Loading regular model: \(model.fileName)")
-        
-        // Try to load from bundle
-        guard let url = Bundle.main.url(forResource: model.fileName, withExtension: nil) else {
-            print("❌ Model not found in bundle: \(model.fileName)")
-            addPlaceholderModel(to: anchor)
-            return
-        }
         
         do {
-            let entity = try Entity.load(contentsOf: url)
-            entity.scale = [1, 1, 1]
-            entity.position = [0, 0, 0]
-            anchor.addChild(entity)
+//            let tempURL = createTemporaryFile(from: dataAsset.data, fileName: "\(model.fileName).usdz")
             
-            // Set up boundary manager
-            setupBoundaryManager(arView: arView, modelEntity: entity)
-            
-            print("✅ Regular model loaded successfully")
+            // Load USDZ model using RealityKit's Entity loading
+            Task { @MainActor in
+                do {
+                    let modelURL: URL
+                                
+                    let shouldCleanup: Bool  // Track if we need to delete temp file
+                                
+                    if isDollhouse {
+                        // Dollhouse: Load from documents directory
+                        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                        modelURL = documentsURL.appendingPathComponent(model.fileName)
+                        shouldCleanup = false  // Don't delete user's files
+                        
+                        guard FileManager.default.fileExists(atPath: modelURL.path) else {
+                            print("❌ Dollhouse file not found: \(modelURL.path)")
+                            return
+                        }
+                        print("🏠 Loading dollhouse from documents: \(model.fileName)")
+                    } else {
+                        // Regular model: Load from bundle via data asset
+                        guard let dataAsset = model.dataAsset else {
+                            print("❌ Failed to load data asset for model: \(model.name)")
+                            return
+                        }
+                        modelURL = createTemporaryFile(from: dataAsset.data, fileName: "\(model.fileName).usdz")
+                        shouldCleanup = true  // Clean up temp file
+                        print("📦 Loading model from bundle: \(model.fileName)")
+                    }
+                    let modelEntity = try await Entity.load(contentsOf: modelURL)
+                    
+                    // Ensure model has proper materials for visibility
+                    ensureModelHasMaterials(modelEntity)
+
+                    // Calculate model bounds for camera positioning
+                    let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
+                    if let bounds = bounds {
+                        print("📦 Model bounds after loading: min(\(bounds.min)), max(\(bounds.max))")
+                    } else {
+                        print("📦 Model bounds after loading: no bounds")
+                    }
+                    
+                    // In non-AR mode, simply add model to scene directly (no world anchor needed)
+                    let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+                    modelAnchor.addChild(modelEntity)
+                    arView.scene.addAnchor(modelAnchor)
+                    coordinator.scene = arView.scene
+
+                    // Store the model anchor for object placement
+                    coordinator.worldAnchor = modelAnchor
+                    
+                    // Set up boundary manager for camera constraints
+                    let boundaryManager = RealityKitBoundaryManager(arView: arView)
+                    boundaryManager.calculateRoomBounds(from: modelEntity)
+                    coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
+
+                    // Share boundary manager with camera movement manager to prevent duplication
+                    self.cameraMovementManager.setARView(arView)
+                    self.cameraMovementManager.setBoundaryManager(boundaryManager)
+                    // Set initial movement speed from settings
+                    switch appState.currentMovementSpeed {
+                    case .slow:
+                        self.cameraMovementManager.setSpeed(.slow)
+                    case .normal:
+                        self.cameraMovementManager.setSpeed(.normal)
+                    case .fast:
+                        self.cameraMovementManager.setSpeed(.fast)
+                    }
+                    
+                    // Position custom camera inside the room bounds
+                    if let cameraAnchor = coordinator.cameraAnchor {
+                        let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.2, 0))
+                        cameraAnchor.transform.translation = safeCameraPosition
+                        
+                        // Set initial camera to look straight ahead instead of at room center
+                        // This prevents the camera from looking up at tall rooms
+                        cameraAnchor.transform.rotation = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
+                        
+                        print("📷 Custom camera positioned at: \(safeCameraPosition)")
+                        print("📷 Camera set to look straight ahead (0° pitch)")
+                    }
+                    
+                    // Set up lighting
+                    setupLighting(for: arView)
+                    
+                    // Set up AR object placement manager with scene references
+                    coordinator.arObjectPlacementManager = self.arObjectPlacementManager
+                    self.arObjectPlacementManager.setSceneReferences(arView: arView, scene: arView.scene)
+
+                    // Connect world anchor to object placement manager for proper scene integration
+                    if let worldAnchor = coordinator.worldAnchor {
+                        self.arObjectPlacementManager.setWorldAnchor(worldAnchor)
+                        print("🌍 Connected world anchor to object placement manager")
+                    }
+                    
+                    // Set up camera movement manager with custom camera references
+                    self.cameraMovementManager.setARView(arView)
+                    
+                    // Share camera references with camera movement manager for joystick control
+                    if let cameraAnchor = coordinator.cameraAnchor {
+                        self.cameraMovementManager.setCameraAnchor(cameraAnchor)
+                    }
+                    
+                    // Set up camera movement callback
+                    self.cameraMovementManager.onCameraMove = {
+                        // Camera movement callback - ready for future enhancements
+                    }
+                    
+                    print("✅ RealityKit model loaded successfully")
+                    // Clean up temporary file
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        try? FileManager.default.removeItem(at: modelURL)
+                    }
+                    
+                } catch {
+                    print("Error loading USDZ model with RealityKit: \(error.localizedDescription)")
+                }
+                
+                
+            }
             
         } catch {
-            print("❌ Failed to load model: \(error)")
-            addPlaceholderModel(to: anchor)
+            print("Error creating temporary file: \(error.localizedDescription)")
         }
     }
     
-    private func setupBoundaryManager(arView: ARView, modelEntity: Entity) {
-        // Create and configure boundary manager
-        let boundaryManager = RealityKitBoundaryManager(arView: arView)
+    private func createTemporaryFile(from data: Data, fileName: String) -> URL {
+        let tempDirectory = FileManager.default.temporaryDirectory
+        let tempURL = tempDirectory.appendingPathComponent(fileName)
         
-        // Calculate bounds from the model entity
-        boundaryManager.calculateRoomBounds(from: modelEntity)
-        
-        // Set boundary manager in camera movement manager
-        cameraMovementManager.setBoundaryManager(boundaryManager)
-        
-        // Log the bounds for debugging
-        if let bounds = boundaryManager.getCurrentBounds() {
-            print("📏 Boundary manager configured with bounds: min=\(bounds.min), max=\(bounds.max)")
-        }
+        try? data.write(to: tempURL)
+        return tempURL
     }
     
-    private func setupCamera(arView: ARView, anchor: AnchorEntity, isDollhouse: Bool, context: Context) {
-        print("🔥 [setupCamera] CALLED - isDollhouse: \(isDollhouse)")
-            
-        // Create camera entity
-        let cameraEntity = PerspectiveCamera()
-        cameraEntity.camera.fieldOfViewInDegrees = 60
+    private func setupCamera(for arView: ARView, with bounds: BoundingBox?) {
+        // Calculate room dimensions from bounds
+        let roomSize: SIMD3<Float>
+        let roomCenter: SIMD3<Float>
         
-        // Create camera anchor
-        let cameraAnchor = AnchorEntity(world: .zero)
-        print("🔥 [setupCamera] Camera anchor created: \(cameraAnchor)")
-            
-        
-        
-        // Set initial position based on model type
-        if isDollhouse {
-            // For dollhouse, try to get center from boundary manager
-            if let boundaryManager = cameraMovementManager.getBoundaryManager(),
-               let bounds = boundaryManager.getCurrentBounds() {
-                // Start camera at center of the room but closer to entrance
-                let center = (bounds.min + bounds.max) / 2.0
-                cameraAnchor.position = [center.x, 1.5, center.z]
-                print("📷 Camera positioned at dollhouse center: \(cameraAnchor.position)")
-            } else {
-                // Fallback position if bounds not available
-                cameraAnchor.position = [0, 1.5, 0]
-                print("📷 Camera positioned at fallback position for dollhouse")
-            }
+        if let bounds = bounds {
+            roomSize = bounds.max - bounds.min
+            roomCenter = (bounds.min + bounds.max) / 2
         } else {
-            // Position camera for regular model viewing
-            cameraAnchor.position = [0, 1.5, 5]
-            print("📷 Camera positioned for regular model at: \(cameraAnchor.position)")
+            // Default room size
+            roomSize = SIMD3<Float>(5, 3, 5)
+            roomCenter = SIMD3<Float>(0, 1.5, 0)
         }
         
-        // Add camera to anchor
-        cameraAnchor.addChild(cameraEntity)
-        arView.scene.anchors.append(cameraAnchor)
+        // Position camera INSIDE the room, slightly above floor level
+        let cameraHeight = bounds?.min.y ?? 0.0 + (roomSize.y * 0.4) // 40% up from floor
+        let viewingDistance = min(roomSize.x, roomSize.z) * 0.3 // 30% of smaller horizontal dimension
         
-        // Set camera in ARView
-        arView.cameraMode = .nonAR
+        // Position camera inside room, looking toward the center
+        let cameraPosition = SIMD3<Float>(
+            roomCenter.x - viewingDistance,
+            cameraHeight,
+            roomCenter.z + viewingDistance * 0.5
+        )
         
-        // Store camera anchor in coordinator
-        context.coordinator.cameraAnchor = cameraAnchor
-        print("🔥 [setupCamera] Coordinator camera anchor set")
-            
-        print("🔥 [setupCamera] About to set camera anchor in movement manager")
-        print("🔥 [setupCamera] Movement manager exists: \(cameraMovementManager)")
-            
-        // Set camera anchor in movement manager immediately
-        cameraMovementManager.setCameraAnchor(cameraAnchor)
-        print("🔥 [setupCamera] setCameraAnchor called")
-            
-        print("🎮 [RealityKitView] Camera anchor set in movement manager (sync)")
+        // Create camera transform
+        var cameraTransform = Transform.identity
+        cameraTransform.translation = cameraPosition
         
-        // Force a readiness check after both are set
-//        if cameraMovementManager.arView != nil {
-//            print("✅ Both ARView and camera anchor should now be ready")
-//            print("✅ Final ready state: \(cameraMovementManager.isReady)")
-//            
-//            // Force ready state if both components are set but readiness check failed
-//            if !cameraMovementManager.isReady {
-//                print("🔧 Manually setting ready state to true")
-//                cameraMovementManager.forceReady()
-//            }
-//        }
+        // Look at room center
+        let lookDirection = normalize(roomCenter - cameraPosition)
+        cameraTransform.rotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
         
-        // Set appropriate movement speed for dollhouse
-//        if isDollhouse {
-//            cameraMovementManager.setSpeed(.fast)
-//            print("🏃 Set fast movement speed for dollhouse")
-//        }
+        // Note: Camera positioning is now handled by world anchor transforms
+        // ARView.cameraTransform is read-only in RealityKit
         
-        // For dollhouse rooms, use the SAME system as first 2 rooms (the working approach)
-//        if isDollhouse {
-//            // Optimize camera movement settings for dollhouse exploration  
-//            cameraMovementManager.optimizeForDollhouse()
-//            
-//            // Use the EXACT same working system as first 2 rooms
-//            cameraMovementManager.setCameraMovementEnabled(true)  
-//            print("🏠 Using same proven camera system as first 2 rooms, optimized for dollhouse")
-//            
-//            // Force ready state for dollhouse
-//            cameraMovementManager.forceReady()
-//            print("✅ Dollhouse ready with working approach - no timer needed!")
-//        } else {
-            // For regular models, use the normal camera movement system
-            cameraMovementManager.setSpeed(.normal)
-            cameraMovementManager.setCameraMovementEnabled(true)
-            print("📦 Using standard camera movement for regular model")
-//        }
-        
-        // Store world anchor reference for object placement
-        arObjectPlacementManager.setWorldAnchor(anchor)
+        print("📷 Camera configured at position: \(cameraPosition)")
     }
     
-    private func addPlaceholderModel(to anchor: AnchorEntity) {
-        // Create a simple box as placeholder
-        let mesh = MeshResource.generateBox(size: 2)
-        var material = SimpleMaterial()
-        material.color = .init(tint: .gray)
-        let entity = ModelEntity(mesh: mesh, materials: [material])
-        anchor.addChild(entity)
-        print("📦 Added placeholder box model")
+    private func setupLighting(for arView: ARView) {
+        let quality = appState.currentQuality
+        let lightingMultiplier = quality.lightingIntensity
+        
+        // Create ambient light
+        let ambientLightComponent = DirectionalLightComponent(
+            color: .white,
+            intensity: Float(300 * 3.0),
+            isRealWorldProxy: false
+        )
+        
+        let ambientLightEntity = Entity()
+        ambientLightEntity.components.set(ambientLightComponent)
+        
+        // Create key light
+        let keyLightComponent = DirectionalLightComponent(
+            color: .white,
+            intensity: Float(800 * lightingMultiplier),
+            isRealWorldProxy: false
+        )
+        
+        let keyLightEntity = Entity()
+        keyLightEntity.components.set(keyLightComponent)
+        keyLightEntity.orientation = simd_quatf(angle: .pi / 4, axis: SIMD3<Float>(1, 0, 0))
+        keyLightEntity.position = SIMD3<Float>(5, 10, 5)
+        
+        // Create additional light specifically for placed 3D objects
+        let objectLightComponent = DirectionalLightComponent(
+            color: .white,
+            intensity: Float(1500 * lightingMultiplier), // Brighter for 3D objects
+            isRealWorldProxy: false
+        )
+
+        let objectLightEntity = Entity()
+        objectLightEntity.components.set(objectLightComponent)
+        objectLightEntity.orientation = simd_quatf(angle: .pi / 6, axis: SIMD3<Float>(1, 0, 0)) // 30 degrees down
+        objectLightEntity.position = SIMD3<Float>(0, 8, 2) // Above and slightly forward
+
+        // Add lights to scene
+        let lightingAnchor = AnchorEntity(.world(transform: matrix_identity_float4x4))
+        lightingAnchor.addChild(ambientLightEntity)
+        lightingAnchor.addChild(keyLightEntity)
+        lightingAnchor.addChild(objectLightEntity)
+        arView.scene.addAnchor(lightingAnchor)
+
+        print("💡 Applied lighting intensity: \(lightingMultiplier)x for \(quality.displayName) quality")
+        print("💡 Added dedicated lighting for placed 3D objects")
     }
     
-    // Enhanced joystick movement system for dollhouses using camera manager
-    private func setupSimpleJoystickMovement(cameraAnchor: AnchorEntity, context: Context) {
-        print("🕹️ Setting up enhanced joystick movement system for dollhouse...")
-        
-        // Store direct references in coordinator to avoid weak reference issues
-        context.coordinator.cameraAnchor = cameraAnchor
-        
-        // Verify references are set correctly
-        print("🔍 Direct references check:")
-        print("   - ARView: \(context.coordinator.arView != nil)")
-        print("   - CameraAnchor: \(context.coordinator.cameraAnchor != nil)")
-        
-        // Set up a timer that uses the camera manager's sophisticated movement handling
-        let movementTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
-            // Get current joystick state from the camera manager
-            let joystickOffset = self.cameraMovementManager.currentJoystickOffset
-            
-            // Only move if joystick is active
-            let magnitude = sqrt(joystickOffset.width * joystickOffset.width + joystickOffset.height * joystickOffset.height)
-            guard magnitude > 5.0 else { return } // Use same dead zone
-            
-            // Debug: Log that our timer is running with joystick input
-            if magnitude > 20.0 { // Only for significant input
-                print("🎮 [Timer] Processing joystick: magnitude=\(String(format: "%.1f", magnitude))")
+    // Configure rendering quality based on user settings
+    private func configureRenderingQuality(arView: ARView, quality: AssetQuality) {
+        switch quality {
+        case .standard:
+            arView.renderOptions.remove(.disableAREnvironmentLighting)
+            if #available(iOS 15.0, *) {
+                arView.environment.sceneUnderstanding.options = []
             }
-            
-            // Use direct references to avoid the "No ARView" issue
-            guard let arView = context.coordinator.arView,
-                  let cameraAnchor = context.coordinator.cameraAnchor else {
-                if magnitude > 20.0 { // Only log for significant input
-                    print("⚠️ [Timer] Missing direct references: arView=\(context.coordinator.arView != nil), cameraAnchor=\(context.coordinator.cameraAnchor != nil)")
-                }
-                return
+        case .high:
+            arView.renderOptions.insert(.disableAREnvironmentLighting)
+            if #available(iOS 15.0, *) {
+                arView.environment.sceneUnderstanding.options = .collision
             }
-            
-            // Add debug before calling movement method
-            if magnitude > 20.0 {
-                print("🎯 [Timer] About to call camera movement method")
-            }
-            
-            // Use the camera movement manager's sophisticated movement handling
-            // This should produce the same detailed logs as the first 2 rooms
-            self.cameraMovementManager.updateCameraPositionWithDirectReferences(
-                arView: arView,
-                cameraAnchor: cameraAnchor
-            )
-            
-            // Log successful processing
-            if magnitude > 20.0 {
-                print("✅ [Timer] Camera movement method completed")
+        case .best:
+            arView.renderOptions.insert(.disableAREnvironmentLighting)
+            if #available(iOS 15.0, *) {
+                arView.environment.sceneUnderstanding.options = [.collision, .physics]
             }
         }
         
-        // Store timer in coordinator so it gets cleaned up
-        context.coordinator.cameraUpdateTimer = movementTimer
-        print("🕹️ Enhanced joystick movement timer started with 60fps updates!")
+        print("🔄 Updated rendering quality to: \(quality.displayName)")
     }
-    
-    // MARK: - Coordinator
-    class Coordinator: NSObject {
-        let model: USDZModel
-        let cameraMovementManager: RealityKitCameraMovementManager
-        let arObjectPlacementManager: RealityKitObjectPlacementManager
-        var gestureHandlers: RealityKitGestureHandlers?
-        var cameraAnchor: AnchorEntity?
-        var arView: ARView?
-        var cameraUpdateTimer: Timer?
-        
-        init(model: USDZModel,
-             cameraMovementManager: RealityKitCameraMovementManager,
-             arObjectPlacementManager: RealityKitObjectPlacementManager) {
-            self.model = model
-            self.cameraMovementManager = cameraMovementManager
-            self.arObjectPlacementManager = arObjectPlacementManager
-            super.init()
-        }
-        
-        deinit {
-            cameraUpdateTimer?.invalidate()
-        }
-        
-        func setupGestureHandlers(for arView: ARView) {
-            self.arView = arView
-            gestureHandlers = RealityKitGestureHandlers(arView: arView)
-            gestureHandlers?.setObjectPlacementManager(arObjectPlacementManager)
-            
-            // Set camera references if available
-            if let cameraAnchor = cameraAnchor {
-                if let camera = cameraAnchor.children.first as? PerspectiveCamera {
-                    gestureHandlers?.setCameraReferences(camera: camera, cameraAnchor: cameraAnchor)
+
+    // Ensure loaded model has proper materials for visibility
+    private func ensureModelHasMaterials(_ entity: Entity) {
+        // Check if entity itself has a model component and materials
+        if var modelComponent = entity.components[ModelComponent.self] {
+            if modelComponent.materials.isEmpty {
+                // Add default material if none exists
+                let defaultMaterial = SimpleMaterial(color: .white, roughness: 0.5, isMetallic: false)
+                modelComponent.materials = [defaultMaterial]
+                entity.components.set(modelComponent)
+                print("🎨 Added default white material to model entity")
+            } else {
+                print("🎨 Model has \(modelComponent.materials.count) existing materials")
+                // Ensure materials are not transparent
+                for (index, material) in modelComponent.materials.enumerated() {
+                    if let simpleMaterial = material as? SimpleMaterial {
+                        print("🎨 Material \(index): color=\(simpleMaterial.color), roughness=\(simpleMaterial.roughness)")
+                    }
                 }
             }
+        }
+
+        // Recursively check child entities
+        for child in entity.children {
+            ensureModelHasMaterials(child)
         }
     }
 }
+
+// MARK: - Extensions for SIMD math operations are defined in RealityKitObjectPlacementManager.swift
