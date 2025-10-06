@@ -9,34 +9,25 @@ struct RealityKitView: UIViewRepresentable {
     @ObservedObject var arObjectPlacementManager: RealityKitObjectPlacementManager
     let isARActive: Bool
     
-    // Add a loading state
-    @State private var isLoading = true
-    
     func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero)
-        
-        print("🚀 [RealityKitView] Starting ARView setup...")
         
         // Configure AR session
         if isARActive {
             let config = ARWorldTrackingConfiguration()
             config.planeDetection = [.horizontal]
             arView.session.run(config)
-            print("📱 AR session configured and started")
         } else {
             // Non-AR mode
             arView.cameraMode = .nonAR
-            print("🎮 Non-AR mode configured")
         }
         
-        // Set the ARView reference immediately (synchronously first for safety)
+        // Set the ARView reference immediately for proper timing
         cameraMovementManager.setARView(arView)
         print("🎮 [RealityKitView] ARView set in camera movement manager (sync)")
         
-        // Set up the scene asynchronously to prevent blocking
-        Task {
-            await setupSceneAsync(arView: arView, context: context)
-        }
+        // Set up the scene
+        setupScene(arView: arView, context: context)
         
         // Setup gesture handlers with the ARView
         context.coordinator.setupGestureHandlers(for: arView)
@@ -45,6 +36,18 @@ struct RealityKitView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: ARView, context: Context) {
+        // CRITICAL: Ensure ARView reference is always current
+        if cameraMovementManager.arView !== uiView {
+            print("🔄 [RealityKitView] Updating ARView reference in movement manager")
+            cameraMovementManager.setARView(uiView)
+            
+            // Also update coordinator's reference
+            if context.coordinator.arView !== uiView {
+                context.coordinator.arView = uiView
+                context.coordinator.setupGestureHandlers(for: uiView)
+            }
+        }
+        
         // Update AR session if needed
         if isARActive {
             if uiView.session.configuration == nil {
@@ -67,62 +70,35 @@ struct RealityKitView: UIViewRepresentable {
         )
     }
     
-    private func setupSceneAsync(arView: ARView, context: Context) async {
-        print("🏗️ [RealityKitView] Starting async scene setup...")
-        
+    private func setupScene(arView: ARView, context: Context) {
         // Check if it's a dollhouse room
         let isDollhouse = model.fileName.contains("dollhouse_")
         
-        // Create main anchor on main thread
-        await MainActor.run {
-            let anchor = AnchorEntity(world: .zero)
-            arView.scene.anchors.append(anchor)
-            context.coordinator.worldAnchor = anchor
-            print("⚓ World anchor created and added to scene")
+        print("🔍 [setupScene] isDollhouse: \(isDollhouse), isARActive: \(isARActive)")
+        
+        // Create main anchor
+        let anchor = AnchorEntity(world: .zero)
+        arView.scene.anchors.append(anchor)
+        
+        // Set up lighting
+        setupLighting(arView: arView, isDollhouse: isDollhouse)
+        
+        // Load the model AND set up boundaries FIRST
+        if isDollhouse {
+            loadDollhouseModel(arView: arView, anchor: anchor, context: context)
+        } else {
+            loadRegularModel(arView: arView, anchor: anchor, context: context)
         }
         
-        // Set up lighting on main thread
-        await MainActor.run {
-            setupLighting(arView: arView, isDollhouse: isDollhouse)
+        // Set up camera for non-AR mode
+        // Set up camera immediately for better timing
+        print("🔍 [setupScene] About to check camera setup - isARActive: \(isARActive)")
+        if !isARActive || isDollhouse {
+            print("✅ [setupScene] Calling setupCamera")
+            setupCamera(arView: arView, anchor: anchor, isDollhouse: isDollhouse, context: context)
+        } else {
+            print("❌ [setupScene] Skipping setupCamera because isARActive = true")
         }
-        
-        // Load model asynchronously (this is the heavy operation)
-        let modelEntity = await loadModelAsync(isDollhouse: isDollhouse)
-        
-        // Add model to scene on main thread
-        await MainActor.run {
-            guard let anchor = context.coordinator.worldAnchor else {
-                print("❌ World anchor not found!")
-                self.isLoading = false
-                return
-            }
-            
-            if let entity = modelEntity {
-                anchor.addChild(entity)
-                print("✅ Model added to scene successfully")
-                
-                // Set up boundary manager
-                setupBoundaryManager(arView: arView, modelEntity: entity)
-                
-                // Set up camera for non-AR mode after model is loaded
-                if !self.isARActive {
-                    self.setupCamera(arView: arView, anchor: anchor, isDollhouse: isDollhouse, context: context)
-                }
-            } else {
-                print("❌ Failed to load model, adding placeholder")
-                self.addPlaceholderModel(to: anchor)
-                
-                // Still set up camera with placeholder
-                if !self.isARActive {
-                    self.setupCamera(arView: arView, anchor: anchor, isDollhouse: isDollhouse, context: context)
-                }
-            }
-            
-            // Mark loading as complete
-            self.isLoading = false
-        }
-        
-        print("🎉 [RealityKitView] Async scene setup completed")
     }
     
     private func setupLighting(arView: ARView, isDollhouse: Bool) {
@@ -150,68 +126,66 @@ struct RealityKitView: UIViewRepresentable {
         }
     }
     
-    private func loadModelAsync(isDollhouse: Bool) async -> Entity? {
-        print("📦 [RealityKitView] Starting async model loading...")
-        
-        if isDollhouse {
-            return await loadDollhouseModelAsync()
-        } else {
-            return await loadRegularModelAsync()
-        }
-    }
-    
-    private func loadDollhouseModelAsync() async -> Entity? {
+    private func loadDollhouseModel(arView: ARView, anchor: AnchorEntity, context: Context) {
         print("🏠 Loading dollhouse model: \(model.fileName)")
         
         // Get documents directory URL
         let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let fileURL = documentsURL.appendingPathComponent(model.fileName)
         
-        // Check if file exists
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            do {
+                // Load the USDZ file
+                let entity = try Entity.load(contentsOf: fileURL)
+                
+                // Scale and position for dollhouse
+                entity.scale = [1, 1, 1]
+                entity.position = [0, 0, 0]
+                
+                // Add to anchor
+                anchor.addChild(entity)
+                
+                // Set up boundary manager for dollhouse
+                setupBoundaryManager(arView: arView, modelEntity: entity)
+                
+                print("✅ Dollhouse model loaded successfully")
+                
+            } catch {
+                print("❌ Failed to load dollhouse: \(error)")
+                // Add placeholder
+                addPlaceholderModel(to: anchor)
+            }
+        } else {
             print("❌ Dollhouse file not found: \(fileURL.path)")
-            return nil
-        }
-        
-        do {
-            // Load the USDZ file asynchronously
-            print("🔄 Loading dollhouse from: \(fileURL.path)")
-            let entity = try await Entity.load(contentsOf: fileURL)
-            
-            // Configure entity on background thread
-            entity.scale = [1, 1, 1]
-            entity.position = [0, 0, 0]
-            
-            print("✅ Dollhouse model loaded successfully")
-            return entity
-            
-        } catch {
-            print("❌ Failed to load dollhouse: \(error.localizedDescription)")
-            return nil
+            // Add placeholder
+            addPlaceholderModel(to: anchor)
         }
     }
     
-    private func loadRegularModelAsync() async -> Entity? {
+    private func loadRegularModel(arView: ARView, anchor: AnchorEntity, context: Context) {
         print("📦 Loading regular model: \(model.fileName)")
         
         // Try to load from bundle
         guard let url = Bundle.main.url(forResource: model.fileName, withExtension: nil) else {
             print("❌ Model not found in bundle: \(model.fileName)")
-            return nil
+            addPlaceholderModel(to: anchor)
+            return
         }
         
         do {
-            print("🔄 Loading regular model from bundle: \(url.path)")
-            let entity = try await Entity.load(contentsOf: url)
+            let entity = try Entity.load(contentsOf: url)
             entity.scale = [1, 1, 1]
             entity.position = [0, 0, 0]
+            anchor.addChild(entity)
+            
+            // Set up boundary manager
+            setupBoundaryManager(arView: arView, modelEntity: entity)
             
             print("✅ Regular model loaded successfully")
-            return entity
             
         } catch {
-            print("❌ Failed to load regular model: \(error.localizedDescription)")
-            return nil
+            print("❌ Failed to load model: \(error)")
+            addPlaceholderModel(to: anchor)
         }
     }
     
@@ -232,14 +206,17 @@ struct RealityKitView: UIViewRepresentable {
     }
     
     private func setupCamera(arView: ARView, anchor: AnchorEntity, isDollhouse: Bool, context: Context) {
-        print("📷 [RealityKitView] Setting up camera...")
-        
+        print("🔥 [setupCamera] CALLED - isDollhouse: \(isDollhouse)")
+            
         // Create camera entity
         let cameraEntity = PerspectiveCamera()
         cameraEntity.camera.fieldOfViewInDegrees = 60
         
         // Create camera anchor
         let cameraAnchor = AnchorEntity(world: .zero)
+        print("🔥 [setupCamera] Camera anchor created: \(cameraAnchor)")
+            
+        
         
         // Set initial position based on model type
         if isDollhouse {
@@ -270,26 +247,56 @@ struct RealityKitView: UIViewRepresentable {
         
         // Store camera anchor in coordinator
         context.coordinator.cameraAnchor = cameraAnchor
-        
-        // Set camera anchor in movement manager (now synchronously since we're already on main thread)
+        print("🔥 [setupCamera] Coordinator camera anchor set")
+            
+        print("🔥 [setupCamera] About to set camera anchor in movement manager")
+        print("🔥 [setupCamera] Movement manager exists: \(cameraMovementManager)")
+            
+        // Set camera anchor in movement manager immediately
         cameraMovementManager.setCameraAnchor(cameraAnchor)
-        print("🎮 [RealityKitView] Camera anchor set in movement manager")
+        print("🔥 [setupCamera] setCameraAnchor called")
+            
+        print("🎮 [RealityKitView] Camera anchor set in movement manager (sync)")
         
-        // Verify readiness
-        if cameraMovementManager.arView != nil {
-            print("✅ Both ARView and camera anchor are now ready")
-        }
+        // Force a readiness check after both are set
+//        if cameraMovementManager.arView != nil {
+//            print("✅ Both ARView and camera anchor should now be ready")
+//            print("✅ Final ready state: \(cameraMovementManager.isReady)")
+//            
+//            // Force ready state if both components are set but readiness check failed
+//            if !cameraMovementManager.isReady {
+//                print("🔧 Manually setting ready state to true")
+//                cameraMovementManager.forceReady()
+//            }
+//        }
         
         // Set appropriate movement speed for dollhouse
-        if isDollhouse {
-            cameraMovementManager.setSpeed(.fast)
-            print("🏃 Set fast movement speed for dollhouse")
-        }
+//        if isDollhouse {
+//            cameraMovementManager.setSpeed(.fast)
+//            print("🏃 Set fast movement speed for dollhouse")
+//        }
+        
+        // For dollhouse rooms, use the SAME system as first 2 rooms (the working approach)
+//        if isDollhouse {
+//            // Optimize camera movement settings for dollhouse exploration  
+//            cameraMovementManager.optimizeForDollhouse()
+//            
+//            // Use the EXACT same working system as first 2 rooms
+//            cameraMovementManager.setCameraMovementEnabled(true)  
+//            print("🏠 Using same proven camera system as first 2 rooms, optimized for dollhouse")
+//            
+//            // Force ready state for dollhouse
+//            cameraMovementManager.forceReady()
+//            print("✅ Dollhouse ready with working approach - no timer needed!")
+//        } else {
+            // For regular models, use the normal camera movement system
+            cameraMovementManager.setSpeed(.normal)
+            cameraMovementManager.setCameraMovementEnabled(true)
+            print("📦 Using standard camera movement for regular model")
+//        }
         
         // Store world anchor reference for object placement
         arObjectPlacementManager.setWorldAnchor(anchor)
-        
-        print("📷 [RealityKitView] Camera setup completed")
     }
     
     private func addPlaceholderModel(to anchor: AnchorEntity) {
@@ -302,6 +309,64 @@ struct RealityKitView: UIViewRepresentable {
         print("📦 Added placeholder box model")
     }
     
+    // Enhanced joystick movement system for dollhouses using camera manager
+    private func setupSimpleJoystickMovement(cameraAnchor: AnchorEntity, context: Context) {
+        print("🕹️ Setting up enhanced joystick movement system for dollhouse...")
+        
+        // Store direct references in coordinator to avoid weak reference issues
+        context.coordinator.cameraAnchor = cameraAnchor
+        
+        // Verify references are set correctly
+        print("🔍 Direct references check:")
+        print("   - ARView: \(context.coordinator.arView != nil)")
+        print("   - CameraAnchor: \(context.coordinator.cameraAnchor != nil)")
+        
+        // Set up a timer that uses the camera manager's sophisticated movement handling
+        let movementTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
+            // Get current joystick state from the camera manager
+            let joystickOffset = self.cameraMovementManager.currentJoystickOffset
+            
+            // Only move if joystick is active
+            let magnitude = sqrt(joystickOffset.width * joystickOffset.width + joystickOffset.height * joystickOffset.height)
+            guard magnitude > 5.0 else { return } // Use same dead zone
+            
+            // Debug: Log that our timer is running with joystick input
+            if magnitude > 20.0 { // Only for significant input
+                print("🎮 [Timer] Processing joystick: magnitude=\(String(format: "%.1f", magnitude))")
+            }
+            
+            // Use direct references to avoid the "No ARView" issue
+            guard let arView = context.coordinator.arView,
+                  let cameraAnchor = context.coordinator.cameraAnchor else {
+                if magnitude > 20.0 { // Only log for significant input
+                    print("⚠️ [Timer] Missing direct references: arView=\(context.coordinator.arView != nil), cameraAnchor=\(context.coordinator.cameraAnchor != nil)")
+                }
+                return
+            }
+            
+            // Add debug before calling movement method
+            if magnitude > 20.0 {
+                print("🎯 [Timer] About to call camera movement method")
+            }
+            
+            // Use the camera movement manager's sophisticated movement handling
+            // This should produce the same detailed logs as the first 2 rooms
+            self.cameraMovementManager.updateCameraPositionWithDirectReferences(
+                arView: arView,
+                cameraAnchor: cameraAnchor
+            )
+            
+            // Log successful processing
+            if magnitude > 20.0 {
+                print("✅ [Timer] Camera movement method completed")
+            }
+        }
+        
+        // Store timer in coordinator so it gets cleaned up
+        context.coordinator.cameraUpdateTimer = movementTimer
+        print("🕹️ Enhanced joystick movement timer started with 60fps updates!")
+    }
+    
     // MARK: - Coordinator
     class Coordinator: NSObject {
         let model: USDZModel
@@ -309,7 +374,8 @@ struct RealityKitView: UIViewRepresentable {
         let arObjectPlacementManager: RealityKitObjectPlacementManager
         var gestureHandlers: RealityKitGestureHandlers?
         var cameraAnchor: AnchorEntity?
-        var worldAnchor: AnchorEntity?
+        var arView: ARView?
+        var cameraUpdateTimer: Timer?
         
         init(model: USDZModel,
              cameraMovementManager: RealityKitCameraMovementManager,
@@ -320,7 +386,12 @@ struct RealityKitView: UIViewRepresentable {
             super.init()
         }
         
+        deinit {
+            cameraUpdateTimer?.invalidate()
+        }
+        
         func setupGestureHandlers(for arView: ARView) {
+            self.arView = arView
             gestureHandlers = RealityKitGestureHandlers(arView: arView)
             gestureHandlers?.setObjectPlacementManager(arObjectPlacementManager)
             

@@ -40,6 +40,16 @@ struct ModelViewerView: View {
     @State private var isDollhouseRoom = false
     @State private var dollhouseLoadFailed = false
     
+    // Computed property for joystick readiness
+    private var isJoystickReady: Bool {
+        // For dollhouse rooms, consider ready if the room is loaded (no AR mode)
+        if isDollhouseRoom && !isARActive {
+            return true
+        }
+        // For regular models, use the camera movement manager's ready state
+        return cameraMovementManager.isReady
+    }
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -73,6 +83,7 @@ struct ModelViewerView: View {
                 // Camera initialization overlay
                 if isInitializingCamera {
                     cameraInitializationOverlay
+                        .zIndex(200) // Ensure it appears above all other UI elements
                 }
                 
                 // Camera preview overlay
@@ -109,16 +120,16 @@ struct ModelViewerView: View {
         .onAppear {
             // Initialize dollhouse state
             isDollhouseRoom = model.fileName.contains("dollhouse_")
-            
-            if isDollhouseRoom {
+//            Kishore
+//            if isDollhouseRoom {
                 // Fully reset for clean state on each dollhouse entry
-                cameraMovementManager.resetForNewView()
+//                cameraMovementManager.resetForNewView()
                 print("🏠 Viewing dollhouse room: \(model.displayName)")
                 print("🔄 Fully reset camera manager for clean initialization")
-            } else {
+//            } else {
                 setupARManagers()
                 ar3DModelProcessor.setQualitySettings(AppStateManager.shared.qualitySettings)
-            }
+//            }
         }
         .onDisappear {
             // Clean up
@@ -188,30 +199,18 @@ struct ModelViewerView: View {
                         modelInfoPanel
                     }
 
-                    // Joystick for camera movement - uses manager's isReady state
+                    // Joystick for camera movement - uses computed readiness for dollhouse
                     if !arObjectPlacementManager.isManipulatingObject {
                         VirtualJoystick(joystickOffset: $joystickOffset)
-                            .disabled(!cameraMovementManager.isReady)
-                            .opacity(cameraMovementManager.isReady ? 1.0 : 0.5)
+                            .disabled(!isJoystickReady)
+                            .opacity(isJoystickReady ? 1.0 : 0.3)
                             .onChange(of: joystickOffset) { _, newOffset in
-                                if cameraMovementManager.isReady {
+                                if isJoystickReady {
                                     cameraMovementManager.updateJoystickInput(newOffset)
                                 } else {
                                     print("⚠️ Joystick input ignored - camera not ready")
                                 }
                             }
-                            .overlay(
-                                Group {
-                                    if !cameraMovementManager.isReady {
-                                        Text("Loading...")
-                                            .font(.caption2)
-                                            .foregroundColor(.white.opacity(0.6))
-                                            .padding(4)
-                                            .background(Color.black.opacity(0.5))
-                                            .cornerRadius(4)
-                                    }
-                                }
-                            )
                     }
                 }
 
@@ -253,18 +252,22 @@ struct ModelViewerView: View {
                 // Joystick - uses manager's isReady state
                 if !arObjectPlacementManager.isManipulatingObject {
                     VStack(spacing: 4) {
-                        if joystickOffset != .zero && cameraMovementManager.isReady {
-                            Text("Moving")
+                        if joystickOffset != .zero && isJoystickReady {
+                            Text(isDollhouseRoom ? "Exploring Room" : "Moving")
                                 .font(.caption2)
-                                .foregroundColor(.white.opacity(0.6))
+                                .foregroundColor(.white.opacity(0.8))
                                 .animation(.easeInOut(duration: 0.2), value: joystickOffset)
+                        } else if isDollhouseRoom && isJoystickReady {
+                            Text("Ready to explore")
+                                .font(.caption2)
+                                .foregroundColor(.green.opacity(0.6))
                         }
                         
                         VirtualJoystick(joystickOffset: $joystickOffset)
-                            .disabled(!cameraMovementManager.isReady)
-                            .opacity(cameraMovementManager.isReady ? 1.0 : 0.5)
+                            .disabled(!isJoystickReady)
+                            .opacity(isJoystickReady ? 1.0 : 0.3)
                             .onChange(of: joystickOffset) { _, newOffset in
-                                if cameraMovementManager.isReady {
+                                if isJoystickReady {
                                     cameraMovementManager.updateJoystickInput(newOffset)
                                 } else {
                                     print("⚠️ Joystick input ignored - camera not ready")
@@ -274,24 +277,14 @@ struct ModelViewerView: View {
                             .overlay(
                                 Circle()
                                     .stroke(
-                                        cameraMovementManager.isReady ?
-                                        (joystickOffset != .zero ? Color.blue : Color.white.opacity(0.3)) :
+                                        isJoystickReady ?
+                                        (joystickOffset != .zero ? 
+                                         (isDollhouseRoom ? Color.green : Color.blue) : 
+                                         Color.white.opacity(0.3)) :
                                         Color.gray.opacity(0.3),
                                         lineWidth: 2
                                     )
                                     .animation(.easeInOut(duration: 0.2), value: joystickOffset)
-                            )
-                            .overlay(
-                                Group {
-                                    if !cameraMovementManager.isReady {
-                                        Text("Loading...")
-                                            .font(.caption2)
-                                            .foregroundColor(.white.opacity(0.6))
-                                            .padding(4)
-                                            .background(Color.black.opacity(0.5))
-                                            .cornerRadius(4)
-                                    }
-                                }
                             )
                     }
                 }
@@ -328,23 +321,39 @@ struct ModelViewerView: View {
                 .foregroundColor(.white)
             
             if isDollhouseRoom {
-                Text("Dollhouse Room - Use joystick to explore")
+                Text("2.5D Dollhouse Room")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.8))
                     .multilineTextAlignment(.center)
                 
+                if isJoystickReady {
+                    Text("🕹️ Use joystick to explore")
+                        .font(.caption2)
+                        .foregroundColor(.green.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                } else {
+                    Text("⏳ Loading room...")
+                        .font(.caption2)
+                        .foregroundColor(.yellow.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                }
+                
                 #if DEBUG
                 // Debug info for troubleshooting
                 VStack(spacing: 2) {
-                    if joystickOffset != .zero && cameraMovementManager.isReady {
+                    if joystickOffset != .zero && isJoystickReady {
                         Text("🎮 Joystick: \(String(format: "%.1f", joystickOffset.width)), \(String(format: "%.1f", joystickOffset.height))")
                             .font(.caption2)
                             .foregroundColor(.green)
                     }
                     
-                    Text("Ready: \(cameraMovementManager.isReady ? "✅" : "⏳")")
+                    Text("Ready: \(isJoystickReady ? "✅" : "⏳")")
                         .font(.caption2)
-                        .foregroundColor(cameraMovementManager.isReady ? .green : .yellow)
+                        .foregroundColor(isJoystickReady ? .green : .yellow)
+                        
+                    Text("Camera Speed: Dollhouse Optimized")
+                        .font(.caption2)
+                        .foregroundColor(.blue)
                 }
                 .padding(.top, 2)
                 #endif
