@@ -71,6 +71,7 @@ class DollhouseCreator {
         walls[5].position = SCNVector3(0, Float(roomHeight/2), 0)
         walls[5].name = "Ceiling"
         
+        
         // Add all walls to scene
         for wall in walls {
             scene.rootNode.addChildNode(wall)
