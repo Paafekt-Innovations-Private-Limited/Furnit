@@ -257,6 +257,10 @@ class USDZModelManager: ObservableObject {
         }
     }
     
+    func clearDollhouseModels() {
+        models.removeAll(where: { $0.fileName.contains("dollhouse_") })
+    }
+    
     // Method to remove a model (useful for cleanup)
     @MainActor
     func removeModel(_ model: USDZModel) {
