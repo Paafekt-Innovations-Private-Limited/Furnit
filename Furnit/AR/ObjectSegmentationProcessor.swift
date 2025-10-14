@@ -40,77 +40,33 @@ class ObjectSegmentationProcessor: ObservableObject {
     
     // Load the CoreML segmentation model
     private func loadSegmentationModel() {
-        // First, let's debug what's actually in the bundle
-        print("🔍 Bundle debugging:")
-        print("   Main bundle path: \(Bundle.main.bundlePath)")
-        
-        // List all .mlmodel files in the bundle
-        let mlmodelPaths = Bundle.main.paths(forResourcesOfType: "mlmodel", inDirectory: nil)
-        print("   Found .mlmodel files: \(mlmodelPaths)")
-        
-        // Also check for .mlmodelc (compiled model) files
-        let mlmodelcPaths = Bundle.main.paths(forResourcesOfType: "mlmodelc", inDirectory: nil)
-        print("   Found .mlmodelc files: \(mlmodelcPaths)")
-        
-        // Try to load DeepLabV3 model from the main bundle
-        var modelURL: URL?
-        
-        // First try .mlmodelc (compiled model - this is what Xcode produces)
-        if let url = Bundle.main.url(forResource: "DeepLabV3", withExtension: "mlmodelc") {
-            modelURL = url
-            print("✅ Found DeepLabV3.mlmodelc at: \(url)")
-        }
-        // Fallback to .mlmodel (original uncompiled model)
-        else if let url = Bundle.main.url(forResource: "DeepLabV3", withExtension: "mlmodel") {
-            modelURL = url
-            print("✅ Found DeepLabV3.mlmodel at: \(url)")
-        }
-        else {
-            print("⚠️ DeepLabV3 model not found in bundle")
-            print("🔍 Available bundle resources:")
+        print("🔍 MODELS IN BUNDLE: \(Bundle.main.paths(forResourcesOfType: "mlmodel", inDirectory: nil))")
+        print("🔍 COMPILED MODELS: \(Bundle.main.paths(forResourcesOfType: "mlmodelc", inDirectory: nil))")
             
-            // List all resources in bundle for debugging
-            if let bundleURL = Bundle.main.resourceURL {
-                do {
-                    let resources = try FileManager.default.contentsOfDirectory(at: bundleURL, includingPropertiesForKeys: nil)
-                    let modelFiles = resources.filter { url in
-                        url.pathExtension == "mlmodel" || url.pathExtension == "mlmodelc"
-                    }
-                    print("   ML model files found: \(modelFiles)")
-                } catch {
-                    print("   Could not list bundle resources: \(error)")
-                }
+        // Debug: Check what's actually in the bundle
+        print("🔍 Looking for models in bundle...")
+        if let resourcePath = Bundle.main.resourcePath {
+            do {
+                let files = try FileManager.default.contentsOfDirectory(atPath: resourcePath)
+                let mlmodels = files.filter { $0.contains(".mlmodel") }
+                print("📦 Found .mlmodel files: \(mlmodels)")
+                
+                // Also check for compiled models
+                let compiled = files.filter { $0.contains(".mlmodelc") }
+                print("📦 Found .mlmodelc files: \(compiled)")
+            } catch {
+                print("❌ Error listing bundle: \(error)")
             }
-            
-            errorMessage = "AR model not found in bundle"
-            return
         }
         
-        guard let finalModelURL = modelURL else {
-            print("⚠️ No model URL available")
-            return
+        // Also try direct path
+        if let path = Bundle.main.path(forResource: "DeepLabV3", ofType: "mlmodelc") {
+            print("✅ Found DeepLabV3 at: \(path)")
+        } else {
+            print("❌ DeepLabV3.mlmodelc not found in bundle")
         }
         
-        do {
-            // Load the CoreML model
-            let mlModel = try MLModel(contentsOf: finalModelURL)
-            print("✅ DeepLabV3 CoreML model loaded successfully")
-            
-            // Create Vision Core ML model wrapper
-            let visionModel = try VNCoreMLModel(for: mlModel)
-            print("✅ Vision CoreML model wrapper created")
-            
-            // Store the models for use in processing
-            self.mlModel = mlModel
-            self.vnModel = visionModel
-            
-            print("🤖 DeepLabV3 model ready for furniture segmentation")
-            
-        } catch {
-            print("⚠️ Failed to load DeepLabV3 model: \(error.localizedDescription)")
-            print("📥 Falling back to mock implementation for testing")
-            errorMessage = "Failed to load AR model - using mock"
-        }
+        // Your existing model loading code...
     }
     
     // Process image and segment furniture objects
