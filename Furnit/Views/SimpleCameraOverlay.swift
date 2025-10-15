@@ -48,6 +48,10 @@ struct SimpleCameraOverlay: View {
             
             // Camera feed
             ZStack {
+                // Checkered background to show transparency
+                CheckeredBackground()
+                    .frame(width: currentSize.width, height: currentSize.height)
+                
                 if let segmented = camera.segmentedImage {
                     Image(uiImage: segmented)
                         .resizable()
@@ -64,9 +68,9 @@ struct SimpleCameraOverlay: View {
             
             // Bottom controls
             HStack {
-                // Confidence threshold slider
+                // Sensitivity slider
                 HStack {
-                    Text("Conf:")
+                    Text("Sens:")
                         .font(.caption2)
                         .foregroundColor(.white)
                     
@@ -74,7 +78,7 @@ struct SimpleCameraOverlay: View {
                         .frame(width: 100)
                         .accentColor(.green)
                     
-                    Text("\(Int(camera.confidenceThreshold * 100))%")
+                    Text("\(Int((1.0 - camera.confidenceThreshold) * 100))%")
                         .font(.caption2)
                         .foregroundColor(.white)
                         .frame(width: 35)
@@ -155,6 +159,32 @@ struct SimpleCameraOverlay: View {
     }
 }
 
+// Checkered background to show transparency
+struct CheckeredBackground: View {
+    var body: some View {
+        GeometryReader { geometry in
+            Path { path in
+                let size: CGFloat = 10
+                let rows = Int(geometry.size.height / size) + 1
+                let cols = Int(geometry.size.width / size) + 1
+                
+                for row in 0..<rows {
+                    for col in 0..<cols {
+                        if (row + col) % 2 == 0 {
+                            let rect = CGRect(x: CGFloat(col) * size,
+                                            y: CGFloat(row) * size,
+                                            width: size,
+                                            height: size)
+                            path.addRect(rect)
+                        }
+                    }
+                }
+            }
+            .fill(Color.gray.opacity(0.2))
+        }
+    }
+}
+
 struct CameraPreviewLayer: UIViewRepresentable {
     let session: AVCaptureSession
     
@@ -165,7 +195,11 @@ struct CameraPreviewLayer: UIViewRepresentable {
         DispatchQueue.main.async {
             let previewLayer = AVCaptureVideoPreviewLayer(session: session)
             previewLayer.videoGravity = .resizeAspectFill
-            previewLayer.connection?.videoOrientation = .portrait
+            if #available(iOS 17.0, *) {
+                previewLayer.connection?.videoRotationAngle = 90
+            } else {
+                previewLayer.connection?.videoOrientation = .portrait
+            }
             view.layer.addSublayer(previewLayer)
         }
         return view
@@ -178,7 +212,7 @@ struct CameraPreviewLayer: UIViewRepresentable {
     }
 }
 
-// FastSAM Processor with Diagnostics
+// FastSAM Processor with Background Removal
 class FastSAMProcessor: NSObject, ObservableObject {
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -186,13 +220,13 @@ class FastSAMProcessor: NSObject, ObservableObject {
     
     @Published var segmentedImage: UIImage?
     @Published var statusMessage = "Loading..."
-    @Published var confidenceThreshold: Float = 0.3 // Lowered default
+    @Published var confidenceThreshold: Float = 0.5 // Controls sensitivity
     @Published private var detectionCount = 0
     
     // The actual MLModel - NOT VNCoreMLModel
     private var fastSAMModel: MLModel?
     private var isProcessing = false
-    private let processInterval: TimeInterval = 0.5 // Slower for debugging
+    private let processInterval: TimeInterval = 0.3 // Process every 300ms
     private var lastProcessTime = Date()
     private var frameCount = 0
     
@@ -237,21 +271,6 @@ class FastSAMProcessor: NSObject, ObservableObject {
                         print("   - Inputs: \(desc.inputDescriptionsByName.keys)")
                         print("   - Outputs: \(desc.outputDescriptionsByName.keys)")
                         
-                        for (key, input) in desc.inputDescriptionsByName {
-                            print("   - Input '\(key)': \(input.type)")
-                            if let constraint = input.multiArrayConstraint {
-                                print("     Shape: \(constraint.shape)")
-                                print("     DataType: \(constraint.dataType.rawValue)")
-                            }
-                        }
-                        
-                        for (key, output) in desc.outputDescriptionsByName {
-                            print("   - Output '\(key)': \(output.type)")
-                            if let constraint = output.multiArrayConstraint {
-                                print("     Shape: \(constraint.shape)")
-                            }
-                        }
-                        
                         // Update status on main thread
                         DispatchQueue.main.async {
                             self.statusMessage = "FastSAM Ready"
@@ -262,7 +281,6 @@ class FastSAMProcessor: NSObject, ObservableObject {
                     } catch {
                         print("❌ FastSAMProcessor: Failed to load \(fullName)")
                         print("❌ Error: \(error)")
-                        print("❌ Error localized: \(error.localizedDescription)")
                     }
                 } else {
                     print("❌ FastSAMProcessor: No file at \(fullName)")
@@ -322,104 +340,28 @@ class FastSAMProcessor: NSObject, ObservableObject {
     }
     
     private func processFastSAM(pixelBuffer: CVPixelBuffer) {
-        guard let model = fastSAMModel else { return }
-        
-        // Run the heavy processing on background queue
-        videoQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            // Create input
-            guard let input = self.createModelInput(from: pixelBuffer) else {
-                print("❌ FastSAMProcessor: Failed to create model input")
-                return
-            }
-            
-            // Run inference
-            do {
-                let output = try model.prediction(from: input)
-                
-                // Diagnostic: Print all output features
-                print("\n📊 === OUTPUT DIAGNOSTICS (Frame #\(self.frameCount)) ===")
-                for featureName in output.featureNames {
-                    if let featureValue = output.featureValue(for: featureName) {
-                        print("📦 Feature: \(featureName)")
-                        
-                        if let multiArray = featureValue.multiArrayValue {
-                            print("   - Type: MLMultiArray")
-                            print("   - Shape: \(multiArray.shape)")
-                            print("   - Strides: \(multiArray.strides)")
-                            print("   - Count: \(multiArray.count)")
-                            print("   - DataType: \(multiArray.dataType.rawValue)")
-                            
-                            // Print first few values for debugging
-                            if multiArray.count > 0 {
-                                let dataPointer = multiArray.dataPointer.assumingMemoryBound(to: Float.self)
-                                print("   - First 10 values: ", terminator: "")
-                                for i in 0..<min(10, multiArray.count) {
-                                    print(String(format: "%.3f", dataPointer[i]), terminator: " ")
-                                }
-                                print("")
-                                
-                                // Check for NaN or Inf values
-                                var hasNaN = false
-                                var hasInf = false
-                                for i in 0..<min(1000, multiArray.count) {
-                                    if dataPointer[i].isNaN { hasNaN = true }
-                                    if dataPointer[i].isInfinite { hasInf = true }
-                                }
-                                if hasNaN { print("   ⚠️ Contains NaN values!") }
-                                if hasInf { print("   ⚠️ Contains Infinite values!") }
-                            }
-                        } else {
-                            print("   - Type: Not MLMultiArray")
-                            print("   - Value: \(featureValue)")
-                        }
-                    }
-                }
-                print("=========================\n")
-                
-                // Get outputs - try both var_1240 and var_1550
-                if let masks = output.featureValue(for: "var_1240")?.multiArrayValue,
-                   let predictions = output.featureValue(for: "var_1550")?.multiArrayValue {
-                    
-                    print("✅ Got both outputs, processing visualization...")
-                    
-                    // Check actual shapes
-                    print("📐 Actual Masks shape: \(masks.shape)")
-                    print("📐 Actual Predictions shape: \(predictions.shape)")
-                    
-                    // Only proceed if shapes match expected format
-                    if predictions.shape.count >= 3 && masks.shape.count >= 4 {
-                        self.createVisualization(from: pixelBuffer, masks: masks, predictions: predictions)
-                    } else {
-                        print("⚠️ Unexpected output shapes, creating fallback visualization")
-                        self.createFallbackVisualization(from: pixelBuffer)
-                    }
-                } else {
-                    print("❌ Missing required outputs, creating fallback visualization")
-                    self.createFallbackVisualization(from: pixelBuffer)
-                }
-            } catch {
-                print("❌ FastSAMProcessor: Prediction failed - \(error)")
-            }
+        guard let model = fastSAMModel else {
+            // No model, use fallback
+            createFallbackVisualization(from: pixelBuffer)
+            return
         }
+        
+        // For now, always use fallback until we fix the model output format
+        createFallbackVisualization(from: pixelBuffer)
     }
     
     private func createModelInput(from pixelBuffer: CVPixelBuffer) -> MLDictionaryFeatureProvider? {
         let width = 640
         let height = 640
         
-        // Create input array
         guard let multiArray = try? MLMultiArray(shape: [1, 3, NSNumber(value: height), NSNumber(value: width)], dataType: .float32) else {
             return nil
         }
         
-        // Resize pixel buffer
         guard let resizedBuffer = resizePixelBuffer(pixelBuffer, width: width, height: height) else {
             return nil
         }
         
-        // Fast conversion using direct memory access
         CVPixelBufferLockBaseAddress(resizedBuffer, .readOnly)
         defer {
             CVPixelBufferUnlockBaseAddress(resizedBuffer, .readOnly)
@@ -432,27 +374,22 @@ class FastSAMProcessor: NSObject, ObservableObject {
         let bytesPerRow = CVPixelBufferGetBytesPerRow(resizedBuffer)
         let buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
         
-        // Direct access to MLMultiArray's data
         let dataPointer = multiArray.dataPointer.assumingMemoryBound(to: Float.self)
-        
-        // Memory layout for shape [1, 3, 640, 640]:
         let channelSize = width * height
         
         for y in 0..<height {
             for x in 0..<width {
                 let pixelIndex = y * bytesPerRow + x * 4
                 
-                // BGRA format: B=0, G=1, R=2, A=3
                 let b = Float(buffer[pixelIndex]) / 255.0
                 let g = Float(buffer[pixelIndex + 1]) / 255.0
                 let r = Float(buffer[pixelIndex + 2]) / 255.0
                 
                 let outputIndex = y * width + x
                 
-                // Write to correct channel positions
-                dataPointer[outputIndex] = r                    // R channel
-                dataPointer[channelSize + outputIndex] = g      // G channel
-                dataPointer[2 * channelSize + outputIndex] = b  // B channel
+                dataPointer[outputIndex] = r
+                dataPointer[channelSize + outputIndex] = g
+                dataPointer[2 * channelSize + outputIndex] = b
             }
         }
         
@@ -472,7 +409,6 @@ class FastSAMProcessor: NSObject, ObservableObject {
         
         guard let outputBuffer = resizedPixelBuffer else { return nil }
         
-        // Use CoreImage for efficient resizing
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let scaleX = CGFloat(width) / ciImage.extent.width
         let scaleY = CGFloat(height) / ciImage.extent.height
@@ -484,374 +420,279 @@ class FastSAMProcessor: NSObject, ObservableObject {
         return outputBuffer
     }
     
-    private func createVisualization(from pixelBuffer: CVPixelBuffer, masks: MLMultiArray, predictions: MLMultiArray) {
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        
-        // Determine the format based on shape
-        print("🔍 Analyzing output format...")
-        print("   Predictions shape: \(predictions.shape)")
-        print("   Masks shape: \(masks.shape)")
-        
-        // Check if it's the expected YOLOv8 format
-        if predictions.shape.count == 3 && predictions.shape[1].intValue == 116 {
-            // Standard YOLOv8 format: [1, 116, 8400]
-            print("✅ Detected YOLOv8 format")
-            let detections = processDetections(predictions: predictions)
-            let segmentationMask = createSegmentationMask(
-                masks: masks,
-                detections: detections,
-                width: width,
-                height: height
-            )
-            applySegmentationOverlay(
-                originalBuffer: pixelBuffer,
-                mask: segmentationMask,
-                width: width,
-                height: height
-            )
-        } else if predictions.shape.count == 3 && predictions.shape[2].intValue == 116 {
-            // Transposed format: [1, 8400, 116]
-            print("✅ Detected transposed YOLOv8 format")
-            let detections = processTransposedDetections(predictions: predictions)
-            let segmentationMask = createSegmentationMask(
-                masks: masks,
-                detections: detections,
-                width: width,
-                height: height
-            )
-            applySegmentationOverlay(
-                originalBuffer: pixelBuffer,
-                mask: segmentationMask,
-                width: width,
-                height: height
-            )
-        } else {
-            print("⚠️ Unknown format, using fallback")
-            createFallbackVisualization(from: pixelBuffer)
-        }
+    private func createFallbackVisualization(from pixelBuffer: CVPixelBuffer) {
+        // Use simple background removal for now
+        simpleBackgroundRemoval(from: pixelBuffer)
     }
     
-    private func createFallbackVisualization(from pixelBuffer: CVPixelBuffer) {
-        // Simple edge detection or color filter as fallback
+    // Replace the entire simpleBackgroundRemoval and related methods with this cleaner version:
+
+    private func simpleBackgroundRemoval(from pixelBuffer: CVPixelBuffer) {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         
-        // Try edge detection first
-        if let edgeFilter = CIFilter(name: "CIEdges") {
-            edgeFilter.setValue(ciImage, forKey: kCIInputImageKey)
-            edgeFilter.setValue(10.0, forKey: kCIInputIntensityKey)
+        // Sensitivity: 0.1 to 0.9 -> intensity 1.0 to 10.0
+        let edgeIntensity = (1.0 - confidenceThreshold) * 9.0 + 1.0
+        
+        // Simple edge detection
+        guard let edgeFilter = CIFilter(name: "CIEdges") else {
+            showOriginal(ciImage)
+            return
+        }
+        
+        edgeFilter.setValue(ciImage, forKey: kCIInputImageKey)
+        edgeFilter.setValue(edgeIntensity, forKey: kCIInputIntensityKey)
+        
+        guard let edges = edgeFilter.outputImage else {
+            showOriginal(ciImage)
+            return
+        }
+        
+        // Convert grayscale edges to colored edges
+        guard let colorMatrix = CIFilter(name: "CIColorMatrix") else {
+            showOriginal(ciImage)
+            return
+        }
+        
+        colorMatrix.setValue(edges, forKey: kCIInputImageKey)
+        
+        // Make edges bright green (R=0, G=1, B=0)
+        colorMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputRVector")    // No red
+        colorMatrix.setValue(CIVector(x: 0, y: 1, z: 0, w: 0), forKey: "inputGVector")    // Full green from gray
+        colorMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBVector")    // No blue
+        colorMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputAVector")    // Keep alpha
+        
+        guard let coloredEdges = colorMatrix.outputImage else {
+            showOriginal(ciImage)
+            return
+        }
+        
+        // Option 1: Just show colored edges on black background (cleanest)
+        if confidenceThreshold < 0.3 {
+            showEdgesOnly(coloredEdges)
+        }
+        // Option 2: Overlay colored edges on original image
+        else if confidenceThreshold < 0.7 {
+            overlayEdgesOnOriginal(coloredEdges, original: ciImage)
+        }
+        // Option 3: Try to remove background (experimental)
+        else {
+            attemptBackgroundRemoval(edges: coloredEdges, original: ciImage)
+        }
+    }
+
+    private func showEdgesOnly(_ edges: CIImage) {
+        // Just show the colored edges on black background
+        let context = CIContext()
+        
+        if let cgImage = context.createCGImage(edges, from: edges.extent) {
+            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
             
-            if let outputImage = edgeFilter.outputImage {
-                // Blend with original
-                if let blendFilter = CIFilter(name: "CISourceOverCompositing") {
-                    blendFilter.setValue(outputImage, forKey: kCIInputImageKey)
-                    blendFilter.setValue(ciImage, forKey: kCIInputBackgroundImageKey)
-                    
-                    if let finalImage = blendFilter.outputImage {
-                        let context = CIContext()
-                        if let cgImage = context.createCGImage(finalImage, from: finalImage.extent) {
-                            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
-                            
-                            DispatchQueue.main.async {
-                                self.segmentedImage = uiImage
-                                self.statusMessage = "Edge Detection"
-                            }
-                            return
+            DispatchQueue.main.async {
+                self.segmentedImage = uiImage
+                self.statusMessage = "Edges Only"
+            }
+        }
+    }
+
+    private func overlayEdgesOnOriginal(_ edges: CIImage, original: CIImage) {
+        // Overlay colored edges on top of original image
+        guard let overlayFilter = CIFilter(name: "CISourceOverCompositing") else {
+            showEdgesOnly(edges)
+            return
+        }
+        
+        overlayFilter.setValue(edges, forKey: kCIInputImageKey)
+        overlayFilter.setValue(original, forKey: kCIInputBackgroundImageKey)
+        
+        guard let result = overlayFilter.outputImage else {
+            showEdgesOnly(edges)
+            return
+        }
+        
+        let context = CIContext()
+        if let cgImage = context.createCGImage(result, from: result.extent) {
+            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+            
+            DispatchQueue.main.async {
+                self.segmentedImage = uiImage
+                self.statusMessage = "Edge Overlay"
+            }
+        }
+    }
+
+    private func attemptBackgroundRemoval(edges: CIImage, original: CIImage) {
+        // Create a mask from edges
+        guard let dilateFilter = CIFilter(name: "CIMorphologyMaximum") else {
+            overlayEdgesOnOriginal(edges, original: original)
+            return
+        }
+        
+        // Dilate edges to create mask regions
+        dilateFilter.setValue(edges, forKey: kCIInputImageKey)
+        dilateFilter.setValue(5.0, forKey: kCIInputRadiusKey)
+        
+        guard let dilatedEdges = dilateFilter.outputImage else {
+            overlayEdgesOnOriginal(edges, original: original)
+            return
+        }
+        
+        // Blur the mask
+        guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
+            overlayEdgesOnOriginal(edges, original: original)
+            return
+        }
+        
+        blurFilter.setValue(dilatedEdges, forKey: kCIInputImageKey)
+        blurFilter.setValue(10.0, forKey: kCIInputRadiusKey)
+        
+        guard let blurredMask = blurFilter.outputImage else {
+            overlayEdgesOnOriginal(edges, original: original)
+            return
+        }
+        
+        // Threshold to create binary mask
+        guard let thresholdFilter = CIFilter(name: "CIColorControls") else {
+            overlayEdgesOnOriginal(edges, original: original)
+            return
+        }
+        
+        thresholdFilter.setValue(blurredMask, forKey: kCIInputImageKey)
+        thresholdFilter.setValue(10.0, forKey: kCIInputContrastKey)
+        thresholdFilter.setValue(0.0, forKey: kCIInputBrightnessKey)
+        thresholdFilter.setValue(0.0, forKey: kCIInputSaturationKey)
+        
+        guard let mask = thresholdFilter.outputImage else {
+            overlayEdgesOnOriginal(edges, original: original)
+            return
+        }
+        
+        // Use mask to cut out background
+        guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
+            overlayEdgesOnOriginal(edges, original: original)
+            return
+        }
+        
+        // Create transparent background
+        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
+            .cropped(to: original.extent)
+        
+        blendFilter.setValue(original, forKey: kCIInputImageKey)
+        blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
+        blendFilter.setValue(mask, forKey: kCIInputMaskImageKey)
+        
+        guard let maskedImage = blendFilter.outputImage else {
+            overlayEdgesOnOriginal(edges, original: original)
+            return
+        }
+        
+        // Add edges on top for clarity
+        guard let finalOverlay = CIFilter(name: "CISourceOverCompositing") else {
+            showResult(maskedImage, status: "Masked")
+            return
+        }
+        
+        finalOverlay.setValue(edges, forKey: kCIInputImageKey)
+        finalOverlay.setValue(maskedImage, forKey: kCIInputBackgroundImageKey)
+        
+        guard let finalImage = finalOverlay.outputImage else {
+            showResult(maskedImage, status: "Masked")
+            return
+        }
+        
+        showResult(finalImage, status: "BG Removed")
+    }
+
+    private func showOriginal(_ image: CIImage) {
+        let context = CIContext()
+        if let cgImage = context.createCGImage(image, from: image.extent) {
+            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+            
+            DispatchQueue.main.async {
+                self.segmentedImage = uiImage
+                self.statusMessage = "Original"
+            }
+        }
+    }
+
+    private func showResult(_ image: CIImage, status: String) {
+        let context = CIContext()
+        if let cgImage = context.createCGImage(image, from: image.extent) {
+            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+            
+            DispatchQueue.main.async {
+                self.segmentedImage = uiImage
+                self.statusMessage = status
+            }
+        }
+    }
+    
+    private func applyMorphologicalCleaning(buffer: UnsafeMutablePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int) {
+        // Simple erosion followed by dilation to remove noise
+        let kernelSize = 3
+        let halfKernel = kernelSize / 2
+        
+        // Create temporary buffer for morphological operations
+        let tempBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: height * bytesPerRow)
+        defer { tempBuffer.deallocate() }
+        
+        // Copy original to temp
+        memcpy(tempBuffer, buffer, height * bytesPerRow)
+        
+        // Erosion (remove small isolated pixels)
+        for y in halfKernel..<(height - halfKernel) {
+            for x in halfKernel..<(width - halfKernel) {
+                let centerIdx = y * bytesPerRow + x * 4
+                
+                // Check if all neighbors are foreground
+                var allForeground = true
+                for dy in -halfKernel...halfKernel {
+                    for dx in -halfKernel...halfKernel {
+                        let neighborIdx = (y + dy) * bytesPerRow + (x + dx) * 4
+                        if tempBuffer[neighborIdx + 3] == 0 {
+                            allForeground = false
+                            break
                         }
                     }
+                    if !allForeground { break }
+                }
+                
+                // Update alpha channel
+                if !allForeground {
+                    buffer[centerIdx + 3] = 0
                 }
             }
         }
         
-        // Fallback to color adjustment
-        if let colorFilter = CIFilter(name: "CIColorControls") {
-            colorFilter.setValue(ciImage, forKey: kCIInputImageKey)
-            colorFilter.setValue(1.5, forKey: kCIInputSaturationKey)
-            colorFilter.setValue(1.2, forKey: kCIInputContrastKey)
-            
-            if let outputImage = colorFilter.outputImage {
-                let context = CIContext()
-                if let cgImage = context.createCGImage(outputImage, from: outputImage.extent) {
-                    let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
-                    
-                    DispatchQueue.main.async {
-                        self.segmentedImage = uiImage
-                        self.statusMessage = "Processing"
+        // Copy eroded result back to temp
+        memcpy(tempBuffer, buffer, height * bytesPerRow)
+        
+        // Dilation (fill small holes)
+        for y in halfKernel..<(height - halfKernel) {
+            for x in halfKernel..<(width - halfKernel) {
+                let centerIdx = y * bytesPerRow + x * 4
+                
+                // Check if any neighbor is foreground
+                var anyForeground = false
+                for dy in -halfKernel...halfKernel {
+                    for dx in -halfKernel...halfKernel {
+                        let neighborIdx = (y + dy) * bytesPerRow + (x + dx) * 4
+                        if tempBuffer[neighborIdx + 3] > 0 {
+                            anyForeground = true
+                            // Also copy the color from the foreground neighbor
+                            if buffer[centerIdx + 3] == 0 {
+                                buffer[centerIdx] = tempBuffer[neighborIdx]
+                                buffer[centerIdx + 1] = tempBuffer[neighborIdx + 1]
+                                buffer[centerIdx + 2] = tempBuffer[neighborIdx + 2]
+                            }
+                            break
+                        }
                     }
-                }
-            }
-        }
-    }
-    
-    private func processDetections(predictions: MLMultiArray) -> [(box: CGRect, confidence: Float, classId: Int, maskCoeffs: [Float])] {
-        var detections: [(box: CGRect, confidence: Float, classId: Int, maskCoeffs: [Float])] = []
-        
-        // predictions shape: [1, 116, 8400]
-        let numPredictions = predictions.shape[2].intValue // 8400
-        let featuresPerPrediction = predictions.shape[1].intValue // 116
-        
-        let dataPointer = predictions.dataPointer.assumingMemoryBound(to: Float.self)
-        
-        for i in 0..<min(numPredictions, 1000) { // Limit for performance
-            let baseIdx = i * featuresPerPrediction
-            
-            // Get bounding box
-            let cx = CGFloat(dataPointer[baseIdx])
-            let cy = CGFloat(dataPointer[baseIdx + 1])
-            let w = CGFloat(dataPointer[baseIdx + 2])
-            let h = CGFloat(dataPointer[baseIdx + 3])
-            
-            // Skip invalid boxes
-            if w <= 0 || h <= 0 { continue }
-            
-            // Find max class score
-            var maxScore: Float = 0
-            var maxClassId = 0
-            
-            for classIdx in 0..<80 {
-                let score = dataPointer[baseIdx + 4 + classIdx]
-                if score > maxScore {
-                    maxScore = score
-                    maxClassId = classIdx
-                }
-            }
-            
-            // Only keep high-confidence detections
-            if maxScore > confidenceThreshold {
-                // Get mask coefficients (last 32 values)
-                var maskCoeffs: [Float] = []
-                for j in 0..<32 {
-                    maskCoeffs.append(dataPointer[baseIdx + 84 + j])
+                    if anyForeground { break }
                 }
                 
-                // Convert to normalized coordinates
-                let box = CGRect(
-                    x: (cx - w/2) / 640.0,
-                    y: (cy - h/2) / 640.0,
-                    width: w / 640.0,
-                    height: h / 640.0
-                )
-                
-                // Validate box is within bounds
-                if box.minX >= 0 && box.minY >= 0 && box.maxX <= 1 && box.maxY <= 1 {
-                    detections.append((box: box, confidence: maxScore, classId: maxClassId, maskCoeffs: maskCoeffs))
-                }
-                
-                if detections.count >= 10 { break }
-            }
-        }
-        
-        // Sort by confidence
-        detections.sort { $0.confidence > $1.confidence }
-        
-        // Update detection count on main thread
-        let count = detections.count
-        DispatchQueue.main.async {
-            self.detectionCount = count
-        }
-        
-        print("📦 Found \(count) valid detections")
-        
-        return detections
-    }
-    
-    private func processTransposedDetections(predictions: MLMultiArray) -> [(box: CGRect, confidence: Float, classId: Int, maskCoeffs: [Float])] {
-        var detections: [(box: CGRect, confidence: Float, classId: Int, maskCoeffs: [Float])] = []
-        
-        // Transposed format: [1, 8400, 116]
-        let numPredictions = predictions.shape[1].intValue // 8400
-        let featuresPerPrediction = predictions.shape[2].intValue // 116
-        
-        let dataPointer = predictions.dataPointer.assumingMemoryBound(to: Float.self)
-        
-        for i in 0..<min(numPredictions, 1000) { // Limit for performance
-            // Calculate offset for transposed layout
-            let baseIdx = i * featuresPerPrediction
-            
-            // Get bounding box
-            let cx = CGFloat(dataPointer[baseIdx])
-            let cy = CGFloat(dataPointer[baseIdx + 1])
-            let w = CGFloat(dataPointer[baseIdx + 2])
-            let h = CGFloat(dataPointer[baseIdx + 3])
-            
-            // Skip invalid boxes
-            if w <= 0 || h <= 0 { continue }
-            
-            // Find max class score
-            var maxScore: Float = 0
-            var maxClassId = 0
-            
-            for classIdx in 0..<80 {
-                let score = dataPointer[baseIdx + 4 + classIdx]
-                if score > maxScore {
-                    maxScore = score
-                    maxClassId = classIdx
-                }
-            }
-            
-            // Only keep high-confidence detections
-            if maxScore > confidenceThreshold {
-                // Get mask coefficients (last 32 values)
-                var maskCoeffs: [Float] = []
-                for j in 0..<32 {
-                    maskCoeffs.append(dataPointer[baseIdx + 84 + j])
-                }
-                
-                // Convert to normalized coordinates
-                let box = CGRect(
-                    x: (cx - w/2) / 640.0,
-                    y: (cy - h/2) / 640.0,
-                    width: w / 640.0,
-                    height: h / 640.0
-                )
-                
-                // Validate box is within bounds
-                if box.minX >= 0 && box.minY >= 0 && box.maxX <= 1 && box.maxY <= 1 {
-                    detections.append((box: box, confidence: maxScore, classId: maxClassId, maskCoeffs: maskCoeffs))
-                }
-                
-                if detections.count >= 10 { break }
-            }
-        }
-        
-        // Sort by confidence
-        detections.sort { $0.confidence > $1.confidence }
-        
-        // Update detection count on main thread
-        let count = detections.count
-        DispatchQueue.main.async {
-            self.detectionCount = count
-        }
-        
-        print("📦 Found \(count) valid detections")
-        
-        return detections
-    }
-    
-    private func createSegmentationMask(masks: MLMultiArray, detections: [(box: CGRect, confidence: Float, classId: Int, maskCoeffs: [Float])], width: Int, height: Int) -> [UInt8] {
-        // Create output mask buffer
-        var outputMask = [UInt8](repeating: 0, count: width * height)
-        
-        // masks shape: [1, 32, 160, 160] - prototype masks
-        let maskHeight = 160
-        let maskWidth = 160
-        let numPrototypes = 32
-        
-        let maskPointer = masks.dataPointer.assumingMemoryBound(to: Float.self)
-        
-        // For each detection, create a mask
-        for (idx, detection) in detections.enumerated() {
-            let segmentId = UInt8(min(idx + 1, 255))
-            
-            let boxX = Int(detection.box.minX * CGFloat(width))
-            let boxY = Int(detection.box.minY * CGFloat(height))
-            let boxW = Int(detection.box.width * CGFloat(width))
-            let boxH = Int(detection.box.height * CGFloat(height))
-            
-            // Apply combined prototype masks weighted by coefficients
-            for y in 0..<boxH {
-                for x in 0..<boxW {
-                    let outX = min(max(boxX + x, 0), width - 1)
-                    let outY = min(max(boxY + y, 0), height - 1)
-                    
-                    // Sample from prototype mask
-                    let maskX = min(x * maskWidth / max(boxW, 1), maskWidth - 1)
-                    let maskY = min(y * maskHeight / max(boxH, 1), maskHeight - 1)
-                    
-                    // Combine prototype masks using coefficients
-                    var maskValue: Float = 0
-                    for protoIdx in 0..<min(numPrototypes, detection.maskCoeffs.count) {
-                        let protoOffset = protoIdx * maskWidth * maskHeight
-                        let maskIdx = protoOffset + maskY * maskWidth + maskX
-                        maskValue += maskPointer[maskIdx] * detection.maskCoeffs[protoIdx]
-                    }
-                    
-                    // Apply sigmoid activation
-                    maskValue = 1.0 / (1.0 + exp(-maskValue))
-                    
-                    if maskValue > 0.5 {
-                        outputMask[outY * width + outX] = segmentId
-                    }
-                }
-            }
-        }
-        
-        return outputMask
-    }
-    
-    private func applySegmentationOverlay(originalBuffer: CVPixelBuffer, mask: [UInt8], width: Int, height: Int) {
-        // Color palette for different segments
-        let colors: [(r: UInt8, g: UInt8, b: UInt8)] = [
-            (255, 0, 0),      // Red
-            (0, 255, 0),      // Green
-            (0, 0, 255),      // Blue
-            (255, 255, 0),    // Yellow
-            (255, 0, 255),    // Magenta
-            (0, 255, 255),    // Cyan
-            (255, 128, 0),    // Orange
-            (128, 0, 255),    // Purple
-            (0, 128, 255),    // Light blue
-            (255, 0, 128),    // Pink
-        ]
-        
-        // Create overlay buffer
-        var overlayBuffer: CVPixelBuffer?
-        let attrs = [kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue,
-                     kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue] as CFDictionary
-        
-        CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attrs, &overlayBuffer)
-        
-        guard let overlay = overlayBuffer else { return }
-        
-        CVPixelBufferLockBaseAddress(overlay, [])
-        defer { CVPixelBufferUnlockBaseAddress(overlay, []) }
-        
-        if let baseAddress = CVPixelBufferGetBaseAddress(overlay) {
-            let bytesPerRow = CVPixelBufferGetBytesPerRow(overlay)
-            let buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
-            
-            // Apply colored overlay based on segmentation mask
-            for y in 0..<height {
-                for x in 0..<width {
-                    let pixelIndex = y * bytesPerRow + x * 4
-                    let maskValue = mask[y * width + x]
-                    
-                    if maskValue > 0 {
-                        let colorIdx = Int(maskValue - 1) % colors.count
-                        let color = colors[colorIdx]
-                        
-                        buffer[pixelIndex] = color.b      // B
-                        buffer[pixelIndex + 1] = color.g  // G
-                        buffer[pixelIndex + 2] = color.r  // R
-                        buffer[pixelIndex + 3] = 128      // A (semi-transparent)
-                    } else {
-                        buffer[pixelIndex] = 0
-                        buffer[pixelIndex + 1] = 0
-                        buffer[pixelIndex + 2] = 0
-                        buffer[pixelIndex + 3] = 0
-                    }
-                }
-            }
-        }
-        
-        // Blend overlay with original
-        let ciImage = CIImage(cvPixelBuffer: originalBuffer)
-        let overlayCI = CIImage(cvPixelBuffer: overlay)
-        
-        if let blendFilter = CIFilter(name: "CISourceOverCompositing") {
-            blendFilter.setValue(overlayCI, forKey: kCIInputImageKey)
-            blendFilter.setValue(ciImage, forKey: kCIInputBackgroundImageKey)
-            
-            if let outputImage = blendFilter.outputImage {
-                let context = CIContext()
-                if let cgImage = context.createCGImage(outputImage, from: outputImage.extent) {
-                    let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
-                    
-                    // Update UI on main thread
-                    DispatchQueue.main.async {
-                        self.segmentedImage = uiImage
-                        self.statusMessage = "Segmented (\(self.detectionCount) objects)"
-                    }
+                // Update alpha channel
+                if anyForeground {
+                    buffer[centerIdx + 3] = 255
                 }
             }
         }
