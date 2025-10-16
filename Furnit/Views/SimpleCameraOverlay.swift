@@ -243,7 +243,7 @@ class FastSAMProcessor: NSObject, ObservableObject {
         }
         
         // Look for FastSAM model
-        let modelNames = ["FastSAM-embedded", "FastSAM-x", "FastSAM", "yolov8x-seg"]
+        let modelNames = ["FastSAM-x", "FastSAM-embedded", "FastSAM", "yolov8x-seg"]
         
         for name in modelNames {
             print("🔍 FastSAMProcessor: Looking for model: \(name)")
@@ -295,18 +295,24 @@ class FastSAMProcessor: NSObject, ObservableObject {
     }
     
     private func setupCamera() {
+        print("🎥 FastSAMProcessor: Setting up camera...")
         session.beginConfiguration()
         session.sessionPreset = .hd1280x720
+        print("🎥 FastSAMProcessor: Session preset set to hd1280x720")
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+            print("❌ FastSAMProcessor: Failed to get camera device")
             session.commitConfiguration()
             return
         }
+        
+        print("✅ FastSAMProcessor: Camera device obtained")
         
         do {
             let input = try AVCaptureDeviceInput(device: device)
             if session.canAddInput(input) {
                 session.addInput(input)
+                print("✅ FastSAMProcessor: Camera input added to session")
             }
             
             videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
@@ -315,88 +321,320 @@ class FastSAMProcessor: NSObject, ObservableObject {
             
             if session.canAddOutput(videoOutput) {
                 session.addOutput(videoOutput)
+                print("✅ FastSAMProcessor: Video output added to session")
             }
             
             session.commitConfiguration()
-            print("✅ Camera configured")
+            print("✅ FastSAMProcessor: Camera configured successfully")
         } catch {
-            print("❌ Camera setup failed: \(error)")
+            print("❌ FastSAMProcessor: Camera setup failed: \(error)")
             session.commitConfiguration()
         }
     }
     
     func start() {
+        print("▶️ FastSAMProcessor: Starting camera session...")
         if !session.isRunning {
             DispatchQueue.global(qos: .background).async {
                 self.session.startRunning()
+                print("✅ FastSAMProcessor: Camera session started")
             }
+        } else {
+            print("ℹ️ FastSAMProcessor: Camera session already running")
         }
     }
     
     func stop() {
+        print("⏸️ FastSAMProcessor: Stopping camera session...")
         if session.isRunning {
             session.stopRunning()
+            print("✅ FastSAMProcessor: Camera session stopped")
         }
     }
     
     private func processFastSAM(pixelBuffer: CVPixelBuffer) {
+        print("🔄 [Frame \(frameCount)] Processing started")
+        print("🔄 [Frame \(frameCount)] Confidence threshold: \(confidenceThreshold)")
+        
         guard let model = fastSAMModel else {
-            // No model, use fallback
-            createFallbackVisualization(from: pixelBuffer)
+            print("⚠️ [Frame \(frameCount)] No model, showing original")
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            showOriginal(ciImage)
             return
         }
         
-        // For now, always use fallback until we fix the model output format
-        createFallbackVisualization(from: pixelBuffer)
+        // Use the actual FastSAM model for segmentation
+        runFastSAMSegmentation(pixelBuffer: pixelBuffer, model: model)
     }
     
-    private func createModelInput(from pixelBuffer: CVPixelBuffer) -> MLDictionaryFeatureProvider? {
-        let width = 640
-        let height = 640
+    private func runFastSAMSegmentation(pixelBuffer: CVPixelBuffer, model: MLModel) {
+        print("🤖 [Frame \(frameCount)] Running FastSAM model inference...")
         
-        guard let multiArray = try? MLMultiArray(shape: [1, 3, NSNumber(value: height), NSNumber(value: width)], dataType: .float32) else {
-            return nil
+        guard let input = createModelInput(from: pixelBuffer) else {
+            print("❌ [Frame \(frameCount)] Failed to create model input")
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            showOriginal(ciImage)
+            return
         }
         
-        guard let resizedBuffer = resizePixelBuffer(pixelBuffer, width: width, height: height) else {
-            return nil
+        print("✅ [Frame \(frameCount)] Model input created")
+        
+        do {
+            let prediction = try model.prediction(from: input)
+            print("✅ [Frame \(frameCount)] Model prediction completed")
+            
+            // Get both outputs - NOTE: var_1240 is now "p"
+            guard let detections = prediction.featureValue(for: "var_1550")?.multiArrayValue,
+                  let prototypes = prediction.featureValue(for: "p")?.multiArrayValue else {
+                print("❌ [Frame \(frameCount)] Failed to get model outputs")
+                print("📊 Available outputs: \(model.modelDescription.outputDescriptionsByName.keys)")
+                let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+                showOriginal(ciImage)
+                return
+            }
+            
+            print("📊 [Frame \(frameCount)] Detections shape: \(detections.shape)")
+            print("📊 [Frame \(frameCount)] Prototypes shape: \(prototypes.shape)")
+            
+            // Process with proper YOLOv8-seg decoding
+            processYOLOv8Segmentation(detections: detections, prototypes: prototypes, originalPixelBuffer: pixelBuffer)
+            
+        } catch {
+            print("❌ [Frame \(frameCount)] Model prediction failed: \(error)")
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            showOriginal(ciImage)
         }
+    }
+    
+    private func processYOLOv8Segmentation(detections: MLMultiArray, prototypes: MLMultiArray, originalPixelBuffer: CVPixelBuffer) {
+        print("🔍 [Frame \(frameCount)] Processing YOLOv8 segmentation...")
         
-        CVPixelBufferLockBaseAddress(resizedBuffer, .readOnly)
-        defer {
-            CVPixelBufferUnlockBaseAddress(resizedBuffer, .readOnly)
-        }
+        let numDetections = detections.shape[2].intValue  // 8400
+        let numValues = detections.shape[1].intValue      // 37
+        let numPrototypes = prototypes.shape[1].intValue  // 32
+        let protoHeight = prototypes.shape[2].intValue    // 160
+        let protoWidth = prototypes.shape[3].intValue     // 160
         
-        guard let baseAddress = CVPixelBufferGetBaseAddress(resizedBuffer) else {
-            return nil
-        }
+        print("🔍 [Frame \(frameCount)] Num detections: \(numDetections)")
+        print("🔍 [Frame \(frameCount)] Prototypes: \(numPrototypes) x \(protoHeight) x \(protoWidth)")
         
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(resizedBuffer)
-        let buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
         
-        let dataPointer = multiArray.dataPointer.assumingMemoryBound(to: Float.self)
-        let channelSize = width * height
+        // Find best detection
+        var bestConf: Float = 0
+        var bestIdx = -1
         
-        for y in 0..<height {
-            for x in 0..<width {
-                let pixelIndex = y * bytesPerRow + x * 4
-                
-                let b = Float(buffer[pixelIndex]) / 255.0
-                let g = Float(buffer[pixelIndex + 1]) / 255.0
-                let r = Float(buffer[pixelIndex + 2]) / 255.0
-                
-                let outputIndex = y * width + x
-                
-                dataPointer[outputIndex] = r
-                dataPointer[channelSize + outputIndex] = g
-                dataPointer[2 * channelSize + outputIndex] = b
+        for i in 0..<numDetections {
+            let conf = detPointer[4 * numDetections + i]
+            if conf > bestConf {
+                bestConf = conf
+                bestIdx = i
             }
         }
         
-        guard let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": multiArray]) else {
+        print("🔍 [Frame \(frameCount)] Best detection: idx=\(bestIdx), conf=\(bestConf)")
+        
+        if bestConf < confidenceThreshold {
+            print("⚠️ [Frame \(frameCount)] No detection above threshold")
+            let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
+            showOriginal(ciImage)
+            return
+        }
+        
+        // Get bounding box
+        let cx = detPointer[0 * numDetections + bestIdx]
+        let cy = detPointer[1 * numDetections + bestIdx]
+        let w = detPointer[2 * numDetections + bestIdx]
+        let h = detPointer[3 * numDetections + bestIdx]
+        
+        print("🔍 [Frame \(frameCount)] BBox: center=(\(cx), \(cy)), size=(\(w), \(h))")
+        
+        // Get mask coefficients (last 32 values)
+        var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
+        for i in 0..<numPrototypes {
+            let coeffIdx = (numValues - numPrototypes + i) * numDetections + bestIdx
+            maskCoeffs[i] = detPointer[coeffIdx]
+        }
+        
+        print("🔍 [Frame \(frameCount)] Mask coeffs: [\(maskCoeffs.prefix(5).map { String(format: "%.2f", $0) }.joined(separator: ", "))...]")
+        
+        // Generate segmentation mask from prototypes
+        let segMask = generateSegmentationMask(prototypes: prototypes, coefficients: maskCoeffs,
+                                               protoHeight: protoHeight, protoWidth: protoWidth)
+        
+        // Apply to image
+        let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
+        applySegmentationMask(original: ciImage, mask: segMask)
+    }
+    
+    private func generateSegmentationMask(prototypes: MLMultiArray, coefficients: [Float],
+                                         protoHeight: Int, protoWidth: Int) -> CIImage {
+        print("🎭 [Frame \(frameCount)] Generating segmentation mask...")
+        
+        let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
+        let maskSize = protoHeight * protoWidth
+        
+        // Weighted sum of prototypes
+        var finalMask = [Float](repeating: 0, count: maskSize)
+        
+        for protoIdx in 0..<coefficients.count {
+            let coeff = coefficients[protoIdx]
+            let protoOffset = protoIdx * maskSize
+            
+            for i in 0..<maskSize {
+                finalMask[i] += coeff * protoPointer[protoOffset + i]
+            }
+        }
+        
+        // Apply sigmoid activation
+        for i in 0..<maskSize {
+            finalMask[i] = 1.0 / (1.0 + exp(-finalMask[i]))
+        }
+        
+        // Apply threshold to make mask more solid
+        let threshold: Float = 0.3  // Lower threshold = more area covered
+        for i in 0..<maskSize {
+            finalMask[i] = finalMask[i] > threshold ? 1.0 : 0.0
+        }
+        
+        print("🎭 [Frame \(frameCount)] Mask generated with threshold \(threshold)")
+        
+        // Convert to grayscale image
+        var pixelData = [UInt8](repeating: 0, count: maskSize)
+        for i in 0..<maskSize {
+            pixelData[i] = UInt8(finalMask[i] * 255)
+        }
+        
+        let data = Data(pixelData)
+        guard let provider = CGDataProvider(data: data as CFData) else {
+            print("❌ [Frame \(frameCount)] Failed to create data provider")
+            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: protoWidth, height: protoHeight))
+        }
+        
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+        
+        guard let cgImage = CGImage(
+            width: protoWidth,
+            height: protoHeight,
+            bitsPerComponent: 8,
+            bitsPerPixel: 8,
+            bytesPerRow: protoWidth,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo,
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: true,
+            intent: .defaultIntent
+        ) else {
+            print("❌ [Frame \(frameCount)] Failed to create CGImage")
+            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: protoWidth, height: protoHeight))
+        }
+        
+        print("✅ [Frame \(frameCount)] Segmentation mask created: \(protoWidth)x\(protoHeight)")
+        return CIImage(cgImage: cgImage)
+    }
+    
+    private func applySegmentationMask(original: CIImage, mask: CIImage) {
+        print("🎨 [Frame \(frameCount)] Applying segmentation mask to original image...")
+        print("🎨 [Frame \(frameCount)] Original size: \(original.extent.size)")
+        print("🎨 [Frame \(frameCount)] Mask size: \(mask.extent.size)")
+        
+        // Step 1: Scale mask to match original image size with HIGH QUALITY interpolation
+        let scaleX = original.extent.width / mask.extent.width
+        let scaleY = original.extent.height / mask.extent.height
+        
+        let scaledMask = mask
+            .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+        
+        print("🎨 [Frame \(frameCount)] Mask scaled to: \(scaledMask.extent.size)")
+        
+        // Step 2: Blur the mask edges for smooth transition
+        guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
+            print("❌ [Frame \(frameCount)] Failed to create blur filter")
+            showOriginal(original)
+            return
+        }
+        
+        blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
+        blurFilter.setValue(5.0, forKey: kCIInputRadiusKey)  // Blur radius
+        
+        guard let blurredMask = blurFilter.outputImage else {
+            print("❌ [Frame \(frameCount)] Failed to blur mask")
+            showOriginal(original)
+            return
+        }
+        
+        let croppedBlurredMask = blurredMask.cropped(to: original.extent)
+        print("✅ [Frame \(frameCount)] Mask blurred and cropped")
+        
+        // Step 3: Apply mask with blending
+        guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
+            print("❌ [Frame \(frameCount)] Failed to create blend filter")
+            showOriginal(original)
+            return
+        }
+        
+        // Create transparent background
+        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
+            .cropped(to: original.extent)
+        
+        blendFilter.setValue(original, forKey: kCIInputImageKey)
+        blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
+        blendFilter.setValue(croppedBlurredMask, forKey: kCIInputMaskImageKey)
+        
+        guard let result = blendFilter.outputImage else {
+            print("❌ [Frame \(frameCount)] Failed to get blend result")
+            showOriginal(original)
+            return
+        }
+        
+        print("✅ [Frame \(frameCount)] Blend completed, rendering...")
+        
+        // Step 4: Render with high quality settings
+        let context = CIContext(options: [
+            .workingColorSpace: CGColorSpaceCreateDeviceRGB(),
+            .outputPremultiplied: true,
+            .useSoftwareRenderer: false,
+            .highQualityDownsample: true
+        ])
+        
+        if let cgImage = context.createCGImage(result, from: result.extent) {
+            print("✅ [Frame \(frameCount)] CGImage created")
+            
+            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+            
+            DispatchQueue.main.async {
+                self.segmentedImage = uiImage
+                self.statusMessage = "Chair Detected"
+                print("✅ [Frame \(self.frameCount)] UI updated with high-quality segmented image")
+            }
+        } else {
+            print("❌ [Frame \(frameCount)] Failed to create CGImage")
+        }
+    }
+    
+    private func createModelInput(from pixelBuffer: CVPixelBuffer) -> MLDictionaryFeatureProvider? {
+        print("🔧 [Frame \(frameCount)] Creating model input...")
+        
+        let width = 640
+        let height = 640
+        
+        // Resize pixel buffer to 640x640
+        guard let resizedBuffer = resizePixelBuffer(pixelBuffer, width: width, height: height) else {
+            print("❌ [Frame \(frameCount)] Failed to resize pixel buffer")
             return nil
         }
         
+        // Create image feature value directly from pixel buffer
+        let imageValue = MLFeatureValue(pixelBuffer: resizedBuffer)
+        
+        guard let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) else {
+            print("❌ [Frame \(frameCount)] Failed to create feature provider")
+            return nil
+        }
+        
+        print("✅ [Frame \(frameCount)] Model input created successfully (Image type)")
         return provider
     }
     
@@ -420,189 +658,8 @@ class FastSAMProcessor: NSObject, ObservableObject {
         return outputBuffer
     }
     
-    private func createFallbackVisualization(from pixelBuffer: CVPixelBuffer) {
-        // Use simple background removal for now
-        simpleBackgroundRemoval(from: pixelBuffer)
-    }
-    
-    // Replace the entire simpleBackgroundRemoval and related methods with this cleaner version:
-
-    private func simpleBackgroundRemoval(from pixelBuffer: CVPixelBuffer) {
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        
-        // Sensitivity: 0.1 to 0.9 -> intensity 1.0 to 10.0
-        let edgeIntensity = (1.0 - confidenceThreshold) * 9.0 + 1.0
-        
-        // Simple edge detection
-        guard let edgeFilter = CIFilter(name: "CIEdges") else {
-            showOriginal(ciImage)
-            return
-        }
-        
-        edgeFilter.setValue(ciImage, forKey: kCIInputImageKey)
-        edgeFilter.setValue(edgeIntensity, forKey: kCIInputIntensityKey)
-        
-        guard let edges = edgeFilter.outputImage else {
-            showOriginal(ciImage)
-            return
-        }
-        
-        // Convert grayscale edges to colored edges
-        guard let colorMatrix = CIFilter(name: "CIColorMatrix") else {
-            showOriginal(ciImage)
-            return
-        }
-        
-        colorMatrix.setValue(edges, forKey: kCIInputImageKey)
-        
-        // Make edges bright green (R=0, G=1, B=0)
-        colorMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputRVector")    // No red
-        colorMatrix.setValue(CIVector(x: 0, y: 1, z: 0, w: 0), forKey: "inputGVector")    // Full green from gray
-        colorMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 0), forKey: "inputBVector")    // No blue
-        colorMatrix.setValue(CIVector(x: 0, y: 0, z: 0, w: 1), forKey: "inputAVector")    // Keep alpha
-        
-        guard let coloredEdges = colorMatrix.outputImage else {
-            showOriginal(ciImage)
-            return
-        }
-        
-        // Option 1: Just show colored edges on black background (cleanest)
-        if confidenceThreshold < 0.3 {
-            showEdgesOnly(coloredEdges)
-        }
-        // Option 2: Overlay colored edges on original image
-        else if confidenceThreshold < 0.7 {
-            overlayEdgesOnOriginal(coloredEdges, original: ciImage)
-        }
-        // Option 3: Try to remove background (experimental)
-        else {
-            attemptBackgroundRemoval(edges: coloredEdges, original: ciImage)
-        }
-    }
-
-    private func showEdgesOnly(_ edges: CIImage) {
-        // Just show the colored edges on black background
-        let context = CIContext()
-        
-        if let cgImage = context.createCGImage(edges, from: edges.extent) {
-            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
-            
-            DispatchQueue.main.async {
-                self.segmentedImage = uiImage
-                self.statusMessage = "Edges Only"
-            }
-        }
-    }
-
-    private func overlayEdgesOnOriginal(_ edges: CIImage, original: CIImage) {
-        // Overlay colored edges on top of original image
-        guard let overlayFilter = CIFilter(name: "CISourceOverCompositing") else {
-            showEdgesOnly(edges)
-            return
-        }
-        
-        overlayFilter.setValue(edges, forKey: kCIInputImageKey)
-        overlayFilter.setValue(original, forKey: kCIInputBackgroundImageKey)
-        
-        guard let result = overlayFilter.outputImage else {
-            showEdgesOnly(edges)
-            return
-        }
-        
-        let context = CIContext()
-        if let cgImage = context.createCGImage(result, from: result.extent) {
-            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
-            
-            DispatchQueue.main.async {
-                self.segmentedImage = uiImage
-                self.statusMessage = "Edge Overlay"
-            }
-        }
-    }
-
-    private func attemptBackgroundRemoval(edges: CIImage, original: CIImage) {
-        // Create a mask from edges
-        guard let dilateFilter = CIFilter(name: "CIMorphologyMaximum") else {
-            overlayEdgesOnOriginal(edges, original: original)
-            return
-        }
-        
-        // Dilate edges to create mask regions
-        dilateFilter.setValue(edges, forKey: kCIInputImageKey)
-        dilateFilter.setValue(5.0, forKey: kCIInputRadiusKey)
-        
-        guard let dilatedEdges = dilateFilter.outputImage else {
-            overlayEdgesOnOriginal(edges, original: original)
-            return
-        }
-        
-        // Blur the mask
-        guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
-            overlayEdgesOnOriginal(edges, original: original)
-            return
-        }
-        
-        blurFilter.setValue(dilatedEdges, forKey: kCIInputImageKey)
-        blurFilter.setValue(10.0, forKey: kCIInputRadiusKey)
-        
-        guard let blurredMask = blurFilter.outputImage else {
-            overlayEdgesOnOriginal(edges, original: original)
-            return
-        }
-        
-        // Threshold to create binary mask
-        guard let thresholdFilter = CIFilter(name: "CIColorControls") else {
-            overlayEdgesOnOriginal(edges, original: original)
-            return
-        }
-        
-        thresholdFilter.setValue(blurredMask, forKey: kCIInputImageKey)
-        thresholdFilter.setValue(10.0, forKey: kCIInputContrastKey)
-        thresholdFilter.setValue(0.0, forKey: kCIInputBrightnessKey)
-        thresholdFilter.setValue(0.0, forKey: kCIInputSaturationKey)
-        
-        guard let mask = thresholdFilter.outputImage else {
-            overlayEdgesOnOriginal(edges, original: original)
-            return
-        }
-        
-        // Use mask to cut out background
-        guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
-            overlayEdgesOnOriginal(edges, original: original)
-            return
-        }
-        
-        // Create transparent background
-        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
-            .cropped(to: original.extent)
-        
-        blendFilter.setValue(original, forKey: kCIInputImageKey)
-        blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
-        blendFilter.setValue(mask, forKey: kCIInputMaskImageKey)
-        
-        guard let maskedImage = blendFilter.outputImage else {
-            overlayEdgesOnOriginal(edges, original: original)
-            return
-        }
-        
-        // Add edges on top for clarity
-        guard let finalOverlay = CIFilter(name: "CISourceOverCompositing") else {
-            showResult(maskedImage, status: "Masked")
-            return
-        }
-        
-        finalOverlay.setValue(edges, forKey: kCIInputImageKey)
-        finalOverlay.setValue(maskedImage, forKey: kCIInputBackgroundImageKey)
-        
-        guard let finalImage = finalOverlay.outputImage else {
-            showResult(maskedImage, status: "Masked")
-            return
-        }
-        
-        showResult(finalImage, status: "BG Removed")
-    }
-
     private func showOriginal(_ image: CIImage) {
+        print("🖼️ [Frame \(frameCount)] Showing original as fallback")
         let context = CIContext()
         if let cgImage = context.createCGImage(image, from: image.extent) {
             let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
@@ -610,90 +667,6 @@ class FastSAMProcessor: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 self.segmentedImage = uiImage
                 self.statusMessage = "Original"
-            }
-        }
-    }
-
-    private func showResult(_ image: CIImage, status: String) {
-        let context = CIContext()
-        if let cgImage = context.createCGImage(image, from: image.extent) {
-            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
-            
-            DispatchQueue.main.async {
-                self.segmentedImage = uiImage
-                self.statusMessage = status
-            }
-        }
-    }
-    
-    private func applyMorphologicalCleaning(buffer: UnsafeMutablePointer<UInt8>, width: Int, height: Int, bytesPerRow: Int) {
-        // Simple erosion followed by dilation to remove noise
-        let kernelSize = 3
-        let halfKernel = kernelSize / 2
-        
-        // Create temporary buffer for morphological operations
-        let tempBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: height * bytesPerRow)
-        defer { tempBuffer.deallocate() }
-        
-        // Copy original to temp
-        memcpy(tempBuffer, buffer, height * bytesPerRow)
-        
-        // Erosion (remove small isolated pixels)
-        for y in halfKernel..<(height - halfKernel) {
-            for x in halfKernel..<(width - halfKernel) {
-                let centerIdx = y * bytesPerRow + x * 4
-                
-                // Check if all neighbors are foreground
-                var allForeground = true
-                for dy in -halfKernel...halfKernel {
-                    for dx in -halfKernel...halfKernel {
-                        let neighborIdx = (y + dy) * bytesPerRow + (x + dx) * 4
-                        if tempBuffer[neighborIdx + 3] == 0 {
-                            allForeground = false
-                            break
-                        }
-                    }
-                    if !allForeground { break }
-                }
-                
-                // Update alpha channel
-                if !allForeground {
-                    buffer[centerIdx + 3] = 0
-                }
-            }
-        }
-        
-        // Copy eroded result back to temp
-        memcpy(tempBuffer, buffer, height * bytesPerRow)
-        
-        // Dilation (fill small holes)
-        for y in halfKernel..<(height - halfKernel) {
-            for x in halfKernel..<(width - halfKernel) {
-                let centerIdx = y * bytesPerRow + x * 4
-                
-                // Check if any neighbor is foreground
-                var anyForeground = false
-                for dy in -halfKernel...halfKernel {
-                    for dx in -halfKernel...halfKernel {
-                        let neighborIdx = (y + dy) * bytesPerRow + (x + dx) * 4
-                        if tempBuffer[neighborIdx + 3] > 0 {
-                            anyForeground = true
-                            // Also copy the color from the foreground neighbor
-                            if buffer[centerIdx + 3] == 0 {
-                                buffer[centerIdx] = tempBuffer[neighborIdx]
-                                buffer[centerIdx + 1] = tempBuffer[neighborIdx + 1]
-                                buffer[centerIdx + 2] = tempBuffer[neighborIdx + 2]
-                            }
-                            break
-                        }
-                    }
-                    if anyForeground { break }
-                }
-                
-                // Update alpha channel
-                if anyForeground {
-                    buffer[centerIdx + 3] = 255
-                }
             }
         }
     }
@@ -705,7 +678,6 @@ extension FastSAMProcessor: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
         
-        // Throttle processing
         let now = Date()
         let timeSinceLastProcess = now.timeIntervalSince(lastProcessTime)
         
@@ -721,6 +693,7 @@ extension FastSAMProcessor: AVCaptureVideoDataOutputSampleBufferDelegate {
         lastProcessTime = now
         frameCount += 1
         
+        print("\n🎬 ========== FRAME \(frameCount) ==========")
         processFastSAM(pixelBuffer: pixelBuffer)
         
         isProcessing = false
