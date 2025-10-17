@@ -227,7 +227,7 @@ class FastSAMProcessor: NSObject, ObservableObject {
     // The actual MLModel - NOT VNCoreMLModel
     private var fastSAMModel: MLModel?
     private var isProcessing = false
-    private let processInterval: TimeInterval = 0.3 // Process every 300ms
+    private let processInterval: TimeInterval = 0.1 // Process every 300ms
     private var lastProcessTime = Date()
     private var frameCount = 0
     
@@ -508,7 +508,7 @@ class FastSAMProcessor: NSObject, ObservableObject {
         }
         
         // APPLY BINARY THRESHOLD
-        let threshold: Float = 0.5
+        let threshold: Float = 0.3
         var whitePixels = 0
         var blackPixels = 0
         var greyPixels = 0  // Should be 0!
