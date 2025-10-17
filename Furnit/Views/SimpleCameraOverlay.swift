@@ -420,39 +420,49 @@ class FastSAMProcessor: NSObject, ObservableObject {
         
         let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
         
-        // Find best detection
-        var bestConf: Float = 0
-        var bestIdx = -1
+        // Find detections above threshold AND prefer larger objects
+        var validDetections: [(idx: Int, conf: Float, x: Float, y: Float, w: Float, h: Float, area: Float)] = []
         
         for i in 0..<numDetections {
             let conf = detPointer[4 * numDetections + i]
-            if conf > bestConf {
-                bestConf = conf
-                bestIdx = i
+            
+            if conf > confidenceThreshold {
+                let x = detPointer[0 * numDetections + i]
+                let y = detPointer[1 * numDetections + i]
+                let w = detPointer[2 * numDetections + i]
+                let h = detPointer[3 * numDetections + i]
+                let area = w * h
+                
+                // Filter: Only accept reasonably sized objects (not tiny detections)
+                if area > 1000 {  // Minimum area threshold
+                    validDetections.append((i, conf, x, y, w, h, area))
+                }
             }
         }
         
-        print("🔍 [Frame \(frameCount)] Best detection: idx=\(bestIdx), conf=\(bestConf)")
+        print("🔍 [Frame \(frameCount)] Found \(validDetections.count) valid detections (conf > \(confidenceThreshold), area > 1000)")
         
-        if bestConf < confidenceThreshold {
-            print("⚠️ [Frame \(frameCount)] No detection above threshold")
+        if validDetections.isEmpty {
+            print("⚠️ [Frame \(frameCount)] No valid detections found")
             let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
             showOriginal(ciImage)
             return
         }
         
-        // Get bounding box
-        let cx = detPointer[0 * numDetections + bestIdx]
-        let cy = detPointer[1 * numDetections + bestIdx]
-        let w = detPointer[2 * numDetections + bestIdx]
-        let h = detPointer[3 * numDetections + bestIdx]
+        // Sort by area (largest first) and pick the largest one with good confidence
+        validDetections.sort { $0.area > $1.area }
         
-        print("🔍 [Frame \(frameCount)] BBox: center=(\(cx), \(cy)), size=(\(w), \(h))")
+        let bestDetection = validDetections[0]
+        
+        print("🔍 [Frame \(frameCount)] Selected detection:")
+        print("   idx=\(bestDetection.idx), conf=\(bestDetection.conf)")
+        print("   BBox: center=(\(bestDetection.x), \(bestDetection.y)), size=(\(bestDetection.w), \(bestDetection.h))")
+        print("   Area: \(bestDetection.area)")
         
         // Get mask coefficients (last 32 values)
         var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
         for i in 0..<numPrototypes {
-            let coeffIdx = (numValues - numPrototypes + i) * numDetections + bestIdx
+            let coeffIdx = (numValues - numPrototypes + i) * numDetections + bestDetection.idx
             maskCoeffs[i] = detPointer[coeffIdx]
         }
         
@@ -491,13 +501,15 @@ class FastSAMProcessor: NSObject, ObservableObject {
             finalMask[i] = 1.0 / (1.0 + exp(-finalMask[i]))
         }
         
-        // Apply threshold to make mask more solid
-        let threshold: Float = 0.3  // Lower threshold = more area covered
+        // DON'T apply binary threshold - use continuous values for smoother mask
+        // Boost the values to make mask more solid
         for i in 0..<maskSize {
-            finalMask[i] = finalMask[i] > threshold ? 1.0 : 0.0
+            // Apply power function to increase contrast while keeping smooth transitions
+            finalMask[i] = pow(finalMask[i], 0.5)  // Square root makes values higher
+            finalMask[i] = min(1.0, finalMask[i] * 1.5)  // Boost and clamp
         }
         
-        print("🎭 [Frame \(frameCount)] Mask generated with threshold \(threshold)")
+        print("🎭 [Frame \(frameCount)] Mask generated with continuous values (no threshold)")
         
         // Convert to grayscale image
         var pixelData = [UInt8](repeating: 0, count: maskSize)
@@ -549,7 +561,7 @@ class FastSAMProcessor: NSObject, ObservableObject {
         
         print("🎨 [Frame \(frameCount)] Mask scaled to: \(scaledMask.extent.size)")
         
-        // Step 2: Blur the mask edges for smooth transition
+        // Step 2: Blur the mask edges for smooth transition (INCREASED from 5.0 to 10.0)
         guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
             print("❌ [Frame \(frameCount)] Failed to create blur filter")
             showOriginal(original)
@@ -557,7 +569,7 @@ class FastSAMProcessor: NSObject, ObservableObject {
         }
         
         blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
-        blurFilter.setValue(5.0, forKey: kCIInputRadiusKey)  // Blur radius
+        blurFilter.setValue(10.0, forKey: kCIInputRadiusKey)  // CHANGED: More blur for smoother edges
         
         guard let blurredMask = blurFilter.outputImage else {
             print("❌ [Frame \(frameCount)] Failed to blur mask")
