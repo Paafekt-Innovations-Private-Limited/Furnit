@@ -49,14 +49,15 @@ struct SimpleCameraOverlay: View {
             // Camera feed
             ZStack {
                 // Checkered background to show transparency
-                CheckeredBackground()
-                    .frame(width: currentSize.width, height: currentSize.height)
+//                CheckeredBackground()
+//                    .frame(width: currentSize.width, height: currentSize.height)
                 
                 if let segmented = camera.segmentedImage {
                     Image(uiImage: segmented)
                         .resizable()
-                        .aspectRatio(contentMode: .fit)
+                        .aspectRatio(contentMode: .fill)
                         .frame(width: currentSize.width, height: currentSize.height)
+                        .clipped()
                 } else {
                     CameraPreviewLayer(session: camera.session)
                         .frame(width: currentSize.width, height: currentSize.height)
@@ -180,7 +181,7 @@ struct CheckeredBackground: View {
                     }
                 }
             }
-            .fill(Color.gray.opacity(0.2))
+            .fill(Color.blue.opacity(0.2))
         }
     }
 }
@@ -501,25 +502,77 @@ class FastSAMProcessor: NSObject, ObservableObject {
             finalMask[i] = 1.0 / (1.0 + exp(-finalMask[i]))
         }
         
-        // DON'T apply binary threshold - use continuous values for smoother mask
-        // Boost the values to make mask more solid
-        for i in 0..<maskSize {
-            // Apply power function to increase contrast while keeping smooth transitions
-            finalMask[i] = pow(finalMask[i], 0.5)  // Square root makes values higher
-            finalMask[i] = min(1.0, finalMask[i] * 1.5)  // Boost and clamp
+        print("📊 [Frame \(frameCount)] AFTER SIGMOID - showing ALL values for first 50 pixels:")
+        for i in 0..<min(50, maskSize) {
+            print("   Pixel[\(i)] = \(String(format: "%.4f", finalMask[i]))")
         }
         
-        print("🎭 [Frame \(frameCount)] Mask generated with continuous values (no threshold)")
+        // APPLY BINARY THRESHOLD
+        let threshold: Float = 0.5
+        var whitePixels = 0
+        var blackPixels = 0
+        var greyPixels = 0  // Should be 0!
         
-        // Convert to grayscale image
+        for i in 0..<maskSize {
+            if finalMask[i] > threshold {
+                finalMask[i] = 1.0  // WHITE
+                whitePixels += 1
+            } else {
+                finalMask[i] = 0.0  // BLACK
+                blackPixels += 1
+            }
+            
+            // Check for any grey values (should never happen!)
+            if finalMask[i] != 0.0 && finalMask[i] != 1.0 {
+                greyPixels += 1
+                print("⚠️ GREY PIXEL FOUND at index \(i): value = \(finalMask[i])")
+            }
+        }
+        
+        print("📊 [Frame \(frameCount)] AFTER BINARY THRESHOLD:")
+        print("   White pixels (1.0): \(whitePixels)")
+        print("   Black pixels (0.0): \(blackPixels)")
+        print("   Grey pixels (between 0-1): \(greyPixels) ← SHOULD BE ZERO!")
+        print("   Showing ALL values for first 50 pixels:")
+        for i in 0..<min(50, maskSize) {
+            print("   Pixel[\(i)] = \(String(format: "%.4f", finalMask[i]))")
+        }
+        
+        // Convert to pixel data
         var pixelData = [UInt8](repeating: 0, count: maskSize)
+        var zeroCount = 0
+        var fullCount = 0
+        var greyCount = 0
+        
         for i in 0..<maskSize {
             pixelData[i] = UInt8(finalMask[i] * 255)
+            
+            if pixelData[i] == 0 {
+                zeroCount += 1
+            } else if pixelData[i] == 255 {
+                fullCount += 1
+            } else {
+                greyCount += 1
+                print("⚠️ GREY BYTE FOUND at index \(i): value = \(pixelData[i]) (should be 0 or 255!)")
+            }
         }
+        
+        print("📊 [Frame \(frameCount)] FINAL PIXEL DATA (0-255):")
+        print("   Pixels with value 0: \(zeroCount)")
+        print("   Pixels with value 255: \(fullCount)")
+        print("   Pixels with grey values (1-254): \(greyCount) ← SHOULD BE ZERO!")
+        print("   Showing ALL values for first 50 pixels:")
+        for i in 0..<min(50, maskSize) {
+            print("   PixelByte[\(i)] = \(pixelData[i])")
+        }
+        
+        // Verify all unique values
+        let uniqueValues = Set(pixelData)
+        print("📊 [Frame \(frameCount)] UNIQUE PIXEL VALUES IN ENTIRE MASK:")
+        print("   \(uniqueValues.sorted()) ← Should only be [0, 255]")
         
         let data = Data(pixelData)
         guard let provider = CGDataProvider(data: data as CFData) else {
-            print("❌ [Frame \(frameCount)] Failed to create data provider")
             return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: protoWidth, height: protoHeight))
         }
         
@@ -539,90 +592,129 @@ class FastSAMProcessor: NSObject, ObservableObject {
             shouldInterpolate: true,
             intent: .defaultIntent
         ) else {
-            print("❌ [Frame \(frameCount)] Failed to create CGImage")
             return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: protoWidth, height: protoHeight))
         }
         
-        print("✅ [Frame \(frameCount)] Segmentation mask created: \(protoWidth)x\(protoHeight)")
+        print("✅ [Frame \(frameCount)] Mask image created")
         return CIImage(cgImage: cgImage)
     }
     
+
+//    private func applySegmentationMask(original: CIImage, mask: CIImage) {
+//        print("🎨 [Frame \(frameCount)] Applying segmentation mask to original image...")
+//        
+//        // Step 1: Scale mask
+//        let scaleX = original.extent.width / mask.extent.width
+//        let scaleY = original.extent.height / mask.extent.height
+//        
+//        let scaledMask = mask.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+//        print("🎨 [Frame \(frameCount)] Mask scaled to: \(scaledMask.extent.size)")
+//        
+//        // Step 2: MINIMAL OR NO BLUR
+//        // Option A: No blur at all (sharp edges, no grey)
+//        let finalMask = scaledMask.cropped(to: original.extent)
+//        print("✅ [Frame \(frameCount)] Using UNBLURRED mask - NO GREY PIXELS!")
+//        
+//        /* Option B: Very light blur (uncomment if you want slight smoothing)
+//        guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
+//            showOriginal(original)
+//            return
+//        }
+//        blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
+//        blurFilter.setValue(2.0, forKey: kCIInputRadiusKey)  // REDUCED from 10.0 to 2.0
+//        let finalMask = blurFilter.outputImage?.cropped(to: original.extent) ?? scaledMask
+//        print("✅ [Frame \(frameCount)] Light blur applied (radius=2.0)")
+//        */
+//        
+//        // Step 3: Apply mask
+//        guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
+//            showOriginal(original)
+//            return
+//        }
+//        
+//        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
+//            .cropped(to: original.extent)
+//        
+//        blendFilter.setValue(original, forKey: kCIInputImageKey)
+//        blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
+//        blendFilter.setValue(finalMask, forKey: kCIInputMaskImageKey)
+//        
+//        guard let result = blendFilter.outputImage else {
+//            showOriginal(original)
+//            return
+//        }
+//        
+//        print("✅ [Frame \(frameCount)] Blend completed with NO GREY from blur")
+//        
+//        // Step 4: Render
+//        let context = CIContext(options: [
+//            .workingColorSpace: CGColorSpaceCreateDeviceRGB(),
+//            .outputPremultiplied: true,
+//            .useSoftwareRenderer: false,
+//            .highQualityDownsample: true
+//        ])
+//        
+//        if let cgImage = context.createCGImage(result, from: result.extent) {
+//            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+//            
+//            DispatchQueue.main.async {
+//                self.segmentedImage = uiImage
+//                self.statusMessage = "Chair Detected"
+//            }
+//        }
+//    }
+    
     private func applySegmentationMask(original: CIImage, mask: CIImage) {
         print("🎨 [Frame \(frameCount)] Applying segmentation mask to original image...")
-        print("🎨 [Frame \(frameCount)] Original size: \(original.extent.size)")
-        print("🎨 [Frame \(frameCount)] Mask size: \(mask.extent.size)")
         
-        // Step 1: Scale mask to match original image size with HIGH QUALITY interpolation
+        // Step 1: Scale mask WITHOUT INTERPOLATION
         let scaleX = original.extent.width / mask.extent.width
         let scaleY = original.extent.height / mask.extent.height
         
+        // CRITICAL: Use nearest-neighbor sampling to avoid grey pixels during scaling
         let scaledMask = mask
             .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+            .samplingNearest()  // ← THIS PREVENTS GREY PIXELS!
         
-        print("🎨 [Frame \(frameCount)] Mask scaled to: \(scaledMask.extent.size)")
+        print("🎨 [Frame \(frameCount)] Mask scaled to: \(scaledMask.extent.size) with NEAREST NEIGHBOR (no interpolation)")
         
-        // Step 2: Blur the mask edges for smooth transition (INCREASED from 5.0 to 10.0)
-        guard let blurFilter = CIFilter(name: "CIGaussianBlur") else {
-            print("❌ [Frame \(frameCount)] Failed to create blur filter")
-            showOriginal(original)
-            return
-        }
+        let finalMask = scaledMask.cropped(to: original.extent)
+        print("✅ [Frame \(frameCount)] Using UNBLURRED mask with NEAREST NEIGHBOR sampling!")
         
-        blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
-        blurFilter.setValue(10.0, forKey: kCIInputRadiusKey)  // CHANGED: More blur for smoother edges
-        
-        guard let blurredMask = blurFilter.outputImage else {
-            print("❌ [Frame \(frameCount)] Failed to blur mask")
-            showOriginal(original)
-            return
-        }
-        
-        let croppedBlurredMask = blurredMask.cropped(to: original.extent)
-        print("✅ [Frame \(frameCount)] Mask blurred and cropped")
-        
-        // Step 3: Apply mask with blending
+        // Step 2: Apply mask
         guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
-            print("❌ [Frame \(frameCount)] Failed to create blend filter")
             showOriginal(original)
             return
         }
         
-        // Create transparent background
         let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
             .cropped(to: original.extent)
         
         blendFilter.setValue(original, forKey: kCIInputImageKey)
         blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
-        blendFilter.setValue(croppedBlurredMask, forKey: kCIInputMaskImageKey)
+        blendFilter.setValue(finalMask, forKey: kCIInputMaskImageKey)
         
         guard let result = blendFilter.outputImage else {
-            print("❌ [Frame \(frameCount)] Failed to get blend result")
             showOriginal(original)
             return
         }
         
-        print("✅ [Frame \(frameCount)] Blend completed, rendering...")
+        print("✅ [Frame \(frameCount)] Blend completed with nearest-neighbor scaling")
         
-        // Step 4: Render with high quality settings
+        // Step 3: Render without interpolation
         let context = CIContext(options: [
             .workingColorSpace: CGColorSpaceCreateDeviceRGB(),
             .outputPremultiplied: true,
-            .useSoftwareRenderer: false,
-            .highQualityDownsample: true
+            .useSoftwareRenderer: false
         ])
         
         if let cgImage = context.createCGImage(result, from: result.extent) {
-            print("✅ [Frame \(frameCount)] CGImage created")
-            
             let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
             
             DispatchQueue.main.async {
                 self.segmentedImage = uiImage
                 self.statusMessage = "Chair Detected"
-                print("✅ [Frame \(self.frameCount)] UI updated with high-quality segmented image")
             }
-        } else {
-            print("❌ [Frame \(frameCount)] Failed to create CGImage")
         }
     }
     
