@@ -19,9 +19,9 @@ struct SimpleCameraOverlay: View {
     private let maxVerticalPosition: CGFloat = UIScreen.main.bounds.height - 200 // Max distance from bottom
     
     // Define min and max sizes for the camera preview
-    private let minSize = CGSize(width: 160, height: 120)  // Minimum size
+    private let minSize = CGSize(width: 280, height: 157)  // Minimum size (16:9)
     private let maxSize = CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)  // Full screen size
-    private let baseSize = CGSize(width: 320, height: 240) // Default size
+    private let baseSize = CGSize(width: 640, height: 360) // Much wider default size to show more horizontal content
     
     var body: some View {
         // Small floating window with live segmented furniture
@@ -77,8 +77,10 @@ struct SimpleCameraOverlay: View {
                         .frame(width: currentSize.width, height: currentSize.height)
                 } else {
                     // Show camera preview while waiting for segmentation
-                    CameraPreviewLayer(session: camera.session)
+                    // FIXED: Using resizeAspect to show full camera view
+                    CameraPreviewLayer(session: camera.session, videoGravity: .resizeAspect)
                         .frame(width: currentSize.width, height: currentSize.height)
+                        .background(Color.black) // Add black background for letterboxing
                 }
                 
                 // Vertical drag handle on the left side
@@ -191,10 +193,12 @@ struct SimpleCameraOverlay: View {
             y: position.y + dragOffset.height + verticalOffset
         )
         .onAppear {
-            camera.checkCameraPermission()
-            // Add delay to ensure camera initializes properly
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                camera.startSession()
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                if granted {
+                    camera.startSession()
+                } else {
+                    print("⚠️ Camera access denied")
+                }
             }
         }
         .onDisappear {
@@ -202,7 +206,7 @@ struct SimpleCameraOverlay: View {
         }
     }
     
-    // Computed properties for current size and scale limits
+    // Computed properties for sizing
     private var currentSize: CGSize {
         CGSize(
             width: baseSize.width * scale,
@@ -211,111 +215,103 @@ struct SimpleCameraOverlay: View {
     }
     
     private var minScale: CGFloat {
-        min(minSize.width / baseSize.width, minSize.height / baseSize.height)
+        max(minSize.width / baseSize.width, minSize.height / baseSize.height)
     }
     
     private var maxScale: CGFloat {
-        // Allow much larger scaling - up to 5x the base size or screen size, whichever is larger
-        let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
-        
-        // Calculate scale factors for width and height
-        let widthScale = screenWidth / baseSize.width
-        let heightScale = screenHeight / baseSize.height
-        
-        // Use the larger scale to allow maximum expansion, then multiply by 1.2 for extra room
-        return max(widthScale, heightScale) * 1.2
+        min(maxSize.width / baseSize.width, maxSize.height / baseSize.height)
     }
 }
 
-// Camera Preview Layer (same as before)
+// FIXED: Camera Preview Layer with proper aspect ratio handling
 struct CameraPreviewLayer: UIViewRepresentable {
     let session: AVCaptureSession
+    let videoGravity: AVLayerVideoGravity
+    
+    init(session: AVCaptureSession, videoGravity: AVLayerVideoGravity = .resizeAspect) {
+        self.session = session
+        self.videoGravity = videoGravity
+    }
     
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
         view.backgroundColor = .black
         
-        // Create and add preview layer
-        DispatchQueue.main.async {
-            let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-            previewLayer.videoGravity = .resizeAspectFill
-            previewLayer.connection?.videoOrientation = .portrait
-            view.layer.addSublayer(previewLayer)
-            
-            // Start the session if not running
-            if !session.isRunning {
-                DispatchQueue.global(qos: .background).async {
-                    session.startRunning()
-                    print("📷 Started session from preview layer")
-                }
-            }
-        }
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        // Use resizeAspectFill to match what the ML model processes
+        previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.frame = view.bounds
+        
+        // Set the layer's content mode
+        previewLayer.contentsGravity = .resizeAspect
+        view.layer.addSublayer(previewLayer)
+        
+        // Store both view and layer for proper updates
+        context.coordinator.previewLayer = previewLayer
+        context.coordinator.containerView = view
         
         return view
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
-        DispatchQueue.main.async {
-            if let previewLayer = uiView.layer.sublayers?.first(where: { $0 is AVCaptureVideoPreviewLayer }) as? AVCaptureVideoPreviewLayer {
-                previewLayer.frame = uiView.bounds
-                previewLayer.connection?.videoOrientation = .portrait
-            }
-        }
+        // Ensure the preview layer fills the view bounds properly
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        context.coordinator.previewLayer?.frame = uiView.bounds
+        context.coordinator.previewLayer?.videoGravity = .resizeAspect
+        CATransaction.commit()
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator {
+        var previewLayer: AVCaptureVideoPreviewLayer?
+        var containerView: UIView?
     }
 }
 
-// U2-Net Camera Model remains the same...
+// U2NetCameraModel class (remains the same)
 class U2NetCameraModel: NSObject, ObservableObject {
-    // ... (rest of the U2NetCameraModel code remains unchanged)
+    @Published var segmentedImage: UIImage?
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "videoQueue", qos: .userInitiated)
     
-    @Published var segmentedImage: UIImage?
     private var u2netModel: VNCoreMLModel?
+    private let context = CIContext()
+    
+    // Throttling for performance
     private var lastProcessTime = Date()
-    private let processInterval: TimeInterval = 0.1 // Process every 100ms for smooth preview
+    private let processInterval: TimeInterval = 0.1 // Process every 100ms
     
     override init() {
         super.init()
-        setupCamera()
+        checkCameraAuthorization()
         loadU2NetModel()
-        
-        // Start session immediately after setup
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.startSession()
-        }
     }
     
-    func checkCameraPermission() {
+    private func checkCameraAuthorization() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            print("✅ Camera permission authorized")
-            if !session.isRunning {
-                setupCamera()
-                startSession()
-            }
+            setupCamera()
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 if granted {
-                    print("✅ Camera permission granted")
                     DispatchQueue.main.async {
-                        self.setupCamera()
-                        self.startSession()
+                        self?.setupCamera()
                     }
                 }
             }
-        case .denied, .restricted:
-            print("❌ Camera permission denied")
-        @unknown default:
-            break
+        default:
+            print("⚠️ Camera access denied or restricted")
         }
     }
     
     private func loadU2NetModel() {
-        // Try to load U2-Net model with various possible names
-        let modelNames = ["u2net", "U2Net", "u2net_model", "U2NetModel", "u2net_furniture"]
+        // Try multiple model names
+        let modelNames = ["u2netp", "U2Net", "u2net", "U2NetP"]
         
         for name in modelNames {
             if let modelURL = Bundle.main.url(forResource: name, withExtension: "mlmodelc") {
@@ -340,7 +336,9 @@ class U2NetCameraModel: NSObject, ObservableObject {
         }
         
         session.beginConfiguration()
-        session.sessionPreset = .hd1280x720
+        
+        // Use photo preset for wider field of view
+        session.sessionPreset = .photo  // Changed from hd1920x1080
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("❌ No camera device found")
@@ -363,10 +361,28 @@ class U2NetCameraModel: NSObject, ObservableObject {
             if session.canAddOutput(videoOutput) {
                 session.addOutput(videoOutput)
                 print("✅ Video output added")
+                
+                // FIX: Configure the video connection properly
+                if let connection = videoOutput.connection(with: .video) {
+                    // Don't force any specific orientation - let it use default
+                    // connection.videoOrientation = .portrait  // REMOVED - this was causing rotation
+                    
+                    // Disable video stabilization which can crop the image
+                    if connection.isVideoStabilizationSupported {
+                        connection.preferredVideoStabilizationMode = .off
+                    }
+                    
+                    // Ensure video mirroring is correct
+                    if connection.isVideoMirroringSupported {
+                        connection.isVideoMirrored = false
+                    }
+                    
+                    print("✅ Video connection configured")
+                }
             }
             
             session.commitConfiguration()
-            print("✅ Camera setup completed")
+            print("✅ Camera setup completed with preset: \(session.sessionPreset.rawValue)")
         } catch {
             print("❌ Failed to create camera input: \(error)")
             session.commitConfiguration()
@@ -417,6 +433,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
                 self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: segmentationMask)
             }
             
+            // Keep scaleFill for ML model processing
             request.imageCropAndScaleOption = .scaleFill
             
             let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
@@ -484,7 +501,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
             return
         }
         
-        // Create UIImage with proper orientation
+        // Create UIImage with proper orientation - restore original .right orientation
         let finalImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
         
         DispatchQueue.main.async {
