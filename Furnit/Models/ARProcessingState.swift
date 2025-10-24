@@ -20,7 +20,7 @@ enum ARProcessingState: Equatable {
     var displayMessage: String {
         switch self {
         case .idle:
-            return "Ready for AR mode"
+            return ""
         case .pointing:
             return "Point at furniture objects"
         case .capturing:
