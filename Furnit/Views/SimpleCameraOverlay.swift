@@ -18,15 +18,15 @@ struct SimpleCameraOverlay: View {
             Color.clear
                 .ignoresSafeArea()
             
-            // ONLY show the segmented furniture (scaled down and centered)
+            // ONLY show the segmented furniture (properly scaled without clipping)
             if let segmented = camera.segmentedImage {
                 Image(uiImage: segmented)
                     .resizable()
-                    .scaledToFit()  // Maintains original aspect ratio
-                    .scaleEffect(furnitureScale)  // Scale down to realistic size
-                    .frame(maxWidth: UIScreen.main.bounds.width * 0.8)  // Limit max width
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: UIScreen.main.bounds.width * furnitureScale * 2,  // Allow wider frame
+                           height: UIScreen.main.bounds.height * furnitureScale * 2) // Allow taller frame
                     .position(x: UIScreen.main.bounds.width / 2,
-                             y: UIScreen.main.bounds.height / 2)  // Center on screen
+                             y: UIScreen.main.bounds.height / 2)
                     .allowsHitTesting(false)
             }
             
