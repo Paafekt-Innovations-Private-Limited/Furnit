@@ -58,14 +58,19 @@ struct ModelViewerView: View {
                 
                 // Use your existing SimpleCameraOverlay when AR is active
                 if showingCameraPreview {
-                    SimpleCameraOverlay(
-                        capturedImage: $capturedImageFromPreview,
-                        isShowingCamera: $showingCameraPreview
-                    )
-                    .zIndex(100) // Ensure it's on top
-                    .transition(.opacity)
-                }
-                
+                                    // SimpleCameraOverlay with transparent overlay
+                                    ZStack {
+                                        // Keep room visible - no background
+                                        Color.clear
+                                        
+                                        SimpleCameraOverlay(
+                                            capturedImage: $capturedImageFromPreview,
+                                            isShowingCamera: $showingCameraPreview
+                                        )
+                                    }
+                                    .zIndex(100) // Ensure it's on top
+                                    .transition(.opacity)
+                                }
                 if isLandscape(geometry: geometry) {
                     landscapeControls
                 } else {

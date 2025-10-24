@@ -8,314 +8,188 @@ struct SimpleCameraOverlay: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
     @StateObject private var camera = U2NetCameraModel()
-    @State private var dragOffset = CGSize.zero
-    @State private var position = CGPoint(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2)
-    @State private var scale: CGFloat = 1.0
-    @State private var lastScaleValue: CGFloat = 1.0
     
-    // Vertical position constraints
-    @State private var verticalOffset: CGFloat = 0
-    private let minVerticalPosition: CGFloat = 100 // Minimum distance from top
-    private let maxVerticalPosition: CGFloat = UIScreen.main.bounds.height - 200 // Max distance from bottom
-    
-    // Define min and max sizes for the camera preview
-    private let minSize = CGSize(width: 160, height: 120)  // Minimum size
-    private let maxSize = CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)  // Full screen size
-    private let baseSize = CGSize(width: 320, height: 240) // Default size
+    // Scaling control for furniture size
+    @State private var furnitureScale: CGFloat = 0.7  // 70% of original size
     
     var body: some View {
-        // Small floating window with live segmented furniture
-        VStack(spacing: 0) {
-            // Title bar for dragging horizontally
-            HStack {
-                Text("Live Furniture")
-                    .font(.caption)
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                // Vertical position indicator
-                Image(systemName: "arrow.up.and.down")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.6))
-                
-                Button(action: {
-                    isShowingCamera = false
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(.white.opacity(0.8))
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.8))
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        // Horizontal movement only on title bar
-                        dragOffset = CGSize(
-                            width: value.translation.width,
-                            height: 0
-                        )
-                    }
-                    .onEnded { value in
-                        position.x += value.translation.width
-                        // Constrain horizontal position
-                        position.x = max(currentSize.width/2, min(UIScreen.main.bounds.width - currentSize.width/2, position.x))
-                        dragOffset = .zero
-                    }
-            )
+        ZStack {
+            // TRANSPARENT BACKGROUND - No camera preview shown!
+            Color.clear
+                .ignoresSafeArea()
             
-            // Live segmented camera feed (resizable window)
-            ZStack {
-                if let segmented = camera.segmentedImage {
-                    // Show segmented image with transparency already applied
-                    Image(uiImage: segmented)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: currentSize.width, height: currentSize.height)
-                } else {
-                    // Show camera preview while waiting for segmentation
-                    CameraPreviewLayer(session: camera.session)
-                        .frame(width: currentSize.width, height: currentSize.height)
-                }
-                
-                // Vertical drag handle on the left side
+            // ONLY show the segmented furniture (scaled down and centered)
+            if let segmented = camera.segmentedImage {
+                Image(uiImage: segmented)
+                    .resizable()
+                    .scaledToFit()  // Maintains original aspect ratio
+                    .scaleEffect(furnitureScale)  // Scale down to realistic size
+                    .frame(maxWidth: UIScreen.main.bounds.width * 0.8)  // Limit max width
+                    .position(x: UIScreen.main.bounds.width / 2,
+                             y: UIScreen.main.bounds.height / 2)  // Center on screen
+                    .allowsHitTesting(false)
+            }
+            
+            // UI controls overlay
+            VStack {
                 HStack {
-                    // Left drag handle for vertical movement
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.1), Color.white.opacity(0.3), Color.white.opacity(0.1)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(width: 20)
-                        .overlay(
-                            VStack {
-                                Image(systemName: "chevron.up")
-                                    .font(.caption2)
-                                    .foregroundColor(.white.opacity(0.5))
-                                Spacer()
-                                Image(systemName: "chevron.down")
-                                    .font(.caption2)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding(.vertical, 8)
-                        )
-                        .gesture(
-                            DragGesture()
-                                .onChanged { value in
-                                    // Update vertical position
-                                    let newY = position.y + value.translation.height
-                                    // Apply constraints
-                                    if newY >= minVerticalPosition && newY <= maxVerticalPosition {
-                                        verticalOffset = value.translation.height
-                                    }
-                                }
-                                .onEnded { value in
-                                    let newY = position.y + value.translation.height
-                                    // Apply constraints and update position
-                                    position.y = max(minVerticalPosition, min(maxVerticalPosition, newY))
-                                    verticalOffset = 0
-                                }
-                        )
+                    // Size adjustment slider
+                    HStack {
+                        Image(systemName: "minus.magnifyingglass")
+                            .foregroundColor(.white)
+                        
+                        Slider(value: $furnitureScale, in: 0.3...1.2)
+                            .frame(width: 120)
+                            .accentColor(.white)
+                        
+                        Image(systemName: "plus.magnifyingglass")
+                            .foregroundColor(.white)
+                    }
+                    .padding(8)
+                    .background(Capsule().fill(Color.black.opacity(0.5)))
+                    .padding(.leading)
                     
                     Spacer()
+                    
+                    // Close button
+                    Button(action: {
+                        isShowingCamera = false
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.white)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                            .shadow(radius: 3)
+                    }
+                    .padding()
                 }
-                .frame(width: currentSize.width, height: currentSize.height)
-            }
-            .frame(width: currentSize.width, height: currentSize.height)
-            .background(Color.clear)
-            .clipped()
-            .gesture(
-                MagnificationGesture()
-                    .onChanged { value in
-                        let delta = value / lastScaleValue
-                        lastScaleValue = value
-                        
-                        let newScale = scale * delta
-                        let clampedScale = max(minScale, min(maxScale, newScale))
-                        scale = clampedScale
-                    }
-                    .onEnded { value in
-                        lastScaleValue = 1.0
-                    }
-            )
-            
-            // Bottom resize handle
-            HStack {
+                .padding(.top, 50)  // Account for status bar
+                
                 Spacer()
                 
-                // Capture button
-                Button(action: {
-                    if let currentImage = camera.segmentedImage {
-                        capturedImage = currentImage
-                        print("📸 Captured segmented furniture image")
+                HStack {
+                    // Status indicator
+                    if camera.segmentedImage == nil {
+                        Text("Point at furniture")
+                            .font(.caption)
+                            .padding(8)
+                            .background(Capsule().fill(Color.black.opacity(0.5)))
+                            .foregroundColor(.white)
+                    } else {
+                        Text("Size: \(Int(furnitureScale * 100))%")
+                            .font(.caption)
+                            .padding(8)
+                            .background(Capsule().fill(Color.black.opacity(0.5)))
+                            .foregroundColor(.white)
                     }
-                }) {
-                    Image(systemName: "camera.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    // Capture button
+                    Button(action: {
+                        if let currentImage = camera.segmentedImage {
+                            capturedImage = currentImage
+                            print("📸 Captured segmented furniture at scale: \(furnitureScale)")
+                            isShowingCamera = false
+                        }
+                    }) {
+                        Image(systemName: "camera.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(camera.segmentedImage != nil ? .white : .gray)
+                            .background(Circle().fill(Color.black.opacity(0.3)))
+                            .shadow(radius: 3)
+                    }
+                    .disabled(camera.segmentedImage == nil)
                 }
+                .padding(.bottom, 40)
                 .padding(.horizontal)
-                
-                // Resize handle
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.5))
-                    .padding(8)
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                // Diagonal resize
-                                let scaleChange = (value.translation.width + value.translation.height) / 200
-                                let newScale = scale + scaleChange
-                                scale = max(minScale, min(maxScale, newScale))
-                            }
-                    )
             }
-            .frame(height: 30)
-            .background(Color.black.opacity(0.6))
         }
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.5), radius: 10, x: 0, y: 5)
-        .position(
-            x: position.x + dragOffset.width,
-            y: position.y + dragOffset.height + verticalOffset
-        )
         .onAppear {
-            camera.checkCameraPermission()
-            // Add delay to ensure camera initializes properly
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                camera.startSession()
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                if granted {
+                    camera.startSession()
+                    print("📷 Camera session started for segmentation")
+                } else {
+                    print("⚠️ Camera access denied")
+                }
             }
         }
         .onDisappear {
             camera.stopSession()
         }
     }
-    
-    // Computed properties for current size and scale limits
-    private var currentSize: CGSize {
-        CGSize(
-            width: baseSize.width * scale,
-            height: baseSize.height * scale
-        )
-    }
-    
-    private var minScale: CGFloat {
-        min(minSize.width / baseSize.width, minSize.height / baseSize.height)
-    }
-    
-    private var maxScale: CGFloat {
-        // Allow much larger scaling - up to 5x the base size or screen size, whichever is larger
-        let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
-        
-        // Calculate scale factors for width and height
-        let widthScale = screenWidth / baseSize.width
-        let heightScale = screenHeight / baseSize.height
-        
-        // Use the larger scale to allow maximum expansion, then multiply by 1.2 for extra room
-        return max(widthScale, heightScale) * 1.2
-    }
 }
 
-// Camera Preview Layer (same as before)
+// Camera Preview Layer (not used in main view but kept for reference)
 struct CameraPreviewLayer: UIViewRepresentable {
     let session: AVCaptureSession
+    let videoGravity: AVLayerVideoGravity
     
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
-        view.backgroundColor = .black
-        
-        // Create and add preview layer
-        DispatchQueue.main.async {
-            let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-            previewLayer.videoGravity = .resizeAspectFill
-            previewLayer.connection?.videoOrientation = .portrait
-            view.layer.addSublayer(previewLayer)
-            
-            // Start the session if not running
-            if !session.isRunning {
-                DispatchQueue.global(qos: .background).async {
-                    session.startRunning()
-                    print("📷 Started session from preview layer")
-                }
-            }
-        }
-        
+        view.backgroundColor = .clear
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.videoGravity = videoGravity
+        previewLayer.frame = view.bounds
+        view.layer.addSublayer(previewLayer)
+        context.coordinator.previewLayer = previewLayer
         return view
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
-        DispatchQueue.main.async {
-            if let previewLayer = uiView.layer.sublayers?.first(where: { $0 is AVCaptureVideoPreviewLayer }) as? AVCaptureVideoPreviewLayer {
-                previewLayer.frame = uiView.bounds
-                previewLayer.connection?.videoOrientation = .portrait
-            }
-        }
+        context.coordinator.previewLayer?.frame = uiView.bounds
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator {
+        var previewLayer: AVCaptureVideoPreviewLayer?
     }
 }
 
-// U2-Net Camera Model remains the same...
+// U2NetCameraModel with proper segmentation
 class U2NetCameraModel: NSObject, ObservableObject {
-    // ... (rest of the U2NetCameraModel code remains unchanged)
+    @Published var segmentedImage: UIImage?
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "videoQueue", qos: .userInitiated)
     
-    @Published var segmentedImage: UIImage?
     private var u2netModel: VNCoreMLModel?
+    private let context = CIContext()
+    
+    // Throttling
     private var lastProcessTime = Date()
-    private let processInterval: TimeInterval = 0.1 // Process every 100ms for smooth preview
+    private let processInterval: TimeInterval = 0.2 // Process every 200ms
     
     override init() {
         super.init()
-        setupCamera()
+        checkCameraAuthorization()
         loadU2NetModel()
-        
-        // Start session immediately after setup
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.startSession()
-        }
     }
     
-    func checkCameraPermission() {
+    private func checkCameraAuthorization() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            print("✅ Camera permission authorized")
-            if !session.isRunning {
-                setupCamera()
-                startSession()
-            }
+            setupCamera()
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 if granted {
-                    print("✅ Camera permission granted")
                     DispatchQueue.main.async {
-                        self.setupCamera()
-                        self.startSession()
+                        self?.setupCamera()
                     }
                 }
             }
-        case .denied, .restricted:
-            print("❌ Camera permission denied")
-        @unknown default:
-            break
+        default:
+            print("⚠️ Camera access denied")
         }
     }
     
     private func loadU2NetModel() {
-        // Try to load U2-Net model with various possible names
-        let modelNames = ["u2net", "U2Net", "u2net_model", "U2NetModel", "u2net_furniture"]
+        // Try multiple possible model names
+        let modelNames = ["u2netp", "U2Net", "u2net", "U2NetP", "U2NET", "u2net_model"]
         
         for name in modelNames {
             if let modelURL = Bundle.main.url(forResource: name, withExtension: "mlmodelc") {
@@ -325,119 +199,93 @@ class U2NetCameraModel: NSObject, ObservableObject {
                     print("✅ U2-Net model loaded: \(name)")
                     return
                 } catch {
-                    print("⚠️ Failed to load model \(name): \(error)")
+                    print("Failed to load \(name): \(error)")
                 }
             }
         }
         
-        print("❌ U2-Net model not found - using fallback segmentation")
+        print("⚠️ No U2-Net model found, using fallback segmentation")
     }
     
     private func setupCamera() {
-        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
-            print("⚠️ Camera not authorized yet")
-            return
-        }
-        
         session.beginConfiguration()
-        session.sessionPreset = .hd1280x720
+        session.sessionPreset = .high
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            print("❌ No camera device found")
-            session.commitConfiguration()
+            print("❌ No camera found")
             return
         }
         
         do {
             let input = try AVCaptureDeviceInput(device: device)
-            
             if session.canAddInput(input) {
                 session.addInput(input)
-                print("✅ Camera input added")
             }
             
             videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
             videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-            videoOutput.alwaysDiscardsLateVideoFrames = true
             
             if session.canAddOutput(videoOutput) {
                 session.addOutput(videoOutput)
-                print("✅ Video output added")
+                
+                // Set correct video orientation
+                if let connection = videoOutput.connection(with: .video) {
+                    if connection.isVideoOrientationSupported {
+                        connection.videoOrientation = .portrait
+                    }
+                }
             }
             
             session.commitConfiguration()
-            print("✅ Camera setup completed")
+            print("✅ Camera configured with portrait orientation")
         } catch {
-            print("❌ Failed to create camera input: \(error)")
-            session.commitConfiguration()
+            print("❌ Camera setup failed: \(error)")
         }
     }
     
     func startSession() {
         if !session.isRunning {
-            DispatchQueue.global(qos: .background).async { [weak self] in
-                self?.session.startRunning()
-                DispatchQueue.main.async {
-                    print("📷 Camera session started: \(self?.session.isRunning ?? false)")
-                }
+            DispatchQueue.global(qos: .background).async {
+                self.session.startRunning()
             }
         }
     }
     
     func stopSession() {
         if session.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async {
-                self.session.stopRunning()
-            }
+            session.stopRunning()
         }
     }
     
-    // ... (rest of the processing methods remain unchanged)
     private func processWithU2Net(pixelBuffer: CVPixelBuffer) {
-        // Throttle processing for performance
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
         lastProcessTime = now
         
         if let model = u2netModel {
-            // Use U2-Net model
             let request = VNCoreMLRequest(model: model) { [weak self] request, error in
-                if let error = error {
-                    print("❌ U2-Net processing error: \(error)")
-                    return
-                }
-                
                 guard let results = request.results as? [VNPixelBufferObservation],
-                      let segmentationMask = results.first?.pixelBuffer else {
-                    print("⚠️ No segmentation results, using fallback")
+                      let maskBuffer = results.first?.pixelBuffer else {
                     self?.fallbackSegmentation(pixelBuffer: pixelBuffer)
                     return
                 }
-                
-                self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: segmentationMask)
+                self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: maskBuffer)
             }
             
-            request.imageCropAndScaleOption = .scaleFill
+            request.imageCropAndScaleOption = .scaleFit  // Maintain aspect ratio
             
             let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-            do {
-                try handler.perform([request])
-            } catch {
-                print("❌ Failed to perform U2-Net request: \(error)")
-            }
+            try? handler.perform([request])
         } else {
-            // Fallback to Vision framework for object segmentation
             fallbackSegmentation(pixelBuffer: pixelBuffer)
         }
     }
     
     private func fallbackSegmentation(pixelBuffer: CVPixelBuffer) {
-        // Use Vision's saliency detection as fallback for foreground extraction
+        // Vision framework fallback for saliency detection
         let request = VNGenerateObjectnessBasedSaliencyImageRequest { [weak self] request, error in
             guard let observation = request.results?.first as? VNSaliencyImageObservation else { return }
-            
-            let maskBuffer = observation.pixelBuffer
-            self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: maskBuffer)
+            self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: observation.pixelBuffer)
         }
         
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
@@ -445,65 +293,62 @@ class U2NetCameraModel: NSObject, ObservableObject {
     }
     
     private func applySegmentation(originalBuffer: CVPixelBuffer, maskBuffer: CVPixelBuffer) {
-        // Get dimensions
-        let width = CVPixelBufferGetWidth(originalBuffer)
-        let height = CVPixelBufferGetHeight(originalBuffer)
-        
-        // Create CIImages
-        let originalCI = CIImage(cvPixelBuffer: originalBuffer)
-        let maskCI = CIImage(cvPixelBuffer: maskBuffer)
-        
-        // Scale mask to match original dimensions
-        let scaleX = CGFloat(width) / maskCI.extent.width
-        let scaleY = CGFloat(height) / maskCI.extent.height
-        let scaledMask = maskCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-        
-        // NO INVERSION - U2-Net outputs white for foreground (furniture), black for background
-        // This is what we want for the mask
-        
-        // Apply mask to original using CIBlendWithMask
-        let blendFilter = CIFilter(name: "CIBlendWithMask")
-        blendFilter?.setValue(originalCI, forKey: kCIInputImageKey)
-        // Set transparent background
-        let clearBackground = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
-            .cropped(to: originalCI.extent)
-        blendFilter?.setValue(clearBackground, forKey: kCIInputBackgroundImageKey)
-        blendFilter?.setValue(scaledMask, forKey: kCIInputMaskImageKey)
-        
-        guard let maskedImage = blendFilter?.outputImage else {
-            print("❌ Failed to apply mask blend")
-            return
-        }
-        
-        let context = CIContext()
-        let rect = CGRect(x: 0, y: 0, width: width, height: height)
-        
-        // Create CGImage with alpha channel preserved
-        guard let cgImage = context.createCGImage(maskedImage, from: rect, format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB()) else {
-            print("❌ Failed to create CGImage with alpha")
-            return
-        }
-        
-        // Create UIImage with proper orientation
-        let finalImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
-        
-        DispatchQueue.main.async {
-            self.segmentedImage = finalImage
-            print("✅ Segmented chair with transparent background")
+        autoreleasepool {
+            CVPixelBufferLockBaseAddress(originalBuffer, .readOnly)
+            CVPixelBufferLockBaseAddress(maskBuffer, .readOnly)
+            defer {
+                CVPixelBufferUnlockBaseAddress(originalBuffer, .readOnly)
+                CVPixelBufferUnlockBaseAddress(maskBuffer, .readOnly)
+            }
+            
+            let width = CVPixelBufferGetWidth(originalBuffer)
+            let height = CVPixelBufferGetHeight(originalBuffer)
+            
+            // Create CIImages
+            let ciImage = CIImage(cvPixelBuffer: originalBuffer)
+            let maskCI = CIImage(cvPixelBuffer: maskBuffer)
+            
+            // Scale mask to match original dimensions
+            let scaleX = CGFloat(width) / maskCI.extent.width
+            let scaleY = CGFloat(height) / maskCI.extent.height
+            let scaledMask = maskCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+            
+            // Apply mask using blend filter for transparency
+            let blendFilter = CIFilter(name: "CIBlendWithMask")
+            blendFilter?.setValue(ciImage, forKey: kCIInputImageKey)
+            
+            // Create transparent background
+            let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
+                .cropped(to: ciImage.extent)
+            blendFilter?.setValue(transparent, forKey: kCIInputBackgroundImageKey)
+            blendFilter?.setValue(scaledMask, forKey: kCIInputMaskImageKey)
+            
+            guard let output = blendFilter?.outputImage else {
+                print("❌ Blend filter failed")
+                return
+            }
+            
+            // Create CGImage preserving transparency
+            let context = CIContext(options: [.useSoftwareRenderer: false])
+            guard let cgImage = context.createCGImage(output, from: output.extent) else {
+                print("❌ Failed to create CGImage")
+                return
+            }
+            
+            // Create final UIImage WITHOUT rotation
+            let finalImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
+            
+            DispatchQueue.main.async {
+                self.segmentedImage = finalImage
+                print("✅ Segmented furniture ready (size: \(finalImage.size))")
+            }
         }
     }
 }
 
-// Video Output Delegate
 extension U2NetCameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        
-        // Process every 10th frame for debugging
-        if Int.random(in: 0...9) == 0 {
-            print("📹 Processing frame with U2-Net")
-        }
-        
         processWithU2Net(pixelBuffer: pixelBuffer)
     }
 }
