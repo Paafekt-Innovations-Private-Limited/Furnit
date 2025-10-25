@@ -8,7 +8,7 @@ struct FurnitApp: App {
     
     var body: some Scene {
         WindowGroup {
-            RootView() // Use a wrapper instead
+            RootView()
                 .environmentObject(authManager)
                 .environmentObject(appStateManager)
                 .preferredColorScheme(.dark)
@@ -23,7 +23,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if authManager.isAuthenticated {
-                HomeViewWithProfile(authManager: authManager)
+                HomeViewWithBottomBar(authManager: authManager)
             } else {
                 LoginView()
             }

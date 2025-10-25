@@ -6,22 +6,69 @@ struct ContentView: View {
     var body: some View {
         Group {
             if authManager.isAuthenticated {
-                HomeViewWithProfile(authManager: authManager)
+                HomeViewWithBottomBar(authManager: authManager)
+                    .onAppear {
+                        print("✅ [ContentView] User is authenticated")
+                    }
             } else {
                 LoginView()
+                    .onAppear {
+                        print("❌ [ContentView] User is NOT authenticated")
+                    }
             }
         }
         .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
     }
 }
 
-// Updated HomeView with Profile/Logout
-struct HomeViewWithProfile: View {
+// MARK: - HomeViewWithBottomBar
+struct HomeViewWithBottomBar: View {
     @ObservedObject var authManager: AuthenticationManager
+    @State private var selectedTab = 0
+    
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            // Home Tab
+            HomeTab()
+                .tabItem {
+                    Label("Home", systemImage: "house.fill")
+                }
+                .tag(0)
+            
+            // Explore Tab
+            ExploreTab()
+                .tabItem {
+                    Label("Explore", systemImage: "magnifyingglass")
+                }
+                .tag(1)
+            
+            // Favorites Tab
+            FavoritesTab()
+                .tabItem {
+                    Label("Favorites", systemImage: "heart.fill")
+                }
+                .tag(2)
+            
+            // Profile Tab
+            ProfileTab(authManager: authManager)
+                .tabItem {
+                    Label("Profile", systemImage: "person.circle.fill")
+                }
+                .tag(3)
+        }
+        .onAppear {
+            print("🏠 [HomeViewWithBottomBar] Rendering with selected tab: \(selectedTab)")
+        }
+        .onChange(of: selectedTab) { oldValue, newValue in
+            print("🏠 [HomeViewWithBottomBar] Tab changed from \(oldValue) to \(newValue)")
+        }
+    }
+}
+
+// MARK: - Home Tab
+struct HomeTab: View {
     @StateObject private var modelManager = USDZModelManager()
-    @Environment(\.appState) private var appState
     @State private var showingSettings = false
-    @State private var showingProfile = false
     
     var body: some View {
         NavigationStack {
@@ -30,36 +77,40 @@ struct HomeViewWithProfile: View {
                     ContentUnavailableView(
                         "No 3D Models Found",
                         systemImage: "cube.transparent",
-                        description: Text("Add USDZ files to your Assets catalog")
+                        description: Text("Add USDZ files to your project or check the model manager initialization")
                     )
+                    .onAppear {
+                        print("❌ [HomeTab] Showing 'No Models' view - modelManager.models is EMPTY")
+                        print("❌ [HomeTab] Models count: \(modelManager.models.count)")
+                    }
                 } else {
-                    List(modelManager.models) { model in
-                        NavigationLink(destination: ModelViewerView(model: model)) {
-                            ModelRowView(model: model)
+                    List {
+                        ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
+                            if let modelURL = model.temporaryURL {
+                                NavigationLink(destination: ModelViewerView(model: model)) {
+                                    HomeViewModelRow(model: model)
+                                }
+                                .onAppear {
+                                    print("✅ [HomeTab] Created temporary URL for: \(model.fileName) -> \(modelURL)")
+                                }
+                            } else {
+                                Text("❌ Model data unavailable: \(model.displayName)")
+                                    .foregroundColor(.red)
+                                    .onAppear {
+                                        print("❌ [HomeTab] Could NOT create temporary URL for model: \(model.fileName)")
+                                    }
+                            }
                         }
                     }
                     .listStyle(PlainListStyle())
+                    .onAppear {
+                        print("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
+                    }
                 }
             }
             .navigationTitle("3D Room Models")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        showingProfile = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "person.circle.fill")
-                                .font(.title2)
-                            if let user = authManager.currentUser {
-                                Text(user.name.split(separator: " ").first ?? "")
-                                    .font(.caption)
-                            }
-                        }
-                    }
-                    .accessibilityLabel("Profile")
-                }
-                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showingSettings = true
@@ -73,21 +124,144 @@ struct HomeViewWithProfile: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
             }
-            .sheet(isPresented: $showingProfile) {
-                ProfileView(authManager: authManager)
-            }
+        }
+        .onAppear {
+            print("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
+            print("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
         }
     }
 }
 
-// Profile View with Logout
-struct ProfileView: View {
+// MARK: - Explore Tab
+struct ExploreTab: View {
+    @State private var searchText = ""
+    @StateObject private var modelManager = USDZModelManager()
+    
+    var filteredModels: [USDZModel] {
+        if searchText.isEmpty {
+            return modelManager.models
+        }
+        return modelManager.models.filter { $0.displayName.localizedCaseInsensitiveContains(searchText) }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Search Bar
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.gray)
+                    TextField("Search rooms...", text: $searchText)
+                }
+                .padding(12)
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+                .padding()
+                
+                // Categories
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        CategoryButton(title: "All", icon: "square.grid.2x2")
+                        CategoryButton(title: "Living Room", icon: "sofa.fill")
+                        CategoryButton(title: "Bedroom", icon: "bed.double.fill")
+                        CategoryButton(title: "Kitchen", icon: "fork.knife")
+                        CategoryButton(title: "Office", icon: "desktopcomputer")
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.bottom)
+                
+                // Models Grid
+                if filteredModels.isEmpty {
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try a different search term")
+                    )
+                    .onAppear {
+                        print("❌ [ExploreTab] Showing 'No Results' - filteredModels is EMPTY")
+                        print("❌ [ExploreTab] Search text: '\(searchText)'")
+                        print("❌ [ExploreTab] Total models: \(modelManager.models.count)")
+                    }
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                            ForEach(Array(filteredModels.enumerated()), id: \.offset) { index, model in
+                                if let modelURL = model.temporaryURL {
+                                    NavigationLink(destination: ModelViewerView(model: model)) {
+                                        ExploreModelCard(model: model)
+                                    }
+                                } else {
+                                    Text("❌ Unavailable: \(model.displayName)")
+                                        .foregroundColor(.red)
+                                }
+                            }
+                        }
+                        .padding()
+                    }
+                    .onAppear {
+                        print("✅ [ExploreTab] Showing grid with \(filteredModels.count) models")
+                    }
+                }
+            }
+            .navigationTitle("Explore")
+            .navigationBarTitleDisplayMode(.large)
+        }
+        .onAppear {
+            print("🔍 [ExploreTab] onAppear - Models count: \(modelManager.models.count)")
+            print("🔍 [ExploreTab] Models: \(modelManager.models.map { $0.displayName })")
+        }
+    }
+}
+
+// MARK: - Favorites Tab
+struct FavoritesTab: View {
+    @StateObject private var modelManager = USDZModelManager()
+    
+    var body: some View {
+        NavigationStack {
+            VStack {
+                if modelManager.models.isEmpty {
+                    ContentUnavailableView(
+                        "No Favorites Yet",
+                        systemImage: "heart",
+                        description: Text("Start exploring and save your favorite rooms")
+                    )
+                    .onAppear {
+                        print("❌ [FavoritesTab] Showing 'No Favorites' - modelManager.models is EMPTY")
+                    }
+                } else {
+                    List {
+                        ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
+                            if let modelURL = model.temporaryURL {
+                                NavigationLink(destination: ModelViewerView(model: model)) {
+                                    HomeViewModelRow(model: model)
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(PlainListStyle())
+                    .onAppear {
+                        print("✅ [FavoritesTab] Showing list with \(modelManager.models.count) models")
+                    }
+                }
+            }
+            .navigationTitle("Favorites")
+            .navigationBarTitleDisplayMode(.large)
+        }
+        .onAppear {
+            print("❤️ [FavoritesTab] onAppear - Models count: \(modelManager.models.count)")
+        }
+    }
+}
+
+// MARK: - Profile Tab
+struct ProfileTab: View {
     @ObservedObject var authManager: AuthenticationManager
-    @Environment(\.dismiss) private var dismiss
     @State private var showLogoutConfirmation = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 // User Info Section
                 Section {
@@ -113,22 +287,35 @@ struct ProfileView: View {
                 
                 // Account Section
                 Section("Account") {
-                    HStack {
-                        Label("Name", systemImage: "person.fill")
-                        Spacer()
-                        Text(authManager.currentUser?.name ?? "")
-                            .foregroundColor(.secondary)
+                    NavigationLink(destination: EditProfileView()) {
+                        Label("Edit Profile", systemImage: "person.fill")
                     }
                     
-                    HStack {
-                        Label("Phone", systemImage: "phone.fill")
-                        Spacer()
-                        Text(authManager.currentUser?.phoneNumber ?? "")
-                            .foregroundColor(.secondary)
+                    NavigationLink(destination: NotificationSettingsView()) {
+                        Label("Notifications", systemImage: "bell.fill")
+                    }
+                    
+                    NavigationLink(destination: PrivacySettingsView()) {
+                        Label("Privacy", systemImage: "lock.fill")
                     }
                 }
                 
-                // App Info Section
+                // App Settings
+                Section("Settings") {
+                    NavigationLink(destination: GeneralSettingsView()) {
+                        Label("General", systemImage: "gearshape.fill")
+                    }
+                    
+                    NavigationLink(destination: AboutView()) {
+                        Label("About", systemImage: "info.circle.fill")
+                    }
+                    
+                    NavigationLink(destination: SupportView()) {
+                        Label("Help & Support", systemImage: "questionmark.circle.fill")
+                    }
+                }
+                
+                // App Info
                 Section("About") {
                     HStack {
                         Label("Version", systemImage: "info.circle")
@@ -160,19 +347,11 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("Profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
+            .navigationBarTitleDisplayMode(.large)
             .alert("Logout", isPresented: $showLogoutConfirmation) {
                 Button("Cancel", role: .cancel) { }
                 Button("Logout", role: .destructive) {
                     authManager.logout()
-                    dismiss()
                 }
             } message: {
                 Text("Are you sure you want to logout?")
@@ -181,6 +360,138 @@ struct ProfileView: View {
     }
 }
 
+// MARK: - Supporting Views
+
+struct HomeViewModelRow: View {
+    let model: USDZModel
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "cube.fill")
+                .foregroundColor(.blue)
+                .font(.title2)
+                .frame(width: 40, height: 40)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(8)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.displayName)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text("3D Room Model")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.secondary)
+                .font(.caption)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct ExploreModelCard: View {
+    let model: USDZModel
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "cube.fill")
+                .font(.system(size: 50))
+                .foregroundColor(.blue)
+                .frame(maxWidth: .infinity)
+                .frame(height: 120)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(12)
+            
+            Text(model.displayName)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+                .lineLimit(2)
+        }
+        .padding(8)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+    }
+}
+
+struct CategoryButton: View {
+    let title: String
+    let icon: String
+    @State private var isSelected = false
+    
+    var body: some View {
+        Button(action: {
+            isSelected.toggle()
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption)
+                Text(title)
+                    .font(.subheadline)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(isSelected ? Color.blue : Color(.systemGray6))
+            .foregroundColor(isSelected ? .white : .primary)
+            .cornerRadius(20)
+        }
+    }
+}
+
+// MARK: - Placeholder Views
+struct EditProfileView: View {
+    var body: some View {
+        Text("Edit Profile")
+            .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct NotificationSettingsView: View {
+    var body: some View {
+        Text("Notification Settings")
+            .navigationTitle("Notifications")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct PrivacySettingsView: View {
+    var body: some View {
+        Text("Privacy Settings")
+            .navigationTitle("Privacy")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct GeneralSettingsView: View {
+    var body: some View {
+        Text("General Settings")
+            .navigationTitle("General")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct AboutView: View {
+    var body: some View {
+        Text("About Furnit")
+            .navigationTitle("About")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct SupportView: View {
+    var body: some View {
+        Text("Help & Support")
+            .navigationTitle("Support")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
 
 #Preview {
     ContentView()
