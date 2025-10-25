@@ -68,6 +68,7 @@ struct SimpleCameraOverlay: View {
                 
                 Spacer()
                 
+                // Status indicator at bottom
                 HStack {
                     // Status indicator
                     if camera.segmentedImage == nil {
@@ -85,22 +86,6 @@ struct SimpleCameraOverlay: View {
                     }
                     
                     Spacer()
-                    
-                    // Capture button
-                    Button(action: {
-                        if let currentImage = camera.segmentedImage {
-                            capturedImage = currentImage
-                            print("📸 Captured segmented furniture")
-                            isShowingCamera = false
-                        }
-                    }) {
-                        Image(systemName: "camera.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(camera.segmentedImage != nil ? .white : .gray)
-                            .background(Circle().fill(Color.black.opacity(0.3)))
-                            .shadow(radius: 3)
-                    }
-                    .disabled(camera.segmentedImage == nil)
                 }
                 .padding(.bottom, 40)
                 .padding(.horizontal)
