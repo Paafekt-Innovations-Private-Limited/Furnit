@@ -23,6 +23,11 @@ struct ModelViewerView: View {
     // Camera/Segmentation state
     @State private var showingCameraPreview = false
     
+    // NEW: Progress bar state
+    @State private var isInitializingCamera = false
+    @State private var cameraInitProgress: Double = 0.0
+    @State private var initializationTimer: Timer?
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -33,6 +38,11 @@ struct ModelViewerView: View {
                     isARActive: isARActive
                 )
                     .ignoresSafeArea(.all)
+                
+                // NEW: Camera initialization overlay with progress
+                if isInitializingCamera {
+                    cameraInitializationOverlay
+                }
                 
                 // SimpleCameraOverlay when camera is active
                 if showingCameraPreview {
@@ -57,6 +67,79 @@ struct ModelViewerView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(screenshotMessage)
+        }
+    }
+    
+    // NEW: Progress bar overlay
+    private var cameraInitializationOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.9)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 24) {
+                // Camera icon
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.2))
+                        .frame(width: 100, height: 100)
+                    
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 40))
+                        .foregroundColor(.blue)
+                }
+                
+                VStack(spacing: 12) {
+                    Text("Initializing Camera")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    
+                    Text(progressMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+                
+                // Progress bar
+                VStack(spacing: 8) {
+                    ProgressView(value: cameraInitProgress, total: 1.0)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .blue))
+                        .frame(width: 250)
+                    
+                    Text("\(Int(cameraInitProgress * 100))%")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                
+                // Cancel button
+                Button(action: {
+                    cancelCameraInitialization()
+                }) {
+                    Text("Cancel")
+                        .font(.body)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 12)
+                        .background(Color.red.opacity(0.8))
+                        .cornerRadius(25)
+                }
+                .padding(.top, 8)
+            }
+        }
+        .transition(.opacity)
+    }
+    
+    // NEW: Progress messages
+    private var progressMessage: String {
+        if cameraInitProgress < 0.3 {
+            return "Checking camera permissions..."
+        } else if cameraInitProgress < 0.6 {
+            return "Loading U²-Net model..."
+        } else if cameraInitProgress < 0.9 {
+            return "Preparing segmentation..."
+        } else {
+            return "Almost ready..."
         }
     }
     
@@ -149,10 +232,17 @@ struct ModelViewerView: View {
         }
     }
     
+    // MODIFIED: Camera button now starts initialization
     private var cameraButton: some View {
         Button(action: {
-            showingCameraPreview.toggle()
-            isARActive = showingCameraPreview
+            if showingCameraPreview {
+                // Turn off camera
+                showingCameraPreview = false
+                isARActive = false
+            } else {
+                // Start initialization with progress
+                startCameraInitialization()
+            }
         }) {
             Image(systemName: "camera.viewfinder")
                 .font(.system(size: 28))
@@ -184,6 +274,54 @@ struct ModelViewerView: View {
         .cornerRadius(16)
     }
     
+    // NEW: Start camera initialization with progress
+    private func startCameraInitialization() {
+        print("📷 Starting camera initialization...")
+        isInitializingCamera = true
+        cameraInitProgress = 0.0
+        isARActive = true
+        
+        initializationTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+            self.cameraInitProgress += 0.02
+            
+            if self.cameraInitProgress >= 0.3 && self.cameraInitProgress < 0.32 {
+                print("📷 Camera permissions checked")
+            } else if self.cameraInitProgress >= 0.6 && self.cameraInitProgress < 0.62 {
+                print("🤖 Loading U²-Net model")
+            } else if self.cameraInitProgress >= 0.9 && self.cameraInitProgress < 0.92 {
+                print("✅ Segmentation ready")
+            }
+            
+            if self.cameraInitProgress >= 1.0 {
+                timer.invalidate()
+                self.initializationTimer = nil
+                
+                withAnimation(.easeOut(duration: 0.3)) {
+                    self.isInitializingCamera = false
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.showingCameraPreview = true
+                    print("📷 Camera activated")
+                }
+            }
+        }
+    }
+    
+    // NEW: Cancel initialization
+    private func cancelCameraInitialization() {
+        initializationTimer?.invalidate()
+        initializationTimer = nil
+        
+        withAnimation(.easeOut(duration: 0.2)) {
+            isInitializingCamera = false
+            cameraInitProgress = 0.0
+            isARActive = false
+        }
+        
+        print("❌ Camera initialization cancelled")
+    }
+    
     private func takeScreenshot() {
         print("📸 Taking screenshot...")
         
@@ -200,7 +338,6 @@ struct ModelViewerView: View {
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         
-        // Create a screenshot saver to handle the callback
         let saver = ScreenshotSaver()
         saver.onComplete = { success, error in
             DispatchQueue.main.async {
