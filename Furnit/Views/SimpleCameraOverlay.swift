@@ -207,7 +207,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
     
     private func setupCamera() {
         session.beginConfiguration()
-        session.sessionPreset = .high
+        session.sessionPreset = .photo  // Use photo preset for full resolution
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("❌ No camera found")
@@ -222,6 +222,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
             
             videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
             videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+            videoOutput.alwaysDiscardsLateVideoFrames = true
             
             if session.canAddOutput(videoOutput) {
                 session.addOutput(videoOutput)
@@ -231,11 +232,15 @@ class U2NetCameraModel: NSObject, ObservableObject {
                     if connection.isVideoOrientationSupported {
                         connection.videoOrientation = .portrait
                     }
+                    // Disable video mirroring
+                    if connection.isVideoMirroringSupported {
+                        connection.isVideoMirrored = false
+                    }
                 }
             }
             
             session.commitConfiguration()
-            print("✅ Camera configured with portrait orientation")
+            print("✅ Camera configured with full resolution")
         } catch {
             print("❌ Camera setup failed: \(error)")
         }
@@ -270,7 +275,8 @@ class U2NetCameraModel: NSObject, ObservableObject {
                 self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: maskBuffer)
             }
             
-            request.imageCropAndScaleOption = .scaleFit  // Maintain aspect ratio
+            // CHANGED: Use scaleFill to process the full image without cropping
+            request.imageCropAndScaleOption = .scaleFill
             
             let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
             try? handler.perform([request])
@@ -285,6 +291,8 @@ class U2NetCameraModel: NSObject, ObservableObject {
             guard let observation = request.results?.first as? VNSaliencyImageObservation else { return }
             self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: observation.pixelBuffer)
         }
+        
+        // Note: Saliency requests don't have imageCropAndScaleOption
         
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
         try? handler.perform([request])
@@ -306,10 +314,27 @@ class U2NetCameraModel: NSObject, ObservableObject {
             let ciImage = CIImage(cvPixelBuffer: originalBuffer)
             let maskCI = CIImage(cvPixelBuffer: maskBuffer)
             
-            // Scale mask to match original dimensions
-            let scaleX = CGFloat(width) / maskCI.extent.width
-            let scaleY = CGFloat(height) / maskCI.extent.height
-            let scaledMask = maskCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+            // IMPROVED: Better mask scaling to preserve full image
+            let maskWidth = maskCI.extent.width
+            let maskHeight = maskCI.extent.height
+            
+            // Calculate scale to match dimensions
+            let scaleX = CGFloat(width) / maskWidth
+            let scaleY = CGFloat(height) / maskHeight
+            
+            // Use uniform scale to avoid distortion
+            let scale = min(scaleX, scaleY)
+            
+            // Center the mask if needed
+            let scaledWidth = maskWidth * scale
+            let scaledHeight = maskHeight * scale
+            let offsetX = (CGFloat(width) - scaledWidth) / 2.0
+            let offsetY = (CGFloat(height) - scaledHeight) / 2.0
+            
+            // Transform mask with proper centering
+            let transform = CGAffineTransform(scaleX: scale, y: scale)
+                .translatedBy(x: offsetX / scale, y: offsetY / scale)
+            let scaledMask = maskCI.transformed(by: transform)
             
             // Apply mask using blend filter for transparency
             let blendFilter = CIFilter(name: "CIBlendWithMask")
@@ -326,19 +351,22 @@ class U2NetCameraModel: NSObject, ObservableObject {
                 return
             }
             
-            // Create CGImage preserving transparency
+            // Create CGImage preserving full extent
             let context = CIContext(options: [.useSoftwareRenderer: false])
-            guard let cgImage = context.createCGImage(output, from: output.extent) else {
+            
+            // Use full extent of the output image
+            let fullExtent = output.extent
+            guard let cgImage = context.createCGImage(output, from: fullExtent) else {
                 print("❌ Failed to create CGImage")
                 return
             }
             
-            // Create final UIImage WITHOUT rotation
+            // Create final UIImage WITHOUT rotation and with full size
             let finalImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
             
             DispatchQueue.main.async {
                 self.segmentedImage = finalImage
-                print("✅ Segmented furniture ready (size: \(finalImage.size))")
+                print("✅ Segmented furniture ready (size: \(finalImage.size), extent: \(fullExtent))")
             }
         }
     }
