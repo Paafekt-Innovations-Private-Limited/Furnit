@@ -9,8 +9,8 @@ struct SimpleCameraOverlay: View {
     @Binding var isShowingCamera: Bool
     @StateObject private var camera = U2NetCameraModel()
     
-    // Scaling control for furniture size
-    @State private var furnitureScale: CGFloat = 0.7  // 70% of original size
+    // Start fully minimized at 30%
+    @State private var scaleMultiplier: CGFloat = 0.3  // Start at 30% scale (minimized)
     
     var body: some View {
         ZStack {
@@ -18,14 +18,16 @@ struct SimpleCameraOverlay: View {
             Color.clear
                 .ignoresSafeArea()
             
-            // ONLY show the segmented furniture without any frame constraints
+            // Display segmented furniture without cropping function
             if let segmented = camera.segmentedImage {
                 Image(uiImage: segmented)
                     .resizable()
-                    .scaleEffect(furnitureScale)
+                    .scaledToFill()
+                    .scaleEffect(scaleMultiplier)
                     .position(x: UIScreen.main.bounds.width / 2,
                              y: UIScreen.main.bounds.height / 2)
                     .allowsHitTesting(false)
+                    .ignoresSafeArea()
             }
             
             // UI controls overlay
@@ -36,7 +38,8 @@ struct SimpleCameraOverlay: View {
                         Image(systemName: "minus.magnifyingglass")
                             .foregroundColor(.white)
                         
-                        Slider(value: $furnitureScale, in: 0.3...1.2)
+                        // Slider adjusts scale from 30% to 100%
+                        Slider(value: $scaleMultiplier, in: 0.3...1.0)
                             .frame(width: 120)
                             .accentColor(.white)
                         
@@ -61,7 +64,7 @@ struct SimpleCameraOverlay: View {
                     }
                     .padding()
                 }
-                .padding(.top, 50)  // Account for status bar
+                .padding(.top, 50)
                 
                 Spacer()
                 
@@ -74,7 +77,7 @@ struct SimpleCameraOverlay: View {
                             .background(Capsule().fill(Color.black.opacity(0.5)))
                             .foregroundColor(.white)
                     } else {
-                        Text("Size: \(Int(furnitureScale * 100))%")
+                        Text("Size: \(Int(scaleMultiplier * 100))%")
                             .font(.caption)
                             .padding(8)
                             .background(Capsule().fill(Color.black.opacity(0.5)))
@@ -87,7 +90,7 @@ struct SimpleCameraOverlay: View {
                     Button(action: {
                         if let currentImage = camera.segmentedImage {
                             capturedImage = currentImage
-                            print("📸 Captured segmented furniture at scale: \(furnitureScale)")
+                            print("📸 Captured segmented furniture")
                             isShowingCamera = false
                         }
                     }) {
@@ -116,35 +119,6 @@ struct SimpleCameraOverlay: View {
         .onDisappear {
             camera.stopSession()
         }
-    }
-}
-
-// Camera Preview Layer (not used in main view but kept for reference)
-struct CameraPreviewLayer: UIViewRepresentable {
-    let session: AVCaptureSession
-    let videoGravity: AVLayerVideoGravity
-    
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .clear
-        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer.videoGravity = videoGravity
-        previewLayer.frame = view.bounds
-        view.layer.addSublayer(previewLayer)
-        context.coordinator.previewLayer = previewLayer
-        return view
-    }
-    
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.previewLayer?.frame = uiView.bounds
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-    
-    class Coordinator {
-        var previewLayer: AVCaptureVideoPreviewLayer?
     }
 }
 
@@ -240,7 +214,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
             }
             
             session.commitConfiguration()
-            print("✅ Camera configured with full resolution")
+            print("✅ Camera configured with photo preset")
         } catch {
             print("❌ Camera setup failed: \(error)")
         }
@@ -275,8 +249,8 @@ class U2NetCameraModel: NSObject, ObservableObject {
                 self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: maskBuffer)
             }
             
-            // CHANGED: Use scaleFill to process the full image without cropping
-            request.imageCropAndScaleOption = .scaleFill
+            // Use scaleFit to preserve full camera view
+            request.imageCropAndScaleOption = .scaleFit
             
             let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
             try? handler.perform([request])
@@ -314,27 +288,10 @@ class U2NetCameraModel: NSObject, ObservableObject {
             let ciImage = CIImage(cvPixelBuffer: originalBuffer)
             let maskCI = CIImage(cvPixelBuffer: maskBuffer)
             
-            // IMPROVED: Better mask scaling to preserve full image
-            let maskWidth = maskCI.extent.width
-            let maskHeight = maskCI.extent.height
-            
-            // Calculate scale to match dimensions
-            let scaleX = CGFloat(width) / maskWidth
-            let scaleY = CGFloat(height) / maskHeight
-            
-            // Use uniform scale to avoid distortion
-            let scale = min(scaleX, scaleY)
-            
-            // Center the mask if needed
-            let scaledWidth = maskWidth * scale
-            let scaledHeight = maskHeight * scale
-            let offsetX = (CGFloat(width) - scaledWidth) / 2.0
-            let offsetY = (CGFloat(height) - scaledHeight) / 2.0
-            
-            // Transform mask with proper centering
-            let transform = CGAffineTransform(scaleX: scale, y: scale)
-                .translatedBy(x: offsetX / scale, y: offsetY / scale)
-            let scaledMask = maskCI.transformed(by: transform)
+            // Scale mask to match original dimensions
+            let scaleX = CGFloat(width) / maskCI.extent.width
+            let scaleY = CGFloat(height) / maskCI.extent.height
+            let scaledMask = maskCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
             
             // Apply mask using blend filter for transparency
             let blendFilter = CIFilter(name: "CIBlendWithMask")
@@ -351,24 +308,87 @@ class U2NetCameraModel: NSObject, ObservableObject {
                 return
             }
             
-            // Create CGImage preserving full extent
+            // Create CGImage WITHOUT any cropping
             let context = CIContext(options: [.useSoftwareRenderer: false])
-            
-            // Use full extent of the output image
-            let fullExtent = output.extent
-            guard let cgImage = context.createCGImage(output, from: fullExtent) else {
+            guard let cgImage = context.createCGImage(output, from: output.extent) else {
                 print("❌ Failed to create CGImage")
                 return
             }
             
-            // Create final UIImage WITHOUT rotation and with full size
             let finalImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
             
             DispatchQueue.main.async {
                 self.segmentedImage = finalImage
-                print("✅ Segmented furniture ready (size: \(finalImage.size), extent: \(fullExtent))")
+                print("✅ Segmented furniture ready (size: \(finalImage.size))")
             }
         }
+    }
+    
+    // Helper function to find non-transparent bounds from mask
+    private func getNonTransparentBounds(from maskImage: CIImage, context: CIContext) -> CGRect? {
+        // Sample the mask to find bounds of non-transparent pixels
+        let extent = maskImage.extent
+        
+        // Create a small bitmap to sample the mask efficiently
+        guard let cgImage = context.createCGImage(maskImage, from: extent) else { return nil }
+        
+        let width = Int(extent.width)
+        let height = Int(extent.height)
+        
+        // Sample every 10th pixel for efficiency
+        let sampleRate = 10
+        var minX = width
+        var maxX = 0
+        var minY = height
+        var maxY = 0
+        var foundContent = false
+        
+        // Create bitmap context to read pixels
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bitmapInfo = CGImageAlphaInfo.none.rawValue
+        guard let bitmapContext = CGContext(data: nil,
+                                            width: width,
+                                            height: height,
+                                            bitsPerComponent: 8,
+                                            bytesPerRow: width,
+                                            space: colorSpace,
+                                            bitmapInfo: bitmapInfo) else {
+            return nil
+        }
+        
+        bitmapContext.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let pixelData = bitmapContext.data else { return nil }
+        
+        let data = pixelData.bindMemory(to: UInt8.self, capacity: width * height)
+        
+        for y in stride(from: 0, to: height, by: sampleRate) {
+            for x in stride(from: 0, to: width, by: sampleRate) {
+                let pixelIndex = y * width + x
+                let value = data[pixelIndex]
+                
+                if value > 10 { // Non-transparent threshold
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                    foundContent = true
+                }
+            }
+        }
+        
+        guard foundContent else { return nil }
+        
+        // Add padding and expand to actual boundaries (since we sampled)
+        let padding = 10
+        minX = max(0, minX - padding - sampleRate)
+        maxX = min(width, maxX + padding + sampleRate)
+        minY = max(0, minY - padding - sampleRate)
+        maxY = min(height, maxY + padding + sampleRate)
+        
+        return CGRect(x: CGFloat(minX),
+                      y: CGFloat(minY),
+                      width: CGFloat(maxX - minX),
+                      height: CGFloat(maxY - minY))
     }
 }
 
