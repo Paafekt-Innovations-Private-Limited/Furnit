@@ -382,6 +382,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         // Generate textures from photo
         print("🎨 [RoomBuilder] Generating textures from photo...")
         let floorTexture = generateFloorTexture(from: originalImage, structure: structure)
+        let ceilingTexture = generateCeilingTexture(from: originalImage, structure: structure) // ✅ Use boundaries
         let frontWallTexture = generateFrontWallTexture(from: originalImage, structure: structure) // ✅ Use boundaries
         let leftWallTexture = generateLeftWallTexture(from: originalImage, structure: structure)
         let rightWallTexture = generateRightWallTexture(from: originalImage, structure: structure)
@@ -410,7 +411,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                              length: CGFloat(dimensions.depth),
                              chamferRadius: 0)
         let ceilingMaterial = SCNMaterial()
-        ceilingMaterial.diffuse.contents = UIColor.white
+        ceilingMaterial.diffuse.contents = ceilingTexture
         ceilingMaterial.isDoubleSided = true
         ceiling.materials = [ceilingMaterial]
         
@@ -573,6 +574,42 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let averageColor = ciImage.averageColor(in: centerRect) ?? UIColor(white: 0.9, alpha: 1.0)
         print("✅ [TextureGen] Wall color sampled")
         return createSolidColorTexture(color: averageColor)
+    }
+    
+    // ✅ NEW: Extract CEILING texture from adjusted boundaries
+    private func generateCeilingTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
+        print("🎨 [TextureGen] Generating CEILING texture from boundaries")
+        
+        guard let cgImage = image.cgImage else {
+            print("⚠️ [TextureGen] No CGImage, using white")
+            return createSolidColorTexture(color: .white)
+        }
+        
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+        
+        // Extract the ceiling region BETWEEN boundaries, from TOP to CEILING line
+        let leftXPos = structure.leftX * imageWidth
+        let rightXPos = structure.rightX * imageWidth
+        let ceilingYPos = structure.ceilingY * imageHeight
+        
+        let cropRect = CGRect(
+            x: leftXPos,
+            y: 0,
+            width: rightXPos - leftXPos,
+            height: ceilingYPos
+        )
+        
+        print("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) C:\(structure.ceilingY)")
+        print("   - Crop rect: \(cropRect)")
+        
+        if let croppedImage = cgImage.cropping(to: cropRect) {
+            print("✅ [TextureGen] Ceiling texture extracted from boundaries")
+            return UIImage(cgImage: croppedImage)
+        }
+        
+        print("⚠️ [TextureGen] Failed to crop, using white")
+        return createSolidColorTexture(color: .white)
     }
     
     // ✅ NEW: Extract FRONT wall texture within adjusted boundaries
