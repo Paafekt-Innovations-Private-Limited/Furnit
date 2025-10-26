@@ -383,7 +383,9 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         print("🎨 [RoomBuilder] Generating textures from photo...")
         let floorTexture = generateFloorTexture(from: originalImage, structure: structure)
         let wallTexture = originalImage // Use full photo for front wall
-        let sideWallColor = generateWallTexture(from: originalImage)
+        let leftWallTexture = generateLeftWallTexture(from: originalImage, structure: structure)
+        let rightWallTexture = generateRightWallTexture(from: originalImage, structure: structure)
+        let backWallColor = generateWallTexture(from: originalImage) // Just color for back
         
         // FLOOR - With texture from photo
         print("🔨 Creating FLOOR with texture...")
@@ -440,7 +442,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                               length: 0.01,
                               chamferRadius: 0)
         let backMaterial = SCNMaterial()
-        backMaterial.diffuse.contents = sideWallColor
+        backMaterial.diffuse.contents = backWallColor
         backMaterial.isDoubleSided = true
         backWall.materials = [backMaterial]
         
@@ -456,7 +458,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                               length: CGFloat(dimensions.depth),
                               chamferRadius: 0)
         let leftMaterial = SCNMaterial()
-        leftMaterial.diffuse.contents = sideWallColor
+        leftMaterial.diffuse.contents = leftWallTexture
         leftMaterial.isDoubleSided = true
         leftWall.materials = [leftMaterial]
         
@@ -472,7 +474,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                                length: CGFloat(dimensions.depth),
                                chamferRadius: 0)
         let rightMaterial = SCNMaterial()
-        rightMaterial.diffuse.contents = sideWallColor
+        rightMaterial.diffuse.contents = rightWallTexture
         rightMaterial.isDoubleSided = true
         rightWall.materials = [rightMaterial]
         
@@ -573,6 +575,76 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let averageColor = ciImage.averageColor(in: centerRect) ?? UIColor(white: 0.9, alpha: 1.0)
         print("✅ [TextureGen] Wall color sampled")
         return createSolidColorTexture(color: averageColor)
+    }
+    
+    // ✅ NEW: Extract LEFT wall texture from adjusted boundary
+    private func generateLeftWallTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
+        print("🎨 [TextureGen] Generating LEFT wall texture from boundary")
+        
+        guard let cgImage = image.cgImage else {
+            print("⚠️ [TextureGen] No CGImage, using solid color")
+            return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
+        }
+        
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+        
+        // Extract vertical strip from left boundary
+        let stripWidth = imageWidth * 0.1 // 10% width strip
+        let leftXPos = structure.leftX * imageWidth
+        
+        let cropRect = CGRect(
+            x: max(0, leftXPos - stripWidth/2),
+            y: structure.ceilingY * imageHeight,
+            width: min(stripWidth, imageWidth),
+            height: (structure.floorY - structure.ceilingY) * imageHeight
+        )
+        
+        print("   - Left boundary: \(structure.leftX)")
+        print("   - Crop rect: \(cropRect)")
+        
+        if let croppedImage = cgImage.cropping(to: cropRect) {
+            print("✅ [TextureGen] Left wall texture extracted")
+            return UIImage(cgImage: croppedImage)
+        }
+        
+        print("⚠️ [TextureGen] Failed to crop, using solid color")
+        return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
+    }
+    
+    // ✅ NEW: Extract RIGHT wall texture from adjusted boundary
+    private func generateRightWallTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
+        print("🎨 [TextureGen] Generating RIGHT wall texture from boundary")
+        
+        guard let cgImage = image.cgImage else {
+            print("⚠️ [TextureGen] No CGImage, using solid color")
+            return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
+        }
+        
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+        
+        // Extract vertical strip from right boundary
+        let stripWidth = imageWidth * 0.1 // 10% width strip
+        let rightXPos = structure.rightX * imageWidth
+        
+        let cropRect = CGRect(
+            x: max(0, rightXPos - stripWidth/2),
+            y: structure.ceilingY * imageHeight,
+            width: min(stripWidth, imageWidth - (rightXPos - stripWidth/2)),
+            height: (structure.floorY - structure.ceilingY) * imageHeight
+        )
+        
+        print("   - Right boundary: \(structure.rightX)")
+        print("   - Crop rect: \(cropRect)")
+        
+        if let croppedImage = cgImage.cropping(to: cropRect) {
+            print("✅ [TextureGen] Right wall texture extracted")
+            return UIImage(cgImage: croppedImage)
+        }
+        
+        print("⚠️ [TextureGen] Failed to crop, using solid color")
+        return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
     }
     
     private func createSolidColorTexture(color: UIColor) -> UIImage {
