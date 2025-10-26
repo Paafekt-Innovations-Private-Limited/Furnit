@@ -9,16 +9,38 @@ import ModelIO
 import SceneKit.ModelIO
 
 // MARK: - Room Structure (with proper initialization)
-struct RoomStructure {
+struct RoomStructure: Equatable {
     var wallLines: [Line] = []
     var floorRegion: CGRect?
     var ceilingRegion: CGRect?
     var vanishingPoint: CGPoint?
     
-    struct Line {
+    // ✅ Boundary values from manual adjustment
+    var floorY: CGFloat = 0.85
+    var ceilingY: CGFloat = 0.15
+    var leftX: CGFloat = 0.12
+    var rightX: CGFloat = 0.88
+    var vanishingX: CGFloat = 0.5
+    var vanishingY: CGFloat = 0.45
+    
+    struct Line: Equatable {
         var start: CGPoint
         var end: CGPoint
         var confidence: Float
+    }
+}
+
+// ✅ UIImage Extension for Orientation Fix
+extension UIImage {
+    func fixedOrientation() -> UIImage {
+        guard imageOrientation != .up else { return self }
+        
+        UIGraphicsBeginImageContextWithOptions(size, false, scale)
+        draw(in: CGRect(origin: .zero, size: size))
+        let normalizedImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        return normalizedImage ?? self
     }
 }
 
@@ -28,7 +50,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     @Published var progress: Float = 0.0
     @Published var statusMessage = "Ready"
     @Published var estimatedDimensions: RoomDimensions?
-    @Published var generatedRoomURL: URL?
+    @Published var generatedRoomScene: SCNScene? // ✅ CHANGED: from URL to SCNScene
     
     private let depthEstimator = MiDaSDepthEstimator()
     private let roomAnalyzer = RoomStructureAnalyzer()
@@ -75,11 +97,15 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             statusMessage = "Analyzing photo..."
         }
         
+        // ✅ Fix image orientation FIRST
+        let fixedImage = image.fixedOrientation()
+        print("✅ [Reconstructor] Image orientation fixed")
+        
         // Step 1: Generate depth map
         await updateProgress(0.2, "Extracting depth information...")
         print("🔍 [Reconstructor] Step 1: Starting depth estimation")
         
-        guard let depthMap = await depthEstimator.estimateDepth(from: image) else {
+        guard let depthMap = await depthEstimator.estimateDepth(from: fixedImage) else{
             await setError("Failed to estimate depth")
             return
         }
@@ -88,7 +114,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         // Step 2: Detect room structure
         await updateProgress(0.4, "Finding walls and corners...")
         print("🔍 [Reconstructor] Step 2: Starting room structure analysis")
-        let roomStructure = await roomAnalyzer.analyzeRoom(image: image, depthMap: depthMap)
+        let roomStructure = await roomAnalyzer.analyzeRoom(image: fixedImage, depthMap: depthMap)
         print("✅ [Reconstructor] Step 2: Room structure analyzed")
         print("   - Wall lines found: \(roomStructure.wallLines.count)")
         print("   - Floor region: \(roomStructure.floorRegion?.debugDescription ?? "nil")")
@@ -97,7 +123,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         // Step 3: Estimate dimensions
         await updateProgress(0.6, "Calculating room dimensions...")
         print("🔍 [Reconstructor] Step 3: Starting dimension estimation")
-        let dimensions = await estimateDimensions(from: roomStructure, image: image)
+        let dimensions = await estimateDimensions(from: roomStructure, image: fixedImage)
         print("✅ [Reconstructor] Step 3: Dimensions estimated")
         print("   - Width: \(dimensions.width)m")
         print("   - Depth: \(dimensions.depth)m")
@@ -111,23 +137,22 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         // Step 4: Build 3D room
         await updateProgress(0.8, "Building 3D model...")
         print("🔍 [Reconstructor] Step 4: Starting 3D room construction")
-        let roomURL = await build3DRoom(
+        let roomScene = await build3DRoom(
             dimensions: dimensions,
             structure: roomStructure,
-            originalImage: image,
+            originalImage: fixedImage,
             depthMap: depthMap
         )
         
-        if let url = roomURL {
+        if let scene = roomScene {
             print("✅ [Reconstructor] Step 4: 3D room built successfully")
-            print("   - URL: \(url)")
-            print("   - File exists: \(FileManager.default.fileExists(atPath: url.path))")
+            print("   - Scene nodes: \(scene.rootNode.childNodes.count)")
         } else {
             print("❌ [Reconstructor] Step 4: Failed to build 3D room")
         }
         
         await MainActor.run {
-            self.generatedRoomURL = roomURL
+            self.generatedRoomScene = roomScene // ✅ CHANGED
             self.isProcessing = false
             self.progress = 1.0
             self.statusMessage = "Room ready!"
@@ -135,7 +160,67 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         
         print("🎉 [Reconstructor] ========== PHOTO PROCESSING COMPLETE ==========")
     }
+
     
+    // ✅ NEW: Process with Adjusted Boundaries
+    func processPhotoWithBoundaries(_ image: UIImage, boundaries: RoomStructure) async {
+        print("🚀 [Reconstructor] ========== PROCESSING WITH ADJUSTED BOUNDARIES ==========")
+        print("   Floor: \(boundaries.floorY), Ceiling: \(boundaries.ceilingY)")
+        print("   Left: \(boundaries.leftX), Right: \(boundaries.rightX)")
+        print("   VP: (\(boundaries.vanishingX), \(boundaries.vanishingY))")
+        
+        await MainActor.run {
+            isProcessing = true
+            progress = 0.0
+            statusMessage = "Rebuilding with adjusted boundaries..."
+        }
+        
+        // Fix image orientation FIRST
+        let fixedImage = image.fixedOrientation()
+        print("✅ [Reconstructor] Image orientation fixed")
+        
+        await updateProgress(0.2, "Extracting depth information...")
+        guard let depthMap = await depthEstimator.estimateDepth(from: fixedImage) else {
+            await setError("Failed to estimate depth")
+            return
+        }
+        
+        await updateProgress(0.4, "Using your adjusted boundaries...")
+        
+        // Use the adjusted boundaries instead of detecting new ones
+        var roomStructure = boundaries
+        roomStructure.floorRegion = CGRect(x: 0, y: boundaries.floorY, width: 1.0, height: 1.0 - boundaries.floorY)
+        roomStructure.ceilingRegion = CGRect(x: 0, y: 0, width: 1.0, height: boundaries.ceilingY)
+        roomStructure.vanishingPoint = CGPoint(x: boundaries.vanishingX, y: boundaries.vanishingY)
+        
+        print("✅ [Reconstructor] Using adjusted boundaries:")
+        print("   - Floor region: \(roomStructure.floorRegion!)")
+        print("   - Ceiling region: \(roomStructure.ceilingRegion!)")
+        
+        await updateProgress(0.6, "Calculating dimensions with boundaries...")
+        let dimensions = await estimateDimensions(from: roomStructure, image: fixedImage)
+        
+        await MainActor.run {
+            self.estimatedDimensions = dimensions
+        }
+        
+        await updateProgress(0.8, "Building 3D model...")
+        let roomScene = await build3DRoom(
+            dimensions: dimensions,
+            structure: roomStructure,
+            originalImage: fixedImage,
+            depthMap: depthMap
+        )
+        
+        await MainActor.run {
+            self.generatedRoomScene = roomScene // ✅ CHANGED
+            self.isProcessing = false
+            self.progress = 1.0
+            self.statusMessage = "Room ready with your boundaries!"
+        }
+        
+        print("🎉 [Reconstructor] ========== PROCESSING COMPLETE WITH BOUNDARIES ==========")
+    }
     // MARK: - Dimension Estimation
     private func estimateDimensions(from structure: RoomStructure, image: UIImage) async -> RoomDimensions {
         print("📏 [DimensionEstimator] Starting dimension estimation")
@@ -287,7 +372,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     }
     
     // MARK: - 3D Room Building - WITH PHOTO TEXTURES
-    private func build3DRoom(dimensions: RoomDimensions, structure: RoomStructure, originalImage: UIImage, depthMap: CIImage) async -> URL? {
+    private func build3DRoom(dimensions: RoomDimensions, structure: RoomStructure, originalImage: UIImage, depthMap: CIImage) async -> SCNScene? {
         print("🏗️ [RoomBuilder] Starting TEXTURED room construction")
         print("   - Dimensions: W:\(dimensions.width) D:\(dimensions.depth) H:\(dimensions.height)")
         
@@ -300,7 +385,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let wallTexture = originalImage // Use full photo for front wall
         let sideWallColor = generateWallTexture(from: originalImage)
         
-        // FLOOR
+        // FLOOR - With texture from photo
         print("🔨 Creating FLOOR with texture...")
         let floor = SCNBox(width: CGFloat(dimensions.width),
                            height: 0.01,
@@ -332,7 +417,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         roomNode.addChildNode(ceilingNode)
         print("✅ CEILING at y=\(dimensions.height)")
         
-        // FRONT WALL - With your PHOTO texture
+        // FRONT WALL - With YOUR PHOTO texture
         print("🔨 Creating FRONT WALL with photo texture...")
         let frontWall = SCNBox(width: CGFloat(dimensions.width),
                                height: CGFloat(dimensions.height),
@@ -422,24 +507,9 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         directionalLight.eulerAngles = SCNVector3(-Float.pi / 4, 0, 0)
         scene.rootNode.addChildNode(directionalLight)
         
-        // Export as .scn (SceneKit native format)
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("room_\(UUID().uuidString).scn")
-        let success = scene.write(to: tempURL, options: nil, delegate: nil, progressHandler: nil)
-        
-        if success {
-            print("✅ Exported textured room to: \(tempURL)")
-            print("   - File exists: \(FileManager.default.fileExists(atPath: tempURL.path))")
-        } else {
-            print("⚠️ Failed to write scene")
-        }
-        
-        return tempURL
-    }
-    
-    private func exportUSDZ(from scnScene: SCNScene, to url: URL) throws {
-        // Convert SCNScene → MDLAsset and write .usdz (no iteration; MDLAsset isn't Sequence)
-        let mdl = MDLAsset(scnScene: scnScene)
-        try mdl.export(to: url)
+        // ✅ Return scene directly (no file export!)
+        print("✅ Room scene created successfully in memory")
+        return scene
     }
     
     // MARK: - Texture Generation
@@ -454,12 +524,19 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let imageHeight = CGFloat(cgImage.height)
         let imageWidth = CGFloat(cgImage.width)
         
+        // ✅ Use adjusted floor boundary
+        let floorYPos = structure.floorY
+        let floorHeight = 1.0 - floorYPos
+        
         let cropRect = CGRect(
             x: 0,
-            y: imageHeight * 0.75,
+            y: imageHeight * floorYPos,
             width: imageWidth,
-            height: imageHeight * 0.25
+            height: imageHeight * floorHeight
         )
+        
+        print("   - Using adjusted boundary: floorY=\(floorYPos)")
+        print("   - Crop rect: \(cropRect)")
         
         print("   - Cropping bottom 25% for floor")
         print("   - Crop rect: \(cropRect)")
@@ -718,6 +795,7 @@ class TextureProcessor {
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
     let originalImage: UIImage
+    @Binding var savedBoundaries: RoomStructure? // ✅ NEW: Binding to save adjusted boundaries
     @State private var detectedBoundariesImage: UIImage?
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
@@ -814,6 +892,21 @@ struct RoomBoundaryDetectionView: View {
                             .buttonStyle(.bordered)
                             
                             Button("Done Adjusting") {
+                                // ✅ SAVE BOUNDARIES HERE
+                                var boundaries = RoomStructure()
+                                boundaries.floorY = floorY
+                                boundaries.ceilingY = ceilingY
+                                boundaries.leftX = leftX
+                                boundaries.rightX = rightX
+                                boundaries.vanishingX = vanishingX
+                                boundaries.vanishingY = vanishingY
+                                
+                                savedBoundaries = boundaries
+                                print("✅ Saved adjusted boundaries:")
+                                print("   Floor: \(floorY), Ceiling: \(ceilingY)")
+                                print("   Left: \(leftX), Right: \(rightX)")
+                                print("   VP: (\(vanishingX), \(vanishingY))")
+                                
                                 showAdjustmentMode = false
                                 generateFinalImage()
                             }
@@ -1310,6 +1403,7 @@ struct SinglePhotoRoomView: View {
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var showRoomBoundaries = false
+    @State private var adjustedBoundaries: RoomStructure? // ✅ NEW: Store adjusted boundaries
     @State private var adjustedWidth: Float = 4.0
     @State private var adjustedDepth: Float = 4.0
     @State private var adjustedHeight: Float = 2.8
@@ -1421,8 +1515,9 @@ struct SinglePhotoRoomView: View {
                 .buttonStyle(.borderedProminent)
             }
             
-            if let roomURL = reconstructor.generatedRoomURL {
-                NavigationLink(destination: SceneKitViewer(url: roomURL)) {
+            // ✅ CHANGED: Using scene instead of URL
+            if let roomScene = reconstructor.generatedRoomScene {
+                NavigationLink(destination: SceneKitViewer(scene: roomScene)) {
                     Text("View 3D Room")
                 }
                 .buttonStyle(.borderedProminent)
@@ -1457,13 +1552,25 @@ struct SinglePhotoRoomView: View {
         }
         // Room boundaries sheet: always returns a View via wrapper
         .sheet(isPresented: $showRoomBoundaries) {
-            RoomBoundarySheetView(image: selectedImage)
+            RoomBoundarySheetView(
+                image: selectedImage,
+                savedBoundaries: $adjustedBoundaries
+            )
         }
         .onAppear {
             print("👁️ [View] SinglePhotoRoomView appeared")
             adjustedWidth = reconstructor.estimatedDimensions?.width ?? 4.0
             adjustedDepth = reconstructor.estimatedDimensions?.depth ?? 4.0
             adjustedHeight = reconstructor.estimatedDimensions?.height ?? 2.8
+        }
+        // ✅ NEW: Watch for boundary changes and rebuild automatically
+        .onChange(of: adjustedBoundaries) { oldValue, newValue in
+            if let boundaries = newValue, let image = selectedImage {
+                print("🔄 [View] Boundaries adjusted, rebuilding room...")
+                Task {
+                    await reconstructor.processPhotoWithBoundaries(image, boundaries: boundaries)
+                }
+            }
         }
     }
     
@@ -1480,8 +1587,13 @@ struct SinglePhotoRoomView: View {
             await MainActor.run {
                 reconstructor.estimatedDimensions = updatedDimensions
             }
+            
             if let image = selectedImage {
-                await reconstructor.processPhoto(image)
+                if let boundaries = adjustedBoundaries {
+                    await reconstructor.processPhotoWithBoundaries(image, boundaries: boundaries)
+                } else {
+                    await reconstructor.processPhoto(image)
+                }
             }
         }
     }
@@ -1498,10 +1610,15 @@ struct SinglePhotoRoomView: View {
 // Wrapper view to guarantee the sheet always returns a View
 private struct RoomBoundarySheetView: View {
     let image: UIImage?
+    @Binding var savedBoundaries: RoomStructure?
+    
     var body: some View {
         Group {
             if let image {
-                RoomBoundaryDetectionView(originalImage: image)
+                RoomBoundaryDetectionView(
+                    originalImage: image,
+                    savedBoundaries: $savedBoundaries
+                )
             } else {
                 EmptyView()
             }
@@ -1554,26 +1671,18 @@ struct PhotoPickerView: UIViewControllerRepresentable {
 
 // MARK: - SceneKit Viewer
 struct SceneKitViewer: View {
-    let url: URL
+    let scene: SCNScene // ✅ CHANGED: Accept scene directly
     @State private var showControls = true
     
     var body: some View {
         ZStack {
             SceneView(
-                scene: try? SCNScene(url: url),
+                scene: scene, // ✅ CHANGED
                 options: [.allowsCameraControl, .autoenablesDefaultLighting]
             )
             .onAppear {
                 print("🎬 [Viewer] SceneKit viewer appeared")
-                print("   - URL: \(url)")
-                print("   - File exists: \(FileManager.default.fileExists(atPath: url.path))")
-                
-                if let scene = try? SCNScene(url: url) {
-                    print("✅ [Viewer] Scene loaded successfully")
-                    print("   - Root node children: \(scene.rootNode.childNodes.count)")
-                } else {
-                    print("❌ [Viewer] Failed to load scene")
-                }
+                print("   - Scene nodes: \(scene.rootNode.childNodes.count)")
             }
             
             if showControls {
