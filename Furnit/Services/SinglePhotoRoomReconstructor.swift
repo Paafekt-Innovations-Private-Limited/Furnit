@@ -1544,6 +1544,7 @@ struct DraggableHandle: View {
 // MARK: - SwiftUI View
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
+    @StateObject private var modelManager = USDZModelManager()
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var showRoomBoundaries = false
@@ -1552,8 +1553,18 @@ struct SinglePhotoRoomView: View {
     @State private var adjustedDepth: Float = 4.0
     @State private var adjustedHeight: Float = 2.8
     
+    // Save room state
+    @State private var isSavingRoom = false
+    @State private var saveProgress: Double = 0.0
+    @State private var savingTimer: Timer?
+    @State private var showSaveAlert = false
+    @State private var saveAlertMessage = ""
+    @State private var showRoomNameInput = false
+    @State private var roomName = ""
+    
     var body: some View {
-        VStack {
+        ZStack {
+            VStack {
             if let image = selectedImage {
                 Image(uiImage: image)
                     .resizable()
@@ -1661,10 +1672,20 @@ struct SinglePhotoRoomView: View {
             
             // ✅ CHANGED: Using scene instead of URL
             if let roomScene = reconstructor.generatedRoomScene {
-                NavigationLink(destination: SceneKitViewer(scene: roomScene)) {
-                    Text("View 3D Room")
+                HStack(spacing: 12) {
+                    NavigationLink(destination: SceneKitViewer(scene: roomScene)) {
+                        Label("View 3D Room", systemImage: "eye.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    
+                    Button(action: {
+                        showRoomNameInput = true
+                    }) {
+                        Label("Save Room", systemImage: "square.and.arrow.down.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.green)
                 }
-                .buttonStyle(.borderedProminent)
                 .padding()
                 .onAppear {
                     print("🎯 [View] View 3D Room button appeared")
@@ -1673,6 +1694,12 @@ struct SinglePhotoRoomView: View {
             
             Spacer()
         }
+        
+        // Save progress overlay
+        if isSavingRoom {
+            saveRoomProgressOverlay
+        }
+    }
         .navigationTitle("Photo to 3D Room")
         .sheet(isPresented: $showImagePicker) {
             PhotoPickerView(selectedImage: $selectedImage)
@@ -1716,6 +1743,170 @@ struct SinglePhotoRoomView: View {
                 }
             }
         }
+        // Room name input alert
+        .alert("Save Room", isPresented: $showRoomNameInput) {
+            TextField("Room Name", text: $roomName)
+            Button("Cancel", role: .cancel) {
+                roomName = ""
+            }
+            Button("Save") {
+                startSavingRoom()
+            }
+            .disabled(roomName.isEmpty)
+        } message: {
+            Text("Enter a name for your room")
+        }
+        // Save result alert
+        .alert("Room Save", isPresented: $showSaveAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(saveAlertMessage)
+        }
+    }
+    
+    // MARK: - Save Room Progress Overlay
+    private var saveRoomProgressOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.9)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 24) {
+                // Save icon with animation
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.2))
+                        .frame(width: 100, height: 100)
+                    
+                    Image(systemName: "square.and.arrow.down.fill")
+                        .font(.system(size: 40))
+                        .foregroundColor(.green)
+                        .rotationEffect(.degrees(saveProgress < 0.5 ? 0 : 360))
+                        .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: saveProgress)
+                }
+                
+                VStack(spacing: 12) {
+                    Text("Saving Room")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    
+                    Text(saveProgressMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+                
+                // Progress bar
+                VStack(spacing: 8) {
+                    ProgressView(value: saveProgress, total: 1.0)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                        .frame(width: 250)
+                    
+                    Text("\(Int(saveProgress * 100))%")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                
+                // Cancel button
+                Button(action: {
+                    cancelSavingRoom()
+                }) {
+                    Text("Cancel")
+                        .font(.body)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 12)
+                        .background(Color.red.opacity(0.8))
+                        .cornerRadius(25)
+                }
+                .padding(.top, 8)
+            }
+        }
+        .transition(.opacity)
+    }
+    
+    private var saveProgressMessage: String {
+        if saveProgress < 0.3 {
+            return "Preparing room model..."
+        } else if saveProgress < 0.6 {
+            return "Exporting to USDZ format..."
+        } else if saveProgress < 0.9 {
+            return "Saving to library..."
+        } else {
+            return "Almost done..."
+        }
+    }
+    
+    // MARK: - Save Room Functions
+    private func startSavingRoom() {
+        guard let scene = reconstructor.generatedRoomScene else {
+            saveAlertMessage = "No room to save. Please generate a room first."
+            showSaveAlert = true
+            return
+        }
+        
+        guard !roomName.isEmpty else {
+            return
+        }
+        
+        print("💾 [View] Starting room save process: \(roomName)")
+        
+        withAnimation(.easeIn(duration: 0.3)) {
+            isSavingRoom = true
+            saveProgress = 0.0
+        }
+        
+        // Simulate progress with timer
+        savingTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+            self.saveProgress += 0.015
+            
+            if self.saveProgress >= 0.3 && self.saveProgress < 0.32 {
+                print("📦 [View] Preparing model...")
+            } else if self.saveProgress >= 0.6 && self.saveProgress < 0.62 {
+                print("📄 [View] Exporting USDZ...")
+                // Actually save the room
+                self.modelManager.saveRoom(scene: scene, name: self.roomName) { success, error in
+                    if success {
+                        print("✅ [View] Room saved successfully")
+                    } else {
+                        print("❌ [View] Failed to save room: \(error ?? "unknown error")")
+                    }
+                }
+            } else if self.saveProgress >= 0.9 && self.saveProgress < 0.92 {
+                print("💾 [View] Finalizing...")
+            }
+            
+            if self.saveProgress >= 1.0 {
+                timer.invalidate()
+                self.savingTimer = nil
+                
+                withAnimation(.easeOut(duration: 0.3)) {
+                    self.isSavingRoom = false
+                }
+                
+                // Check if save was successful
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.saveAlertMessage = "Room '\(self.roomName)' saved successfully!"
+                    self.showSaveAlert = true
+                    self.roomName = ""
+                    print("✅ [View] Save complete!")
+                }
+            }
+        }
+    }
+    
+    private func cancelSavingRoom() {
+        savingTimer?.invalidate()
+        savingTimer = nil
+        
+        withAnimation(.easeOut(duration: 0.2)) {
+            isSavingRoom = false
+            saveProgress = 0.0
+        }
+        
+        roomName = ""
+        print("❌ [View] Room save cancelled")
     }
     
     private func rebuildRoom() {

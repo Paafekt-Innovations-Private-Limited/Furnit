@@ -163,6 +163,12 @@ struct HomeTab: View {
                         )
                 }
             }
+            // ✅ NEW: Refresh models when sheet closes - THIS IS THE ONLY CHANGE!
+            .onChange(of: showingPhotoRoomCreator) { _, isShowing in
+                if !isShowing {
+                    modelManager.refreshModels()
+                }
+            }
             // Existing Settings Sheet
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
@@ -224,26 +230,26 @@ struct ExploreTab: View {
                     .onAppear {
                         print("❌ [ExploreTab] Showing 'No Results' - filteredModels is EMPTY")
                         print("❌ [ExploreTab] Search text: '\(searchText)'")
-                        print("❌ [ExploreTab] Total models: \(modelManager.models.count)")
                     }
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-                            ForEach(Array(filteredModels.enumerated()), id: \.offset) { index, model in
-                                if let modelURL = model.temporaryURL {
-                                    NavigationLink(destination: ModelViewerView(model: model)) {
-                                        ExploreModelCard(model: model)
-                                    }
-                                } else {
-                                    Text("❌ Unavailable: \(model.displayName)")
-                                        .foregroundColor(.red)
+                        LazyVGrid(columns: [
+                            GridItem(.flexible(), spacing: 16),
+                            GridItem(.flexible(), spacing: 16)
+                        ], spacing: 16) {
+                            ForEach(filteredModels) { model in
+                                NavigationLink(destination: ModelViewerView(model: model)) {
+                                    ExploreModelCard(model: model)
+                                }
+                                .onAppear {
+                                    print("✅ [ExploreTab] Displaying card for: \(model.displayName)")
                                 }
                             }
                         }
                         .padding()
                     }
                     .onAppear {
-                        print("✅ [ExploreTab] Showing grid with \(filteredModels.count) models")
+                        print("✅ [ExploreTab] Showing grid with \(filteredModels.count) filtered models")
                     }
                 }
             }
@@ -251,8 +257,7 @@ struct ExploreTab: View {
             .navigationBarTitleDisplayMode(.large)
         }
         .onAppear {
-            print("🔍 [ExploreTab] onAppear - Models count: \(modelManager.models.count)")
-            print("🔍 [ExploreTab] Models: \(modelManager.models.map { $0.displayName })")
+            print("🔍 [ExploreTab] onAppear - Total models: \(modelManager.models.count)")
         }
     }
 }
@@ -260,31 +265,37 @@ struct ExploreTab: View {
 // MARK: - Favorites Tab
 struct FavoritesTab: View {
     @StateObject private var modelManager = USDZModelManager()
+    @State private var favoriteModels: [USDZModel] = []
     
     var body: some View {
         NavigationStack {
-            VStack {
-                if modelManager.models.isEmpty {
-                    ContentUnavailableView(
-                        "No Favorites Yet",
-                        systemImage: "heart.slash",
-                        description: Text("Your favorite rooms will appear here")
-                    )
-                } else {
-                    List {
-                        ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
-                            if let modelURL = model.temporaryURL {
-                                NavigationLink(destination: ModelViewerView(model: model)) {
-                                    HomeViewModelRow(model: model)
-                                }
-                            }
+            if favoriteModels.isEmpty {
+                ContentUnavailableView(
+                    "No Favorites",
+                    systemImage: "heart.slash",
+                    description: Text("Tap the heart icon on rooms to add them here")
+                )
+                .onAppear {
+                    print("❤️ [FavoritesTab] Showing 'No Favorites' view")
+                }
+            } else {
+                List {
+                    ForEach(favoriteModels) { model in
+                        NavigationLink(destination: ModelViewerView(model: model)) {
+                            HomeViewModelRow(model: model)
                         }
                     }
-                    .listStyle(PlainListStyle())
+                }
+                .listStyle(PlainListStyle())
+                .onAppear {
+                    print("❤️ [FavoritesTab] Showing list with \(favoriteModels.count) favorites")
                 }
             }
-            .navigationTitle("Favorites")
-            .navigationBarTitleDisplayMode(.large)
+        }
+        .navigationTitle("Favorites")
+        .navigationBarTitleDisplayMode(.large)
+        .onAppear {
+            print("❤️ [FavoritesTab] onAppear - Favorite count: \(favoriteModels.count)")
         }
     }
 }
@@ -299,15 +310,14 @@ struct ProfileTab: View {
             List {
                 // Profile Header
                 Section {
-                    HStack(spacing: 16) {
-                        // Avatar
+                    HStack(spacing: 12) {
+                        // Profile Picture Placeholder
                         Circle()
                             .fill(Color.blue.gradient)
                             .frame(width: 60, height: 60)
                             .overlay(
-                                Text(String(authManager.currentUser?.name.prefix(1) ?? "U"))
-                                    .font(.title)
-                                    .fontWeight(.semibold)
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 30))
                                     .foregroundColor(.white)
                             )
                         
