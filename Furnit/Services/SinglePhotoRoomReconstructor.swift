@@ -5,6 +5,8 @@ import CoreImage
 import SceneKit
 import Metal
 import MetalPerformanceShaders
+import ModelIO
+import SceneKit.ModelIO
 
 // MARK: - Room Structure (with proper initialization)
 struct RoomStructure {
@@ -139,24 +141,20 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         print("📏 [DimensionEstimator] Starting dimension estimation")
         var dimensions = RoomDimensions()
         
-        // Try to find doors for scale reference
         print("🚪 [DimensionEstimator] Attempting door detection...")
         if let doorRect = await detectDoor(in: image) {
             print("✅ [DimensionEstimator] DOOR DETECTED!")
             print("   - Door rect: \(doorRect)")
             
-            // Door detected - use as scale reference
             let doorPixelHeight = doorRect.height * image.size.height
             let imageHeight = image.size.height
             
             print("   - Door pixel height: \(doorPixelHeight)")
             print("   - Image height: \(imageHeight)")
             
-            // Assuming standard door height of 2.1m
             let pixelsPerMeter = doorPixelHeight / 2.1
             print("   - Pixels per meter: \(pixelsPerMeter)")
             
-            // Estimate room height from image proportions
             dimensions.height = Float(imageHeight / pixelsPerMeter)
             dimensions.width = Float(image.size.width / pixelsPerMeter * 1.2)
             dimensions.depth = dimensions.width
@@ -170,7 +168,6 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             print("✅ [DimensionEstimator] PERSON DETECTED (fallback)")
             print("   - Person rect: \(personRect)")
             
-            // Fallback: use person height (average 1.7m)
             let personPixelHeight = personRect.height * image.size.height
             let pixelsPerMeter = personPixelHeight / 1.7
             
@@ -188,7 +185,6 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             
         } else {
             print("⚠️ [DimensionEstimator] NO REFERENCE FOUND - Using defaults")
-            // No reference found - use typical room proportions
             dimensions.width = 4.0
             dimensions.depth = 4.5
             dimensions.height = 2.8
@@ -200,7 +196,6 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             print("   - Confidence: 30%")
         }
         
-        // Clamp to reasonable ranges
         let originalWidth = dimensions.width
         let originalDepth = dimensions.depth
         let originalHeight = dimensions.height
@@ -244,24 +239,22 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             return nil
         }
         
-        // Look for door-like rectangles (tall and narrow)
-        if let results = request.results {
-            print("🚪 [DoorDetector] Found \(results.count) rectangles")
-            
-            for (index, rect) in results.enumerated() {
-                let aspectRatio = rect.boundingBox.width / rect.boundingBox.height
-                print("   Rectangle \(index): aspect=\(aspectRatio), height=\(rect.boundingBox.height)")
-                
-                if aspectRatio > 0.35 && aspectRatio < 0.5 && rect.boundingBox.height > 0.3 {
-                    print("✅ [DoorDetector] Door-like rectangle found at index \(index)!")
-                    return rect.boundingBox
-                }
-            }
-            print("⚠️ [DoorDetector] No rectangles matched door criteria")
-        } else {
+        // results is already [VNRectangleObservation]?
+        guard let rects = request.results, !rects.isEmpty else {
             print("⚠️ [DoorDetector] No rectangles detected")
+            return nil
         }
         
+        print("🚪 [DoorDetector] Found \(rects.count) rectangles")
+        for (index, rect) in rects.enumerated() {
+            let aspectRatio = rect.boundingBox.width / rect.boundingBox.height
+            print("   Rectangle \(index): aspect=\(aspectRatio), height=\(rect.boundingBox.height)")
+            if aspectRatio > 0.35 && aspectRatio < 0.5 && rect.boundingBox.height > 0.3 {
+                print("✅ [DoorDetector] Door-like rectangle found at index \(index)!")
+                return rect.boundingBox
+            }
+        }
+        print("⚠️ [DoorDetector] No rectangles matched door criteria")
         return nil
     }
     
@@ -283,164 +276,170 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             return nil
         }
         
-        if let results = request.results, !results.isEmpty {
-            print("✅ [PersonDetector] Found \(results.count) person(s)")
-            let firstPerson = results.first!.boundingBox
-            print("   - First person rect: \(firstPerson)")
-            return firstPerson
-        } else {
+        // results is already [VNHumanObservation]?
+        guard let persons = request.results, !persons.isEmpty else {
             print("⚠️ [PersonDetector] No persons detected")
+            return nil
         }
         
-        return nil
+        print("✅ [PersonDetector] Found \(persons.count) person(s)")
+        return persons.first!.boundingBox
     }
     
-    // MARK: - 3D Room Building
+    // MARK: - 3D Room Building - WITH PHOTO TEXTURES
     private func build3DRoom(dimensions: RoomDimensions, structure: RoomStructure, originalImage: UIImage, depthMap: CIImage) async -> URL? {
-        print("🏗️ [RoomBuilder] Starting 3D room construction")
+        print("🏗️ [RoomBuilder] Starting TEXTURED room construction")
         print("   - Dimensions: W:\(dimensions.width) D:\(dimensions.depth) H:\(dimensions.height)")
         
-        // Generate textures
-        print("🎨 [RoomBuilder] Generating textures...")
-        let floorTexture = generateFloorTexture(from: originalImage, structure: structure)
-        let wallTexture = generateWallTexture(from: originalImage)
-        
         let scene = SCNScene()
-        print("✅ [RoomBuilder] SCNScene created")
-        
-        // Create room container
         let roomNode = SCNNode()
         
-        // FLOOR - horizontal plane at y=0
-        print("🔨 [RoomBuilder] Creating floor...")
-        let floor = SCNPlane(width: CGFloat(dimensions.width), height: CGFloat(dimensions.depth))
+        // Generate textures from photo
+        print("🎨 [RoomBuilder] Generating textures from photo...")
+        let floorTexture = generateFloorTexture(from: originalImage, structure: structure)
+        let wallTexture = originalImage // Use full photo for front wall
+        let sideWallColor = generateWallTexture(from: originalImage)
+        
+        // FLOOR
+        print("🔨 Creating FLOOR with texture...")
+        let floor = SCNBox(width: CGFloat(dimensions.width),
+                           height: 0.01,
+                           length: CGFloat(dimensions.depth),
+                           chamferRadius: 0)
+        let floorMaterial = SCNMaterial()
+        floorMaterial.diffuse.contents = floorTexture
+        floorMaterial.isDoubleSided = true
+        floor.materials = [floorMaterial]
+        
         let floorNode = SCNNode(geometry: floor)
-        floorNode.eulerAngles.x = -.pi / 2  // Rotate to be horizontal
         floorNode.position = SCNVector3(0, 0, 0)
-        floor.firstMaterial?.diffuse.contents = floorTexture
-        floor.firstMaterial?.isDoubleSided = false
-        floor.firstMaterial?.lightingModel = .constant
         roomNode.addChildNode(floorNode)
-        print("✅ [RoomBuilder] Floor at y=0")
+        print("✅ FLOOR at y=0")
         
-        // CEILING - horizontal plane at y=height
-        print("🔨 [RoomBuilder] Creating ceiling...")
-        let ceiling = SCNPlane(width: CGFloat(dimensions.width), height: CGFloat(dimensions.depth))
+        // CEILING
+        print("🔨 Creating CEILING...")
+        let ceiling = SCNBox(width: CGFloat(dimensions.width),
+                             height: 0.01,
+                             length: CGFloat(dimensions.depth),
+                             chamferRadius: 0)
+        let ceilingMaterial = SCNMaterial()
+        ceilingMaterial.diffuse.contents = UIColor.white
+        ceilingMaterial.isDoubleSided = true
+        ceiling.materials = [ceilingMaterial]
+        
         let ceilingNode = SCNNode(geometry: ceiling)
-        ceilingNode.eulerAngles.x = .pi / 2  // Rotate to be horizontal, facing down
         ceilingNode.position = SCNVector3(0, Float(dimensions.height), 0)
-        ceiling.firstMaterial?.diffuse.contents = UIColor(white: 0.95, alpha: 1.0)
-        ceiling.firstMaterial?.isDoubleSided = false
-        ceiling.firstMaterial?.lightingModel = .constant
         roomNode.addChildNode(ceilingNode)
-        print("✅ [RoomBuilder] Ceiling at y=\(dimensions.height)")
+        print("✅ CEILING at y=\(dimensions.height)")
         
-        // FRONT WALL (with your photo) - at negative Z
-        print("🔨 [RoomBuilder] Creating FRONT WALL with photo...")
-        let frontWall = SCNPlane(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
+        // FRONT WALL - With your PHOTO texture
+        print("🔨 Creating FRONT WALL with photo texture...")
+        let frontWall = SCNBox(width: CGFloat(dimensions.width),
+                               height: CGFloat(dimensions.height),
+                               length: 0.01,
+                               chamferRadius: 0)
+        let frontMaterial = SCNMaterial()
+        frontMaterial.diffuse.contents = wallTexture
+        frontMaterial.isDoubleSided = true
+        frontWall.materials = [frontMaterial]
+        
         let frontNode = SCNNode(geometry: frontWall)
         frontNode.position = SCNVector3(0, Float(dimensions.height) / 2, -Float(dimensions.depth) / 2)
-        frontNode.eulerAngles = SCNVector3(0, 0, 0)  // Facing camera (towards +Z)
-        frontWall.firstMaterial?.diffuse.contents = originalImage
-        frontWall.firstMaterial?.isDoubleSided = false
-        frontWall.firstMaterial?.lightingModel = .constant
         roomNode.addChildNode(frontNode)
-        print("✅ [RoomBuilder] Front wall at z=-\(dimensions.depth/2)")
+        print("✅ FRONT WALL with photo at z=-\(dimensions.depth/2)")
         
-        // BACK WALL - at positive Z
-        print("🔨 [RoomBuilder] Creating back wall...")
-        let backWall = SCNPlane(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
+        // BACK WALL
+        print("🔨 Creating BACK WALL...")
+        let backWall = SCNBox(width: CGFloat(dimensions.width),
+                              height: CGFloat(dimensions.height),
+                              length: 0.01,
+                              chamferRadius: 0)
+        let backMaterial = SCNMaterial()
+        backMaterial.diffuse.contents = sideWallColor
+        backMaterial.isDoubleSided = true
+        backWall.materials = [backMaterial]
+        
         let backNode = SCNNode(geometry: backWall)
         backNode.position = SCNVector3(0, Float(dimensions.height) / 2, Float(dimensions.depth) / 2)
-        backNode.eulerAngles = SCNVector3(0, Float.pi, 0)  // Rotated 180° to face inward
-        backWall.firstMaterial?.diffuse.contents = wallTexture
-        backWall.firstMaterial?.isDoubleSided = false
-        backWall.firstMaterial?.lightingModel = .constant
         roomNode.addChildNode(backNode)
-        print("✅ [RoomBuilder] Back wall at z=+\(dimensions.depth/2)")
+        print("✅ BACK WALL at z=+\(dimensions.depth/2)")
         
-        // LEFT WALL - at negative X
-        print("🔨 [RoomBuilder] Creating left wall...")
-        let leftWall = SCNPlane(width: CGFloat(dimensions.depth), height: CGFloat(dimensions.height))
+        // LEFT WALL
+        print("🔨 Creating LEFT WALL...")
+        let leftWall = SCNBox(width: 0.01,
+                              height: CGFloat(dimensions.height),
+                              length: CGFloat(dimensions.depth),
+                              chamferRadius: 0)
+        let leftMaterial = SCNMaterial()
+        leftMaterial.diffuse.contents = sideWallColor
+        leftMaterial.isDoubleSided = true
+        leftWall.materials = [leftMaterial]
+        
         let leftNode = SCNNode(geometry: leftWall)
         leftNode.position = SCNVector3(-Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
-        leftNode.eulerAngles = SCNVector3(0, Float.pi / 2, 0)  // Rotated 90° to face right
-        leftWall.firstMaterial?.diffuse.contents = wallTexture
-        leftWall.firstMaterial?.isDoubleSided = false
-        leftWall.firstMaterial?.lightingModel = .constant
         roomNode.addChildNode(leftNode)
-        print("✅ [RoomBuilder] Left wall at x=-\(dimensions.width/2)")
+        print("✅ LEFT WALL at x=-\(dimensions.width/2)")
         
-        // RIGHT WALL - at positive X
-        print("🔨 [RoomBuilder] Creating right wall...")
-        let rightWall = SCNPlane(width: CGFloat(dimensions.depth), height: CGFloat(dimensions.height))
+        // RIGHT WALL
+        print("🔨 Creating RIGHT WALL...")
+        let rightWall = SCNBox(width: 0.01,
+                               height: CGFloat(dimensions.height),
+                               length: CGFloat(dimensions.depth),
+                               chamferRadius: 0)
+        let rightMaterial = SCNMaterial()
+        rightMaterial.diffuse.contents = sideWallColor
+        rightMaterial.isDoubleSided = true
+        rightWall.materials = [rightMaterial]
+        
         let rightNode = SCNNode(geometry: rightWall)
         rightNode.position = SCNVector3(Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
-        rightNode.eulerAngles = SCNVector3(0, -Float.pi / 2, 0)  // Rotated -90° to face left
-        rightWall.firstMaterial?.diffuse.contents = wallTexture
-        rightWall.firstMaterial?.isDoubleSided = false
-        rightWall.firstMaterial?.lightingModel = .constant
         roomNode.addChildNode(rightNode)
-        print("✅ [RoomBuilder] Right wall at x=+\(dimensions.width/2)")
+        print("✅ RIGHT WALL at x=+\(dimensions.width/2)")
         
         scene.rootNode.addChildNode(roomNode)
-        print("✅ [RoomBuilder] All walls added to scene")
         
-        // CAMERA - Inside room, looking at front wall with photo
-        print("📷 [RoomBuilder] Setting up camera...")
+        // CAMERA - Looking at photo wall
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
         cameraNode.camera?.fieldOfView = 70
-        cameraNode.camera?.zNear = 0.1
-        cameraNode.camera?.zFar = 100
-        
-        // Position camera IN THE CENTER of the room at eye level
-        // Looking towards the FRONT WALL (negative Z direction)
-        let camPosition = SCNVector3(
-            0,  // Center horizontally
-            Float(dimensions.height) * 0.5,  // Eye level (half height)
-            0   // Center depth-wise
-        )
-        cameraNode.position = camPosition
-        
-        // Point camera at the front wall (where the photo is)
-        let lookAtPoint = SCNVector3(
-            0,  // Same X as camera
-            Float(dimensions.height) * 0.5,  // Same Y as camera (eye level)
-            -Float(dimensions.depth) / 2  // Front wall position (negative Z)
-        )
-        cameraNode.look(at: lookAtPoint)
-        
+        cameraNode.position = SCNVector3(0, Float(dimensions.height) * 0.5, 0)
+        cameraNode.look(at: SCNVector3(0, Float(dimensions.height) * 0.5, -Float(dimensions.depth) / 2))
         scene.rootNode.addChildNode(cameraNode)
-        print("✅ [RoomBuilder] Camera at center: \(camPosition)")
-        print("   - Looking at front wall (photo): \(lookAtPoint)")
-        print("   - FOV: 70°")
+        print("✅ Camera looking at photo wall")
         
         // LIGHTING
-        print("💡 [RoomBuilder] Setting up lighting...")
         let ambientLight = SCNNode()
         ambientLight.light = SCNLight()
         ambientLight.light?.type = .ambient
         ambientLight.light?.intensity = 1000
-        ambientLight.light?.color = UIColor.white
         scene.rootNode.addChildNode(ambientLight)
-        print("✅ [RoomBuilder] Ambient light (intensity: 1000)")
         
-        // Export to USDZ
-        print("💾 [RoomBuilder] Exporting to USDZ...")
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("room_\(UUID().uuidString).usdz")
+        let directionalLight = SCNNode()
+        directionalLight.light = SCNLight()
+        directionalLight.light?.type = .directional
+        directionalLight.light?.intensity = 500
+        directionalLight.position = SCNVector3(0, Float(dimensions.height), 0)
+        directionalLight.eulerAngles = SCNVector3(-Float.pi / 4, 0, 0)
+        scene.rootNode.addChildNode(directionalLight)
         
-        do {
-            try scene.write(to: tempURL, options: nil, delegate: nil, progressHandler: nil)
-            let fileSize = try FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? Int ?? 0
-            print("✅ [RoomBuilder] USDZ exported successfully")
-            print("   - URL: \(tempURL)")
-            print("   - Size: \(fileSize) bytes")
-            return tempURL
-        } catch {
-            print("❌ [RoomBuilder] Export failed: \(error)")
-            return nil
+        // Export as .scn (SceneKit native format)
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("room_\(UUID().uuidString).scn")
+        let success = scene.write(to: tempURL, options: nil, delegate: nil, progressHandler: nil)
+        
+        if success {
+            print("✅ Exported textured room to: \(tempURL)")
+            print("   - File exists: \(FileManager.default.fileExists(atPath: tempURL.path))")
+        } else {
+            print("⚠️ Failed to write scene")
         }
+        
+        return tempURL
+    }
+    
+    private func exportUSDZ(from scnScene: SCNScene, to url: URL) throws {
+        // Convert SCNScene → MDLAsset and write .usdz (no iteration; MDLAsset isn't Sequence)
+        let mdl = MDLAsset(scnScene: scnScene)
+        try mdl.export(to: url)
     }
     
     // MARK: - Texture Generation
@@ -455,7 +454,6 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let imageHeight = CGFloat(cgImage.height)
         let imageWidth = CGFloat(cgImage.width)
         
-        // Use bottom 25% of image for floor
         let cropRect = CGRect(
             x: 0,
             y: imageHeight * 0.75,
@@ -523,7 +521,7 @@ extension CIImage {
         
         var bitmap = [UInt8](repeating: 0, count: 4)
         let context = CIContext(options: [.workingColorSpace: kCFNull as Any])
-        context.render(outputImage, toBitmap: &bitmap, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+        context.render(outputImage, toBitmap: &bitmap, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
         
         return UIColor(red: CGFloat(bitmap[0]) / 255, green: CGFloat(bitmap[1]) / 255, blue: CGFloat(bitmap[2]) / 255, alpha: CGFloat(bitmap[3]) / 255)
     }
@@ -540,7 +538,6 @@ class MiDaSDepthEstimator {
     
     private func loadModel() {
         print("📦 [DepthEstimator] Attempting to load MiDaS model")
-        // Placeholder - in real implementation, load MiDaS CoreML model
         print("⚠️ [DepthEstimator] MiDaS model not available, will use fallback")
     }
     
@@ -553,14 +550,11 @@ class MiDaSDepthEstimator {
         
         let ciImage = CIImage(cgImage: cgImage)
         
-        // If MiDaS model is available, use it
-        if let model = model {
+        if model != nil {
             print("   - Using MiDaS model")
-            // This won't run since model is nil
             return nil
         }
         
-        // Fallback: create synthetic depth map
         print("   - Using synthetic depth map (fallback)")
         return generateSyntheticDepthMap(from: ciImage)
     }
@@ -599,17 +593,14 @@ class RoomStructureAnalyzer {
         print("🔍 [RoomAnalyzer] Analyzing room structure")
         var structure = RoomStructure()
         
-        // Detect edges/lines in image
         print("   - Detecting wall lines...")
         structure.wallLines = await detectWallLines(in: image)
         
-        // Find floor and ceiling regions
         print("   - Detecting floor region...")
         structure.floorRegion = detectFloorRegion(in: image, depthMap: depthMap)
         print("   - Detecting ceiling region...")
         structure.ceilingRegion = detectCeilingRegion(in: image, depthMap: depthMap)
         
-        // Calculate vanishing point
         print("   - Calculating vanishing point...")
         structure.vanishingPoint = calculateVanishingPoint(from: structure.wallLines)
         
@@ -624,7 +615,6 @@ class RoomStructureAnalyzer {
             return []
         }
         
-        // Use Vision to detect edges
         let request = VNDetectContoursRequest()
         request.contrastAdjustment = 1.0
         request.detectsDarkOnLight = true
@@ -639,54 +629,49 @@ class RoomStructureAnalyzer {
             return []
         }
         
-        var lines: [RoomStructure.Line] = []
-        
-        if let observations = request.results {
-            print("   - Found \(observations.count) contours")
-            
-            for (index, contour) in observations.enumerated() {
-                let path = contour.normalizedPath
-                let bounds = path.boundingBox
-                
-                // Top edge
-                lines.append(RoomStructure.Line(
-                    start: CGPoint(x: bounds.minX, y: bounds.maxY),
-                    end: CGPoint(x: bounds.maxX, y: bounds.maxY),
-                    confidence: Float(contour.confidence)
-                ))
-                
-                // Bottom edge
-                lines.append(RoomStructure.Line(
-                    start: CGPoint(x: bounds.minX, y: bounds.minY),
-                    end: CGPoint(x: bounds.maxX, y: bounds.minY),
-                    confidence: Float(contour.confidence)
-                ))
-            }
-            
-            print("✅ [WallLineDetector] Extracted \(lines.count) lines from contours")
-        } else {
+        // results is already [VNContoursObservation]?
+        guard let observations = request.results else {
             print("⚠️ [WallLineDetector] No contours found")
+            return []
         }
         
+        var lines: [RoomStructure.Line] = []
+        print("   - Found \(observations.count) contours")
+        
+        for contour in observations {
+            let path = contour.normalizedPath
+            let bounds = path.boundingBox
+            let conf = contour.confidence
+            // Two axis-aligned lines from bounds (simple placeholder)
+            lines.append(RoomStructure.Line(
+                start: CGPoint(x: bounds.minX, y: bounds.maxY),
+                end: CGPoint(x: bounds.maxX, y: bounds.maxY),
+                confidence: Float(conf)
+            ))
+            lines.append(RoomStructure.Line(
+                start: CGPoint(x: bounds.minX, y: bounds.minY),
+                end: CGPoint(x: bounds.maxX, y: bounds.minY),
+                confidence: Float(conf)
+            ))
+        }
+        
+        print("✅ [WallLineDetector] Extracted \(lines.count) lines from contours")
         return lines
     }
     
     private func detectFloorRegion(in image: UIImage, depthMap: CIImage) -> CGRect? {
-        // Simple heuristic: floor is bottom 20% of image
         let region = CGRect(x: 0, y: 0.8, width: 1.0, height: 0.2)
         print("   - Floor region: \(region)")
         return region
     }
     
     private func detectCeilingRegion(in image: UIImage, depthMap: CIImage) -> CGRect? {
-        // Simple heuristic: ceiling is top 15% of image
         let region = CGRect(x: 0, y: 0, width: 1.0, height: 0.15)
         print("   - Ceiling region: \(region)")
         return region
     }
     
     private func calculateVanishingPoint(from lines: [RoomStructure.Line]) -> CGPoint? {
-        // Simplified: return center point
         let point = CGPoint(x: 0.5, y: 0.4)
         print("   - Vanishing point: \(point)")
         return point
@@ -702,17 +687,25 @@ class TextureProcessor {
             print("⚠️ [TextureProcessor] No CGImage available")
             return image
         }
+        guard let maskCG = mask.cgImage else {
+            print("⚠️ [TextureProcessor] Mask lacks CGImage; returning original image")
+            return image
+        }
         
         let ciImage = CIImage(cgImage: cgImage)
         let blurred = ciImage.applyingGaussianBlur(sigma: 10.0)
         
-        let filter = CIFilter(name: "CIBlendWithMask")!
+        guard let filter = CIFilter(name: "CIBlendWithMask") else {
+            print("⚠️ [TextureProcessor] Missing CIBlendWithMask filter")
+            return image
+        }
         filter.setValue(blurred, forKey: "inputImage")
         filter.setValue(ciImage, forKey: "inputBackgroundImage")
-        filter.setValue(CIImage(cgImage: mask.cgImage!), forKey: "inputMaskImage")
+        filter.setValue(CIImage(cgImage: maskCG), forKey: "inputMaskImage")
         
+        let context = CIContext()
         guard let output = filter.outputImage,
-              let cgOutput = CIContext().createCGImage(output, from: output.extent) else {
+              let cgOutput = context.createCGImage(output, from: output.extent) else {
             print("⚠️ [TextureProcessor] Inpainting failed")
             return image
         }
@@ -722,11 +715,601 @@ class TextureProcessor {
     }
 }
 
+// MARK: - Room Boundary Detection View with DRAGGABLE boundaries
+struct RoomBoundaryDetectionView: View {
+    let originalImage: UIImage
+    @State private var detectedBoundariesImage: UIImage?
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    @Environment(\.dismiss) var dismiss
+    
+    // Boundary positions (as percentages of image dimensions)
+    @State private var floorY: CGFloat = 0.85
+    @State private var ceilingY: CGFloat = 0.15
+    @State private var leftX: CGFloat = 0.12
+    @State private var rightX: CGFloat = 0.88
+    @State private var vanishingX: CGFloat = 0.5
+    @State private var vanishingY: CGFloat = 0.45
+    
+    @State private var showAdjustmentMode = false
+    
+    // Custom magenta color
+    private let magentaColor = Color(red: 1.0, green: 0.0, blue: 1.0)
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                if showAdjustmentMode {
+                    // Interactive adjustment view
+                    GeometryReader { geometry in
+                        ZStack {
+                            // Background image
+                            Image(uiImage: originalImage)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: geometry.size.width)
+                            
+                            // Overlay with draggable boundaries
+                            BoundaryLinesCanvas(
+                                imageSize: originalImage.size,
+                                floorY: floorY,
+                                ceilingY: ceilingY,
+                                leftX: leftX,
+                                rightX: rightX,
+                                vanishingX: vanishingX,
+                                vanishingY: vanishingY
+                            )
+                            .frame(width: geometry.size.width)
+                            
+                            // Draggable handles
+                            DraggableHandlesOverlay(
+                                geometry: geometry,
+                                imageSize: originalImage.size,
+                                floorY: $floorY,
+                                ceilingY: $ceilingY,
+                                leftX: $leftX,
+                                rightX: $rightX,
+                                vanishingX: $vanishingX,
+                                vanishingY: $vanishingY,
+                                magentaColor: magentaColor
+                            )
+                        }
+                    }
+                    
+                    // Adjustment instructions
+                    VStack(spacing: 12) {
+                        Text("Drag the circles to adjust boundaries")
+                            .font(.headline)
+                            .padding(.top, 8)
+                        
+                        HStack(spacing: 16) {
+                            Label("Floor", systemImage: "arrow.down")
+                                .foregroundColor(.green)
+                                .font(.caption)
+                            Label("Ceiling", systemImage: "arrow.up")
+                                .foregroundColor(.cyan)
+                                .font(.caption)
+                            Label("Walls", systemImage: "arrow.left.and.right")
+                                .foregroundColor(.red)
+                                .font(.caption)
+                            Label("Vanish", systemImage: "scope")
+                                .foregroundColor(magentaColor)
+                                .font(.caption)
+                        }
+                        .padding(.horizontal)
+                        
+                        HStack(spacing: 20) {
+                            Button("Reset") {
+                                withAnimation {
+                                    floorY = 0.85
+                                    ceilingY = 0.15
+                                    leftX = 0.12
+                                    rightX = 0.88
+                                    vanishingX = 0.5
+                                    vanishingY = 0.45
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button("Done Adjusting") {
+                                showAdjustmentMode = false
+                                generateFinalImage()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding(.bottom, 8)
+                    }
+                    .background(.ultraThinMaterial)
+                    
+                } else if let boundariesImage = detectedBoundariesImage {
+                    // View mode with zoom controls
+                    GeometryReader { geometry in
+                        ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                            Image(uiImage: boundariesImage)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: geometry.size.width)
+                                .scaleEffect(scale)
+                                .offset(offset)
+                                .gesture(
+                                    MagnificationGesture()
+                                        .onChanged { value in
+                                            let delta = value / lastScale
+                                            lastScale = value
+                                            scale *= delta
+                                        }
+                                        .onEnded { _ in
+                                            lastScale = 1.0
+                                            scale = min(max(scale, 0.5), 5.0)
+                                        }
+                                )
+                                .gesture(
+                                    DragGesture()
+                                        .onChanged { value in
+                                            offset = CGSize(
+                                                width: lastOffset.width + value.translation.width,
+                                                height: lastOffset.height + value.translation.height
+                                            )
+                                        }
+                                        .onEnded { _ in
+                                            lastOffset = offset
+                                        }
+                                )
+                        }
+                    }
+                    
+                    // Zoom controls
+                    HStack(spacing: 20) {
+                        Button(action: {
+                            withAnimation { scale = max(0.5, scale - 0.5) }
+                        }) {
+                            Image(systemName: "minus.magnifyingglass")
+                                .font(.title2)
+                                .padding()
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .clipShape(Circle())
+                        }
+                        
+                        Button("Adjust Boundaries") {
+                            showAdjustmentMode = true
+                        }
+                        .font(.headline)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(Color.orange)
+                        .foregroundColor(.white)
+                        .cornerRadius(20)
+                        
+                        Button(action: {
+                            withAnimation {
+                                scale = 1.0
+                                offset = .zero
+                                lastOffset = .zero
+                            }
+                        }) {
+                            Text("Reset")
+                                .font(.headline)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                                .background(Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(20)
+                        }
+                        
+                        Button(action: {
+                            withAnimation { scale = min(5.0, scale + 0.5) }
+                        }) {
+                            Image(systemName: "plus.magnifyingglass")
+                                .font(.title2)
+                                .padding()
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .clipShape(Circle())
+                        }
+                    }
+                    .padding()
+                    
+                } else {
+                    ProgressView("Detecting room boundaries...")
+                        .padding()
+                }
+            }
+            .navigationTitle("Room Boundaries")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .onAppear { generateFinalImage() }
+    }
+    
+    func generateFinalImage() {
+        Task {
+            let result = await drawBoundariesOnImage()
+            await MainActor.run { detectedBoundariesImage = result }
+        }
+    }
+    
+    func drawBoundariesOnImage() async -> UIImage {
+        let width = originalImage.size.width
+        let height = originalImage.size.height
+        
+        let renderer = UIGraphicsImageRenderer(size: originalImage.size)
+        return renderer.image { context in
+            // Draw original image
+            originalImage.draw(at: .zero)
+            
+            let cgContext = context.cgContext
+            
+            // Draw floor boundary in GREEN
+            cgContext.setStrokeColor(UIColor.green.cgColor)
+            cgContext.setLineWidth(15.0)
+            let floorYPos = floorY * height
+            cgContext.move(to: CGPoint(x: 0, y: floorYPos))
+            cgContext.addLine(to: CGPoint(x: width, y: floorYPos))
+            cgContext.strokePath()
+            
+            let floorLabel = "FLOOR"
+            let floorAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 60),
+                .foregroundColor: UIColor.green,
+                .strokeColor: UIColor.black,
+                .strokeWidth: -4.0
+            ]
+            floorLabel.draw(at: CGPoint(x: 50, y: floorYPos - 80), withAttributes: floorAttrs)
+            
+            // Draw ceiling boundary in CYAN
+            cgContext.setStrokeColor(UIColor.cyan.cgColor)
+            cgContext.setLineWidth(15.0)
+            let ceilingYPos = ceilingY * height
+            cgContext.move(to: CGPoint(x: 0, y: ceilingYPos))
+            cgContext.addLine(to: CGPoint(x: width, y: ceilingYPos))
+            cgContext.strokePath()
+            
+            let ceilingLabel = "CEILING"
+            let ceilingAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 60),
+                .foregroundColor: UIColor.cyan,
+                .strokeColor: UIColor.black,
+                .strokeWidth: -4.0
+            ]
+            ceilingLabel.draw(at: CGPoint(x: 50, y: ceilingYPos + 30), withAttributes: ceilingAttrs)
+            
+            // Draw left wall in RED
+            cgContext.setStrokeColor(UIColor.red.cgColor)
+            cgContext.setLineWidth(12.0)
+            let leftXPos = leftX * width
+            cgContext.move(to: CGPoint(x: leftXPos, y: 0))
+            cgContext.addLine(to: CGPoint(x: leftXPos, y: height))
+            cgContext.strokePath()
+            
+            let leftLabel = "LEFT"
+            let leftAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 50),
+                .foregroundColor: UIColor.red,
+                .strokeColor: UIColor.white,
+                .strokeWidth: -3.0
+            ]
+            leftLabel.draw(at: CGPoint(x: leftXPos + 30, y: height / 2), withAttributes: leftAttrs)
+            
+            // Draw right wall in YELLOW
+            cgContext.setStrokeColor(UIColor.yellow.cgColor)
+            cgContext.setLineWidth(12.0)
+            let rightXPos = rightX * width
+            cgContext.move(to: CGPoint(x: rightXPos, y: 0))
+            cgContext.addLine(to: CGPoint(x: rightXPos, y: height))
+            cgContext.strokePath()
+            
+            let rightLabel = "RIGHT"
+            let rightAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 50),
+                .foregroundColor: UIColor.yellow,
+                .strokeColor: UIColor.black,
+                .strokeWidth: -3.0
+            ]
+            rightLabel.draw(at: CGPoint(x: rightXPos - 150, y: height / 2), withAttributes: rightAttrs)
+            
+            // Draw vanishing point in MAGENTA
+            cgContext.setFillColor(UIColor.magenta.cgColor)
+            let vpX = vanishingX * width
+            let vpY = vanishingY * height
+            let vpRadius: CGFloat = 40
+            let vpRect = CGRect(x: vpX - vpRadius, y: vpY - vpRadius, width: vpRadius * 2, height: vpRadius * 2)
+            cgContext.fillEllipse(in: vpRect)
+            
+            // Crosshair
+            cgContext.setStrokeColor(UIColor.white.cgColor)
+            cgContext.setLineWidth(5.0)
+            cgContext.move(to: CGPoint(x: vpX - 80, y: vpY))
+            cgContext.addLine(to: CGPoint(x: vpX + 80, y: vpY))
+            cgContext.move(to: CGPoint(x: vpX, y: vpY - 80))
+            cgContext.addLine(to: CGPoint(x: vpX, y: vpY + 80))
+            cgContext.strokePath()
+            
+            let vpLabel = "VP"
+            let vpAttrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 40),
+                .foregroundColor: UIColor.magenta,
+                .strokeColor: UIColor.white,
+                .strokeWidth: -3.0
+            ]
+            vpLabel.draw(at: CGPoint(x: vpX - 30, y: vpY - 100), withAttributes: vpAttrs)
+        }
+    }
+}
+
+// MARK: - Boundary Lines Canvas (fixed: no top-level `let` in ViewBuilder)
+struct BoundaryLinesCanvas: View {
+    let imageSize: CGSize
+    let floorY: CGFloat
+    let ceilingY: CGFloat
+    let leftX: CGFloat
+    let rightX: CGFloat
+    let vanishingX: CGFloat
+    let vanishingY: CGFloat
+
+    var body: some View {
+        GeometryReader { geometry in
+            BoundaryLinesCanvasInner(
+                calc: calculateImageBounds(size: geometry.size),
+                floorY: floorY,
+                ceilingY: ceilingY,
+                leftX: leftX,
+                rightX: rightX,
+                vanishingX: vanishingX,
+                vanishingY: vanishingY
+            )
+        }
+    }
+
+    private func calculateImageBounds(size: CGSize) -> (imageWidth: CGFloat, imageHeight: CGFloat, offsetX: CGFloat, offsetY: CGFloat) {
+        let imageAspect = imageSize.width / imageSize.height
+        let viewAspect = size.width / size.height
+
+        var imageWidth: CGFloat
+        var imageHeight: CGFloat
+        var offsetX: CGFloat = 0
+        var offsetY: CGFloat = 0
+
+        if imageAspect > viewAspect {
+            imageWidth = size.width
+            imageHeight = size.width / imageAspect
+            offsetY = (size.height - imageHeight) / 2
+        } else {
+            imageHeight = size.height
+            imageWidth = size.height * imageAspect
+            offsetX = (size.width - imageWidth) / 2
+        }
+
+        return (imageWidth, imageHeight, offsetX, offsetY)
+    }
+}
+
+private struct BoundaryLinesCanvasInner: View {
+    let calc: (imageWidth: CGFloat, imageHeight: CGFloat, offsetX: CGFloat, offsetY: CGFloat)
+    let floorY: CGFloat
+    let ceilingY: CGFloat
+    let leftX: CGFloat
+    let rightX: CGFloat
+    let vanishingX: CGFloat
+    let vanishingY: CGFloat
+
+    var body: some View {
+        ZStack {
+            // Floor line (GREEN)
+            Path { path in
+                let y = calc.offsetY + floorY * calc.imageHeight
+                path.move(to: CGPoint(x: calc.offsetX, y: y))
+                path.addLine(to: CGPoint(x: calc.offsetX + calc.imageWidth, y: y))
+            }
+            .stroke(Color.green, lineWidth: 8)
+
+            // Ceiling line (CYAN)
+            Path { path in
+                let y = calc.offsetY + ceilingY * calc.imageHeight
+                path.move(to: CGPoint(x: calc.offsetX, y: y))
+                path.addLine(to: CGPoint(x: calc.offsetX + calc.imageWidth, y: y))
+            }
+            .stroke(Color.cyan, lineWidth: 8)
+
+            // Left wall line (RED)
+            Path { path in
+                let x = calc.offsetX + leftX * calc.imageWidth
+                path.move(to: CGPoint(x: x, y: calc.offsetY))
+                path.addLine(to: CGPoint(x: x, y: calc.offsetY + calc.imageHeight))
+            }
+            .stroke(Color.red, lineWidth: 6)
+
+            // Right wall line (YELLOW)
+            Path { path in
+                let x = calc.offsetX + rightX * calc.imageWidth
+                path.move(to: CGPoint(x: x, y: calc.offsetY))
+                path.addLine(to: CGPoint(x: x, y: calc.offsetY + calc.imageHeight))
+            }
+            .stroke(Color.yellow, lineWidth: 6)
+
+            // Vanishing point (MAGENTA)
+            Circle()
+                .fill(Color(red: 1.0, green: 0.0, blue: 1.0))
+                .frame(width: 30, height: 30)
+                .position(
+                    x: calc.offsetX + vanishingX * calc.imageWidth,
+                    y: calc.offsetY + vanishingY * calc.imageHeight
+                )
+
+            // Crosshair
+            Path { path in
+                let vpX = calc.offsetX + vanishingX * calc.imageWidth
+                let vpY = calc.offsetY + vanishingY * calc.imageHeight
+                path.move(to: CGPoint(x: vpX - 30, y: vpY))
+                path.addLine(to: CGPoint(x: vpX + 30, y: vpY))
+                path.move(to: CGPoint(x: vpX, y: vpY - 30))
+                path.addLine(to: CGPoint(x: vpX, y: vpY + 30))
+            }
+            .stroke(Color.white, lineWidth: 3)
+        }
+    }
+}
+
+
+
+// MARK: - Draggable Handles Overlay (fixed: no top-level lets in ViewBuilder)
+struct DraggableHandlesOverlay: View {
+    let geometry: GeometryProxy
+    let imageSize: CGSize
+    @Binding var floorY: CGFloat
+    @Binding var ceilingY: CGFloat
+    @Binding var leftX: CGFloat
+    @Binding var rightX: CGFloat
+    @Binding var vanishingX: CGFloat
+    @Binding var vanishingY: CGFloat
+    let magentaColor: Color
+
+    var body: some View {
+        DraggableHandlesOverlayInner(
+            calc: computeBounds(),
+            floorY: $floorY,
+            ceilingY: $ceilingY,
+            leftX: $leftX,
+            rightX: $rightX,
+            vanishingX: $vanishingX,
+            vanishingY: $vanishingY,
+            magentaColor: magentaColor
+        )
+    }
+
+    private func computeBounds() -> (imageWidth: CGFloat, imageHeight: CGFloat, offsetX: CGFloat, offsetY: CGFloat) {
+        let imageAspect = imageSize.width / imageSize.height
+        let viewAspect = geometry.size.width / geometry.size.height
+
+        var imageWidth: CGFloat
+        var imageHeight: CGFloat
+        var offsetX: CGFloat = 0
+        var offsetY: CGFloat = 0
+
+        if imageAspect > viewAspect {
+            imageWidth = geometry.size.width
+            imageHeight = geometry.size.width / imageAspect
+            offsetY = (geometry.size.height - imageHeight) / 2
+        } else {
+            imageHeight = geometry.size.height
+            imageWidth = geometry.size.height * imageAspect
+            offsetX = (geometry.size.width - imageWidth) / 2
+        }
+
+        return (imageWidth, imageHeight, offsetX, offsetY)
+    }
+}
+
+private struct DraggableHandlesOverlayInner: View {
+    let calc: (imageWidth: CGFloat, imageHeight: CGFloat, offsetX: CGFloat, offsetY: CGFloat)
+    @Binding var floorY: CGFloat
+    @Binding var ceilingY: CGFloat
+    @Binding var leftX: CGFloat
+    @Binding var rightX: CGFloat
+    @Binding var vanishingX: CGFloat
+    @Binding var vanishingY: CGFloat
+    let magentaColor: Color
+
+    var body: some View {
+        ZStack {
+            // Floor handle (GREEN)
+            DraggableHandle(color: .green, icon: "arrow.down.circle.fill")
+                .position(
+                    x: calc.offsetX + calc.imageWidth / 2,
+                    y: calc.offsetY + floorY * calc.imageHeight
+                )
+                .gesture(
+                    DragGesture().onChanged { value in
+                        let newY = value.location.y - calc.offsetY
+                        floorY = min(max(newY / calc.imageHeight, 0.5), 0.95)
+                    }
+                )
+
+            // Ceiling handle (CYAN)
+            DraggableHandle(color: .cyan, icon: "arrow.up.circle.fill")
+                .position(
+                    x: calc.offsetX + calc.imageWidth / 2,
+                    y: calc.offsetY + ceilingY * calc.imageHeight
+                )
+                .gesture(
+                    DragGesture().onChanged { value in
+                        let newY = value.location.y - calc.offsetY
+                        ceilingY = min(max(newY / calc.imageHeight, 0.05), 0.5)
+                    }
+                )
+
+            // Left wall handle (RED)
+            DraggableHandle(color: .red, icon: "arrow.left.circle.fill")
+                .position(
+                    x: calc.offsetX + leftX * calc.imageWidth,
+                    y: calc.offsetY + calc.imageHeight / 2
+                )
+                .gesture(
+                    DragGesture().onChanged { value in
+                        let newX = value.location.x - calc.offsetX
+                        leftX = min(max(newX / calc.imageWidth, 0.02), 0.4)
+                    }
+                )
+
+            // Right wall handle (YELLOW)
+            DraggableHandle(color: .yellow, icon: "arrow.right.circle.fill")
+                .position(
+                    x: calc.offsetX + rightX * calc.imageWidth,
+                    y: calc.offsetY + calc.imageHeight / 2
+                )
+                .gesture(
+                    DragGesture().onChanged { value in
+                        let newX = value.location.x - calc.offsetX
+                        rightX = min(max(newX / calc.imageWidth, 0.6), 0.98)
+                    }
+                )
+
+            // Vanishing point handle (MAGENTA)
+            DraggableHandle(color: magentaColor, icon: "scope", size: 50)
+                .position(
+                    x: calc.offsetX + vanishingX * calc.imageWidth,
+                    y: calc.offsetY + vanishingY * calc.imageHeight
+                )
+                .gesture(
+                    DragGesture().onChanged { value in
+                        let newX = value.location.x - calc.offsetX
+                        let newY = value.location.y - calc.offsetY
+                        vanishingX = min(max(newX / calc.imageWidth, 0.1), 0.9)
+                        vanishingY = min(max(newY / calc.imageHeight, 0.1), 0.9)
+                    }
+                )
+        }
+    }
+}
+
+
+// MARK: - Draggable Handle Component
+struct DraggableHandle: View {
+    let color: Color
+    let icon: String
+    var size: CGFloat = 44
+    
+    var body: some View {
+        Image(systemName: icon)
+            .font(.system(size: size))
+            .foregroundColor(color)
+            .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 2)
+            .shadow(color: color.opacity(0.5), radius: 10, x: 0, y: 0)
+    }
+}
+
 // MARK: - SwiftUI View
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
+    @State private var showRoomBoundaries = false
     @State private var adjustedWidth: Float = 4.0
     @State private var adjustedDepth: Float = 4.0
     @State private var adjustedHeight: Float = 2.8
@@ -740,9 +1323,15 @@ struct SinglePhotoRoomView: View {
                     .frame(maxHeight: 300)
                     .cornerRadius(12)
                     .padding()
-                    .onAppear {
-                        print("🖼️ [View] Displaying selected image")
-                    }
+                    .onAppear { print("🖼️ [View] Displaying selected image") }
+                
+                Button("Show Room Boundaries") {
+                    print("🏠 [View] Room boundaries button tapped")
+                    showRoomBoundaries = true
+                }
+                .buttonStyle(.borderedProminent)
+                .padding()
+                
             } else {
                 Button(action: {
                     print("🖼️ [View] Select photo button tapped")
@@ -776,9 +1365,7 @@ struct SinglePhotoRoomView: View {
                         .foregroundColor(.secondary)
                 }
                 .padding()
-                .onAppear {
-                    print("⏳ [View] Processing view appeared")
-                }
+                .onAppear { print("⏳ [View] Processing view appeared") }
             }
             
             if let dimensions = reconstructor.estimatedDimensions {
@@ -825,9 +1412,7 @@ struct SinglePhotoRoomView: View {
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(12)
                 .padding()
-                .onAppear {
-                    print("📊 [View] Dimensions view appeared")
-                }
+                .onAppear { print("📊 [View] Dimensions view appeared") }
                 
                 Button("Rebuild with Adjusted Dimensions") {
                     print("🔄 [View] Rebuild button tapped")
@@ -870,6 +1455,10 @@ struct SinglePhotoRoomView: View {
                     }
                 }
         }
+        // Room boundaries sheet: always returns a View via wrapper
+        .sheet(isPresented: $showRoomBoundaries) {
+            RoomBoundarySheetView(image: selectedImage)
+        }
         .onAppear {
             print("👁️ [View] SinglePhotoRoomView appeared")
             adjustedWidth = reconstructor.estimatedDimensions?.width ?? 4.0
@@ -891,7 +1480,6 @@ struct SinglePhotoRoomView: View {
             await MainActor.run {
                 reconstructor.estimatedDimensions = updatedDimensions
             }
-            
             if let image = selectedImage {
                 await reconstructor.processPhoto(image)
             }
@@ -900,12 +1488,23 @@ struct SinglePhotoRoomView: View {
     
     private func confidenceColor(_ confidence: Float) -> Color {
         switch confidence {
-        case 0.7...1.0:
-            return .green
-        case 0.4..<0.7:
-            return .orange
-        default:
-            return .red
+        case 0.7...1.0: return .green
+        case 0.4..<0.7: return .orange
+        default: return .red
+        }
+    }
+}
+
+// Wrapper view to guarantee the sheet always returns a View
+private struct RoomBoundarySheetView: View {
+    let image: UIImage?
+    var body: some View {
+        Group {
+            if let image {
+                RoomBoundaryDetectionView(originalImage: image)
+            } else {
+                EmptyView()
+            }
         }
     }
 }
@@ -913,7 +1512,7 @@ struct SinglePhotoRoomView: View {
 // MARK: - Photo Picker View
 struct PhotoPickerView: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) var dismiss
     
     func makeUIViewController(context: Context) -> UIImagePickerController {
         print("📱 [PhotoPicker] Creating UIImagePickerController")
@@ -925,9 +1524,7 @@ struct PhotoPickerView: UIViewControllerRepresentable {
     
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
     
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
     
     class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
         let parent: PhotoPickerView
@@ -945,12 +1542,12 @@ struct PhotoPickerView: UIViewControllerRepresentable {
             } else {
                 print("❌ [PhotoPicker] Failed to get UIImage")
             }
-            parent.presentationMode.wrappedValue.dismiss()
+            parent.dismiss()
         }
         
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             print("❌ [PhotoPicker] User cancelled")
-            parent.presentationMode.wrappedValue.dismiss()
+            parent.dismiss()
         }
     }
 }
@@ -979,7 +1576,6 @@ struct SceneKitViewer: View {
                 }
             }
             
-            // Control hints overlay
             if showControls {
                 VStack {
                     Spacer()
@@ -996,9 +1592,7 @@ struct SceneKitViewer: View {
                 .onAppear {
                     print("ℹ️ [Viewer] Controls hint displayed")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        withAnimation {
-                            showControls = false
-                        }
+                        withAnimation { showControls = false }
                     }
                 }
             }
