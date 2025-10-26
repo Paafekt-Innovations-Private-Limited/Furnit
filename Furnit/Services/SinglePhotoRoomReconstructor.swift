@@ -308,65 +308,85 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let scene = SCNScene()
         print("✅ [RoomBuilder] SCNScene created")
         
-        // Create room box - USE BOX GEOMETRY FOR PROPER INSIDE VIEW
-        let roomBox = SCNBox(width: CGFloat(dimensions.width),
-                            height: CGFloat(dimensions.height),
-                            length: CGFloat(dimensions.depth),
-                            chamferRadius: 0)
+        // Create room container
+        let roomNode = SCNNode()
         
-        // Apply textures to each face
-        print("🎨 [RoomBuilder] Applying textures to room box...")
+        // FLOOR - horizontal plane at y=0
+        print("🔨 [RoomBuilder] Creating floor...")
+        let floor = SCNPlane(width: CGFloat(dimensions.width), height: CGFloat(dimensions.depth))
+        let floorNode = SCNNode(geometry: floor)
+        floorNode.eulerAngles.x = -.pi / 2  // Rotate to be horizontal
+        floorNode.position = SCNVector3(0, 0, 0)
+        floor.firstMaterial?.diffuse.contents = floorTexture
+        floor.firstMaterial?.isDoubleSided = false
+        floor.firstMaterial?.lightingModel = .constant
+        roomNode.addChildNode(floorNode)
+        print("✅ [RoomBuilder] Floor at y=0")
         
-        // Front face (index 0) - your original photo
-        let frontMaterial = SCNMaterial()
-        frontMaterial.diffuse.contents = originalImage
-        frontMaterial.isDoubleSided = true
-        frontMaterial.lightingModel = .constant
-        print("   - Front: Original photo")
+        // CEILING - horizontal plane at y=height
+        print("🔨 [RoomBuilder] Creating ceiling...")
+        let ceiling = SCNPlane(width: CGFloat(dimensions.width), height: CGFloat(dimensions.depth))
+        let ceilingNode = SCNNode(geometry: ceiling)
+        ceilingNode.eulerAngles.x = .pi / 2  // Rotate to be horizontal, facing down
+        ceilingNode.position = SCNVector3(0, Float(dimensions.height), 0)
+        ceiling.firstMaterial?.diffuse.contents = UIColor(white: 0.95, alpha: 1.0)
+        ceiling.firstMaterial?.isDoubleSided = false
+        ceiling.firstMaterial?.lightingModel = .constant
+        roomNode.addChildNode(ceilingNode)
+        print("✅ [RoomBuilder] Ceiling at y=\(dimensions.height)")
         
-        // Right face (index 1)
-        let rightMaterial = SCNMaterial()
-        rightMaterial.diffuse.contents = wallTexture
-        rightMaterial.isDoubleSided = true
-        rightMaterial.lightingModel = .constant
-        print("   - Right: Wall texture")
+        // FRONT WALL (with your photo) - at negative Z
+        print("🔨 [RoomBuilder] Creating FRONT WALL with photo...")
+        let frontWall = SCNPlane(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
+        let frontNode = SCNNode(geometry: frontWall)
+        frontNode.position = SCNVector3(0, Float(dimensions.height) / 2, -Float(dimensions.depth) / 2)
+        frontNode.eulerAngles = SCNVector3(0, 0, 0)  // Facing camera (towards +Z)
+        frontWall.firstMaterial?.diffuse.contents = originalImage
+        frontWall.firstMaterial?.isDoubleSided = false
+        frontWall.firstMaterial?.lightingModel = .constant
+        roomNode.addChildNode(frontNode)
+        print("✅ [RoomBuilder] Front wall at z=-\(dimensions.depth/2)")
         
-        // Back face (index 2)
-        let backMaterial = SCNMaterial()
-        backMaterial.diffuse.contents = wallTexture
-        backMaterial.isDoubleSided = true
-        backMaterial.lightingModel = .constant
-        print("   - Back: Wall texture")
+        // BACK WALL - at positive Z
+        print("🔨 [RoomBuilder] Creating back wall...")
+        let backWall = SCNPlane(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
+        let backNode = SCNNode(geometry: backWall)
+        backNode.position = SCNVector3(0, Float(dimensions.height) / 2, Float(dimensions.depth) / 2)
+        backNode.eulerAngles = SCNVector3(0, Float.pi, 0)  // Rotated 180° to face inward
+        backWall.firstMaterial?.diffuse.contents = wallTexture
+        backWall.firstMaterial?.isDoubleSided = false
+        backWall.firstMaterial?.lightingModel = .constant
+        roomNode.addChildNode(backNode)
+        print("✅ [RoomBuilder] Back wall at z=+\(dimensions.depth/2)")
         
-        // Left face (index 3)
-        let leftMaterial = SCNMaterial()
-        leftMaterial.diffuse.contents = wallTexture
-        leftMaterial.isDoubleSided = true
-        leftMaterial.lightingModel = .constant
-        print("   - Left: Wall texture")
+        // LEFT WALL - at negative X
+        print("🔨 [RoomBuilder] Creating left wall...")
+        let leftWall = SCNPlane(width: CGFloat(dimensions.depth), height: CGFloat(dimensions.height))
+        let leftNode = SCNNode(geometry: leftWall)
+        leftNode.position = SCNVector3(-Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
+        leftNode.eulerAngles = SCNVector3(0, Float.pi / 2, 0)  // Rotated 90° to face right
+        leftWall.firstMaterial?.diffuse.contents = wallTexture
+        leftWall.firstMaterial?.isDoubleSided = false
+        leftWall.firstMaterial?.lightingModel = .constant
+        roomNode.addChildNode(leftNode)
+        print("✅ [RoomBuilder] Left wall at x=-\(dimensions.width/2)")
         
-        // Top face (index 4) - ceiling
-        let topMaterial = SCNMaterial()
-        topMaterial.diffuse.contents = UIColor(white: 0.95, alpha: 1.0)
-        topMaterial.isDoubleSided = true
-        topMaterial.lightingModel = .constant
-        print("   - Top: Ceiling")
+        // RIGHT WALL - at positive X
+        print("🔨 [RoomBuilder] Creating right wall...")
+        let rightWall = SCNPlane(width: CGFloat(dimensions.depth), height: CGFloat(dimensions.height))
+        let rightNode = SCNNode(geometry: rightWall)
+        rightNode.position = SCNVector3(Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
+        rightNode.eulerAngles = SCNVector3(0, -Float.pi / 2, 0)  // Rotated -90° to face left
+        rightWall.firstMaterial?.diffuse.contents = wallTexture
+        rightWall.firstMaterial?.isDoubleSided = false
+        rightWall.firstMaterial?.lightingModel = .constant
+        roomNode.addChildNode(rightNode)
+        print("✅ [RoomBuilder] Right wall at x=+\(dimensions.width/2)")
         
-        // Bottom face (index 5) - floor
-        let bottomMaterial = SCNMaterial()
-        bottomMaterial.diffuse.contents = floorTexture
-        bottomMaterial.isDoubleSided = true
-        bottomMaterial.lightingModel = .constant
-        print("   - Bottom: Floor texture")
+        scene.rootNode.addChildNode(roomNode)
+        print("✅ [RoomBuilder] All walls added to scene")
         
-        // Assign all materials to box
-        roomBox.materials = [frontMaterial, rightMaterial, backMaterial, leftMaterial, topMaterial, bottomMaterial]
-        
-        let roomNode = SCNNode(geometry: roomBox)
-        roomNode.position = SCNVector3(0, Float(dimensions.height) / 2, 0)
-        print("✅ [RoomBuilder] Room box created and positioned")
-        
-        // Add camera INSIDE the room, looking straight ahead at the front wall
+        // CAMERA - Inside room, looking at front wall with photo
         print("📷 [RoomBuilder] Setting up camera...")
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
@@ -374,51 +394,51 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         cameraNode.camera?.zNear = 0.1
         cameraNode.camera?.zFar = 100
         
-        // Position camera at eye level, centered, looking at front face
-        let camX: Float = 0
-        let camY = dimensions.height * 0.5  // Eye level
-        let camZ: Float = 0  // Center of room
-        cameraNode.position = SCNVector3(camX, camY, camZ)
+        // Position camera IN THE CENTER of the room at eye level
+        // Looking towards the FRONT WALL (negative Z direction)
+        let camPosition = SCNVector3(
+            0,  // Center horizontally
+            Float(dimensions.height) * 0.5,  // Eye level (half height)
+            0   // Center depth-wise
+        )
+        cameraNode.position = camPosition
         
-        // Look straight ahead (towards negative Z, which is the front face)
-        cameraNode.eulerAngles = SCNVector3(0, 0, 0)
+        // Point camera at the front wall (where the photo is)
+        let lookAtPoint = SCNVector3(
+            0,  // Same X as camera
+            Float(dimensions.height) * 0.5,  // Same Y as camera (eye level)
+            -Float(dimensions.depth) / 2  // Front wall position (negative Z)
+        )
+        cameraNode.look(at: lookAtPoint)
         
         scene.rootNode.addChildNode(cameraNode)
+        print("✅ [RoomBuilder] Camera at center: \(camPosition)")
+        print("   - Looking at front wall (photo): \(lookAtPoint)")
+        print("   - FOV: 70°")
         
-        print("✅ [RoomBuilder] Camera positioned INSIDE room at: (\(camX), \(camY), \(camZ))")
-        print("   - Looking straight ahead at front wall")
-        print("   - Field of view: 70°")
-        
-        // Add lighting
+        // LIGHTING
         print("💡 [RoomBuilder] Setting up lighting...")
-        
-        // Bright ambient light since we're using constant materials
         let ambientLight = SCNNode()
         ambientLight.light = SCNLight()
         ambientLight.light?.type = .ambient
         ambientLight.light?.intensity = 1000
         ambientLight.light?.color = UIColor.white
         scene.rootNode.addChildNode(ambientLight)
-        print("✅ [RoomBuilder] Ambient light added (intensity: 1000)")
-        
-        scene.rootNode.addChildNode(roomNode)
-        print("✅ [RoomBuilder] Room node added to scene root")
+        print("✅ [RoomBuilder] Ambient light (intensity: 1000)")
         
         // Export to USDZ
         print("💾 [RoomBuilder] Exporting to USDZ...")
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("room_\(UUID().uuidString).usdz")
-        print("   - Target URL: \(tempURL)")
         
         do {
             try scene.write(to: tempURL, options: nil, delegate: nil, progressHandler: nil)
-            print("✅ [RoomBuilder] Successfully exported to USDZ")
-            
             let fileSize = try FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? Int ?? 0
-            print("   - File size: \(fileSize) bytes")
-            
+            print("✅ [RoomBuilder] USDZ exported successfully")
+            print("   - URL: \(tempURL)")
+            print("   - Size: \(fileSize) bytes")
             return tempURL
         } catch {
-            print("❌ [RoomBuilder] Error exporting room: \(error)")
+            print("❌ [RoomBuilder] Export failed: \(error)")
             return nil
         }
     }
