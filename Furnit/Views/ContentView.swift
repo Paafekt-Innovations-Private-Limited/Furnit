@@ -65,20 +65,39 @@ struct HomeViewWithBottomBar: View {
     }
 }
 
-// MARK: - Home Tab
+// MARK: - Home Tab (UPDATED with Upload Button)
 struct HomeTab: View {
     @StateObject private var modelManager = USDZModelManager()
     @State private var showingSettings = false
+    @State private var showingPhotoRoomCreator = false  // ✨ NEW
     
     var body: some View {
         NavigationStack {
             VStack {
                 if modelManager.models.isEmpty {
-                    ContentUnavailableView(
-                        "No 3D Models Found",
-                        systemImage: "cube.transparent",
-                        description: Text("Add USDZ files to your project or check the model manager initialization")
-                    )
+                    // Empty state with upload suggestion
+                    VStack(spacing: 20) {
+                        ContentUnavailableView(
+                            "No 3D Models Found",
+                            systemImage: "cube.transparent",
+                            description: Text("Create your first room from a photo!")
+                        )
+                        
+                        // Quick action button for empty state
+                        Button(action: {
+                            showingPhotoRoomCreator = true
+                        }) {
+                            HStack {
+                                Image(systemName: "photo.badge.plus")
+                                Text("Create Room from Photo")
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding()
+                            .background(Color.blue)
+                            .cornerRadius(12)
+                        }
+                    }
                     .onAppear {
                         print("❌ [HomeTab] Showing 'No Models' view - modelManager.models is EMPTY")
                         print("❌ [HomeTab] Models count: \(modelManager.models.count)")
@@ -111,6 +130,18 @@ struct HomeTab: View {
             .navigationTitle("3D Room Models")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                // ✨ NEW: Upload Photo Button
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showingPhotoRoomCreator = true
+                    } label: {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.title3)
+                    }
+                    .accessibilityLabel("Create room from photo")
+                }
+                
+                // Existing Settings Button
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showingSettings = true
@@ -121,6 +152,18 @@ struct HomeTab: View {
                     .accessibilityLabel("Settings")
                 }
             }
+            // ✨ NEW: Photo Room Creator Sheet
+            .sheet(isPresented: $showingPhotoRoomCreator) {
+                NavigationStack {
+                    SinglePhotoRoomView()
+                        .navigationBarItems(
+                            trailing: Button("Done") {
+                                showingPhotoRoomCreator = false
+                            }
+                        )
+                }
+            }
+            // Existing Settings Sheet
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
             }
@@ -224,12 +267,9 @@ struct FavoritesTab: View {
                 if modelManager.models.isEmpty {
                     ContentUnavailableView(
                         "No Favorites Yet",
-                        systemImage: "heart",
-                        description: Text("Start exploring and save your favorite rooms")
+                        systemImage: "heart.slash",
+                        description: Text("Your favorite rooms will appear here")
                     )
-                    .onAppear {
-                        print("❌ [FavoritesTab] Showing 'No Favorites' - modelManager.models is EMPTY")
-                    }
                 } else {
                     List {
                         ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
@@ -241,16 +281,10 @@ struct FavoritesTab: View {
                         }
                     }
                     .listStyle(PlainListStyle())
-                    .onAppear {
-                        print("✅ [FavoritesTab] Showing list with \(modelManager.models.count) models")
-                    }
                 }
             }
             .navigationTitle("Favorites")
             .navigationBarTitleDisplayMode(.large)
-        }
-        .onAppear {
-            print("❤️ [FavoritesTab] onAppear - Models count: \(modelManager.models.count)")
         }
     }
 }
@@ -263,12 +297,19 @@ struct ProfileTab: View {
     var body: some View {
         NavigationStack {
             List {
-                // User Info Section
+                // Profile Header
                 Section {
-                    HStack {
-                        Image(systemName: "person.circle.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(.blue)
+                    HStack(spacing: 16) {
+                        // Avatar
+                        Circle()
+                            .fill(Color.blue.gradient)
+                            .frame(width: 60, height: 60)
+                            .overlay(
+                                Text(String(authManager.currentUser?.name.prefix(1) ?? "U"))
+                                    .font(.title)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                            )
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text(authManager.currentUser?.name ?? "User")
