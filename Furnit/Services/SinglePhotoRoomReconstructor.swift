@@ -382,7 +382,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         // Generate textures from photo
         print("🎨 [RoomBuilder] Generating textures from photo...")
         let floorTexture = generateFloorTexture(from: originalImage, structure: structure)
-        let wallTexture = originalImage // Use full photo for front wall
+        let frontWallTexture = generateFrontWallTexture(from: originalImage, structure: structure) // ✅ Use boundaries
         let leftWallTexture = generateLeftWallTexture(from: originalImage, structure: structure)
         let rightWallTexture = generateRightWallTexture(from: originalImage, structure: structure)
         let backWallColor = generateWallTexture(from: originalImage) // Just color for back
@@ -426,7 +426,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                                length: 0.01,
                                chamferRadius: 0)
         let frontMaterial = SCNMaterial()
-        frontMaterial.diffuse.contents = wallTexture
+        frontMaterial.diffuse.contents = frontWallTexture
         frontMaterial.isDoubleSided = true
         frontWall.materials = [frontMaterial]
         
@@ -526,25 +526,23 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let imageHeight = CGFloat(cgImage.height)
         let imageWidth = CGFloat(cgImage.width)
         
-        // ✅ Use adjusted floor boundary
-        let floorYPos = structure.floorY
-        let floorHeight = 1.0 - floorYPos
+        // ✅ Use adjusted boundaries - LEFT to RIGHT, FLOOR to BOTTOM
+        let leftXPos = structure.leftX * imageWidth
+        let rightXPos = structure.rightX * imageWidth
+        let floorYPos = structure.floorY * imageHeight
         
         let cropRect = CGRect(
-            x: 0,
-            y: imageHeight * floorYPos,
-            width: imageWidth,
-            height: imageHeight * floorHeight
+            x: leftXPos,
+            y: floorYPos,
+            width: rightXPos - leftXPos,
+            height: imageHeight - floorYPos
         )
         
-        print("   - Using adjusted boundary: floorY=\(floorYPos)")
-        print("   - Crop rect: \(cropRect)")
-        
-        print("   - Cropping bottom 25% for floor")
+        print("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) F:\(structure.floorY)")
         print("   - Crop rect: \(cropRect)")
         
         if let croppedImage = cgImage.cropping(to: cropRect) {
-            print("✅ [TextureGen] Floor texture extracted")
+            print("✅ [TextureGen] Floor texture extracted from boundaries")
             return UIImage(cgImage: croppedImage)
         }
         
@@ -575,6 +573,43 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let averageColor = ciImage.averageColor(in: centerRect) ?? UIColor(white: 0.9, alpha: 1.0)
         print("✅ [TextureGen] Wall color sampled")
         return createSolidColorTexture(color: averageColor)
+    }
+    
+    // ✅ NEW: Extract FRONT wall texture within adjusted boundaries
+    private func generateFrontWallTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
+        print("🎨 [TextureGen] Generating FRONT wall texture from boundaries")
+        
+        guard let cgImage = image.cgImage else {
+            print("⚠️ [TextureGen] No CGImage, using original")
+            return image
+        }
+        
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+        
+        // Extract the rectangle WITHIN the boundaries
+        let leftXPos = structure.leftX * imageWidth
+        let rightXPos = structure.rightX * imageWidth
+        let ceilingYPos = structure.ceilingY * imageHeight
+        let floorYPos = structure.floorY * imageHeight
+        
+        let cropRect = CGRect(
+            x: leftXPos,
+            y: ceilingYPos,
+            width: rightXPos - leftXPos,
+            height: floorYPos - ceilingYPos
+        )
+        
+        print("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) C:\(structure.ceilingY) F:\(structure.floorY)")
+        print("   - Crop rect: \(cropRect)")
+        
+        if let croppedImage = cgImage.cropping(to: cropRect) {
+            print("✅ [TextureGen] Front wall texture extracted from boundaries")
+            return UIImage(cgImage: croppedImage)
+        }
+        
+        print("⚠️ [TextureGen] Failed to crop, using original")
+        return image
     }
     
     // ✅ NEW: Extract LEFT wall texture from adjusted boundary
