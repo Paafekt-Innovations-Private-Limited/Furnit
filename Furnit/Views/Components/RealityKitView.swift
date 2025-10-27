@@ -278,14 +278,33 @@ struct RealityKitView: UIViewRepresentable {
                 }
                 
                 // Position custom camera inside the room bounds
-                if let cameraAnchor = coordinator.cameraAnchor {
-                    let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.2, 0))
-                    cameraAnchor.transform.translation = safeCameraPosition
+                if let cameraAnchor = coordinator.cameraAnchor, let bounds = boundaryManager.bounds {
+                    // ✅ NEW: Use intelligent camera positioning based on room structure
+                    let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition()
                     
-                    // Set initial camera to look straight ahead
-                    cameraAnchor.transform.rotation = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
+                    // Set camera position
+                    cameraAnchor.transform.translation = cameraPosition
                     
-                    print("📷 Custom camera positioned at: \(safeCameraPosition)")
+                    // Make camera look at the calculated target point
+                    let lookDirection = normalize(lookAtPosition - cameraPosition)
+                    let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
+                    cameraAnchor.transform.rotation = lookRotation
+                    
+                    print("📷 [RealityKitView] Camera positioned intelligently:")
+                    print("   📍 Position: \(cameraPosition)")
+                    print("   👁️ Looking at: \(lookAtPosition)")
+                    print("   🧭 Direction: \(lookDirection)")
+                } else if let cameraAnchor = coordinator.cameraAnchor {
+                    // Fallback if no bounds - use default position
+                    let defaultPosition = SIMD3<Float>(0, 1.5, 3)
+                    cameraAnchor.transform.translation = defaultPosition
+                    
+                    // Look toward origin
+                    let lookDirection = normalize(SIMD3<Float>(0, 1.4, 0) - defaultPosition)
+                    let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
+                    cameraAnchor.transform.rotation = lookRotation
+                    
+                    print("📷 Custom camera positioned at default: \(defaultPosition) (no bounds available)")
                 }
                 
                 // Set up camera movement manager with custom camera references
