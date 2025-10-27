@@ -98,14 +98,18 @@ class USDZModelManager: ObservableObject {
     func refreshModels() {
         print("🔄 [USDZModelManager] Refreshing models...")
         loadModels()
+        print("✅ [USDZModelManager] Refresh complete. Now have \(models.count) models")
     }
     
-    // ✅ NEW: Save room functionality
+    // ✅ FIXED: Save room with lighting and proper refresh
     func saveRoom(scene: SCNScene, name: String, completion: @escaping (Bool, String?) -> Void) {
         print("💾 [USDZModelManager] Starting to save room: \(name)")
         
         let fileName = sanitizeFileName(name)
         let fileURL = modelsDirectory.appendingPathComponent("\(fileName).usdz")
+        
+        // ✅ ADD LIGHTING TO THE SCENE BEFORE EXPORT
+        addLightingToScene(scene)
         
         // Export scene to USDZ
         scene.write(to: fileURL, options: nil, delegate: nil) { progress, error, _ in
@@ -119,9 +123,59 @@ class USDZModelManager: ObservableObject {
             
             if progress >= 1.0 {
                 print("✅ [USDZModelManager] Export complete: \(fileURL.lastPathComponent)")
-                completion(true, nil)
+                
+                // ✅ REFRESH MODELS LIST AFTER SAVE
+                DispatchQueue.main.async {
+                    self.refreshModels()
+                    completion(true, nil)
+                }
             }
         }
+    }
+    
+    // ✅ NEW: Add proper lighting to exported scenes
+    private func addLightingToScene(_ scene: SCNScene) {
+        print("💡 [USDZModelManager] Adding lighting to scene...")
+        
+        // Remove any existing lights to avoid conflicts
+        scene.rootNode.childNodes.filter { $0.light != nil }.forEach { $0.removeFromParentNode() }
+        
+        // Add ambient light (soft overall illumination)
+        let ambientLight = SCNLight()
+        ambientLight.type = .ambient
+        ambientLight.color = UIColor.white
+        ambientLight.intensity = 300
+        let ambientNode = SCNNode()
+        ambientNode.light = ambientLight
+        scene.rootNode.addChildNode(ambientNode)
+        print("   ✅ Added ambient light (intensity: 300)")
+        
+        // Add directional light from above (like sun)
+        let directionalLight = SCNLight()
+        directionalLight.type = .directional
+        directionalLight.color = UIColor.white
+        directionalLight.intensity = 800
+        directionalLight.castsShadow = true
+        directionalLight.shadowMode = .deferred
+        let directionalNode = SCNNode()
+        directionalNode.light = directionalLight
+        directionalNode.position = SCNVector3(0, 5, 0)
+        directionalNode.eulerAngles = SCNVector3(-Float.pi / 3, 0, 0) // Angle downward
+        scene.rootNode.addChildNode(directionalNode)
+        print("   ✅ Added directional light (intensity: 800)")
+        
+        // Add fill light from front (helps with shadows)
+        let fillLight = SCNLight()
+        fillLight.type = .omni
+        fillLight.color = UIColor(white: 0.9, alpha: 1.0)
+        fillLight.intensity = 400
+        let fillNode = SCNNode()
+        fillNode.light = fillLight
+        fillNode.position = SCNVector3(0, 1.5, 3)
+        scene.rootNode.addChildNode(fillNode)
+        print("   ✅ Added fill light (intensity: 400)")
+        
+        print("💡 [USDZModelManager] Lighting setup complete")
     }
     
     private func sanitizeFileName(_ name: String) -> String {

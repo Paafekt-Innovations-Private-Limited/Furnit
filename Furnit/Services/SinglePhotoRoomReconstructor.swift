@@ -1995,34 +1995,47 @@ struct SceneKitViewer: View {
             return
         }
         
-        print("💾 [Viewer] Starting room save process: \(roomName)")
+        let savedName = roomName  // ✅ Capture the name BEFORE clearing
+        print("💾 [Viewer] Starting room save process: \(savedName)")
         
         withAnimation(.easeIn(duration: 0.3)) {
             isSavingRoom = true
             saveProgress = 0.0
         }
         
-        // Simulate progress with timer
+        var saveStarted = false
+        var saveCompleted = false
+        var saveSuccess = false
+        var saveError: String?
+        
+        // Progress timer
         savingTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
-            self.saveProgress += 0.015
+            // Only advance progress if not waiting for save completion
+            if !saveStarted || (saveStarted && saveCompleted) {
+                self.saveProgress += 0.015
+            }
             
             if self.saveProgress >= 0.3 && self.saveProgress < 0.32 {
                 print("📦 [Viewer] Preparing model...")
-            } else if self.saveProgress >= 0.6 && self.saveProgress < 0.62 {
+            } else if self.saveProgress >= 0.6 && !saveStarted {
                 print("📄 [Viewer] Exporting USDZ...")
-                // Actually save the room
-                self.modelManager.saveRoom(scene: scene, name: self.roomName) { success, error in
-                    if success {
-                        print("✅ [Viewer] Room saved successfully")
-                    } else {
-                        print("❌ [Viewer] Failed to save room: \(error ?? "unknown error")")
+                saveStarted = true
+                
+                // ✅ Actually save the room with completion handler
+                self.modelManager.saveRoom(scene: scene, name: savedName) { success, error in
+                    DispatchQueue.main.async {
+                        saveCompleted = true
+                        saveSuccess = success
+                        saveError = error
+                        print(success ? "✅ [Viewer] Room saved successfully" : "❌ [Viewer] Failed to save: \(error ?? "unknown")")
                     }
                 }
             } else if self.saveProgress >= 0.9 && self.saveProgress < 0.92 {
                 print("💾 [Viewer] Finalizing...")
             }
             
-            if self.saveProgress >= 1.0 {
+            // ✅ Only finish when BOTH progress complete AND save completed
+            if self.saveProgress >= 1.0 && saveCompleted {
                 timer.invalidate()
                 self.savingTimer = nil
                 
@@ -2030,12 +2043,18 @@ struct SceneKitViewer: View {
                     self.isSavingRoom = false
                 }
                 
-                // Check if save was successful
+                // Show result based on actual save status
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    self.saveAlertMessage = "Room '\(self.roomName)' saved successfully!"
-                    self.showSaveAlert = true
-                    self.roomName = ""
-                    print("✅ [Viewer] Save complete!")
+                    if saveSuccess {
+                        self.saveAlertMessage = "Room '\(savedName)' saved successfully!"
+                        self.showSaveAlert = true
+                        self.roomName = ""
+                        print("✅ [Viewer] Save complete!")
+                    } else {
+                        self.saveAlertMessage = "Failed to save room: \(saveError ?? "Unknown error")"
+                        self.showSaveAlert = true
+                        print("❌ [Viewer] Save failed!")
+                    }
                 }
             }
         }
