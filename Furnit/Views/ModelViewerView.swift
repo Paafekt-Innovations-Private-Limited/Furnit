@@ -28,6 +28,25 @@ struct ModelViewerView: View {
     @State private var cameraInitProgress: Double = 0.0
     @State private var initializationTimer: Timer?
     
+    init(model: USDZModel) {
+        self.model = model
+        print("🏗️ [ModelViewerView.init] ========================================")
+        print("🏗️ [ModelViewerView.init] Initializing for model:")
+        print("   - Display name: \(model.displayName)")
+        print("   - File name: \(model.fileName)")
+        print("   - Is saved room: \(model.isSavedRoom)")
+        print("   - Model ID: \(model.id)")
+        
+        // Check if temporaryURL can be created
+        if let url = model.temporaryURL {
+            print("✅ [ModelViewerView.init] Model URL available: \(url.path)")
+            print("   - URL exists: \(FileManager.default.fileExists(atPath: url.path))")
+        } else {
+            print("❌ [ModelViewerView.init] Model URL is NIL!")
+        }
+        print("🏗️ [ModelViewerView.init] ========================================")
+    }
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -38,6 +57,11 @@ struct ModelViewerView: View {
                     isARActive: isARActive
                 )
                     .ignoresSafeArea(.all)
+                    .onAppear {
+                        print("👁️ [ModelViewerView.body] RealityKitView onAppear")
+                        print("   - Model: \(model.displayName)")
+                        print("   - Is saved room: \(model.isSavedRoom)")
+                    }
                 
                 // NEW: Camera initialization overlay with progress
                 if isInitializingCamera {
@@ -67,6 +91,15 @@ struct ModelViewerView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(screenshotMessage)
+        }
+        .onAppear {
+            print("🎬 [ModelViewerView] View appeared")
+            print("   - Model: \(model.displayName)")
+            print("   - File: \(model.fileName)")
+            print("   - Saved room: \(model.isSavedRoom)")
+        }
+        .onDisappear {
+            print("👋 [ModelViewerView] View disappeared")
         }
     }
     

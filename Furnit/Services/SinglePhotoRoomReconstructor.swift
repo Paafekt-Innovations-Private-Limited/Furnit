@@ -2072,4 +2072,181 @@ struct SceneKitViewer: View {
         roomName = ""
         print("❌ [Viewer] Room save cancelled")
     }
+    
+    // MARK: - COMPLETE UPDATED ROOM GENERATION WITH SELF-ILLUMINATING MATERIALS
+    // This is the FIXED version of the room geometry generation
+    // Paste this into SinglePhotoRoomReconstructor.swift, replacing the section from lines ~380-516
+
+        // ✅ NEW: Configure material for USDZ export with self-illumination
+        private func configureMaterialForUSDZExport(_ material: SCNMaterial, texture: Any) {
+            // Set the main texture
+            material.diffuse.contents = texture
+            
+            // ✅ ADD EMISSION - Makes material self-lit (doesn't need external lights!)
+            material.emission.contents = texture
+            material.emission.intensity = 0.5 // 50% emission = room is bright and visible
+            
+            // ✅ Make material respond better to any lighting
+            material.lightingModel = .physicallyBased
+            
+            // ✅ Brightness boost
+            material.multiply.contents = UIColor(white: 1.2, alpha: 1.0)
+            
+            // ✅ Other settings for proper visibility in USDZ
+            material.isDoubleSided = true
+            material.writesToDepthBuffer = true
+            
+            print("   ✅ Material configured with self-illumination for USDZ export")
+        }
+
+        // Generate actual 3D room with textures from photo
+        private func generateRoom3DWithTextures(dimensions: RoomDimensions,
+                                               originalImage: UIImage,
+                                               structure: RoomStructure) -> SCNScene {
+            print("🏗️ [RoomBuilder] Building 3D room with textures...")
+            print("   - Dimensions: W:\(dimensions.width) D:\(dimensions.depth) H:\(dimensions.height)")
+            
+            let scene = SCNScene()
+            let roomNode = SCNNode()
+            
+            // Generate textures from photo
+            print("🎨 [RoomBuilder] Generating textures from photo...")
+            let floorTexture = generateFloorTexture(from: originalImage, structure: structure)
+            let ceilingTexture = generateCeilingTexture(from: originalImage, structure: structure)
+            let frontWallTexture = generateFrontWallTexture(from: originalImage, structure: structure)
+            let leftWallTexture = generateLeftWallTexture(from: originalImage, structure: structure)
+            let rightWallTexture = generateRightWallTexture(from: originalImage, structure: structure)
+            let backWallColor = generateWallTexture(from: originalImage)
+            
+            // FLOOR - With self-illuminating texture
+            print("🔨 Creating FLOOR with self-lit texture...")
+            let floor = SCNBox(width: CGFloat(dimensions.width),
+                              height: 0.01,
+                              length: CGFloat(dimensions.depth),
+                              chamferRadius: 0)
+            let floorMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(floorMaterial, texture: floorTexture)
+            floor.materials = [floorMaterial]
+            
+            let floorNode = SCNNode(geometry: floor)
+            floorNode.position = SCNVector3(0, 0, 0)
+            floorNode.name = "Floor"
+            roomNode.addChildNode(floorNode)
+            print("✅ FLOOR created at y=0")
+            
+            // CEILING - With self-illuminating texture
+            print("🔨 Creating CEILING with self-lit texture...")
+            let ceiling = SCNBox(width: CGFloat(dimensions.width),
+                                height: 0.01,
+                                length: CGFloat(dimensions.depth),
+                                chamferRadius: 0)
+            let ceilingMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(ceilingMaterial, texture: ceilingTexture)
+            ceiling.materials = [ceilingMaterial]
+            
+            let ceilingNode = SCNNode(geometry: ceiling)
+            ceilingNode.position = SCNVector3(0, Float(dimensions.height), 0)
+            ceilingNode.name = "Ceiling"
+            roomNode.addChildNode(ceilingNode)
+            print("✅ CEILING created at y=\(dimensions.height)")
+            
+            // FRONT WALL - With self-illuminating photo texture
+            print("🔨 Creating FRONT WALL with self-lit photo texture...")
+            let frontWall = SCNBox(width: CGFloat(dimensions.width),
+                                  height: CGFloat(dimensions.height),
+                                  length: 0.01,
+                                  chamferRadius: 0)
+            let frontMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(frontMaterial, texture: frontWallTexture)
+            frontWall.materials = [frontMaterial]
+            
+            let frontNode = SCNNode(geometry: frontWall)
+            frontNode.position = SCNVector3(0, Float(dimensions.height) / 2, -Float(dimensions.depth) / 2)
+            frontNode.name = "FrontWall"
+            roomNode.addChildNode(frontNode)
+            print("✅ FRONT WALL created with photo at z=-\(dimensions.depth/2)")
+            
+            // BACK WALL - With self-illuminating texture
+            print("🔨 Creating BACK WALL with self-lit texture...")
+            let backWall = SCNBox(width: CGFloat(dimensions.width),
+                                 height: CGFloat(dimensions.height),
+                                 length: 0.01,
+                                 chamferRadius: 0)
+            let backMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(backMaterial, texture: backWallColor)
+            backWall.materials = [backMaterial]
+            
+            let backNode = SCNNode(geometry: backWall)
+            backNode.position = SCNVector3(0, Float(dimensions.height) / 2, Float(dimensions.depth) / 2)
+            backNode.name = "BackWall"
+            roomNode.addChildNode(backNode)
+            print("✅ BACK WALL created at z=+\(dimensions.depth/2)")
+            
+            // LEFT WALL - With self-illuminating texture
+            print("🔨 Creating LEFT WALL with self-lit texture...")
+            let leftWall = SCNBox(width: 0.01,
+                                 height: CGFloat(dimensions.height),
+                                 length: CGFloat(dimensions.depth),
+                                 chamferRadius: 0)
+            let leftMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(leftMaterial, texture: leftWallTexture)
+            leftWall.materials = [leftMaterial]
+            
+            let leftNode = SCNNode(geometry: leftWall)
+            leftNode.position = SCNVector3(-Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
+            leftNode.name = "LeftWall"
+            roomNode.addChildNode(leftNode)
+            print("✅ LEFT WALL created at x=-\(dimensions.width/2)")
+            
+            // RIGHT WALL - With self-illuminating texture
+            print("🔨 Creating RIGHT WALL with self-lit texture...")
+            let rightWall = SCNBox(width: 0.01,
+                                  height: CGFloat(dimensions.height),
+                                  length: CGFloat(dimensions.depth),
+                                  chamferRadius: 0)
+            let rightMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(rightMaterial, texture: rightWallTexture)
+            rightWall.materials = [rightMaterial]
+            
+            let rightNode = SCNNode(geometry: rightWall)
+            rightNode.position = SCNVector3(Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
+            rightNode.name = "RightWall"
+            roomNode.addChildNode(rightNode)
+            print("✅ RIGHT WALL created at x=+\(dimensions.width/2)")
+            
+            roomNode.name = "Room"
+            scene.rootNode.addChildNode(roomNode)
+            
+            // CAMERA - Looking at photo wall
+            let cameraNode = SCNNode()
+            cameraNode.camera = SCNCamera()
+            cameraNode.camera?.fieldOfView = 70
+            cameraNode.position = SCNVector3(0, Float(dimensions.height) * 0.5, 0)
+            cameraNode.look(at: SCNVector3(0, Float(dimensions.height) * 0.5, -Float(dimensions.depth) / 2))
+            cameraNode.name = "Camera"
+            scene.rootNode.addChildNode(cameraNode)
+            print("✅ Camera positioned and looking at photo wall")
+            
+            // LIGHTING - Still add lights for SceneKit preview
+            // (These won't export to USDZ, but materials are self-lit anyway!)
+            let ambientLight = SCNNode()
+            ambientLight.light = SCNLight()
+            ambientLight.light?.type = .ambient
+            ambientLight.light?.intensity = 1000
+            ambientLight.name = "AmbientLight"
+            scene.rootNode.addChildNode(ambientLight)
+            
+            let directionalLight = SCNNode()
+            directionalLight.light = SCNLight()
+            directionalLight.light?.type = .directional
+            directionalLight.light?.intensity = 500
+            directionalLight.position = SCNVector3(0, Float(dimensions.height), 0)
+            directionalLight.eulerAngles = SCNVector3(-Float.pi / 4, 0, 0)
+            directionalLight.name = "DirectionalLight"
+            scene.rootNode.addChildNode(directionalLight)
+            
+            print("💡 Lights added (for preview - materials are self-lit for USDZ)")
+            print("✅ Room scene created successfully with self-illuminating materials!")
+            return scene
+        }
 }

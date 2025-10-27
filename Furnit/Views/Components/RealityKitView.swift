@@ -17,6 +17,11 @@ struct RealityKitView: UIViewRepresentable {
     }
     
     func makeUIView(context: Context) -> ARView {
+        print("🎨 [RealityKitView.makeUIView] ========================================")
+        print("🎨 [RealityKitView.makeUIView] Creating ARView for model: \(model.displayName)")
+        print("   - File name: \(model.fileName)")
+        print("   - Is saved room: \(model.isSavedRoom)")
+        
         // Use .nonAR mode for custom camera control that allows rotation without moving position
         let arView = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         
@@ -115,120 +120,198 @@ struct RealityKitView: UIViewRepresentable {
         }
     }
     
+    // ✅ FIXED: Handle both bundle rooms and saved rooms
     private func loadModel(into arView: ARView, coordinator: Coordinator) {
-        guard let dataAsset = model.dataAsset else {
-            print("Failed to load data asset for model: \(model.name)")
+        print("🎨 [RealityKitView.loadModel] ========================================")
+        print("🎨 [RealityKitView.loadModel] Starting to load model: \(model.displayName)")
+        print("   - Is saved room: \(model.isSavedRoom)")
+        
+        // Get the model URL (works for both bundle and saved rooms)
+        guard let modelURL = model.temporaryURL else {
+            print("❌ [RealityKitView.loadModel] CRITICAL: No URL for model!")
+            print("   - Model name: \(model.name)")
+            print("   - File name: \(model.fileName)")
+            print("   - Is saved room: \(model.isSavedRoom)")
             return
         }
         
-        do {
-            let tempURL = createTemporaryFile(from: dataAsset.data, fileName: "\(model.fileName).usdz")
-            
-            // Load USDZ model using RealityKit's Entity loading
-            Task { @MainActor in
-                do {
-                    let modelEntity = try await Entity.load(contentsOf: tempURL)
+        print("🎨 [RealityKitView.loadModel] Got model URL: \(modelURL.path)")
+        print("   - Last path component: \(modelURL.lastPathComponent)")
+        
+        // Verify file exists
+        let fileExists = FileManager.default.fileExists(atPath: modelURL.path)
+        print("   - File exists: \(fileExists)")
+        
+        if fileExists {
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: modelURL.path)
+                if let fileSize = attributes[.size] as? UInt64 {
+                    print("   - File size: \(fileSize) bytes (\(Double(fileSize) / 1024.0 / 1024.0) MB)")
+                }
+                let isReadable = FileManager.default.isReadableFile(atPath: modelURL.path)
+                print("   - Is readable: \(isReadable)")
+            } catch {
+                print("   - Error getting file attributes: \(error)")
+            }
+        } else {
+            print("❌ [RealityKitView.loadModel] CRITICAL: File does not exist at path!")
+            return
+        }
+        
+        // Load USDZ model using RealityKit's Entity loading
+        print("🎨 [RealityKitView.loadModel] Starting async entity load...")
+        
+        Task { @MainActor in
+            do {
+                print("🎨 [RealityKitView.loadModel] Calling Entity.load(contentsOf:)...")
+                let modelEntity = try await Entity.load(contentsOf: modelURL)
+                
+                print("✅ [RealityKitView.loadModel] Entity loaded successfully!")
+                print("   - Entity name: '\(modelEntity.name)'")
+                print("   - Entity position: \(modelEntity.position)")
+                print("   - Entity scale: \(modelEntity.scale)")
+                print("   - Has children: \(modelEntity.children.count)")
+                
+                if !modelEntity.children.isEmpty {
+                    print("   - Child entities:")
+                    for (index, child) in modelEntity.children.enumerated().prefix(5) {
+                        print("     [\(index)] \(child.name.isEmpty ? "unnamed" : child.name) - position: \(child.position)")
+                    }
+                    if modelEntity.children.count > 5 {
+                        print("     ... and \(modelEntity.children.count - 5) more children")
+                    }
+                }
 
-                    // Ensure model has proper materials for visibility
-                    ensureModelHasMaterials(modelEntity)
+                // Ensure model has proper materials for visibility
+                ensureModelHasMaterials(modelEntity)
 
-                    // Calculate model bounds for camera positioning
-                    let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
-                    if let bounds = bounds {
-                        print("📦 Model bounds after loading: min(\(bounds.min)), max(\(bounds.max))")
-                    } else {
-                        print("📦 Model bounds after loading: no bounds")
-                    }
-                    
-                    // In non-AR mode, simply add model to scene directly (no world anchor needed)
-                    let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
-                    modelAnchor.addChild(modelEntity)
-                    arView.scene.addAnchor(modelAnchor)
-                    coordinator.scene = arView.scene
-
-                    // Store the model anchor for object placement
-                    coordinator.worldAnchor = modelAnchor
-                    
-                    // Set up boundary manager for camera constraints
-                    let boundaryManager = RealityKitBoundaryManager(arView: arView)
-                    boundaryManager.calculateRoomBounds(from: modelEntity)
-                    coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
-
-                    // Share boundary manager with camera movement manager to prevent duplication
-                    self.cameraMovementManager.setupARView(arView)
-                    self.cameraMovementManager.setBoundaryManager(boundaryManager)
-                    // Set initial movement speed from settings
-                    switch appState.currentMovementSpeed {
-                    case .slow:
-                        self.cameraMovementManager.setSpeed(.slow)
-                    case .normal:
-                        self.cameraMovementManager.setSpeed(.normal)
-                    case .fast:
-                        self.cameraMovementManager.setSpeed(.fast)
-                    }
-                    
-                    // Position custom camera inside the room bounds
-                    if let cameraAnchor = coordinator.cameraAnchor {
-                        let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.2, 0))
-                        cameraAnchor.transform.translation = safeCameraPosition
-                        
-                        // Set initial camera to look straight ahead instead of at room center
-                        // This prevents the camera from looking up at tall rooms
-                        cameraAnchor.transform.rotation = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
-                        
-                        print("📷 Custom camera positioned at: \(safeCameraPosition)")
-                        print("📷 Camera set to look straight ahead (0° pitch)")
-                    }
-                    
-                    // Set up lighting
-                    setupLighting(for: arView)
-                    
-                    // Set up AR object placement manager with scene references
-                    coordinator.arObjectPlacementManager = self.arObjectPlacementManager
-                    self.arObjectPlacementManager.setSceneReferences(arView: arView, scene: arView.scene)
-
-                    // Connect world anchor to object placement manager for proper scene integration
-                    if let worldAnchor = coordinator.worldAnchor {
-                        self.arObjectPlacementManager.setWorldAnchor(worldAnchor)
-                        print("🌍 Connected world anchor to object placement manager")
-                    }
-                    
-                    // Set up camera movement manager with custom camera references
-                    self.cameraMovementManager.setupARView(arView)
-                    
-                    // Share camera references with camera movement manager for joystick control
-                    if let cameraAnchor = coordinator.cameraAnchor {
-                        self.cameraMovementManager.setCameraAnchor(cameraAnchor)
-                    }
-                    
-                    // Set up camera movement callback
-                    self.cameraMovementManager.onCameraMove = {
-                        // Camera movement callback - ready for future enhancements
-                    }
-                    
-                    print("✅ RealityKit model loaded successfully")
-                    
-                } catch {
-                    print("Error loading USDZ model with RealityKit: \(error.localizedDescription)")
+                // Calculate model bounds for camera positioning
+                let bounds = modelEntity.components[ModelComponent.self]?.mesh.bounds
+                if let bounds = bounds {
+                    print("📦 Model bounds after loading: min(\(bounds.min)), max(\(bounds.max))")
+                } else {
+                    print("📦 Model bounds after loading: no bounds")
                 }
                 
-                // Clean up temporary file
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    try? FileManager.default.removeItem(at: tempURL)
+                // Check for lights in the scene
+                print("🎨 [RealityKitView.loadModel] Checking for lights in scene...")
+                var lightCount = 0
+                
+                func countLights(in entity: Entity) {
+                    if entity.components[PointLightComponent.self] != nil {
+                        lightCount += 1
+                        print("     💡 Found PointLight: \(entity.name.isEmpty ? "unnamed" : entity.name)")
+                    }
+                    if entity.components[DirectionalLightComponent.self] != nil {
+                        lightCount += 1
+                        print("     💡 Found DirectionalLight: \(entity.name.isEmpty ? "unnamed" : entity.name)")
+                    }
+                    if entity.components[SpotLightComponent.self] != nil {
+                        lightCount += 1
+                        print("     💡 Found SpotLight: \(entity.name.isEmpty ? "unnamed" : entity.name)")
+                    }
+                    
+                    for child in entity.children {
+                        countLights(in: child)
+                    }
                 }
+                
+                countLights(in: modelEntity)
+                print("   - Total lights found in model: \(lightCount)")
+                
+                if lightCount == 0 {
+                    print("⚠️ [RealityKitView.loadModel] WARNING: NO LIGHTS IN SCENE!")
+                    print("   - This explains the black screen!")
+                    print("   - Adding emergency lighting...")
+                    
+                    // Add emergency lighting directly to the model entity
+                    let pointLight = PointLight()
+                    pointLight.light.intensity = 2000
+                    pointLight.light.attenuationRadius = 100
+                    pointLight.position = [0, 2, 0]
+                    modelEntity.addChild(pointLight)
+                    print("   - ✅ Added emergency point light at [0, 2, 0]")
+                    
+                    let ambientLight = PointLight()
+                    ambientLight.light.intensity = 1000
+                    ambientLight.light.attenuationRadius = 100
+                    ambientLight.position = [0, 3, 2]
+                    modelEntity.addChild(ambientLight)
+                    print("   - ✅ Added emergency ambient light at [0, 3, 2]")
+                    
+                    let fillLight = PointLight()
+                    fillLight.light.intensity = 1500
+                    fillLight.light.attenuationRadius = 100
+                    fillLight.position = [2, 1, 2]
+                    modelEntity.addChild(fillLight)
+                    print("   - ✅ Added emergency fill light at [2, 1, 2]")
+                }
+                
+                // In non-AR mode, simply add model to scene directly
+                print("🎨 [RealityKitView.loadModel] Adding model to scene...")
+                let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
+                modelAnchor.addChild(modelEntity)
+                arView.scene.addAnchor(modelAnchor)
+                coordinator.scene = arView.scene
+
+                // Store the model anchor for object placement
+                coordinator.worldAnchor = modelAnchor
+                print("✅ [RealityKitView.loadModel] Model added to scene successfully")
+                
+                // Set up boundary manager for camera constraints
+                let boundaryManager = RealityKitBoundaryManager(arView: arView)
+                boundaryManager.calculateRoomBounds(from: modelEntity)
+                coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
+
+                // Share boundary manager with camera movement manager
+                self.cameraMovementManager.setupARView(arView)
+                self.cameraMovementManager.setBoundaryManager(boundaryManager)
+                
+                // Set initial movement speed from settings
+                switch appState.currentMovementSpeed {
+                case .slow:
+                    self.cameraMovementManager.setSpeed(.slow)
+                case .normal:
+                    self.cameraMovementManager.setSpeed(.normal)
+                case .fast:
+                    self.cameraMovementManager.setSpeed(.fast)
+                }
+                
+                // Position custom camera inside the room bounds
+                if let cameraAnchor = coordinator.cameraAnchor {
+                    let safeCameraPosition = boundaryManager.getSafeCameraPosition(near: SIMD3<Float>(0, 1.2, 0))
+                    cameraAnchor.transform.translation = safeCameraPosition
+                    
+                    // Set initial camera to look straight ahead
+                    cameraAnchor.transform.rotation = simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
+                    
+                    print("📷 Custom camera positioned at: \(safeCameraPosition)")
+                }
+                
+                // Set up camera movement manager with custom camera references
+                self.cameraMovementManager.setupARView(arView)
+                
+                // Share camera references with camera movement manager for joystick control
+                if let cameraAnchor = coordinator.cameraAnchor {
+                    self.cameraMovementManager.setCameraAnchor(cameraAnchor)
+                }
+                
+                // Set up camera movement callback
+                self.cameraMovementManager.onCameraMove = {
+                    // Camera movement callback - ready for future enhancements
+                }
+                
+                print("✅ [RealityKitView.loadModel] Complete setup finished successfully")
+                print("🎨 [RealityKitView.loadModel] ========================================")
+                
+            } catch {
+                print("❌ [RealityKitView.loadModel] FAILED TO LOAD ENTITY!")
+                print("   - Error: \(error)")
+                print("   - Error description: \(error.localizedDescription)")
+                print("   - Model URL: \(modelURL.path)")
+                print("🎨 [RealityKitView.loadModel] ========================================")
             }
-            
-        } catch {
-            print("Error creating temporary file: \(error.localizedDescription)")
         }
-    }
-    
-    private func createTemporaryFile(from data: Data, fileName: String) -> URL {
-        let tempDirectory = FileManager.default.temporaryDirectory
-        let tempURL = tempDirectory.appendingPathComponent(fileName)
-        
-        try? data.write(to: tempURL)
-        return tempURL
     }
     
     private func setupCamera(for arView: ARView, with bounds: BoundingBox?) {
@@ -263,9 +346,6 @@ struct RealityKitView: UIViewRepresentable {
         // Look at room center
         let lookDirection = normalize(roomCenter - cameraPosition)
         cameraTransform.rotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
-        
-        // Note: Camera positioning is now handled by world anchor transforms
-        // ARView.cameraTransform is read-only in RealityKit
         
         print("📷 Camera configured at position: \(cameraPosition)")
     }
@@ -354,12 +434,6 @@ struct RealityKitView: UIViewRepresentable {
                 print("🎨 Added default white material to model entity")
             } else {
                 print("🎨 Model has \(modelComponent.materials.count) existing materials")
-                // Ensure materials are not transparent
-                for (index, material) in modelComponent.materials.enumerated() {
-                    if let simpleMaterial = material as? SimpleMaterial {
-                        print("🎨 Material \(index): color=\(simpleMaterial.color), roughness=\(simpleMaterial.roughness)")
-                    }
-                }
             }
         }
 

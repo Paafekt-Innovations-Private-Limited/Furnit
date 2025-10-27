@@ -105,25 +105,15 @@ struct HomeTab: View {
                 } else {
                     List {
                         ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
-                            if let modelURL = model.temporaryURL {
-                                NavigationLink(destination: ModelViewerView(model: model)) {
-                                    HomeViewModelRow(model: model)
-                                }
-                                .onAppear {
-                                    print("✅ [HomeTab] Created temporary URL for: \(model.fileName) -> \(modelURL)")
-                                }
-                            } else {
-                                Text("❌ Model data unavailable: \(model.displayName)")
-                                    .foregroundColor(.red)
-                                    .onAppear {
-                                        print("❌ [HomeTab] Could NOT create temporary URL for model: \(model.fileName)")
-                                    }
-                            }
+                            modelRow(for: model, at: index)
                         }
                     }
                     .listStyle(PlainListStyle())
                     .onAppear {
                         print("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
+                        for (idx, model) in modelManager.models.enumerated() {
+                            print("   [\(idx)] \(model.displayName) - isSavedRoom: \(model.isSavedRoom)")
+                        }
                     }
                 }
             }
@@ -177,6 +167,48 @@ struct HomeTab: View {
         .onAppear {
             print("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
             print("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
+        }
+    }
+    
+    // MARK: - Model Row with Logging
+    private func modelRow(for model: USDZModel, at index: Int) -> some View {
+        let _ = print("📋 [HomeTab.modelRow] ========================================")
+        let _ = print("📋 [HomeTab.modelRow] Creating row for model \(index)")
+        let _ = print("   - Display name: \(model.displayName)")
+        let _ = print("   - File name: \(model.fileName)")
+        let _ = print("   - Is saved room: \(model.isSavedRoom)")
+        
+        return Group {
+            if let modelURL = model.temporaryURL {
+                let _ = print("✅ [HomeTab.modelRow] URL found for: \(model.displayName)")
+                let _ = print("   - URL path: \(modelURL.path)")
+                let _ = print("   - File exists: \(FileManager.default.fileExists(atPath: modelURL.path))")
+                
+                let fileInfo: Void = {
+                    if FileManager.default.fileExists(atPath: modelURL.path) {
+                        do {
+                            let attributes = try FileManager.default.attributesOfItem(atPath: modelURL.path)
+                            if let fileSize = attributes[.size] as? UInt64 {
+                                print("   - File size: \(fileSize) bytes (\(fileSize / 1024 / 1024) MB)")
+                            }
+                        } catch {
+                            print("   - Error getting file info: \(error)")
+                        }
+                    }
+                }()
+                let _ = fileInfo
+                
+                NavigationLink(destination: ModelViewerView(model: model)) {
+                    HomeViewModelRow(model: model)
+                }
+                .onAppear {
+                    let _ = print("👁️ [HomeTab.modelRow] Row appeared for: \(model.displayName)")
+                }
+            } else {
+                let _ = print("❌ [HomeTab.modelRow] No URL for: \(model.displayName)")
+                Text("❌ Model data unavailable: \(model.displayName)")
+                    .foregroundColor(.red)
+            }
         }
     }
 }
