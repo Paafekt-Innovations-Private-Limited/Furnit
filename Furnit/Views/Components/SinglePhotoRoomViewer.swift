@@ -606,7 +606,9 @@ struct DraggableHandle: View {
     }
 }
 
-// MARK: - SwiftUI View
+import SwiftUI
+import RoomPlan
+
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @State private var selectedImage: UIImage?
@@ -616,6 +618,10 @@ struct SinglePhotoRoomView: View {
     @State private var adjustedWidth: Float = 4.0
     @State private var adjustedDepth: Float = 4.0
     @State private var adjustedHeight: Float = 2.8
+    
+    // NEW: State for Option 2 (3D Room Scan)
+    @State private var show3DScanOption = false
+    @State private var showUnsupportedAlert = false
     
     var body: some View {
         ZStack {
@@ -637,25 +643,85 @@ struct SinglePhotoRoomView: View {
                 .padding()
                 
             } else {
-                Button(action: {
-                    print("🖼️ [View] Select photo button tapped")
-                    showImagePicker = true
-                }) {
-                    VStack {
-                        Image(systemName: "photo.on.rectangle")
-                            .font(.system(size: 60))
-                        Text("Select Room Photo")
-                            .font(.headline)
-                            .padding(.top, 8)
+                // NEW: Show two options instead of just photo picker
+                VStack(spacing: 20) {
+                    Text("Choose Your Method")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .padding(.top, 40)
+                    
+                    Text("Create a 3D room model")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    // Option 1: Photo Selection (Existing)
+                    Button(action: {
+                        print("🖼️ [View] Select photo button tapped")
+                        showImagePicker = true
+                    }) {
+                        VStack(spacing: 16) {
+                            Image(systemName: "photo.on.rectangle")
+                                .font(.system(size: 50))
+                                .foregroundColor(.orange)
+                            
+                            VStack(spacing: 4) {
+                                Text("Quick Photo")
+                                    .font(.headline)
+                                Text("Single photo capture")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(24)
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.orange, lineWidth: 2)
+                        )
                     }
-                    .frame(width: 250, height: 200)
-                    .foregroundColor(.blue)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.blue.opacity(0.5), lineWidth: 2)
-                    )
+                    .padding(.horizontal)
+                    
+                    // Option 2: 3D Room Scan (NEW)
+                    Button(action: {
+                        if #available(iOS 16.0, *) {
+                            if RoomCaptureSession.isSupported {
+                                print("📷 [View] 3D Room Scan button tapped")
+                                show3DScanOption = true
+                            } else {
+                                showUnsupportedAlert = true
+                            }
+                        } else {
+                            showUnsupportedAlert = true
+                        }
+                    }) {
+                        VStack(spacing: 16) {
+                            Image(systemName: "camera.metering.matrix")
+                                .font(.system(size: 50))
+                                .foregroundColor(.blue)
+                            
+                            VStack(spacing: 4) {
+                                Text("3D Room Scan")
+                                    .font(.headline)
+                                Text("Camera scanning with RoomPlan")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(24)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.blue, lineWidth: 2)
+                        )
+                    }
+                    .padding(.horizontal)
+                    
+                    Spacer()
                 }
-                .padding()
             }
             
             if reconstructor.isProcessing {
@@ -767,6 +833,20 @@ struct SinglePhotoRoomView: View {
                 image: selectedImage,
                 savedBoundaries: $adjustedBoundaries
             )
+        }
+        // NEW: Full screen cover for 3D Room Scan
+        .fullScreenCover(isPresented: $show3DScanOption) {
+            if #available(iOS 16.0, *) {
+                NavigationView {
+                    RoomCaptureView()
+                }
+            }
+        }
+        // NEW: Alert for unsupported devices
+        .alert("Device Not Supported", isPresented: $showUnsupportedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("3D Room Scanning requires an iPhone or iPad with LiDAR sensor (iPhone 12 Pro or later, iPad Pro 2020 or later).")
         }
         .onAppear {
             print("👁️ [View] SinglePhotoRoomView appeared")

@@ -34,61 +34,114 @@ class USDZModelManager: ObservableObject {
     }
     
     private func loadModels() {
+        print("📦 [USDZModelManager] ========== LOADING MODELS ==========")
         print("📦 [USDZModelManager] Starting to load models...")
+        
+        // Check SavedRooms directory
+        print("📦 [USDZModelManager] Checking SavedRooms directory:")
+        print("   - Path: \(modelsDirectory.path)")
+        print("   - Exists: \(FileManager.default.fileExists(atPath: modelsDirectory.path))")
         
         let modelNames = [
             "vintage_living_room",
             "cozy_living_room_baked"
         ]
         
-        print("📦 [USDZModelManager] Model names to load: \(modelNames)")
+        print("📦 [USDZModelManager] Loading bundle models: \(modelNames)")
         
         // Check if files exist in bundle (for debugging)
         for name in modelNames {
             if let url = Bundle.main.url(forResource: name, withExtension: "usdz") {
-                print("✅ [USDZModelManager] Found file in bundle: \(name).usdz at \(url)")
+                print("   ✅ Found in bundle: \(name).usdz at \(url)")
             } else {
-                print("❌ [USDZModelManager] File NOT found in bundle: \(name).usdz")
+                print("   ❌ NOT in bundle: \(name).usdz")
             }
         }
         
         // Load bundle models
         var allModels = modelNames.compactMap { name in
-            print("📦 [USDZModelManager] Attempting to create model: \(name)")
+            print("📦 [USDZModelManager] Creating bundle model: \(name)")
             let model = USDZModel(name: name, fileName: name, isSavedRoom: false)
             
             if model.dataAsset != nil {
-                print("✅ [USDZModelManager] Model created successfully: \(name)")
-                print("   - displayName: \(model.displayName)")
-                print("   - fileName: \(model.fileName)")
+                print("   ✅ Bundle model created: \(name)")
                 return model
             } else {
-                print("❌ [USDZModelManager] Model creation failed (dataAsset is nil): \(name)")
+                print("   ❌ Bundle model failed: \(name) (dataAsset is nil)")
                 return nil
             }
         }
         
+        print("📦 [USDZModelManager] Bundle models loaded: \(allModels.count)")
+        
         // Load saved rooms
+        print("📦 [USDZModelManager] Loading saved rooms from: \(modelsDirectory.path)")
+        
         do {
-            let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory, includingPropertiesForKeys: nil)
-            let usdzFiles = files.filter { $0.pathExtension == "usdz" }
+            // First check if directory exists
+            if !FileManager.default.fileExists(atPath: modelsDirectory.path) {
+                print("   ⚠️ SavedRooms directory does not exist!")
+                print("   Creating directory...")
+                try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+                print("   ✅ Directory created")
+            }
             
-            print("📦 [USDZModelManager] Found \(usdzFiles.count) saved USDZ files")
+            // List all contents
+            let allContents = try FileManager.default.contentsOfDirectory(atPath: modelsDirectory.path)
+            print("   📂 ALL items in SavedRooms: \(allContents.count) items")
+            for item in allContents {
+                print("      - \(item)")
+            }
+            
+            // Get USDZ files specifically
+            let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory, includingPropertiesForKeys: [.fileSizeKey, .creationDateKey])
+            print("   📂 Files found: \(files.count)")
+            
+            let usdzFiles = files.filter { $0.pathExtension.lowercased() == "usdz" }
+            print("   📦 USDZ files found: \(usdzFiles.count)")
+            
+            if usdzFiles.isEmpty {
+                print("   ⚠️ NO USDZ files found in SavedRooms!")
+                
+                // Check UserDefaults for saved rooms metadata
+                let savedRoomsMetadata = UserDefaults.standard.dictionary(forKey: "SavedRooms") as? [String: [String: Any]] ?? [:]
+                print("   📝 UserDefaults SavedRooms metadata: \(savedRoomsMetadata.count) entries")
+                for (roomName, metadata) in savedRoomsMetadata {
+                    if let path = metadata["filePath"] as? String {
+                        print("      - \(roomName): \(path)")
+                        print("        Exists: \(FileManager.default.fileExists(atPath: path))")
+                    }
+                }
+            }
             
             for fileURL in usdzFiles {
                 let fileName = fileURL.deletingPathExtension().lastPathComponent
-                print("📦 [USDZModelManager] Loading saved model: \(fileName)")
+                print("   📦 Processing saved room: '\(fileName)'")
+                print("      - Full path: \(fileURL.path)")
+                
+                // Get file size
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path) {
+                    let size = (attrs[.size] as? UInt64 ?? 0) / 1024
+                    print("      - Size: \(size) KB")
+                }
                 
                 let model = USDZModel(name: fileName, fileName: fileName, isSavedRoom: true)
                 allModels.append(model)
-                print("✅ [USDZModelManager] Added saved model: \(fileName)")
+                print("      ✅ Added to models list")
             }
+            
         } catch {
-            print("⚠️ [USDZModelManager] Error reading saved rooms: \(error)")
+            print("   ❌ Error reading saved rooms: \(error)")
+            print("      Error type: \(type(of: error))")
+            print("      Description: \(error.localizedDescription)")
         }
         
         models = allModels
-        print("📦 [USDZModelManager] Final models array: \(models.map { $0.fileName })")
+        print("📦 [USDZModelManager] ========== LOADING COMPLETE ==========")
+        print("   Total models loaded: \(models.count)")
+        print("   Model names: \(models.map { $0.fileName }.joined(separator: ", "))")
+        print("   Bundle models: \(models.filter { !$0.isSavedRoom }.count)")
+        print("   Saved rooms: \(models.filter { $0.isSavedRoom }.count)")
     }
     
     func getModel(by fileName: String) -> USDZModel? {
@@ -96,9 +149,18 @@ class USDZModelManager: ObservableObject {
     }
     
     func refreshModels() {
-        print("🔄 [USDZModelManager] Refreshing models...")
+        print("🔄 [USDZModelManager] ========== REFRESHING MODELS ==========")
+        print("🔄 [USDZModelManager] Clearing existing models...")
+        print("   - Current model count: \(models.count)")
+        models.removeAll()
+        print("   - Models cleared")
+        
+        print("🔄 [USDZModelManager] Reloading all models...")
         loadModels()
-        print("✅ [USDZModelManager] Refresh complete. Now have \(models.count) models")
+        
+        print("🔄 [USDZModelManager] ========== REFRESH COMPLETE ==========")
+        print("   - New model count: \(models.count)")
+        print("   - Model names: \(models.map { $0.fileName }.joined(separator: ", "))")
     }
     
     // ✅ FIXED: Save room with lighting and proper refresh
