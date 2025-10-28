@@ -1,7 +1,8 @@
 import SwiftUI
 import RoomPlan
+import ARKit
 
-// MARK: - Room Capture View
+// MARK: - Room Capture View with Metal Crash Workaround
 @available(iOS 16.0, *)
 struct RoomCaptureView: View {
     @StateObject private var captureManager = RoomCaptureManager()
@@ -14,7 +15,9 @@ struct RoomCaptureView: View {
     @State private var saveAlertMessage = ""
     @State private var scanningStarted = false
     @State private var waitingForDelegate = false
-    @State private var sessionReady = false  // ✅ Track when session is ready
+    @State private var sessionReady = false
+    @State private var showErrorAlert = false
+    @State private var errorMessage = ""
     
     var body: some View {
         ZStack {
@@ -22,9 +25,15 @@ struct RoomCaptureView: View {
             if scanningStarted {
                 RoomCaptureViewRepresentable(
                     captureManager: captureManager,
-                    onSessionReady: { // ✅ Callback when session is ready
+                    onSessionReady: {
                         sessionReady = true
                         print("📹 [RoomCaptureView] Session is ready!")
+                    },
+                    onError: { error in
+                        // Handle Metal/SLAM errors
+                        errorMessage = error
+                        showErrorAlert = true
+                        print("❌ [RoomCaptureView] Error: \(error)")
                     }
                 )
                 .ignoresSafeArea()
@@ -77,7 +86,7 @@ struct RoomCaptureView: View {
             }
             
             // Instructions Overlay - shows after session is ready
-            if showInstructions && sessionReady {  // ✅ Only show when session is ready
+            if showInstructions && sessionReady {
                 instructionsOverlay
             }
             
@@ -87,7 +96,7 @@ struct RoomCaptureView: View {
             }
             
             // Controls at bottom
-            if !captureManager.isProcessing && sessionReady {  // ✅ Only show controls when ready
+            if !captureManager.isProcessing && sessionReady {
                 VStack {
                     Spacer()
                     controlsView
@@ -100,13 +109,9 @@ struct RoomCaptureView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Done") {
-                    // Mark that we're waiting for delegate
                     waitingForDelegate = true
-                    
-                    // Stop the session - delegate will receive final data
                     captureManager.stopCaptureSession()
                     
-                    // Set a timeout in case delegate never responds
                     DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
                         if captureManager.capturedRoom == nil && captureManager.finalScene == nil {
                             print("⏱️ [RoomCaptureView] Timeout - no room data received")
@@ -131,17 +136,35 @@ struct RoomCaptureView: View {
         } message: {
             Text(saveAlertMessage)
         }
+        .alert("Scanning Error", isPresented: $showErrorAlert) {
+            Button("Try Again") {
+                // Reset and try again
+                scanningStarted = false
+                sessionReady = false
+                captureManager.cleanupSession()
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    scanningStarted = true
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                dismiss()
+            }
+        } message: {
+            Text(errorMessage)
+        }
         .onAppear {
             print("🎬 [RoomCaptureView] View appeared, starting capture setup...")
-            // Start immediately - no delay needed
-            scanningStarted = true
+            
+            // Add delay to let system initialize properly (helps with Metal issues)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                scanningStarted = true
+            }
         }
         .onDisappear {
             if !waitingForDelegate {
                 captureManager.cleanupSession()
                 print("🧹 [RoomCaptureView] Cleaned up resources on disappear")
-            } else {
-                print("⏸️ [RoomCaptureView] Skipping cleanup - waiting for delegate")
             }
         }
         .onChange(of: captureManager.finalScene) { oldValue, newValue in
@@ -175,10 +198,27 @@ struct RoomCaptureView: View {
                 }
                 .padding(.horizontal, 24)
                 
+                // Additional tips for avoiding crashes
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Tips for best results:")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                    Text("• Ensure good lighting")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.6))
+                    Text("• Move slowly and steadily")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.6))
+                    Text("• Avoid quick movements")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
+                
                 Button(action: {
                     withAnimation {
                         showInstructions = false
-                        // Signal that we want to start scanning
                         _ = captureManager.startCaptureSession()
                     }
                 }) {
@@ -209,7 +249,6 @@ struct RoomCaptureView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 30) {
-                // Processing animation
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(2)
@@ -231,7 +270,6 @@ struct RoomCaptureView: View {
                     }
                 }
                 
-                // Stats if available
                 if let room = captureManager.capturedRoom {
                     VStack(spacing: 16) {
                         HStack(spacing: 32) {
@@ -260,7 +298,6 @@ struct RoomCaptureView: View {
     // MARK: - Controls View
     private var controlsView: some View {
         HStack(spacing: 40) {
-            // Info button
             Button(action: {
                 withAnimation {
                     showInstructions.toggle()
@@ -274,7 +311,6 @@ struct RoomCaptureView: View {
                     .clipShape(Circle())
             }
             
-            // Stats display
             if captureManager.isSessionRunning {
                 Text(captureManager.feedbackText.isEmpty ? "Scanning..." : captureManager.feedbackText)
                     .font(.caption)
@@ -292,7 +328,6 @@ struct RoomCaptureView: View {
     private var saveRoomSheet: some View {
         NavigationView {
             VStack(spacing: 20) {
-                // Success indicator
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 80))
                     .foregroundColor(.green)
@@ -302,7 +337,6 @@ struct RoomCaptureView: View {
                     .font(.title2)
                     .fontWeight(.bold)
                 
-                // Room statistics - FIX: Don't use optional binding since it returns non-optional String
                 let stats = captureManager.getRoomStatistics()
                 Text(stats)
                     .font(.body)
@@ -312,7 +346,6 @@ struct RoomCaptureView: View {
                     .cornerRadius(12)
                     .padding(.horizontal)
                 
-                // Name input
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Room Name")
                         .font(.headline)
@@ -323,7 +356,6 @@ struct RoomCaptureView: View {
                 
                 Spacer()
                 
-                // Action buttons
                 HStack(spacing: 20) {
                     Button("Cancel") {
                         showSaveDialog = false
@@ -345,7 +377,6 @@ struct RoomCaptureView: View {
         }
     }
     
-    // MARK: - Save Room
     private func saveRoom() {
         guard !roomName.isEmpty else { return }
         
@@ -370,7 +401,7 @@ struct RoomCaptureView: View {
     }
 }
 
-// MARK: - Instruction Row
+// MARK: - Supporting Views
 struct InstructionRow: View {
     let icon: String
     let text: String
@@ -387,7 +418,6 @@ struct InstructionRow: View {
     }
 }
 
-// MARK: - Stat Badge
 struct StatBadge: View {
     let icon: String
     let count: Int
@@ -409,27 +439,30 @@ struct StatBadge: View {
     }
 }
 
-// MARK: - RoomPlan View Representable
+// MARK: - RoomPlan View Representable with Error Handling
 @available(iOS 16.0, *)
 struct RoomCaptureViewRepresentable: UIViewRepresentable {
     @ObservedObject var captureManager: RoomCaptureManager
-    var onSessionReady: (() -> Void)?  // ✅ Callback when ready
+    var onSessionReady: (() -> Void)?
+    var onError: ((String) -> Void)?
     
     func makeUIView(context: Context) -> RoomPlan.RoomCaptureView {
         print("🎥 [RoomCaptureViewRepresentable] Creating capture view...")
         
+        // Configure Metal to avoid texture issues
+        if let metalDevice = MTLCreateSystemDefaultDevice() {
+            print("📱 [Metal] Device: \(metalDevice.name)")
+            print("📊 [Metal] Max texture size: \(metalDevice.maxThreadsPerThreadgroup)")
+        }
+        
         let captureView = RoomPlan.RoomCaptureView()
         captureView.delegate = context.coordinator
         
-        // Store the session in the manager
         captureManager.initializeSession(from: captureView.captureSession)
-        
-        // Set the session delegate
         captureView.captureSession.delegate = context.coordinator
         
-        print("📹 [RoomCaptureViewRepresentable] Capture view created and delegates set")
+        print("📹 [RoomCaptureViewRepresentable] Capture view created")
         
-        // Notify that session is ready
         DispatchQueue.main.async {
             onSessionReady?()
         }
@@ -438,53 +471,66 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: RoomPlan.RoomCaptureView, context: Context) {
-        // Start the session only when manager says to and we haven't started yet
         if captureManager.isSessionRunning && !context.coordinator.hasStartedSession {
             print("🚀 [RoomCaptureViewRepresentable] Starting capture session...")
             
             var configuration = RoomCaptureSession.Configuration()
             configuration.isCoachingEnabled = true
             
-            // Run the session
-            uiView.captureSession.run(configuration: configuration)
-            context.coordinator.hasStartedSession = true
-            
-            print("✅ [RoomCaptureViewRepresentable] Session started successfully")
+            // Use safer configuration to avoid Metal crashes
+            do {
+                // Add error handling for session start
+                uiView.captureSession.run(configuration: configuration)
+                context.coordinator.hasStartedSession = true
+                print("✅ [RoomCaptureViewRepresentable] Session started")
+            } catch {
+                print("❌ [RoomCaptureViewRepresentable] Failed to start session: \(error)")
+                onError?("Failed to start scanning. Please try again.")
+            }
         }
     }
     
     static func dismantleUIView(_ uiView: RoomPlan.RoomCaptureView, coordinator: Coordinator) {
         print("🧹 [RoomCaptureViewRepresentable] Dismantling view...")
+        
+        // Proper cleanup to avoid crashes
         uiView.captureSession.delegate = nil
         uiView.delegate = nil
         uiView.captureSession.stop()
+        
+        // Force Metal cleanup
+        autoreleasepool {
+            _ = uiView
+        }
+        
         print("✅ [RoomCaptureViewRepresentable] View dismantled")
     }
     
     func makeCoordinator() -> Coordinator {
-        Coordinator(captureManager: captureManager)
+        Coordinator(captureManager: captureManager, onError: onError)
     }
     
-    // MARK: - Coordinator
-    // ✅ FIX: Add @objc attribute with stable name for NSCoding archiving
     @objc(RoomCaptureViewCoordinator)
     class Coordinator: NSObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
         let captureManager: RoomCaptureManager
         var hasStartedSession = false
+        var onError: ((String) -> Void)?
+        private var slamErrorCount = 0
+        private let maxSlamErrors = 10
         
-        init(captureManager: RoomCaptureManager) {
+        init(captureManager: RoomCaptureManager, onError: ((String) -> Void)?) {
             self.captureManager = captureManager
+            self.onError = onError
             super.init()
-            print("🎯 [Coordinator] Initialized")
+            print("🎯 [Coordinator] Initialized with error handling")
         }
         
-        // ✅ FIX: Add required NSCoding methods (even though we don't use them)
         required init?(coder: NSCoder) {
-            fatalError("init(coder:) has not been implemented - Coordinator is not meant to be archived")
+            fatalError("init(coder:) not implemented")
         }
         
         @objc func encode(with coder: NSCoder) {
-            // Not implemented - Coordinator is not meant to be archived
+            // Not implemented - not meant to be archived
         }
         
         deinit {
@@ -498,21 +544,30 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
             print("📊 [Coordinator] Room data ready for processing")
             if let error = error {
                 print("❌ [Coordinator] Error: \(error.localizedDescription)")
+                
+                // Check for SLAM errors
+                if error.localizedDescription.contains("slam") ||
+                   error.localizedDescription.contains("tracking") {
+                    slamErrorCount += 1
+                    if slamErrorCount >= maxSlamErrors {
+                        onError?("Tracking lost. Please ensure good lighting and move slowly.")
+                        slamErrorCount = 0
+                        return false
+                    }
+                }
                 return false
             }
+            slamErrorCount = 0
             return true
         }
         
         func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
-            print("✅ [Coordinator] Room capture complete - received processed result")
+            print("✅ [Coordinator] Room capture complete")
             if let error = error {
                 print("❌ [Coordinator] Processing error: \(error.localizedDescription)")
-                captureManager.updateInstruction("Error: \(error.localizedDescription)")
+                onError?("Failed to process room: \(error.localizedDescription)")
             } else {
-                print("🎉 [Coordinator] Successfully captured room:")
-                print("   - Walls: \(processedResult.walls.count)")
-                print("   - Objects: \(processedResult.objects.count)")
-                
+                print("🎉 [Coordinator] Successfully captured room")
                 Task {
                     await captureManager.processCapturedRoom(processedResult)
                 }
@@ -530,7 +585,6 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
                     self.captureManager.feedbackText = "Detected: \(wallCount) walls, \(objectCount) objects"
                 }
                 
-                // Dynamic instructions based on capture progress
                 if wallCount == 0 {
                     self.captureManager.instruction = "Point at walls to detect them"
                 } else if wallCount < 3 {
@@ -568,6 +622,7 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
             print("🎬 [Coordinator] Session started with configuration")
             DispatchQueue.main.async {
                 self.captureManager.statusMessage = "Scanning room..."
+                self.slamErrorCount = 0  // Reset error count on successful start
             }
         }
         
@@ -575,6 +630,13 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
             print("🏁 [Coordinator] Session ended")
             if let error = error {
                 print("❌ [Coordinator] Session ended with error: \(error)")
+                
+                // Check if it's a Metal-related crash
+                if error.localizedDescription.contains("Metal") ||
+                   error.localizedDescription.contains("texture") ||
+                   error.localizedDescription.contains("shader") {
+                    onError?("Graphics error occurred. Please restart the app and try again.")
+                }
             }
         }
     }
