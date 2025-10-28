@@ -838,7 +838,30 @@ struct SinglePhotoRoomView: View {
         .fullScreenCover(isPresented: $show3DScanOption) {
             if #available(iOS 16.0, *) {
                 NavigationView {
-                    RoomCaptureView()
+                    RoomCaptureView(
+                        onSaveComplete: {
+                            print("🎯 [SinglePhotoRoomViewer] onSaveComplete callback triggered!")
+                            print("   - Current show3DScanOption: \(show3DScanOption)")
+                            
+                            // Set to false to dismiss the fullScreenCover
+                            show3DScanOption = false
+                            
+                            print("   - Updated show3DScanOption: \(show3DScanOption)")
+                            print("   - View should dismiss now")
+                        }
+                    )
+                    .navigationBarItems(
+                        leading: Button("Cancel") {
+                            print("❌ [SinglePhotoRoomViewer] Cancel button pressed")
+                            show3DScanOption = false
+                        }
+                    )
+                }
+                .onAppear {
+                    print("🔷 [SinglePhotoRoomViewer] RoomCaptureView appeared")
+                }
+                .onDisappear {
+                    print("🔶 [SinglePhotoRoomViewer] RoomCaptureView disappeared")
                 }
             }
         }

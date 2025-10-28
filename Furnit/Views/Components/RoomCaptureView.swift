@@ -36,6 +36,9 @@ struct RoomCaptureView: View {
                 onSave: handleSaveRoom,
                 onCancel: handleCancelSave
             )
+            .presentationDetents([.medium, .large])  // ✅ Add stable size options
+            .presentationDragIndicator(.hidden)       // ✅ Hide drag indicator
+            .interactiveDismissDisabled(true)         // ✅ Prevent accidental dismissal
         }
         .alert("Room Save", isPresented: $viewState.showSaveAlert) {
             Button("OK", role: .cancel) {
@@ -148,13 +151,15 @@ struct RoomCaptureView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarTrailing) {
-            if !viewState.isProcessingDone {
+            // Show Done button if we're not in the middle of processing
+            // OR if user cancelled save (they can press Done again)
+            if !viewState.isProcessingDone || (viewState.isProcessingDone && !viewState.showSaveDialog) {
                 Button("Done") {
                     handleDonePressed()
                 }
                 .disabled(
                     captureManager.isProcessing ||
-                    !captureManager.isSessionRunning ||
+                    (!captureManager.isSessionRunning && !viewState.isProcessingDone) ||
                     !viewState.hasScannedContent
                 )
             }
@@ -181,14 +186,26 @@ struct RoomCaptureView: View {
         print("📄 [RoomCaptureView] finalScene changed: \(newValue != nil ? "Scene ready" : "nil")")
         if newValue != nil {
             viewState.waitingForDelegate = false
-            viewState.isProcessingDone = false
-            viewState.showSaveDialog = true
+            // ✅ CRITICAL FIX: Keep isProcessingDone as true to prevent view reset
+            viewState.isProcessingDone = true
+            
+            // ✅ Add small delay to ensure state is stable before showing dialog
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                viewState.showSaveDialog = true
+            }
         }
     }
     
     // MARK: - Handle Done Pressed (with Extended Timeout and Force Processing)
     private func handleDonePressed() {
         print("✅ [RoomCaptureView] Done button pressed")
+        
+        // If we already have a finalScene and user cancelled save, just show the dialog again
+        if viewState.isProcessingDone && captureManager.finalScene != nil && !viewState.showSaveDialog {
+            print("📝 [RoomCaptureView] Showing save dialog again after cancel")
+            viewState.showSaveDialog = true
+            return
+        }
         
         guard viewState.hasScannedContent else {
             print("⚠️ [RoomCaptureView] No content scanned yet")
@@ -279,17 +296,13 @@ struct RoomCaptureView: View {
         }
     }
     
-    // MARK: - Fixed Save Room Handler (No viewState Reset)
     private func handleSaveRoom() {
         guard !viewState.roomName.isEmpty else { return }
         
         print("💾 [RoomCaptureView] Saving room: \(viewState.roomName)")
         let savedName = viewState.roomName
         
-        // Close the save dialog
         viewState.showSaveDialog = false
-        
-        // Show processing state
         viewState.isProcessingDone = true
         captureManager.statusMessage = "Saving room..."
         
@@ -297,29 +310,22 @@ struct RoomCaptureView: View {
             DispatchQueue.main.async {
                 if success {
                     print("✅ [RoomCaptureView] Room saved successfully")
-                    
-                    // Clean up resources
                     self.captureManager.cleanupSession()
                     
-                    // Call completion handler if provided
-                    self.onSaveComplete?()
-                    
-                    // CRITICAL FIX: Don't reset viewState here!
-                    // This was causing the navigation loop
-                    // self.viewState = RoomCaptureViewState() // ❌ DON'T DO THIS
-                    
-                    // Instead, just dismiss the view completely
-                    self.performCompleteDismiss()
-                    
+                    // ONLY use ONE dismissal method!
+                    if self.onSaveComplete != nil {
+                        print("📱 Using parent's onSaveComplete")
+                        self.onSaveComplete!()
+                        // DON'T call performCompleteDismiss here!
+                    } else {
+                        print("⚠️ No parent callback, using fallback")
+                        self.dismiss()
+                    }
                 } else {
-                    // Show error alert
-                    self.viewState.saveAlertMessage = "Failed to save room: \(error ?? "Unknown error")"
+                    self.viewState.saveAlertMessage = "Failed: \(error ?? "Unknown")"
                     self.viewState.showSaveAlert = true
                     self.viewState.isProcessingDone = false
-                    print("❌ [RoomCaptureView] Save failed: \(error ?? "unknown")")
                 }
-                
-                // Clear the room name
                 self.viewState.roomName = ""
             }
         }
@@ -332,18 +338,15 @@ struct RoomCaptureView: View {
         // Close the save dialog
         viewState.showSaveDialog = false
         
-        // Go back to scanning mode (not instructions)
-        viewState.isProcessingDone = false
+        // ✅ FIXED: Keep isProcessingDone as true to maintain the completion state
+        // This prevents the view from resetting back to scanning
+        viewState.isProcessingDone = true
         viewState.waitingForDelegate = false
         
-        // Keep the scanned content and don't show instructions
-        // This allows the user to press Done again
-        viewState.showInstructions = false
+        // Keep showing the processing overlay with a "cancelled" message
+        captureManager.statusMessage = "Save cancelled. Tap Done to try again."
         
-        // Restart scanning
-        if !captureManager.isSessionRunning {
-            _ = captureManager.startCaptureSession()
-        }
+        // User can still tap Done button again if they want to save
     }
     
     // MARK: - Save Alert Dismiss Handler
@@ -357,31 +360,29 @@ struct RoomCaptureView: View {
         }
     }
     
-    // MARK: - Complete Dismiss Method
     private func performCompleteDismiss() {
         print("🚪 [RoomCaptureView] Performing complete dismiss")
         
         // Clean up first
         captureManager.cleanupSession()
         
-        // Multiple dismiss attempts to ensure it works
+        // Check if we have a parent callback FIRST
+        if let complete = onSaveComplete {
+            print("📱 [RoomCaptureView] Using parent callback for dismissal")
+            complete()
+            return  // Don't try other dismiss methods
+        }
+        
+        // Only try these if no parent callback
+        print("⚠️ [RoomCaptureView] No parent callback, using environment dismiss")
+        
+        // Try environment dismiss
         dismiss()
         
         // Backup: Use presentationMode
         if presentationMode.wrappedValue.isPresented {
             presentationMode.wrappedValue.dismiss()
         }
-        
-        // Double dismiss with delay for nested navigation
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            dismiss()
-        }
-        
-        // Notify parent view (optional)
-        NotificationCenter.default.post(
-            name: Notification.Name("RoomCaptureCompleted"),
-            object: nil
-        )
     }
 }
 
@@ -773,7 +774,7 @@ struct SaveRoomSheet: View {
                 // Action buttons
                 HStack(spacing: 20) {
                     Button("Cancel") {
-                        dismiss()
+                        // Only call onCancel, let parent handle dismissal
                         onCancel()
                     }
                     .foregroundColor(.red)
