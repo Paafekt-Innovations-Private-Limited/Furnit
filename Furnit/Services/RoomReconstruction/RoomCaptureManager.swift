@@ -2,7 +2,7 @@ import Foundation
 import RoomPlan
 import SwiftUI
 
-// MARK: - Room Capture Manager
+// MARK: - Room Capture Manager (Fixed Compilation Errors)
 @available(iOS 16.0, *)
 class RoomCaptureManager: ObservableObject {
     @Published var capturedRoom: CapturedRoom?
@@ -14,7 +14,11 @@ class RoomCaptureManager: ObservableObject {
     @Published var isSessionRunning = false
     @Published var instruction = ""
     @Published var feedbackText = ""
-    @Published var isSessionInitialized = false  // ✅ NEW: Track initialization state
+    @Published var isSessionInitialized = false
+    
+    // Track if we're waiting for final data
+    private var isWaitingForFinalData = false
+    private var hasReceivedFinalData = false
     
     init() {
         print("📂 [RoomCaptureManager] Initialized")
@@ -28,7 +32,7 @@ class RoomCaptureManager: ObservableObject {
         return isSupported
     }
     
-    // MARK: - Initialize Session (called by view when ready)
+    // MARK: - Initialize Session
     func initializeSession(from captureView: RoomCaptureSession?) {
         guard captureSession == nil else {
             print("⚠️ [RoomCaptureManager] Session already initialized")
@@ -39,7 +43,6 @@ class RoomCaptureManager: ObservableObject {
         self.isSessionInitialized = true
         print("✅ [RoomCaptureManager] Session initialized from capture view")
         
-        // If we were waiting to start, start now
         if isSessionRunning && captureSession != nil {
             print("🚀 [RoomCaptureManager] Auto-starting session that was waiting")
         }
@@ -55,28 +58,69 @@ class RoomCaptureManager: ObservableObject {
         
         print("🚀 [RoomCaptureManager] Preparing to start room capture session")
         
-        // Set flag that we want to start scanning
+        // Reset flags
+        hasReceivedFinalData = false
+        isWaitingForFinalData = false
+        
         isSessionRunning = true
         statusMessage = "Point at the floor to start scanning"
         instruction = "Move slowly and steadily"
         
-        // Return the session if it exists (will be nil initially, that's ok)
         return captureSession
     }
     
-    // MARK: - Stop Capture Session
+    // MARK: - Stop Capture Session (Fixed)
     func stopCaptureSession() {
         print("🛑 [RoomCaptureManager] Stopping capture session")
         
-        if let session = captureSession {
-            // DON'T clear delegate - let it receive the final processed result
-            session.stop()
-            
-            // Update UI immediately
-            isSessionRunning = false
-            statusMessage = "Processing final scan data..."
-            
-            print("⏳ [RoomCaptureManager] Waiting for final room data from delegate...")
+        guard let session = captureSession else {
+            print("⚠️ [RoomCaptureManager] No session to stop")
+            return
+        }
+        
+        // Mark that we're waiting for final data
+        isWaitingForFinalData = true
+        hasReceivedFinalData = false
+        
+        // Update UI
+        isSessionRunning = false
+        statusMessage = "Processing scan data..."
+        
+        // Note: capturedRoom is a property, not a throwing function
+        // So we don't need try here
+        if let currentRoom = self.capturedRoom {
+            print("📦 [RoomCaptureManager] Already have room data: \(currentRoom.walls.count) walls")
+        }
+        
+        // Now stop the session
+        print("⏸️ [RoomCaptureManager] Calling session.stop() - delegate should receive final data")
+        session.stop()
+        
+        // If we have a room but delegate doesn't fire, process it anyway
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            if let room = self?.capturedRoom, self?.finalScene == nil {
+                print("🔧 [RoomCaptureManager] Forcing room processing after stop")
+                Task {
+                    if let self = self {
+                        await self.processCapturedRoom(room)
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Force Process Current Data
+    func forceProcessCurrentData() {
+        print("⚠️ [RoomCaptureManager] Forcing processing of current data")
+        
+        if let room = capturedRoom {
+            print("📦 [RoomCaptureManager] Processing existing captured room")
+            Task {
+                await processCapturedRoom(room)
+            }
+        } else {
+            print("❌ [RoomCaptureManager] No room data to process")
+            statusMessage = "No room data captured"
         }
     }
     
@@ -87,10 +131,9 @@ class RoomCaptureManager: ObservableObject {
         if let session = captureSession {
             session.delegate = nil
             
-            // Delayed cleanup to ensure delegate callbacks are done
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.captureSession = nil
-                self?.isSessionInitialized = false  // Reset initialization flag
+                self?.isSessionInitialized = false
                 print("✅ [RoomCaptureManager] Session resources cleaned up")
             }
         }
@@ -99,6 +142,8 @@ class RoomCaptureManager: ObservableObject {
         capturedRoom = nil
         isSessionRunning = false
         isSessionInitialized = false
+        isWaitingForFinalData = false
+        hasReceivedFinalData = false
     }
     
     // MARK: - Update Instruction
@@ -108,7 +153,7 @@ class RoomCaptureManager: ObservableObject {
         }
     }
     
-    // MARK: - Process Captured Room
+    // MARK: - Process Captured Room (Called by Delegate)
     func processCapturedRoom(_ room: CapturedRoom) async {
         print("🏠 [RoomCaptureManager] Processing captured room")
         print("   - Walls: \(room.walls.count)")
@@ -117,6 +162,9 @@ class RoomCaptureManager: ObservableObject {
         print("   - Windows: \(room.windows.count)")
         print("   - Openings: \(room.openings.count)")
         
+        // Mark that we received final data
+        hasReceivedFinalData = true
+        
         await MainActor.run {
             self.capturedRoom = room
             self.isProcessing = true
@@ -124,8 +172,16 @@ class RoomCaptureManager: ObservableObject {
             self.feedbackText = "Found \(room.walls.count) walls, \(room.objects.count) objects"
         }
         
-        // Export to USDZ
-        await exportToUSDZ(room)
+        // Only export if we have valid room data
+        if room.walls.count > 0 || room.objects.count > 0 {
+            await exportToUSDZ(room)
+        } else {
+            print("⚠️ [RoomCaptureManager] Room has no content, skipping export")
+            await MainActor.run {
+                self.statusMessage = "No room content captured"
+                self.isProcessing = false
+            }
+        }
     }
     
     // MARK: - Export to USDZ
@@ -138,11 +194,9 @@ class RoomCaptureManager: ObservableObject {
         }
         
         do {
-            // Create file in Documents directory
             let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let tempFolder = documentsPath.appendingPathComponent("TempScans", isDirectory: true)
             
-            // Create temp folder if needed
             if !FileManager.default.fileExists(atPath: tempFolder.path) {
                 try FileManager.default.createDirectory(at: tempFolder, withIntermediateDirectories: true)
                 print("✅ [RoomCaptureManager] Created TempScans directory")
@@ -163,6 +217,12 @@ class RoomCaptureManager: ObservableObject {
             
             print("✅ [RoomCaptureManager] Room exported successfully")
             
+            // Check file size
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: exportURL.path),
+               let fileSize = attributes[.size] as? Int {
+                print("   - File size: \(fileSize) bytes")
+            }
+            
             await MainActor.run {
                 self.exportProgress = 1.0
                 self.statusMessage = "Room scan complete!"
@@ -172,6 +232,7 @@ class RoomCaptureManager: ObservableObject {
             
         } catch {
             print("❌ [RoomCaptureManager] Export failed: \(error.localizedDescription)")
+            print("   - Error details: \(error)")
             await MainActor.run {
                 self.statusMessage = "Export failed: \(error.localizedDescription)"
                 self.isProcessing = false
@@ -189,7 +250,6 @@ class RoomCaptureManager: ObservableObject {
         
         print("💾 [RoomCaptureManager] Saving room to library: \(name)")
         
-        // Check if source file exists
         guard FileManager.default.fileExists(atPath: sceneURL.path) else {
             print("❌ [RoomCaptureManager] Source file no longer exists at: \(sceneURL.path)")
             completion(false, "Source file was deleted")
@@ -200,7 +260,6 @@ class RoomCaptureManager: ObservableObject {
             let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let roomsFolder = documentsPath.appendingPathComponent("SavedRooms", isDirectory: true)
             
-            // Create SavedRooms folder if needed
             if !FileManager.default.fileExists(atPath: roomsFolder.path) {
                 try FileManager.default.createDirectory(at: roomsFolder, withIntermediateDirectories: true)
                 print("✅ [RoomCaptureManager] Created SavedRooms directory")
@@ -208,15 +267,12 @@ class RoomCaptureManager: ObservableObject {
             
             let permanentURL = roomsFolder.appendingPathComponent("\(name).usdz")
             
-            // Remove existing file if present
             if FileManager.default.fileExists(atPath: permanentURL.path) {
                 try FileManager.default.removeItem(at: permanentURL)
             }
             
-            // Copy the file to permanent location
             try FileManager.default.copyItem(at: sceneURL, to: permanentURL)
             
-            // Verify the copy succeeded
             guard FileManager.default.fileExists(atPath: permanentURL.path) else {
                 print("❌ [RoomCaptureManager] Copy failed - file not found at destination")
                 completion(false, "Failed to copy file to permanent storage")
@@ -225,15 +281,15 @@ class RoomCaptureManager: ObservableObject {
             
             print("✅ [RoomCaptureManager] Successfully copied to: \(permanentURL.path)")
             
-            // Save metadata to UserDefaults
             var savedRooms = UserDefaults.standard.dictionary(forKey: "SavedRooms") as? [String: [String: Any]] ?? [:]
             savedRooms[name] = [
                 "filePath": permanentURL.path,
-                "createdAt": Date().timeIntervalSince1970
+                "createdAt": Date().timeIntervalSince1970,
+                "wallCount": capturedRoom?.walls.count ?? 0,
+                "objectCount": capturedRoom?.objects.count ?? 0
             ]
             UserDefaults.standard.set(savedRooms, forKey: "SavedRooms")
             
-            // Clean up temp file after successful save
             try? FileManager.default.removeItem(at: sceneURL)
             print("🧹 [RoomCaptureManager] Cleaned up temp file")
             
@@ -250,7 +306,6 @@ class RoomCaptureManager: ObservableObject {
     func getRoomDimensions() -> (width: Float, depth: Float, height: Float)? {
         guard let room = capturedRoom else { return nil }
         
-        // Calculate room bounds from walls
         var minX: Float = .infinity
         var maxX: Float = -.infinity
         var minY: Float = .infinity
@@ -272,6 +327,11 @@ class RoomCaptureManager: ObservableObject {
             maxY = max(maxY, position.y + height / 2)
             minZ = min(minZ, position.z)
             maxZ = max(maxZ, position.z)
+        }
+        
+        // Check if we got valid bounds
+        if minX == .infinity || maxX == -.infinity {
+            return nil
         }
         
         let roomWidth = maxX - minX
@@ -302,8 +362,38 @@ class RoomCaptureManager: ObservableObject {
             stats += "Width: \(String(format: "%.2f", dims.width))m\n"
             stats += "Depth: \(String(format: "%.2f", dims.depth))m\n"
             stats += "Height: \(String(format: "%.2f", dims.height))m\n"
+            
+            let area = dims.width * dims.depth
+            let volume = area * dims.height
+            stats += "\nArea: \(String(format: "%.2f", area))m²\n"
+            stats += "Volume: \(String(format: "%.2f", volume))m³\n"
         }
         
         return stats
+    }
+    
+    // MARK: - Check if has valid data
+    func hasValidRoomData() -> Bool {
+        return capturedRoom != nil && (capturedRoom!.walls.count > 0 || capturedRoom!.objects.count > 0)
+    }
+    
+    // MARK: - Manual Capture Current State (Fixed)
+    func manuallyCaptureCurrent() {
+        print("🔧 [RoomCaptureManager] Manually capturing current state")
+        
+        guard captureSession != nil else {
+            print("❌ No session available")
+            return
+        }
+        
+        // Check if we have a captured room already
+        if let room = capturedRoom {
+            print("✅ Using existing room: \(room.walls.count) walls, \(room.objects.count) objects")
+            Task {
+                await processCapturedRoom(room)
+            }
+        } else {
+            print("❌ No room data available")
+        }
     }
 }
