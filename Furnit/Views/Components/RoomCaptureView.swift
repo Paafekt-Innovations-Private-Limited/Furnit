@@ -1,293 +1,416 @@
 import SwiftUI
 import RoomPlan
-import ARKit
+import Combine
 
-// MARK: - Room Capture View with Metal Crash Workaround
+// MARK: - Room Capture View (Complete Production Version)
 @available(iOS 16.0, *)
 struct RoomCaptureView: View {
     @StateObject private var captureManager = RoomCaptureManager()
     @Environment(\.dismiss) private var dismiss
     
-    @State private var showInstructions = true
-    @State private var showSaveDialog = false
-    @State private var roomName = ""
-    @State private var showSaveAlert = false
-    @State private var saveAlertMessage = ""
-    @State private var scanningStarted = false
-    @State private var waitingForDelegate = false
-    @State private var sessionReady = false
-    @State private var showErrorAlert = false
-    @State private var errorMessage = ""
+    @State private var viewState = RoomCaptureViewState()
+    @State private var roomCaptureObserver: AnyCancellable?
     
     var body: some View {
         ZStack {
-            // RoomPlan Capture Session View
-            if scanningStarted {
-                RoomCaptureViewRepresentable(
-                    captureManager: captureManager,
-                    onSessionReady: {
-                        sessionReady = true
-                        print("📹 [RoomCaptureView] Session is ready!")
-                    },
-                    onError: { error in
-                        // Handle Metal/SLAM errors
-                        errorMessage = error
-                        showErrorAlert = true
-                        print("❌ [RoomCaptureView] Error: \(error)")
-                    }
-                )
-                .ignoresSafeArea()
-                .transition(.opacity)
-            } else {
-                // Loading/Setup view
-                Color.black
-                    .ignoresSafeArea()
-                    .overlay(
-                        VStack {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(1.5)
-                            Text("Initializing camera...")
-                                .foregroundColor(.white)
-                                .padding(.top)
-                        }
-                    )
-            }
+            // Main content
+            mainContentView
             
-            // Live Feedback Overlay (shows during scanning)
-            if captureManager.isSessionRunning && !showInstructions && !captureManager.isProcessing {
-                VStack {
-                    // Top instruction bar
-                    VStack(spacing: 8) {
-                        Text(captureManager.statusMessage)
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        
-                        if !captureManager.instruction.isEmpty {
-                            Text(captureManager.instruction)
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        
-                        if !captureManager.feedbackText.isEmpty {
-                            Text(captureManager.feedbackText)
-                                .font(.caption)
-                                .foregroundColor(.green)
-                        }
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.black.opacity(0.7))
-                    .cornerRadius(12)
-                    .padding()
-                    
-                    Spacer()
-                }
-            }
-            
-            // Instructions Overlay - shows after session is ready
-            if showInstructions && sessionReady {
-                instructionsOverlay
-            }
-            
-            // Processing Overlay
-            if captureManager.isProcessing {
-                processingOverlay
-            }
-            
-            // Controls at bottom
-            if !captureManager.isProcessing && sessionReady {
-                VStack {
-                    Spacer()
-                    controlsView
-                }
-            }
+            // Overlays
+            overlayContent
         }
         .navigationTitle("3D Room Scan")
         .navigationBarTitleDisplayMode(.inline)
-        .interactiveDismissDisabled(waitingForDelegate || captureManager.isProcessing)
+        .interactiveDismissDisabled(viewState.waitingForDelegate || captureManager.isProcessing || viewState.isProcessingDone)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Done") {
-                    waitingForDelegate = true
-                    captureManager.stopCaptureSession()
-                    
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                        if captureManager.capturedRoom == nil && captureManager.finalScene == nil {
-                            print("⏱️ [RoomCaptureView] Timeout - no room data received")
-                            waitingForDelegate = false
-                            captureManager.cleanupSession()
-                            dismiss()
-                        }
-                    }
-                }
-                .disabled(captureManager.isProcessing || !captureManager.isSessionRunning)
-            }
+            toolbarContent
         }
-        .sheet(isPresented: $showSaveDialog) {
-            saveRoomSheet
+        .sheet(isPresented: $viewState.showSaveDialog) {
+            SaveRoomSheet(
+                captureManager: captureManager,
+                roomName: $viewState.roomName,
+                onSave: handleSaveRoom,
+                onCancel: handleCancelSave
+            )
         }
-        .alert("Room Save", isPresented: $showSaveAlert) {
+        .alert("Room Save", isPresented: $viewState.showSaveAlert) {
             Button("OK", role: .cancel) {
-                if saveAlertMessage.contains("successfully") {
-                    dismiss()
-                }
+                handleSaveAlertDismiss()
             }
         } message: {
-            Text(saveAlertMessage)
+            Text(viewState.saveAlertMessage)
         }
-        .alert("Scanning Error", isPresented: $showErrorAlert) {
+        .alert("Scanning Error", isPresented: $viewState.showErrorAlert) {
             Button("Try Again") {
-                // Reset and try again
-                scanningStarted = false
-                sessionReady = false
-                captureManager.cleanupSession()
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    scanningStarted = true
-                }
+                resetAndRetry()
             }
             Button("Cancel", role: .cancel) {
                 dismiss()
             }
         } message: {
-            Text(errorMessage)
+            Text(viewState.errorMessage)
         }
         .onAppear {
-            print("🎬 [RoomCaptureView] View appeared, starting capture setup...")
-            
-            // Add delay to let system initialize properly (helps with Metal issues)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                scanningStarted = true
-            }
+            handleOnAppear()
+            setupObservers()
         }
         .onDisappear {
-            if !waitingForDelegate {
-                captureManager.cleanupSession()
-                print("🧹 [RoomCaptureView] Cleaned up resources on disappear")
-            }
+            handleOnDisappear()
         }
-        .onChange(of: captureManager.finalScene) { oldValue, newValue in
-            if newValue != nil {
-                waitingForDelegate = false
-                showSaveDialog = true
+        .onChange(of: captureManager.finalScene) { _, newValue in
+            handleFinalSceneChange(newValue)
+        }
+    }
+    
+    // MARK: - Setup Observers
+    private func setupObservers() {
+        // Observe capturedRoom changes using Combine (fixes Equatable issue)
+        roomCaptureObserver = captureManager.$capturedRoom
+            .sink { newValue in
+                if newValue != nil {
+                    print("🏠 [RoomCaptureView] Room captured successfully")
+                    viewState.hasScannedContent = true
+                }
+            }
+    }
+    
+    // MARK: - Main Content View
+    @ViewBuilder
+    private var mainContentView: some View {
+        if viewState.scanningStarted && !viewState.isProcessingDone {
+            RoomCaptureViewRepresentable(
+                captureManager: captureManager,
+                onSessionReady: {
+                    viewState.sessionReady = true
+                    print("📹 [RoomCaptureView] Session is ready!")
+                },
+                onContentDetected: {
+                    viewState.hasScannedContent = true
+                },
+                onError: { error in
+                    viewState.errorMessage = error
+                    viewState.showErrorAlert = true
+                    print("❌ [RoomCaptureView] Error: \(error)")
+                }
+            )
+            .ignoresSafeArea()
+            .transition(.opacity)
+        } else if !viewState.scanningStarted {
+            LoadingView()
+        }
+    }
+    
+    // MARK: - Overlay Content
+    @ViewBuilder
+    private var overlayContent: some View {
+        if captureManager.isSessionRunning && !viewState.showInstructions && !captureManager.isProcessing && !viewState.isProcessingDone {
+            LiveFeedbackOverlay(captureManager: captureManager)
+        }
+        
+        if viewState.showInstructions && viewState.sessionReady && !viewState.isProcessingDone {
+            InstructionsOverlay(
+                hasScannedContent: viewState.hasScannedContent,
+                onStartScanning: {
+                    withAnimation {
+                        viewState.showInstructions = false
+                        _ = captureManager.startCaptureSession()
+                        print("🚀 [RoomCaptureView] User started scanning")
+                    }
+                }
+            )
+        }
+        
+        if captureManager.isProcessing || viewState.isProcessingDone {
+            ProcessingOverlay(
+                captureManager: captureManager,
+                isProcessingDone: viewState.isProcessingDone
+            )
+        }
+        
+        if !captureManager.isProcessing && viewState.sessionReady && !viewState.showInstructions && !viewState.isProcessingDone {
+            ControlsOverlay(
+                captureManager: captureManager,
+                hasScannedContent: viewState.hasScannedContent,
+                onToggleInstructions: {
+                    withAnimation {
+                        viewState.showInstructions.toggle()
+                    }
+                }
+            )
+        }
+    }
+    
+    // MARK: - Toolbar Content
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            if !viewState.isProcessingDone {
+                Button("Done") {
+                    handleDonePressed()
+                }
+                .disabled(
+                    captureManager.isProcessing ||
+                    !captureManager.isSessionRunning ||
+                    !viewState.hasScannedContent
+                )
             }
         }
     }
     
-    // MARK: - Instructions Overlay
-    private var instructionsOverlay: some View {
+    // MARK: - Action Handlers
+    private func handleOnAppear() {
+        print("🎬 [RoomCaptureView] View appeared, starting capture setup...")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            viewState.scanningStarted = true
+        }
+    }
+    
+    private func handleOnDisappear() {
+        if !viewState.waitingForDelegate && !viewState.isProcessingDone {
+            captureManager.cleanupSession()
+            print("🧹 [RoomCaptureView] Cleaned up resources on disappear")
+        }
+        roomCaptureObserver?.cancel()
+    }
+    
+    private func handleFinalSceneChange(_ newValue: URL?) {
+        print("📄 [RoomCaptureView] finalScene changed: \(newValue != nil ? "Scene ready" : "nil")")
+        if newValue != nil {
+            viewState.waitingForDelegate = false
+            viewState.isProcessingDone = false
+            viewState.showSaveDialog = true
+        }
+    }
+    
+    private func handleDonePressed() {
+        print("✅ [RoomCaptureView] Done button pressed")
+        
+        guard viewState.hasScannedContent else {
+            print("⚠️ [RoomCaptureView] No content scanned yet")
+            viewState.errorMessage = "Please scan your room before pressing Done"
+            viewState.showErrorAlert = true
+            return
+        }
+        
+        viewState.isProcessingDone = true
+        viewState.waitingForDelegate = true
+        
+        captureManager.stopCaptureSession()
+        print("⏸️ [RoomCaptureView] Capture session stopped, waiting for processing...")
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+            if captureManager.capturedRoom == nil && captureManager.finalScene == nil {
+                print("⏱️ [RoomCaptureView] Timeout - no room data received after 10 seconds")
+                
+                viewState.errorMessage = "Room processing timed out. Please try scanning again with better lighting."
+                viewState.showErrorAlert = true
+                
+                viewState.waitingForDelegate = false
+                viewState.isProcessingDone = false
+                viewState.hasScannedContent = false
+                viewState.showInstructions = true
+                
+                captureManager.cleanupSession()
+            } else {
+                print("✅ [RoomCaptureView] Processing completed successfully")
+            }
+        }
+    }
+    
+    private func resetAndRetry() {
+        print("🔄 [RoomCaptureView] Resetting for retry...")
+        
+        viewState = RoomCaptureViewState()
+        captureManager.cleanupSession()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            viewState.scanningStarted = true
+            setupObservers()
+        }
+    }
+    
+    private func handleSaveRoom() {
+        guard !viewState.roomName.isEmpty else { return }
+        
+        print("💾 [RoomCaptureView] Saving room: \(viewState.roomName)")
+        viewState.showSaveDialog = false
+        
+        captureManager.saveRoomToLibrary(name: viewState.roomName) { success, error in
+            DispatchQueue.main.async {
+                if success {
+                    viewState.saveAlertMessage = "Room '\(viewState.roomName)' saved successfully!"
+                    viewState.showSaveAlert = true
+                    print("✅ [RoomCaptureView] Room saved successfully")
+                } else {
+                    viewState.saveAlertMessage = "Failed to save room: \(error ?? "Unknown error")"
+                    viewState.showSaveAlert = true
+                    print("❌ [RoomCaptureView] Save failed: \(error ?? "unknown")")
+                }
+                viewState.roomName = ""
+            }
+        }
+    }
+    
+    private func handleCancelSave() {
+        viewState.showSaveDialog = false
+        viewState.isProcessingDone = false
+        viewState.showInstructions = false
+        viewState.hasScannedContent = false
+    }
+    
+    private func handleSaveAlertDismiss() {
+        if viewState.saveAlertMessage.contains("successfully") {
+            captureManager.cleanupSession()
+            dismiss()
+        } else {
+            viewState.isProcessingDone = false
+            viewState.showInstructions = false
+        }
+    }
+}
+
+// MARK: - View State
+struct RoomCaptureViewState {
+    var showInstructions = true
+    var showSaveDialog = false
+    var roomName = ""
+    var showSaveAlert = false
+    var saveAlertMessage = ""
+    var scanningStarted = false
+    var waitingForDelegate = false
+    var sessionReady = false
+    var showErrorAlert = false
+    var errorMessage = ""
+    var hasScannedContent = false
+    var isProcessingDone = false
+}
+
+// MARK: - Loading View Component
+struct LoadingView: View {
+    var body: some View {
+        Color.black
+            .ignoresSafeArea()
+            .overlay(
+                VStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.5)
+                    Text("Initializing camera...")
+                        .foregroundColor(.white)
+                        .padding(.top)
+                }
+            )
+    }
+}
+
+// MARK: - Live Feedback Overlay
+struct LiveFeedbackOverlay: View {
+    @ObservedObject var captureManager: RoomCaptureManager
+    
+    var body: some View {
+        VStack {
+            feedbackBar
+            Spacer()
+        }
+    }
+    
+    private var feedbackBar: some View {
+        VStack(spacing: 8) {
+            Text(captureManager.statusMessage)
+                .font(.headline)
+                .foregroundColor(.white)
+            
+            if !captureManager.instruction.isEmpty {
+                Text(captureManager.instruction)
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.8))
+            }
+            
+            if !captureManager.feedbackText.isEmpty {
+                Text(captureManager.feedbackText)
+                    .font(.caption)
+                    .foregroundColor(.green)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Color.black.opacity(0.7))
+        .cornerRadius(12)
+        .padding()
+    }
+}
+
+// MARK: - Instructions Overlay
+struct InstructionsOverlay: View {
+    let hasScannedContent: Bool
+    let onStartScanning: () -> Void
+    
+    var body: some View {
         VStack(spacing: 20) {
             Spacer()
-            
-            VStack(spacing: 16) {
-                Image(systemName: "camera.metering.center.weighted")
-                    .font(.system(size: 60))
-                    .foregroundColor(.white)
-                
-                Text("How to Scan Your Room")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                
-                VStack(alignment: .leading, spacing: 12) {
-                    InstructionRow(icon: "1.circle.fill", text: "Point your camera at the floor")
-                    InstructionRow(icon: "2.circle.fill", text: "Slowly pan across the room")
-                    InstructionRow(icon: "3.circle.fill", text: "Capture walls, ceiling, and furniture")
-                    InstructionRow(icon: "4.circle.fill", text: "Tap 'Done' when complete")
-                }
-                .padding(.horizontal, 24)
-                
-                // Additional tips for avoiding crashes
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Tips for best results:")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.7))
-                    Text("• Ensure good lighting")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.6))
-                    Text("• Move slowly and steadily")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.6))
-                    Text("• Avoid quick movements")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-                
-                Button(action: {
-                    withAnimation {
-                        showInstructions = false
-                        _ = captureManager.startCaptureSession()
-                    }
-                }) {
-                    Text("Start Scanning")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(12)
-                }
-                .padding(.horizontal, 40)
-                .padding(.top, 8)
-            }
-            .padding(32)
-            .background(Color.black.opacity(0.85))
-            .cornerRadius(20)
-            .padding()
-            
+            instructionCard
             Spacer()
         }
     }
     
-    // MARK: - Processing Overlay
-    private var processingOverlay: some View {
+    private var instructionCard: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "camera.metering.center.weighted")
+                .font(.system(size: 60))
+                .foregroundColor(.white)
+            
+            Text("How to Scan Your Room")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+            
+            VStack(alignment: .leading, spacing: 12) {
+                InstructionRow(icon: "1.circle.fill", text: "Point your camera at the floor")
+                InstructionRow(icon: "2.circle.fill", text: "Slowly pan across the room")
+                InstructionRow(icon: "3.circle.fill", text: "Capture walls, ceiling, and furniture")
+                InstructionRow(icon: "4.circle.fill", text: "Tap 'Done' when complete")
+            }
+            .padding(.horizontal, 24)
+            
+            Text("The 'Done' button will enable once scanning begins")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.top, 8)
+            
+            Button(action: onStartScanning) {
+                Text("Start Scanning")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.blue)
+                    .cornerRadius(12)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 8)
+        }
+        .padding(32)
+        .background(Color.black.opacity(0.85))
+        .cornerRadius(20)
+        .padding()
+    }
+}
+
+// MARK: - Processing Overlay
+struct ProcessingOverlay: View {
+    @ObservedObject var captureManager: RoomCaptureManager
+    let isProcessingDone: Bool
+    
+    var body: some View {
         ZStack {
             Color.black.opacity(0.9)
                 .ignoresSafeArea()
             
             VStack(spacing: 30) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(2)
-                
-                VStack(spacing: 12) {
-                    Text(captureManager.statusMessage)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                    
-                    if captureManager.exportProgress > 0 {
-                        ProgressView(value: captureManager.exportProgress, total: 1.0)
-                            .progressViewStyle(LinearProgressViewStyle(tint: .blue))
-                            .frame(width: 200)
-                        
-                        Text("\(Int(captureManager.exportProgress * 100))%")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                }
+                progressSection
                 
                 if let room = captureManager.capturedRoom {
-                    VStack(spacing: 16) {
-                        HStack(spacing: 32) {
-                            StatBadge(icon: "rectangle.split.3x3", count: room.walls.count, label: "Walls")
-                            StatBadge(icon: "cube", count: room.objects.count, label: "Objects")
-                            StatBadge(icon: "door.left.hand.closed", count: room.doors.count, label: "Doors")
-                        }
-                        .padding(.horizontal)
-                        
-                        if let dims = captureManager.getRoomDimensions() {
-                            Text("Room Size: \(String(format: "%.1f", dims.width))m × \(String(format: "%.1f", dims.depth))m")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
-                    }
-                    .padding()
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(12)
+                    statsSection(room: room)
                 }
             }
             .padding()
@@ -295,14 +418,72 @@ struct RoomCaptureView: View {
         .transition(.opacity)
     }
     
-    // MARK: - Controls View
-    private var controlsView: some View {
+    private var progressSection: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                .scaleEffect(2)
+            
+            Text(captureManager.statusMessage)
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+            
+            if isProcessingDone && captureManager.capturedRoom == nil {
+                Text("Finalizing scan data...")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            
+            if captureManager.exportProgress > 0 {
+                ProgressView(value: captureManager.exportProgress, total: 1.0)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .blue))
+                    .frame(width: 200)
+                
+                Text("\(Int(captureManager.exportProgress * 100))%")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+        }
+    }
+    
+    private func statsSection(room: CapturedRoom) -> some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 32) {
+                StatBadge(icon: "rectangle.split.3x3", count: room.walls.count, label: "Walls")
+                StatBadge(icon: "cube", count: room.objects.count, label: "Objects")
+                StatBadge(icon: "door.left.hand.closed", count: room.doors.count, label: "Doors")
+            }
+            .padding(.horizontal)
+            
+            if let dims = captureManager.getRoomDimensions() {
+                Text("Room Size: \(String(format: "%.1f", dims.width))m × \(String(format: "%.1f", dims.depth))m")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+        }
+        .padding()
+        .background(Color.white.opacity(0.1))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - Controls Overlay
+struct ControlsOverlay: View {
+    @ObservedObject var captureManager: RoomCaptureManager
+    let hasScannedContent: Bool
+    let onToggleInstructions: () -> Void
+    
+    var body: some View {
+        VStack {
+            Spacer()
+            controlsBar
+        }
+    }
+    
+    private var controlsBar: some View {
         HStack(spacing: 40) {
-            Button(action: {
-                withAnimation {
-                    showInstructions.toggle()
-                }
-            }) {
+            Button(action: onToggleInstructions) {
                 Image(systemName: "info.circle.fill")
                     .font(.title)
                     .foregroundColor(.white)
@@ -312,92 +493,114 @@ struct RoomCaptureView: View {
             }
             
             if captureManager.isSessionRunning {
-                Text(captureManager.feedbackText.isEmpty ? "Scanning..." : captureManager.feedbackText)
-                    .font(.caption)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.black.opacity(0.5))
-                    .cornerRadius(20)
+                statusBadge
             }
         }
         .padding(.bottom, 30)
     }
     
-    // MARK: - Save Room Sheet
-    private var saveRoomSheet: some View {
+    private var statusBadge: some View {
+        VStack(spacing: 4) {
+            Text(captureManager.feedbackText.isEmpty ? "Scanning..." : captureManager.feedbackText)
+                .font(.caption)
+                .foregroundColor(.white)
+            
+            if hasScannedContent {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                    Text("Content detected - 'Done' enabled")
+                        .font(.caption2)
+                        .foregroundColor(.green)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.5))
+        .cornerRadius(20)
+    }
+}
+
+// MARK: - Save Room Sheet
+struct SaveRoomSheet: View {
+    @ObservedObject var captureManager: RoomCaptureManager
+    @Binding var roomName: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.green)
-                    .padding(.top, 40)
+                successHeader
                 
-                Text("Room Scanned Successfully!")
-                    .font(.title2)
-                    .fontWeight(.bold)
+                statsSection
                 
-                let stats = captureManager.getRoomStatistics()
-                Text(stats)
-                    .font(.body)
-                    .multilineTextAlignment(.leading)
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(12)
-                    .padding(.horizontal)
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Room Name")
-                        .font(.headline)
-                    TextField("Enter room name", text: $roomName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                }
-                .padding(.horizontal)
+                nameInput
                 
                 Spacer()
                 
-                HStack(spacing: 20) {
-                    Button("Cancel") {
-                        showSaveDialog = false
-                        captureManager.cleanupSession()
-                        dismiss()
-                    }
-                    .foregroundColor(.red)
-                    
-                    Button("Save Room") {
-                        saveRoom()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(roomName.isEmpty)
-                }
-                .padding(.bottom, 30)
+                actionButtons
             }
             .navigationTitle("Save Room")
             .navigationBarTitleDisplayMode(.inline)
         }
     }
     
-    private func saveRoom() {
-        guard !roomName.isEmpty else { return }
-        
-        showSaveDialog = false
-        
-        captureManager.saveRoomToLibrary(name: roomName) { success, error in
-            if success {
-                saveAlertMessage = "Room '\(roomName)' saved successfully!"
-                showSaveAlert = true
-                print("✅ [RoomCaptureView] Room saved successfully")
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    self.captureManager.cleanupSession()
-                }
-            } else {
-                saveAlertMessage = "Failed to save room: \(error ?? "Unknown error")"
-                showSaveAlert = true
-                print("❌ [RoomCaptureView] Save failed: \(error ?? "unknown")")
-            }
-            roomName = ""
+    private var successHeader: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 80))
+                .foregroundColor(.green)
+                .padding(.top, 40)
+            
+            Text("Room Scanned Successfully!")
+                .font(.title2)
+                .fontWeight(.bold)
         }
+    }
+    
+    private var statsSection: some View {
+        Group {
+            let stats = captureManager.getRoomStatistics()
+            Text(stats)
+                .font(.body)
+                .multilineTextAlignment(.leading)
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(12)
+                .padding(.horizontal)
+        }
+    }
+    
+    private var nameInput: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Room Name")
+                .font(.headline)
+            TextField("Enter room name", text: $roomName)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+        }
+        .padding(.horizontal)
+    }
+    
+    private var actionButtons: some View {
+        HStack(spacing: 20) {
+            Button("Cancel") {
+                dismiss()
+                onCancel()
+            }
+            .foregroundColor(.red)
+            
+            Button("Save Room") {
+                dismiss()
+                onSave()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(roomName.isEmpty)
+        }
+        .padding(.bottom, 30)
     }
 }
 
@@ -439,21 +642,16 @@ struct StatBadge: View {
     }
 }
 
-// MARK: - RoomPlan View Representable with Error Handling
+// MARK: - RoomPlan View Representable
 @available(iOS 16.0, *)
 struct RoomCaptureViewRepresentable: UIViewRepresentable {
     @ObservedObject var captureManager: RoomCaptureManager
     var onSessionReady: (() -> Void)?
+    var onContentDetected: (() -> Void)?
     var onError: ((String) -> Void)?
     
     func makeUIView(context: Context) -> RoomPlan.RoomCaptureView {
         print("🎥 [RoomCaptureViewRepresentable] Creating capture view...")
-        
-        // Configure Metal to avoid texture issues
-        if let metalDevice = MTLCreateSystemDefaultDevice() {
-            print("📱 [Metal] Device: \(metalDevice.name)")
-            print("📊 [Metal] Max texture size: \(metalDevice.maxThreadsPerThreadgroup)")
-        }
         
         let captureView = RoomPlan.RoomCaptureView()
         captureView.delegate = context.coordinator
@@ -461,7 +659,7 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
         captureManager.initializeSession(from: captureView.captureSession)
         captureView.captureSession.delegate = context.coordinator
         
-        print("📹 [RoomCaptureViewRepresentable] Capture view created")
+        print("📹 [RoomCaptureViewRepresentable] Capture view created and delegates set")
         
         DispatchQueue.main.async {
             onSessionReady?()
@@ -477,52 +675,44 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
             var configuration = RoomCaptureSession.Configuration()
             configuration.isCoachingEnabled = true
             
-            // Use safer configuration to avoid Metal crashes
-            do {
-                // Add error handling for session start
-                uiView.captureSession.run(configuration: configuration)
-                context.coordinator.hasStartedSession = true
-                print("✅ [RoomCaptureViewRepresentable] Session started")
-            } catch {
-                print("❌ [RoomCaptureViewRepresentable] Failed to start session: \(error)")
-                onError?("Failed to start scanning. Please try again.")
-            }
+            uiView.captureSession.run(configuration: configuration)
+            context.coordinator.hasStartedSession = true
+            print("✅ [RoomCaptureViewRepresentable] Session started successfully")
         }
     }
     
     static func dismantleUIView(_ uiView: RoomPlan.RoomCaptureView, coordinator: Coordinator) {
         print("🧹 [RoomCaptureViewRepresentable] Dismantling view...")
-        
-        // Proper cleanup to avoid crashes
         uiView.captureSession.delegate = nil
         uiView.delegate = nil
         uiView.captureSession.stop()
-        
-        // Force Metal cleanup
-        autoreleasepool {
-            _ = uiView
-        }
-        
         print("✅ [RoomCaptureViewRepresentable] View dismantled")
     }
     
     func makeCoordinator() -> Coordinator {
-        Coordinator(captureManager: captureManager, onError: onError)
+        Coordinator(
+            captureManager: captureManager,
+            onContentDetected: onContentDetected,
+            onError: onError
+        )
     }
     
     @objc(RoomCaptureViewCoordinator)
     class Coordinator: NSObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
         let captureManager: RoomCaptureManager
         var hasStartedSession = false
+        var onContentDetected: (() -> Void)?
         var onError: ((String) -> Void)?
-        private var slamErrorCount = 0
-        private let maxSlamErrors = 10
+        private var hasDetectedContent = false
         
-        init(captureManager: RoomCaptureManager, onError: ((String) -> Void)?) {
+        init(captureManager: RoomCaptureManager,
+             onContentDetected: (() -> Void)?,
+             onError: ((String) -> Void)?) {
             self.captureManager = captureManager
+            self.onContentDetected = onContentDetected
             self.onError = onError
             super.init()
-            print("🎯 [Coordinator] Initialized with error handling")
+            print("🎯 [Coordinator] Initialized")
         }
         
         required init?(coder: NSCoder) {
@@ -542,34 +732,32 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
         
         func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
             print("📊 [Coordinator] Room data ready for processing")
+            print("   - Has error: \(error != nil)")
+            
             if let error = error {
-                print("❌ [Coordinator] Error: \(error.localizedDescription)")
-                
-                // Check for SLAM errors
-                if error.localizedDescription.contains("slam") ||
-                   error.localizedDescription.contains("tracking") {
-                    slamErrorCount += 1
-                    if slamErrorCount >= maxSlamErrors {
-                        onError?("Tracking lost. Please ensure good lighting and move slowly.")
-                        slamErrorCount = 0
-                        return false
-                    }
-                }
+                print("❌ [Coordinator] Processing error: \(error.localizedDescription)")
+                onError?("Room processing error: \(error.localizedDescription)")
                 return false
             }
-            slamErrorCount = 0
+            
+            print("✅ [Coordinator] Room data accepted for processing")
             return true
         }
         
         func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
-            print("✅ [Coordinator] Room capture complete")
+            print("🏁 [Coordinator] Room capture complete - didPresent called")
+            print("   - Walls: \(processedResult.walls.count)")
+            print("   - Objects: \(processedResult.objects.count)")
+            print("   - Has error: \(error != nil)")
+            
             if let error = error {
-                print("❌ [Coordinator] Processing error: \(error.localizedDescription)")
+                print("❌ [Coordinator] Final processing error: \(error.localizedDescription)")
                 onError?("Failed to process room: \(error.localizedDescription)")
             } else {
-                print("🎉 [Coordinator] Successfully captured room")
+                print("🎉 [Coordinator] Successfully captured room, starting processing...")
                 Task {
                     await captureManager.processCapturedRoom(processedResult)
+                    print("✅ [Coordinator] Room processing task completed")
                 }
             }
         }
@@ -581,10 +769,18 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
                 let wallCount = room.walls.count
                 let objectCount = room.objects.count
                 
+                // Notify when content is first detected
+                if !self.hasDetectedContent && (wallCount > 0 || objectCount > 0) {
+                    self.hasDetectedContent = true
+                    self.onContentDetected?()
+                    print("🎯 [Coordinator] Content detected for the first time")
+                }
+                
                 if wallCount > 0 || objectCount > 0 {
                     self.captureManager.feedbackText = "Detected: \(wallCount) walls, \(objectCount) objects"
                 }
                 
+                // Update instructions based on capture progress
                 if wallCount == 0 {
                     self.captureManager.instruction = "Point at walls to detect them"
                 } else if wallCount < 3 {
@@ -622,21 +818,19 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
             print("🎬 [Coordinator] Session started with configuration")
             DispatchQueue.main.async {
                 self.captureManager.statusMessage = "Scanning room..."
-                self.slamErrorCount = 0  // Reset error count on successful start
             }
         }
         
         func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData?, error: Error?) {
             print("🏁 [Coordinator] Session ended")
+            print("   - Has data: \(data != nil)")
+            print("   - Has error: \(error != nil)")
+            
             if let error = error {
                 print("❌ [Coordinator] Session ended with error: \(error)")
-                
-                // Check if it's a Metal-related crash
-                if error.localizedDescription.contains("Metal") ||
-                   error.localizedDescription.contains("texture") ||
-                   error.localizedDescription.contains("shader") {
-                    onError?("Graphics error occurred. Please restart the app and try again.")
-                }
+                onError?("Session error: \(error.localizedDescription)")
+            } else if data != nil {
+                print("✅ [Coordinator] Session ended with data")
             }
         }
     }
