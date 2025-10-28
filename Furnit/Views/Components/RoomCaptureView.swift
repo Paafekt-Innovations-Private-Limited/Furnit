@@ -2,11 +2,15 @@ import SwiftUI
 import RoomPlan
 import Combine
 
-// MARK: - Room Capture View (Complete Fixed Version)
+// MARK: - Room Capture View (Complete Version with Navigation Loop Fix)
 @available(iOS 16.0, *)
 struct RoomCaptureView: View {
     @StateObject private var captureManager = RoomCaptureManager()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) var presentationMode
+    
+    // Optional completion handler for parent view
+    var onSaveComplete: (() -> Void)?
     
     @State private var viewState = RoomCaptureViewState()
     @State private var roomCaptureObserver: AnyCancellable?
@@ -45,7 +49,7 @@ struct RoomCaptureView: View {
                 resetAndRetry()
             }
             Button("Cancel", role: .cancel) {
-                dismiss()
+                performCompleteDismiss()
             }
         } message: {
             Text(viewState.errorMessage)
@@ -182,6 +186,7 @@ struct RoomCaptureView: View {
         }
     }
     
+    // MARK: - Handle Done Pressed (with Extended Timeout and Force Processing)
     private func handleDonePressed() {
         print("✅ [RoomCaptureView] Done button pressed")
         
@@ -212,7 +217,7 @@ struct RoomCaptureView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
             if captureManager.finalScene == nil && captureManager.capturedRoom != nil {
                 print("⚠️ [RoomCaptureView] Have room data but no scene, forcing processing...")
-                // Note: forceProcessCurrentData() needs to be implemented in your RoomCaptureManager
+                captureManager.forceProcessCurrentData()
             }
         }
         
@@ -225,6 +230,7 @@ struct RoomCaptureView: View {
                 // Check if we at least have captured room data
                 if captureManager.capturedRoom != nil {
                     print("📦 [RoomCaptureView] Have room data, attempting force processing...")
+                    captureManager.forceProcessCurrentData()
                     
                     // Give it 2 more seconds to process
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -273,43 +279,109 @@ struct RoomCaptureView: View {
         }
     }
     
+    // MARK: - Fixed Save Room Handler (No viewState Reset)
     private func handleSaveRoom() {
         guard !viewState.roomName.isEmpty else { return }
         
         print("💾 [RoomCaptureView] Saving room: \(viewState.roomName)")
+        let savedName = viewState.roomName
+        
+        // Close the save dialog
         viewState.showSaveDialog = false
         
-        captureManager.saveRoomToLibrary(name: viewState.roomName) { success, error in
+        // Show processing state
+        viewState.isProcessingDone = true
+        captureManager.statusMessage = "Saving room..."
+        
+        captureManager.saveRoomToLibrary(name: savedName) { success, error in
             DispatchQueue.main.async {
                 if success {
-                    viewState.saveAlertMessage = "Room '\(viewState.roomName)' saved successfully!"
-                    viewState.showSaveAlert = true
                     print("✅ [RoomCaptureView] Room saved successfully")
+                    
+                    // Clean up resources
+                    self.captureManager.cleanupSession()
+                    
+                    // Call completion handler if provided
+                    self.onSaveComplete?()
+                    
+                    // CRITICAL FIX: Don't reset viewState here!
+                    // This was causing the navigation loop
+                    // self.viewState = RoomCaptureViewState() // ❌ DON'T DO THIS
+                    
+                    // Instead, just dismiss the view completely
+                    self.performCompleteDismiss()
+                    
                 } else {
-                    viewState.saveAlertMessage = "Failed to save room: \(error ?? "Unknown error")"
-                    viewState.showSaveAlert = true
+                    // Show error alert
+                    self.viewState.saveAlertMessage = "Failed to save room: \(error ?? "Unknown error")"
+                    self.viewState.showSaveAlert = true
+                    self.viewState.isProcessingDone = false
                     print("❌ [RoomCaptureView] Save failed: \(error ?? "unknown")")
                 }
-                viewState.roomName = ""
+                
+                // Clear the room name
+                self.viewState.roomName = ""
             }
         }
     }
     
+    // MARK: - Fixed Cancel Save Handler
     private func handleCancelSave() {
+        print("❌ [RoomCaptureView] User cancelled save")
+        
+        // Close the save dialog
         viewState.showSaveDialog = false
+        
+        // Go back to scanning mode (not instructions)
         viewState.isProcessingDone = false
+        viewState.waitingForDelegate = false
+        
+        // Keep the scanned content and don't show instructions
+        // This allows the user to press Done again
         viewState.showInstructions = false
-        viewState.hasScannedContent = false
+        
+        // Restart scanning
+        if !captureManager.isSessionRunning {
+            _ = captureManager.startCaptureSession()
+        }
     }
     
+    // MARK: - Save Alert Dismiss Handler
     private func handleSaveAlertDismiss() {
         if viewState.saveAlertMessage.contains("successfully") {
-            captureManager.cleanupSession()
-            dismiss()
+            performCompleteDismiss()
         } else {
+            // Failed save - stay in current view
             viewState.isProcessingDone = false
             viewState.showInstructions = false
         }
+    }
+    
+    // MARK: - Complete Dismiss Method
+    private func performCompleteDismiss() {
+        print("🚪 [RoomCaptureView] Performing complete dismiss")
+        
+        // Clean up first
+        captureManager.cleanupSession()
+        
+        // Multiple dismiss attempts to ensure it works
+        dismiss()
+        
+        // Backup: Use presentationMode
+        if presentationMode.wrappedValue.isPresented {
+            presentationMode.wrappedValue.dismiss()
+        }
+        
+        // Double dismiss with delay for nested navigation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            dismiss()
+        }
+        
+        // Notify parent view (optional)
+        NotificationCenter.default.post(
+            name: Notification.Name("RoomCaptureCompleted"),
+            object: nil
+        )
     }
 }
 
@@ -567,7 +639,7 @@ struct ControlsOverlay: View {
     }
 }
 
-// MARK: - Save Room Sheet
+// MARK: - Save Room Sheet (Fixed Statistics Display)
 struct SaveRoomSheet: View {
     @ObservedObject var captureManager: RoomCaptureManager
     @Binding var roomName: String
@@ -578,73 +650,146 @@ struct SaveRoomSheet: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
-                successHeader
+                // Success header
+                VStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 80))
+                        .foregroundColor(.green)
+                        .padding(.top, 40)
+                    
+                    Text("Room Scanned Successfully!")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                }
                 
-                statsSection
+                // Statistics section (Fixed to show actual data)
+                Group {
+                    if let room = captureManager.capturedRoom {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Scan Results")
+                                .font(.headline)
+                            
+                            HStack(spacing: 30) {
+                                VStack {
+                                    Text("\(room.walls.count)")
+                                        .font(.title2)
+                                        .fontWeight(.bold)
+                                    Text("Walls")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                VStack {
+                                    Text("\(room.objects.count)")
+                                        .font(.title2)
+                                        .fontWeight(.bold)
+                                    Text("Objects")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                
+                                if room.doors.count > 0 {
+                                    VStack {
+                                        Text("\(room.doors.count)")
+                                            .font(.title2)
+                                            .fontWeight(.bold)
+                                        Text("Doors")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                
+                                if room.windows.count > 0 {
+                                    VStack {
+                                        Text("\(room.windows.count)")
+                                            .font(.title2)
+                                            .fontWeight(.bold)
+                                        Text("Windows")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            
+                            if let dims = captureManager.getRoomDimensions() {
+                                Divider()
+                                Text("Size: \(String(format: "%.1f", dims.width))m × \(String(format: "%.1f", dims.depth))m × \(String(format: "%.1f", dims.height))m")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                let area = dims.width * dims.depth
+                                Text("Area: \(String(format: "%.1f", area))m²")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    } else if captureManager.finalScene != nil {
+                        // We have a scene but no detailed room data
+                        VStack(spacing: 8) {
+                            Image(systemName: "cube.box.fill")
+                                .font(.largeTitle)
+                                .foregroundColor(.green)
+                            Text("3D model created successfully")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    } else {
+                        // Fallback
+                        VStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle")
+                                .font(.largeTitle)
+                                .foregroundColor(.green)
+                            Text("Room data captured")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    }
+                }
                 
-                nameInput
+                // Room name input
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Room Name")
+                        .font(.headline)
+                    TextField("Enter room name", text: $roomName)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+                .padding(.horizontal)
                 
                 Spacer()
                 
-                actionButtons
+                // Action buttons
+                HStack(spacing: 20) {
+                    Button("Cancel") {
+                        dismiss()
+                        onCancel()
+                    }
+                    .foregroundColor(.red)
+                    
+                    Button("Save Room") {
+                        // Don't dismiss here - let the parent handle it
+                        onSave()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(roomName.isEmpty)
+                }
+                .padding(.bottom, 30)
             }
             .navigationTitle("Save Room")
             .navigationBarTitleDisplayMode(.inline)
         }
-    }
-    
-    private var successHeader: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 80))
-                .foregroundColor(.green)
-                .padding(.top, 40)
-            
-            Text("Room Scanned Successfully!")
-                .font(.title2)
-                .fontWeight(.bold)
-        }
-    }
-    
-    private var statsSection: some View {
-        Group {
-            let stats = captureManager.getRoomStatistics()
-            Text(stats)
-                .font(.body)
-                .multilineTextAlignment(.leading)
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(12)
-                .padding(.horizontal)
-        }
-    }
-    
-    private var nameInput: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Room Name")
-                .font(.headline)
-            TextField("Enter room name", text: $roomName)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-        }
-        .padding(.horizontal)
-    }
-    
-    private var actionButtons: some View {
-        HStack(spacing: 20) {
-            Button("Cancel") {
-                dismiss()
-                onCancel()
-            }
-            .foregroundColor(.red)
-            
-            Button("Save Room") {
-                dismiss()
-                onSave()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(roomName.isEmpty)
-        }
-        .padding(.bottom, 30)
     }
 }
 
@@ -686,7 +831,7 @@ struct StatBadge: View {
     }
 }
 
-// MARK: - RoomPlan View Representable
+// MARK: - RoomPlan View Representable with Workaround Coordinator
 @available(iOS 16.0, *)
 struct RoomCaptureViewRepresentable: UIViewRepresentable {
     @ObservedObject var captureManager: RoomCaptureManager
@@ -741,6 +886,7 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
         )
     }
     
+    // MARK: - Coordinator with Workaround for Delegate Issues
     @objc(RoomCaptureViewCoordinator)
     class Coordinator: NSObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
         let captureManager: RoomCaptureManager
