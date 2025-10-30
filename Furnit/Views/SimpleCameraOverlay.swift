@@ -7,7 +7,7 @@ import CoreImage
 struct SimpleCameraOverlay: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
-    @StateObject private var camera = U2NetCameraModel()
+    @StateObject private var camera = FastSAMCameraModel()
     
     // Start fully minimized at 30%
     @State private var scaleMultiplier: CGFloat = 0.3  // Start at 30% scale (minimized)
@@ -95,7 +95,7 @@ struct SimpleCameraOverlay: View {
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 if granted {
                     camera.startSession()
-                    print("📷 Camera session started for segmentation")
+                    print("📷 Camera session started for FastSAM segmentation")
                 } else {
                     print("⚠️ Camera access denied")
                 }
@@ -107,24 +107,28 @@ struct SimpleCameraOverlay: View {
     }
 }
 
-// U2NetCameraModel with proper segmentation
-class U2NetCameraModel: NSObject, ObservableObject {
+// FastSAMCameraModel with proper segmentation
+class FastSAMCameraModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "videoQueue", qos: .userInitiated)
     
-    private var u2netModel: VNCoreMLModel?
+    private var fastSAMModel: MLModel?
     private let context = CIContext()
     
     // Throttling
     private var lastProcessTime = Date()
     private let processInterval: TimeInterval = 0.2 // Process every 200ms
+    private var isProcessing = false
+    
+    // FastSAM parameters
+    private let confidenceThreshold: Float = 0.5
     
     override init() {
         super.init()
         checkCameraAuthorization()
-        loadU2NetModel()
+        loadFastSAMModel()
     }
     
     private func checkCameraAuthorization() {
@@ -144,24 +148,40 @@ class U2NetCameraModel: NSObject, ObservableObject {
         }
     }
     
-    private func loadU2NetModel() {
-        // Try multiple possible model names
-        let modelNames = ["u2netp", "U2Net", "u2net", "U2NetP", "U2NET", "u2net_model"]
+    private func loadFastSAMModel() {
+        // Look for FastSAM-x model
+        let modelNames = ["FastSAM-x"
+//                          , "FastSAM-embedded"
+//                          , "FastSAM"
+//                          , "yolov8x-seg"
+        ]
         
         for name in modelNames {
-            if let modelURL = Bundle.main.url(forResource: name, withExtension: "mlmodelc") {
-                do {
-                    let model = try MLModel(contentsOf: modelURL)
-                    u2netModel = try VNCoreMLModel(for: model)
-                    print("✅ U2-Net model loaded: \(name)")
-                    return
-                } catch {
-                    print("Failed to load \(name): \(error)")
+            print("🔍 Looking for model: \(name)")
+            
+            for ext in ["mlmodelc", "mlpackage"] {
+                if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+                    print("✅ Found model file: \(name).\(ext)")
+                    
+                    do {
+                        let model = try MLModel(contentsOf: url)
+                        self.fastSAMModel = model
+                        print("✅ FastSAM-x model loaded successfully")
+                        
+                        // Print model info
+                        let desc = model.modelDescription
+                        print("📊 Model Inputs: \(desc.inputDescriptionsByName.keys)")
+                        print("📊 Model Outputs: \(desc.outputDescriptionsByName.keys)")
+                        return
+                        
+                    } catch {
+                        print("❌ Failed to load \(name): \(error)")
+                    }
                 }
             }
         }
         
-        print("⚠️ No U2-Net model found, using fallback segmentation")
+        print("⚠️ No FastSAM model found")
     }
     
     private func setupCamera() {
@@ -199,7 +219,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
             }
             
             session.commitConfiguration()
-            print("✅ Camera configured with photo preset")
+            print("✅ Camera configured for FastSAM")
         } catch {
             print("❌ Camera setup failed: \(error)")
         }
@@ -219,167 +239,232 @@ class U2NetCameraModel: NSObject, ObservableObject {
         }
     }
     
-    private func processWithU2Net(pixelBuffer: CVPixelBuffer) {
+    private func processWithFastSAM(pixelBuffer: CVPixelBuffer) {
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
+        guard !isProcessing else { return }
+        
+        isProcessing = true
         lastProcessTime = now
         
-        if let model = u2netModel {
-            let request = VNCoreMLRequest(model: model) { [weak self] request, error in
-                guard let results = request.results as? [VNPixelBufferObservation],
-                      let maskBuffer = results.first?.pixelBuffer else {
-                    self?.fallbackSegmentation(pixelBuffer: pixelBuffer)
-                    return
+        guard let model = fastSAMModel else {
+            print("⚠️ No model available")
+            isProcessing = false
+            return
+        }
+        
+        // Create input for FastSAM
+        guard let resizedBuffer = resizePixelBuffer(pixelBuffer, width: 640, height: 640) else {
+            print("❌ Failed to resize buffer")
+            isProcessing = false
+            return
+        }
+        
+        let imageValue = MLFeatureValue(pixelBuffer: resizedBuffer)
+        
+        guard let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) else {
+            print("❌ Failed to create feature provider")
+            isProcessing = false
+            return
+        }
+        
+        do {
+            let prediction = try model.prediction(from: provider)
+            
+            // Get FastSAM outputs
+            guard let detections = prediction.featureValue(for: "var_1550")?.multiArrayValue,
+                  let prototypes = prediction.featureValue(for: "p")?.multiArrayValue else {
+                print("❌ Failed to get model outputs")
+                isProcessing = false
+                return
+            }
+            
+            // Process segmentation
+            processYOLOv8Segmentation(detections: detections, prototypes: prototypes, originalPixelBuffer: pixelBuffer)
+            
+        } catch {
+            print("❌ Prediction failed: \(error)")
+        }
+        
+        isProcessing = false
+    }
+    
+    private func processYOLOv8Segmentation(detections: MLMultiArray, prototypes: MLMultiArray, originalPixelBuffer: CVPixelBuffer) {
+        let numDetections = detections.shape[2].intValue  // 8400
+        let numValues = detections.shape[1].intValue      // 37
+        let numPrototypes = prototypes.shape[1].intValue  // 32
+        let protoHeight = prototypes.shape[2].intValue    // 160
+        let protoWidth = prototypes.shape[3].intValue     // 160
+        
+        let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
+        
+        // Find best detection
+        var bestDetection: (idx: Int, conf: Float, x: Float, y: Float, w: Float, h: Float)? = nil
+        var maxArea: Float = 0
+        
+        for i in 0..<numDetections {
+            let conf = detPointer[4 * numDetections + i]
+            
+            if conf > confidenceThreshold {
+                let x = detPointer[0 * numDetections + i]
+                let y = detPointer[1 * numDetections + i]
+                let w = detPointer[2 * numDetections + i]
+                let h = detPointer[3 * numDetections + i]
+                let area = w * h
+                
+                if area > maxArea && area > 1000 {
+                    maxArea = area
+                    bestDetection = (i, conf, x, y, w, h)
                 }
-                self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: maskBuffer)
             }
-            
-            // Use scaleFit to preserve full camera view
-            request.imageCropAndScaleOption = .scaleFit
-            
-            let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-            try? handler.perform([request])
-        } else {
-            fallbackSegmentation(pixelBuffer: pixelBuffer)
-        }
-    }
-    
-    private func fallbackSegmentation(pixelBuffer: CVPixelBuffer) {
-        // Vision framework fallback for saliency detection
-        let request = VNGenerateObjectnessBasedSaliencyImageRequest { [weak self] request, error in
-            guard let observation = request.results?.first as? VNSaliencyImageObservation else { return }
-            self?.applySegmentation(originalBuffer: pixelBuffer, maskBuffer: observation.pixelBuffer)
         }
         
-        // Note: Saliency requests don't have imageCropAndScaleOption
+        guard let detection = bestDetection else {
+            print("⚠️ No valid detections")
+            return
+        }
         
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-        try? handler.perform([request])
+        // Get mask coefficients
+        var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
+        for i in 0..<numPrototypes {
+            let coeffIdx = (numValues - numPrototypes + i) * numDetections + detection.idx
+            maskCoeffs[i] = detPointer[coeffIdx]
+        }
+        
+        // Generate mask
+        let segMask = generateSegmentationMask(prototypes: prototypes, coefficients: maskCoeffs,
+                                               protoHeight: protoHeight, protoWidth: protoWidth)
+        
+        // Apply to image
+        let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
+        applySegmentationMask(original: ciImage, mask: segMask)
     }
     
-    private func applySegmentation(originalBuffer: CVPixelBuffer, maskBuffer: CVPixelBuffer) {
-        autoreleasepool {
-            CVPixelBufferLockBaseAddress(originalBuffer, .readOnly)
-            CVPixelBufferLockBaseAddress(maskBuffer, .readOnly)
-            defer {
-                CVPixelBufferUnlockBaseAddress(originalBuffer, .readOnly)
-                CVPixelBufferUnlockBaseAddress(maskBuffer, .readOnly)
+    private func generateSegmentationMask(prototypes: MLMultiArray, coefficients: [Float],
+                                         protoHeight: Int, protoWidth: Int) -> CIImage {
+        let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
+        let maskSize = protoHeight * protoWidth
+        
+        // Weighted sum of prototypes
+        var finalMask = [Float](repeating: 0, count: maskSize)
+        
+        for protoIdx in 0..<coefficients.count {
+            let coeff = coefficients[protoIdx]
+            let protoOffset = protoIdx * maskSize
+            
+            for i in 0..<maskSize {
+                finalMask[i] += coeff * protoPointer[protoOffset + i]
             }
-            
-            let width = CVPixelBufferGetWidth(originalBuffer)
-            let height = CVPixelBufferGetHeight(originalBuffer)
-            
-            // Create CIImages
-            let ciImage = CIImage(cvPixelBuffer: originalBuffer)
-            let maskCI = CIImage(cvPixelBuffer: maskBuffer)
-            
-            // Scale mask to match original dimensions
-            let scaleX = CGFloat(width) / maskCI.extent.width
-            let scaleY = CGFloat(height) / maskCI.extent.height
-            let scaledMask = maskCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-            
-            // Apply mask using blend filter for transparency
-            let blendFilter = CIFilter(name: "CIBlendWithMask")
-            blendFilter?.setValue(ciImage, forKey: kCIInputImageKey)
-            
-            // Create transparent background
-            let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
-                .cropped(to: ciImage.extent)
-            blendFilter?.setValue(transparent, forKey: kCIInputBackgroundImageKey)
-            blendFilter?.setValue(scaledMask, forKey: kCIInputMaskImageKey)
-            
-            guard let output = blendFilter?.outputImage else {
-                print("❌ Blend filter failed")
-                return
-            }
-            
-            // Create CGImage WITHOUT any cropping
-            let context = CIContext(options: [.useSoftwareRenderer: false])
-            guard let cgImage = context.createCGImage(output, from: output.extent) else {
-                print("❌ Failed to create CGImage")
-                return
-            }
-            
-            let finalImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
+        }
+        
+        // Apply sigmoid and threshold
+        let threshold: Float = 0.3
+        for i in 0..<maskSize {
+            let sigmoid = 1.0 / (1.0 + exp(-finalMask[i]))
+            finalMask[i] = sigmoid > threshold ? 1.0 : 0.0
+        }
+        
+        // Convert to pixel data
+        var pixelData = [UInt8](repeating: 0, count: maskSize)
+        for i in 0..<maskSize {
+            pixelData[i] = UInt8(finalMask[i] * 255)
+        }
+        
+        let data = Data(pixelData)
+        guard let provider = CGDataProvider(data: data as CFData) else {
+            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: protoWidth, height: protoHeight))
+        }
+        
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+        
+        guard let cgImage = CGImage(
+            width: protoWidth,
+            height: protoHeight,
+            bitsPerComponent: 8,
+            bitsPerPixel: 8,
+            bytesPerRow: protoWidth,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo,
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        ) else {
+            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: protoWidth, height: protoHeight))
+        }
+        
+        return CIImage(cgImage: cgImage)
+    }
+    
+    private func applySegmentationMask(original: CIImage, mask: CIImage) {
+        // Scale mask to match original
+        let scaleX = original.extent.width / mask.extent.width
+        let scaleY = original.extent.height / mask.extent.height
+        
+        let scaledMask = mask
+            .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+            .samplingNearest()  // Prevent grey pixels
+        
+        let finalMask = scaledMask.cropped(to: original.extent)
+        
+        // Apply mask using blend filter
+        guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
+            return
+        }
+        
+        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
+            .cropped(to: original.extent)
+        
+        blendFilter.setValue(original, forKey: kCIInputImageKey)
+        blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
+        blendFilter.setValue(finalMask, forKey: kCIInputMaskImageKey)
+        
+        guard let result = blendFilter.outputImage else {
+            return
+        }
+        
+        // Render final image
+        let context = CIContext(options: [
+            .workingColorSpace: CGColorSpaceCreateDeviceRGB(),
+            .outputPremultiplied: true,
+            .useSoftwareRenderer: false
+        ])
+        
+        if let cgImage = context.createCGImage(result, from: result.extent) {
+            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
             
             DispatchQueue.main.async {
-                self.segmentedImage = finalImage
-                print("✅ Segmented furniture ready (size: \(finalImage.size))")
+                self.segmentedImage = uiImage
+                print("✅ FastSAM segmentation complete")
             }
         }
     }
     
-    // Helper function to find non-transparent bounds from mask
-    private func getNonTransparentBounds(from maskImage: CIImage, context: CIContext) -> CGRect? {
-        // Sample the mask to find bounds of non-transparent pixels
-        let extent = maskImage.extent
+    private func resizePixelBuffer(_ pixelBuffer: CVPixelBuffer, width: Int, height: Int) -> CVPixelBuffer? {
+        var resizedPixelBuffer: CVPixelBuffer?
+        let attrs = [kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue,
+                     kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue] as CFDictionary
         
-        // Create a small bitmap to sample the mask efficiently
-        guard let cgImage = context.createCGImage(maskImage, from: extent) else { return nil }
+        CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attrs, &resizedPixelBuffer)
         
-        let width = Int(extent.width)
-        let height = Int(extent.height)
+        guard let outputBuffer = resizedPixelBuffer else { return nil }
         
-        // Sample every 10th pixel for efficiency
-        let sampleRate = 10
-        var minX = width
-        var maxX = 0
-        var minY = height
-        var maxY = 0
-        var foundContent = false
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let scaleX = CGFloat(width) / ciImage.extent.width
+        let scaleY = CGFloat(height) / ciImage.extent.height
+        let scaledImage = ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
         
-        // Create bitmap context to read pixels
-        let colorSpace = CGColorSpaceCreateDeviceGray()
-        let bitmapInfo = CGImageAlphaInfo.none.rawValue
-        guard let bitmapContext = CGContext(data: nil,
-                                            width: width,
-                                            height: height,
-                                            bitsPerComponent: 8,
-                                            bytesPerRow: width,
-                                            space: colorSpace,
-                                            bitmapInfo: bitmapInfo) else {
-            return nil
-        }
+        let context = CIContext(options: [.useSoftwareRenderer: false])
+        context.render(scaledImage, to: outputBuffer)
         
-        bitmapContext.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-        guard let pixelData = bitmapContext.data else { return nil }
-        
-        let data = pixelData.bindMemory(to: UInt8.self, capacity: width * height)
-        
-        for y in stride(from: 0, to: height, by: sampleRate) {
-            for x in stride(from: 0, to: width, by: sampleRate) {
-                let pixelIndex = y * width + x
-                let value = data[pixelIndex]
-                
-                if value > 10 { // Non-transparent threshold
-                    minX = min(minX, x)
-                    maxX = max(maxX, x)
-                    minY = min(minY, y)
-                    maxY = max(maxY, y)
-                    foundContent = true
-                }
-            }
-        }
-        
-        guard foundContent else { return nil }
-        
-        // Add padding and expand to actual boundaries (since we sampled)
-        let padding = 10
-        minX = max(0, minX - padding - sampleRate)
-        maxX = min(width, maxX + padding + sampleRate)
-        minY = max(0, minY - padding - sampleRate)
-        maxY = min(height, maxY + padding + sampleRate)
-        
-        return CGRect(x: CGFloat(minX),
-                      y: CGFloat(minY),
-                      width: CGFloat(maxX - minX),
-                      height: CGFloat(maxY - minY))
+        return outputBuffer
     }
 }
 
-extension U2NetCameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
+extension FastSAMCameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        processWithU2Net(pixelBuffer: pixelBuffer)
+        processWithFastSAM(pixelBuffer: pixelBuffer)
     }
 }
