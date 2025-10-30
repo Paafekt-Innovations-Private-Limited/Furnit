@@ -86,6 +86,25 @@ struct SimpleCameraOverlay: View {
                     }
                     
                     Spacer()
+                    
+                    // Sensitivity adjustment slider
+                    HStack {
+                        Text("Sens:")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                        
+                        Slider(value: $camera.confidenceThreshold, in: 0.3...0.7)
+                            .frame(width: 100)
+                            .accentColor(.green)
+                        
+                        Text("\(Int(camera.confidenceThreshold * 100))%")
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                            .frame(width: 35)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.black.opacity(0.5)))
                 }
                 .padding(.bottom, 40)
                 .padding(.horizontal)
@@ -107,9 +126,11 @@ struct SimpleCameraOverlay: View {
     }
 }
 
-// FastSAMCameraModel with proper segmentation
+// FastSAMCameraModel with smart foreground detection
 class FastSAMCameraModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
+    @Published var confidenceThreshold: Float = 0.5
+    
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "videoQueue", qos: .userInitiated)
@@ -122,8 +143,12 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     private let processInterval: TimeInterval = 0.2 // Process every 200ms
     private var isProcessing = false
     
-    // FastSAM parameters
-    private let confidenceThreshold: Float = 0.5
+    // Frame dimensions for center calculation
+    private let frameWidth: Float = 640
+    private let frameHeight: Float = 640
+    private let frameCenterX: Float = 320
+    private let frameCenterY: Float = 320
+    private let frameArea: Float = 640 * 640
     
     override init() {
         super.init()
@@ -150,11 +175,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     
     private func loadFastSAMModel() {
         // Look for FastSAM-x model
-        let modelNames = ["FastSAM-x"
-//                          , "FastSAM-embedded"
-//                          , "FastSAM"
-//                          , "yolov8x-seg"
-        ]
+        let modelNames = ["FastSAM-x", "FastSAM-embedded", "FastSAM", "yolov8x-seg"]
         
         for name in modelNames {
             print("🔍 Looking for model: \(name)")
@@ -167,11 +188,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                         let model = try MLModel(contentsOf: url)
                         self.fastSAMModel = model
                         print("✅ FastSAM-x model loaded successfully")
-                        
-                        // Print model info
-                        let desc = model.modelDescription
-                        print("📊 Model Inputs: \(desc.inputDescriptionsByName.keys)")
-                        print("📊 Model Outputs: \(desc.outputDescriptionsByName.keys)")
                         return
                         
                     } catch {
@@ -186,7 +202,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     
     private func setupCamera() {
         session.beginConfiguration()
-        session.sessionPreset = .photo  // Use photo preset for full resolution
+        session.sessionPreset = .hd1280x720
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("❌ No camera found")
@@ -211,7 +227,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     if connection.isVideoOrientationSupported {
                         connection.videoOrientation = .portrait
                     }
-                    // Disable video mirroring
                     if connection.isVideoMirroringSupported {
                         connection.isVideoMirrored = false
                     }
@@ -279,8 +294,8 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 return
             }
             
-            // Process segmentation
-            processYOLOv8Segmentation(detections: detections, prototypes: prototypes, originalPixelBuffer: pixelBuffer)
+            // Process segmentation with smart selection
+            processWithSmartSelection(detections: detections, prototypes: prototypes, originalPixelBuffer: pixelBuffer)
             
         } catch {
             print("❌ Prediction failed: \(error)")
@@ -289,7 +304,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         isProcessing = false
     }
     
-    private func processYOLOv8Segmentation(detections: MLMultiArray, prototypes: MLMultiArray, originalPixelBuffer: CVPixelBuffer) {
+    private func processWithSmartSelection(detections: MLMultiArray, prototypes: MLMultiArray, originalPixelBuffer: CVPixelBuffer) {
         let numDetections = detections.shape[2].intValue  // 8400
         let numValues = detections.shape[1].intValue      // 37
         let numPrototypes = prototypes.shape[1].intValue  // 32
@@ -298,9 +313,9 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
         
-        // Find best detection
-        var bestDetection: (idx: Int, conf: Float, x: Float, y: Float, w: Float, h: Float)? = nil
-        var maxArea: Float = 0
+        // Find best detection using smart scoring
+        var bestDetection: (idx: Int, score: Float, conf: Float, x: Float, y: Float, w: Float, h: Float)? = nil
+        var bestScore: Float = 0
         
         for i in 0..<numDetections {
             let conf = detPointer[4 * numDetections + i]
@@ -312,17 +327,51 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 let h = detPointer[3 * numDetections + i]
                 let area = w * h
                 
-                if area > maxArea && area > 1000 {
-                    maxArea = area
-                    bestDetection = (i, conf, x, y, w, h)
+                // Calculate center proximity score (0-1, higher is closer to center)
+                let distanceFromCenter = sqrt(pow(x - frameCenterX, 2) + pow(y - frameCenterY, 2))
+                let maxDistance = sqrt(pow(frameCenterX, 2) + pow(frameCenterY, 2))
+                let centerProximityScore = 1.0 - (distanceFromCenter / maxDistance)
+                
+                // Calculate size reasonability score (0-1, optimal at 10-60% of frame)
+                let areaRatio = area / frameArea
+                var sizeScore: Float = 0
+                if areaRatio >= 0.1 && areaRatio <= 0.6 {
+                    // Optimal size range for furniture
+                    sizeScore = 1.0
+                } else if areaRatio < 0.1 {
+                    // Too small - likely background object
+                    sizeScore = areaRatio * 10  // Linear scale up to 0.1
+                } else {
+                    // Too large - likely wall/floor
+                    sizeScore = max(0, 1.0 - (areaRatio - 0.6) * 2)  // Linear scale down after 0.6
+                }
+                
+                // Combined score: confidence squared × center proximity × size reasonability
+                let combinedScore = conf * conf * centerProximityScore * sizeScore
+                
+                // Track best scoring detection
+                if combinedScore > bestScore {
+                    bestScore = combinedScore
+                    bestDetection = (i, combinedScore, conf, x, y, w, h)
+                    
+                    print("📍 Better detection found:")
+                    print("   Confidence: \(String(format: "%.3f", conf))")
+                    print("   Center proximity: \(String(format: "%.2f", centerProximityScore))")
+                    print("   Size score: \(String(format: "%.2f", sizeScore)) (area ratio: \(String(format: "%.2f", areaRatio)))")
+                    print("   Combined score: \(String(format: "%.3f", combinedScore))")
                 }
             }
         }
         
         guard let detection = bestDetection else {
-            print("⚠️ No valid detections")
+            print("⚠️ No valid detections found")
             return
         }
+        
+        print("✅ Selected foreground object:")
+        print("   Final score: \(String(format: "%.3f", detection.score))")
+        print("   Position: (\(String(format: "%.0f", detection.x)), \(String(format: "%.0f", detection.y)))")
+        print("   Size: \(String(format: "%.0fx%.0f", detection.w, detection.h))")
         
         // Get mask coefficients
         var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
@@ -332,16 +381,16 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         }
         
         // Generate mask
-        let segMask = generateSegmentationMask(prototypes: prototypes, coefficients: maskCoeffs,
-                                               protoHeight: protoHeight, protoWidth: protoWidth)
+        let segMask = generateCleanMask(prototypes: prototypes, coefficients: maskCoeffs,
+                                        protoHeight: protoHeight, protoWidth: protoWidth)
         
         // Apply to image
         let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
-        applySegmentationMask(original: ciImage, mask: segMask)
+        applyCleanSegmentation(original: ciImage, mask: segMask)
     }
     
-    private func generateSegmentationMask(prototypes: MLMultiArray, coefficients: [Float],
-                                         protoHeight: Int, protoWidth: Int) -> CIImage {
+    private func generateCleanMask(prototypes: MLMultiArray, coefficients: [Float],
+                                   protoHeight: Int, protoWidth: Int) -> CIImage {
         let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
         let maskSize = protoHeight * protoWidth
         
@@ -357,17 +406,13 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             }
         }
         
-        // Apply sigmoid and threshold
-        let threshold: Float = 0.3
+        // Simple sigmoid and HARD binary threshold
+        let threshold: Float = 0.5
+        var pixelData = [UInt8](repeating: 0, count: maskSize)
+        
         for i in 0..<maskSize {
             let sigmoid = 1.0 / (1.0 + exp(-finalMask[i]))
-            finalMask[i] = sigmoid > threshold ? 1.0 : 0.0
-        }
-        
-        // Convert to pixel data
-        var pixelData = [UInt8](repeating: 0, count: maskSize)
-        for i in 0..<maskSize {
-            pixelData[i] = UInt8(finalMask[i] * 255)
+            pixelData[i] = sigmoid > threshold ? 255 : 0
         }
         
         let data = Data(pixelData)
@@ -397,16 +442,27 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         return CIImage(cgImage: cgImage)
     }
     
-    private func applySegmentationMask(original: CIImage, mask: CIImage) {
+    private func applyCleanSegmentation(original: CIImage, mask: CIImage) {
         // Scale mask to match original
         let scaleX = original.extent.width / mask.extent.width
         let scaleY = original.extent.height / mask.extent.height
         
+        // Use nearest neighbor sampling to keep binary mask
         let scaledMask = mask
             .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-            .samplingNearest()  // Prevent grey pixels
+            .samplingNearest()
         
-        let finalMask = scaledMask.cropped(to: original.extent)
+        // Optional: VERY light blur
+        var finalMask = scaledMask
+        if let blurFilter = CIFilter(name: "CIGaussianBlur") {
+            blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
+            blurFilter.setValue(0.5, forKey: kCIInputRadiusKey)
+            if let blurred = blurFilter.outputImage {
+                finalMask = blurred
+            }
+        }
+        
+        finalMask = finalMask.cropped(to: original.extent)
         
         // Apply mask using blend filter
         guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
@@ -436,7 +492,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             
             DispatchQueue.main.async {
                 self.segmentedImage = uiImage
-                print("✅ FastSAM segmentation complete")
             }
         }
     }
