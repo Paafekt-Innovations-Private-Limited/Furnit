@@ -126,7 +126,7 @@ struct SimpleCameraOverlay: View {
     }
 }
 
-// FastSAMCameraModel with smart foreground detection
+// FastSAMCameraModel with U2Net + Center Proximity + Size Scoring
 class FastSAMCameraModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     @Published var confidenceThreshold: Float = 0.5
@@ -136,12 +136,19 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     private let videoQueue = DispatchQueue(label: "videoQueue", qos: .userInitiated)
     
     private var fastSAMModel: MLModel?
+    private var u2netModel: VNCoreMLModel?
     private let context = CIContext()
     
     // Throttling
     private var lastProcessTime = Date()
     private let processInterval: TimeInterval = 0.2 // Process every 200ms
     private var isProcessing = false
+    
+    // U2Net guidance mask
+    private var u2netMask: CVPixelBuffer?
+    private let u2netWeight: Float = 0.3 // Bonus weight for U2Net overlap
+    private var u2netUpdateCounter = 0  // Update U2Net every N frames
+    private let u2netUpdateInterval = 5 // Run U2Net every 5 frames
     
     // Frame dimensions for center calculation
     private let frameWidth: Float = 640
@@ -154,6 +161,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         super.init()
         checkCameraAuthorization()
         loadFastSAMModel()
+        loadU2NetModel()
     }
     
     private func checkCameraAuthorization() {
@@ -198,6 +206,26 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         }
         
         print("⚠️ No FastSAM model found")
+    }
+    
+    private func loadU2NetModel() {
+        // Try multiple possible U2Net model names
+        let modelNames = ["u2netp", "U2Net", "u2net", "U2NetP", "U2NET"]
+        
+        for name in modelNames {
+            if let modelURL = Bundle.main.url(forResource: name, withExtension: "mlmodelc") {
+                do {
+                    let model = try MLModel(contentsOf: modelURL)
+                    u2netModel = try VNCoreMLModel(for: model)
+                    print("✅ U2-Net model loaded: \(name)")
+                    return
+                } catch {
+                    print("Failed to load \(name): \(error)")
+                }
+            }
+        }
+        
+        print("⚠️ No U2-Net model found - using FastSAM with geometric scoring only")
     }
     
     private func setupCamera() {
@@ -268,6 +296,11 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             return
         }
         
+        // Run U2Net first if available to get foreground guidance
+        if let u2net = u2netModel {
+            runU2NetForGuidance(pixelBuffer: pixelBuffer)
+        }
+        
         // Create input for FastSAM
         guard let resizedBuffer = resizePixelBuffer(pixelBuffer, width: 640, height: 640) else {
             print("❌ Failed to resize buffer")
@@ -294,8 +327,8 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 return
             }
             
-            // Process segmentation with smart selection
-            processWithSmartSelection(detections: detections, prototypes: prototypes, originalPixelBuffer: pixelBuffer)
+            // Process segmentation with triple scoring (U2Net + Center + Size)
+            processWithTripleScoring(detections: detections, prototypes: prototypes, originalPixelBuffer: pixelBuffer)
             
         } catch {
             print("❌ Prediction failed: \(error)")
@@ -304,7 +337,45 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         isProcessing = false
     }
     
-    private func processWithSmartSelection(detections: MLMultiArray, prototypes: MLMultiArray, originalPixelBuffer: CVPixelBuffer) {
+    private func runU2NetForGuidance(pixelBuffer: CVPixelBuffer) {
+        guard let model = u2netModel else { return }
+        
+        // Only update U2Net every N frames
+        u2netUpdateCounter += 1
+        if u2netUpdateCounter < u2netUpdateInterval && u2netMask != nil {
+            // Skip U2Net update, use existing mask
+            return
+        }
+        u2netUpdateCounter = 0
+        
+        // Create synchronous semaphore
+        let semaphore = DispatchSemaphore(value: 0)
+        var newMask: CVPixelBuffer?
+        
+        let request = VNCoreMLRequest(model: model) { request, error in
+            if let results = request.results as? [VNPixelBufferObservation],
+               let maskBuffer = results.first?.pixelBuffer {
+                newMask = maskBuffer
+            }
+            semaphore.signal()
+        }
+        
+        request.imageCropAndScaleOption = .scaleFit
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        
+        do {
+            try handler.perform([request])
+            // Wait for completion (with timeout)
+            _ = semaphore.wait(timeout: .now() + 0.1)
+            if let mask = newMask {
+                self.u2netMask = mask
+            }
+        } catch {
+            print("❌ U2Net processing failed: \(error)")
+        }
+    }
+    
+    private func processWithTripleScoring(detections: MLMultiArray, prototypes: MLMultiArray, originalPixelBuffer: CVPixelBuffer) {
         let numDetections = detections.shape[2].intValue  // 8400
         let numValues = detections.shape[1].intValue      // 37
         let numPrototypes = prototypes.shape[1].intValue  // 32
@@ -313,7 +384,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
         
-        // Find best detection using smart scoring
+        // Find best detection using triple scoring
         var bestDetection: (idx: Int, score: Float, conf: Float, x: Float, y: Float, w: Float, h: Float)? = nil
         var bestScore: Float = 0
         
@@ -327,12 +398,12 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 let h = detPointer[3 * numDetections + i]
                 let area = w * h
                 
-                // Calculate center proximity score (0-1, higher is closer to center)
+                // === 1. CENTER PROXIMITY SCORE (0-1) ===
                 let distanceFromCenter = sqrt(pow(x - frameCenterX, 2) + pow(y - frameCenterY, 2))
                 let maxDistance = sqrt(pow(frameCenterX, 2) + pow(frameCenterY, 2))
                 let centerProximityScore = 1.0 - (distanceFromCenter / maxDistance)
                 
-                // Calculate size reasonability score (0-1, optimal at 10-60% of frame)
+                // === 2. SIZE REASONABILITY SCORE (0-1) ===
                 let areaRatio = area / frameArea
                 var sizeScore: Float = 0
                 if areaRatio >= 0.1 && areaRatio <= 0.6 {
@@ -346,8 +417,17 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     sizeScore = max(0, 1.0 - (areaRatio - 0.6) * 2)  // Linear scale down after 0.6
                 }
                 
-                // Combined score: confidence squared × center proximity × size reasonability
-                let combinedScore = conf * conf * centerProximityScore * sizeScore
+                // === 3. U2NET OVERLAP BONUS ===
+                var u2netBonus: Float = 0
+                if u2netMask != nil {
+                    let overlapRatio = calculateU2NetOverlap(x: x, y: y, width: w, height: h)
+                    u2netBonus = overlapRatio * u2netWeight
+                }
+                
+                // === COMBINED TRIPLE SCORE ===
+                // Base: conf² × center × size
+                // Bonus: +U2Net overlap
+                let combinedScore = (conf * conf * centerProximityScore * sizeScore) + u2netBonus
                 
                 // Track best scoring detection
                 if combinedScore > bestScore {
@@ -357,8 +437,9 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     print("📍 Better detection found:")
                     print("   Confidence: \(String(format: "%.3f", conf))")
                     print("   Center proximity: \(String(format: "%.2f", centerProximityScore))")
-                    print("   Size score: \(String(format: "%.2f", sizeScore)) (area ratio: \(String(format: "%.2f", areaRatio)))")
-                    print("   Combined score: \(String(format: "%.3f", combinedScore))")
+                    print("   Size score: \(String(format: "%.2f", sizeScore)) (area: \(String(format: "%.2f", areaRatio)))")
+                    print("   U2Net bonus: +\(String(format: "%.3f", u2netBonus))")
+                    print("   TOTAL score: \(String(format: "%.3f", combinedScore))")
                 }
             }
         }
@@ -368,7 +449,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             return
         }
         
-        print("✅ Selected foreground object:")
+        print("✅ Selected with triple scoring:")
         print("   Final score: \(String(format: "%.3f", detection.score))")
         print("   Position: (\(String(format: "%.0f", detection.x)), \(String(format: "%.0f", detection.y)))")
         print("   Size: \(String(format: "%.0fx%.0f", detection.w, detection.h))")
@@ -387,6 +468,43 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         // Apply to image
         let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
         applyCleanSegmentation(original: ciImage, mask: segMask)
+    }
+    
+    private func calculateU2NetOverlap(x: Float, y: Float, width: Float, height: Float) -> Float {
+        guard let u2netMask = u2netMask else { return 0 }
+        
+        CVPixelBufferLockBaseAddress(u2netMask, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(u2netMask, .readOnly) }
+        
+        let maskWidth = CVPixelBufferGetWidth(u2netMask)
+        let maskHeight = CVPixelBufferGetHeight(u2netMask)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(u2netMask)
+        guard let baseAddress = CVPixelBufferGetBaseAddress(u2netMask) else { return 0 }
+        
+        // Scale detection box to mask dimensions
+        let scaleX = Float(maskWidth) / frameWidth
+        let scaleY = Float(maskHeight) / frameHeight
+        
+        let boxLeft = Int(max(0, (x - width/2) * scaleX))
+        let boxRight = Int(min(Float(maskWidth-1), (x + width/2) * scaleX))
+        let boxTop = Int(max(0, (y - height/2) * scaleY))
+        let boxBottom = Int(min(Float(maskHeight-1), (y + height/2) * scaleY))
+        
+        // Count overlapping pixels
+        var overlapCount = 0
+        var totalCount = 0
+        
+        for row in boxTop...boxBottom {
+            let rowPtr = baseAddress.advanced(by: row * bytesPerRow).assumingMemoryBound(to: UInt8.self)
+            for col in boxLeft...boxRight {
+                totalCount += 1
+                if rowPtr[col] > 128 {  // U2Net mask threshold
+                    overlapCount += 1
+                }
+            }
+        }
+        
+        return totalCount > 0 ? Float(overlapCount) / Float(totalCount) : 0
     }
     
     private func generateCleanMask(prototypes: MLMultiArray, coefficients: [Float],
