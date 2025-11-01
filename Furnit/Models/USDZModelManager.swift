@@ -117,6 +117,41 @@ class USDZModelManager: ObservableObject {
         print("✅ [USDZModelManager] Refresh complete. Now have \(models.count) models")
     }
     
+    // ✅ NEW: Delete model functionality
+    func deleteModel(id: UUID) {
+        print("🗑️ [USDZModelManager] Starting delete for model ID: \(id)")
+        
+        guard let modelIndex = models.firstIndex(where: { $0.id == id }) else {
+            print("❌ [USDZModelManager] Model not found with ID: \(id)")
+            return
+        }
+        
+        let model = models[modelIndex]
+        print("🗑️ [USDZModelManager] Found model: \(model.displayName) (isSavedRoom: \(model.isSavedRoom))")
+        
+        // Only delete file if it's a saved room (not bundle model)
+        if model.isSavedRoom {
+            let fileURL = modelsDirectory.appendingPathComponent("\(model.fileName).usdz")
+            
+            do {
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    try FileManager.default.removeItem(at: fileURL)
+                    print("✅ [USDZModelManager] File deleted: \(fileURL.lastPathComponent)")
+                } else {
+                    print("⚠️ [USDZModelManager] File not found: \(fileURL.path)")
+                }
+            } catch {
+                print("❌ [USDZModelManager] Failed to delete file: \(error)")
+            }
+        } else {
+            print("⚠️ [USDZModelManager] Skipping file deletion - this is a bundle model")
+        }
+        
+        // Remove from models array
+        models.remove(at: modelIndex)
+        print("✅ [USDZModelManager] Model removed from list. Remaining: \(models.count)")
+    }
+    
     func saveRoom(scene: SCNScene, name: String, completion: @escaping (Bool, String?) -> Void) {
         print("💾 [USDZModelManager] Starting to save room: \(name)")
         

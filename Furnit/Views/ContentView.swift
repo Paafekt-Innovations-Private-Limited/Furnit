@@ -65,11 +65,13 @@ struct HomeViewWithBottomBar: View {
     }
 }
 
-// MARK: - Home Tab (UPDATED with Upload Button)
+// MARK: - Home Tab (WITH DELETE FUNCTIONALITY ✅)
 struct HomeTab: View {
     @StateObject private var modelManager = USDZModelManager()
     @State private var showingSettings = false
-    @State private var showingPhotoRoomCreator = false  // ✨ NEW
+    @State private var showingPhotoRoomCreator = false
+    @State private var showDeleteAlert = false
+    @State private var roomToDelete: USDZModel?
     
     var body: some View {
         NavigationStack {
@@ -106,6 +108,15 @@ struct HomeTab: View {
                     List {
                         ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
                             modelRow(for: model, at: index)
+                                // ✅ SWIPE TO DELETE ADDED HERE
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        roomToDelete = model
+                                        showDeleteAlert = true
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                         }
                     }
                     .listStyle(PlainListStyle())
@@ -120,7 +131,7 @@ struct HomeTab: View {
             .navigationTitle("3D Room Models")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                // ✨ NEW: Upload Photo Button
+                // Upload Photo Button
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
                         showingPhotoRoomCreator = true
@@ -131,7 +142,7 @@ struct HomeTab: View {
                     .accessibilityLabel("Create room from photo")
                 }
                 
-                // Existing Settings Button
+                // Settings Button
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showingSettings = true
@@ -142,7 +153,7 @@ struct HomeTab: View {
                     .accessibilityLabel("Settings")
                 }
             }
-            // ✨ NEW: Photo Room Creator Sheet
+            // Photo Room Creator Sheet
             .sheet(isPresented: $showingPhotoRoomCreator) {
                 NavigationStack {
                     SinglePhotoRoomView()
@@ -153,21 +164,43 @@ struct HomeTab: View {
                         )
                 }
             }
-            // ✅ NEW: Refresh models when sheet closes - THIS IS THE ONLY CHANGE!
+            // Refresh models when sheet closes
             .onChange(of: showingPhotoRoomCreator) { _, isShowing in
                 if !isShowing {
                     modelManager.refreshModels()
                 }
             }
-            // Existing Settings Sheet
+            // Settings Sheet
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
+            }
+            // ✅ DELETE CONFIRMATION ALERT ADDED HERE
+            .alert("Delete Room?", isPresented: $showDeleteAlert) {
+                Button("Cancel", role: .cancel) {
+                    roomToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let room = roomToDelete {
+                        deleteRoom(room)
+                    }
+                }
+            } message: {
+                if let room = roomToDelete {
+                    Text("Are you sure you want to delete '\(room.displayName)'? This action cannot be undone.")
+                }
             }
         }
         .onAppear {
             print("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
             print("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
         }
+    }
+    
+    // ✅ DELETE FUNCTION ADDED HERE
+    private func deleteRoom(_ room: USDZModel) {
+        print("🗑️ [HomeTab] Deleting room: \(room.displayName)")
+        modelManager.deleteModel(id: room.id)
+        roomToDelete = nil
     }
     
     // MARK: - Model Row with Logging
