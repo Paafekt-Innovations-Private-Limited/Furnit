@@ -105,25 +105,38 @@ struct HomeTab: View {
                         print("❌ [HomeTab] Models count: \(modelManager.models.count)")
                     }
                 } else {
-                    List {
-                        ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
-                            modelRow(for: model, at: index)
-                                // ✅ SWIPE TO DELETE ADDED HERE
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    Button(role: .destructive) {
-                                        roomToDelete = model
-                                        showDeleteAlert = true
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
+                    VStack(spacing: 0) {
+                        // ✅ Delete hint
+                        HStack {
+                            Text("💡 Swipe left to delete")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
                         }
-                    }
-                    .listStyle(PlainListStyle())
-                    .onAppear {
-                        print("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
-                        for (idx, model) in modelManager.models.enumerated() {
-                            print("   [\(idx)] \(model.displayName) - isSavedRoom: \(model.isSavedRoom)")
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGroupedBackground))
+                        
+                        List {
+                            ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
+                                modelRow(for: model, at: index)
+                                    // ✅ SWIPE TO DELETE ADDED HERE
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            roomToDelete = model
+                                            showDeleteAlert = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                            }
+                        }
+                        .listStyle(PlainListStyle())
+                        .onAppear {
+                            print("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
+                            for (idx, model) in modelManager.models.enumerated() {
+                                print("   [\(idx)] \(model.displayName) - isSavedRoom: \(model.isSavedRoom)")
+                            }
                         }
                     }
                 }
