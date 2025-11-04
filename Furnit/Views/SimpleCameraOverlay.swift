@@ -249,8 +249,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     
     private var u2netMask: CVPixelBuffer?
     private let u2netWeight: Float = 0.3
-    private var u2netUpdateCounter = 0
-    private let u2netUpdateInterval = 3  // Update U2-Net every 3 frames
     private let u2netQueue = DispatchQueue(label: "u2netQueue", qos: .userInitiated)
     
     private let frameWidth: Float = 640
@@ -456,30 +454,24 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     private func runU2NetForGuidanceAsync(pixelBuffer: CVPixelBuffer) {
         guard let model = u2netModel else { return }
         
-        u2netUpdateCounter += 1
-        if u2netUpdateCounter < u2netUpdateInterval && u2netMask != nil {
-            print("⏭ U2-Net skip (frame \(u2netUpdateCounter)/\(u2netUpdateInterval))")
-            return
-        }
-        u2netUpdateCounter = 0
-        
-        print("🔄 Running U2-Net segmentation...")
+        // RUN U2-NET ON EVERY FRAME - NO SKIPPING
+        print("🔄 Processing furniture...")
         
         u2netQueue.async { [weak self] in
             guard let self = self else { return }
             
             let request = VNCoreMLRequest(model: model) { [weak self] request, error in
                 if let error = error {
-                    print("❌ U2-Net error: \(error)")
+                    print("❌ Processing error: \(error)")
                     return
                 }
                 
                 if let results = request.results as? [VNPixelBufferObservation],
                    let maskBuffer = results.first?.pixelBuffer {
                     self?.u2netMask = maskBuffer
-                    print("✅ U2-Net mask updated: \(CVPixelBufferGetWidth(maskBuffer))x\(CVPixelBufferGetHeight(maskBuffer))")
+                    print("✅ Furniture detected")
                 } else {
-                    print("⚠️ No U2-Net results")
+                    print("⚠️ No furniture detected")
                 }
             }
             
@@ -489,7 +481,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             do {
                 try handler.perform([request])
             } catch {
-                print("❌ U2-Net processing error: \(error)")
+                print("❌ Processing error: \(error)")
             }
         }
     }
@@ -686,7 +678,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         return totalCount > 0 ? Float(overlapCount) / Float(totalCount) : 0
     }
     
-    // U2NET ONLY WITH MINIMAL FASTSAM FOR DISCONNECTED PARTS
+    // U2NET MAIN + FASTSAM COMPLETES SAME OBJECT
     private func generateSmartMask(prototypes: MLMultiArray, coefficients: [Float],
                                    protoHeight: Int, protoWidth: Int) -> CIImage {
         let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
@@ -712,7 +704,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         var pixelData = [UInt8](repeating: 0, count: maskSize)
         
-        print("\n🎯 === MASK GENERATION (U2-Net Primary) ===")
+        print("\n🎯 === FURNITURE DETECTION ===")
         
         if let u2netMask = u2netMask {
             CVPixelBufferLockBaseAddress(u2netMask, .readOnly)
@@ -726,7 +718,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 let u2netPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
                 var u2netPixels = 0
                 
-                // STEP 1: USE U2-NET COMPLETELY
+                // STEP 1: Get U2-Net mask - THIS IS THE MAIN FURNITURE BODY
                 for y in 0..<protoHeight {
                     for x in 0..<protoWidth {
                         let sourceX = x * maskWidth / protoWidth
@@ -734,7 +726,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                         let sourceIdx = sourceY * bytesPerRow + sourceX
                         let targetIdx = y * protoWidth + x
                         
-                        // U2-Net with threshold of 100
+                        // Use threshold of 100 for main body
                         if u2netPtr[sourceIdx] > 100 {
                             pixelData[targetIdx] = 255
                             u2netPixels += 1
@@ -742,65 +734,110 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     }
                 }
                 
-                print("📊 U2-Net pixels: \(u2netPixels)")
+                print("📊 Main body detected: \(u2netPixels) pixels")
                 
-                // STEP 2: ONLY ADD COMPLETELY DISCONNECTED HIGH-CONFIDENCE FASTSAM CLUSTERS
-                // This is for furniture parts like wheels that U2-Net completely misses
-                var addedDisconnectedParts = 0
+                // STEP 2: Find what object FastSAM sees that overlaps with U2-Net
+                // If FastSAM identifies the same furniture, add ALL its parts
                 
-                // First, identify potential disconnected furniture parts
-                for y in 5..<(protoHeight-5) {  // Stay away from edges
-                    for x in 5..<(protoWidth-5) {
-                        let idx = y * protoWidth + x
-                        
-                        // Skip if already in U2-Net mask
-                        if pixelData[idx] == 255 { continue }
-                        
-                        // Only consider very high confidence FastSAM pixels
-                        if fastSAMConfidence[idx] > 0.85 {
+                // First, check if FastSAM sees an object that overlaps with U2-Net
+                var overlapCount = 0
+                var fastSAMHighConfidenceTotal = 0
+                
+                for i in 0..<maskSize {
+                    if fastSAMConfidence[i] > 0.65 {
+                        fastSAMHighConfidenceTotal += 1
+                        if pixelData[i] == 255 {
+                            overlapCount += 1
+                        }
+                    }
+                }
+                
+                // If there's significant overlap, FastSAM is seeing the same object
+                let overlapRatio = fastSAMHighConfidenceTotal > 0 ?
+                    Float(overlapCount) / Float(fastSAMHighConfidenceTotal) : 0
+                
+                print("📊 FastSAM overlap with furniture: \(Int(overlapRatio * 100))%")
+                
+                // STEP 3: If FastSAM identified the same object (>20% overlap),
+                // let it add missing parts like chair stands/wheels
+                var addedMissingParts = 0
+                
+                if overlapRatio > 0.2 {
+                    // FastSAM sees the same furniture - add its missing parts
+                    for y in 1..<(protoHeight-1) {
+                        for x in 1..<(protoWidth-1) {
+                            let idx = y * protoWidth + x
                             
-                            // Check if there's ANY U2-Net pixel within 4 pixels
-                            var hasNearbyU2Net = false
-                            for dy in -4...4 {
-                                for dx in -4...4 {
-                                    let nIdx = (y + dy) * protoWidth + (x + dx)
-                                    if pixelData[nIdx] == 255 {
-                                        hasNearbyU2Net = true
-                                        break
-                                    }
-                                }
-                                if hasNearbyU2Net { break }
-                            }
+                            // Skip if already marked by U2-Net
+                            if pixelData[idx] == 255 { continue }
                             
-                            // If no U2-Net nearby but FastSAM forms a cluster, it might be a wheel/leg
-                            if !hasNearbyU2Net {
-                                // Check if it's part of a FastSAM cluster
+                            // Add if FastSAM is confident this is part of the furniture
+                            if fastSAMConfidence[idx] > 0.7 {
+                                // Verify it's part of a coherent structure (not random noise)
                                 var fastSAMNeighbors = 0
-                                for dy in -2...2 {
-                                    for dx in -2...2 {
+                                for dy in -1...1 {
+                                    for dx in -1...1 {
+                                        if dy == 0 && dx == 0 { continue }
                                         let nIdx = (y + dy) * protoWidth + (x + dx)
-                                        if fastSAMConfidence[nIdx] > 0.8 {
-                                            fastSAMNeighbors += 1
+                                        if nIdx >= 0 && nIdx < maskSize {
+                                            // Count both U2-Net and FastSAM neighbors
+                                            if pixelData[nIdx] == 255 || fastSAMConfidence[nIdx] > 0.65 {
+                                                fastSAMNeighbors += 1
+                                            }
                                         }
                                     }
                                 }
                                 
-                                // Only add if it's a strong cluster (likely a furniture part)
-                                if fastSAMNeighbors >= 12 {  // At least 12 high-conf neighbors in 5x5
+                                // Add if it's part of a structure (not isolated)
+                                if fastSAMNeighbors >= 3 {
                                     pixelData[idx] = 255
-                                    addedDisconnectedParts += 1
+                                    addedMissingParts += 1
                                 }
+                            }
+                        }
+                    }
+                    
+                    print("✅ Missing parts added: +\(addedMissingParts) pixels")
+                } else {
+                    print("⚠️ FastSAM sees different object - skipping")
+                }
+                
+                // STEP 4: Clean up isolated noise
+                var noiseRemoved = 0
+                for y in 1..<(protoHeight-1) {
+                    for x in 1..<(protoWidth-1) {
+                        let idx = y * protoWidth + x
+                        
+                        if pixelData[idx] == 255 {
+                            var neighbors = 0
+                            for dy in -1...1 {
+                                for dx in -1...1 {
+                                    if dy == 0 && dx == 0 { continue }
+                                    let nIdx = (y + dy) * protoWidth + (x + dx)
+                                    if pixelData[nIdx] == 255 {
+                                        neighbors += 1
+                                    }
+                                }
+                            }
+                            
+                            // Remove if completely isolated
+                            if neighbors <= 1 {
+                                pixelData[idx] = 0
+                                noiseRemoved += 1
                             }
                         }
                     }
                 }
                 
-                print("➕ Disconnected parts added: \(addedDisconnectedParts)")
-                print("📊 Final pixels: \(pixelData.filter { $0 == 255 }.count)")
+                if noiseRemoved > 0 {
+                    print("📊 Noise removed: -\(noiseRemoved) pixels")
+                }
+                
+                print("📊 Final result: \(pixelData.filter { $0 == 255 }.count) pixels")
             }
         } else {
             // NO U2-NET: Fall back to FastSAM only
-            print("⚠️ No U2-Net mask available - using FastSAM only")
+            print("⚠️ Loading furniture detector...")
             
             for i in 0..<maskSize {
                 if fastSAMConfidence[i] > 0.6 {
@@ -811,7 +848,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             // Clean up isolated pixels
             pixelData = removeIsolatedPixels(pixelData, width: protoWidth, height: protoHeight)
             
-            print("📊 FastSAM-only pixels: \(pixelData.filter { $0 == 255 }.count)")
+            print("📊 Temporary detection: \(pixelData.filter { $0 == 255 }.count) pixels")
         }
         
         let data = Data(pixelData)

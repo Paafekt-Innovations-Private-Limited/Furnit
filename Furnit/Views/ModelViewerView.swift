@@ -197,7 +197,7 @@ struct ModelViewerView: View {
                 }
                 
                 VStack(spacing: 16) {
-                    modelInfoPanel
+//                    modelInfoPanel
                     
                     VirtualJoystick(joystickOffset: $joystickOffset)
                         .onChange(of: joystickOffset) { _, newOffset in
@@ -229,7 +229,7 @@ struct ModelViewerView: View {
                 
                 Spacer()
                 
-                modelInfoPanel
+//                modelInfoPanel
                 
                 VirtualJoystick(joystickOffset: $joystickOffset)
                     .onChange(of: joystickOffset) { _, newOffset in
@@ -289,23 +289,23 @@ struct ModelViewerView: View {
         }
     }
     
-    private var modelInfoPanel: some View {
-        VStack(spacing: 8) {
-            Text(model.displayName)
-                .font(.title3)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-            
-            Text("Use gestures to rotate, zoom, and explore the room")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.8))
-                .multilineTextAlignment(.center)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color.black.opacity(0.7))
-        .cornerRadius(16)
-    }
+//    private var modelInfoPanel: some View {
+//        VStack(spacing: 8) {
+//            Text(model.displayName)
+//                .font(.title3)
+//                .fontWeight(.semibold)
+//                .foregroundColor(.white)
+//            
+//            Text("Use gestures to rotate, zoom, and explore the room")
+//                .font(.caption)
+//                .foregroundColor(.white.opacity(0.8))
+//                .multilineTextAlignment(.center)
+//        }
+//        .padding(.horizontal, 16)
+//        .padding(.vertical, 12)
+//        .background(Color.black.opacity(0.7))
+//        .cornerRadius(16)
+//    }
     
     // NEW: Start camera initialization with progress
     private func startCameraInitialization() {
