@@ -295,6 +295,12 @@ struct CornerBracket: View {
 }
 
 class FastSAMCameraModel: NSObject, ObservableObject {
+    // 🎯 LOGIC:
+    // Preview: U2-Net only (fast, no FastSAM)
+    // Examine: Find main object (highest confidence), then find ALL touching objects
+    // Exclude walls/floor by checking edges, size, aspect ratio, and U2-Net overlap
+    // Max 4 objects total
+    
     @Published var segmentedImage: UIImage?
     @Published var confidenceThreshold: Float = 0.50
     @Published var isAutoAdjusting = false
@@ -315,7 +321,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     private var isProcessing = false
     
     private var u2netMask: CVPixelBuffer?
-    private var lockedFastSAMDetection: Int? = nil
+    private var lockedFastSAMDetections: [Int]? = nil  // 🎯 Group of touching objects (max 4)
     private var lockedThreshold: Float? = nil
     private var shouldStartExaminingOnNextFrame = false
     
@@ -339,7 +345,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.isExamining = false
         }
-        lockedFastSAMDetection = nil
+        lockedFastSAMDetections = nil
         lockedThreshold = nil
         shouldStartExaminingOnNextFrame = false
         segmentedImage = nil
@@ -443,6 +449,8 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             DispatchQueue.global(qos: .background).async {
                 self.session.startRunning()
             }
+            // 🎯 Start examining immediately when camera opens
+            shouldStartExaminingOnNextFrame = true
         }
     }
     
@@ -467,14 +475,22 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         // Wait for U2-Net before using FastSAM
         guard let u2netMask = u2netMask else {
-            print("⏳ Waiting for U2-Net...")
             isProcessing = false
             return
         }
         
-        // Process with FastSAM if available
+        // 🎯 PREVIEW PHASE: Show U2-Net only (no FastSAM needed yet!)
+        if !shouldStartExaminingOnNextFrame && lockedFastSAMDetections == nil {
+            let maskImage = CIImage(cvPixelBuffer: u2netMask)
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            applyMaskToImage(original: ciImage, mask: maskImage)
+            isProcessing = false
+            return
+        }
+        
+        // 🎯 EXAMINE PHASE: Run FastSAM + touching logic
         guard let fastSAMModel = fastSAMModel else {
-            // Use U2-Net only
+            // Fallback to U2-Net only
             let maskImage = CIImage(cvPixelBuffer: u2netMask)
             let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
             applyMaskToImage(original: ciImage, mask: maskImage)
@@ -507,8 +523,8 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 return
             }
             
-            applyEqualWeightScoring(detections: detections, prototypes: prototypes,
-                                    originalPixelBuffer: pixelBuffer)
+            applyWithTouchingLogic(detections: detections, prototypes: prototypes,
+                                  originalPixelBuffer: pixelBuffer)
             
         } catch {
             print("❌ FastSAM failed: \(error)")
@@ -542,8 +558,9 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         }
     }
     
-    private func applyEqualWeightScoring(detections: MLMultiArray, prototypes: MLMultiArray,
-                                         originalPixelBuffer: CVPixelBuffer) {
+    // 🎯 NEW: Apply with touching logic - find main object, then ALL touching objects (exclude walls/floor)
+    private func applyWithTouchingLogic(detections: MLMultiArray, prototypes: MLMultiArray,
+                                       originalPixelBuffer: CVPixelBuffer) {
         
         let numDetections = detections.shape[2].intValue
         let numValues = detections.shape[1].intValue
@@ -552,124 +569,91 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         let protoWidth = prototypes.shape[3].intValue
         
         let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
+        let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
+        let maskSize = protoHeight * protoWidth
         
         guard let u2netMask = u2netMask else {
             print("❌ No U2-Net mask")
             return
         }
         
-        // 🎯 CRITICAL FIX: Choose FastSAM detection based on ITS confidence, NOT U2-Net overlap!
-        var detectionToUse: Int? = lockedFastSAMDetection
+        // 🎯 Find touching detections (excluding walls/floor)
+        var detectionsToUse: [Int]
         
-        if detectionToUse == nil && shouldStartExaminingOnNextFrame {
-            print("\n🔍 FastSAM Detection Search (CONFIDENCE-BASED):")
+        if let locked = lockedFastSAMDetections {
+            detectionsToUse = locked
+        } else if shouldStartExaminingOnNextFrame {
+            // Find main object + ALL touching objects (walls/floor excluded)
+            detectionsToUse = findTouchingObjects(
+                detections: detections,
+                prototypes: prototypes,
+                protoPointer: protoPointer,
+                maskSize: maskSize,
+                protoWidth: protoWidth,
+                protoHeight: protoHeight,
+                numDetections: numDetections,
+                numPrototypes: numPrototypes,
+                numValues: numValues,
+                u2netMask: u2netMask
+            )
             
-            var bestConfidence: Float = 0
-            var bestDetection: Int? = nil
-            var candidateCount = 0
+            lockedFastSAMDetections = detectionsToUse
+            shouldStartExaminingOnNextFrame = false
             
-            // 🎯 NEW STRATEGY: Choose detection with HIGHEST CONFIDENCE that overlaps with furniture area
-            for i in 0..<numDetections {
-                let conf = detPointer[4 * numDetections + i]
-                
-                if conf > 0.25 {  // Reasonable confidence threshold
-                    candidateCount += 1
-                    let x = detPointer[0 * numDetections + i]
-                    let y = detPointer[1 * numDetections + i]
-                    let w = detPointer[2 * numDetections + i]
-                    let h = detPointer[3 * numDetections + i]
-                    
-                    // Quick sanity check: does this overlap with U2-Net at all?
-                    let overlap = calculateU2NetOverlap(x: x, y: y, width: w, height: h)
-                    
-                    if candidateCount <= 5 {
-                        print("   Candidate #\(i): conf=\(String(format: "%.3f", conf)) overlap=\(String(format: "%.1f%%", overlap * 100)) bbox=(\(Int(w))×\(Int(h)))")
-                    }
-                    
-                    // 🎯 Choose based on CONFIDENCE + minimal overlap (>20%)
-                    // Let FastSAM's confidence guide us, not U2-Net's weakness!
-                    if conf > bestConfidence && overlap > 0.2 {
-                        bestConfidence = conf
-                        bestDetection = i
-                    }
-                }
+            DispatchQueue.main.async {
+                self.isExamining = true
             }
             
-            print("   Total candidates: \(candidateCount)")
-            print("   Best confidence: \(String(format: "%.3f", bestConfidence))")
-            
-            detectionToUse = bestDetection
-            
-            if let detection = detectionToUse {
-                lockedFastSAMDetection = detection
-                shouldStartExaminingOnNextFrame = false
-                
-                DispatchQueue.main.async {
-                    self.isExamining = true
-                }
-                
-                let conf = detPointer[4 * numDetections + detection]
-                let x = detPointer[0 * numDetections + detection]
-                let y = detPointer[1 * numDetections + detection]
-                let w = detPointer[2 * numDetections + detection]
-                let h = detPointer[3 * numDetections + detection]
-                
-                print("✅ LOCKED FastSAM detection #\(detection) (CONFIDENCE-BASED)")
-                print("   Confidence: \(String(format: "%.3f", conf))")
-                print("   BBox: (\(String(format: "%.0f", x)), \(String(format: "%.0f", y)), \(String(format: "%.0f", w))×\(String(format: "%.0f", h)))")
-                print("   This detection should include ALL details FastSAM captured!")
-            } else {
-                print("⚠️ No suitable FastSAM detection found")
-                shouldStartExaminingOnNextFrame = false
+            print("✅ LOCKED \(detectionsToUse.count) detections (touching, walls/floor excluded)")
+            for detIdx in detectionsToUse {
+                let conf = detPointer[4 * numDetections + detIdx]
+                print("   #\(detIdx): conf=\(String(format: "%.3f", conf))")
             }
-        }
-        
-        guard let detIdx = detectionToUse else {
-            // Not examining yet - show preview using U2-Net only
+        } else {
+            // Show U2-Net preview
             let maskImage = CIImage(cvPixelBuffer: u2netMask)
             let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
             applyMaskToImage(original: ciImage, mask: maskImage)
             return
         }
         
-        // Extract coefficients for locked detection
-        var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
-        for j in 0..<numPrototypes {
-            let coeffIdx = (numValues - numPrototypes + j) * numDetections + detIdx
-            maskCoeffs[j] = detPointer[coeffIdx]
+        guard !detectionsToUse.isEmpty else {
+            let maskImage = CIImage(cvPixelBuffer: u2netMask)
+            let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
+            applyMaskToImage(original: ciImage, mask: maskImage)
+            return
         }
         
-        // Generate FastSAM confidence map
-        let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
-        let maskSize = protoHeight * protoWidth
+        // Generate combined mask from all touching detections
+        var combinedFastSAMConfidence = [Float](repeating: 0, count: maskSize)
         
-        var fastSAMConfidence = [Float](repeating: 0, count: maskSize)
-        for protoIdx in 0..<maskCoeffs.count {
-            let coeff = maskCoeffs[protoIdx]
-            let protoOffset = protoIdx * maskSize
+        for detIdx in detectionsToUse {
+            var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
+            for j in 0..<numPrototypes {
+                let coeffIdx = (numValues - numPrototypes + j) * numDetections + detIdx
+                maskCoeffs[j] = detPointer[coeffIdx]
+            }
+            
+            var detectionConfidence = [Float](repeating: 0, count: maskSize)
+            for protoIdx in 0..<maskCoeffs.count {
+                let coeff = maskCoeffs[protoIdx]
+                let protoOffset = protoIdx * maskSize
+                
+                for i in 0..<maskSize {
+                    detectionConfidence[i] += coeff * protoPointer[protoOffset + i]
+                }
+            }
             
             for i in 0..<maskSize {
-                fastSAMConfidence[i] += coeff * protoPointer[protoOffset + i]
+                detectionConfidence[i] = 1.0 / (1.0 + exp(-detectionConfidence[i]))
+            }
+            
+            for i in 0..<maskSize {
+                combinedFastSAMConfidence[i] = max(combinedFastSAMConfidence[i], detectionConfidence[i])
             }
         }
         
-        // Convert to probabilities
-        for i in 0..<maskSize {
-            fastSAMConfidence[i] = 1.0 / (1.0 + exp(-fastSAMConfidence[i]))
-        }
-        
-        // Log FastSAM confidence statistics
-        let sortedConfidence = fastSAMConfidence.sorted(by: >)
-        let maxConf = sortedConfidence.first ?? 0
-        let top100Avg = sortedConfidence.prefix(100).reduce(0, +) / Float(min(100, sortedConfidence.count))
-        let highConfCount = fastSAMConfidence.filter { $0 > 0.5 }.count
-        
-        print("\n📈 FastSAM Confidence Map (includes handles!):")
-        print("   Max: \(String(format: "%.3f", maxConf))")
-        print("   Top-100 avg: \(String(format: "%.3f", top100Avg))")
-        print("   High conf (>0.5): \(highConfCount) pixels")
-        
-        // Apply scoring-based strategy
+        // Get U2-Net mask data
         CVPixelBufferLockBaseAddress(u2netMask, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(u2netMask, .readOnly) }
         
@@ -682,8 +666,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         var pixelData = [UInt8](repeating: 0, count: maskSize)
         var combinedScores = [Float](repeating: 0, count: maskSize)
-        
-        // First pass: collect all scores
         var allScores: [Float] = []
         allScores.reserveCapacity(maskSize)
         
@@ -695,9 +677,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 let sourceIdx = sourceY * bytesPerRow + sourceX
                 
                 let u2netScore = Float(u2netPtr[sourceIdx]) / 255.0
-                let fastSAMScore = fastSAMConfidence[idx]
-                
-                // MAX scoring - FastSAM captures handles, U2-Net captures body
+                let fastSAMScore = combinedFastSAMConfidence[idx]
                 let combinedScore = max(u2netScore, fastSAMScore)
                 
                 combinedScores[idx] = combinedScore
@@ -713,7 +693,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             let calculatedThreshold = calculateOtsuThreshold(scores: allScores)
             lockedThreshold = calculatedThreshold
             threshold = calculatedThreshold
-            print("✅ Threshold SET at: \(String(format: "%.3f", threshold))")
+            print("✅ Threshold: \(String(format: "%.3f", threshold))")
         } else {
             threshold = calculateOtsuThreshold(scores: allScores)
         }
@@ -722,25 +702,17 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             self.confidenceThreshold = threshold
         }
         
-        var includedPixels = 0
-        
-        // Second pass: apply threshold
         for y in 0..<protoHeight {
             for x in 0..<protoWidth {
                 let idx = y * protoWidth + x
-                let combinedScore = combinedScores[idx]
-                
-                if combinedScore > threshold {
+                if combinedScores[idx] > threshold {
                     pixelData[idx] = 255
-                    includedPixels += 1
                 }
             }
         }
         
-        print("📊 Pre-morphology pixels: \(includedPixels)")
-        
-        // Apply morphological refinement
-        pixelData = applyMorphologicalRefinement(pixelData, width: protoWidth, height: protoHeight)
+        // Apply gentle morphology
+        pixelData = applyGentleMorphology(pixelData, width: protoWidth, height: protoHeight)
         
         // Convert to CIImage
         let data = Data(pixelData)
@@ -764,10 +736,265 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         ) else { return }
         
         let finalMask = CIImage(cgImage: cgImage)
-        
-        // Apply mask to image
         let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
         applyMaskToImage(original: ciImage, mask: finalMask)
+    }
+    
+    // 🎯 Find ALL touching objects (excluding walls/floor, max 4)
+    private func findTouchingObjects(
+        detections: MLMultiArray,
+        prototypes: MLMultiArray,
+        protoPointer: UnsafePointer<Float>,
+        maskSize: Int,
+        protoWidth: Int,
+        protoHeight: Int,
+        numDetections: Int,
+        numPrototypes: Int,
+        numValues: Int,
+        u2netMask: CVPixelBuffer
+    ) -> [Int] {
+        
+        let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
+        
+        print("\n🔍 Finding main object + ALL touching objects...")
+        
+        // STEP 1: Find main object (highest confidence with >20% U2-Net overlap)
+        var bestConf: Float = 0
+        var mainIdx: Int? = nil
+        var mainBBox: (x: Float, y: Float, w: Float, h: Float)? = nil
+        
+        for i in 0..<numDetections {
+            let conf = detPointer[4 * numDetections + i]
+            
+            if conf > 0.3 {
+                let x = detPointer[0 * numDetections + i]
+                let y = detPointer[1 * numDetections + i]
+                let w = detPointer[2 * numDetections + i]
+                let h = detPointer[3 * numDetections + i]
+                
+                let overlap = calculateU2NetOverlap(x: x, y: y, width: w, height: h)
+                
+                if conf > bestConf && overlap > 0.2 {
+                    bestConf = conf
+                    mainIdx = i
+                    mainBBox = (x, y, w, h)
+                }
+            }
+        }
+        
+        guard let mainDetection = mainIdx, let bbox = mainBBox else {
+            print("⚠️ No main object found")
+            return []
+        }
+        
+        print("✅ Main object: #\(mainDetection) conf=\(String(format: "%.3f", bestConf))")
+        print("   BBox: (\(Int(bbox.x)), \(Int(bbox.y)), \(Int(bbox.w))×\(Int(bbox.h)))")
+        
+        // STEP 2: Generate masks for ALL valid candidates (not limited to bounding box)
+        struct Detection {
+            let index: Int
+            let mask: [UInt8]
+            let bbox: (x: Float, y: Float, w: Float, h: Float)
+            let pixelCount: Int
+        }
+        
+        var candidates: [Detection] = []
+        
+        // Generate mask for main object
+        var mainMask = [UInt8](repeating: 0, count: maskSize)
+        var mainCoeffs = [Float](repeating: 0, count: numPrototypes)
+        for j in 0..<numPrototypes {
+            let coeffIdx = (numValues - numPrototypes + j) * numDetections + mainDetection
+            mainCoeffs[j] = detPointer[coeffIdx]
+        }
+        
+        var mainConf = [Float](repeating: 0, count: maskSize)
+        for protoIdx in 0..<mainCoeffs.count {
+            let coeff = mainCoeffs[protoIdx]
+            let protoOffset = protoIdx * maskSize
+            for pixelIdx in 0..<maskSize {
+                mainConf[pixelIdx] += coeff * protoPointer[protoOffset + pixelIdx]
+            }
+        }
+        var mainPixelCount = 0
+        for pixelIdx in 0..<maskSize {
+            let prob = 1.0 / (1.0 + exp(-mainConf[pixelIdx]))
+            if prob > 0.5 {
+                mainMask[pixelIdx] = 255
+                mainPixelCount += 1
+            }
+        }
+        
+        candidates.append(Detection(index: mainDetection, mask: mainMask, bbox: bbox, pixelCount: mainPixelCount))
+        
+        // Check ALL other detections (not limited to bounding box)
+        var checkedCount = 0
+        for i in 0..<numDetections {
+            if i == mainDetection { continue }
+            if checkedCount >= 30 { break }  // Check up to 30 candidates
+            
+            let conf = detPointer[4 * numDetections + i]
+            if conf < 0.3 { continue }
+            
+            let x = detPointer[0 * numDetections + i]
+            let y = detPointer[1 * numDetections + i]
+            let w = detPointer[2 * numDetections + i]
+            let h = detPointer[3 * numDetections + i]
+            
+            // 🎯 EXCLUDE WALLS/FLOOR: Less aggressive filtering
+            let areaRatio = (w * h) / Float(protoWidth * protoHeight)
+            let aspectRatio = h / w
+            let overlap = calculateU2NetOverlap(x: x, y: y, width: w, height: h)
+            
+            // 1. WALLS: Very tall, touches top AND bottom edges, extends vertically
+            let touchesTop = y - h/2 < 50
+            let touchesBottom = y + h/2 > Float(protoHeight) - 50
+            let isVeryTall = aspectRatio > 4.0  // Much more extreme
+            let isWall = touchesTop && touchesBottom && isVeryTall && areaRatio > 0.5
+            
+            // 2. FLOOR: Very wide, at bottom of frame, huge area
+            let isVeryWide = aspectRatio < 0.25  // Much more extreme
+            let isAtBottom = y > Float(protoHeight) * 0.7
+            let isFloor = isVeryWide && isAtBottom && areaRatio > 0.7
+            
+            // 3. BACKGROUND: Almost no U2-Net overlap
+            let isBackground = overlap < 0.03  // Even stricter overlap check
+            
+            // 4. TOO MASSIVE: Covers almost entire frame (>80%)
+            let isMassive = areaRatio > 0.8
+            
+            // Skip only if clearly wall/floor/background
+            if isWall || isFloor || isBackground || isMassive {
+                continue
+            }
+            
+            checkedCount += 1
+            
+            // Generate mask
+            var mask = [UInt8](repeating: 0, count: maskSize)
+            var coeffs = [Float](repeating: 0, count: numPrototypes)
+            for j in 0..<numPrototypes {
+                let coeffIdx = (numValues - numPrototypes + j) * numDetections + i
+                coeffs[j] = detPointer[coeffIdx]
+            }
+            
+            var detConf = [Float](repeating: 0, count: maskSize)
+            for protoIdx in 0..<coeffs.count {
+                let coeff = coeffs[protoIdx]
+                let protoOffset = protoIdx * maskSize
+                for pixelIdx in 0..<maskSize {
+                    detConf[pixelIdx] += coeff * protoPointer[protoOffset + pixelIdx]
+                }
+            }
+            
+            var pixelCount = 0
+            for pixelIdx in 0..<maskSize {
+                let prob = 1.0 / (1.0 + exp(-detConf[pixelIdx]))
+                if prob > 0.5 {
+                    mask[pixelIdx] = 255
+                    pixelCount += 1
+                }
+            }
+            
+            // Accept objects with reasonable size (not too tiny, not massive)
+            if pixelCount > 500 && pixelCount < maskSize * 8 / 10 {
+                candidates.append(Detection(index: i, mask: mask, bbox: (x, y, w, h), pixelCount: pixelCount))
+            }
+        }
+        
+        print("   Found \(candidates.count) valid candidates (checked \(checkedCount), filtered walls/floor)")
+        
+        // STEP 3: Find ALL touching objects (max 4 total)
+        var touchingGroup: Set<Int> = [mainDetection]
+        var toProcess: [Int] = [mainDetection]
+        
+        while !toProcess.isEmpty && touchingGroup.count < 4 {
+            let currentIdx = toProcess.removeFirst()
+            guard let currentDet = candidates.first(where: { $0.index == currentIdx }) else { continue }
+            
+            for otherDet in candidates {
+                if touchingGroup.contains(otherDet.index) || touchingGroup.count >= 4 { continue }
+                
+                if masksTouch(currentDet.mask, otherDet.mask, width: protoWidth, height: protoHeight) {
+                    touchingGroup.insert(otherDet.index)
+                    toProcess.append(otherDet.index)
+                    let conf = detPointer[4 * numDetections + otherDet.index]
+                    print("   ↳ Touching: #\(otherDet.index) (conf=\(String(format: "%.3f", conf)), pixels=\(otherDet.pixelCount))")
+                }
+            }
+        }
+        
+        print("✅ Found \(touchingGroup.count) touching objects (walls/floor excluded)")
+        
+        return Array(touchingGroup)
+    }
+    
+    // Check if two masks touch (sparse sampling for performance)
+    private func masksTouch(_ mask1: [UInt8], _ mask2: [UInt8], width: Int, height: Int) -> Bool {
+        // Quick overlap check
+        for i in stride(from: 0, to: mask1.count, by: 4) {
+            if mask1[i] > 0 && mask2[i] > 0 {
+                return true
+            }
+        }
+        
+        // Sparse edge touching check
+        for y in stride(from: 0, to: height, by: 8) {
+            for x in stride(from: 0, to: width, by: 8) {
+                let idx = y * width + x
+                
+                if mask1[idx] > 0 {
+                    for dy in -2...2 {
+                        for dx in -2...2 {
+                            let ny = y + dy
+                            let nx = x + dx
+                            
+                            if ny >= 0 && ny < height && nx >= 0 && nx < width {
+                                let neighborIdx = ny * width + nx
+                                if mask2[neighborIdx] > 0 {
+                                    return true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return false
+    }
+    
+    private func applyGentleMorphology(_ input: [UInt8], width: Int, height: Int) -> [UInt8] {
+        // Very small dilation only
+        let smoothed = dilate(input, width: width, height: height, kernelSize: 3)
+        return smoothed
+    }
+    
+    private func dilate(_ input: [UInt8], width: Int, height: Int, kernelSize: Int) -> [UInt8] {
+        var output = [UInt8](repeating: 0, count: input.count)
+        let radius = kernelSize / 2
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                var maxVal: UInt8 = 0
+                
+                for dy in -radius...radius {
+                    for dx in -radius...radius {
+                        let ny = y + dy
+                        let nx = x + dx
+                        
+                        if ny >= 0 && ny < height && nx >= 0 && nx < width {
+                            let idx = ny * width + nx
+                            maxVal = max(maxVal, input[idx])
+                        }
+                    }
+                }
+                
+                output[y * width + x] = maxVal
+            }
+        }
+        
+        return output
     }
     
     private func calculateOtsuThreshold(scores: [Float]) -> Float {
@@ -811,135 +1038,8 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             }
         }
         
-        // Aggressive threshold to capture fine details
         let finalThreshold = max(0.10, min(0.55, optimalThreshold - 0.25))
-        
-        print("🧠 Otsu: raw=\(String(format: "%.3f", optimalThreshold)) → adjusted=\(String(format: "%.3f", finalThreshold))")
-        
         return finalThreshold
-    }
-    
-    private func applyMorphologicalRefinement(_ input: [UInt8], width: Int, height: Int) -> [UInt8] {
-        print("🔧 Applying morphological refinement...")
-        
-        // Large dilation to capture thin structures
-        let stronglyDilated = dilate(input, width: width, height: height, kernelSize: 7)
-        
-        // Medium erosion to clean up
-        let cleaned = erode(stronglyDilated, width: width, height: height, kernelSize: 5)
-        
-        // Small dilation for smooth edges
-        let smoothed = dilate(cleaned, width: width, height: height, kernelSize: 3)
-        
-        // Fill holes
-        let filled = fillHoles(smoothed, width: width, height: height)
-        
-        // Binarize
-        var binarized = [UInt8](repeating: 0, count: filled.count)
-        var opaqueCount = 0
-        
-        for i in 0..<filled.count {
-            binarized[i] = filled[i] > 127 ? 255 : 0
-            if binarized[i] == 255 {
-                opaqueCount += 1
-            }
-        }
-        
-        let coverage = Float(opaqueCount) * 100.0 / Float(binarized.count)
-        print("✅ Refinement complete: \(opaqueCount) pixels (\(String(format: "%.1f%%", coverage)))")
-        
-        return binarized
-    }
-    
-    private func fillHoles(_ input: [UInt8], width: Int, height: Int) -> [UInt8] {
-        var output = input
-        var filledCount = 0
-        
-        for y in 2..<(height-2) {
-            for x in 2..<(width-2) {
-                let idx = y * width + x
-                
-                if input[idx] > 200 { continue }
-                
-                var neighborCount = 0
-                var totalNeighbors = 0
-                
-                for dy in -2...2 {
-                    for dx in -2...2 {
-                        let ny = y + dy
-                        let nx = x + dx
-                        
-                        if ny >= 0 && ny < height && nx >= 0 && nx < width {
-                            totalNeighbors += 1
-                            if input[ny * width + nx] > 127 {
-                                neighborCount += 1
-                            }
-                        }
-                    }
-                }
-                
-                if Float(neighborCount) / Float(totalNeighbors) > 0.6 {
-                    output[idx] = 255
-                    filledCount += 1
-                }
-            }
-        }
-        
-        return output
-    }
-    
-    private func dilate(_ input: [UInt8], width: Int, height: Int, kernelSize: Int) -> [UInt8] {
-        var output = [UInt8](repeating: 0, count: input.count)
-        let radius = kernelSize / 2
-        
-        for y in 0..<height {
-            for x in 0..<width {
-                var maxVal: UInt8 = 0
-                
-                for dy in -radius...radius {
-                    for dx in -radius...radius {
-                        let ny = y + dy
-                        let nx = x + dx
-                        
-                        if ny >= 0 && ny < height && nx >= 0 && nx < width {
-                            let idx = ny * width + nx
-                            maxVal = max(maxVal, input[idx])
-                        }
-                    }
-                }
-                
-                output[y * width + x] = maxVal
-            }
-        }
-        
-        return output
-    }
-    
-    private func erode(_ input: [UInt8], width: Int, height: Int, kernelSize: Int) -> [UInt8] {
-        var output = [UInt8](repeating: 0, count: input.count)
-        let radius = kernelSize / 2
-        
-        for y in 0..<height {
-            for x in 0..<width {
-                var minVal: UInt8 = 255
-                
-                for dy in -radius...radius {
-                    for dx in -radius...radius {
-                        let ny = y + dy
-                        let nx = x + dx
-                        
-                        if ny >= 0 && ny < height && nx >= 0 && nx < width {
-                            let idx = ny * width + nx
-                            minVal = min(minVal, input[idx])
-                        }
-                    }
-                }
-                
-                output[y * width + x] = minVal
-            }
-        }
-        
-        return output
     }
     
     private func calculateU2NetOverlap(x: Float, y: Float, width: Float, height: Float) -> Float {
