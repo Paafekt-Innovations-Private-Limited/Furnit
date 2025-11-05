@@ -678,7 +678,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         return totalCount > 0 ? Float(overlapCount) / Float(totalCount) : 0
     }
     
-    // U2NET IDENTIFIES FURNITURE, FASTSAM ADDS MISSING PARTS ONLY
+    // STRICT FASTSAM - ONLY ADDS TRULY CONNECTED FURNITURE PARTS
     private func generateSmartMask(prototypes: MLMultiArray, coefficients: [Float],
                                    protoHeight: Int, protoWidth: Int) -> CIImage {
         let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
@@ -718,7 +718,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 let u2netPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
                 var u2netPixels = 0
                 
-                // STEP 1: U2-Net identifies furniture - DO NOT MODIFY
+                // STEP 1: U2-Net identifies furniture - USE AS PRIMARY
                 for y in 0..<protoHeight {
                     for x in 0..<protoWidth {
                         let sourceX = x * maskWidth / protoWidth
@@ -751,72 +751,119 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     }
                 }
                 
-                // Expand search area slightly for disconnected parts
-                let searchMinX = max(0, minX - 20)
-                let searchMaxX = min(protoWidth - 1, maxX + 20)
-                let searchMinY = max(0, minY - 20)
-                let searchMaxY = min(protoHeight - 1, maxY + 20)
-                
-                // STEP 3: Within this region, add high-confidence FastSAM clusters
-                var addedParts = 0
-                
-                for y in searchMinY...searchMaxY {
-                    for x in searchMinX...searchMaxX {
-                        let idx = y * protoWidth + x
-                        
-                        // Skip if U2-Net already marked
-                        if pixelData[idx] == 255 { continue }
-                        
-                        // Skip if not touching U2-Net directly (no edge modification)
-                        var touchesU2Net = false
-                        for dy in -1...1 {
-                            for dx in -1...1 {
-                                if dy == 0 && dx == 0 { continue }
-                                if y + dy >= 0 && y + dy < protoHeight &&
-                                   x + dx >= 0 && x + dx < protoWidth {
-                                    let nIdx = (y + dy) * protoWidth + (x + dx)
-                                    if pixelData[nIdx] == 255 {
-                                        touchesU2Net = true
-                                        break
-                                    }
-                                }
-                            }
-                        }
-                        if touchesU2Net { continue } // Skip edge pixels
-                        
-                        // Add if FastSAM has very high confidence (missing furniture part)
-                        if fastSAMConfidence[idx] > 0.8 {
-                            // Verify it's a coherent cluster (not noise)
-                            var clusterSize = 0
-                            for dy in -2...2 {
-                                for dx in -2...2 {
-                                    if y + dy >= 0 && y + dy < protoHeight &&
-                                       x + dx >= 0 && x + dx < protoWidth {
-                                        let nIdx = (y + dy) * protoWidth + (x + dx)
-                                        if fastSAMConfidence[nIdx] > 0.75 {
-                                            clusterSize += 1
+                // Check if any furniture was detected
+                if minX > maxX || minY > maxY {
+                    // No U2-Net furniture detected, skip FastSAM enhancement
+                    print("⚠️ No U2-Net furniture detected to enhance")
+                } else {
+                    // Expand box slightly to capture full furniture
+                    let searchMinX = max(0, minX - 5)
+                    let searchMaxX = min(protoWidth - 1, maxX + 5)
+                    let searchMinY = max(0, minY - 10)  // More expansion up for headrest
+                    let searchMaxY = min(protoHeight - 1, maxY + 5)
+                    
+                    // STEP 3: Add connected high-confidence FastSAM parts
+                    var addedParts = 0
+                    
+                    // Two-pass approach to fill gaps
+                    for pass in 1...2 {
+                        for y in searchMinY...searchMaxY {
+                            for x in searchMinX...searchMaxX {
+                                let idx = y * protoWidth + x
+                                
+                                if pixelData[idx] == 255 { continue }
+                                
+                                // Pass 1: Near furniture, Pass 2: Bridge gaps
+                                let requiredConfidence: Float = pass == 1 ? 0.88 : 0.85
+                                if fastSAMConfidence[idx] < requiredConfidence { continue }
+                                
+                                // Check proximity to existing furniture
+                                var nearFurniture = false
+                                var furnitureCount = 0
+                                
+                                for dy in -2...2 {
+                                    for dx in -2...2 {
+                                        if y + dy >= 0 && y + dy < protoHeight &&
+                                           x + dx >= 0 && x + dx < protoWidth {
+                                            let nIdx = (y + dy) * protoWidth + (x + dx)
+                                            if pixelData[nIdx] == 255 {
+                                                nearFurniture = true
+                                                furnitureCount += 1
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            
-                            // Only add if it's a significant cluster (furniture part, not noise)
-                            if clusterSize >= 15 {
-                                pixelData[idx] = 255
-                                addedParts += 1
+                                
+                                // Add if near furniture with enough support
+                                if nearFurniture && furnitureCount >= 2 {
+                                    pixelData[idx] = 255
+                                    addedParts += 1
+                                }
                             }
                         }
                     }
-                }
-                
-                if addedParts > 0 {
-                    print("📊 Missing parts added: +\(addedParts) pixels")
+                    
+                    if addedParts > 0 {
+                        print("📊 Connected parts added: +\(addedParts) pixels")
+                    }
                 }
                 
                 print("📊 Total: \(pixelData.filter { $0 == 255 }.count) pixels")
             }
         } else {
-            print("⚠️ Loading...")
+            // NO U2-Net - use only VERY high confidence FastSAM
+            print("⚠️ Using FastSAM only (U2-Net loading...)")
+            
+            // Find the strongest FastSAM region
+            var maxConfidence: Float = 0
+            var seedX = 0
+            var seedY = 0
+            
+            for y in 0..<protoHeight {
+                for x in 0..<protoWidth {
+                    let idx = y * protoWidth + x
+                    if fastSAMConfidence[idx] > maxConfidence {
+                        maxConfidence = fastSAMConfidence[idx]
+                        seedX = x
+                        seedY = y
+                    }
+                }
+            }
+            
+            // Only proceed if we have VERY high confidence seed
+            if maxConfidence > 0.95 {
+                // Region growing from seed with VERY strict threshold
+                var toProcess = [(seedX, seedY)]
+                var processed = Set<Int>()
+                
+                while !toProcess.isEmpty {
+                    let (x, y) = toProcess.removeFirst()
+                    let idx = y * protoWidth + x
+                    
+                    if processed.contains(idx) { continue }
+                    processed.insert(idx)
+                    
+                    // Only add pixels with very high confidence
+                    if fastSAMConfidence[idx] > 0.9 {
+                        pixelData[idx] = 255
+                        
+                        // Add neighbors to process
+                        for dy in -1...1 {
+                            for dx in -1...1 {
+                                if dy == 0 && dx == 0 { continue }
+                                let nx = x + dx
+                                let ny = y + dy
+                                if nx >= 0 && nx < protoWidth && ny >= 0 && ny < protoHeight {
+                                    let nIdx = ny * protoWidth + nx
+                                    if !processed.contains(nIdx) {
+                                        toProcess.append((nx, ny))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         let data = Data(pixelData)
