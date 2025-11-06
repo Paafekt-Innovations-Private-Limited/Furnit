@@ -201,60 +201,120 @@ struct SimpleCameraOverlay: View {
                                     .foregroundColor(.white)
                             }
                         } else {
-                            VStack(spacing: 4) {
-                                Text("Boundary set • Size: \(Int(scaleMultiplier * 100))%")
+                            if camera.isFurnitureSaved {
+                                VStack(spacing: 4) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                        Text("Furniture saved! • Size: \(Int(scaleMultiplier * 100))%")
+                                    }
                                     .font(.caption)
-                                Text("Drag to reposition • Ready to save")
-                                    .font(.caption2)
-                                    .foregroundColor(.white.opacity(0.7))
+                                    Text("Scan another or finish")
+                                        .font(.caption2)
+                                        .foregroundColor(.white.opacity(0.7))
+                                }
+                                .padding(8)
+                                .background(Capsule().fill(Color.black.opacity(0.5)))
+                                .foregroundColor(.white)
+                            } else {
+                                VStack(spacing: 4) {
+                                    Text("Boundary set • Size: \(Int(scaleMultiplier * 100))%")
+                                        .font(.caption)
+                                    Text("Drag to reposition • Ready to save")
+                                        .font(.caption2)
+                                        .foregroundColor(.white.opacity(0.7))
+                                }
+                                .padding(8)
+                                .background(Capsule().fill(Color.black.opacity(0.5)))
+                                .foregroundColor(.white)
                             }
-                            .padding(8)
-                            .background(Capsule().fill(Color.black.opacity(0.5)))
-                            .foregroundColor(.white)
                         }
                     }
                     
                     HStack(spacing: 16) {
                         if camera.isExamining {
-                            // 💾 NEW: Save Furniture button
-                            Button(action: {
-                                saveFurniture()
-                            }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "square.and.arrow.down.fill")
-                                        .font(.title3)
-                                    Text("Save Furniture")
-                                        .font(.headline)
+                            if !camera.isFurnitureSaved {
+                                // 💾 Save Furniture button
+                                Button(action: {
+                                    saveFurniture()
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "square.and.arrow.down.fill")
+                                            .font(.title3)
+                                        Text("Save Furniture")
+                                            .font(.headline)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 24)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        Capsule()
+                                            .fill(Color.green.opacity(0.9))
+                                            .shadow(color: .green.opacity(0.3), radius: 8)
+                                    )
                                 }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 12)
-                                .background(
-                                    Capsule()
-                                        .fill(Color.green.opacity(0.9))
-                                        .shadow(color: .green.opacity(0.3), radius: 8)
-                                )
-                            }
-                            
-                            Button(action: {
-                                withAnimation {
-                                    camera.finishExamining()
+                                
+                                Button(action: {
+                                    withAnimation {
+                                        camera.finishExamining()
+                                    }
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "arrow.counterclockwise")
+                                            .font(.title3)
+                                        Text("Back")
+                                            .font(.headline)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 24)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        Capsule()
+                                            .fill(Color.gray.opacity(0.9))
+                                            .shadow(color: .gray.opacity(0.3), radius: 8)
+                                    )
                                 }
-                            }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.title3)
-                                    Text("Back")
-                                        .font(.headline)
+                            } else {
+                                // After saving - show different buttons
+                                Button(action: {
+                                    withAnimation {
+                                        camera.finishExamining()
+                                    }
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "camera.fill")
+                                            .font(.title3)
+                                        Text("Scan Another")
+                                            .font(.headline)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 24)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        Capsule()
+                                            .fill(Color.blue.opacity(0.9))
+                                            .shadow(color: .blue.opacity(0.3), radius: 8)
+                                    )
                                 }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 12)
-                                .background(
-                                    Capsule()
-                                        .fill(Color.gray.opacity(0.9))
-                                        .shadow(color: .gray.opacity(0.3), radius: 8)
-                                )
+                                
+                                Button(action: {
+                                    isShowingCamera = false
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.title3)
+                                        Text("Done")
+                                            .font(.headline)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 24)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        Capsule()
+                                            .fill(Color.green.opacity(0.9))
+                                            .shadow(color: .green.opacity(0.3), radius: 8)
+                                    )
+                                }
                             }
                         } else if camera.segmentedImage != nil {
                             Button(action: {
@@ -350,7 +410,10 @@ struct SimpleCameraOverlay: View {
                             if success {
                                 print("✅ Furniture saved to Photos!")
                                 
-                                // Show success message
+                                // Mark as saved and freeze the image
+                                self.camera.markFurnitureSaved()
+                                
+                                // Show success message briefly
                                 withAnimation(.spring()) {
                                     self.showingSaveSuccess = true
                                 }
@@ -359,31 +422,19 @@ struct SimpleCameraOverlay: View {
                                 let generator = UINotificationFeedbackGenerator()
                                 generator.notificationOccurred(.success)
                                 
-                                // Hide success message and close camera after delay
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                // Hide success message after delay (but stay in examine mode)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                                     withAnimation {
                                         self.showingSaveSuccess = false
-                                    }
-                                    
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        self.isShowingCamera = false
                                     }
                                 }
                             } else {
                                 print("❌ Failed to save: \(error?.localizedDescription ?? "unknown error")")
-                                // Still close camera even if save failed
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                    self.isShowingCamera = false
-                                }
                             }
                         }
                     }
                 } else {
                     print("⚠️ Photos access denied")
-                    // Still close camera even if permission denied
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.isShowingCamera = false
-                    }
                 }
             }
         }
@@ -439,6 +490,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
     @Published var isExamining: Bool = false
     @Published var userGuidanceHint: UserGuidanceHint? = nil
     @Published var u2netCoverageRect: CGRect = .zero
+    @Published var isFurnitureSaved: Bool = false  // 🆕 Track saved state
     
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -453,7 +505,9 @@ class U2NetCameraModel: NSObject, ObservableObject {
     
     private var u2netMask: CVPixelBuffer?
     private var lockedMask: CVPixelBuffer? = nil
+    private var lockedCameraFrame: CVPixelBuffer? = nil  // 🆕 Lock camera frame too!
     private var shouldStartExaminingOnNextFrame = false
+    private var savedFurnitureImage: UIImage? = nil  // 🆕 Store saved image
     
     override init() {
         super.init()
@@ -466,13 +520,24 @@ class U2NetCameraModel: NSObject, ObservableObject {
         shouldStartExaminingOnNextFrame = true
     }
     
+    func markFurnitureSaved() {
+        print("💾 Marking furniture as saved - freezing image")
+        DispatchQueue.main.async {
+            self.savedFurnitureImage = self.segmentedImage
+            self.isFurnitureSaved = true
+        }
+    }
+    
     func finishExamining() {
         print("✅ User finished EXAMINING")
         DispatchQueue.main.async {
             self.isExamining = false
+            self.isFurnitureSaved = false
+            self.savedFurnitureImage = nil
             self.userGuidanceHint = nil
         }
         lockedMask = nil
+        lockedCameraFrame = nil  // 🆕 Clear locked camera frame
         shouldStartExaminingOnNextFrame = false
         segmentedImage = nil
         furnitureOpacity = 0.0
@@ -569,6 +634,15 @@ class U2NetCameraModel: NSObject, ObservableObject {
         guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
         guard !isProcessing else { return }
         
+        // 🎯 If furniture is saved, keep displaying the frozen image - don't process new frames!
+        if isFurnitureSaved, let savedImage = savedFurnitureImage {
+            DispatchQueue.main.async {
+                self.segmentedImage = savedImage
+                self.furnitureOpacity = 1.0
+            }
+            return
+        }
+        
         isProcessing = true
         lastProcessTime = now
         
@@ -582,10 +656,12 @@ class U2NetCameraModel: NSObject, ObservableObject {
         }
         
         var maskToUse = u2netMask
+        var cameraFrameToUse = pixelBuffer
         
         if shouldStartExaminingOnNextFrame {
-            print("📋 Creating COPY of U2-Net mask...")
+            print("📋 Creating COPY of U2-Net mask AND camera frame...")
             
+            // Lock BOTH mask and camera frame
             if let copiedMask = copyPixelBuffer(u2netMask) {
                 lockedMask = copiedMask
                 print("✅ Locked COPY of mask (won't be overwritten)")
@@ -594,13 +670,23 @@ class U2NetCameraModel: NSObject, ObservableObject {
                 lockedMask = u2netMask
             }
             
+            if let copiedFrame = copyPixelBuffer(pixelBuffer) {
+                lockedCameraFrame = copiedFrame
+                print("✅ Locked COPY of camera frame (furniture won't shift!)")
+            } else {
+                print("⚠️ Failed to copy camera frame")
+                lockedCameraFrame = pixelBuffer
+            }
+            
             shouldStartExaminingOnNextFrame = false
             
             DispatchQueue.main.async {
                 self.isExamining = true
             }
-        } else if let locked = lockedMask {
+        } else if let locked = lockedMask, let lockedFrame = lockedCameraFrame {
+            // 🎯 In examine mode: use BOTH locked mask and locked frame
             maskToUse = locked
+            cameraFrameToUse = lockedFrame
         } else {
             analyzeAndProvideGuidance(mask: u2netMask)
         }
@@ -608,7 +694,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
         updateU2NetVisualization(maskToUse)
         
         let maskImage = CIImage(cvPixelBuffer: maskToUse)
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let ciImage = CIImage(cvPixelBuffer: cameraFrameToUse)  // 🆕 Use locked frame in examine mode
         applyMaskToImage(original: ciImage, mask: maskImage)
         
         isProcessing = false

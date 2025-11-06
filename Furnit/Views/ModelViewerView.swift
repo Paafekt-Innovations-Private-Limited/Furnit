@@ -180,6 +180,7 @@ struct ModelViewerView: View {
         return geometry.size.width > geometry.size.height
     }
     
+    // 🎯 UPDATED: Centered joystick layout
     private var portraitControls: some View {
         VStack {
             HStack {
@@ -192,22 +193,24 @@ struct ModelViewerView: View {
             Spacer()
             
             HStack {
+                // Camera button on left
                 VStack(spacing: 16) {
                     cameraButton
                 }
+                .padding(.leading, 8)
                 
-                VStack(spacing: 16) {
-//                    modelInfoPanel
-                    
-                    VirtualJoystick(joystickOffset: $joystickOffset)
-                        .onChange(of: joystickOffset) { _, newOffset in
-                            cameraMovementManager.updateJoystickInput(newOffset)
-                        }
-                }
+                Spacer()
+                
+                // Joystick centered horizontally
+                VirtualJoystick(joystickOffset: $joystickOffset)
+                    .onChange(of: joystickOffset) { _, newOffset in
+                        cameraMovementManager.updateJoystickInput(newOffset)
+                    }
                 
                 Spacer()
             }
-            .padding()
+            .padding(.bottom, 40) // Extra bottom padding for better positioning
+            .padding(.horizontal)
         }
     }
     
@@ -295,7 +298,7 @@ struct ModelViewerView: View {
 //                .font(.title3)
 //                .fontWeight(.semibold)
 //                .foregroundColor(.white)
-//            
+//
 //            Text("Use gestures to rotate, zoom, and explore the room")
 //                .font(.caption)
 //                .foregroundColor(.white.opacity(0.8))
