@@ -17,14 +17,13 @@ struct SimpleCameraOverlay: View {
     @State private var lastHapticTime: Date = .distantPast
     
     private let showSensitivitySlider = false
-    private let showDebugBoxes = true  // 🔍 Show detection areas
+    private let showDebugBoxes = false
     
     var body: some View {
         ZStack {
             Color.clear
                 .ignoresSafeArea()
             
-            // 🔍 DEBUG: Show U2-Net coverage area (GREEN)
             if showDebugBoxes && camera.u2netCoverageRect != .zero {
                 Rectangle()
                     .stroke(Color.green, lineWidth: 3)
@@ -41,7 +40,6 @@ struct SimpleCameraOverlay: View {
                              y: camera.u2netCoverageRect.minY - 20)
             }
             
-            // Scanning reticle
             if !camera.isExamining && camera.segmentedImage == nil && !isInitialAppearance {
                 ScanningReticle(rotation: $scannerRotation)
                     .onAppear {
@@ -51,7 +49,6 @@ struct SimpleCameraOverlay: View {
                     }
             }
             
-            // Segmented furniture overlay
             if let segmented = camera.segmentedImage {
                 Image(uiImage: segmented)
                     .resizable()
@@ -133,6 +130,27 @@ struct SimpleCameraOverlay: View {
                     .padding(.trailing, 16)
                 }
                 .padding(.top, 60)
+                
+                if let hint = camera.userGuidanceHint, !camera.isExamining {
+                    VStack(spacing: 4) {
+                        HStack(spacing: 6) {
+                            Image(systemName: hint.icon)
+                                .font(.caption)
+                            Text(hint.message)
+                                .font(.caption)
+                                .multilineTextAlignment(.center)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(hint.color.opacity(0.8))
+                        )
+                    }
+                    .padding(.top, 8)
+                    .transition(.opacity)
+                }
                 
                 Spacer()
                 
@@ -305,20 +323,18 @@ struct CornerBracket: View {
     }
 }
 
+struct UserGuidanceHint {
+    let message: String
+    let icon: String
+    let color: Color
+}
+
 class U2NetCameraModel: NSObject, ObservableObject {
-    // 🎯 OPTION A: U2-Net ONLY (No FastSAM!)
-    // 1. U2-Net creates mask
-    // 2. Find connected components in mask
-    // 3. Select largest component as main furniture
-    // 4. "Examine" locks in the current mask
-    // Simple, clean, effective!
-    
     @Published var segmentedImage: UIImage?
     @Published var furnitureOpacity: Double = 0.0
     @Published var detectionId: UUID = UUID()
     @Published var isExamining: Bool = false
-    
-    // 🔍 DEBUG: Published rectangles to visualize detection areas
+    @Published var userGuidanceHint: UserGuidanceHint? = nil
     @Published var u2netCoverageRect: CGRect = .zero
     
     let session = AVCaptureSession()
@@ -343,14 +359,15 @@ class U2NetCameraModel: NSObject, ObservableObject {
     }
     
     func startExamining() {
-        print("🔍 User started EXAMINING - locking current mask")
+        print("🔍 User started EXAMINING")
         shouldStartExaminingOnNextFrame = true
     }
     
     func finishExamining() {
-        print("✅ User finished EXAMINING - resetting")
+        print("✅ User finished EXAMINING")
         DispatchQueue.main.async {
             self.isExamining = false
+            self.userGuidanceHint = nil
         }
         lockedMask = nil
         shouldStartExaminingOnNextFrame = false
@@ -444,7 +461,6 @@ class U2NetCameraModel: NSObject, ObservableObject {
         }
     }
     
-    // 🎯 SIMPLE U2-Net only processing
     private func processWithU2Net(pixelBuffer: CVPixelBuffer) {
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
@@ -453,7 +469,6 @@ class U2NetCameraModel: NSObject, ObservableObject {
         isProcessing = true
         lastProcessTime = now
         
-        // Run U2-Net
         if u2netModel != nil {
             runU2NetSync(pixelBuffer: pixelBuffer)
         }
@@ -463,26 +478,33 @@ class U2NetCameraModel: NSObject, ObservableObject {
             return
         }
         
-        // 🔍 DEBUG: Update U2-Net coverage visualization
-        updateU2NetVisualization(u2netMask)
+        var maskToUse = u2netMask
         
-        // Handle "Examine" button press
+        // 🎯 CRITICAL FIX: Make a COPY of the pixel buffer!
         if shouldStartExaminingOnNextFrame {
-            // Lock the current mask
-            lockedMask = u2netMask
+            print("📋 Creating COPY of U2-Net mask...")
+            
+            if let copiedMask = copyPixelBuffer(u2netMask) {
+                lockedMask = copiedMask
+                print("✅ Locked COPY of mask (won't be overwritten)")
+            } else {
+                print("⚠️ Failed to copy mask, using reference")
+                lockedMask = u2netMask
+            }
+            
             shouldStartExaminingOnNextFrame = false
             
             DispatchQueue.main.async {
                 self.isExamining = true
             }
-            
-            print("✅ Locked current U2-Net mask")
+        } else if let locked = lockedMask {
+            maskToUse = locked
+        } else {
+            analyzeAndProvideGuidance(mask: u2netMask)
         }
         
-        // Use locked mask if examining, otherwise use current mask
-        let maskToUse = lockedMask ?? u2netMask
+        updateU2NetVisualization(maskToUse)
         
-        // Apply mask to original image
         let maskImage = CIImage(cvPixelBuffer: maskToUse)
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         applyMaskToImage(original: ciImage, mask: maskImage)
@@ -490,7 +512,126 @@ class U2NetCameraModel: NSObject, ObservableObject {
         isProcessing = false
     }
     
-    // 🔍 DEBUG: Visualize U2-Net mask coverage
+    // 🎯 NEW: Create a deep copy of CVPixelBuffer
+    private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
+        let width = CVPixelBufferGetWidth(source)
+        let height = CVPixelBufferGetHeight(source)
+        let format = CVPixelBufferGetPixelFormatType(source)
+        
+        var copy: CVPixelBuffer?
+        let attrs = [
+            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!
+        ] as CFDictionary
+        
+        let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, format, attrs, &copy)
+        
+        guard status == kCVReturnSuccess, let destination = copy else {
+            return nil
+        }
+        
+        CVPixelBufferLockBaseAddress(source, .readOnly)
+        CVPixelBufferLockBaseAddress(destination, [])
+        
+        defer {
+            CVPixelBufferUnlockBaseAddress(source, .readOnly)
+            CVPixelBufferUnlockBaseAddress(destination, [])
+        }
+        
+        let sourceBytesPerRow = CVPixelBufferGetBytesPerRow(source)
+        let destBytesPerRow = CVPixelBufferGetBytesPerRow(destination)
+        
+        guard let sourceData = CVPixelBufferGetBaseAddress(source),
+              let destData = CVPixelBufferGetBaseAddress(destination) else {
+            return nil
+        }
+        
+        // Copy pixel data row by row
+        for row in 0..<height {
+            let sourceRowData = sourceData.advanced(by: row * sourceBytesPerRow)
+            let destRowData = destData.advanced(by: row * destBytesPerRow)
+            memcpy(destRowData, sourceRowData, min(sourceBytesPerRow, destBytesPerRow))
+        }
+        
+        return destination
+    }
+    
+    private func analyzeAndProvideGuidance(mask: CVPixelBuffer) {
+        CVPixelBufferLockBaseAddress(mask, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
+        
+        let width = CVPixelBufferGetWidth(mask)
+        let height = CVPixelBufferGetHeight(mask)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(mask)
+        
+        guard let baseAddress = CVPixelBufferGetBaseAddress(mask) else { return }
+        let maskPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
+        
+        var minX = width, maxX = 0, minY = height, maxY = 0
+        var pixelCount = 0
+        
+        for y in 0..<height {
+            let rowPtr = maskPtr.advanced(by: y * bytesPerRow)
+            for x in 0..<width {
+                if rowPtr[x] > 128 {
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                    pixelCount += 1
+                }
+            }
+        }
+        
+        guard pixelCount > 0 else {
+            DispatchQueue.main.async {
+                self.userGuidanceHint = nil
+            }
+            return
+        }
+        
+        let segmentWidth = maxX - minX
+        let segmentHeight = maxY - minY
+        let segmentArea = segmentWidth * segmentHeight
+        let frameArea = width * height
+        let coverageRatio = Float(segmentArea) / Float(frameArea)
+        
+        let edgeMargin = 5
+        let touchesLeft = minX < edgeMargin
+        let touchesRight = maxX > width - edgeMargin
+        let touchesTop = minY < edgeMargin
+        let touchesBottom = maxY > height - edgeMargin
+        let touchesEdges = touchesLeft || touchesRight || touchesTop || touchesBottom
+        
+        var hint: UserGuidanceHint? = nil
+        
+        if touchesEdges && coverageRatio > 0.4 {
+            hint = UserGuidanceHint(
+                message: "Step back to see all edges",
+                icon: "arrow.down.backward.and.arrow.up.forward",
+                color: .orange
+            )
+        } else if coverageRatio < 0.15 {
+            hint = UserGuidanceHint(
+                message: "Move closer to furniture",
+                icon: "arrow.up.left.and.arrow.down.right",
+                color: .blue
+            )
+        } else if coverageRatio > 0.7 {
+            hint = UserGuidanceHint(
+                message: "Move back for better view",
+                icon: "arrow.down.backward.and.arrow.up.forward",
+                color: .yellow
+            )
+        }
+        
+        DispatchQueue.main.async {
+            withAnimation {
+                self.userGuidanceHint = hint
+            }
+        }
+    }
+    
     private func updateU2NetVisualization(_ mask: CVPixelBuffer) {
         CVPixelBufferLockBaseAddress(mask, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
@@ -501,7 +642,6 @@ class U2NetCameraModel: NSObject, ObservableObject {
         guard let baseAddress = CVPixelBufferGetBaseAddress(mask) else { return }
         let maskPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
         
-        // Find bounding box of U2-Net segmentation
         var minX = maskWidth, maxX = 0
         var minY = maskHeight, maxY = 0
         var hasPixels = false
@@ -520,7 +660,6 @@ class U2NetCameraModel: NSObject, ObservableObject {
         }
         
         if hasPixels {
-            // Convert to screen coordinates
             let screenWidth = UIScreen.main.bounds.width
             let screenHeight = UIScreen.main.bounds.height
             
