@@ -3,6 +3,7 @@ import AVFoundation
 import CoreML
 import Vision
 import CoreImage
+import Photos
 
 struct SimpleCameraOverlay: View {
     @Binding var capturedImage: UIImage?
@@ -15,6 +16,7 @@ struct SimpleCameraOverlay: View {
     @State private var isInitialAppearance = true
     @State private var scannerRotation: Double = 0
     @State private var lastHapticTime: Date = .distantPast
+    @State private var showingSaveSuccess = false
     
     private let showSensitivitySlider = false
     private let showDebugBoxes = false
@@ -80,6 +82,29 @@ struct SimpleCameraOverlay: View {
                             lastHapticTime = now
                         }
                     }
+            }
+            
+            // ✅ Success message overlay
+            if showingSaveSuccess {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title2)
+                        Text("Furniture saved!")
+                            .font(.headline)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 16)
+                    .background(
+                        Capsule()
+                            .fill(Color.green.opacity(0.95))
+                            .shadow(radius: 10)
+                    )
+                    .padding(.bottom, 150)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             
             VStack {
@@ -179,7 +204,7 @@ struct SimpleCameraOverlay: View {
                             VStack(spacing: 4) {
                                 Text("Boundary set • Size: \(Int(scaleMultiplier * 100))%")
                                     .font(.caption)
-                                Text("Drag to reposition")
+                                Text("Drag to reposition • Ready to save")
                                     .font(.caption2)
                                     .foregroundColor(.white.opacity(0.7))
                             }
@@ -191,15 +216,14 @@ struct SimpleCameraOverlay: View {
                     
                     HStack(spacing: 16) {
                         if camera.isExamining {
+                            // 💾 NEW: Save Furniture button
                             Button(action: {
-                                withAnimation {
-                                    camera.finishExamining()
-                                }
+                                saveFurniture()
                             }) {
                                 HStack(spacing: 8) {
-                                    Image(systemName: "checkmark.circle.fill")
+                                    Image(systemName: "square.and.arrow.down.fill")
                                         .font(.title3)
-                                    Text("Done Examining")
+                                    Text("Save Furniture")
                                         .font(.headline)
                                 }
                                 .foregroundColor(.white)
@@ -207,8 +231,29 @@ struct SimpleCameraOverlay: View {
                                 .padding(.vertical, 12)
                                 .background(
                                     Capsule()
-                                        .fill(Color.blue.opacity(0.9))
-                                        .shadow(color: .blue.opacity(0.3), radius: 8)
+                                        .fill(Color.green.opacity(0.9))
+                                        .shadow(color: .green.opacity(0.3), radius: 8)
+                                )
+                            }
+                            
+                            Button(action: {
+                                withAnimation {
+                                    camera.finishExamining()
+                                }
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.counterclockwise")
+                                        .font(.title3)
+                                    Text("Back")
+                                        .font(.headline)
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.gray.opacity(0.9))
+                                        .shadow(color: .gray.opacity(0.3), radius: 8)
                                 )
                             }
                         } else if camera.segmentedImage != nil {
@@ -283,6 +328,64 @@ struct SimpleCameraOverlay: View {
         }
         .onDisappear {
             camera.stopSession()
+        }
+    }
+    
+    // 💾 Save furniture function
+    private func saveFurniture() {
+        guard let image = camera.segmentedImage else { return }
+        
+        // Set the binding for parent view immediately
+        capturedImage = image
+        
+        // Request Photos authorization
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            DispatchQueue.main.async {
+                if status == .authorized || status == .limited {
+                    // Save to Photos library using modern API
+                    PHPhotoLibrary.shared().performChanges({
+                        PHAssetChangeRequest.creationRequestForAsset(from: image)
+                    }) { success, error in
+                        DispatchQueue.main.async {
+                            if success {
+                                print("✅ Furniture saved to Photos!")
+                                
+                                // Show success message
+                                withAnimation(.spring()) {
+                                    self.showingSaveSuccess = true
+                                }
+                                
+                                // Haptic feedback
+                                let generator = UINotificationFeedbackGenerator()
+                                generator.notificationOccurred(.success)
+                                
+                                // Hide success message and close camera after delay
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    withAnimation {
+                                        self.showingSaveSuccess = false
+                                    }
+                                    
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        self.isShowingCamera = false
+                                    }
+                                }
+                            } else {
+                                print("❌ Failed to save: \(error?.localizedDescription ?? "unknown error")")
+                                // Still close camera even if save failed
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    self.isShowingCamera = false
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    print("⚠️ Photos access denied")
+                    // Still close camera even if permission denied
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.isShowingCamera = false
+                    }
+                }
+            }
         }
     }
 }
@@ -480,7 +583,6 @@ class U2NetCameraModel: NSObject, ObservableObject {
         
         var maskToUse = u2netMask
         
-        // 🎯 CRITICAL FIX: Make a COPY of the pixel buffer!
         if shouldStartExaminingOnNextFrame {
             print("📋 Creating COPY of U2-Net mask...")
             
@@ -512,7 +614,6 @@ class U2NetCameraModel: NSObject, ObservableObject {
         isProcessing = false
     }
     
-    // 🎯 NEW: Create a deep copy of CVPixelBuffer
     private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
         let width = CVPixelBufferGetWidth(source)
         let height = CVPixelBufferGetHeight(source)
@@ -546,7 +647,6 @@ class U2NetCameraModel: NSObject, ObservableObject {
             return nil
         }
         
-        // Copy pixel data row by row
         for row in 0..<height {
             let sourceRowData = sourceData.advanced(by: row * sourceBytesPerRow)
             let destRowData = destData.advanced(by: row * destBytesPerRow)
