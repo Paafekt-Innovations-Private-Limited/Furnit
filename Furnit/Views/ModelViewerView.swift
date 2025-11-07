@@ -56,16 +56,6 @@ struct ModelViewerView: View {
                     cameraInitializationOverlay
                 }
                 
-                // Use your existing SimpleCameraOverlay when AR is active
-                if showingCameraPreview {
-                    SimpleCameraOverlay(
-                        capturedImage: $capturedImageFromPreview,
-                        isShowingCamera: $showingCameraPreview
-                    )
-                    .zIndex(100) // Ensure it's on top
-                    .transition(.opacity)
-                }
-                
                 if isLandscape(geometry: geometry) {
                     landscapeControls
                 } else {
@@ -84,6 +74,12 @@ struct ModelViewerView: View {
         .navigationBarHidden(true)
         .statusBarHidden(true)
         .preferredColorScheme(.dark)
+        .fullScreenCover(isPresented: $showingCameraPreview) {
+            SimpleCameraOverlay(
+                capturedImage: $capturedImageFromPreview,
+                isShowingCamera: $showingCameraPreview
+            )
+        }
         .onAppear {
             setupARManagers()
             ar3DModelProcessor.setQualitySettings(AppStateManager.shared.qualitySettings)
@@ -290,7 +286,7 @@ struct ModelViewerView: View {
                         .font(.headline)
                         .foregroundColor(.white)
                     
-                    Text("Starting U²-Net segmentation...")
+                    Text("Starting MobileSAM segmentation...")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.8))
                 }
@@ -667,7 +663,7 @@ struct ModelViewerView: View {
             if self.cameraInitProgress >= 0.3 && self.cameraInitProgress < 0.32 {
                 print("📷 Camera permissions checked")
             } else if self.cameraInitProgress >= 0.6 && self.cameraInitProgress < 0.62 {
-                print("🤖 Loading U²-Net model")
+                print("🤖 Loading MobileSAM models")
             } else if self.cameraInitProgress >= 0.9 && self.cameraInitProgress < 0.92 {
                 print("✅ Segmentation ready")
             }
@@ -685,7 +681,7 @@ struct ModelViewerView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     self.showingCameraPreview = true
                     self.arStatusMessage = "Live furniture segmentation"
-                    print("📷 SimpleCameraOverlay activated with U²-Net segmentation")
+                    print("📷 SimpleCameraOverlay activated with MobileSAM segmentation")
                 }
             }
         }
@@ -748,7 +744,7 @@ struct ModelViewerView: View {
             arProcessingStateManager.beginCapture()
         }
         
-        // The image is already segmented by U2-Net in SimpleCameraOverlay
+        // The image is already segmented by MobileSAM in SimpleCameraOverlay
         print("📸 Received pre-segmented furniture image from SimpleCameraOverlay")
         
         // Check for QR codes first
@@ -859,4 +855,3 @@ struct ModelViewerView: View {
         print("🧹 Complete AR cleanup performed on view dismissal")
     }
 }
-
