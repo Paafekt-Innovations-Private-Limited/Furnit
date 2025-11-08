@@ -12,31 +12,32 @@ struct SimpleCameraOverlay: View {
     
     var body: some View {
         ZStack {
-            // Fullscreen camera feed
-            if let segmented = camera.segmentedImage {
-                Image(uiImage: segmented)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)  // Changed from .fill to .fit
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black)
-                    .ignoresSafeArea()
-            } else {
-                CameraPreviewLayer(session: camera.session)
-                    .ignoresSafeArea()
-                    .overlay(
-                        // Show "Camera Loading" if black
-                        Text("Camera Loading...")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding()
-                            .background(Color.black.opacity(0.7))
-                            .cornerRadius(8)
-                            .opacity(camera.segmentedImage == nil ? 1 : 0)
-                    )
+            // ALWAYS show live camera feed (never frozen)
+            CameraPreviewLayer(session: camera.session)
+                .ignoresSafeArea()
+            
+            // Show colored outlines for each detected part
+            ForEach(Array(camera.segmentedParts.enumerated()), id: \.offset) { index, part in
+                if let outlineImage = part.outlineImage {
+                    Image(uiImage: outlineImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .ignoresSafeArea()
+                }
             }
             
-            // CENTER CROSSHAIR - Only visible when no segmented image
-            if camera.segmentedImage == nil {
+            // Show final combined segmented furniture (if exists)
+            if let finalImage = camera.finalSegmentedImage {
+                Image(uiImage: finalImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
+            }
+            
+            // CENTER CROSSHAIR - Only visible when no points and no final result
+            if camera.tapPoints.isEmpty && camera.finalSegmentedImage == nil {
                 VStack {
                     Rectangle()
                         .fill(Color.green)
@@ -66,24 +67,31 @@ struct SimpleCameraOverlay: View {
                     .frame(width: 40, height: 40)
             }
             
-            // Tap indicator (yellow circle)
-            if let tapPoint = camera.lastTapPoint {
-                Circle()
-                    .fill(Color.yellow)
-                    .frame(width: 30, height: 30)
-                    .position(tapPoint)
-                    .animation(.easeInOut(duration: 0.3), value: tapPoint)
+            // Show numbered markers for each tap point (only if no final result)
+            if camera.finalSegmentedImage == nil {
+                ForEach(Array(camera.tapPoints.enumerated()), id: \.offset) { index, point in
+                    ZStack {
+                        Circle()
+                            .fill(outlineColor(for: index))
+                            .frame(width: 40, height: 40)
+                        
+                        Text("\(index + 1)")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .position(point)
+                    .animation(.easeInOut(duration: 0.3), value: camera.tapPoints.count)
+                }
             }
             
             // Top bar
             VStack {
                 HStack {
-                    // Show "Back to Camera" button when segmented image is showing
-                    if camera.segmentedImage != nil {
+                    // Show "Back to Camera" button when final result is showing
+                    if camera.finalSegmentedImage != nil {
                         Button(action: {
                             withAnimation {
-                                camera.segmentedImage = nil
-                                camera.lastTapPoint = nil
+                                camera.clearAll()
                             }
                             print("🔄 Reset to live camera preview")
                         }) {
@@ -111,6 +119,21 @@ struct SimpleCameraOverlay: View {
                     
                     Spacer()
                     
+                    // Show point count when adding points
+                    if !camera.tapPoints.isEmpty && camera.finalSegmentedImage == nil {
+                        HStack(spacing: 6) {
+                            Image(systemName: "point.3.filled.connected.trianglepath.dotted")
+                                .font(.caption)
+                            Text("\(camera.tapPoints.count) part\(camera.tapPoints.count == 1 ? "" : "s")")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.yellow)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(8)
+                    }
+                    
                     Text(camera.statusMessage)
                         .font(.caption)
                         .foregroundColor(.green)
@@ -133,76 +156,127 @@ struct SimpleCameraOverlay: View {
                 
                 Spacer()
                 
-                // Bottom instructions
+                // Bottom instructions and controls
                 VStack(spacing: 10) {
-                    if camera.segmentedImage == nil {
-                        Text("TAP GREEN CROSSHAIR TO SEGMENT")
-                            .font(.headline)
+                    if camera.finalSegmentedImage == nil {
+                        if camera.tapPoints.isEmpty {
+                            Text("TAP FURNITURE PARTS TO SELECT")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.green.opacity(0.8))
+                                .cornerRadius(8)
+                            
+                            Text("Tap seat, backrest, arms - see colored outlines")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.9))
+                        } else {
+                            Text("TAP MORE PARTS OR COMBINE")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.orange.opacity(0.8))
+                                .cornerRadius(8)
+                        }
+                    } else {
+                        Text("DONE! Furniture ready for 3D room")
+                            .font(.subheadline)
                             .foregroundColor(.white)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
                             .background(Color.green.opacity(0.8))
                             .cornerRadius(8)
-                    } else {
-                        Text("SEGMENTED! Tap 'Back to Camera' to segment more")
-                            .font(.subheadline)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.orange.opacity(0.8))
-                            .cornerRadius(8)
                     }
                     
-                    HStack {
-                        if camera.segmentedImage == nil {
-                            Text("Or tap anywhere on furniture")
-                                .font(.subheadline)
+                    HStack(spacing: 12) {
+                        // Clear Points button
+                        if !camera.tapPoints.isEmpty && camera.finalSegmentedImage == nil {
+                            Button(action: {
+                                withAnimation {
+                                    camera.clearTapPoints()
+                                }
+                                print("🗑️ Cleared all tap points")
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "trash.fill")
+                                        .font(.system(size: 16))
+                                    Text("Clear")
+                                        .font(.system(size: 14, weight: .medium))
+                                }
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.black.opacity(0.7))
+                                .padding(.vertical, 10)
+                                .background(Color.red.opacity(0.8))
                                 .cornerRadius(8)
+                            }
                         }
                         
                         Spacer()
                         
-                        Button(action: {
-                            if let currentImage = camera.segmentedImage {
-                                capturedImage = currentImage
-                                print("📸 Captured MobileSAM segmented image")
-                                // Close overlay after capture
-                                isShowingCamera = false
+                        // Segment All button
+                        if !camera.tapPoints.isEmpty && camera.finalSegmentedImage == nil {
+                            Button(action: {
+                                camera.combineAllParts()
+                                print("🎯 Combining all \(camera.tapPoints.count) parts")
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "wand.and.stars")
+                                        .font(.system(size: 18))
+                                    Text("Segment All")
+                                        .font(.system(size: 16, weight: .bold))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .background(Color.green.opacity(0.9))
+                                .cornerRadius(10)
                             }
-                        }) {
-                            VStack(spacing: 4) {
-                                Image(systemName: camera.segmentedImage != nil ? "checkmark.circle.fill" : "camera.circle.fill")
-                                    .font(.system(size: 50))
-                                    .foregroundColor(camera.segmentedImage != nil ? .green : .white.opacity(0.5))
-                                    .shadow(color: .black.opacity(0.5), radius: 5)
-                                
-                                if camera.segmentedImage != nil {
+                        }
+                        
+                        // Capture button (only when final result ready)
+                        if camera.finalSegmentedImage != nil {
+                            Button(action: {
+                                if let currentImage = camera.finalSegmentedImage {
+                                    print("📸 Capturing segmented furniture")
+                                    capturedImage = currentImage
+                                    
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        isShowingCamera = false
+                                        print("📸 Closed camera overlay")
+                                    }
+                                } else {
+                                    print("❌ No segmented image to capture!")
+                                }
+                            }) {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 50))
+                                        .foregroundColor(.green)
+                                        .shadow(color: .black.opacity(0.5), radius: 5)
+                                    
                                     Text("Capture")
                                         .font(.caption2)
                                         .foregroundColor(.white)
                                 }
                             }
                         }
-                        .disabled(camera.segmentedImage == nil)
                     }
                     .padding(.horizontal, 20)
                 }
                 .padding(.bottom, 40)
             }
         }
+        .background(Color.clear) // Transparent background to show 3D room
         .contentShape(Rectangle())
         .onTapGesture { location in
-            // Only allow tapping when live camera is showing
-            if camera.segmentedImage == nil {
-                camera.handleTap(at: location, viewSize: UIScreen.main.bounds.size)
+            // Only allow tapping when no final result
+            if camera.finalSegmentedImage == nil {
+                camera.addTapPointAndSegment(at: location, viewSize: UIScreen.main.bounds.size)
             }
         }
         .onAppear {
-            // Longer delay to ensure previous sessions are fully stopped
             print("🎬 SimpleCameraOverlay appeared - waiting for camera...")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 camera.start()
@@ -213,6 +287,12 @@ struct SimpleCameraOverlay: View {
             camera.stop()
         }
     }
+    
+    // Get outline color for each tap point
+    private func outlineColor(for index: Int) -> Color {
+        let colors: [Color] = [.yellow, .green, .blue, .red, .purple, .orange, .pink, .cyan]
+        return colors[index % colors.count]
+    }
 }
 
 struct CameraPreviewLayer: UIViewRepresentable {
@@ -220,12 +300,11 @@ struct CameraPreviewLayer: UIViewRepresentable {
     
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
-        view.backgroundColor = .black
+        view.backgroundColor = .clear // Transparent to show 3D room
         
         let previewLayer = AVCaptureVideoPreviewLayer(session: session)
         previewLayer.videoGravity = .resizeAspectFill
         
-        // Fix orientation - rotate 90° clockwise to correct anticlockwise tilt
         if #available(iOS 17.0, *) {
             previewLayer.connection?.videoRotationAngle = 90
         } else {
@@ -234,8 +313,6 @@ struct CameraPreviewLayer: UIViewRepresentable {
         
         previewLayer.frame = view.bounds
         view.layer.addSublayer(previewLayer)
-        
-        print("📹 Preview layer created with rotation 90° and bounds: \(view.bounds)")
         
         return view
     }
@@ -249,21 +326,34 @@ struct CameraPreviewLayer: UIViewRepresentable {
     }
 }
 
+// Data model for each segmented part
+struct SegmentedPart {
+    let maskData: [UInt8]
+    let width: Int
+    let height: Int
+    let outlineImage: UIImage?
+}
+
 // MobileSAM Processor
 class MobileSAMProcessor: NSObject, ObservableObject {
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "mobileSAMQueue", qos: .userInitiated)
     
-    @Published var segmentedImage: UIImage?
+    @Published var finalSegmentedImage: UIImage?
     @Published var statusMessage = "Loading..."
-    @Published var lastTapPoint: CGPoint?
+    @Published var tapPoints: [CGPoint] = []
+    @Published var segmentedParts: [SegmentedPart] = []
     
     private var encoderModel: MLModel?
     private var decoderModel: MLModel?
     private var isProcessing = false
     private var currentPixelBuffer: CVPixelBuffer?
     private var currentImageEmbeddings: MLMultiArray?
+    private var currentViewSize: CGSize = .zero
+    
+    // Colors for outlines
+    private let outlineColors: [UIColor] = [.yellow, .green, .blue, .red, .purple, .orange, .systemPink, .cyan]
     
     override init() {
         super.init()
@@ -273,7 +363,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
     
     private func loadModels() {
         DispatchQueue.main.async {
-            self.statusMessage = "Loading models..."
+            self.statusMessage = "Loading..."
         }
         
         guard let encoderURL = Bundle.main.url(forResource: "MobileSAMImageEncoder", withExtension: "mlmodelc"),
@@ -295,7 +385,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             decoderModel = try MLModel(contentsOf: decoderURL, configuration: decoderConfig)
             
             DispatchQueue.main.async {
-                self.statusMessage = "Tap to segment"
+                self.statusMessage = "Ready"
             }
             print("✅ MobileSAM models loaded successfully")
         } catch {
@@ -311,7 +401,6 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         session.sessionPreset = .hd1280x720
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            print("❌ No camera device found")
             session.commitConfiguration()
             return
         }
@@ -320,7 +409,6 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             let input = try AVCaptureDeviceInput(device: device)
             if session.canAddInput(input) {
                 session.addInput(input)
-                print("✅ Camera input added")
             }
             
             videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
@@ -329,11 +417,9 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             
             if session.canAddOutput(videoOutput) {
                 session.addOutput(videoOutput)
-                print("✅ Video output added")
             }
             
             session.commitConfiguration()
-            print("✅ Camera session configured")
         } catch {
             print("❌ Camera setup failed: \(error)")
             session.commitConfiguration()
@@ -341,29 +427,18 @@ class MobileSAMProcessor: NSObject, ObservableObject {
     }
     
     func start() {
-        // Force stop any existing session first
         if session.isRunning {
             session.stopRunning()
-            print("🛑 Stopped existing camera session")
         }
         
-        // Wait a moment for cleanup
         DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 0.3) {
-            // Double-check the session is configured
             if self.session.inputs.isEmpty {
-                print("⚠️ No camera inputs - reconfiguring")
                 self.setupCamera()
             }
             
-            // Start fresh
             if !self.session.isRunning {
                 self.session.startRunning()
-                print("📹 Camera session started successfully")
-                
-                // Update status on main thread
-                DispatchQueue.main.async {
-                    self.statusMessage = "Tap to segment"
-                }
+                print("📹 Camera session started")
             }
         }
     }
@@ -371,59 +446,48 @@ class MobileSAMProcessor: NSObject, ObservableObject {
     func stop() {
         if session.isRunning {
             session.stopRunning()
-            print("🛑 Camera session stopped")
         }
-        
-        // Clear current state
         currentPixelBuffer = nil
         currentImageEmbeddings = nil
-        
-        // Small delay to ensure complete stop
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            self.segmentedImage = nil
-        }
     }
     
-    func handleTap(at location: CGPoint, viewSize: CGSize) {
-        print("👆 Tap at: \(location)")
+    func addTapPointAndSegment(at location: CGPoint, viewSize: CGSize) {
+        currentViewSize = viewSize
+        tapPoints.append(location)
+        let index = tapPoints.count - 1
+        print("📍 Added point \(tapPoints.count) at: \(location) - segmenting immediately...")
         
+        DispatchQueue.main.async {
+            self.statusMessage = "Detecting part \(self.tapPoints.count)..."
+        }
+        
+        // Immediately segment this tap point
         guard let pixelBuffer = currentPixelBuffer,
-              let embeddings = currentImageEmbeddings,
-              let decoder = decoderModel else {
+              let embeddings = currentImageEmbeddings else {
             print("⚠️ Not ready for segmentation")
-            DispatchQueue.main.async {
-                self.statusMessage = "Not ready yet..."
-            }
             return
         }
         
-        DispatchQueue.main.async {
-            self.lastTapPoint = location
-            self.statusMessage = "Segmenting..."
-        }
-        
-        let normalizedX = Float(location.x / viewSize.width)
-        let normalizedY = Float(location.y / viewSize.height)
-        
-        print("📍 Normalized: (\(normalizedX), \(normalizedY))")
-        
         DispatchQueue.global(qos: .userInitiated).async {
-            self.runDecoder(embeddings: embeddings, point: (normalizedX, normalizedY), originalBuffer: pixelBuffer)
+            self.segmentSinglePoint(location: location, viewSize: viewSize, embeddings: embeddings, pixelBuffer: pixelBuffer, index: index)
         }
     }
     
-    private func runDecoder(embeddings: MLMultiArray, point: (x: Float, y: Float), originalBuffer: CVPixelBuffer) {
+    private func segmentSinglePoint(location: CGPoint, viewSize: CGSize, embeddings: MLMultiArray, pixelBuffer: CVPixelBuffer, index: Int) {
         guard let decoder = decoderModel else { return }
         
         do {
+            let normalizedX = Float(location.x / viewSize.width)
+            let normalizedY = Float(location.y / viewSize.height)
+            
             let pointCoords = try MLMultiArray(shape: [1, 1, 2], dataType: .float32)
-            pointCoords[[0, 0, 0] as [NSNumber]] = NSNumber(value: point.x)
-            pointCoords[[0, 0, 1] as [NSNumber]] = NSNumber(value: point.y)
+            pointCoords[[0, 0, 0] as [NSNumber]] = NSNumber(value: normalizedX)
+            pointCoords[[0, 0, 1] as [NSNumber]] = NSNumber(value: normalizedY)
             
             let pointLabels = try MLMultiArray(shape: [1, 1], dataType: .float32)
             pointLabels[[0, 0] as [NSNumber]] = NSNumber(value: 1)
             
-            print("🎭 Running decoder...")
+            print("🎭 Running decoder for point \(index + 1)")
             
             let inputDict: [String: Any] = [
                 "image_embeddings": embeddings,
@@ -435,64 +499,155 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             let output = try decoder.prediction(from: inputProvider)
             
             guard let masks = output.featureValue(for: "masks")?.multiArrayValue else {
-                print("❌ Failed to get masks from output")
-                DispatchQueue.main.async {
-                    self.statusMessage = "Failed to get mask"
-                }
+                print("❌ Failed to get mask")
                 return
             }
             
-            print("✅ Got mask!")
-            applyMask(masks, to: originalBuffer)
+            let maskHeight = masks.shape[2].intValue
+            let maskWidth = masks.shape[3].intValue
+            
+            // Extract mask data
+            var maskData = [UInt8](repeating: 0, count: maskWidth * maskHeight)
+            for y in 0..<maskHeight {
+                for x in 0..<maskWidth {
+                    let indices = [0, 0, y, x] as [NSNumber]
+                    let value = masks[indices].floatValue
+                    maskData[y * maskWidth + x] = value > 0.0 ? 255 : 0
+                }
+            }
+            
+            let whitePixels = maskData.filter { $0 == 255 }.count
+            print("✅ Part \(index + 1): \(whitePixels) pixels detected")
+            
+            // Create outline image
+            if let outlineImage = createOutlineImage(from: maskData, width: maskWidth, height: maskHeight, pixelBuffer: pixelBuffer, color: outlineColors[index % outlineColors.count]) {
+                let part = SegmentedPart(maskData: maskData, width: maskWidth, height: maskHeight, outlineImage: outlineImage)
+                
+                DispatchQueue.main.async {
+                    self.segmentedParts.append(part)
+                    self.statusMessage = "\(self.tapPoints.count) part\(self.tapPoints.count == 1 ? "" : "s") selected"
+                }
+                print("✅ Outline \(index + 1) created")
+            }
             
         } catch {
-            print("❌ Decoder failed: \(error)")
-            DispatchQueue.main.async {
-                self.statusMessage = "Segmentation failed"
-            }
+            print("❌ Segmentation failed: \(error)")
         }
     }
     
-    private func applyMask(_ maskArray: MLMultiArray, to pixelBuffer: CVPixelBuffer) {
-        let maskHeight = maskArray.shape[2].intValue
-        let maskWidth = maskArray.shape[3].intValue
+    private func createOutlineImage(from maskData: [UInt8], width: Int, height: Int, pixelBuffer: CVPixelBuffer, color: UIColor) -> UIImage? {
+        // Create outline by detecting edges in mask
+        var outlineData = [UInt8](repeating: 0, count: width * height * 4) // RGBA
         
-        print("📊 Mask shape: \(maskArray.shape)")
-        
-        var maskData = [UInt8](repeating: 0, count: maskWidth * maskHeight)
-        
-        // INVERTED: Furniture (positive values) becomes BLACK (0), background becomes WHITE (255)
-        for y in 0..<maskHeight {
-            for x in 0..<maskWidth {
-                let indices = [0, 0, y, x] as [NSNumber]
-                let value = maskArray[indices].floatValue
-                // INVERT: furniture = 0 (black), background = 255 (white)
-                maskData[y * maskWidth + x] = value > 0.0 ? 0 : 255
+        for y in 1..<(height-1) {
+            for x in 1..<(width-1) {
+                let idx = y * width + x
+                let current = maskData[idx]
+                
+                if current == 255 {
+                    // Check 8-neighbors for edge detection
+                    let neighbors = [
+                        maskData[idx - width - 1], maskData[idx - width], maskData[idx - width + 1],
+                        maskData[idx - 1], maskData[idx + 1],
+                        maskData[idx + width - 1], maskData[idx + width], maskData[idx + width + 1]
+                    ]
+                    
+                    // If any neighbor is black, this is an edge
+                    if neighbors.contains(0) {
+                        let outlineIdx = idx * 4
+                        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+                        
+                        outlineData[outlineIdx] = UInt8(r * 255)
+                        outlineData[outlineIdx + 1] = UInt8(g * 255)
+                        outlineData[outlineIdx + 2] = UInt8(b * 255)
+                        outlineData[outlineIdx + 3] = 255 // Opaque outline
+                    }
+                }
             }
         }
         
-        let blackPixels = maskData.filter { $0 == 0 }.count
-        print("✅ Mask extracted (inverted): \(blackPixels) black pixels (furniture)")
+        // Scale outline to original image size
+        let originalImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let scaleX = originalImage.extent.width / CGFloat(width)
+        let scaleY = originalImage.extent.height / CGFloat(height)
         
-        if blackPixels == 0 {
-            print("⚠️ Empty mask")
-            DispatchQueue.main.async {
-                self.statusMessage = "No object found"
-            }
+        // Create CGImage from outline data
+        guard let provider = CGDataProvider(data: Data(outlineData) as CFData),
+              let colorSpace = CGColorSpaceCreateDeviceRGB() as CGColorSpace? else {
+            return nil
+        }
+        
+        guard let cgImage = CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        ) else {
+            return nil
+        }
+        
+        // Scale to original size
+        let ciOutline = CIImage(cgImage: cgImage)
+        let scaledOutline = ciOutline.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+        
+        let context = CIContext()
+        if let scaledCGImage = context.createCGImage(scaledOutline, from: scaledOutline.extent) {
+            return UIImage(cgImage: scaledCGImage, scale: 1.0, orientation: .right)
+        }
+        
+        return nil
+    }
+    
+    func combineAllParts() {
+        guard !segmentedParts.isEmpty,
+              let pixelBuffer = currentPixelBuffer else {
+            print("⚠️ No parts to combine")
             return
         }
         
+        DispatchQueue.main.async {
+            self.statusMessage = "Combining..."
+        }
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Combine all masks
+            let firstPart = self.segmentedParts[0]
+            var combinedMask = firstPart.maskData
+            
+            for i in 1..<self.segmentedParts.count {
+                let part = self.segmentedParts[i]
+                for j in 0..<combinedMask.count {
+                    combinedMask[j] = max(combinedMask[j], part.maskData[j])
+                }
+            }
+            
+            print("✅ Combined \(self.segmentedParts.count) parts")
+            
+            // Create final segmented image with transparency
+            self.createFinalSegmentedImage(combinedMask, width: firstPart.width, height: firstPart.height, pixelBuffer: pixelBuffer)
+        }
+    }
+    
+    private func createFinalSegmentedImage(_ maskData: [UInt8], width: Int, height: Int, pixelBuffer: CVPixelBuffer) {
         guard let provider = CGDataProvider(data: Data(maskData) as CFData),
               let colorSpace = CGColorSpace(name: CGColorSpace.linearGray) else {
             return
         }
         
         guard let cgMask = CGImage(
-            width: maskWidth,
-            height: maskHeight,
+            width: width,
+            height: height,
             bitsPerComponent: 8,
             bitsPerPixel: 8,
-            bytesPerRow: maskWidth,
+            bytesPerRow: width,
             space: colorSpace,
             bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
             provider: provider,
@@ -500,15 +655,14 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             shouldInterpolate: false,
             intent: .defaultIntent
         ) else {
-            print("❌ Failed to create mask")
             return
         }
         
         let maskImage = CIImage(cgImage: cgMask)
         let originalImage = CIImage(cvPixelBuffer: pixelBuffer)
         
-        let scaleX = originalImage.extent.width / CGFloat(maskWidth)
-        let scaleY = originalImage.extent.height / CGFloat(maskHeight)
+        let scaleX = originalImage.extent.width / CGFloat(width)
+        let scaleY = originalImage.extent.height / CGFloat(height)
         
         let scaledMask = maskImage
             .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
@@ -518,26 +672,45 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         
         let transparent = CIImage(color: .clear).cropped(to: originalImage.extent)
         
-        // With INVERTED mask (black=furniture, white=background):
-        // CIBlendWithMask: result = inputImage * mask + backgroundImage * (1-mask)
-        // Black (0) areas show backgroundImage (originalImage = furniture)
-        // White (255) areas show inputImage (transparent = background)
-        blendFilter.setValue(transparent, forKey: kCIInputImageKey)
-        blendFilter.setValue(originalImage, forKey: kCIInputBackgroundImageKey)
+        // White mask (furniture) shows originalImage, Black mask shows transparent
+        blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
+        blendFilter.setValue(originalImage, forKey: kCIInputImageKey)
         blendFilter.setValue(scaledMask, forKey: kCIInputMaskImageKey)
         
         guard let result = blendFilter.outputImage else { return }
         
+        // Render with proper alpha channel
         let context = CIContext()
-        if let cgImage = context.createCGImage(result, from: result.extent) {
-            // Rotate 90° clockwise to match camera orientation
+        let rgbColorSpace = CGColorSpaceCreateDeviceRGB()
+        
+        if let cgImage = context.createCGImage(result, from: result.extent, format: CIFormat.RGBA8, colorSpace: rgbColorSpace) {
             let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
             
+            print("🖼️ Created final transparent furniture image")
+            
             DispatchQueue.main.async {
-                self.segmentedImage = uiImage
-                self.statusMessage = "Ready to capture!"
+                self.finalSegmentedImage = uiImage
+                self.statusMessage = "Ready!"
+                // Clear outlines since we have final result
+                self.segmentedParts.removeAll()
             }
-            print("✅ Segmented with inverted mask - furniture visible, background transparent!")
+        }
+    }
+    
+    func clearTapPoints() {
+        tapPoints.removeAll()
+        segmentedParts.removeAll()
+        DispatchQueue.main.async {
+            self.statusMessage = "Ready"
+        }
+    }
+    
+    func clearAll() {
+        tapPoints.removeAll()
+        segmentedParts.removeAll()
+        finalSegmentedImage = nil
+        DispatchQueue.main.async {
+            self.statusMessage = "Ready"
         }
     }
 }
@@ -651,7 +824,6 @@ extension MobileSAMProcessor: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 }
 
-// MARK: - SwiftUI Preview
 struct SimpleCameraOverlay_Previews: PreviewProvider {
     static var previews: some View {
         SimpleCameraOverlay(
