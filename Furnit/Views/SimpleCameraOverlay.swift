@@ -414,6 +414,10 @@ struct SimpleCameraOverlay: View {
         
         print("✏️ Processing drawn path with \(normalizedPath.count) points")
         
+        // Pass view dimensions to camera for proper coordinate transformation
+        camera.viewWidth = viewWidth
+        camera.viewHeight = viewHeight
+        
         // Freeze and segment using the drawn path
         camera.freezeAndSegmentPath(normalizedPath)
     }
@@ -503,6 +507,10 @@ class MobileSAMProcessor: NSObject, ObservableObject {
     private var currentPixelBuffer: CVPixelBuffer?
     private var frozenPixelBuffer: CVPixelBuffer?
     private var currentImageEmbeddings: MLMultiArray?
+    
+    // View dimensions for coordinate transformation
+    var viewWidth: CGFloat = 0
+    var viewHeight: CGFloat = 0
     
     override init() {
         super.init()
@@ -621,7 +629,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             
             print("❄️ Frame frozen - segmenting drawn path with \(path.count) points")
             
-            // Run segmentation with path points
+            // Run segmentation with path
             segmentWithPath(embeddings: embeddings, pixelBuffer: pixelBuffer, path: path)
         }
     }
@@ -630,31 +638,55 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         guard let decoder = decoderModel else { return }
         
         DispatchQueue.global(qos: .userInitiated).async {
-            print("✏️ Sampling points along drawn path")
+            print("✏️ Creating mask from drawn path")
+            print("📊 View dimensions: \(self.viewWidth) x \(self.viewHeight)")
             
-            // Sample points evenly along the path (every Nth point)
-            let sampleInterval = max(1, path.count / 20) // Sample ~20 points
-            var sampledPoints: [CGPoint] = []
+            // Get camera frame dimensions
+            let cameraWidth = CVPixelBufferGetWidth(pixelBuffer)
+            let cameraHeight = CVPixelBufferGetHeight(pixelBuffer)
+            print("📷 Camera dimensions: \(cameraWidth) x \(cameraHeight)")
             
-            for (index, point) in path.enumerated() where index % sampleInterval == 0 {
-                sampledPoints.append(point)
+            // Calculate bounding box of drawn path
+            let minX = path.map { $0.x }.min() ?? 0
+            let maxX = path.map { $0.x }.max() ?? 1
+            let minY = path.map { $0.y }.min() ?? 0
+            let maxY = path.map { $0.y }.max() ?? 1
+            
+            print("📦 Path bounds: (\(String(format: "%.3f", minX)), \(String(format: "%.3f", minY))) to (\(String(format: "%.3f", maxX)), \(String(format: "%.3f", maxY)))")
+            
+            let width = maxX - minX
+            let height = maxY - minY
+            
+            // Sample multiple points in a grid across the drawn area
+            let gridSize = 4 // Increased to 4x4 = 16 points for better coverage
+            var samplePoints: [CGPoint] = []
+            
+            for row in 0..<gridSize {
+                for col in 0..<gridSize {
+                    let x = minX + (CGFloat(col) + 0.5) * width / CGFloat(gridSize)
+                    let y = minY + (CGFloat(row) + 0.5) * height / CGFloat(gridSize)
+                    samplePoints.append(CGPoint(x: x, y: y))
+                }
             }
             
-            print("🎯 Sampled \(sampledPoints.count) points from path")
+            print("🎯 Sampling \(samplePoints.count) points across drawn area")
+            
+            // Log first few sample points
+            for (i, point) in samplePoints.prefix(3).enumerated() {
+                print("   Sample \(i): (\(String(format: "%.3f", point.x)), \(String(format: "%.3f", point.y)))")
+            }
             
             var allMaskData: [UInt8]?
             var maskWidth = 0
             var maskHeight = 0
             
-            // Process each sampled point
-            for (index, point) in sampledPoints.enumerated() {
+            // Process each sample point
+            for (index, point) in samplePoints.enumerated() {
                 do {
-                    // Create SINGLE point prompt
                     let pointCoords = try MLMultiArray(shape: [1, 1, 2], dataType: .float32)
                     pointCoords[[0, 0, 0] as [NSNumber]] = NSNumber(value: Float(point.x))
                     pointCoords[[0, 0, 1] as [NSNumber]] = NSNumber(value: Float(point.y))
                     
-                    // Label: 1 = foreground point
                     let pointLabels = try MLMultiArray(shape: [1, 1], dataType: .float32)
                     pointLabels[[0, 0] as [NSNumber]] = NSNumber(value: 1)
                     
@@ -668,22 +700,34 @@ class MobileSAMProcessor: NSObject, ObservableObject {
                     let output = try decoder.prediction(from: inputProvider)
                     
                     guard let masks = output.featureValue(for: "masks")?.multiArrayValue else {
+                        print("⚠️ No mask for point \(index)")
                         continue
                     }
                     
                     maskHeight = masks.shape[2].intValue
                     maskWidth = masks.shape[3].intValue
                     
+                    if index == 0 {
+                        print("🎭 Mask dimensions: \(maskWidth) x \(maskHeight)")
+                    }
+                    
                     var maskData = [UInt8](repeating: 0, count: maskWidth * maskHeight)
+                    var pixelCount = 0
+                    
                     for y in 0..<maskHeight {
                         for x in 0..<maskWidth {
                             let indices = [0, 0, y, x] as [NSNumber]
                             let value = masks[indices].floatValue
-                            maskData[y * maskWidth + x] = value > 0.0 ? 255 : 0
+                            if value > 0.0 {
+                                maskData[y * maskWidth + x] = 255
+                                pixelCount += 1
+                            }
                         }
                     }
                     
-                    // Combine with previous masks (union)
+                    print("✅ Point \(index + 1)/\(samplePoints.count): \(pixelCount) pixels")
+                    
+                    // Combine masks using UNION
                     if allMaskData == nil {
                         allMaskData = maskData
                     } else {
@@ -692,25 +736,134 @@ class MobileSAMProcessor: NSObject, ObservableObject {
                         }
                     }
                     
-                    print("✅ Processed point \(index + 1)/\(sampledPoints.count)")
-                    
                 } catch {
-                    print("❌ Point segmentation failed at index \(index): \(error)")
+                    print("❌ Segmentation failed at point \(index): \(error)")
                 }
             }
             
-            if let finalMask = allMaskData {
-                let whitePixels = finalMask.filter { $0 == 255 }.count
-                print("✅ Combined segmentation: \(whitePixels) pixels from \(sampledPoints.count) points")
-                
-                // Create final segmented image
-                self.createFinalSegmentedImage(finalMask, width: maskWidth, height: maskHeight, pixelBuffer: pixelBuffer)
-            } else {
+            guard let combinedMask = allMaskData else {
                 print("❌ No masks generated")
                 DispatchQueue.main.async {
-                    self.statusMessage = "No furniture detected"
+                    self.statusMessage = "Segmentation failed"
+                    self.unfreezeFrame()
+                }
+                return
+            }
+            
+            let combinedPixels = combinedMask.filter { $0 == 255 }.count
+            print("🔗 Combined mask: \(combinedPixels) pixels total")
+            
+            // Clip the combined mask to drawn path
+            let clippedMask = self.clipMaskToPath(
+                maskData: combinedMask,
+                maskWidth: maskWidth,
+                maskHeight: maskHeight,
+                path: path
+            )
+            
+            let whitePixels = clippedMask.filter { $0 == 255 }.count
+            let retentionRatio = combinedPixels > 0 ? Float(whitePixels) / Float(combinedPixels) : 0
+            print("✅ Clipped: \(whitePixels) pixels (\(Int(retentionRatio * 100))% retained)")
+            
+            if whitePixels > 100 {
+                self.createFinalSegmentedImage(clippedMask, width: maskWidth, height: maskHeight, pixelBuffer: pixelBuffer)
+            } else {
+                print("⚠️ Too few pixels after clipping")
+                DispatchQueue.main.async {
+                    self.statusMessage = "Try drawing larger"
+                    self.unfreezeFrame()
                 }
             }
+        }
+    }
+    
+    // CLIP MASK to only include pixels inside drawn path - WITH PROPER ASPECT RATIO
+    private func clipMaskToPath(maskData: [UInt8], maskWidth: Int, maskHeight: Int, path: [CGPoint]) -> [UInt8] {
+        var clippedMask = [UInt8](repeating: 0, count: maskWidth * maskHeight)
+        
+        let viewWidth = self.viewWidth > 0 ? self.viewWidth : UIScreen.main.bounds.width
+        let viewHeight = self.viewHeight > 0 ? self.viewHeight : UIScreen.main.bounds.height
+        
+        let viewAspect = viewWidth / viewHeight
+        let maskAspect = CGFloat(maskWidth) / CGFloat(maskHeight)
+        
+        print("📐 Clipping:")
+        print("   View: \(Int(viewWidth))x\(Int(viewHeight)) = \(String(format: "%.3f", viewAspect)) aspect")
+        print("   Mask: \(maskWidth)x\(maskHeight) = \(String(format: "%.3f", maskAspect)) aspect")
+        
+        // Create bezier path
+        let bezierPath = UIBezierPath()
+        if !path.isEmpty {
+            let firstTransformed = transformPoint(path[0], viewAspect: viewAspect, maskAspect: maskAspect)
+            bezierPath.move(to: firstTransformed)
+            
+            print("   Path transform: (\(String(format: "%.3f", path[0].x)), \(String(format: "%.3f", path[0].y))) → (\(String(format: "%.3f", firstTransformed.x)), \(String(format: "%.3f", firstTransformed.y)))")
+            
+            for point in path.dropFirst() {
+                let transformed = transformPoint(point, viewAspect: viewAspect, maskAspect: maskAspect)
+                bezierPath.addLine(to: transformed)
+            }
+            bezierPath.close()
+        }
+        
+        var keptPixels = 0
+        var droppedPixels = 0
+        
+        // Check each pixel
+        for y in 0..<maskHeight {
+            for x in 0..<maskWidth {
+                let idx = y * maskWidth + x
+                
+                if maskData[idx] == 255 {
+                    let maskPoint = CGPoint(
+                        x: CGFloat(x) / CGFloat(maskWidth),
+                        y: CGFloat(y) / CGFloat(maskHeight)
+                    )
+                    
+                    if bezierPath.contains(maskPoint) {
+                        clippedMask[idx] = 255
+                        keptPixels += 1
+                    } else {
+                        droppedPixels += 1
+                    }
+                }
+            }
+        }
+        
+        print("   Kept: \(keptPixels), Dropped: \(droppedPixels)")
+        
+        return clippedMask
+    }
+    
+    // Transform point from view coordinates to mask coordinates accounting for aspect ratio
+    private func transformPoint(_ point: CGPoint, viewAspect: CGFloat, maskAspect: CGFloat) -> CGPoint {
+        // If aspects match, no transform needed
+        if abs(viewAspect - maskAspect) < 0.01 {
+            return point
+        }
+        
+        // The camera feed is cropped to fill the view
+        // We need to find where the point maps in the mask space
+        if viewAspect < maskAspect {
+            // View is taller (portrait) - mask is wider
+            // Mask is letterboxed horizontally in the view
+            let scale = viewAspect / maskAspect
+            let xOffset = (1.0 - scale) / 2.0
+            
+            return CGPoint(
+                x: xOffset + point.x * scale,
+                y: point.y
+            )
+        } else {
+            // View is wider (landscape) - mask is taller
+            // Mask is pillarboxed vertically in the view
+            let scale = maskAspect / viewAspect
+            let yOffset = (1.0 - scale) / 2.0
+            
+            return CGPoint(
+                x: point.x,
+                y: yOffset + point.y * scale
+            )
         }
     }
     
