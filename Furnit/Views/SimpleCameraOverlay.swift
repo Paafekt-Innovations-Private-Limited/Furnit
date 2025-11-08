@@ -10,289 +10,379 @@ struct SimpleCameraOverlay: View {
     @Binding var isShowingCamera: Bool
     @StateObject private var camera = MobileSAMProcessor()
     
+    // Freeform drawing state
+    @State private var drawingPath: [CGPoint] = []
+    @State private var isDrawing: Bool = false
+    
+    // Gesture state for furniture manipulation
+    @State private var furnitureOffset: CGSize = .zero
+    @State private var furnitureScale: CGFloat = 1.0
+    @State private var furnitureRotation: Angle = .zero
+    
+    @State private var lastOffset: CGSize = .zero
+    @State private var lastScale: CGFloat = 1.0
+    @State private var lastRotation: Angle = .zero
+    
     var body: some View {
-        ZStack {
-            // Live camera feed OR frozen frame
-            if let frozenFrame = camera.frozenFrame {
-                // Show frozen frame
-                Image(uiImage: frozenFrame)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .ignoresSafeArea()
-            } else {
-                // Live camera feed
-                CameraPreviewLayer(session: camera.session)
-                    .ignoresSafeArea()
-            }
-            
-            // Show all detected parts with outlines (white = unselected, green = selected)
-            ForEach(Array(camera.detectedParts.enumerated()), id: \.offset) { index, part in
-                if let outlineImage = part.outlineImage {
-                    Image(uiImage: outlineImage)
+        GeometryReader { geometry in
+            ZStack {
+                // Live camera feed OR frozen frame
+                if let frozenFrame = camera.frozenFrame {
+                    // Show frozen frame
+                    Image(uiImage: frozenFrame)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .ignoresSafeArea()
+                } else {
+                    // Live camera feed with freeform drawing capability
+                    ZStack {
+                        CameraPreviewLayer(session: camera.session)
+                            .ignoresSafeArea()
+                        
+                        // Freeform drawing path overlay
+                        if !drawingPath.isEmpty {
+                            Path { path in
+                                if let first = drawingPath.first {
+                                    path.move(to: first)
+                                    for point in drawingPath.dropFirst() {
+                                        path.addLine(to: point)
+                                    }
+                                }
+                            }
+                            .stroke(Color.green, lineWidth: 4)
+                            .shadow(color: .black.opacity(0.5), radius: 2)
+                            
+                            // Show filled area with transparency
+                            Path { path in
+                                if let first = drawingPath.first {
+                                    path.move(to: first)
+                                    for point in drawingPath.dropFirst() {
+                                        path.addLine(to: point)
+                                    }
+                                    path.closeSubpath()
+                                }
+                            }
+                            .fill(Color.green.opacity(0.15))
+                        }
+                        
+                        // Instruction overlay on live feed
+                        if !isDrawing && drawingPath.isEmpty {
+                            VStack {
+                                Spacer()
+                                VStack(spacing: 8) {
+                                    Image(systemName: "hand.draw")
+                                        .font(.largeTitle)
+                                        .foregroundColor(.white)
+                                    Text("DRAW AROUND FURNITURE")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                    Text("Trace outline with your finger")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.9))
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .background(Color.green.opacity(0.8))
+                                .cornerRadius(12)
+                                .padding(.bottom, 120)
+                            }
+                        } else if isDrawing {
+                            VStack {
+                                Spacer()
+                                Text("KEEP DRAWING...")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color.orange.opacity(0.8))
+                                    .cornerRadius(8)
+                                    .padding(.bottom, 120)
+                            }
+                        } else if !drawingPath.isEmpty {
+                            VStack {
+                                Spacer()
+                                HStack(spacing: 16) {
+                                    // Clear button
+                                    Button(action: {
+                                        withAnimation {
+                                            drawingPath.removeAll()
+                                        }
+                                    }) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 18))
+                                            Text("Clear")
+                                                .font(.system(size: 16, weight: .semibold))
+                                        }
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 12)
+                                        .background(Color.red.opacity(0.9))
+                                        .cornerRadius(10)
+                                    }
+                                    
+                                    // Process button
+                                    Button(action: {
+                                        processDrawing(geometry: geometry)
+                                    }) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "wand.and.stars")
+                                                .font(.system(size: 18))
+                                            Text("Segment")
+                                                .font(.system(size: 16, weight: .bold))
+                                        }
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 12)
+                                        .background(Color.green.opacity(0.9))
+                                        .cornerRadius(10)
+                                    }
+                                }
+                                .padding(.bottom, 100)
+                            }
+                        }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if !isDrawing {
+                                    isDrawing = true
+                                    drawingPath.removeAll()
+                                }
+                                drawingPath.append(value.location)
+                            }
+                            .onEnded { _ in
+                                isDrawing = false
+                                print("✏️ Drawing complete: \(drawingPath.count) points")
+                            }
+                    )
+                }
+                
+                // Show final segmented furniture WITH GESTURES
+                if let finalImage = camera.finalSegmentedImage {
+                    Image(uiImage: finalImage)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .ignoresSafeArea()
-                        .onTapGesture {
-                            camera.togglePartSelection(index: index)
-                        }
+                        .offset(furnitureOffset)
+                        .scaleEffect(furnitureScale)
+                        .rotationEffect(furnitureRotation)
+                        .gesture(
+                            SimultaneousGesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        furnitureOffset = CGSize(
+                                            width: lastOffset.width + value.translation.width,
+                                            height: lastOffset.height + value.translation.height
+                                        )
+                                    }
+                                    .onEnded { _ in
+                                        lastOffset = furnitureOffset
+                                    },
+                                
+                                SimultaneousGesture(
+                                    MagnificationGesture()
+                                        .onChanged { value in
+                                            furnitureScale = lastScale * value
+                                        }
+                                        .onEnded { _ in
+                                            lastScale = furnitureScale
+                                        },
+                                    
+                                    RotationGesture()
+                                        .onChanged { value in
+                                            furnitureRotation = lastRotation + value
+                                        }
+                                        .onEnded { _ in
+                                            lastRotation = furnitureRotation
+                                        }
+                                )
+                            )
+                        )
                 }
-            }
-            
-            // Show final combined furniture
-            if let finalImage = camera.finalSegmentedImage {
-                Image(uiImage: finalImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea()
-            }
-            
-            // CENTER CROSSHAIR - Only visible in live mode
-            if camera.frozenFrame == nil && camera.detectedParts.isEmpty && camera.finalSegmentedImage == nil {
+                
+                // Top bar
                 VStack {
-                    Rectangle()
-                        .fill(Color.green)
-                        .frame(width: 2, height: 30)
-                    Spacer()
-                        .frame(height: 10)
-                    Rectangle()
-                        .fill(Color.green)
-                        .frame(width: 2, height: 30)
-                }
-                .frame(width: 2, height: 70)
-                
-                HStack {
-                    Rectangle()
-                        .fill(Color.green)
-                        .frame(width: 30, height: 2)
-                    Spacer()
-                        .frame(width: 10)
-                    Rectangle()
-                        .fill(Color.green)
-                        .frame(width: 30, height: 2)
-                }
-                .frame(width: 70, height: 2)
-                
-                Circle()
-                    .stroke(Color.green, lineWidth: 2)
-                    .frame(width: 40, height: 40)
-            }
-            
-            // Top bar
-            VStack {
-                HStack {
-                    // Show different buttons based on state
-                    if camera.finalSegmentedImage != nil {
-                        // Final result - show reset button
-                        Button(action: {
-                            withAnimation {
-                                camera.resetAll()
+                    HStack {
+                        // Show different buttons based on state
+                        if camera.finalSegmentedImage != nil {
+                            // Reset transform button
+                            if furnitureOffset != .zero || furnitureScale != 1.0 || furnitureRotation != .zero {
+                                Button(action: {
+                                    withAnimation(.spring()) {
+                                        furnitureOffset = .zero
+                                        furnitureScale = 1.0
+                                        furnitureRotation = .zero
+                                        lastOffset = .zero
+                                        lastScale = 1.0
+                                        lastRotation = .zero
+                                    }
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.counterclockwise")
+                                            .font(.system(size: 14, weight: .semibold))
+                                        Text("Reset Position")
+                                            .font(.system(size: 14, weight: .medium))
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(Color.orange.opacity(0.9))
+                                    .cornerRadius(8)
+                                }
+                            } else {
+                                // Start Over button
+                                Button(action: {
+                                    withAnimation {
+                                        camera.resetAll()
+                                        resetGestures()
+                                        drawingPath.removeAll()
+                                    }
+                                    print("🔄 Reset to live camera")
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.counterclockwise")
+                                            .font(.system(size: 14, weight: .semibold))
+                                        Text("Start Over")
+                                            .font(.system(size: 14, weight: .medium))
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(Color.blue.opacity(0.9))
+                                    .cornerRadius(8)
+                                }
                             }
-                            print("🔄 Reset to live camera")
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Start Over")
-                                    .font(.system(size: 14, weight: .medium))
+                        } else if camera.frozenFrame != nil {
+                            // Frozen state - show back to live
+                            Button(action: {
+                                withAnimation {
+                                    camera.unfreezeFrame()
+                                    drawingPath.removeAll()
+                                }
+                                print("🔄 Back to live camera")
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("Back to Live")
+                                        .font(.system(size: 14, weight: .medium))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.blue.opacity(0.9))
+                                .cornerRadius(8)
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(Color.blue.opacity(0.9))
-                            .cornerRadius(8)
-                        }
-                    } else if camera.frozenFrame != nil {
-                        // Frozen state - show back to live
-                        Button(action: {
-                            withAnimation {
-                                camera.unfreezeFrame()
-                            }
-                            print("🔄 Back to live camera")
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Back to Live")
-                                    .font(.system(size: 14, weight: .medium))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(Color.blue.opacity(0.9))
-                            .cornerRadius(8)
-                        }
-                    } else {
-                        Text("MobileSAM")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.black.opacity(0.7))
-                            .cornerRadius(8)
-                    }
-                    
-                    Spacer()
-                    
-                    // Show selection count when parts are detected
-                    if !camera.detectedParts.isEmpty && camera.finalSegmentedImage == nil {
-                        let selectedCount = camera.detectedParts.filter { $0.isSelected }.count
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.caption)
-                            Text("\(selectedCount) of \(camera.detectedParts.count) selected")
-                                .font(.caption)
-                        }
-                        .foregroundColor(.green)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(8)
-                    }
-                    
-                    Text(camera.statusMessage)
-                        .font(.caption)
-                        .foregroundColor(.green)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(8)
-                    
-                    Button(action: { isShowingCamera = false }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white)
-                            .padding(8)
-                            .background(Color.black.opacity(0.7))
-                            .clipShape(Circle())
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top, 50)
-                
-                Spacer()
-                
-                // Bottom instructions and controls
-                VStack(spacing: 10) {
-                    if camera.finalSegmentedImage == nil {
-                        if camera.frozenFrame == nil {
-                            Text("FREEZE FRAME TO START SELECTION")
+                        } else {
+                            Text("MobileSAM")
                                 .font(.headline)
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
-                                .background(Color.blue.opacity(0.8))
+                                .background(Color.black.opacity(0.7))
                                 .cornerRadius(8)
-                            
-                            Text("Tap freeze to detect all furniture parts")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.9))
-                        } else if camera.detectedParts.isEmpty {
-                            Text("DETECTING FURNITURE PARTS...")
+                        }
+                        
+                        Spacer()
+                        
+                        // Show gesture hints when furniture is shown
+                        if camera.finalSegmentedImage != nil {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "hand.draw")
+                                        .font(.caption2)
+                                    Text("Drag • Pinch • Rotate")
+                                        .font(.caption2)
+                                }
+                                Text("Scale: \(String(format: "%.1f", furnitureScale))x")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(8)
+                        }
+                        
+                        Text(camera.statusMessage)
+                            .font(.caption)
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(8)
+                        
+                        Button(action: { isShowingCamera = false }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .padding(8)
+                                .background(Color.black.opacity(0.7))
+                                .clipShape(Circle())
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 50)
+                    
+                    Spacer()
+                    
+                    // Bottom controls
+                    VStack(spacing: 10) {
+                        if camera.finalSegmentedImage != nil {
+                            Text("DRAG • PINCH • ROTATE FURNITURE")
+                                .font(.subheadline)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.purple.opacity(0.8))
+                                .cornerRadius(8)
+                        } else if camera.frozenFrame != nil {
+                            Text("PROCESSING...")
                                 .font(.headline)
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 8)
                                 .background(Color.orange.opacity(0.8))
                                 .cornerRadius(8)
-                        } else {
-                            Text("TAP WHITE PARTS TO SELECT (GREEN)")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.green.opacity(0.8))
-                                .cornerRadius(8)
+                        }
+                        
+                        HStack(spacing: 12) {
+                            Spacer()
                             
-                            Text("Tap again to deselect • Select all chair parts")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.9))
-                        }
-                    } else {
-                        Text("READY! Furniture extracted")
-                            .font(.subheadline)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.green.opacity(0.8))
-                            .cornerRadius(8)
-                    }
-                    
-                    HStack(spacing: 12) {
-                        // Freeze/Unfreeze button
-                        if camera.frozenFrame == nil && camera.finalSegmentedImage == nil {
-                            Button(action: {
-                                camera.freezeAndDetect()
-                                print("❄️ Freezing frame and detecting parts...")
-                            }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "pause.circle.fill")
-                                        .font(.system(size: 20))
-                                    Text("Freeze & Detect")
-                                        .font(.system(size: 16, weight: .bold))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(Color.blue.opacity(0.9))
-                                .cornerRadius(10)
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        // Combine Selected button
-                        if !camera.detectedParts.isEmpty && camera.finalSegmentedImage == nil {
-                            let selectedCount = camera.detectedParts.filter { $0.isSelected }.count
-                            Button(action: {
-                                camera.combineSelectedParts()
-                                print("🎯 Combining \(selectedCount) selected parts")
-                            }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "wand.and.stars")
-                                        .font(.system(size: 18))
-                                    Text("Combine Selected")
-                                        .font(.system(size: 16, weight: .bold))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(selectedCount > 0 ? Color.green.opacity(0.9) : Color.gray.opacity(0.5))
-                                .cornerRadius(10)
-                            }
-                            .disabled(selectedCount == 0)
-                        }
-                        
-                        // Capture button
-                        if camera.finalSegmentedImage != nil {
-                            Button(action: {
-                                if let currentImage = camera.finalSegmentedImage {
-                                    print("📸 Capturing segmented furniture")
-                                    capturedImage = currentImage
-                                    
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        isShowingCamera = false
-                                        print("📸 Closed camera overlay")
+                            // Capture button
+                            if camera.finalSegmentedImage != nil {
+                                Button(action: {
+                                    if let currentImage = camera.finalSegmentedImage {
+                                        let transformedImage = applyTransforms(to: currentImage)
+                                        
+                                        print("📸 Capturing segmented furniture with transforms")
+                                        capturedImage = transformedImage
+                                        
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            isShowingCamera = false
+                                            print("📸 Closed camera overlay")
+                                        }
+                                    }
+                                }) {
+                                    VStack(spacing: 4) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 50))
+                                            .foregroundColor(.green)
+                                            .shadow(color: .black.opacity(0.5), radius: 5)
+                                        
+                                        Text("Capture")
+                                            .font(.caption2)
+                                            .foregroundColor(.white)
                                     }
                                 }
-                            }) {
-                                VStack(spacing: 4) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 50))
-                                        .foregroundColor(.green)
-                                        .shadow(color: .black.opacity(0.5), radius: 5)
-                                    
-                                    Text("Capture")
-                                        .font(.caption2)
-                                        .foregroundColor(.white)
-                                }
                             }
                         }
+                        .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
                 }
-                .padding(.bottom, 40)
             }
         }
         .background(Color.clear)
@@ -306,6 +396,63 @@ struct SimpleCameraOverlay: View {
             print("👋 SimpleCameraOverlay disappeared")
             camera.stop()
         }
+    }
+    
+    private func processDrawing(geometry: GeometryProxy) {
+        guard !drawingPath.isEmpty else { return }
+        
+        // Convert path points to normalized coordinates
+        let viewWidth = geometry.size.width
+        let viewHeight = geometry.size.height
+        
+        let normalizedPath = drawingPath.map { point in
+            CGPoint(
+                x: point.x / viewWidth,
+                y: point.y / viewHeight
+            )
+        }
+        
+        print("✏️ Processing drawn path with \(normalizedPath.count) points")
+        
+        // Freeze and segment using the drawn path
+        camera.freezeAndSegmentPath(normalizedPath)
+    }
+    
+    private func resetGestures() {
+        furnitureOffset = .zero
+        furnitureScale = 1.0
+        furnitureRotation = .zero
+        lastOffset = .zero
+        lastScale = 1.0
+        lastRotation = .zero
+    }
+    
+    private func applyTransforms(to image: UIImage) -> UIImage {
+        if furnitureOffset == .zero && furnitureScale == 1.0 && furnitureRotation == .zero {
+            return image
+        }
+        
+        let renderer = UIGraphicsImageRenderer(size: image.size)
+        
+        let transformedImage = renderer.image { context in
+            let cgContext = context.cgContext
+            
+            cgContext.translateBy(x: image.size.width / 2, y: image.size.height / 2)
+            cgContext.rotate(by: CGFloat(furnitureRotation.radians))
+            cgContext.scaleBy(x: furnitureScale, y: furnitureScale)
+            cgContext.translateBy(x: furnitureOffset.width / furnitureScale, y: furnitureOffset.height / furnitureScale)
+            
+            if let cgImage = image.cgImage {
+                cgContext.draw(cgImage, in: CGRect(
+                    x: -image.size.width / 2,
+                    y: -image.size.height / 2,
+                    width: image.size.width,
+                    height: image.size.height
+                ))
+            }
+        }
+        
+        return transformedImage
     }
 }
 
@@ -340,15 +487,6 @@ struct CameraPreviewLayer: UIViewRepresentable {
     }
 }
 
-// Data model for each detected part
-struct DetectedPart {
-    let maskData: [UInt8]
-    let width: Int
-    let height: Int
-    var isSelected: Bool
-    var outlineImage: UIImage?
-}
-
 // MobileSAM Processor
 class MobileSAMProcessor: NSObject, ObservableObject {
     let session = AVCaptureSession()
@@ -356,7 +494,6 @@ class MobileSAMProcessor: NSObject, ObservableObject {
     private let videoQueue = DispatchQueue(label: "mobileSAMQueue", qos: .userInitiated)
     
     @Published var frozenFrame: UIImage?
-    @Published var detectedParts: [DetectedPart] = []
     @Published var finalSegmentedImage: UIImage?
     @Published var statusMessage = "Loading..."
     
@@ -461,7 +598,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         }
     }
     
-    func freezeAndDetect() {
+    func freezeAndSegmentPath(_ path: [CGPoint]) {
         guard let pixelBuffer = currentPixelBuffer,
               let embeddings = currentImageEmbeddings else {
             print("⚠️ No frame to freeze")
@@ -476,330 +613,105 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             
             DispatchQueue.main.async {
                 self.frozenFrame = uiImage
-                self.statusMessage = "Detecting..."
+                self.statusMessage = "Segmenting..."
             }
             
             // Store frozen buffer
             frozenPixelBuffer = pixelBuffer
             
-            print("❄️ Frame frozen - detecting all parts...")
+            print("❄️ Frame frozen - segmenting drawn path with \(path.count) points")
             
-            // Run detection on grid
-            detectAllParts(embeddings: embeddings, pixelBuffer: pixelBuffer)
+            // Run segmentation with path points
+            segmentWithPath(embeddings: embeddings, pixelBuffer: pixelBuffer, path: path)
         }
     }
     
-    private func detectAllParts(embeddings: MLMultiArray, pixelBuffer: CVPixelBuffer) {
+    private func segmentWithPath(embeddings: MLMultiArray, pixelBuffer: CVPixelBuffer, path: [CGPoint]) {
         guard let decoder = decoderModel else { return }
         
-        let viewWidth = UIScreen.main.bounds.width
-        let viewHeight = UIScreen.main.bounds.height
-        
-        // Create a 5x5 grid of points
-        let gridSize = 5
-        var detectedMasks: [DetectedPart] = []
-        
         DispatchQueue.global(qos: .userInitiated).async {
-            for row in 0..<gridSize {
-                for col in 0..<gridSize {
-                    let normalizedX = Float(col + 1) / Float(gridSize + 1)
-                    let normalizedY = Float(row + 1) / Float(gridSize + 1)
+            print("✏️ Sampling points along drawn path")
+            
+            // Sample points evenly along the path (every Nth point)
+            let sampleInterval = max(1, path.count / 20) // Sample ~20 points
+            var sampledPoints: [CGPoint] = []
+            
+            for (index, point) in path.enumerated() where index % sampleInterval == 0 {
+                sampledPoints.append(point)
+            }
+            
+            print("🎯 Sampled \(sampledPoints.count) points from path")
+            
+            var allMaskData: [UInt8]?
+            var maskWidth = 0
+            var maskHeight = 0
+            
+            // Process each sampled point
+            for (index, point) in sampledPoints.enumerated() {
+                do {
+                    // Create SINGLE point prompt
+                    let pointCoords = try MLMultiArray(shape: [1, 1, 2], dataType: .float32)
+                    pointCoords[[0, 0, 0] as [NSNumber]] = NSNumber(value: Float(point.x))
+                    pointCoords[[0, 0, 1] as [NSNumber]] = NSNumber(value: Float(point.y))
                     
-                    do {
-                        let pointCoords = try MLMultiArray(shape: [1, 1, 2], dataType: .float32)
-                        pointCoords[[0, 0, 0] as [NSNumber]] = NSNumber(value: normalizedX)
-                        pointCoords[[0, 0, 1] as [NSNumber]] = NSNumber(value: normalizedY)
-                        
-                        let pointLabels = try MLMultiArray(shape: [1, 1], dataType: .float32)
-                        pointLabels[[0, 0] as [NSNumber]] = NSNumber(value: 1)
-                        
-                        let inputDict: [String: Any] = [
-                            "image_embeddings": embeddings,
-                            "point_coords": pointCoords,
-                            "point_labels": pointLabels
-                        ]
-                        
-                        let inputProvider = try MLDictionaryFeatureProvider(dictionary: inputDict)
-                        let output = try decoder.prediction(from: inputProvider)
-                        
-                        guard let masks = output.featureValue(for: "masks")?.multiArrayValue else {
-                            continue
-                        }
-                        
-                        let maskHeight = masks.shape[2].intValue
-                        let maskWidth = masks.shape[3].intValue
-                        
-                        var maskData = [UInt8](repeating: 0, count: maskWidth * maskHeight)
-                        for y in 0..<maskHeight {
-                            for x in 0..<maskWidth {
-                                let indices = [0, 0, y, x] as [NSNumber]
-                                let value = masks[indices].floatValue
-                                maskData[y * maskWidth + x] = value > 0.0 ? 255 : 0
-                            }
-                        }
-                        
-                        // SMOOTH THE MASK for cleaner edges
-                        maskData = self.smoothMask(maskData, width: maskWidth, height: maskHeight)
-                        
-                        let whitePixels = maskData.filter { $0 == 255 }.count
-                        
-                        // Only keep significant segments (at least 1% of mask)
-                        if whitePixels > (maskWidth * maskHeight) / 100 {
-                            // Check if this mask is similar to any existing mask
-                            let isDuplicate = detectedMasks.contains { existingPart in
-                                self.isSimilarMask(maskData, existingPart.maskData, threshold: 0.8)
-                            }
-                            
-                            if !isDuplicate {
-                                if let outlineImage = self.createSmoothOutline(from: maskData, width: maskWidth, height: maskHeight, pixelBuffer: pixelBuffer, color: .white) {
-                                    let part = DetectedPart(
-                                        maskData: maskData,
-                                        width: maskWidth,
-                                        height: maskHeight,
-                                        isSelected: false,
-                                        outlineImage: outlineImage
-                                    )
-                                    detectedMasks.append(part)
-                                    print("✅ Detected part \(detectedMasks.count): \(whitePixels) pixels")
-                                }
-                            }
-                        }
-                        
-                    } catch {
-                        print("❌ Detection failed at grid (\(row), \(col)): \(error)")
+                    // Label: 1 = foreground point
+                    let pointLabels = try MLMultiArray(shape: [1, 1], dataType: .float32)
+                    pointLabels[[0, 0] as [NSNumber]] = NSNumber(value: 1)
+                    
+                    let inputDict: [String: Any] = [
+                        "image_embeddings": embeddings,
+                        "point_coords": pointCoords,
+                        "point_labels": pointLabels
+                    ]
+                    
+                    let inputProvider = try MLDictionaryFeatureProvider(dictionary: inputDict)
+                    let output = try decoder.prediction(from: inputProvider)
+                    
+                    guard let masks = output.featureValue(for: "masks")?.multiArrayValue else {
+                        continue
                     }
-                }
-            }
-            
-            DispatchQueue.main.async {
-                self.detectedParts = detectedMasks
-                self.statusMessage = "Found \(detectedMasks.count) parts"
-                print("✅ Detection complete: \(detectedMasks.count) unique parts found")
-            }
-        }
-    }
-    
-    // SMOOTH MASK: Apply morphological operations for cleaner edges
-    private func smoothMask(_ maskData: [UInt8], width: Int, height: Int) -> [UInt8] {
-        var smoothed = maskData
-        
-        // Apply closing operation (dilation then erosion) to fill small holes
-        smoothed = dilate(smoothed, width: width, height: height, iterations: 2)
-        smoothed = erode(smoothed, width: width, height: height, iterations: 2)
-        
-        return smoothed
-    }
-    
-    private func dilate(_ data: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
-        var result = data
-        
-        for _ in 0..<iterations {
-            var temp = result
-            for y in 1..<(height-1) {
-                for x in 1..<(width-1) {
-                    let idx = y * width + x
-                    if result[idx] == 0 {
-                        // Check 8-neighbors
-                        let neighbors = [
-                            result[idx - width - 1], result[idx - width], result[idx - width + 1],
-                            result[idx - 1], result[idx + 1],
-                            result[idx + width - 1], result[idx + width], result[idx + width + 1]
-                        ]
-                        if neighbors.contains(255) {
-                            temp[idx] = 255
+                    
+                    maskHeight = masks.shape[2].intValue
+                    maskWidth = masks.shape[3].intValue
+                    
+                    var maskData = [UInt8](repeating: 0, count: maskWidth * maskHeight)
+                    for y in 0..<maskHeight {
+                        for x in 0..<maskWidth {
+                            let indices = [0, 0, y, x] as [NSNumber]
+                            let value = masks[indices].floatValue
+                            maskData[y * maskWidth + x] = value > 0.0 ? 255 : 0
                         }
                     }
-                }
-            }
-            result = temp
-        }
-        
-        return result
-    }
-    
-    private func erode(_ data: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
-        var result = data
-        
-        for _ in 0..<iterations {
-            var temp = result
-            for y in 1..<(height-1) {
-                for x in 1..<(width-1) {
-                    let idx = y * width + x
-                    if result[idx] == 255 {
-                        // Check 8-neighbors
-                        let neighbors = [
-                            result[idx - width - 1], result[idx - width], result[idx - width + 1],
-                            result[idx - 1], result[idx + 1],
-                            result[idx + width - 1], result[idx + width], result[idx + width + 1]
-                        ]
-                        if neighbors.contains(0) {
-                            temp[idx] = 0
+                    
+                    // Combine with previous masks (union)
+                    if allMaskData == nil {
+                        allMaskData = maskData
+                    } else {
+                        for i in 0..<maskData.count {
+                            allMaskData![i] = max(allMaskData![i], maskData[i])
                         }
                     }
-                }
-            }
-            result = temp
-        }
-        
-        return result
-    }
-    
-    private func isSimilarMask(_ mask1: [UInt8], _ mask2: [UInt8], threshold: Float) -> Bool {
-        guard mask1.count == mask2.count else { return false }
-        
-        var matchingPixels = 0
-        for i in 0..<mask1.count {
-            if (mask1[i] > 127 && mask2[i] > 127) || (mask1[i] <= 127 && mask2[i] <= 127) {
-                matchingPixels += 1
-            }
-        }
-        
-        let similarity = Float(matchingPixels) / Float(mask1.count)
-        return similarity > threshold
-    }
-    
-    func togglePartSelection(index: Int) {
-        guard index < detectedParts.count else { return }
-        
-        detectedParts[index].isSelected.toggle()
-        let isSelected = detectedParts[index].isSelected
-        
-        print("🎯 Part \(index + 1) \(isSelected ? "selected" : "deselected")")
-        
-        // Update outline color with smooth rendering
-        if let pixelBuffer = frozenPixelBuffer {
-            let color: UIColor = isSelected ? .green : .white
-            if let newOutline = createSmoothOutline(
-                from: detectedParts[index].maskData,
-                width: detectedParts[index].width,
-                height: detectedParts[index].height,
-                pixelBuffer: pixelBuffer,
-                color: color
-            ) {
-                detectedParts[index].outlineImage = newOutline
-            }
-        }
-        
-        let selectedCount = detectedParts.filter { $0.isSelected }.count
-        DispatchQueue.main.async {
-            self.statusMessage = "\(selectedCount) selected"
-        }
-    }
-    
-    func combineSelectedParts() {
-        let selectedParts = detectedParts.filter { $0.isSelected }
-        guard !selectedParts.isEmpty,
-              let pixelBuffer = frozenPixelBuffer else {
-            print("⚠️ No parts selected")
-            return
-        }
-        
-        DispatchQueue.main.async {
-            self.statusMessage = "Combining..."
-        }
-        
-        DispatchQueue.global(qos: .userInitiated).async {
-            // Combine all selected masks
-            let firstPart = selectedParts[0]
-            var combinedMask = firstPart.maskData
-            
-            for i in 1..<selectedParts.count {
-                let part = selectedParts[i]
-                for j in 0..<combinedMask.count {
-                    combinedMask[j] = max(combinedMask[j], part.maskData[j])
+                    
+                    print("✅ Processed point \(index + 1)/\(sampledPoints.count)")
+                    
+                } catch {
+                    print("❌ Point segmentation failed at index \(index): \(error)")
                 }
             }
             
-            // Apply final smoothing to combined mask
-            combinedMask = self.smoothMask(combinedMask, width: firstPart.width, height: firstPart.height)
-            
-            print("✅ Combined \(selectedParts.count) parts with smoothing")
-            
-            self.createFinalSegmentedImage(combinedMask, width: firstPart.width, height: firstPart.height, pixelBuffer: pixelBuffer)
-        }
-    }
-    
-    // CREATE SMOOTH OUTLINE with anti-aliasing and better interpolation
-    private func createSmoothOutline(from maskData: [UInt8], width: Int, height: Int, pixelBuffer: CVPixelBuffer, color: UIColor) -> UIImage? {
-        // Create thicker outline (3 pixels) for better visibility
-        var outlineData = [UInt8](repeating: 0, count: width * height * 4)
-        
-        // Edge detection with wider kernel
-        for y in 2..<(height-2) {
-            for x in 2..<(width-2) {
-                let idx = y * width + x
-                let current = maskData[idx]
+            if let finalMask = allMaskData {
+                let whitePixels = finalMask.filter { $0 == 255 }.count
+                print("✅ Combined segmentation: \(whitePixels) pixels from \(sampledPoints.count) points")
                 
-                if current == 255 {
-                    // Check wider neighborhood for smoother edges
-                    var isEdge = false
-                    for dy in -2...2 {
-                        for dx in -2...2 {
-                            if maskData[(y + dy) * width + (x + dx)] == 0 {
-                                isEdge = true
-                                break
-                            }
-                        }
-                        if isEdge { break }
-                    }
-                    
-                    if isEdge {
-                        let outlineIdx = idx * 4
-                        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-                        color.getRed(&r, green: &g, blue: &b, alpha: &a)
-                        
-                        outlineData[outlineIdx] = UInt8(r * 255)
-                        outlineData[outlineIdx + 1] = UInt8(g * 255)
-                        outlineData[outlineIdx + 2] = UInt8(b * 255)
-                        outlineData[outlineIdx + 3] = 255
-                    }
+                // Create final segmented image
+                self.createFinalSegmentedImage(finalMask, width: maskWidth, height: maskHeight, pixelBuffer: pixelBuffer)
+            } else {
+                print("❌ No masks generated")
+                DispatchQueue.main.async {
+                    self.statusMessage = "No furniture detected"
                 }
             }
         }
-        
-        // Create CGImage from outline
-        guard let provider = CGDataProvider(data: Data(outlineData) as CFData),
-              let colorSpace = CGColorSpaceCreateDeviceRGB() as CGColorSpace? else {
-            return nil
-        }
-        
-        guard let cgImage = CGImage(
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bitsPerPixel: 32,
-            bytesPerRow: width * 4,
-            space: colorSpace,
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-            provider: provider,
-            decode: nil,
-            shouldInterpolate: true, // Enable interpolation for smoother result
-            intent: .defaultIntent
-        ) else {
-            return nil
-        }
-        
-        // Scale with bicubic interpolation for smoother edges
-        let ciOutline = CIImage(cgImage: cgImage)
-        
-        let originalImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let scaleX = originalImage.extent.width / CGFloat(width)
-        let scaleY = originalImage.extent.height / CGFloat(height)
-        
-        // Use lanczos scale transform for highest quality upscaling
-        let scaledOutline = ciOutline
-            .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-            .samplingNearest() // Use lanczos for best quality
-        
-        // Apply slight gaussian blur for anti-aliasing
-        let blurred = scaledOutline.clampedToExtent().applyingGaussianBlur(sigma: 0.5).cropped(to: scaledOutline.extent)
-        
-        let context = CIContext(options: [.useSoftwareRenderer: false])
-        if let scaledCGImage = context.createCGImage(blurred, from: blurred.extent) {
-            return UIImage(cgImage: scaledCGImage, scale: 1.0, orientation: .right)
-        }
-        
-        return nil
     }
     
     private func createFinalSegmentedImage(_ maskData: [UInt8], width: Int, height: Int, pixelBuffer: CVPixelBuffer) {
@@ -818,7 +730,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
             provider: provider,
             decode: nil,
-            shouldInterpolate: true, // Enable interpolation
+            shouldInterpolate: true,
             intent: .defaultIntent
         ) else {
             return
@@ -830,7 +742,6 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         let scaleX = originalImage.extent.width / CGFloat(width)
         let scaleY = originalImage.extent.height / CGFloat(height)
         
-        // Use bicubic for smooth scaling
         let scaledMask = maskImage
             .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
             .samplingNearest()
@@ -839,7 +750,6 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         
         let transparent = CIImage(color: .clear).cropped(to: originalImage.extent)
         
-        // White mask shows furniture, black shows transparent
         blendFilter.setValue(originalImage, forKey: kCIInputImageKey)
         blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
         blendFilter.setValue(scaledMask, forKey: kCIInputMaskImageKey)
@@ -852,7 +762,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         if let cgImage = context.createCGImage(result, from: result.extent, format: CIFormat.RGBA8, colorSpace: rgbColorSpace) {
             let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
             
-            print("🖼️ Created final furniture with smooth edges")
+            print("🖼️ Created final furniture with transparency")
             
             DispatchQueue.main.async {
                 self.finalSegmentedImage = uiImage
@@ -864,7 +774,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
     func unfreezeFrame() {
         frozenFrame = nil
         frozenPixelBuffer = nil
-        detectedParts.removeAll()
+        finalSegmentedImage = nil
         DispatchQueue.main.async {
             self.statusMessage = "Ready"
         }
@@ -873,7 +783,6 @@ class MobileSAMProcessor: NSObject, ObservableObject {
     func resetAll() {
         frozenFrame = nil
         frozenPixelBuffer = nil
-        detectedParts.removeAll()
         finalSegmentedImage = nil
         DispatchQueue.main.async {
             self.statusMessage = "Ready"
