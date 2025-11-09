@@ -192,41 +192,41 @@ struct SegmentExamine: View {
     }
 }
 
-//struct ScanningReticle: View {
-//    @Binding var rotation: Double
-//    
-//    var body: some View {
-//        ZStack {
-//            Circle()
-//                .stroke(Color.white.opacity(0.3), lineWidth: 2)
-//                .frame(width: 120, height: 120)
-//            Rectangle()
-//                .fill(LinearGradient(gradient: Gradient(colors: [.clear, .white.opacity(0.8), .clear]), startPoint: .top, endPoint: .bottom))
-//                .frame(width: 2, height: 60)
-//                .offset(y: -30)
-//                .rotationEffect(.degrees(rotation))
-//            Circle()
-//                .fill(Color.white.opacity(0.5))
-//                .frame(width: 8, height: 8)
-//            ForEach(0..<4) { i in
-//                CornerBracket()
-//                    .rotationEffect(.degrees(Double(i) * 90))
-//            }
-//        }
-//    }
-//}
-//
-//struct CornerBracket: View {
-//    var body: some View {
-//        Path { path in
-//            path.move(to: CGPoint(x: -60, y: -60))
-//            path.addLine(to: CGPoint(x: -40, y: -60))
-//            path.move(to: CGPoint(x: -60, y: -60))
-//            path.addLine(to: CGPoint(x: -60, y: -40))
-//        }
-//        .stroke(Color.white.opacity(0.6), lineWidth: 2)
-//    }
-//}
+struct ScanningReticle: View {
+    @Binding var rotation: Double
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.3), lineWidth: 2)
+                .frame(width: 120, height: 120)
+            Rectangle()
+                .fill(LinearGradient(gradient: Gradient(colors: [.clear, .white.opacity(0.8), .clear]), startPoint: .top, endPoint: .bottom))
+                .frame(width: 2, height: 60)
+                .offset(y: -30)
+                .rotationEffect(.degrees(rotation))
+            Circle()
+                .fill(Color.white.opacity(0.5))
+                .frame(width: 8, height: 8)
+            ForEach(0..<4) { i in
+                CornerBracket()
+                    .rotationEffect(.degrees(Double(i) * 90))
+            }
+        }
+    }
+}
+
+struct CornerBracket: View {
+    var body: some View {
+        Path { path in
+            path.move(to: CGPoint(x: -60, y: -60))
+            path.addLine(to: CGPoint(x: -40, y: -60))
+            path.move(to: CGPoint(x: -60, y: -60))
+            path.addLine(to: CGPoint(x: -60, y: -40))
+        }
+        .stroke(Color.white.opacity(0.6), lineWidth: 2)
+    }
+}
 
 // Structure to hold detection information
 struct FurnitureDetection {
@@ -855,8 +855,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 var addedFromFastSAM = 0
                 
                 // Find overall bounding box of all U2-Net furniture
-                var minX = protoWidth, maxX = 0
-                var minY = protoHeight, maxY = 0
+                var minX = protoWidth, maxX = 0, minY = protoHeight, maxY = 0
                 
                 for y in 0..<protoHeight {
                     for x in 0..<protoWidth {
@@ -921,7 +920,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     print("📊 FastSAM enhancements: +\(addedFromFastSAM) pixels")
                 }
                 
-                print("📊 Total grouped furniture: \(pixelData.filter { $0 == 255 }.count) pixels")
+                print("📊 Before morphology: \(pixelData.filter { $0 == 255 }.count) pixels")
             }
         } else {
             // NO U2-Net - use combined FastSAM confidence
@@ -972,7 +971,14 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     }
                 }
             }
+            
+            print("📊 Before morphology: \(pixelData.filter { $0 == 255 }.count) pixels")
         }
+        
+        // ✨ NEW: Apply morphological operations (Closing = Dilate + Erode)
+        pixelData = applyMorphologicalClosing(pixelData, width: protoWidth, height: protoHeight)
+        
+        print("📊 After morphology: \(pixelData.filter { $0 == 255 }.count) pixels")
         
         let data = Data(pixelData)
         guard let provider = CGDataProvider(data: data as CFData) else {
@@ -999,6 +1005,99 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         }
         
         return CIImage(cgImage: cgImage)
+    }
+    
+    // ✨ NEW: Morphological Closing (Dilate + Erode) to fill gaps in furniture
+    private func applyMorphologicalClosing(_ input: [UInt8], width: Int, height: Int) -> [UInt8] {
+        // STEP 1: Dilate (expand mask to fill small gaps)
+        let dilated = dilate(input, width: width, height: height, iterations: 3)
+        
+        // STEP 2: Erode (shrink back to clean up edges)
+        let closed = erode(dilated, width: width, height: height, iterations: 2)
+        
+        return closed
+    }
+    
+    // ✨ NEW: Dilate operation - expands white regions
+    private func dilate(_ input: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
+        var result = input
+        
+        for _ in 0..<iterations {
+            var temp = result
+            
+            for y in 1..<(height - 1) {
+                for x in 1..<(width - 1) {
+                    let idx = y * width + x
+                    
+                    // If any neighbor is white (255), make this pixel white
+                    if result[idx] == 0 {
+                        var hasWhiteNeighbor = false
+                        
+                        // Check 8 neighbors
+                        for dy in -1...1 {
+                            for dx in -1...1 {
+                                if dx == 0 && dy == 0 { continue }
+                                let nIdx = (y + dy) * width + (x + dx)
+                                if result[nIdx] == 255 {
+                                    hasWhiteNeighbor = true
+                                    break
+                                }
+                            }
+                            if hasWhiteNeighbor { break }
+                        }
+                        
+                        if hasWhiteNeighbor {
+                            temp[idx] = 255
+                        }
+                    }
+                }
+            }
+            
+            result = temp
+        }
+        
+        return result
+    }
+    
+    // ✨ NEW: Erode operation - shrinks white regions
+    private func erode(_ input: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
+        var result = input
+        
+        for _ in 0..<iterations {
+            var temp = result
+            
+            for y in 1..<(height - 1) {
+                for x in 1..<(width - 1) {
+                    let idx = y * width + x
+                    
+                    // If any neighbor is black (0), make this pixel black
+                    if result[idx] == 255 {
+                        var hasBlackNeighbor = false
+                        
+                        // Check 8 neighbors
+                        for dy in -1...1 {
+                            for dx in -1...1 {
+                                if dx == 0 && dy == 0 { continue }
+                                let nIdx = (y + dy) * width + (x + dx)
+                                if result[nIdx] == 0 {
+                                    hasBlackNeighbor = true
+                                    break
+                                }
+                            }
+                            if hasBlackNeighbor { break }
+                        }
+                        
+                        if hasBlackNeighbor {
+                            temp[idx] = 0
+                        }
+                    }
+                }
+            }
+            
+            result = temp
+        }
+        
+        return result
     }
     
     private func applyCleanSegmentation(original: CIImage, mask: CIImage) {
