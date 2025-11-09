@@ -5,11 +5,11 @@ import Vision
 import CoreImage
 import Photos
 
-// SEGMENT EXAMINE
-// U2-Net runs continuously for auto-segmentation
-// User can tap missing parts → MobileSAM guides U2-Net to expand segmentation
-// ATTENTION ENHANCEMENT: Tapped regions get brightness +30%, contrast 1.5x BEFORE U2-Net
-// Result: ONE unified furniture segmentation (not separate pieces merged)
+// SEGMENT EXAMINE - REVISED ARCHITECTURE
+// FastSAM-X runs as PRIMARY segmentation (better at complete furniture objects)
+// U2-Net provides SUPPORT (stabilization, gap-filling, refinement)
+// User can tap missing parts → MobileSAM decoder for additional refinement
+// Result: ONE unified furniture segmentation with better handling of multi-part items
 
 struct SegmentExamine: View {
     @Binding var capturedImage: UIImage?
@@ -17,19 +17,17 @@ struct SegmentExamine: View {
     @StateObject private var camera = SegmentExamineModel()
     
     @State private var showingSaveSuccess = false
-    @State private var showRawFeed = false  // Toggle for raw camera feed
+    @State private var showRawFeed = false
     
     var body: some View {
         ZStack {
-            // Transparent background by default (shows 3D room underneath)
             Color.clear.ignoresSafeArea()
             
-            // NEW: Live camera preview layer (only when toggled on)
             if showRawFeed {
-                Color.black.opacity(0.7).ignoresSafeArea()  // Dim the room background
+                Color.black.opacity(0.7).ignoresSafeArea()
                 CameraPreviewLayer(session: camera.session)
                     .ignoresSafeArea()
-                    .opacity(0.8)  // Semi-transparent so room is slightly visible
+                    .opacity(0.8)
             }
             
             if let segmented = camera.segmentedImage {
@@ -41,7 +39,6 @@ struct SegmentExamine: View {
                     .animation(.easeOut(duration: 0.3), value: camera.furnitureOpacity)
             }
             
-            // Success message
             if showingSaveSuccess {
                 VStack {
                     Spacer()
@@ -67,7 +64,6 @@ struct SegmentExamine: View {
             VStack {
                 Spacer()
                 
-                // Mode indicator at top-center (minimal)
                 if showRawFeed {
                     VStack(spacing: 4) {
                         HStack(spacing: 6) {
@@ -90,11 +86,8 @@ struct SegmentExamine: View {
                 
                 Spacer()
                 
-                // ALL BUTTONS AT BOTTOM
                 VStack(spacing: 16) {
-                    // Control buttons row
                     HStack(spacing: 12) {
-                        // SAM guidance count badge
                         if !camera.samMasks.isEmpty {
                             Text("\(camera.samMasks.count)× enhanced")
                                 .font(.caption)
@@ -104,7 +97,6 @@ struct SegmentExamine: View {
                                 .background(Capsule().fill(Color.orange.opacity(0.8)))
                         }
                         
-                        // Clear button - appears when SAM guidance is active
                         if !camera.samMasks.isEmpty {
                             Button(action: {
                                 withAnimation {
@@ -129,7 +121,6 @@ struct SegmentExamine: View {
                             }
                         }
                         
-                        // Add Parts / Done button
                         Button(action: {
                             withAnimation {
                                 if showRawFeed {
@@ -155,7 +146,6 @@ struct SegmentExamine: View {
                             )
                         }
                         
-                        // Close button (X)
                         Button(action: {
                             isShowingCamera = false
                         }) {
@@ -171,14 +161,11 @@ struct SegmentExamine: View {
             }
         }
         .simultaneousGesture(
-            // Only process taps when in tap mode
             showRawFeed ?
                 DragGesture(minimumDistance: 0)
                     .onEnded { value in
                         let location = value.location
                         let screenHeight = UIScreen.main.bounds.height
-                        
-                        // Exclude only the bottom button area (200px from bottom)
                         let isInBottomButtons = location.y > screenHeight - 200
                         
                         if !isInBottomButtons {
@@ -200,7 +187,6 @@ struct SegmentExamine: View {
     }
 }
 
-// Camera Preview Layer
 struct CameraPreviewLayer: UIViewRepresentable {
     let session: AVCaptureSession
     
@@ -232,13 +218,12 @@ struct CameraPreviewLayer: UIViewRepresentable {
     }
 }
 
-// SEGMENT EXAMINE MODEL
+// SEGMENT EXAMINE MODEL - FASTSAM-X PRIMARY
 class SegmentExamineModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     @Published var furnitureOpacity: Double = 0.0
     @Published var isExamining: Bool = false
     
-    // SAM guidance
     @Published var samMasks: [CVPixelBuffer] = []
     @Published var tapPoints: [CGPoint] = []
     
@@ -246,9 +231,11 @@ class SegmentExamineModel: NSObject, ObservableObject {
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "segmentExamineQueue", qos: .userInitiated)
     
-    private var u2netModel: VNCoreMLModel?
-    private var samEncoderModel: MLModel?
-    private var samDecoderModel: MLModel?
+    // MODEL HIERARCHY: FastSAM-X (primary) + U2-Net (support) + MobileSAM (tap refinement)
+    private var fastsamModel: VNCoreMLModel?      // Primary: complete furniture detection
+    private var u2netModel: VNCoreMLModel?        // Support: saliency refinement
+    private var samEncoderModel: MLModel?         // Tap refinement encoder
+    private var samDecoderModel: MLModel?         // Tap refinement decoder
     
     private let context = CIContext()
     
@@ -256,20 +243,27 @@ class SegmentExamineModel: NSObject, ObservableObject {
     private let processInterval: TimeInterval = 0.2
     private var isProcessing = false
     
-    private var u2netMask: CVPixelBuffer?
+    // Detection buffers
+    private var fastsamMask: CVPixelBuffer?       // Primary detection
+    private var u2netMask: CVPixelBuffer?         // Support detection
     private var lockedMask: CVPixelBuffer? = nil
     private var shouldStartExaminingOnNextFrame = false
     private var currentPixelBuffer: CVPixelBuffer?
     private var currentImageEmbeddings: MLMultiArray?
     
-    // Track scene changes to auto-clear SAM guidance
-    private var lastU2NetMaskHash: Int = 0
+    // Temporal stability tracking
+    private var lastFastsamMaskHash: Int = 0
     private var sceneStableFrames: Int = 0
     private let sceneChangeThreshold: Int = 5
+    
+    // FastSAM temporal smoothing
+    private var previousFastsamMasks: [CVPixelBuffer] = []
+    private let temporalWindowSize = 3
     
     override init() {
         super.init()
         checkCameraAuthorization()
+        loadFastSAMModel()
         loadU2NetModel()
         loadMobileSAMModels()
     }
@@ -354,167 +348,6 @@ class SegmentExamineModel: NSObject, ObservableObject {
         }
     }
     
-    // ATTENTION ENHANCEMENT: Brighten and increase contrast in SAM regions
-    private func enhanceImageInRegion(pixelBuffer: CVPixelBuffer, samMask: CVPixelBuffer) -> CVPixelBuffer? {
-        let originalCI = CIImage(cvPixelBuffer: pixelBuffer)
-        let maskCI = CIImage(cvPixelBuffer: samMask)
-        
-        // Scale mask to match original image size
-        let scaleX = originalCI.extent.width / maskCI.extent.width
-        let scaleY = originalCI.extent.height / maskCI.extent.height
-        let scaledMask = maskCI.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-        
-        // Enhance brightness +30%, contrast 1.5x
-        let enhanced = originalCI
-            .applyingFilter("CIColorControls", parameters: [
-                "inputBrightness": 0.3,
-                "inputContrast": 1.5
-            ])
-        
-        // Blend enhanced region with original using mask
-        let blended = enhanced.applyingFilter("CIBlendWithMask", parameters: [
-            "inputBackgroundImage": originalCI,
-            "inputMaskImage": scaledMask
-        ])
-        
-        // Convert back to CVPixelBuffer
-        var outputBuffer: CVPixelBuffer?
-        let attrs = [
-            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!
-        ] as CFDictionary
-        
-        CVPixelBufferCreate(kCFAllocatorDefault,
-                           CVPixelBufferGetWidth(pixelBuffer),
-                           CVPixelBufferGetHeight(pixelBuffer),
-                           kCVPixelFormatType_32BGRA,
-                           attrs,
-                           &outputBuffer)
-        
-        if let output = outputBuffer {
-            context.render(blended, to: output)
-            return output
-        }
-        
-        return nil
-    }
-    
-    // Merge all SAM masks into one
-    private func mergeSAMMasks() -> CVPixelBuffer? {
-        guard !samMasks.isEmpty else { return nil }
-        guard let first = samMasks.first else { return nil }
-        
-        let width = CVPixelBufferGetWidth(first)
-        let height = CVPixelBufferGetHeight(first)
-        
-        var mergedBuffer: CVPixelBuffer?
-        let attrs = [
-            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!,
-            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_OneComponent8
-        ] as CFDictionary
-        
-        CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_OneComponent8, attrs, &mergedBuffer)
-        
-        guard let merged = mergedBuffer else { return nil }
-        
-        CVPixelBufferLockBaseAddress(merged, [])
-        defer { CVPixelBufferUnlockBaseAddress(merged, []) }
-        
-        let mergedData = CVPixelBufferGetBaseAddress(merged)!
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(merged)
-        
-        // Initialize to black
-        memset(mergedData, 0, height * bytesPerRow)
-        
-        // Merge all masks (OR operation)
-        for mask in samMasks {
-            CVPixelBufferLockBaseAddress(mask, .readOnly)
-            let maskData = CVPixelBufferGetBaseAddress(mask)!
-            let maskBytesPerRow = CVPixelBufferGetBytesPerRow(mask)
-            
-            for y in 0..<height {
-                for x in 0..<width {
-                    let mergedOffset = y * bytesPerRow + x
-                    let maskOffset = y * maskBytesPerRow + x
-                    let maskPixel = maskData.load(fromByteOffset: maskOffset, as: UInt8.self)
-                    
-                    if maskPixel > 0 {
-                        mergedData.storeBytes(of: UInt8(255), toByteOffset: mergedOffset, as: UInt8.self)
-                    }
-                }
-            }
-            
-            CVPixelBufferUnlockBaseAddress(mask, .readOnly)
-        }
-        
-        return merged
-    }
-    
-    private func convertMLMultiArrayToPixelBuffer(_ mlArray: MLMultiArray) -> CVPixelBuffer? {
-        let height = mlArray.shape[2].intValue
-        let width = mlArray.shape[3].intValue
-        
-        var pixelBuffer: CVPixelBuffer?
-        let attrs = [
-            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
-            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!,
-            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_OneComponent8
-        ] as CFDictionary
-        
-        let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_OneComponent8, attrs, &pixelBuffer)
-        
-        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
-            return nil
-        }
-        
-        CVPixelBufferLockBaseAddress(buffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        
-        guard let baseAddress = CVPixelBufferGetBaseAddress(buffer) else {
-            return nil
-        }
-        
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
-        let bufferPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
-        
-        for y in 0..<height {
-            for x in 0..<width {
-                let indices = [0, 0, y, x] as [NSNumber]
-                let value = mlArray[indices].floatValue
-                bufferPtr[y * bytesPerRow + x] = value > 0.0 ? 255 : 0
-            }
-        }
-        
-        return buffer
-    }
-    
-    private func countWhitePixels(in buffer: CVPixelBuffer) -> Int {
-        CVPixelBufferLockBaseAddress(buffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        
-        let width = CVPixelBufferGetWidth(buffer)
-        let height = CVPixelBufferGetHeight(buffer)
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
-        
-        guard let baseAddress = CVPixelBufferGetBaseAddress(buffer) else {
-            return 0
-        }
-        
-        let bufferPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
-        var count = 0
-        
-        for y in 0..<height {
-            for x in 0..<width {
-                if bufferPtr[y * bytesPerRow + x] > 128 {
-                    count += 1
-                }
-            }
-        }
-        
-        return count
-    }
-    
     func startExamining() {
         print("🔍 User started EXAMINING")
         shouldStartExaminingOnNextFrame = true
@@ -550,6 +383,28 @@ class SegmentExamineModel: NSObject, ObservableObject {
         }
     }
     
+    // LOAD FASTSAM-X MODEL (PRIMARY)
+    private func loadFastSAMModel() {
+        let modelNames = ["fastsam-x", "fastsam_x", "FastSAM-x", "FastSAMX", "fastsam"]
+        
+        for name in modelNames {
+            for ext in ["mlmodelc", "mlpackage"] {
+                if let modelURL = Bundle.main.url(forResource: name, withExtension: ext) {
+                    do {
+                        let model = try MLModel(contentsOf: modelURL)
+                        fastsamModel = try VNCoreMLModel(for: model)
+                        print("✅ FastSAM-X loaded: \(name) [PRIMARY]")
+                        return
+                    } catch {
+                        print("⚠️ Failed to load \(name).\(ext): \(error)")
+                    }
+                }
+            }
+        }
+        print("❌ No FastSAM-X model found - CRITICAL")
+    }
+    
+    // LOAD U2-NET MODEL (SUPPORT)
     private func loadU2NetModel() {
         let modelNames = ["u2netp", "U2Net", "u2net", "U2NetP", "U2NET"]
         
@@ -559,7 +414,7 @@ class SegmentExamineModel: NSObject, ObservableObject {
                     do {
                         let model = try MLModel(contentsOf: modelURL)
                         u2netModel = try VNCoreMLModel(for: model)
-                        print("✅ U2-Net loaded: \(name)")
+                        print("✅ U2-Net loaded: \(name) [SUPPORT]")
                         return
                     } catch {
                         print("⚠️ Failed to load \(name).\(ext): \(error)")
@@ -567,7 +422,7 @@ class SegmentExamineModel: NSObject, ObservableObject {
                 }
             }
         }
-        print("⚠️ No U2-Net model loaded")
+        print("⚠️ No U2-Net model loaded - will run FastSAM-X only")
     }
     
     private func loadMobileSAMModels() {
@@ -586,7 +441,7 @@ class SegmentExamineModel: NSObject, ObservableObject {
             decoderConfig.computeUnits = .all
             samDecoderModel = try MLModel(contentsOf: decoderURL, configuration: decoderConfig)
             
-            print("✅ MobileSAM models loaded")
+            print("✅ MobileSAM models loaded [TAP REFINEMENT]")
         } catch {
             print("⚠️ Failed to load MobileSAM: \(error)")
         }
@@ -641,6 +496,7 @@ class SegmentExamineModel: NSObject, ObservableObject {
         }
     }
     
+    // MAIN PROCESSING PIPELINE
     private func processFrame(pixelBuffer: CVPixelBuffer) {
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
@@ -651,58 +507,46 @@ class SegmentExamineModel: NSObject, ObservableObject {
         
         currentPixelBuffer = pixelBuffer
         
-        // ATTENTION ENHANCEMENT: If SAM masks exist, enhance those regions before U2-Net
-        var enhancedPixelBuffer = pixelBuffer
-        if !samMasks.isEmpty {
-            if let mergedSAMMask = mergeSAMMasks() {
-                if let enhanced = enhanceImageInRegion(pixelBuffer: pixelBuffer, samMask: mergedSAMMask) {
-                    enhancedPixelBuffer = enhanced
-                    print("✨ Attention enhancement applied: brightness +30%, contrast 1.5x")
-                }
-            }
+        // STEP 1: Run FastSAM-X (PRIMARY) - detects complete furniture objects
+        if fastsamModel != nil {
+            runFastSAMSync(pixelBuffer: pixelBuffer)
         }
         
-        // Run U2-Net on (possibly enhanced) image
+        // STEP 2: Run U2-Net (SUPPORT) - provides saliency-based refinement
         if u2netModel != nil {
-            runU2NetSync(pixelBuffer: enhancedPixelBuffer)
+            runU2NetSync(pixelBuffer: pixelBuffer)
         }
         
-        // Check scene changes
-        if let u2netMask = u2netMask {
-            let currentHash = hashMask(u2netMask)
-            
-            if currentHash != lastU2NetMaskHash {
-                sceneStableFrames = 0
-                lastU2NetMaskHash = currentHash
-            } else {
-                sceneStableFrames += 1
-            }
-            
-            if sceneStableFrames < sceneChangeThreshold && !samMasks.isEmpty {
-                print("🔄 Scene changed - clearing SAM guidance")
-                DispatchQueue.main.async {
-                    self.samMasks.removeAll()
-                    self.tapPoints.removeAll()
-                }
-            }
-        }
-        
-        // Run SAM encoder
+        // STEP 3: Run SAM encoder for tap-based refinement
         if samEncoderModel != nil {
             runSAMEncoder(pixelBuffer: pixelBuffer)
         }
         
-        // Conditional masking
+        // STEP 4: Combine masks intelligently
         var finalMask: CVPixelBuffer? = nil
         
-        if let u2netMask = u2netMask {
+        if let fastsamMask = fastsamMask {
+            // Apply temporal smoothing to FastSAM to reduce flickering
+            let smoothedFastsam = applyTemporalSmoothing(to: fastsamMask)
+            
             if samMasks.isEmpty {
-                finalMask = u2netMask
+                // No tap refinements - use FastSAM + U2-Net combination
+                if let u2netMask = u2netMask {
+                    finalMask = combineFastSAMWithU2Net(fastsam: smoothedFastsam, u2net: u2netMask)
+                } else {
+                    finalMask = smoothedFastsam
+                }
             } else {
-                finalMask = conditionalMasking(baseU2Net: u2netMask, samRegions: samMasks, pixelBuffer: pixelBuffer)
+                // User tapped for refinement - merge tap regions
+                finalMask = mergeWithTapRefinements(base: smoothedFastsam, samRegions: samMasks)
             }
+        } else if let u2netMask = u2netMask {
+            // Fallback to U2-Net only if FastSAM fails
+            print("⚠️ Falling back to U2-Net only")
+            finalMask = u2netMask
         }
         
+        // STEP 5: Lock mask when examining starts
         if shouldStartExaminingOnNextFrame {
             if let mask = finalMask, let copied = copyPixelBuffer(mask) {
                 lockedMask = copied
@@ -717,36 +561,164 @@ class SegmentExamineModel: NSObject, ObservableObject {
             finalMask = locked
         }
         
+        // STEP 6: Apply mask to image
         if let mask = finalMask {
             let maskImage = CIImage(cvPixelBuffer: mask)
             let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
             applyMaskToImage(original: ciImage, mask: maskImage)
         }
         
+        // STEP 7: Check for scene changes (auto-clear tap refinements)
+        if let mask = finalMask {
+            let currentHash = hashMask(mask)
+            
+            if currentHash != lastFastsamMaskHash {
+                sceneStableFrames = 0
+                lastFastsamMaskHash = currentHash
+            } else {
+                sceneStableFrames += 1
+            }
+            
+            if sceneStableFrames < sceneChangeThreshold && !samMasks.isEmpty {
+                print("🔄 Scene changed - clearing tap refinements")
+                DispatchQueue.main.async {
+                    self.samMasks.removeAll()
+                    self.tapPoints.removeAll()
+                }
+            }
+        }
+        
         isProcessing = false
     }
     
-    private func conditionalMasking(baseU2Net: CVPixelBuffer, samRegions: [CVPixelBuffer], pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
-        guard let result = copyPixelBuffer(baseU2Net) else { return baseU2Net }
+    // TEMPORAL SMOOTHING: Reduce FastSAM flickering by averaging recent frames
+    private func applyTemporalSmoothing(to mask: CVPixelBuffer) -> CVPixelBuffer {
+        guard let copied = copyPixelBuffer(mask) else { return mask }
+        
+        previousFastsamMasks.append(copied)
+        if previousFastsamMasks.count > temporalWindowSize {
+            previousFastsamMasks.removeFirst()
+        }
+        
+        // If we don't have enough frames yet, just return current
+        if previousFastsamMasks.count < 2 {
+            return mask
+        }
+        
+        // Average the masks
+        guard let averaged = averageMasks(previousFastsamMasks) else {
+            return mask
+        }
+        
+        print("📊 Temporal smoothing: averaging \(previousFastsamMasks.count) frames")
+        return averaged
+    }
+    
+    // COMBINATION STRATEGY: FastSAM (primary) + U2-Net (support)
+    private func combineFastSAMWithU2Net(fastsam: CVPixelBuffer, u2net: CVPixelBuffer) -> CVPixelBuffer? {
+        // Strategy: Use FastSAM as base, use U2-Net to:
+        // 1. Fill gaps in FastSAM detection
+        // 2. Refine boundaries
+        // 3. Add missing salient parts
+        
+        guard let result = copyPixelBuffer(fastsam) else { return fastsam }
         
         CVPixelBufferLockBaseAddress(result, [])
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        CVPixelBufferLockBaseAddress(u2net, .readOnly)
         defer {
             CVPixelBufferUnlockBaseAddress(result, [])
-            CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
+            CVPixelBufferUnlockBaseAddress(u2net, .readOnly)
         }
         
         let width = CVPixelBufferGetWidth(result)
         let height = CVPixelBufferGetHeight(result)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(result)
+        let u2netBytesPerRow = CVPixelBufferGetBytesPerRow(u2net)
         
         guard let resultPtr = CVPixelBufferGetBaseAddress(result)?.assumingMemoryBound(to: UInt8.self),
-              let imagePtr = CVPixelBufferGetBaseAddress(pixelBuffer)?.assumingMemoryBound(to: UInt8.self) else {
-            return baseU2Net
+              let u2netPtr = CVPixelBufferGetBaseAddress(u2net)?.assumingMemoryBound(to: UInt8.self) else {
+            return fastsam
         }
         
-        let imageBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        var fastsamPixelCount = 0
+        var addedFromU2Net = 0
         
+        // Count FastSAM pixels first
+        for y in 0..<height {
+            for x in 0..<width {
+                if resultPtr[y * bytesPerRow + x] > 128 {
+                    fastsamPixelCount += 1
+                }
+            }
+        }
+        
+        // Only add U2-Net pixels that are:
+        // 1. High confidence (>200)
+        // 2. Connected to FastSAM detection (within 50px)
+        // 3. Not excessive in size
+        for y in 0..<height {
+            for x in 0..<width {
+                let resultIdx = y * bytesPerRow + x
+                let u2netIdx = y * u2netBytesPerRow + x
+                
+                // Skip if already detected by FastSAM
+                if resultPtr[resultIdx] > 128 {
+                    continue
+                }
+                
+                // Check U2-Net confidence
+                let u2netValue = u2netPtr[u2netIdx]
+                if u2netValue > 200 {  // High confidence only
+                    // Check if near existing detection
+                    var nearExisting = false
+                    let searchRadius = 50
+                    
+                    for dy in -searchRadius...searchRadius {
+                        for dx in -searchRadius...searchRadius {
+                            let ny = y + dy
+                            let nx = x + dx
+                            if ny >= 0 && ny < height && nx >= 0 && nx < width {
+                                if resultPtr[ny * bytesPerRow + nx] > 128 {
+                                    nearExisting = true
+                                    break
+                                }
+                            }
+                        }
+                        if nearExisting { break }
+                    }
+                    
+                    if nearExisting {
+                        resultPtr[resultIdx] = 255
+                        addedFromU2Net += 1
+                    }
+                }
+            }
+        }
+        
+        print("🔀 Combined: FastSAM=\(fastsamPixelCount)px, U2-Net added=\(addedFromU2Net)px")
+        
+        // Apply morphological operations for smoothing
+        guard let smoothed = morphologicalClosing(result, iterations: 5) else { return result }
+        
+        return smoothed
+    }
+    
+    // MERGE TAP REFINEMENTS: Add user-tapped regions to base mask
+    private func mergeWithTapRefinements(base: CVPixelBuffer, samRegions: [CVPixelBuffer]) -> CVPixelBuffer? {
+        guard let result = copyPixelBuffer(base) else { return base }
+        
+        CVPixelBufferLockBaseAddress(result, [])
+        defer { CVPixelBufferUnlockBaseAddress(result, []) }
+        
+        let width = CVPixelBufferGetWidth(result)
+        let height = CVPixelBufferGetHeight(result)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(result)
+        
+        guard let resultPtr = CVPixelBufferGetBaseAddress(result)?.assumingMemoryBound(to: UInt8.self) else {
+            return base
+        }
+        
+        // Simply OR all tap regions with base
         for samRegion in samRegions {
             CVPixelBufferLockBaseAddress(samRegion, .readOnly)
             defer { CVPixelBufferUnlockBaseAddress(samRegion, .readOnly) }
@@ -757,82 +729,167 @@ class SegmentExamineModel: NSObject, ObservableObject {
             
             let samBytesPerRow = CVPixelBufferGetBytesPerRow(samRegion)
             
-            var regionPixels: [(x: Int, y: Int)] = []
-            var avgBrightness: Int = 0
-            var minX = width, maxX = 0, minY = height, maxY = 0
-            
             for y in 0..<height {
                 for x in 0..<width {
+                    let resultIdx = y * bytesPerRow + x
                     let samIdx = y * samBytesPerRow + x
+                    
                     if samPtr[samIdx] > 128 {
-                        regionPixels.append((x, y))
-                        minX = min(minX, x)
-                        maxX = max(maxX, x)
-                        minY = min(minY, y)
-                        maxY = max(maxY, y)
-                        
-                        let imgIdx = y * imageBytesPerRow + x * 4
-                        let b = Int(imagePtr[imgIdx])
-                        let g = Int(imagePtr[imgIdx + 1])
-                        let r = Int(imagePtr[imgIdx + 2])
-                        avgBrightness += (r + g + b) / 3
-                    }
-                }
-            }
-            
-            if regionPixels.isEmpty { continue }
-            avgBrightness /= regionPixels.count
-            
-            print("📍 SAM Region: \(regionPixels.count) pixels, brightness: \(avgBrightness)")
-            
-            for (x, y) in regionPixels {
-                let idx = y * bytesPerRow + x
-                resultPtr[idx] = 255
-            }
-            
-            let expandMargin = 20
-            for y in max(0, minY - expandMargin)..<min(height, maxY + expandMargin) {
-                for x in max(0, minX - expandMargin)..<min(width, maxX + expandMargin) {
-                    let idx = y * bytesPerRow + x
-                    
-                    if resultPtr[idx] > 128 { continue }
-                    
-                    let imgIdx = y * imageBytesPerRow + x * 4
-                    let b = Int(imagePtr[imgIdx])
-                    let g = Int(imagePtr[imgIdx + 1])
-                    let r = Int(imagePtr[imgIdx + 2])
-                    let brightness = (r + g + b) / 3
-                    
-                    if abs(brightness - avgBrightness) < 40 {
-                        var hasNearbyMask = false
-                        for dy in -3...3 {
-                            for dx in -3...3 {
-                                let ny = y + dy
-                                let nx = x + dx
-                                if ny >= 0 && ny < height && nx >= 0 && nx < width {
-                                    if resultPtr[ny * bytesPerRow + nx] > 128 {
-                                        hasNearbyMask = true
-                                        break
-                                    }
-                                }
-                            }
-                            if hasNearbyMask { break }
-                        }
-                        
-                        if hasNearbyMask {
-                            resultPtr[idx] = 255
-                        }
+                        resultPtr[resultIdx] = 255
                     }
                 }
             }
         }
         
+        print("➕ Merged \(samRegions.count) tap refinements")
+        
+        // Smooth the result
         guard let smoothed = morphologicalClosing(result, iterations: 8) else { return result }
         
-        print("✅ Conditional masking: \(samRegions.count) region(s) processed")
         return smoothed
     }
     
+    // AVERAGE MULTIPLE MASKS (for temporal smoothing)
+    private func averageMasks(_ masks: [CVPixelBuffer]) -> CVPixelBuffer? {
+        guard !masks.isEmpty else { return nil }
+        guard let first = masks.first else { return nil }
+        
+        let width = CVPixelBufferGetWidth(first)
+        let height = CVPixelBufferGetHeight(first)
+        
+        var result: CVPixelBuffer?
+        let attrs = [
+            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!,
+            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_OneComponent8
+        ] as CFDictionary
+        
+        CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_OneComponent8, attrs, &result)
+        
+        guard let averaged = result else { return nil }
+        
+        CVPixelBufferLockBaseAddress(averaged, [])
+        defer { CVPixelBufferUnlockBaseAddress(averaged, []) }
+        
+        guard let resultPtr = CVPixelBufferGetBaseAddress(averaged)?.assumingMemoryBound(to: UInt8.self) else {
+            return nil
+        }
+        
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(averaged)
+        
+        // Sum all masks
+        var sums = [Int](repeating: 0, count: height * width)
+        
+        for mask in masks {
+            CVPixelBufferLockBaseAddress(mask, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
+            
+            guard let maskPtr = CVPixelBufferGetBaseAddress(mask)?.assumingMemoryBound(to: UInt8.self) else {
+                continue
+            }
+            
+            let maskBytesPerRow = CVPixelBufferGetBytesPerRow(mask)
+            
+            for y in 0..<height {
+                for x in 0..<width {
+                    let idx = y * width + x
+                    sums[idx] += Int(maskPtr[y * maskBytesPerRow + x])
+                }
+            }
+        }
+        
+        // Average and threshold
+        let count = masks.count
+        for y in 0..<height {
+            for x in 0..<width {
+                let idx = y * width + x
+                let avg = sums[idx] / count
+                // Threshold: if average > 128, consider it detected
+                resultPtr[y * bytesPerRow + x] = avg > 128 ? 255 : 0
+            }
+        }
+        
+        return averaged
+    }
+    
+    // RUN FASTSAM-X (PRIMARY)
+    private func runFastSAMSync(pixelBuffer: CVPixelBuffer) {
+        guard let model = fastsamModel else { return }
+        
+        let request = VNCoreMLRequest(model: model) { [weak self] request, error in
+            if let error = error {
+                print("❌ FastSAM-X error: \(error)")
+                return
+            }
+            
+            if let results = request.results as? [VNPixelBufferObservation],
+               let maskBuffer = results.first?.pixelBuffer {
+                self?.fastsamMask = maskBuffer
+                
+                let pixelCount = self?.countWhitePixels(in: maskBuffer) ?? 0
+                print("🎯 FastSAM-X detected: \(pixelCount) pixels")
+            }
+        }
+        
+        request.imageCropAndScaleOption = .scaleFill
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        
+        do {
+            try handler.perform([request])
+        } catch {
+            print("❌ FastSAM-X handler error: \(error)")
+        }
+    }
+    
+    // RUN U2-NET (SUPPORT)
+    private func runU2NetSync(pixelBuffer: CVPixelBuffer) {
+        guard let model = u2netModel else { return }
+        
+        let request = VNCoreMLRequest(model: model) { [weak self] request, error in
+            if let error = error {
+                print("❌ U2-Net error: \(error)")
+                return
+            }
+            
+            if let results = request.results as? [VNPixelBufferObservation],
+               let maskBuffer = results.first?.pixelBuffer {
+                self?.u2netMask = maskBuffer
+                
+                let pixelCount = self?.countWhitePixels(in: maskBuffer) ?? 0
+                print("🔧 U2-Net support: \(pixelCount) pixels")
+            }
+        }
+        
+        request.imageCropAndScaleOption = .scaleFill
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        
+        do {
+            try handler.perform([request])
+        } catch {
+            print("❌ U2-Net handler error: \(error)")
+        }
+    }
+    
+    private func runSAMEncoder(pixelBuffer: CVPixelBuffer) {
+        guard let encoder = samEncoderModel else { return }
+        
+        do {
+            guard let resized = resizePixelBuffer(pixelBuffer, width: 1024, height: 1024) else { return }
+            guard let imageArray = pixelBufferToMLMultiArray(resized) else { return }
+            
+            let inputDict: [String: Any] = ["image": imageArray]
+            let inputProvider = try MLDictionaryFeatureProvider(dictionary: inputDict)
+            let output = try encoder.prediction(from: inputProvider)
+            
+            guard let embeddings = output.featureValue(for: "image_embeddings")?.multiArrayValue else { return }
+            
+            currentImageEmbeddings = embeddings
+        } catch {
+            print("❌ SAM Encoder failed: \(error)")
+        }
+    }
+    
+    // MORPHOLOGICAL OPERATIONS (unchanged from original)
     private func morphologicalClosing(_ buffer: CVPixelBuffer, iterations: Int) -> CVPixelBuffer? {
         guard var current = copyPixelBuffer(buffer) else { return buffer }
         
@@ -923,6 +980,71 @@ class SegmentExamineModel: NSObject, ObservableObject {
         return output
     }
     
+    // HELPER FUNCTIONS (unchanged)
+    private func convertMLMultiArrayToPixelBuffer(_ mlArray: MLMultiArray) -> CVPixelBuffer? {
+        let height = mlArray.shape[2].intValue
+        let width = mlArray.shape[3].intValue
+        
+        var pixelBuffer: CVPixelBuffer?
+        let attrs = [
+            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!,
+            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_OneComponent8
+        ] as CFDictionary
+        
+        let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_OneComponent8, attrs, &pixelBuffer)
+        
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            return nil
+        }
+        
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        
+        guard let baseAddress = CVPixelBufferGetBaseAddress(buffer) else {
+            return nil
+        }
+        
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        let bufferPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                let indices = [0, 0, y, x] as [NSNumber]
+                let value = mlArray[indices].floatValue
+                bufferPtr[y * bytesPerRow + x] = value > 0.0 ? 255 : 0
+            }
+        }
+        
+        return buffer
+    }
+    
+    private func countWhitePixels(in buffer: CVPixelBuffer) -> Int {
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        
+        let width = CVPixelBufferGetWidth(buffer)
+        let height = CVPixelBufferGetHeight(buffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        
+        guard let baseAddress = CVPixelBufferGetBaseAddress(buffer) else {
+            return 0
+        }
+        
+        let bufferPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
+        var count = 0
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                if bufferPtr[y * bytesPerRow + x] > 128 {
+                    count += 1
+                }
+            }
+        }
+        
+        return count
+    }
+    
     private func hashMask(_ mask: CVPixelBuffer) -> Int {
         CVPixelBufferLockBaseAddress(mask, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
@@ -956,50 +1078,6 @@ class SegmentExamineModel: NSObject, ObservableObject {
         }
         
         return whitePixels * 1000 + centerMass.x + centerMass.y * width
-    }
-    
-    private func runSAMEncoder(pixelBuffer: CVPixelBuffer) {
-        guard let encoder = samEncoderModel else { return }
-        
-        do {
-            guard let resized = resizePixelBuffer(pixelBuffer, width: 1024, height: 1024) else { return }
-            guard let imageArray = pixelBufferToMLMultiArray(resized) else { return }
-            
-            let inputDict: [String: Any] = ["image": imageArray]
-            let inputProvider = try MLDictionaryFeatureProvider(dictionary: inputDict)
-            let output = try encoder.prediction(from: inputProvider)
-            
-            guard let embeddings = output.featureValue(for: "image_embeddings")?.multiArrayValue else { return }
-            
-            currentImageEmbeddings = embeddings
-        } catch {
-            print("❌ SAM Encoder failed: \(error)")
-        }
-    }
-    
-    private func runU2NetSync(pixelBuffer: CVPixelBuffer) {
-        guard let model = u2netModel else { return }
-        
-        let request = VNCoreMLRequest(model: model) { [weak self] request, error in
-            if let error = error {
-                print("❌ U2-Net error: \(error)")
-                return
-            }
-            
-            if let results = request.results as? [VNPixelBufferObservation],
-               let maskBuffer = results.first?.pixelBuffer {
-                self?.u2netMask = maskBuffer
-            }
-        }
-        
-        request.imageCropAndScaleOption = .scaleFill
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-        
-        do {
-            try handler.perform([request])
-        } catch {
-            print("❌ U2-Net handler error: \(error)")
-        }
     }
     
     private func applyMaskToImage(original: CIImage, mask: CIImage) {
