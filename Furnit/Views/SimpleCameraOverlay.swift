@@ -5,18 +5,15 @@ import Vision
 import CoreImage
 import Accelerate
 
-// COMPLETE FILE: MobileSAM with Box Prompt (Fixed)
-// Uses 2 corner points to tell SAM "segment everything in this box"
-// Better for multi-part furniture (bed = headboard + mattress)
+// LIVE AUTOMATIC SEGMENTATION
+// Points camera at furniture → Automatically segments it
+// No drawing required, picks closest object in center
+// Filters out walls and floors
 
 struct SimpleCameraOverlay: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
-    @StateObject private var camera = MobileSAMProcessor()
-    
-    // Freeform drawing state
-    @State private var drawingPath: [CGPoint] = []
-    @State private var isDrawing: Bool = false
+    @StateObject private var camera = LiveMobileSAMProcessor()
     
     // Gesture state for furniture manipulation
     @State private var furnitureOffset: CGSize = .zero
@@ -30,187 +27,95 @@ struct SimpleCameraOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Live camera feed OR frozen frame
-                if let frozenFrame = camera.frozenFrame {
-                    // Show frozen frame
-                    Image(uiImage: frozenFrame)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .ignoresSafeArea()
-                } else {
-                    // Live camera feed with freeform drawing capability
+                // Live camera feed with segmentation overlay
+                if camera.capturedFinalImage == nil {
                     ZStack {
                         CameraPreviewLayer(session: camera.session)
                             .ignoresSafeArea()
                         
-                        // Freeform drawing path overlay
-                        if !drawingPath.isEmpty {
-                            Path { path in
-                                if let first = drawingPath.first {
-                                    path.move(to: first)
-                                    for point in drawingPath.dropFirst() {
-                                        path.addLine(to: point)
-                                    }
-                                }
-                            }
-                            .stroke(Color.green, lineWidth: 4)
-                            .shadow(color: .black.opacity(0.5), radius: 2)
-                            
-                            // Show filled area with transparency
-                            Path { path in
-                                if let first = drawingPath.first {
-                                    path.move(to: first)
-                                    for point in drawingPath.dropFirst() {
-                                        path.addLine(to: point)
-                                    }
-                                    path.closeSubpath()
-                                }
-                            }
-                            .fill(Color.green.opacity(0.15))
+                        // Live segmentation overlay (semi-transparent)
+                        if let liveSegmentation = camera.liveSegmentationOverlay {
+                            Image(uiImage: liveSegmentation)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .ignoresSafeArea()
+                                .opacity(0.6)  // Semi-transparent overlay
                         }
                         
-                        // Instruction overlay on live feed
-                        if !isDrawing && drawingPath.isEmpty {
-                            VStack {
-                                Spacer()
-                                VStack(spacing: 8) {
-                                    Image(systemName: "hand.draw")
-                                        .font(.largeTitle)
-                                        .foregroundColor(.white)
-                                    Text("DRAW AROUND FURNITURE")
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                    Text("Trace outline with your finger")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.9))
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .background(Color.green.opacity(0.8))
-                                .cornerRadius(12)
-                                .padding(.bottom, 120)
-                            }
-                        } else if isDrawing {
-                            VStack {
-                                Spacer()
-                                Text("KEEP DRAWING...")
+                        // Crosshair to show center point
+                        CrosshairView()
+                        
+                        // Instructions
+                        VStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                Image(systemName: "viewfinder")
+                                    .font(.largeTitle)
+                                    .foregroundColor(.white)
+                                Text("POINT AT FURNITURE")
                                     .font(.headline)
                                     .foregroundColor(.white)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(Color.orange.opacity(0.8))
-                                    .cornerRadius(8)
-                                    .padding(.bottom, 120)
+                                Text("Center the object in frame")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.9))
                             }
-                        } else if !drawingPath.isEmpty {
-                            VStack {
-                                Spacer()
-                                HStack(spacing: 16) {
-                                    // Clear button
-                                    Button(action: {
-                                        withAnimation {
-                                            drawingPath.removeAll()
-                                        }
-                                    }) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .font(.system(size: 18))
-                                            Text("Clear")
-                                                .font(.system(size: 16, weight: .semibold))
-                                        }
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 20)
-                                        .padding(.vertical, 12)
-                                        .background(Color.red.opacity(0.9))
-                                        .cornerRadius(10)
-                                    }
-                                    
-                                    // Process button
-                                    Button(action: {
-                                        processDrawing(geometry: geometry)
-                                    }) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "wand.and.stars")
-                                                .font(.system(size: 18))
-                                            Text("Segment")
-                                                .font(.system(size: 16, weight: .bold))
-                                        }
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 20)
-                                        .padding(.vertical, 12)
-                                        .background(Color.green.opacity(0.9))
-                                        .cornerRadius(10)
-                                    }
-                                }
-                                .padding(.bottom, 100)
-                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(Color.blue.opacity(0.8))
+                            .cornerRadius(12)
+                            .padding(.bottom, 120)
                         }
                     }
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                if !isDrawing {
-                                    isDrawing = true
-                                    drawingPath.removeAll()
-                                }
-                                drawingPath.append(value.location)
-                            }
-                            .onEnded { _ in
-                                isDrawing = false
-                                print("✏️ Drawing complete: \(drawingPath.count) points")
-                            }
-                    )
-                }
-                
-                // Show final segmented furniture WITH GESTURES - on TRANSPARENT background
-                if let finalImage = camera.finalSegmentedImage {
-                    Image(uiImage: finalImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .ignoresSafeArea()
-                        .offset(furnitureOffset)
-                        .scaleEffect(furnitureScale)
-                        .rotationEffect(furnitureRotation)
-                        .gesture(
-                            SimultaneousGesture(
-                                DragGesture()
-                                    .onChanged { value in
-                                        furnitureOffset = CGSize(
-                                            width: lastOffset.width + value.translation.width,
-                                            height: lastOffset.height + value.translation.height
-                                        )
-                                    }
-                                    .onEnded { _ in
-                                        lastOffset = furnitureOffset
-                                    },
-                                
+                } else {
+                    // Show captured segmented furniture with gestures
+                    if let finalImage = camera.capturedFinalImage {
+                        Image(uiImage: finalImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .ignoresSafeArea()
+                            .offset(furnitureOffset)
+                            .scaleEffect(furnitureScale)
+                            .rotationEffect(furnitureRotation)
+                            .gesture(
                                 SimultaneousGesture(
-                                    MagnificationGesture()
+                                    DragGesture()
                                         .onChanged { value in
-                                            furnitureScale = lastScale * value
+                                            furnitureOffset = CGSize(
+                                                width: lastOffset.width + value.translation.width,
+                                                height: lastOffset.height + value.translation.height
+                                            )
                                         }
                                         .onEnded { _ in
-                                            lastScale = furnitureScale
+                                            lastOffset = furnitureOffset
                                         },
                                     
-                                    RotationGesture()
-                                        .onChanged { value in
-                                            furnitureRotation = lastRotation + value
-                                        }
-                                        .onEnded { _ in
-                                            lastRotation = furnitureRotation
-                                        }
+                                    SimultaneousGesture(
+                                        MagnificationGesture()
+                                            .onChanged { value in
+                                                furnitureScale = lastScale * value
+                                            }
+                                            .onEnded { _ in
+                                                lastScale = furnitureScale
+                                            },
+                                        
+                                        RotationGesture()
+                                            .onChanged { value in
+                                                furnitureRotation = lastRotation + value
+                                            }
+                                            .onEnded { _ in
+                                                lastRotation = furnitureRotation
+                                            }
+                                    )
                                 )
                             )
-                        )
+                    }
                 }
                 
                 // Top bar
                 VStack {
                     HStack {
-                        // Show different buttons based on state
-                        if camera.finalSegmentedImage != nil {
+                        if camera.capturedFinalImage != nil {
                             // Reset transform button
                             if furnitureOffset != .zero || furnitureScale != 1.0 || furnitureRotation != .zero {
                                 Button(action: {
@@ -239,11 +144,9 @@ struct SimpleCameraOverlay: View {
                                 // Start Over button
                                 Button(action: {
                                     withAnimation {
-                                        camera.resetAll()
+                                        camera.resetCapture()
                                         resetGestures()
-                                        drawingPath.removeAll()
                                     }
-                                    print("🔄 Reset to live camera")
                                 }) {
                                     HStack(spacing: 6) {
                                         Image(systemName: "arrow.counterclockwise")
@@ -258,41 +161,38 @@ struct SimpleCameraOverlay: View {
                                     .cornerRadius(8)
                                 }
                             }
-                        } else if camera.frozenFrame != nil {
-                            // Frozen state - show back to live
-                            Button(action: {
-                                withAnimation {
-                                    camera.unfreezeFrame()
-                                    drawingPath.removeAll()
-                                }
-                                print("🔄 Back to live camera")
-                            }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "play.fill")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Text("Back to Live")
-                                        .font(.system(size: 14, weight: .medium))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.blue.opacity(0.9))
-                                .cornerRadius(8)
-                            }
                         } else {
-                            Text("MobileSAM")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.black.opacity(0.7))
-                                .cornerRadius(8)
+                            // Live mode indicator
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 10, height: 10)
+                                    .opacity(camera.isSegmenting ? 1.0 : 0.3)
+                                Text("LIVE")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(8)
                         }
                         
                         Spacer()
                         
-                        // Show gesture hints when furniture is shown
-                        if camera.finalSegmentedImage != nil {
+                        // Status indicator
+                        if camera.capturedFinalImage == nil {
+                            Text(camera.statusMessage)
+                                .font(.caption)
+                                .foregroundColor(camera.isSegmenting ? .green : .yellow)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(8)
+                        }
+                        
+                        // Gesture hints when captured
+                        if camera.capturedFinalImage != nil {
                             VStack(alignment: .trailing, spacing: 2) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "hand.draw")
@@ -310,14 +210,6 @@ struct SimpleCameraOverlay: View {
                             .cornerRadius(8)
                         }
                         
-                        Text(camera.statusMessage)
-                            .font(.caption)
-                            .foregroundColor(.green)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.black.opacity(0.7))
-                            .cornerRadius(8)
-                        
                         Button(action: { isShowingCamera = false }) {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 28))
@@ -334,7 +226,7 @@ struct SimpleCameraOverlay: View {
                     
                     // Bottom controls
                     VStack(spacing: 10) {
-                        if camera.finalSegmentedImage != nil {
+                        if camera.capturedFinalImage != nil {
                             Text("DRAG • PINCH • ROTATE FURNITURE")
                                 .font(.subheadline)
                                 .foregroundColor(.white)
@@ -342,31 +234,50 @@ struct SimpleCameraOverlay: View {
                                 .padding(.vertical, 8)
                                 .background(Color.purple.opacity(0.8))
                                 .cornerRadius(8)
-                        } else if camera.frozenFrame != nil {
-                            Text("PROCESSING...")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.orange.opacity(0.8))
-                                .cornerRadius(8)
+                        } else {
+                            // Detection info
+                            if camera.lastDetectionInfo != "" {
+                                Text(camera.lastDetectionInfo)
+                                    .font(.caption)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(Color.black.opacity(0.7))
+                                    .cornerRadius(8)
+                                    .multilineTextAlignment(.center)
+                            }
                         }
                         
                         HStack(spacing: 12) {
                             Spacer()
                             
-                            // Capture button
-                            if camera.finalSegmentedImage != nil {
+                            // Capture button (only show when segmentation is active)
+                            if camera.capturedFinalImage == nil && camera.liveSegmentationOverlay != nil {
                                 Button(action: {
-                                    if let currentImage = camera.finalSegmentedImage {
-                                        let transformedImage = applyTransforms(to: currentImage)
+                                    camera.captureCurrent()
+                                }) {
+                                    VStack(spacing: 4) {
+                                        Image(systemName: "camera.circle.fill")
+                                            .font(.system(size: 50))
+                                            .foregroundColor(.green)
+                                            .shadow(color: .black.opacity(0.5), radius: 5)
                                         
-                                        print("📸 Capturing segmented furniture with transforms")
+                                        Text("Capture")
+                                            .font(.caption2)
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                            }
+                            
+                            // Done button (when captured)
+                            if camera.capturedFinalImage != nil {
+                                Button(action: {
+                                    if let currentImage = camera.capturedFinalImage {
+                                        let transformedImage = applyTransforms(to: currentImage)
                                         capturedImage = transformedImage
                                         
                                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                             isShowingCamera = false
-                                            print("📸 Closed camera overlay")
                                         }
                                     }
                                 }) {
@@ -376,7 +287,7 @@ struct SimpleCameraOverlay: View {
                                             .foregroundColor(.green)
                                             .shadow(color: .black.opacity(0.5), radius: 5)
                                         
-                                        Text("Capture")
+                                        Text("Done")
                                             .font(.caption2)
                                             .foregroundColor(.white)
                                     }
@@ -391,39 +302,15 @@ struct SimpleCameraOverlay: View {
         }
         .background(Color.clear)
         .onAppear {
-            print("🎬 SimpleCameraOverlay appeared")
+            print("🎬 Live Segmentation Camera appeared")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 camera.start()
             }
         }
         .onDisappear {
-            print("👋 SimpleCameraOverlay disappeared")
+            print("👋 Live Segmentation Camera disappeared")
             camera.stop()
         }
-    }
-    
-    private func processDrawing(geometry: GeometryProxy) {
-        guard !drawingPath.isEmpty else { return }
-        
-        // Convert path points to normalized coordinates
-        let viewWidth = geometry.size.width
-        let viewHeight = geometry.size.height
-        
-        let normalizedPath = drawingPath.map { point in
-            CGPoint(
-                x: point.x / viewWidth,
-                y: point.y / viewHeight
-            )
-        }
-        
-        print("✏️ Processing drawn path with \(normalizedPath.count) points")
-        
-        // Pass view dimensions to camera for proper coordinate transformation
-        camera.viewWidth = viewWidth
-        camera.viewHeight = viewHeight
-        
-        // Freeze and segment using the drawn path
-        camera.freezeAndSegmentPath(normalizedPath)
     }
     
     private func resetGestures() {
@@ -464,6 +351,28 @@ struct SimpleCameraOverlay: View {
     }
 }
 
+// Crosshair view to show center targeting
+struct CrosshairView: View {
+    var body: some View {
+        ZStack {
+            // Horizontal line
+            Rectangle()
+                .fill(Color.white.opacity(0.8))
+                .frame(width: 40, height: 2)
+            
+            // Vertical line
+            Rectangle()
+                .fill(Color.white.opacity(0.8))
+                .frame(width: 2, height: 40)
+            
+            // Center dot
+            Circle()
+                .fill(Color.green)
+                .frame(width: 8, height: 8)
+        }
+    }
+}
+
 struct CameraPreviewLayer: UIViewRepresentable {
     let session: AVCaptureSession
     
@@ -495,26 +404,31 @@ struct CameraPreviewLayer: UIViewRepresentable {
     }
 }
 
-// MobileSAM Processor with BOX PROMPT (CORRECTED)
-class MobileSAMProcessor: NSObject, ObservableObject {
+// LIVE AUTOMATIC SEGMENTATION PROCESSOR
+class LiveMobileSAMProcessor: NSObject, ObservableObject {
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
-    private let videoQueue = DispatchQueue(label: "mobileSAMQueue", qos: .userInitiated)
+    private let videoQueue = DispatchQueue(label: "liveMobileSAMQueue", qos: .userInitiated)
     
-    @Published var frozenFrame: UIImage?
-    @Published var finalSegmentedImage: UIImage?
+    @Published var liveSegmentationOverlay: UIImage?
+    @Published var capturedFinalImage: UIImage?
     @Published var statusMessage = "Loading..."
+    @Published var isSegmenting = false
+    @Published var lastDetectionInfo = ""
     
     private var encoderModel: MLModel?
     private var decoderModel: MLModel?
     private var isProcessing = false
     private var currentPixelBuffer: CVPixelBuffer?
-    private var frozenPixelBuffer: CVPixelBuffer?
     private var currentImageEmbeddings: MLMultiArray?
     
-    // View dimensions for coordinate transformation
-    var viewWidth: CGFloat = 0
-    var viewHeight: CGFloat = 0
+    // Frame skipping for performance
+    private var frameCounter = 0
+    private let processEveryNFrames = 3  // Process every 3rd frame (~10 FPS)
+    
+    // Last valid segmentation
+    private var lastValidMask: [UInt8]?
+    private var lastValidPixelBuffer: CVPixelBuffer?
     
     override init() {
         super.init()
@@ -524,7 +438,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
     
     private func loadModels() {
         DispatchQueue.main.async {
-            self.statusMessage = "Loading..."
+            self.statusMessage = "Loading models..."
         }
         
         guard let encoderURL = Bundle.main.url(forResource: "MobileSAMImageEncoder", withExtension: "mlmodelc"),
@@ -546,9 +460,9 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             decoderModel = try MLModel(contentsOf: decoderURL, configuration: decoderConfig)
             
             DispatchQueue.main.async {
-                self.statusMessage = "Ready"
+                self.statusMessage = "Point at furniture"
             }
-            print("✅ MobileSAM models loaded")
+            print("✅ MobileSAM models loaded for live segmentation")
         } catch {
             print("❌ Failed to load models: \(error)")
             DispatchQueue.main.async {
@@ -599,7 +513,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             
             if !self.session.isRunning {
                 self.session.startRunning()
-                print("📹 Camera session started")
+                print("📹 Live segmentation camera started")
             }
         }
     }
@@ -610,188 +524,34 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         }
     }
     
-    func freezeAndSegmentPath(_ path: [CGPoint]) {
-        guard let pixelBuffer = currentPixelBuffer,
-              let embeddings = currentImageEmbeddings else {
-            print("⚠️ No frame to freeze")
+    func captureCurrent() {
+        guard let mask = lastValidMask,
+              let pixelBuffer = lastValidPixelBuffer else {
+            print("⚠️ No segmentation to capture")
             return
         }
         
-        // Create UIImage from pixel buffer
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let context = CIContext()
-        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
-            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
-            
-            DispatchQueue.main.async {
-                self.frozenFrame = uiImage
-                self.statusMessage = "Segmenting..."
-            }
-            
-            // Store frozen buffer
-            frozenPixelBuffer = pixelBuffer
-            
-            print("❄️ Frame frozen - segmenting with BOX PROMPT")
-            
-            // Run segmentation with BOX prompt
-            segmentWithBoxPrompt(embeddings: embeddings, pixelBuffer: pixelBuffer, path: path)
+        print("📸 Capturing current segmentation")
+        createFinalSegmentedImage(mask, width: 256, height: 256, pixelBuffer: pixelBuffer, forCapture: true)
+    }
+    
+    func resetCapture() {
+        capturedFinalImage = nil
+        DispatchQueue.main.async {
+            self.statusMessage = "Point at furniture"
         }
     }
     
-    // BOX PROMPT SEGMENTATION (CORRECTED)
-    private func segmentWithBoxPrompt(embeddings: MLMultiArray, pixelBuffer: CVPixelBuffer, path: [CGPoint]) {
+    // LIVE SEGMENTATION: Runs continuously on center point
+    private func liveSegmentCenterObject(embeddings: MLMultiArray, pixelBuffer: CVPixelBuffer) {
         guard let decoder = decoderModel else { return }
         
-        DispatchQueue.global(qos: .userInitiated).async {
-            print("📦 Using BOX PROMPT (2 corner points)")
-            print("📊 View dimensions: \(self.viewWidth) x \(self.viewHeight)")
-            
-            // Calculate bounding box of drawn path
-            let minX = path.map { $0.x }.min() ?? 0
-            let maxX = path.map { $0.x }.max() ?? 1
-            let minY = path.map { $0.y }.min() ?? 0
-            let maxY = path.map { $0.y }.max() ?? 1
-            
-            let width = maxX - minX
-            let height = maxY - minY
-            let drawnAreaPercent = width * height * 100
-            
-            print("📦 Drawn region: \(String(format: "%.1f", drawnAreaPercent))% of view")
-            print("   Bounds: X[\(String(format: "%.3f", minX)) to \(String(format: "%.3f", maxX))], Y[\(String(format: "%.3f", minY)) to \(String(format: "%.3f", maxY))]")
-            
-            let viewAspect = self.viewWidth / self.viewHeight
-            
-            // Transform box corners to landscape coordinates (normalized 0-1)
-            let topLeft = self.transformPoint(CGPoint(x: minX, y: minY), viewAspect: viewAspect, maskAspect: 1.0)
-            let bottomRight = self.transformPoint(CGPoint(x: maxX, y: maxY), viewAspect: viewAspect, maskAspect: 1.0)
-            
-            print("📍 Box corners (landscape, normalized):")
-            print("   TL: (\(String(format: "%.3f", topLeft.x)), \(String(format: "%.3f", topLeft.y)))")
-            print("   BR: (\(String(format: "%.3f", bottomRight.x)), \(String(format: "%.3f", bottomRight.y)))")
-            
-            var maskData: [UInt8]?
-            var maskWidth = 0
-            var maskHeight = 0
-            
-            do {
-                // CRITICAL FIX: Use shape [1, 2, 2] not [1, 4]
-                // [batch=1, num_points=2, coords=2]
-                let pointCoords = try MLMultiArray(shape: [1, 2, 2], dataType: .float32)
-                
-                // Point 0: Top-left corner (normalized 0-1, NOT pixels)
-                pointCoords[[0, 0, 0] as [NSNumber]] = NSNumber(value: Float(topLeft.x))
-                pointCoords[[0, 0, 1] as [NSNumber]] = NSNumber(value: Float(topLeft.y))
-                
-                // Point 1: Bottom-right corner (normalized 0-1, NOT pixels)
-                pointCoords[[0, 1, 0] as [NSNumber]] = NSNumber(value: Float(bottomRight.x))
-                pointCoords[[0, 1, 1] as [NSNumber]] = NSNumber(value: Float(bottomRight.y))
-                
-                // Labels: both corners are foreground points (1 = foreground)
-                let pointLabels = try MLMultiArray(shape: [1, 2], dataType: .float32)
-                pointLabels[[0, 0] as [NSNumber]] = NSNumber(value: 1)
-                pointLabels[[0, 1] as [NSNumber]] = NSNumber(value: 1)
-                
-                print("✅ Created point_coords shape: [1, 2, 2] (batch, points, coords)")
-                print("✅ Coordinates in normalized [0, 1] range")
-                
-                let inputDict: [String: Any] = [
-                    "image_embeddings": embeddings,
-                    "point_coords": pointCoords,
-                    "point_labels": pointLabels
-                ]
-                
-                let inputProvider = try MLDictionaryFeatureProvider(dictionary: inputDict)
-                let output = try decoder.prediction(from: inputProvider)
-                
-                guard let masks = output.featureValue(for: "masks")?.multiArrayValue else {
-                    print("❌ No mask from box prompt, trying center point fallback")
-                    self.segmentWithCenterPoint(embeddings: embeddings, pixelBuffer: pixelBuffer, path: path)
-                    return
-                }
-                
-                maskHeight = masks.shape[2].intValue
-                maskWidth = masks.shape[3].intValue
-                print("🎭 Mask dimensions: \(maskWidth) x \(maskHeight)")
-                
-                var tempMaskData = [UInt8](repeating: 0, count: maskWidth * maskHeight)
-                var pixelCount = 0
-                
-                for y in 0..<maskHeight {
-                    for x in 0..<maskWidth {
-                        let indices = [0, 0, y, x] as [NSNumber]
-                        let value = masks[indices].floatValue
-                        if value > 0.0 {
-                            tempMaskData[y * maskWidth + x] = 255
-                            pixelCount += 1
-                        }
-                    }
-                }
-                
-                maskData = tempMaskData
-                let maskPercentage = Float(pixelCount) / Float(maskWidth * maskHeight) * 100
-                print("✅ Box prompt result: \(pixelCount) pixels (\(String(format: "%.1f", maskPercentage))%)")
-                
-            } catch {
-                print("❌ Box prompt failed: \(error)")
-                print("   Falling back to center point")
-                self.segmentWithCenterPoint(embeddings: embeddings, pixelBuffer: pixelBuffer, path: path)
-                return
-            }
-            
-            guard let combinedMask = maskData else {
-                print("❌ No mask generated")
-                DispatchQueue.main.async {
-                    self.statusMessage = "Segmentation failed"
-                    self.unfreezeFrame()
-                }
-                return
-            }
-            
-            // Clip to drawn path
-            let clippedMask = self.clipMaskToPath(
-                maskData: combinedMask,
-                maskWidth: maskWidth,
-                maskHeight: maskHeight,
-                path: path
-            )
-            
-            let whitePixels = clippedMask.filter { $0 == 255 }.count
-            let combinedPixels = combinedMask.filter { $0 == 255 }.count
-            let retentionRatio = combinedPixels > 0 ? Float(whitePixels) / Float(combinedPixels) : 0
-            print("✅ Clipped: \(whitePixels) pixels (\(Int(retentionRatio * 100))% retained)")
-            
-            // Refine mask
-            let refinedMask = self.refineMask(clippedMask, width: maskWidth, height: maskHeight)
-            let refinedPixels = refinedMask.filter { $0 == 255 }.count
-            print("✨ Refined: \(refinedPixels) pixels (final)")
-            
-            if refinedPixels > 100 {
-                self.createFinalSegmentedImage(refinedMask, width: maskWidth, height: maskHeight, pixelBuffer: pixelBuffer)
-            } else {
-                print("⚠️ Too few pixels, trying center point fallback")
-                self.segmentWithCenterPoint(embeddings: embeddings, pixelBuffer: pixelBuffer, path: path)
-            }
+        DispatchQueue.main.async {
+            self.isSegmenting = true
         }
-    }
-    
-    // FALLBACK: Center point
-    private func segmentWithCenterPoint(embeddings: MLMultiArray, pixelBuffer: CVPixelBuffer, path: [CGPoint]) {
-        guard let decoder = decoderModel else { return }
         
-        print("🎯 Fallback: Using CENTER POINT")
-        
-        let minX = path.map { $0.x }.min() ?? 0
-        let maxX = path.map { $0.x }.max() ?? 1
-        let minY = path.map { $0.y }.min() ?? 0
-        let maxY = path.map { $0.y }.max() ?? 1
-        
-        let centerX = (minX + maxX) / 2
-        let centerY = (minY + maxY) / 2
-        
-        let viewAspect = self.viewWidth / self.viewHeight
-        let centerPoint = self.transformPoint(CGPoint(x: centerX, y: centerY), viewAspect: viewAspect, maskAspect: 1.0)
-        
-        print("   Center: (\(String(format: "%.3f", centerPoint.x)), \(String(format: "%.3f", centerPoint.y)))")
+        // Use center point (0.5, 0.5) to segment whatever is in the middle
+        let centerPoint = CGPoint(x: 0.5, y: 0.5)
         
         do {
             let pointCoords = try MLMultiArray(shape: [1, 1, 2], dataType: .float32)
@@ -811,10 +571,8 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             let output = try decoder.prediction(from: inputProvider)
             
             guard let masks = output.featureValue(for: "masks")?.multiArrayValue else {
-                print("❌ Center point also failed")
                 DispatchQueue.main.async {
-                    self.statusMessage = "Segmentation failed"
-                    self.unfreezeFrame()
+                    self.isSegmenting = false
                 }
                 return
             }
@@ -823,6 +581,7 @@ class MobileSAMProcessor: NSObject, ObservableObject {
             let maskWidth = masks.shape[3].intValue
             
             var maskData = [UInt8](repeating: 0, count: maskWidth * maskHeight)
+            var pixelCount = 0
             
             for y in 0..<maskHeight {
                 for x in 0..<maskWidth {
@@ -830,228 +589,66 @@ class MobileSAMProcessor: NSObject, ObservableObject {
                     let value = masks[indices].floatValue
                     if value > 0.0 {
                         maskData[y * maskWidth + x] = 255
+                        pixelCount += 1
                     }
                 }
             }
             
-            // Clip and refine
-            let clippedMask = self.clipMaskToPath(maskData: maskData, maskWidth: maskWidth, maskHeight: maskHeight, path: path)
-            let refinedMask = self.refineMask(clippedMask, width: maskWidth, height: maskHeight)
+            let maskPercentage = Float(pixelCount) / Float(maskWidth * maskHeight) * 100
             
-            self.createFinalSegmentedImage(refinedMask, width: maskWidth, height: maskHeight, pixelBuffer: pixelBuffer)
+            // FILTER: Reject walls (too large) and noise (too small)
+            let minPercentage: Float = 2.0   // Min 2% of frame
+            let maxPercentage: Float = 50.0  // Max 50% of frame (walls are bigger)
+            
+            if maskPercentage < minPercentage {
+                print("⚠️ Detection too small (\(String(format: "%.1f", maskPercentage))%) - likely noise")
+                DispatchQueue.main.async {
+                    self.lastDetectionInfo = "Object too small - move closer"
+                    self.liveSegmentationOverlay = nil
+                    self.isSegmenting = false
+                }
+                return
+            }
+            
+            if maskPercentage > maxPercentage {
+                print("⚠️ Detection too large (\(String(format: "%.1f", maskPercentage))%) - likely wall/floor")
+                DispatchQueue.main.async {
+                    self.lastDetectionInfo = "Too large - move back or point at furniture"
+                    self.liveSegmentationOverlay = nil
+                    self.isSegmenting = false
+                }
+                return
+            }
+            
+            // Valid detection!
+            print("✅ Live detection: \(pixelCount) pixels (\(String(format: "%.1f", maskPercentage))%)")
+            
+            // Store for capture
+            self.lastValidMask = maskData
+            self.lastValidPixelBuffer = pixelBuffer
+            
+            // Create overlay image
+            self.createFinalSegmentedImage(maskData, width: maskWidth, height: maskHeight, pixelBuffer: pixelBuffer, forCapture: false)
+            
+            DispatchQueue.main.async {
+                self.lastDetectionInfo = "✓ Object detected (\(String(format: "%.0f", maskPercentage))% of frame)"
+                self.isSegmenting = false
+            }
             
         } catch {
-            print("❌ Fallback failed: \(error)")
+            print("❌ Live segmentation failed: \(error)")
             DispatchQueue.main.async {
-                self.statusMessage = "Segmentation failed"
-                self.unfreezeFrame()
+                self.isSegmenting = false
             }
         }
     }
     
-    // MORPHOLOGICAL POST-PROCESSING
-    private func refineMask(_ maskData: [UInt8], width: Int, height: Int) -> [UInt8] {
-        print("🔧 Refining mask with morphological operations...")
-        
-        // Step 1: CLOSING (dilate then erode) - fills small holes and gaps
-        let dilated1 = dilateMask(maskData, width: width, height: height, iterations: 2)
-        let closed = erodeMask(dilated1, width: width, height: height, iterations: 2)
-        
-        // Step 2: OPENING (erode then dilate) - removes small noise
-        let eroded = erodeMask(closed, width: width, height: height, iterations: 1)
-        let opened = dilateMask(eroded, width: width, height: height, iterations: 1)
-        
-        // Step 3: Final dilation to slightly expand edges
-        let finalMask = dilateMask(opened, width: width, height: height, iterations: 1)
-        
-        let originalWhite = maskData.filter { $0 == 255 }.count
-        let refinedWhite = finalMask.filter { $0 == 255 }.count
-        print("   Original: \(originalWhite) pixels → Refined: \(refinedWhite) pixels")
-        
-        return finalMask
-    }
-    
-    private func dilateMask(_ maskData: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
-        var result = maskData
-        
-        for _ in 0..<iterations {
-            var temp = [UInt8](repeating: 0, count: width * height)
-            
-            for y in 0..<height {
-                for x in 0..<width {
-                    let idx = y * width + x
-                    
-                    // If current pixel is white OR any neighbor is white, set to white
-                    if result[idx] == 255 {
-                        temp[idx] = 255
-                    } else {
-                        // Check 8-connected neighbors
-                        var hasWhiteNeighbor = false
-                        for dy in -1...1 {
-                            for dx in -1...1 {
-                                let ny = y + dy
-                                let nx = x + dx
-                                
-                                if ny >= 0 && ny < height && nx >= 0 && nx < width {
-                                    let nidx = ny * width + nx
-                                    if result[nidx] == 255 {
-                                        hasWhiteNeighbor = true
-                                        break
-                                    }
-                                }
-                            }
-                            if hasWhiteNeighbor { break }
-                        }
-                        
-                        if hasWhiteNeighbor {
-                            temp[idx] = 255
-                        }
-                    }
-                }
-            }
-            
-            result = temp
-        }
-        
-        return result
-    }
-    
-    private func erodeMask(_ maskData: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
-        var result = maskData
-        
-        for _ in 0..<iterations {
-            var temp = [UInt8](repeating: 0, count: width * height)
-            
-            for y in 0..<height {
-                for x in 0..<width {
-                    let idx = y * width + x
-                    
-                    if result[idx] == 0 {
-                        temp[idx] = 0
-                        continue
-                    }
-                    
-                    // If current pixel is white, check if ALL neighbors are white
-                    var allNeighborsWhite = true
-                    for dy in -1...1 {
-                        for dx in -1...1 {
-                            let ny = y + dy
-                            let nx = x + dx
-                            
-                            if ny >= 0 && ny < height && nx >= 0 && nx < width {
-                                let nidx = ny * width + nx
-                                if result[nidx] == 0 {
-                                    allNeighborsWhite = false
-                                    break
-                                }
-                            }
-                        }
-                        if !allNeighborsWhite { break }
-                    }
-                    
-                    if allNeighborsWhite {
-                        temp[idx] = 255
-                    }
-                }
-            }
-            
-            result = temp
-        }
-        
-        return result
-    }
-    
-    // CLIP MASK to only include pixels inside drawn path
-    private func clipMaskToPath(maskData: [UInt8], maskWidth: Int, maskHeight: Int, path: [CGPoint]) -> [UInt8] {
-        var clippedMask = [UInt8](repeating: 0, count: maskWidth * maskHeight)
-        
-        let viewWidth = self.viewWidth > 0 ? self.viewWidth : UIScreen.main.bounds.width
-        let viewHeight = self.viewHeight > 0 ? self.viewHeight : UIScreen.main.bounds.height
-        
-        let viewAspect = viewWidth / viewHeight
-        let maskAspect = CGFloat(maskWidth) / CGFloat(maskHeight)
-        
-        print("📐 Clipping:")
-        print("   View: \(Int(viewWidth))x\(Int(viewHeight)) = \(String(format: "%.3f", viewAspect)) aspect")
-        print("   Mask: \(maskWidth)x\(maskHeight) = \(String(format: "%.3f", maskAspect)) aspect")
-        
-        // Create bezier path with ROTATION + ASPECT CORRECTION
-        let bezierPath = UIBezierPath()
-        if !path.isEmpty {
-            let firstTransformed = transformPoint(path[0], viewAspect: viewAspect, maskAspect: maskAspect)
-            bezierPath.move(to: firstTransformed)
-            
-            for point in path.dropFirst() {
-                let transformed = transformPoint(point, viewAspect: viewAspect, maskAspect: maskAspect)
-                bezierPath.addLine(to: transformed)
-            }
-            bezierPath.close()
-        }
-        
-        var keptPixels = 0
-        var droppedPixels = 0
-        
-        // Check each pixel
-        for y in 0..<maskHeight {
-            for x in 0..<maskWidth {
-                let idx = y * maskWidth + x
-                
-                if maskData[idx] == 255 {
-                    let maskPoint = CGPoint(
-                        x: CGFloat(x) / CGFloat(maskWidth),
-                        y: CGFloat(y) / CGFloat(maskHeight)
-                    )
-                    
-                    if bezierPath.contains(maskPoint) {
-                        clippedMask[idx] = 255
-                        keptPixels += 1
-                    } else {
-                        droppedPixels += 1
-                    }
-                }
-            }
-        }
-        
-        print("   Kept: \(keptPixels), Dropped: \(droppedPixels)")
-        
-        return clippedMask
-    }
-    
-    // Transform point: CCW rotation for camera orientation
-    private func transformPoint(_ point: CGPoint, viewAspect: CGFloat, maskAspect: CGFloat) -> CGPoint {
-        // Rotate 90° counter-clockwise: horizontal portrait → vertical landscape
-        let rotatedPoint = CGPoint(x: point.y, y: 1.0 - point.x)
-        
-        // Apply aspect correction
-        let rotatedViewAspect = 1.0 / viewAspect
-        
-        if abs(rotatedViewAspect - maskAspect) < 0.01 {
-            return rotatedPoint
-        }
-        
-        if rotatedViewAspect < maskAspect {
-            let scale = rotatedViewAspect / maskAspect
-            let xOffset = (1.0 - scale) / 2.0
-            return CGPoint(x: xOffset + rotatedPoint.x * scale, y: rotatedPoint.y)
-        } else {
-            let scale = maskAspect / rotatedViewAspect
-            let yOffset = (1.0 - scale) / 2.0
-            return CGPoint(x: rotatedPoint.x, y: yOffset + rotatedPoint.y * scale)
-        }
-    }
-    
-    // Create furniture image with TRANSPARENT background AND RED EDGES for debugging
-    private func createFinalSegmentedImage(_ maskData: [UInt8], width: Int, height: Int, pixelBuffer: CVPixelBuffer) {
-        // Get original image
+    // Create segmented image with transparent background and green edges
+    private func createFinalSegmentedImage(_ maskData: [UInt8], width: Int, height: Int, pixelBuffer: CVPixelBuffer, forCapture: Bool) {
         let originalImage = CIImage(cvPixelBuffer: pixelBuffer)
-        
-        print("🖼️ Creating segmented image with RED EDGE debugging")
-        
-        // Create the segmented furniture image
         let context = CIContext(options: [.useSoftwareRenderer: false])
         let rgbColorSpace = CGColorSpaceCreateDeviceRGB()
         
-        // Create output buffer with alpha
         var outputBuffer: CVPixelBuffer?
         let attrs = [
             kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue,
@@ -1091,20 +688,16 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         let outData = outBaseAddress.assumingMemoryBound(to: UInt8.self)
         let inData = inBaseAddress.assumingMemoryBound(to: UInt8.self)
         
-        // Scale factors
         let scaleX = CGFloat(width) / CGFloat(imageWidth)
         let scaleY = CGFloat(height) / CGFloat(imageHeight)
         
-        // Create mask with RED EDGES for visualization
+        // Find edges for visualization
         var debugMaskData = maskData
-        
-        // Find edges and mark them as 128 (will render as red)
         for y in 1..<(height-1) {
             for x in 1..<(width-1) {
                 let idx = y * width + x
                 
                 if maskData[idx] == 255 {
-                    // Check if this is an edge pixel (has black neighbor)
                     var isEdge = false
                     for dy in -1...1 {
                         for dx in -1...1 {
@@ -1119,21 +712,16 @@ class MobileSAMProcessor: NSObject, ObservableObject {
                         }
                         if isEdge { break }
                     }
-                    
-                    // Mark edges with value 128 (we'll make these red)
                     if isEdge {
-                        debugMaskData[idx] = 128
+                        debugMaskData[idx] = 128  // Mark edges
                     }
                 }
             }
         }
         
-        print("🔴 Creating image with RED EDGE highlighting for debugging")
-        
         // Copy pixels with mask applied
         for y in 0..<imageHeight {
             for x in 0..<imageWidth {
-                // Map to mask coordinates
                 let maskX = Int(CGFloat(x) * scaleX)
                 let maskY = Int(CGFloat(y) * scaleY)
                 let maskX_clamped = min(max(maskX, 0), width - 1)
@@ -1145,24 +733,42 @@ class MobileSAMProcessor: NSObject, ObservableObject {
                 
                 let maskValue = debugMaskData[maskIdx]
                 
-                if maskValue == 128 {
-                    // EDGE - draw RED for debugging
-                    outData[outIdx] = 0      // B
-                    outData[outIdx + 1] = 0  // G
-                    outData[outIdx + 2] = 255 // R (RED!)
-                    outData[outIdx + 3] = 255 // A
-                } else if maskValue == 255 {
-                    // INSIDE - copy original pixel
-                    outData[outIdx] = inData[inIdx]
-                    outData[outIdx + 1] = inData[inIdx + 1]
-                    outData[outIdx + 2] = inData[inIdx + 2]
-                    outData[outIdx + 3] = 255
+                if forCapture {
+                    // For capture: solid with transparent background
+                    if maskValue == 128 || maskValue == 255 {
+                        // Copy original pixel
+                        outData[outIdx] = inData[inIdx]
+                        outData[outIdx + 1] = inData[inIdx + 1]
+                        outData[outIdx + 2] = inData[inIdx + 2]
+                        outData[outIdx + 3] = 255
+                    } else {
+                        // Transparent background
+                        outData[outIdx] = 0
+                        outData[outIdx + 1] = 0
+                        outData[outIdx + 2] = 0
+                        outData[outIdx + 3] = 0
+                    }
                 } else {
-                    // OUTSIDE - transparent
-                    outData[outIdx] = 0
-                    outData[outIdx + 1] = 0
-                    outData[outIdx + 2] = 0
-                    outData[outIdx + 3] = 0
+                    // For live overlay: green edges, transparent interior
+                    if maskValue == 128 {
+                        // GREEN edges for live overlay
+                        outData[outIdx] = 0        // B
+                        outData[outIdx + 1] = 255  // G (GREEN!)
+                        outData[outIdx + 2] = 0    // R
+                        outData[outIdx + 3] = 200  // Semi-transparent
+                    } else if maskValue == 255 {
+                        // Semi-transparent green fill
+                        outData[outIdx] = 0
+                        outData[outIdx + 1] = 255
+                        outData[outIdx + 2] = 0
+                        outData[outIdx + 3] = 50  // Very transparent
+                    } else {
+                        // Transparent
+                        outData[outIdx] = 0
+                        outData[outIdx + 1] = 0
+                        outData[outIdx + 2] = 0
+                        outData[outIdx + 3] = 0
+                    }
                 }
             }
         }
@@ -1172,45 +778,45 @@ class MobileSAMProcessor: NSObject, ObservableObject {
         if let cgImage = context.createCGImage(ciImage, from: ciImage.extent, format: CIFormat.RGBA8, colorSpace: rgbColorSpace) {
             let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
             
-            print("✅ Segmented image created successfully with red edge debugging")
-            
             DispatchQueue.main.async {
-                self.finalSegmentedImage = uiImage
-                self.statusMessage = "Ready!"
+                if forCapture {
+                    self.capturedFinalImage = uiImage
+                    print("📸 Captured final segmented image")
+                } else {
+                    self.liveSegmentationOverlay = uiImage
+                }
             }
-        }
-    }
-    
-    func unfreezeFrame() {
-        frozenFrame = nil
-        frozenPixelBuffer = nil
-        finalSegmentedImage = nil
-        DispatchQueue.main.async {
-            self.statusMessage = "Ready"
-        }
-    }
-    
-    func resetAll() {
-        frozenFrame = nil
-        frozenPixelBuffer = nil
-        finalSegmentedImage = nil
-        DispatchQueue.main.async {
-            self.statusMessage = "Ready"
         }
     }
 }
 
-extension MobileSAMProcessor: AVCaptureVideoDataOutputSampleBufferDelegate {
+extension LiveMobileSAMProcessor: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
+        // Skip capture if already captured
+        if capturedFinalImage != nil { return }
+        
         currentPixelBuffer = pixelBuffer
+        
+        // Frame skipping for performance
+        frameCounter += 1
+        if frameCounter % processEveryNFrames != 0 {
+            return
+        }
         
         if !isProcessing {
             isProcessing = true
             
             DispatchQueue.global(qos: .userInitiated).async {
+                // 1. Run encoder
                 self.runEncoder(pixelBuffer: pixelBuffer)
+                
+                // 2. Immediately run decoder for live segmentation
+                if let embeddings = self.currentImageEmbeddings {
+                    self.liveSegmentCenterObject(embeddings: embeddings, pixelBuffer: pixelBuffer)
+                }
+                
                 self.isProcessing = false
             }
         }
