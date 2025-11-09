@@ -9,7 +9,6 @@ struct SegmentExamine: View {
     @Binding var isShowingCamera: Bool
     @StateObject private var camera = FastSAMCameraModel()
     
-    // START AT 50% SCALE INSTEAD OF 30%
     @State private var scaleMultiplier: CGFloat = 0.5
     @State private var dragOffset: CGSize = .zero
     @State private var accumulatedOffset: CGSize = .zero
@@ -68,13 +67,12 @@ struct SegmentExamine: View {
             
             VStack {
                 HStack {
-                    // SIZE SLIDER - More prominent with background
                     HStack(spacing: 6) {
                         Image(systemName: "minus.magnifyingglass")
                             .foregroundColor(.white)
                             .font(.system(size: 14))
                         Slider(value: $scaleMultiplier, in: 0.3...1.0)
-                            .frame(width: 150)  // Increased from 120
+                            .frame(width: 150)
                             .accentColor(.white)
                         Image(systemName: "plus.magnifyingglass")
                             .foregroundColor(.white)
@@ -82,7 +80,7 @@ struct SegmentExamine: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(Capsule().fill(Color.black.opacity(0.7)))  // Darker background
+                    .background(Capsule().fill(Color.black.opacity(0.7)))
                     .padding(.leading, 16)
                     
                     Spacer()
@@ -114,7 +112,7 @@ struct SegmentExamine: View {
                     }
                     .padding(.trailing, 16)
                 }
-                .padding(.top, 60)  // Increased from 50 to avoid status bar
+                .padding(.top, 60)
                 
                 Spacer()
                 
@@ -139,12 +137,12 @@ struct SegmentExamine: View {
                                     .background(Capsule().fill(Color.black.opacity(0.5)))
                                     .foregroundColor(.white)
                                 
-                                if camera.isAutoAdjusting {
-                                    Text("Auto-tuning...")
+                                if camera.isAutoThresholding {
+                                    Text("Auto: \(Int(camera.confidenceThreshold * 100))%")
                                         .font(.caption2)
                                         .padding(6)
-                                        .background(Capsule().fill(Color.green.opacity(0.3)))
-                                        .foregroundColor(.green)
+                                        .background(Capsule().fill(Color.blue.opacity(0.3)))
+                                        .foregroundColor(.blue)
                                 }
                             }
                         }
@@ -158,7 +156,7 @@ struct SegmentExamine: View {
                             Slider(value: $camera.confidenceThreshold, in: 0.3...0.7)
                                 .frame(width: 150)
                                 .accentColor(.green)
-                                .disabled(camera.isAutoAdjusting)
+                                .disabled(camera.isAutoThresholding)
                             Text("\(Int(camera.confidenceThreshold * 100))%")
                                 .font(.caption)
                                 .foregroundColor(.white)
@@ -167,7 +165,7 @@ struct SegmentExamine: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(Capsule().fill(Color.black.opacity(0.5)))
-                        .opacity(camera.isAutoAdjusting ? 0.6 : 1.0)
+                        .opacity(camera.isAutoThresholding ? 0.6 : 1.0)
                     }
                 }
                 .padding(.bottom, 50)
@@ -192,43 +190,42 @@ struct SegmentExamine: View {
     }
 }
 
-struct ScanningReticle: View {
-    @Binding var rotation: Double
-    
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.3), lineWidth: 2)
-                .frame(width: 120, height: 120)
-            Rectangle()
-                .fill(LinearGradient(gradient: Gradient(colors: [.clear, .white.opacity(0.8), .clear]), startPoint: .top, endPoint: .bottom))
-                .frame(width: 2, height: 60)
-                .offset(y: -30)
-                .rotationEffect(.degrees(rotation))
-            Circle()
-                .fill(Color.white.opacity(0.5))
-                .frame(width: 8, height: 8)
-            ForEach(0..<4) { i in
-                CornerBracket()
-                    .rotationEffect(.degrees(Double(i) * 90))
-            }
-        }
-    }
-}
+//struct ScanningReticle: View {
+//    @Binding var rotation: Double
+//    
+//    var body: some View {
+//        ZStack {
+//            Circle()
+//                .stroke(Color.white.opacity(0.3), lineWidth: 2)
+//                .frame(width: 120, height: 120)
+//            Rectangle()
+//                .fill(LinearGradient(gradient: Gradient(colors: [.clear, .white.opacity(0.8), .clear]), startPoint: .top, endPoint: .bottom))
+//                .frame(width: 2, height: 60)
+//                .offset(y: -30)
+//                .rotationEffect(.degrees(rotation))
+//            Circle()
+//                .fill(Color.white.opacity(0.5))
+//                .frame(width: 8, height: 8)
+//            ForEach(0..<4) { i in
+//                CornerBracket()
+//                    .rotationEffect(.degrees(Double(i) * 90))
+//            }
+//        }
+//    }
+//}
+//
+//struct CornerBracket: View {
+//    var body: some View {
+//        Path { path in
+//            path.move(to: CGPoint(x: -60, y: -60))
+//            path.addLine(to: CGPoint(x: -40, y: -60))
+//            path.move(to: CGPoint(x: -60, y: -60))
+//            path.addLine(to: CGPoint(x: -60, y: -40))
+//        }
+//        .stroke(Color.white.opacity(0.6), lineWidth: 2)
+//    }
+//}
 
-struct CornerBracket: View {
-    var body: some View {
-        Path { path in
-            path.move(to: CGPoint(x: -60, y: -60))
-            path.addLine(to: CGPoint(x: -40, y: -60))
-            path.move(to: CGPoint(x: -60, y: -60))
-            path.addLine(to: CGPoint(x: -60, y: -40))
-        }
-        .stroke(Color.white.opacity(0.6), lineWidth: 2)
-    }
-}
-
-// Structure to hold detection information
 struct FurnitureDetection {
     let idx: Int
     let score: Float
@@ -243,6 +240,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     @Published var confidenceThreshold: Float = 0.5
     @Published var isAutoAdjusting = false
+    @Published var isAutoThresholding = true
     @Published var furnitureOpacity: Double = 0.0
     @Published var detectionId: UUID = UUID()
     
@@ -268,10 +266,10 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     private let frameCenterY: Float = 320
     private let frameArea: Float = 640 * 640
     
-    // STABILITY MECHANISMS
-    private var currentDetectionBox: (x: Float, y: Float, w: Float, h: Float)?
-    private var detectionLockTime: Date?
-    private let lockDuration: TimeInterval = 3.0
+    private var trackedDetectionCenter: (x: Float, y: Float)?
+    private var trackingConfidence: Float = 0.0
+    private let trackingRadius: Float = 200
+    
     private var consecutiveFramesWithSameDetection = 0
     private let requiredConsecutiveFrames = 2
     
@@ -284,6 +282,19 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     private let stabilityThreshold: TimeInterval = 2.0
     private var noDetectionFrames = 0
     private let autoAdjustTrigger = 15
+    
+    private var detectionConfidenceHistory: [[Float]] = []
+    private var framesSinceLastThresholdUpdate = 0
+    private let thresholdUpdateInterval = 30
+    private var sceneAnalysisFrames = 0
+    private let requiredAnalysisFrames = 5
+    
+    // ✅ Pure additive accumulation variables
+    private var accumulatedMask: [UInt8]?
+    private var maskWidth: Int = 0
+    private var maskHeight: Int = 0
+    private var framesInCurrentGroup = 0
+    private let maxAccumulationFrames = 30  // ✨ 30 frames (6 seconds at 5 FPS)
     
     override init() {
         super.init()
@@ -306,6 +317,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     private func handleMemoryWarning() {
         u2netMask = nil
         detectionHistory.removeAll()
+        detectionConfidenceHistory.removeAll()
     }
     
     private func checkCameraAuthorization() {
@@ -427,8 +439,8 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             return
         }
         
-        // Run U2-Net every 2 frames instead of every frame for better performance
-        if u2netModel != nil && Int(now.timeIntervalSince1970 * 5) % 2 == 0 {
+        // Run U2-Net every frame for continuous updates
+        if u2netModel != nil {
             runU2NetForGuidanceAsync(pixelBuffer: pixelBuffer)
         }
         
@@ -454,35 +466,120 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 return
             }
             
-            processWithStableScoring(detections: detections, prototypes: prototypes, originalPixelBuffer: pixelBuffer)
+            let numDetections = detections.shape[2].intValue
+            updateAdaptiveThreshold(detections: detections, numDetections: numDetections)
+            
+            processWithContinuousGrouping(detections: detections, prototypes: prototypes, originalPixelBuffer: pixelBuffer)
             
         } catch {
-            print("❌ Prediction failed")
+            print("❌ Prediction failed: \(error)")
         }
         
         isProcessing = false
     }
     
+    private func updateAdaptiveThreshold(detections: MLMultiArray, numDetections: Int) {
+        guard isAutoThresholding else { return }
+        
+        sceneAnalysisFrames += 1
+        framesSinceLastThresholdUpdate += 1
+        
+        let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
+        var confidences: [Float] = []
+        
+        for i in 0..<numDetections {
+            let conf = detPointer[4 * numDetections + i]
+            if conf > 0.2 {
+                confidences.append(conf)
+            }
+        }
+        
+        detectionConfidenceHistory.append(confidences)
+        if detectionConfidenceHistory.count > 5 {
+            detectionConfidenceHistory.removeFirst()
+        }
+        
+        if sceneAnalysisFrames >= requiredAnalysisFrames ||
+           framesSinceLastThresholdUpdate >= thresholdUpdateInterval {
+            calculateOptimalThreshold()
+            framesSinceLastThresholdUpdate = 0
+        }
+    }
+    
+    private func calculateOptimalThreshold() {
+        var allConfidences: [Float] = []
+        for frame in detectionConfidenceHistory {
+            allConfidences.append(contentsOf: frame)
+        }
+        
+        guard allConfidences.count >= 10 else { return }
+        
+        allConfidences.sort()
+        
+        let count = allConfidences.count
+        
+        let lowThreshold = allConfidences[count / 3]
+        let midThreshold = allConfidences[count / 2]
+        let highThreshold = allConfidences[2 * count / 3]
+        
+        let lowScore = scoreThreshold(lowThreshold, confidences: allConfidences)
+        let midScore = scoreThreshold(midThreshold, confidences: allConfidences)
+        let highScore = scoreThreshold(highThreshold, confidences: allConfidences)
+        
+        let bestThreshold: Float
+        if lowScore > midScore && lowScore > highScore {
+            bestThreshold = lowThreshold
+        } else if midScore > highScore {
+            bestThreshold = midThreshold
+        } else {
+            bestThreshold = highThreshold
+        }
+        
+        let clampedThreshold = max(0.3, min(0.7, bestThreshold))
+        let smoothedThreshold = confidenceThreshold * 0.7 + clampedThreshold * 0.3
+        
+        if abs(smoothedThreshold - confidenceThreshold) > 0.05 {
+            DispatchQueue.main.async {
+                self.confidenceThreshold = smoothedThreshold
+            }
+            print("🎯 Auto-threshold: \(String(format: "%.2f", smoothedThreshold))")
+        }
+    }
+    
+    private func scoreThreshold(_ threshold: Float, confidences: [Float]) -> Float {
+        let aboveCount = confidences.filter { $0 > threshold }.count
+        let ratio = Float(aboveCount) / Float(confidences.count)
+        
+        if ratio < 0.1 || ratio > 0.6 {
+            return 0
+        }
+        
+        let idealRatio: Float = 0.3
+        let ratioScore = 1.0 - abs(ratio - idealRatio) / idealRatio
+        
+        let acceptedConfidences = confidences.filter { $0 > threshold }
+        let meanAccepted = acceptedConfidences.isEmpty ? 0 : acceptedConfidences.reduce(0, +) / Float(acceptedConfidences.count)
+        
+        let confidenceScore = meanAccepted
+        
+        return ratioScore * 0.6 + confidenceScore * 0.4
+    }
+    
     private func runU2NetForGuidanceAsync(pixelBuffer: CVPixelBuffer) {
         guard let model = u2netModel else { return }
-        
-        print("🔄 Processing furniture...")
         
         u2netQueue.async { [weak self] in
             guard let self = self else { return }
             
             let request = VNCoreMLRequest(model: model) { [weak self] request, error in
                 if let error = error {
-                    print("❌ Processing error: \(error)")
+                    print("❌ U2-Net error: \(error)")
                     return
                 }
                 
                 if let results = request.results as? [VNPixelBufferObservation],
                    let maskBuffer = results.first?.pixelBuffer {
                     self?.u2netMask = maskBuffer
-                    print("✅ Furniture detected")
-                } else {
-                    print("⚠️ No furniture detected")
                 }
             }
             
@@ -492,12 +589,12 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             do {
                 try handler.perform([request])
             } catch {
-                print("❌ Processing error: \(error)")
+                print("❌ U2-Net error: \(error)")
             }
         }
     }
     
-    private func processWithStableScoring(detections: MLMultiArray, prototypes: MLMultiArray, originalPixelBuffer: CVPixelBuffer) {
+    private func processWithContinuousGrouping(detections: MLMultiArray, prototypes: MLMultiArray, originalPixelBuffer: CVPixelBuffer) {
         let numDetections = detections.shape[2].intValue
         let numValues = detections.shape[1].intValue
         let numPrototypes = prototypes.shape[1].intValue
@@ -506,18 +603,12 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
         
-        let now = Date()
-        let isLocked = currentDetectionBox != nil &&
-                       detectionLockTime != nil &&
-                       now.timeIntervalSince(detectionLockTime!) < lockDuration
-        
         var allValidDetections: [FurnitureDetection] = []
         var bestDetection: FurnitureDetection? = nil
         var bestScore: Float = 0
         
         print("\n📊 === DETECTION SCORING ===")
         
-        // STEP 1: Score all detections and find the best one
         for i in 0..<numDetections {
             let conf = detPointer[4 * numDetections + i]
             
@@ -529,7 +620,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 let area = w * h
                 let areaRatio = area / frameArea
                 
-                // RELAXED size filtering - allow smaller and larger objects
                 if areaRatio < 0.05 || areaRatio > 0.85 {
                     continue
                 }
@@ -556,19 +646,20 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     u2netBonus = overlapRatio * 0.2
                 }
                 
-                var stabilityBonus: Float = 0
-                if let currentBox = currentDetectionBox, isLocked {
-                    let dx = abs(x - currentBox.x)
-                    let dy = abs(y - currentBox.y)
+                var trackingBonus: Float = 0
+                if let tracked = trackedDetectionCenter {
+                    let dx = abs(x - tracked.x)
+                    let dy = abs(y - tracked.y)
                     let distance = sqrt(dx*dx + dy*dy)
                     
-                    if distance < 150 {
-                        stabilityBonus = 0.6
+                    if distance < trackingRadius {
+                        let proximity = 1.0 - (distance / trackingRadius)
+                        trackingBonus = proximity * trackingConfidence * 0.4
                     }
                 }
                 
                 let baseScore = sizeScore * sizeScore * conf * centerProximityScore
-                let combinedScore = baseScore + u2netBonus + stabilityBonus
+                let combinedScore = baseScore + u2netBonus + trackingBonus
                 
                 if combinedScore < minimumAcceptableScore {
                     continue
@@ -591,120 +682,93 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         }
         
         let areaRatio = (primaryDetection.w * primaryDetection.h) / frameArea
-        print("📍 Primary detection: Area=\(String(format: "%.1f%%", areaRatio*100)), Score=\(String(format: "%.2f", primaryDetection.score)), Conf=\(String(format: "%.2f", primaryDetection.conf))")
+        print("📍 Primary: Area=\(String(format: "%.1f%%", areaRatio*100)), Score=\(String(format: "%.2f", primaryDetection.score))")
         
-        // STEP 2: Find related detections (furniture grouping)
-        let furnitureGroup = findRelatedDetections(primary: primaryDetection, allDetections: allValidDetections, detPointer: detPointer, numDetections: numDetections)
+        let furnitureGroup = findAllRelatedFurniture(primary: primaryDetection, allDetections: allValidDetections)
         
         if furnitureGroup.count > 1 {
-            print("🔗 Grouped \(furnitureGroup.count) furniture parts together")
+            print("🔗 Grouped \(furnitureGroup.count) parts together")
         }
         
-        // STEP 3: Check stability
-        let isSimilarToCurrent: Bool
-        if let currentBox = currentDetectionBox {
-            let dx = abs(primaryDetection.x - currentBox.x)
-            let dy = abs(primaryDetection.y - currentBox.y)
-            let distance = sqrt(dx*dx + dy*dy)
-            isSimilarToCurrent = distance < 150
-            print("📏 Distance from locked: \(String(format: "%.0f", distance))px")
-        } else {
-            isSimilarToCurrent = false
-        }
+        trackedDetectionCenter = (primaryDetection.x, primaryDetection.y)
+        trackingConfidence = min(1.0, trackingConfidence + 0.1)
         
-        if isSimilarToCurrent {
-            consecutiveFramesWithSameDetection += 1
-        } else {
-            consecutiveFramesWithSameDetection = 1
-            currentDetectionBox = (primaryDetection.x, primaryDetection.y, primaryDetection.w, primaryDetection.h)
-        }
+        noDetectionFrames = 0
         
-        if consecutiveFramesWithSameDetection >= requiredConsecutiveFrames || isLocked {
-            
-            let isNewDetection = !isSimilarToCurrent && !isLocked
-            
-            if isNewDetection {
-                detectionLockTime = now
-                consecutiveFramesWithSameDetection = 0
-                
-                DispatchQueue.main.async {
-                    self.detectionId = UUID()
-                }
-                
-                print("🔒 LOCKED: New detection at \(String(format: "%.1f%%", areaRatio*100))")
-            }
-            
-            noDetectionFrames = 0
-            
-            // STEP 4: Generate combined mask from all grouped detections
-            let segMask = generateCombinedMask(
-                detections: furnitureGroup,
-                prototypes: prototypes,
-                protoHeight: protoHeight,
-                protoWidth: protoWidth,
-                detPointer: detPointer,
-                numDetections: numDetections,
-                numValues: numValues,
-                numPrototypes: numPrototypes
-            )
-            
-            let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
-            applyCleanSegmentation(original: ciImage, mask: segMask)
-        } else {
-            print("⏳ Waiting: \(consecutiveFramesWithSameDetection)/\(requiredConsecutiveFrames) frames")
-        }
+        let segMask = generateCombinedMask(
+            detections: furnitureGroup,
+            prototypes: prototypes,
+            protoHeight: protoHeight,
+            protoWidth: protoWidth,
+            detPointer: detPointer,
+            numDetections: numDetections,
+            numValues: numValues,
+            numPrototypes: numPrototypes
+        )
+        
+        let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
+        applyCleanSegmentation(original: ciImage, mask: segMask)
     }
     
-    // NEW: Find all detections that should be grouped with the primary detection
-    private func findRelatedDetections(primary: FurnitureDetection, allDetections: [FurnitureDetection], detPointer: UnsafePointer<Float>, numDetections: Int) -> [FurnitureDetection] {
+    private func findAllRelatedFurniture(primary: FurnitureDetection, allDetections: [FurnitureDetection]) -> [FurnitureDetection] {
         
         var furnitureGroup = [primary]
+        var processedIndices = Set<Int>([primary.idx])
         
-        // Calculate primary detection bounds
-        let primaryLeft = primary.x - primary.w / 2
-        let primaryRight = primary.x + primary.w / 2
-        let primaryTop = primary.y - primary.h / 2
-        let primaryBottom = primary.y + primary.h / 2
+        let maxAllowedDistance = (primary.w + primary.h) * 0.6
+        
+        print("\n🔍 Looking for related furniture (strict mode):")
         
         for detection in allDetections {
-            if detection.idx == primary.idx { continue }
+            if processedIndices.contains(detection.idx) { continue }
             
-            // Calculate this detection's bounds
-            let detLeft = detection.x - detection.w / 2
-            let detRight = detection.x + detection.w / 2
-            let detTop = detection.y - detection.h / 2
-            let detBottom = detection.y + detection.h / 2
+            var isRelated = false
             
-            // Check for spatial proximity (overlapping or nearby)
-            let dx = abs(detection.x - primary.x)
-            let dy = abs(detection.y - primary.y)
-            let distance = sqrt(dx*dx + dy*dy)
+            for existingFurniture in furnitureGroup {
+                let dx = abs(detection.x - existingFurniture.x)
+                let dy = abs(detection.y - existingFurniture.y)
+                let distance = sqrt(dx*dx + dy*dy)
+                
+                if distance < maxAllowedDistance {
+                    isRelated = true
+                    break
+                }
+                
+                let det1Left = existingFurniture.x - existingFurniture.w / 2
+                let det1Right = existingFurniture.x + existingFurniture.w / 2
+                let det1Top = existingFurniture.y - existingFurniture.h / 2
+                let det1Bottom = existingFurniture.y + existingFurniture.h / 2
+                
+                let det2Left = detection.x - detection.w / 2
+                let det2Right = detection.x + detection.w / 2
+                let det2Top = detection.y - detection.h / 2
+                let det2Bottom = detection.y + detection.h / 2
+                
+                let horizontalGap = max(0, max(det2Left - det1Right, det1Left - det2Right))
+                let verticalGap = max(0, max(det2Top - det1Bottom, det1Top - det2Bottom))
+                
+                if horizontalGap < 50 && verticalGap < 50 {
+                    isRelated = true
+                    break
+                }
+            }
             
-            // More generous distance threshold - within 250px or overlapping
-            let maxAllowedDistance = (primary.w + primary.h + detection.w + detection.h) / 3
-            
-            let isNearby = distance < maxAllowedDistance
-            
-            // Check if bounding boxes overlap or are close
-            let horizontalGap = max(0, max(detLeft - primaryRight, primaryLeft - detRight))
-            let verticalGap = max(0, max(detTop - primaryBottom, primaryTop - detBottom))
-            let isClose = horizontalGap < 50 && verticalGap < 50
-            
-            if isNearby || isClose {
-                // Validate with U2-Net - both should overlap with furniture mask
+            if isRelated {
                 if u2netMask != nil {
-                    let detectionOverlap = calculateU2NetOverlap(x: detection.x, y: detection.y, width: detection.w, height: detection.h)
+                    let overlapRatio = calculateU2NetOverlap(x: detection.x, y: detection.y, width: detection.w, height: detection.h)
                     
-                    // Lower threshold - include if it has ANY reasonable U2-Net overlap
-                    if detectionOverlap > 0.15 {  // 15% overlap is enough
+                    if overlapRatio > 0.25 {
                         furnitureGroup.append(detection)
-                        print("  ↳ Added related part: Area=\(String(format: "%.1f%%", (detection.w * detection.h / frameArea)*100)), Overlap=\(String(format: "%.0f%%", detectionOverlap*100))")
+                        processedIndices.insert(detection.idx)
+                        print("  ✅ Added: Area=\(String(format: "%.1f%%", (detection.w * detection.h / frameArea)*100)), Overlap=\(String(format: "%.0f%%", overlapRatio*100))")
+                    } else {
+                        print("  ❌ Rejected: Low U2-Net overlap (\(String(format: "%.0f%%", overlapRatio*100)))")
                     }
                 } else {
-                    // No U2-Net - use spatial proximity only with stricter rules
-                    if distance < maxAllowedDistance * 0.7 && detection.conf > 0.6 {
+                    if detection.conf > 0.65 {
                         furnitureGroup.append(detection)
-                        print("  ↳ Added nearby part (no U2-Net): Area=\(String(format: "%.1f%%", (detection.w * detection.h / frameArea)*100))")
+                        processedIndices.insert(detection.idx)
+                        print("  ✅ Added: Area=\(String(format: "%.1f%%", (detection.w * detection.h / frameArea)*100))")
                     }
                 }
             }
@@ -716,10 +780,11 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     private func handleNoDetection() {
         noDetectionFrames += 1
         
-        if noDetectionFrames > 5 {
-            currentDetectionBox = nil
-            detectionLockTime = nil
+        if noDetectionFrames > 10 {  // ✨ Was 5, now 10 frames
+            trackedDetectionCenter = nil
+            trackingConfidence = 0.0
             consecutiveFramesWithSameDetection = 0
+            resetAccumulation()  // ✨ Reset accumulation when truly lost
         }
         
         DispatchQueue.main.async {
@@ -727,6 +792,13 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 self.furnitureOpacity = 0.0
             }
         }
+    }
+    
+    // ✅ Reset accumulation function
+    private func resetAccumulation() {
+        accumulatedMask = nil
+        framesInCurrentGroup = 0
+        print("🔄 FastSAM: Manual reset of accumulation")
     }
     
     private func calculateU2NetOverlap(x: Float, y: Float, width: Float, height: Float) -> Float {
@@ -764,7 +836,50 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         return totalCount > 0 ? Float(overlapCount) / Float(totalCount) : 0
     }
     
-    // NEW: Generate combined mask from multiple grouped detections
+    // ✅ PURE ADDITIVE ACCUMULATION
+    private func accumulateMaskPure(current: [UInt8], width: Int, height: Int) -> [UInt8] {
+        framesInCurrentGroup += 1
+        
+        // ✅ Initialize or reset accumulated mask
+        if accumulatedMask == nil || maskWidth != width || maskHeight != height || framesInCurrentGroup > maxAccumulationFrames {
+            maskWidth = width
+            maskHeight = height
+            accumulatedMask = current
+            
+            if framesInCurrentGroup > maxAccumulationFrames {
+                print("🔄 FastSAM: Reset accumulated mask after \(maxAccumulationFrames) frames")
+                framesInCurrentGroup = 1
+            }
+            
+            return current
+        }
+        
+        guard var accumulated = accumulatedMask else {
+            return current
+        }
+        
+        // ✅ PURE ADDITIVE: Take MAX (no decay!)
+        var newPixelsAdded = 0
+        
+        for i in 0..<(width * height) {
+            let newValue = max(current[i], accumulated[i])
+            
+            if newValue > accumulated[i] {
+                newPixelsAdded += 1
+            }
+            
+            accumulated[i] = newValue
+        }
+        
+        accumulatedMask = accumulated
+        
+        if newPixelsAdded > 0 {
+            print("📊 FastSAM Frame \(framesInCurrentGroup)/\(maxAccumulationFrames) - Added \(newPixelsAdded) new pixels")
+        }
+        
+        return accumulated
+    }
+    
     private func generateCombinedMask(
         detections: [FurnitureDetection],
         prototypes: MLMultiArray,
@@ -779,10 +894,8 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
         let maskSize = protoHeight * protoWidth
         
-        // Store all detection masks separately
         var detectionMasks: [[Float]] = []
         
-        // Generate mask for each detection
         for detection in detections {
             var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
             for i in 0..<numPrototypes {
@@ -792,7 +905,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             
             var detectionMask = [Float](repeating: 0, count: maskSize)
             
-            // Generate raw FastSAM values for this detection
             for protoIdx in 0..<numPrototypes {
                 let coeff = maskCoeffs[protoIdx]
                 let protoOffset = protoIdx * maskSize
@@ -802,7 +914,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 }
             }
             
-            // Apply sigmoid
             for i in 0..<maskSize {
                 detectionMask[i] = 1.0 / (1.0 + exp(-detectionMask[i]))
             }
@@ -810,7 +921,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             detectionMasks.append(detectionMask)
         }
         
-        // Combine all masks - take maximum confidence at each pixel
         var combinedConfidence = [Float](repeating: 0, count: maskSize)
         for detectionMask in detectionMasks {
             for i in 0..<maskSize {
@@ -820,7 +930,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         var pixelData = [UInt8](repeating: 0, count: maskSize)
         
-        print("\n🎯 === FURNITURE GROUPING ===")
+        print("\n🎯 === MASK GENERATION (U2-Net Dominant) ===")
         
         if let u2netMask = u2netMask {
             CVPixelBufferLockBaseAddress(u2netMask, .readOnly)
@@ -834,7 +944,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 let u2netPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
                 var u2netPixels = 0
                 
-                // STEP 1: U2-Net identifies furniture - USE AS PRIMARY
+                // ✅ STEP 1: U2-Net is the PRIMARY source
                 for y in 0..<protoHeight {
                     for x in 0..<protoWidth {
                         let sourceX = x * maskWidth / protoWidth
@@ -849,12 +959,9 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     }
                 }
                 
-                print("📊 U2-Net furniture base: \(u2netPixels) pixels")
+                print("📊 U2-Net PRIMARY base: \(u2netPixels) pixels")
                 
-                // STEP 2: Add high-confidence FastSAM pixels from ANY grouped detection
-                var addedFromFastSAM = 0
-                
-                // Find overall bounding box of all U2-Net furniture
+                // ✅ STEP 2: Calculate U2-Net bounding box
                 var minX = protoWidth, maxX = 0, minY = protoHeight, maxY = 0
                 
                 for y in 0..<protoHeight {
@@ -869,62 +976,103 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                     }
                 }
                 
-                if minX <= maxX && minY <= maxY {
-                    // Expand search area generously
-                    let searchMinX = max(0, minX - 15)
-                    let searchMaxX = min(protoWidth - 1, maxX + 15)
-                    let searchMinY = max(0, minY - 20)
-                    let searchMaxY = min(protoHeight - 1, maxY + 15)
+                guard minX <= maxX && minY <= maxY else {
+                    print("⚠️ No U2-Net mask found, skipping FastSAM enhancement")
+                    return createCIImage(from: pixelData, width: protoWidth, height: protoHeight)
+                }
+                
+                // ✅ STEP 3: REDUCED search area
+                let searchMinX = max(0, minX - 20)
+                let searchMaxX = min(protoWidth - 1, maxX + 20)
+                let searchMinY = max(0, minY - 35)
+                let searchMaxY = min(protoHeight - 1, maxY + 20)
+                
+                print("🔍 Search area: [\(searchMinX),\(searchMinY)] → [\(searchMaxX),\(searchMaxY)]")
+                
+                var addedFromFastSAM = 0
+                
+                // ✅ STEP 4: ONLY 3 passes with STRICTER thresholds
+                for pass in 1...3 {
+                    let passName = ["strict", "medium", "relaxed"][pass - 1]
                     
-                    // Two-pass approach with grouped detection confidence
-                    for pass in 1...2 {
-                        for y in searchMinY...searchMaxY {
-                            for x in searchMinX...searchMaxX {
-                                let idx = y * protoWidth + x
-                                
-                                if pixelData[idx] == 255 { continue }
-                                
-                                // Use combined confidence from all grouped detections
-                                let requiredConfidence: Float = pass == 1 ? 0.85 : 0.80
-                                if combinedConfidence[idx] < requiredConfidence { continue }
-                                
-                                // Check proximity to existing furniture
-                                var nearFurniture = false
-                                var furnitureCount = 0
-                                
-                                for dy in -2...2 {
-                                    for dx in -2...2 {
-                                        if y + dy >= 0 && y + dy < protoHeight &&
-                                           x + dx >= 0 && x + dx < protoWidth {
-                                            let nIdx = (y + dy) * protoWidth + (x + dx)
-                                            if pixelData[nIdx] == 255 {
-                                                nearFurniture = true
-                                                furnitureCount += 1
-                                            }
+                    var addedThisPass = 0
+                    
+                    for y in searchMinY...searchMaxY {
+                        for x in searchMinX...searchMaxX {
+                            let idx = y * protoWidth + x
+                            
+                            if pixelData[idx] == 255 { continue }
+                            
+                            let requiredConfidence: Float = {
+                                switch pass {
+                                case 1: return 0.85
+                                case 2: return 0.75
+                                case 3: return 0.65
+                                default: return 0.85
+                                }
+                            }()
+                            
+                            if combinedConfidence[idx] < requiredConfidence { continue }
+                            
+                            // ✅ CRITICAL: Check if this pixel is actually part of U2-Net furniture
+                            let u2netSampleX = x * maskWidth / protoWidth
+                            let u2netSampleY = y * maskHeight / protoHeight
+                            let u2netSampleIdx = u2netSampleY * bytesPerRow + u2netSampleX
+                            let u2netValue = u2netPtr[u2netSampleIdx]
+                            
+                            // ✅ STRICT U2-Net check: Only add if U2-Net also sees furniture here
+                            if u2netValue < 30 {
+                                continue
+                            }
+                            
+                            var nearFurniture = false
+                            var furnitureCount = 0
+                            
+                            let searchRadius = pass <= 1 ? 2 : 3
+                            
+                            for dy in -searchRadius...searchRadius {
+                                for dx in -searchRadius...searchRadius {
+                                    if y + dy >= 0 && y + dy < protoHeight &&
+                                       x + dx >= 0 && x + dx < protoWidth {
+                                        let nIdx = (y + dy) * protoWidth + (x + dx)
+                                        if pixelData[nIdx] == 255 {
+                                            nearFurniture = true
+                                            furnitureCount += 1
                                         }
                                     }
                                 }
-                                
-                                // More lenient neighbor requirement in pass 2
-                                let requiredNeighbors = pass == 1 ? 2 : 1
-                                if nearFurniture && furnitureCount >= requiredNeighbors {
-                                    pixelData[idx] = 255
-                                    addedFromFastSAM += 1
+                            }
+                            
+                            let requiredNeighbors: Int = {
+                                switch pass {
+                                case 1: return 3
+                                case 2: return 2
+                                case 3: return 2
+                                default: return 2
                                 }
+                            }()
+                            
+                            if nearFurniture && furnitureCount >= requiredNeighbors {
+                                pixelData[idx] = 255
+                                addedFromFastSAM += 1
+                                addedThisPass += 1
                             }
                         }
+                    }
+                    
+                    if addedThisPass > 0 {
+                        print("  ↳ Pass \(pass) (\(passName)): +\(addedThisPass) pixels")
                     }
                 }
                 
                 if addedFromFastSAM > 0 {
-                    print("📊 FastSAM enhancements: +\(addedFromFastSAM) pixels")
+                    print("📊 FastSAM enhancements: +\(addedFromFastSAM) pixels (U2-Net guided)")
                 }
                 
-                print("📊 Before morphology: \(pixelData.filter { $0 == 255 }.count) pixels")
+                print("📊 Before accumulation: \(pixelData.filter { $0 == 255 }.count) pixels")
             }
         } else {
-            // NO U2-Net - use combined FastSAM confidence
-            print("⚠️ Using grouped FastSAM only (U2-Net loading...)")
+            print("⚠️ Using FastSAM only (U2-Net not available)")
             
             var maxConfidence: Float = 0
             var seedX = 0
@@ -941,7 +1089,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 }
             }
             
-            if maxConfidence > 0.90 {  // Slightly lower threshold for grouped detections
+            if maxConfidence > 0.90 {
                 var toProcess = [(seedX, seedY)]
                 var processed = Set<Int>()
                 
@@ -972,28 +1120,36 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 }
             }
             
-            print("📊 Before morphology: \(pixelData.filter { $0 == 255 }.count) pixels")
+            print("📊 Before accumulation: \(pixelData.filter { $0 == 255 }.count) pixels")
         }
         
-        // ✨ NEW: Apply morphological operations (Closing = Dilate + Erode)
+        // ✅ APPLY ACCUMULATION BEFORE MORPHOLOGY
+        pixelData = accumulateMaskPure(current: pixelData, width: protoWidth, height: protoHeight)
+        print("📊 After accumulation: \(pixelData.filter { $0 == 255 }.count) pixels")
+        
+        // ✅ REDUCED morphology: 8 dilate + 5 erode
         pixelData = applyMorphologicalClosing(pixelData, width: protoWidth, height: protoHeight)
         
         print("📊 After morphology: \(pixelData.filter { $0 == 255 }.count) pixels")
         
+        return createCIImage(from: pixelData, width: protoWidth, height: protoHeight)
+    }
+    
+    private func createCIImage(from pixelData: [UInt8], width: Int, height: Int) -> CIImage {
         let data = Data(pixelData)
         guard let provider = CGDataProvider(data: data as CFData) else {
-            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: protoWidth, height: protoHeight))
+            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
         }
         
         let colorSpace = CGColorSpaceCreateDeviceGray()
         let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
         
         guard let cgImage = CGImage(
-            width: protoWidth,
-            height: protoHeight,
+            width: width,
+            height: height,
             bitsPerComponent: 8,
             bitsPerPixel: 8,
-            bytesPerRow: protoWidth,
+            bytesPerRow: width,
             space: colorSpace,
             bitmapInfo: bitmapInfo,
             provider: provider,
@@ -1001,24 +1157,18 @@ class FastSAMCameraModel: NSObject, ObservableObject {
             shouldInterpolate: false,
             intent: .defaultIntent
         ) else {
-            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: protoWidth, height: protoHeight))
+            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
         }
         
         return CIImage(cgImage: cgImage)
     }
     
-    // ✨ NEW: Morphological Closing (Dilate + Erode) to fill gaps in furniture
     private func applyMorphologicalClosing(_ input: [UInt8], width: Int, height: Int) -> [UInt8] {
-        // STEP 1: Dilate (expand mask to fill small gaps)
-        let dilated = dilate(input, width: width, height: height, iterations: 3)
-        
-        // STEP 2: Erode (shrink back to clean up edges)
-        let closed = erode(dilated, width: width, height: height, iterations: 2)
-        
+        let dilated = dilate(input, width: width, height: height, iterations: 8)
+        let closed = erode(dilated, width: width, height: height, iterations: 5)
         return closed
     }
     
-    // ✨ NEW: Dilate operation - expands white regions
     private func dilate(_ input: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
         var result = input
         
@@ -1029,11 +1179,9 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 for x in 1..<(width - 1) {
                     let idx = y * width + x
                     
-                    // If any neighbor is white (255), make this pixel white
                     if result[idx] == 0 {
                         var hasWhiteNeighbor = false
                         
-                        // Check 8 neighbors
                         for dy in -1...1 {
                             for dx in -1...1 {
                                 if dx == 0 && dy == 0 { continue }
@@ -1059,7 +1207,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         return result
     }
     
-    // ✨ NEW: Erode operation - shrinks white regions
     private func erode(_ input: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
         var result = input
         
@@ -1070,11 +1217,9 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 for x in 1..<(width - 1) {
                     let idx = y * width + x
                     
-                    // If any neighbor is black (0), make this pixel black
                     if result[idx] == 255 {
                         var hasBlackNeighbor = false
                         
-                        // Check 8 neighbors
                         for dy in -1...1 {
                             for dx in -1...1 {
                                 if dx == 0 && dy == 0 { continue }
@@ -1110,7 +1255,6 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         var finalMask = scaledMask
         
-        // Very light blur for smoother edges
         if let blurFilter = CIFilter(name: "CIGaussianBlur") {
             blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
             blurFilter.setValue(0.5, forKey: kCIInputRadiusKey)

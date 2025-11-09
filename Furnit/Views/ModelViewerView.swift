@@ -22,10 +22,11 @@ struct ModelViewerView: View {
     
     // Camera/Segmentation state
     @State private var showingCameraPreview = false
-    @State private var showingSegmentExamine = false  // NEW: SegmentExamine state
-    @State private var capturedImage: UIImage? = nil  // For both camera overlays
+    @State private var showingSegmentExamine = false
+    @State private var showingSegmentForeground = false  // NEW: Third camera overlay
+    @State private var capturedImage: UIImage? = nil
     
-    // NEW: Progress bar state
+    // Progress bar state
     @State private var isInitializingCamera = false
     @State private var cameraInitProgress: Double = 0.0
     @State private var initializationTimer: Timer?
@@ -65,7 +66,7 @@ struct ModelViewerView: View {
                         print("   - Is saved room: \(model.isSavedRoom)")
                     }
                 
-                // NEW: Camera initialization overlay with progress
+                // Camera initialization overlay with progress
                 if isInitializingCamera {
                     cameraInitializationOverlay
                 }
@@ -79,11 +80,20 @@ struct ModelViewerView: View {
                     .zIndex(100)
                 }
                 
-                // NEW: SegmentExamine overlay (dual-mode segmentation)
+                // SegmentExamine overlay (dual-mode segmentation)
                 if showingSegmentExamine {
                     SegmentExamine(
                         capturedImage: $capturedImage,
                         isShowingCamera: $showingSegmentExamine
+                    )
+                    .zIndex(100)
+                }
+                
+                // NEW: SegmentForeground overlay (third camera mode)
+                if showingSegmentForeground {
+                    SegmentForeground(
+                        capturedImage: $capturedImage,
+                        isShowingCamera: $showingSegmentForeground
                     )
                     .zIndex(100)
                 }
@@ -114,7 +124,7 @@ struct ModelViewerView: View {
         }
     }
     
-    // NEW: Progress bar overlay
+    // Progress bar overlay
     private var cameraInitializationOverlay: some View {
         ZStack {
             Color.black.opacity(0.9)
@@ -174,7 +184,7 @@ struct ModelViewerView: View {
         .transition(.opacity)
     }
     
-    // NEW: Progress messages
+    // Progress messages
     private var progressMessage: String {
         if cameraInitProgress < 0.3 {
             return "Checking camera permissions..."
@@ -191,7 +201,7 @@ struct ModelViewerView: View {
         return geometry.size.width > geometry.size.height
     }
     
-    // 🎯 UPDATED: Centered joystick layout with SegmentExamine button
+    // 🎯 PORTRAIT: Three camera buttons vertically stacked on left
     private var portraitControls: some View {
         VStack {
             HStack {
@@ -204,10 +214,11 @@ struct ModelViewerView: View {
             Spacer()
             
             HStack {
-                // Left side buttons stack
+                // Left side buttons stack - THREE BUTTONS
                 VStack(spacing: 16) {
-                    cameraButton
-                    segmentExamineButton  // NEW: SegmentExamine button
+                    cameraButton              // SimpleCameraOverlay (green/blue)
+                    segmentExamineButton      // SegmentExamine (green/blue)
+                    segmentForegroundButton   // SegmentForeground (purple/blue)
                 }
                 .padding(.leading, 8)
                 
@@ -226,6 +237,7 @@ struct ModelViewerView: View {
         }
     }
     
+    // 🎯 LANDSCAPE: Three camera buttons vertically stacked
     private var landscapeControls: some View {
         HStack {
             VStack {
@@ -240,8 +252,9 @@ struct ModelViewerView: View {
             Spacer()
             
             VStack(spacing: 16) {
-                cameraButton
-                segmentExamineButton  // NEW: SegmentExamine button
+                cameraButton              // SimpleCameraOverlay
+                segmentExamineButton      // SegmentExamine
+                segmentForegroundButton   // SegmentForeground
                 
                 Spacer()
                 
@@ -279,7 +292,7 @@ struct ModelViewerView: View {
         }
     }
     
-    // MODIFIED: Camera button now starts initialization
+    // 📷 BUTTON 1: SimpleCameraOverlay (U2-Net with Canny edge detection)
     private var cameraButton: some View {
         Button(action: {
             if showingCameraPreview {
@@ -303,7 +316,7 @@ struct ModelViewerView: View {
         }
     }
     
-    // NEW: SegmentExamine button
+    // 🔄 BUTTON 2: SegmentExamine (dual-mode: U2-Net → MobileSAM)
     private var segmentExamineButton: some View {
         Button(action: {
             showingSegmentExamine.toggle()
@@ -320,7 +333,24 @@ struct ModelViewerView: View {
         }
     }
     
-    // NEW: Start camera initialization with progress
+    // 🎨 BUTTON 3: SegmentForeground (NEW - foreground detection)
+    private var segmentForegroundButton: some View {
+        Button(action: {
+            showingSegmentForeground.toggle()
+        }) {
+            Image(systemName: "viewfinder")
+                .font(.system(size: 28))
+                .foregroundColor(.white)
+                .frame(width: 60, height: 60)
+                .background(
+                    Circle()
+                        .fill(showingSegmentForeground ? Color.purple : Color.blue)
+                        .shadow(radius: 5)
+                )
+        }
+    }
+    
+    // Start camera initialization with progress
     private func startCameraInitialization() {
         print("📷 Starting camera initialization...")
         isInitializingCamera = true
@@ -354,7 +384,7 @@ struct ModelViewerView: View {
         }
     }
     
-    // NEW: Cancel initialization
+    // Cancel initialization
     private func cancelCameraInitialization() {
         initializationTimer?.invalidate()
         initializationTimer = nil
