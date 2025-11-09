@@ -22,6 +22,8 @@ struct ModelViewerView: View {
     
     // Camera/Segmentation state
     @State private var showingCameraPreview = false
+    @State private var showingSegmentExamine = false  // NEW: SegmentExamine state
+    @State private var capturedImage: UIImage? = nil  // For both camera overlays
     
     // NEW: Progress bar state
     @State private var isInitializingCamera = false
@@ -71,8 +73,17 @@ struct ModelViewerView: View {
                 // SimpleCameraOverlay when camera is active
                 if showingCameraPreview {
                     SimpleCameraOverlay(
-                        capturedImage: .constant(nil),
+                        capturedImage: $capturedImage,
                         isShowingCamera: $showingCameraPreview
+                    )
+                    .zIndex(100)
+                }
+                
+                // NEW: SegmentExamine overlay (dual-mode segmentation)
+                if showingSegmentExamine {
+                    SegmentExamine(
+                        capturedImage: $capturedImage,
+                        isShowingCamera: $showingSegmentExamine
                     )
                     .zIndex(100)
                 }
@@ -180,7 +191,7 @@ struct ModelViewerView: View {
         return geometry.size.width > geometry.size.height
     }
     
-    // 🎯 UPDATED: Centered joystick layout
+    // 🎯 UPDATED: Centered joystick layout with SegmentExamine button
     private var portraitControls: some View {
         VStack {
             HStack {
@@ -193,9 +204,10 @@ struct ModelViewerView: View {
             Spacer()
             
             HStack {
-                // Camera button on left
+                // Left side buttons stack
                 VStack(spacing: 16) {
                     cameraButton
+                    segmentExamineButton  // NEW: SegmentExamine button
                 }
                 .padding(.leading, 8)
                 
@@ -209,7 +221,7 @@ struct ModelViewerView: View {
                 
                 Spacer()
             }
-            .padding(.bottom, 40) // Extra bottom padding for better positioning
+            .padding(.bottom, 40)
             .padding(.horizontal)
         }
     }
@@ -229,10 +241,9 @@ struct ModelViewerView: View {
             
             VStack(spacing: 16) {
                 cameraButton
+                segmentExamineButton  // NEW: SegmentExamine button
                 
                 Spacer()
-                
-//                modelInfoPanel
                 
                 VirtualJoystick(joystickOffset: $joystickOffset)
                     .onChange(of: joystickOffset) { _, newOffset in
@@ -292,23 +303,22 @@ struct ModelViewerView: View {
         }
     }
     
-//    private var modelInfoPanel: some View {
-//        VStack(spacing: 8) {
-//            Text(model.displayName)
-//                .font(.title3)
-//                .fontWeight(.semibold)
-//                .foregroundColor(.white)
-//
-//            Text("Use gestures to rotate, zoom, and explore the room")
-//                .font(.caption)
-//                .foregroundColor(.white.opacity(0.8))
-//                .multilineTextAlignment(.center)
-//        }
-//        .padding(.horizontal, 16)
-//        .padding(.vertical, 12)
-//        .background(Color.black.opacity(0.7))
-//        .cornerRadius(16)
-//    }
+    // NEW: SegmentExamine button
+    private var segmentExamineButton: some View {
+        Button(action: {
+            showingSegmentExamine.toggle()
+        }) {
+            Image(systemName: "crop.rotate")
+                .font(.system(size: 28))
+                .foregroundColor(.white)
+                .frame(width: 60, height: 60)
+                .background(
+                    Circle()
+                        .fill(showingSegmentExamine ? Color.green : Color.blue)
+                        .shadow(radius: 5)
+                )
+        }
+    }
     
     // NEW: Start camera initialization with progress
     private func startCameraInitialization() {
