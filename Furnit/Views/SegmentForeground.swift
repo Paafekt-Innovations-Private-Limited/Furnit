@@ -28,7 +28,7 @@ struct SegmentForeground: View {
             
             if showDebugBoxes && camera.u2netCoverageRect != .zero {
                 Rectangle()
-                    .stroke(Color.purple, lineWidth: 3)  // Changed to purple for distinction
+                    .stroke(Color.purple, lineWidth: 3)
                     .frame(width: camera.u2netCoverageRect.width,
                            height: camera.u2netCoverageRect.height)
                     .position(x: camera.u2netCoverageRect.midX,
@@ -90,7 +90,7 @@ struct SegmentForeground: View {
                     HStack(spacing: 12) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title2)
-                        Text("Foreground saved!")
+                        Text("Photo saved!")
                             .font(.headline)
                     }
                     .foregroundColor(.white)
@@ -98,7 +98,7 @@ struct SegmentForeground: View {
                     .padding(.vertical, 16)
                     .background(
                         Capsule()
-                            .fill(Color.purple.opacity(0.95))  // Purple theme
+                            .fill(Color.purple.opacity(0.95))
                             .shadow(radius: 10)
                     )
                     .padding(.bottom, 150)
@@ -186,14 +186,14 @@ struct SegmentForeground: View {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                         .scaleEffect(0.7)
-                                    Text("Detecting foreground...")
+                                    Text("Detecting scene...")
                                         .font(.caption)
                                 }
                                 .padding(8)
                                 .background(Capsule().fill(Color.black.opacity(0.5)))
                                 .foregroundColor(.white)
                             } else {
-                                Text("Tap to lock foreground")
+                                Text("Tap to capture photo")
                                     .font(.caption)
                                     .padding(8)
                                     .background(Capsule().fill(Color.black.opacity(0.5)))
@@ -201,9 +201,9 @@ struct SegmentForeground: View {
                             }
                         } else {
                             VStack(spacing: 4) {
-                                Text("Foreground locked • Size: \(Int(scaleMultiplier * 100))%")
+                                Text("Scene ready • Size: \(Int(scaleMultiplier * 100))%")
                                     .font(.caption)
-                                Text("Drag to reposition • Ready to save")
+                                Text("Adjust position • Ready to save")
                                     .font(.caption2)
                                     .foregroundColor(.white.opacity(0.7))
                             }
@@ -216,12 +216,12 @@ struct SegmentForeground: View {
                     HStack(spacing: 16) {
                         if camera.isExamining {
                             Button(action: {
-                                saveForeground()
+                                savePhoto()
                             }) {
                                 HStack(spacing: 8) {
-                                    Image(systemName: "square.and.arrow.down.fill")
+                                    Image(systemName: "camera.fill")
                                         .font(.title3)
-                                    Text("Save Foreground")
+                                    Text("Take Photo")
                                         .font(.headline)
                                 }
                                 .foregroundColor(.white)
@@ -229,7 +229,7 @@ struct SegmentForeground: View {
                                 .padding(.vertical, 12)
                                 .background(
                                     Capsule()
-                                        .fill(Color.purple.opacity(0.9))  // Purple theme
+                                        .fill(Color.purple.opacity(0.9))
                                         .shadow(color: .purple.opacity(0.3), radius: 8)
                                 )
                             }
@@ -263,9 +263,9 @@ struct SegmentForeground: View {
                                 generator.impactOccurred()
                             }) {
                                 HStack(spacing: 8) {
-                                    Image(systemName: "lock.viewfinder")
+                                    Image(systemName: "camera.aperture")
                                         .font(.title3)
-                                    Text("Lock")
+                                    Text("Capture")
                                         .font(.headline)
                                 }
                                 .foregroundColor(.white)
@@ -273,7 +273,7 @@ struct SegmentForeground: View {
                                 .padding(.vertical, 12)
                                 .background(
                                     Capsule()
-                                        .fill(Color.purple.opacity(0.9))  // Purple theme
+                                        .fill(Color.purple.opacity(0.9))
                                         .shadow(color: .purple.opacity(0.3), radius: 8)
                                 )
                             }
@@ -287,7 +287,7 @@ struct SegmentForeground: View {
             }
         }
         .onAppear {
-            print("🎨 [SegmentForeground] Starting foreground detection...")
+            print("🎨 [SegmentForeground] Starting scene detection...")
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 if granted {
                     camera.startSession()
@@ -331,20 +331,23 @@ struct SegmentForeground: View {
         }
     }
     
-    private func saveForeground() {
-        guard let image = camera.segmentedImage else { return }
+    private func savePhoto() {
+        guard let fullImage = camera.originalCameraImage else {
+            print("⚠️ No original camera image available")
+            return
+        }
         
-        capturedImage = image
+        capturedImage = fullImage
         
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
             DispatchQueue.main.async {
                 if status == .authorized || status == .limited {
                     PHPhotoLibrary.shared().performChanges({
-                        PHAssetChangeRequest.creationRequestForAsset(from: image)
+                        PHAssetChangeRequest.creationRequestForAsset(from: fullImage)
                     }) { success, error in
                         DispatchQueue.main.async {
                             if success {
-                                print("✅ Foreground saved to Photos!")
+                                print("✅ Full photo saved to Photos!")
                                 
                                 withAnimation(.spring()) {
                                     self.showingSaveSuccess = true
@@ -387,7 +390,7 @@ struct ScanningReticleForeground: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.purple.opacity(0.3), lineWidth: 2)  // Purple theme
+                .stroke(Color.purple.opacity(0.3), lineWidth: 2)
                 .frame(width: 120, height: 120)
             Rectangle()
                 .fill(LinearGradient(gradient: Gradient(colors: [.clear, .purple.opacity(0.8), .clear]), startPoint: .top, endPoint: .bottom))
@@ -417,10 +420,9 @@ struct CornerBracketForeground: View {
     }
 }
 
-// Reusing UserGuidanceHint struct from SimpleCameraOverlay
-
 class ForegroundCameraModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
+    @Published var originalCameraImage: UIImage?
     @Published var furnitureOpacity: Double = 0.0
     @Published var detectionId: UUID = UUID()
     @Published var isExamining: Bool = false
@@ -435,11 +437,12 @@ class ForegroundCameraModel: NSObject, ObservableObject {
     private let context = CIContext()
     
     private var lastProcessTime = Date()
-    private let processInterval: TimeInterval = 0.2
+    private let processInterval: TimeInterval = 0.15  // Faster updates for smooth feed
     private var isProcessing = false
     
     private var u2netMask: CVPixelBuffer?
     private var lockedMask: CVPixelBuffer? = nil
+    private var lockedSegmentedImage: UIImage? = nil
     private var shouldStartExaminingOnNextFrame = false
     
     override init() {
@@ -450,19 +453,21 @@ class ForegroundCameraModel: NSObject, ObservableObject {
     }
     
     func startExamining() {
-        print("🔒 [ForegroundCameraModel] Locking foreground...")
+        print("🔒 [ForegroundCameraModel] Capturing scene...")
         shouldStartExaminingOnNextFrame = true
     }
     
     func finishExamining() {
-        print("🔓 [ForegroundCameraModel] Unlocking foreground...")
+        print("🔓 [ForegroundCameraModel] Returning to live view...")
         DispatchQueue.main.async {
             self.isExamining = false
             self.userGuidanceHint = nil
         }
         lockedMask = nil
+        lockedSegmentedImage = nil
         shouldStartExaminingOnNextFrame = false
         segmentedImage = nil
+        originalCameraImage = nil
         furnitureOpacity = 0.0
     }
     
@@ -552,10 +557,6 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         }
     }
     
-    // All the processing methods from U2NetCameraModel remain the same
-    // (processWithU2Net, applyCannyEdgeSegmentation, cannyEdgeDetection, etc.)
-    // Copy them exactly as they are in SimpleCameraOverlay
-    
     private func processWithU2Net(pixelBuffer: CVPixelBuffer) {
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
@@ -564,6 +565,16 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         isProcessing = true
         lastProcessTime = now
         
+        // Capture original camera frame
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+            let originalImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
+            DispatchQueue.main.async {
+                self.originalCameraImage = originalImage
+            }
+        }
+        
+        // Run U2-Net segmentation
         if u2netModel != nil {
             runU2NetSync(pixelBuffer: pixelBuffer)
         }
@@ -575,15 +586,20 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         
         var maskToUse = u2netMask
         
+        // Handle examination mode (freeze frame)
         if shouldStartExaminingOnNextFrame {
-            print("📋 [ForegroundCameraModel] Creating COPY of mask...")
+            print("📋 [ForegroundCameraModel] Locking current frame...")
             
             if let copiedMask = copyPixelBuffer(u2netMask) {
                 lockedMask = copiedMask
-                print("✅ Locked COPY of mask")
+                print("✅ Locked mask")
             } else {
-                print("⚠️ Failed to copy mask, using reference")
                 lockedMask = u2netMask
+            }
+            
+            if let currentSegmented = segmentedImage {
+                lockedSegmentedImage = currentSegmented
+                print("✅ Locked segmented image")
             }
             
             shouldStartExaminingOnNextFrame = false
@@ -592,22 +608,32 @@ class ForegroundCameraModel: NSObject, ObservableObject {
                 self.isExamining = true
             }
         } else if let locked = lockedMask {
+            // Use frozen mask during examination
             maskToUse = locked
         } else {
-            maskToUse = applyCannyEdgeSegmentation(u2netMask)
+            // Live mode: use U2-Net mask directly (NO Canny processing!)
             analyzeAndProvideGuidance(mask: maskToUse)
         }
         
+        // Update visualization
         updateU2NetVisualization(maskToUse)
         
-        let maskImage = CIImage(cvPixelBuffer: maskToUse)
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        applyMaskToImage(original: ciImage, mask: maskImage)
+        // Apply mask to create segmented image
+        if !isExamining {
+            let maskImage = CIImage(cvPixelBuffer: maskToUse)
+            let ciImageForMask = CIImage(cvPixelBuffer: pixelBuffer)
+            applyMaskToImage(original: ciImageForMask, mask: maskImage)
+        } else if let frozen = lockedSegmentedImage {
+            // Show frozen segmented image during examination
+            DispatchQueue.main.async {
+                self.segmentedImage = frozen
+            }
+        }
         
         isProcessing = false
     }
     
-    // [Copy all remaining methods from U2NetCameraModel in SimpleCameraOverlay:
+    // REMOVED: All Canny edge detection methods
     // - applyCannyEdgeSegmentation
     // - cannyEdgeDetection
     // - gaussianBlur
@@ -617,27 +643,86 @@ class ForegroundCameraModel: NSObject, ObservableObject {
     // - trackWeakEdges
     // - fillEnclosedRegion
     // - dilate
-    // - copyPixelBuffer
-    // - analyzeAndProvideGuidance
-    // - updateU2NetVisualization
-    // - runU2NetSync
-    // - applyMaskToImage]
-    
-    // For brevity, I'm noting that ALL methods from SimpleCameraOverlay's U2NetCameraModel
-    // should be copied here with the same implementation
-    
-    private func applyCannyEdgeSegmentation(_ input: CVPixelBuffer) -> CVPixelBuffer {
-        // [Same as SimpleCameraOverlay]
-        return input // Placeholder - copy full implementation
-    }
     
     private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
-        // [Same as SimpleCameraOverlay]
-        return nil // Placeholder - copy full implementation
+        let width = CVPixelBufferGetWidth(source)
+        let height = CVPixelBufferGetHeight(source)
+        let format = CVPixelBufferGetPixelFormatType(source)
+        
+        var copy: CVPixelBuffer?
+        let attrs = [
+            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!
+        ] as CFDictionary
+        
+        let status = CVPixelBufferCreate(kCFAllocatorDefault, width, height, format, attrs, &copy)
+        guard status == kCVReturnSuccess, let destination = copy else { return nil }
+        
+        CVPixelBufferLockBaseAddress(source, .readOnly)
+        CVPixelBufferLockBaseAddress(destination, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(source, .readOnly)
+            CVPixelBufferUnlockBaseAddress(destination, [])
+        }
+        
+        let sourceBytesPerRow = CVPixelBufferGetBytesPerRow(source)
+        let destBytesPerRow = CVPixelBufferGetBytesPerRow(destination)
+        guard let sourceData = CVPixelBufferGetBaseAddress(source),
+              let destData = CVPixelBufferGetBaseAddress(destination) else { return nil }
+        
+        for row in 0..<height {
+            let sourceRowData = sourceData.advanced(by: row * sourceBytesPerRow)
+            let destRowData = destData.advanced(by: row * destBytesPerRow)
+            memcpy(destRowData, sourceRowData, min(sourceBytesPerRow, destBytesPerRow))
+        }
+        return destination
     }
     
     private func analyzeAndProvideGuidance(mask: CVPixelBuffer) {
-        // [Same as SimpleCameraOverlay]
+        CVPixelBufferLockBaseAddress(mask, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
+        
+        let width = CVPixelBufferGetWidth(mask)
+        let height = CVPixelBufferGetHeight(mask)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(mask)
+        guard let baseAddress = CVPixelBufferGetBaseAddress(mask) else { return }
+        let maskPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
+        
+        var minX = width, maxX = 0, minY = height, maxY = 0, pixelCount = 0
+        
+        for y in 0..<height {
+            let rowPtr = maskPtr.advanced(by: y * bytesPerRow)
+            for x in 0..<width {
+                if rowPtr[x] > 128 {
+                    minX = min(minX, x); maxX = max(maxX, x)
+                    minY = min(minY, y); maxY = max(maxY, y)
+                    pixelCount += 1
+                }
+            }
+        }
+        
+        guard pixelCount > 0 else {
+            DispatchQueue.main.async { self.userGuidanceHint = nil }
+            return
+        }
+        
+        let segmentArea = (maxX - minX) * (maxY - minY)
+        let coverageRatio = Float(segmentArea) / Float(width * height)
+        let edgeMargin = 5
+        let touchesEdges = minX < edgeMargin || maxX > width - edgeMargin || minY < edgeMargin || maxY > height - edgeMargin
+        
+        var hint: UserGuidanceHint? = nil
+        if touchesEdges && coverageRatio > 0.4 {
+            hint = UserGuidanceHint(message: "Step back to see full scene", icon: "arrow.down.backward.and.arrow.up.forward", color: .orange)
+        } else if coverageRatio < 0.15 {
+            hint = UserGuidanceHint(message: "Move closer to subject", icon: "arrow.up.left.and.arrow.down.right", color: .blue)
+        } else if coverageRatio > 0.7 {
+            hint = UserGuidanceHint(message: "Move back for better framing", icon: "arrow.down.backward.and.arrow.up.forward", color: .yellow)
+        }
+        
+        DispatchQueue.main.async {
+            withAnimation { self.userGuidanceHint = hint }
+        }
     }
     
     private func updateU2NetVisualization(_ mask: CVPixelBuffer) {
@@ -646,22 +731,18 @@ class ForegroundCameraModel: NSObject, ObservableObject {
     
     private func runU2NetSync(pixelBuffer: CVPixelBuffer) {
         guard let model = u2netModel else { return }
-        
         let request = VNCoreMLRequest(model: model) { [weak self] request, error in
             if let error = error {
                 print("❌ [ForegroundCameraModel] U2-Net error: \(error)")
                 return
             }
-            
             if let results = request.results as? [VNPixelBufferObservation],
                let maskBuffer = results.first?.pixelBuffer {
                 self?.u2netMask = maskBuffer
             }
         }
-        
         request.imageCropAndScaleOption = .scaleFill
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-        
         do {
             try handler.perform([request])
         } catch {
@@ -672,42 +753,32 @@ class ForegroundCameraModel: NSObject, ObservableObject {
     private func applyMaskToImage(original: CIImage, mask: CIImage) {
         let scaleX = original.extent.width / mask.extent.width
         let scaleY = original.extent.height / mask.extent.height
-        
-        let scaledMask = mask
-            .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-            .samplingNearest()
-        
+        let scaledMask = mask.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY)).samplingNearest()
         var finalMask = scaledMask
         
+        // Light blur for softer edges
         if let blurFilter = CIFilter(name: "CIGaussianBlur") {
             blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
-            blurFilter.setValue(0.3, forKey: kCIInputRadiusKey)
-            if let blurred = blurFilter.outputImage {
-                finalMask = blurred
-            }
+            blurFilter.setValue(0.5, forKey: kCIInputRadiusKey)  // Slightly more blur for smoother edges
+            if let blurred = blurFilter.outputImage { finalMask = blurred }
         }
         
+        // Sharpen contrast for cleaner cutout
         if let colorControls = CIFilter(name: "CIColorControls") {
             colorControls.setValue(finalMask, forKey: kCIInputImageKey)
-            colorControls.setValue(2.0, forKey: kCIInputContrastKey)
-            if let sharpened = colorControls.outputImage {
-                finalMask = sharpened
-            }
+            colorControls.setValue(1.5, forKey: kCIInputContrastKey)  // Reduced from 2.0 for softer look
+            if let sharpened = colorControls.outputImage { finalMask = sharpened }
         }
         
         finalMask = finalMask.cropped(to: original.extent)
-        
         guard let blendFilter = CIFilter(name: "CIBlendWithMask") else { return }
         
-        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
-            .cropped(to: original.extent)
-        
+        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0)).cropped(to: original.extent)
         blendFilter.setValue(original, forKey: kCIInputImageKey)
         blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
         blendFilter.setValue(finalMask, forKey: kCIInputMaskImageKey)
         
         guard let result = blendFilter.outputImage else { return }
-        
         let context = CIContext(options: [
             .workingColorSpace: CGColorSpaceCreateDeviceRGB(),
             .outputPremultiplied: true,
@@ -716,7 +787,6 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         
         if let cgImage = context.createCGImage(result, from: result.extent) {
             let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
-            
             DispatchQueue.main.async {
                 self.segmentedImage = uiImage
                 withAnimation(.easeIn(duration: 0.2)) {
