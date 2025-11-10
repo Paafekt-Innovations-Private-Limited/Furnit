@@ -192,7 +192,7 @@ struct SegmentExamine: View {
 
 //struct ScanningReticle: View {
 //    @Binding var rotation: Double
-//    
+//
 //    var body: some View {
 //        ZStack {
 //            Circle()
@@ -294,7 +294,7 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     private var maskWidth: Int = 0
     private var maskHeight: Int = 0
     private var framesInCurrentGroup = 0
-    private let maxAccumulationFrames = 30  // ✨ 30 frames (6 seconds at 5 FPS)
+    private let maxAccumulationFrames = 15  // ✨ Reduced from 30 to 15 frames (3 seconds at 5 FPS)
     
     override init() {
         super.init()
@@ -603,11 +603,74 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
         
-        var allValidDetections: [FurnitureDetection] = []
-        var bestDetection: FurnitureDetection? = nil
-        var bestScore: Float = 0
+        print("\n🎯 === U2-Net FIRST: Identifying Furniture ===")
         
-        print("\n📊 === DETECTION SCORING ===")
+        // ✅ STEP 1: U2-Net identifies the furniture region
+        guard let u2netMask = u2netMask else {
+            print("⚠️ No U2-Net mask available")
+            handleNoDetection()
+            return
+        }
+        
+        CVPixelBufferLockBaseAddress(u2netMask, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(u2netMask, .readOnly) }
+        
+        let maskWidth = CVPixelBufferGetWidth(u2netMask)
+        let maskHeight = CVPixelBufferGetHeight(u2netMask)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(u2netMask)
+        
+        guard let baseAddress = CVPixelBufferGetBaseAddress(u2netMask) else {
+            handleNoDetection()
+            return
+        }
+        
+        let u2netPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
+        
+        // Calculate U2-Net's furniture bounding box
+        var minX = protoWidth, maxX = 0, minY = protoHeight, maxY = 0
+        var u2netPixelCount = 0
+        
+        for y in 0..<protoHeight {
+            for x in 0..<protoWidth {
+                let sourceX = x * maskWidth / protoWidth
+                let sourceY = y * maskHeight / protoHeight
+                let sourceIdx = sourceY * bytesPerRow + sourceX
+                
+                if u2netPtr[sourceIdx] > 100 {
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                    u2netPixelCount += 1
+                }
+            }
+        }
+        
+        guard minX <= maxX && minY <= maxY && u2netPixelCount > 500 else {
+            print("❌ U2-Net didn't detect furniture")
+            handleNoDetection()
+            return
+        }
+        
+        let u2netCenterX = Float(minX + maxX) / 2.0
+        let u2netCenterY = Float(minY + maxY) / 2.0
+        let u2netWidth = Float(maxX - minX)
+        let u2netHeight = Float(maxY - minY)
+        
+        // Scale to FastSAM coordinates (640x640)
+        let scaleX = frameWidth / Float(protoWidth)
+        let scaleY = frameHeight / Float(protoHeight)
+        
+        let furnitureCenterX = u2netCenterX * scaleX
+        let furnitureCenterY = u2netCenterY * scaleY
+        let furnitureWidth = u2netWidth * scaleX
+        let furnitureHeight = u2netHeight * scaleY
+        
+        print("📍 U2-Net found furniture at: (\(Int(furnitureCenterX)), \(Int(furnitureCenterY))), size: \(Int(furnitureWidth))x\(Int(furnitureHeight))")
+        
+        // ✅ STEP 2: Find FastSAM detection that matches U2-Net's region
+        var bestDetection: FurnitureDetection? = nil
+        var bestOverlap: Float = 0.0
         
         for i in 0..<numDetections {
             let conf = detPointer[4 * numDetections + i]
@@ -617,164 +680,58 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 let y = detPointer[1 * numDetections + i]
                 let w = detPointer[2 * numDetections + i]
                 let h = detPointer[3 * numDetections + i]
-                let area = w * h
-                let areaRatio = area / frameArea
                 
-                if areaRatio < 0.05 || areaRatio > 0.85 {
-                    continue
-                }
+                // Calculate overlap with U2-Net's region
+                let overlapRatio = calculateU2NetOverlap(x: x, y: y, width: w, height: h)
                 
-                var sizeScore: Float = 0
+                // Also check if detection is near U2-Net's center
+                let dx = abs(x - furnitureCenterX)
+                let dy = abs(y - furnitureCenterY)
+                let distance = sqrt(dx*dx + dy*dy)
+                let maxDistance = sqrt(furnitureWidth*furnitureWidth + furnitureHeight*furnitureHeight) / 2.0
                 
-                if areaRatio >= 0.25 && areaRatio <= 0.65 {
-                    let normalizedSize = (areaRatio - 0.25) / (0.65 - 0.25)
-                    sizeScore = 0.80 + (normalizedSize * 0.20)
-                } else if areaRatio >= 0.05 && areaRatio < 0.25 {
-                    let normalizedSize = (areaRatio - 0.05) / (0.25 - 0.05)
-                    sizeScore = normalizedSize * normalizedSize * 0.7
-                } else {
-                    sizeScore = max(0, 1.0 - (areaRatio - 0.65) * 3.0)
-                }
+                let proximity = 1.0 - min(1.0, distance / maxDistance)
+                let score = overlapRatio * 0.7 + proximity * 0.3
                 
-                let distanceFromCenter = sqrt(pow(x - frameCenterX, 2) + pow(y - frameCenterY, 2))
-                let maxDistance = sqrt(pow(frameCenterX, 2) + pow(frameCenterY, 2))
-                let centerProximityScore = 1.0 - (distanceFromCenter / maxDistance)
-                
-                var u2netBonus: Float = 0
-                if u2netMask != nil {
-                    let overlapRatio = calculateU2NetOverlap(x: x, y: y, width: w, height: h)
-                    u2netBonus = overlapRatio * 0.2
-                }
-                
-                var trackingBonus: Float = 0
-                if let tracked = trackedDetectionCenter {
-                    let dx = abs(x - tracked.x)
-                    let dy = abs(y - tracked.y)
-                    let distance = sqrt(dx*dx + dy*dy)
-                    
-                    if distance < trackingRadius {
-                        let proximity = 1.0 - (distance / trackingRadius)
-                        trackingBonus = proximity * trackingConfidence * 0.4
-                    }
-                }
-                
-                let baseScore = sizeScore * sizeScore * conf * centerProximityScore
-                let combinedScore = baseScore + u2netBonus + trackingBonus
-                
-                if combinedScore < minimumAcceptableScore {
-                    continue
-                }
-                
-                let detection = FurnitureDetection(idx: i, score: combinedScore, conf: conf, x: x, y: y, w: w, h: h)
-                allValidDetections.append(detection)
-                
-                if combinedScore > bestScore {
-                    bestScore = combinedScore
-                    bestDetection = detection
+                if score > bestOverlap && score > 0.3 {
+                    bestOverlap = score
+                    bestDetection = FurnitureDetection(idx: i, score: score, conf: conf, x: x, y: y, w: w, h: h)
                 }
             }
         }
         
         guard let primaryDetection = bestDetection else {
-            print("❌ No valid detection found")
+            print("❌ No FastSAM detection matches U2-Net's furniture region")
             handleNoDetection()
             return
         }
         
-        let areaRatio = (primaryDetection.w * primaryDetection.h) / frameArea
-        print("📍 Primary: Area=\(String(format: "%.1f%%", areaRatio*100)), Score=\(String(format: "%.2f", primaryDetection.score))")
+        print("✅ FastSAM detection #\(primaryDetection.idx) matches U2-Net region (overlap: \(Int(bestOverlap * 100))%)")
+        print("🎯 FastSAM will segment U2-Net's furniture region with precise edges")
         
-        let furnitureGroup = findAllRelatedFurniture(primary: primaryDetection, allDetections: allValidDetections)
-        
-        if furnitureGroup.count > 1 {
-            print("🔗 Grouped \(furnitureGroup.count) parts together")
-        }
-        
-        trackedDetectionCenter = (primaryDetection.x, primaryDetection.y)
+        trackedDetectionCenter = (furnitureCenterX, furnitureCenterY)
         trackingConfidence = min(1.0, trackingConfidence + 0.1)
-        
         noDetectionFrames = 0
         
-        let segMask = generateCombinedMask(
-            detections: furnitureGroup,
+        // ✅ STEP 3: Use FastSAM to segment U2-Net's region
+        let segMask = generateMaskForU2NetRegion(
+            detection: primaryDetection,
+            u2netBounds: (minX: minX, maxX: maxX, minY: minY, maxY: maxY),
             prototypes: prototypes,
             protoHeight: protoHeight,
             protoWidth: protoWidth,
             detPointer: detPointer,
             numDetections: numDetections,
             numValues: numValues,
-            numPrototypes: numPrototypes
+            numPrototypes: numPrototypes,
+            u2netPtr: u2netPtr,
+            u2netWidth: maskWidth,
+            u2netHeight: maskHeight,
+            u2netBytesPerRow: bytesPerRow
         )
         
         let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
         applyCleanSegmentation(original: ciImage, mask: segMask)
-    }
-    
-    private func findAllRelatedFurniture(primary: FurnitureDetection, allDetections: [FurnitureDetection]) -> [FurnitureDetection] {
-        
-        var furnitureGroup = [primary]
-        var processedIndices = Set<Int>([primary.idx])
-        
-        let maxAllowedDistance = (primary.w + primary.h) * 0.6
-        
-        print("\n🔍 Looking for related furniture (strict mode):")
-        
-        for detection in allDetections {
-            if processedIndices.contains(detection.idx) { continue }
-            
-            var isRelated = false
-            
-            for existingFurniture in furnitureGroup {
-                let dx = abs(detection.x - existingFurniture.x)
-                let dy = abs(detection.y - existingFurniture.y)
-                let distance = sqrt(dx*dx + dy*dy)
-                
-                if distance < maxAllowedDistance {
-                    isRelated = true
-                    break
-                }
-                
-                let det1Left = existingFurniture.x - existingFurniture.w / 2
-                let det1Right = existingFurniture.x + existingFurniture.w / 2
-                let det1Top = existingFurniture.y - existingFurniture.h / 2
-                let det1Bottom = existingFurniture.y + existingFurniture.h / 2
-                
-                let det2Left = detection.x - detection.w / 2
-                let det2Right = detection.x + detection.w / 2
-                let det2Top = detection.y - detection.h / 2
-                let det2Bottom = detection.y + detection.h / 2
-                
-                let horizontalGap = max(0, max(det2Left - det1Right, det1Left - det2Right))
-                let verticalGap = max(0, max(det2Top - det1Bottom, det1Top - det2Bottom))
-                
-                if horizontalGap < 50 && verticalGap < 50 {
-                    isRelated = true
-                    break
-                }
-            }
-            
-            if isRelated {
-                if u2netMask != nil {
-                    let overlapRatio = calculateU2NetOverlap(x: detection.x, y: detection.y, width: detection.w, height: detection.h)
-                    
-                    if overlapRatio > 0.25 {
-                        furnitureGroup.append(detection)
-                        processedIndices.insert(detection.idx)
-                        print("  ✅ Added: Area=\(String(format: "%.1f%%", (detection.w * detection.h / frameArea)*100)), Overlap=\(String(format: "%.0f%%", overlapRatio*100))")
-                    } else {
-                        print("  ❌ Rejected: Low U2-Net overlap (\(String(format: "%.0f%%", overlapRatio*100)))")
-                    }
-                } else {
-                    if detection.conf > 0.65 {
-                        furnitureGroup.append(detection)
-                        processedIndices.insert(detection.idx)
-                        print("  ✅ Added: Area=\(String(format: "%.1f%%", (detection.w * detection.h / frameArea)*100))")
-                    }
-                }
-            }
-        }
-        
-        return furnitureGroup
     }
     
     private func handleNoDetection() {
@@ -880,257 +837,100 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         return accumulated
     }
     
-    private func generateCombinedMask(
-        detections: [FurnitureDetection],
+    private func generateMaskForU2NetRegion(
+        detection: FurnitureDetection,
+        u2netBounds: (minX: Int, maxX: Int, minY: Int, maxY: Int),
         prototypes: MLMultiArray,
         protoHeight: Int,
         protoWidth: Int,
         detPointer: UnsafePointer<Float>,
         numDetections: Int,
         numValues: Int,
-        numPrototypes: Int
+        numPrototypes: Int,
+        u2netPtr: UnsafePointer<UInt8>,
+        u2netWidth: Int,
+        u2netHeight: Int,
+        u2netBytesPerRow: Int
     ) -> CIImage {
         
         let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
         let maskSize = protoHeight * protoWidth
         
-        var detectionMasks: [[Float]] = []
+        print("\n🎯 === MASK GENERATION (U2-Net Guided FastSAM) ===")
         
-        for detection in detections {
-            var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
-            for i in 0..<numPrototypes {
-                let coeffIdx = (numValues - numPrototypes + i) * numDetections + detection.idx
-                maskCoeffs[i] = detPointer[coeffIdx]
-            }
-            
-            var detectionMask = [Float](repeating: 0, count: maskSize)
-            
-            for protoIdx in 0..<numPrototypes {
-                let coeff = maskCoeffs[protoIdx]
-                let protoOffset = protoIdx * maskSize
-                
-                for i in 0..<maskSize {
-                    detectionMask[i] += coeff * protoPointer[protoOffset + i]
-                }
-            }
-            
-            for i in 0..<maskSize {
-                detectionMask[i] = 1.0 / (1.0 + exp(-detectionMask[i]))
-            }
-            
-            detectionMasks.append(detectionMask)
+        // ✅ Get FastSAM's mask coefficients for this detection
+        var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
+        for i in 0..<numPrototypes {
+            let coeffIdx = (numValues - numPrototypes + i) * numDetections + detection.idx
+            maskCoeffs[i] = detPointer[coeffIdx]
         }
         
-        var combinedConfidence = [Float](repeating: 0, count: maskSize)
-        for detectionMask in detectionMasks {
+        // Generate detailed mask from prototypes
+        var detectionMask = [Float](repeating: 0, count: maskSize)
+        
+        for protoIdx in 0..<numPrototypes {
+            let coeff = maskCoeffs[protoIdx]
+            let protoOffset = protoIdx * maskSize
+            
             for i in 0..<maskSize {
-                combinedConfidence[i] = max(combinedConfidence[i], detectionMask[i])
+                detectionMask[i] += coeff * protoPointer[protoOffset + i]
             }
         }
         
+        // Apply sigmoid activation
+        for i in 0..<maskSize {
+            detectionMask[i] = 1.0 / (1.0 + exp(-detectionMask[i]))
+        }
+        
+        // ✅ Create mask constrained to U2-Net's region + margin
         var pixelData = [UInt8](repeating: 0, count: maskSize)
         
-        print("\n🎯 === MASK GENERATION (U2-Net Dominant) ===")
+        // Add margin around U2-Net bounds (allow FastSAM to extend for thin parts)
+        let margin = 15
+        let searchMinX = max(0, u2netBounds.minX - margin)
+        let searchMaxX = min(protoWidth - 1, u2netBounds.maxX + margin)
+        let searchMinY = max(0, u2netBounds.minY - margin)
+        let searchMaxY = min(protoHeight - 1, u2netBounds.maxY + margin)
         
-        if let u2netMask = u2netMask {
-            CVPixelBufferLockBaseAddress(u2netMask, .readOnly)
-            defer { CVPixelBufferUnlockBaseAddress(u2netMask, .readOnly) }
-            
-            let maskWidth = CVPixelBufferGetWidth(u2netMask)
-            let maskHeight = CVPixelBufferGetHeight(u2netMask)
-            let bytesPerRow = CVPixelBufferGetBytesPerRow(u2netMask)
-            
-            if let baseAddress = CVPixelBufferGetBaseAddress(u2netMask) {
-                let u2netPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
-                var u2netPixels = 0
+        print("📊 U2-Net region: [\(u2netBounds.minX),\(u2netBounds.minY)] → [\(u2netBounds.maxX),\(u2netBounds.maxY)]")
+        print("🔍 FastSAM search area (with margin): [\(searchMinX),\(searchMinY)] → [\(searchMaxX),\(searchMaxY)]")
+        
+        var fastsamPixels = 0
+        let maskThreshold: Float = 0.5
+        
+        // Only process pixels within search area
+        for y in searchMinY...searchMaxY {
+            for x in searchMinX...searchMaxX {
+                let idx = y * protoWidth + x
                 
-                // ✅ STEP 1: U2-Net is the PRIMARY source
-                for y in 0..<protoHeight {
-                    for x in 0..<protoWidth {
-                        let sourceX = x * maskWidth / protoWidth
-                        let sourceY = y * maskHeight / protoHeight
-                        let sourceIdx = sourceY * bytesPerRow + sourceX
-                        let targetIdx = y * protoWidth + x
-                        
-                        if u2netPtr[sourceIdx] > 100 {
-                            pixelData[targetIdx] = 255
-                            u2netPixels += 1
-                        }
-                    }
-                }
-                
-                print("📊 U2-Net PRIMARY base: \(u2netPixels) pixels")
-                
-                // ✅ STEP 2: Calculate U2-Net bounding box
-                var minX = protoWidth, maxX = 0, minY = protoHeight, maxY = 0
-                
-                for y in 0..<protoHeight {
-                    for x in 0..<protoWidth {
-                        let idx = y * protoWidth + x
-                        if pixelData[idx] == 255 {
-                            minX = min(minX, x)
-                            maxX = max(maxX, x)
-                            minY = min(minY, y)
-                            maxY = max(maxY, y)
-                        }
-                    }
-                }
-                
-                guard minX <= maxX && minY <= maxY else {
-                    print("⚠️ No U2-Net mask found, skipping FastSAM enhancement")
-                    return createCIImage(from: pixelData, width: protoWidth, height: protoHeight)
-                }
-                
-                // ✅ STEP 3: REDUCED search area
-                let searchMinX = max(0, minX - 20)
-                let searchMaxX = min(protoWidth - 1, maxX + 20)
-                let searchMinY = max(0, minY - 35)
-                let searchMaxY = min(protoHeight - 1, maxY + 20)
-                
-                print("🔍 Search area: [\(searchMinX),\(searchMinY)] → [\(searchMaxX),\(searchMaxY)]")
-                
-                var addedFromFastSAM = 0
-                
-                // ✅ STEP 4: ONLY 3 passes with STRICTER thresholds
-                for pass in 1...3 {
-                    let passName = ["strict", "medium", "relaxed"][pass - 1]
+                if detectionMask[idx] > maskThreshold {
+                    // Check if U2-Net also sees furniture here (or very close)
+                    let u2netX = x * u2netWidth / protoWidth
+                    let u2netY = y * u2netHeight / protoHeight
+                    let u2netIdx = u2netY * u2netBytesPerRow + u2netX
+                    let u2netValue = u2netPtr[u2netIdx]
                     
-                    var addedThisPass = 0
-                    
-                    for y in searchMinY...searchMaxY {
-                        for x in searchMinX...searchMaxX {
-                            let idx = y * protoWidth + x
-                            
-                            if pixelData[idx] == 255 { continue }
-                            
-                            let requiredConfidence: Float = {
-                                switch pass {
-                                case 1: return 0.85
-                                case 2: return 0.75
-                                case 3: return 0.65
-                                default: return 0.85
-                                }
-                            }()
-                            
-                            if combinedConfidence[idx] < requiredConfidence { continue }
-                            
-                            // ✅ CRITICAL: Check if this pixel is actually part of U2-Net furniture
-                            let u2netSampleX = x * maskWidth / protoWidth
-                            let u2netSampleY = y * maskHeight / protoHeight
-                            let u2netSampleIdx = u2netSampleY * bytesPerRow + u2netSampleX
-                            let u2netValue = u2netPtr[u2netSampleIdx]
-                            
-                            // ✅ STRICT U2-Net check: Only add if U2-Net also sees furniture here
-                            if u2netValue < 30 {
-                                continue
-                            }
-                            
-                            var nearFurniture = false
-                            var furnitureCount = 0
-                            
-                            let searchRadius = pass <= 1 ? 2 : 3
-                            
-                            for dy in -searchRadius...searchRadius {
-                                for dx in -searchRadius...searchRadius {
-                                    if y + dy >= 0 && y + dy < protoHeight &&
-                                       x + dx >= 0 && x + dx < protoWidth {
-                                        let nIdx = (y + dy) * protoWidth + (x + dx)
-                                        if pixelData[nIdx] == 255 {
-                                            nearFurniture = true
-                                            furnitureCount += 1
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            let requiredNeighbors: Int = {
-                                switch pass {
-                                case 1: return 3
-                                case 2: return 2
-                                case 3: return 2
-                                default: return 2
-                                }
-                            }()
-                            
-                            if nearFurniture && furnitureCount >= requiredNeighbors {
-                                pixelData[idx] = 255
-                                addedFromFastSAM += 1
-                                addedThisPass += 1
-                            }
-                        }
-                    }
-                    
-                    if addedThisPass > 0 {
-                        print("  ↳ Pass \(pass) (\(passName)): +\(addedThisPass) pixels")
-                    }
-                }
-                
-                if addedFromFastSAM > 0 {
-                    print("📊 FastSAM enhancements: +\(addedFromFastSAM) pixels (U2-Net guided)")
-                }
-                
-                print("📊 Before accumulation: \(pixelData.filter { $0 == 255 }.count) pixels")
-            }
-        } else {
-            print("⚠️ Using FastSAM only (U2-Net not available)")
-            
-            var maxConfidence: Float = 0
-            var seedX = 0
-            var seedY = 0
-            
-            for y in 0..<protoHeight {
-                for x in 0..<protoWidth {
-                    let idx = y * protoWidth + x
-                    if combinedConfidence[idx] > maxConfidence {
-                        maxConfidence = combinedConfidence[idx]
-                        seedX = x
-                        seedY = y
-                    }
-                }
-            }
-            
-            if maxConfidence > 0.90 {
-                var toProcess = [(seedX, seedY)]
-                var processed = Set<Int>()
-                
-                while !toProcess.isEmpty {
-                    let (x, y) = toProcess.removeFirst()
-                    let idx = y * protoWidth + x
-                    
-                    if processed.contains(idx) { continue }
-                    processed.insert(idx)
-                    
-                    if combinedConfidence[idx] > 0.85 {
+                    // Allow if:
+                    // 1. U2-Net sees furniture here (value > 50), OR
+                    // 2. We're within U2-Net's bounding box (even if weak signal)
+                    if u2netValue > 50 || (x >= u2netBounds.minX && x <= u2netBounds.maxX &&
+                                          y >= u2netBounds.minY && y <= u2netBounds.maxY) {
                         pixelData[idx] = 255
-                        
-                        for dy in -1...1 {
-                            for dx in -1...1 {
-                                if dy == 0 && dx == 0 { continue }
-                                let nx = x + dx
-                                let ny = y + dy
-                                if nx >= 0 && nx < protoWidth && ny >= 0 && ny < protoHeight {
-                                    let nIdx = ny * protoWidth + nx
-                                    if !processed.contains(nIdx) {
-                                        toProcess.append((nx, ny))
-                                    }
-                                }
-                            }
-                        }
+                        fastsamPixels += 1
                     }
                 }
             }
-            
-            print("📊 Before accumulation: \(pixelData.filter { $0 == 255 }.count) pixels")
         }
         
-        // ✅ APPLY ACCUMULATION BEFORE MORPHOLOGY
+        print("📊 FastSAM segmented: \(fastsamPixels) pixels within U2-Net's furniture region")
+        
+        // ✅ Light morphology to smooth edges
+        pixelData = applyMorphologicalClosing(pixelData, width: protoWidth, height: protoHeight)
+        print("📊 After morphology: \(pixelData.filter { $0 == 255 }.count) pixels")
+        
+        // ✅ Accumulation
         pixelData = accumulateMaskPure(current: pixelData, width: protoWidth, height: protoHeight)
         print("📊 After accumulation: \(pixelData.filter { $0 == 255 }.count) pixels")
-        
-        // ✅ REDUCED morphology: 8 dilate + 5 erode
-        pixelData = applyMorphologicalClosing(pixelData, width: protoWidth, height: protoHeight)
-        
-        print("📊 After morphology: \(pixelData.filter { $0 == 255 }.count) pixels")
         
         return createCIImage(from: pixelData, width: protoWidth, height: protoHeight)
     }
@@ -1164,8 +964,8 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     }
     
     private func applyMorphologicalClosing(_ input: [UInt8], width: Int, height: Int) -> [UInt8] {
-        let dilated = dilate(input, width: width, height: height, iterations: 8)
-        let closed = erode(dilated, width: width, height: height, iterations: 5)
+        let dilated = dilate(input, width: width, height: height, iterations: 3)
+        let closed = erode(dilated, width: width, height: height, iterations: 2)
         return closed
     }
     
