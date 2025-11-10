@@ -17,6 +17,13 @@ struct SegmentForeground: View {
     @State private var scannerRotation: Double = 0
     @State private var lastHapticTime: Date = .distantPast
     @State private var showingSaveSuccess = false
+    @State private var hasShownPerfectHaptic = false
+    @State private var isCapturingScreenshot = false
+    
+    // Loading progress (0.0 to 1.0)
+    @State private var loadingProgress: Float = 0.0
+    @State private var isLoading: Bool = true
+    @State private var loadingMessage: String = "Initializing camera..."  // Hide UI during screenshot
     
     private let showSensitivitySlider = false
     private let showDebugBoxes = false
@@ -25,6 +32,15 @@ struct SegmentForeground: View {
         ZStack {
             Color.clear
                 .ignoresSafeArea()
+            
+            // Loading progress overlay (shown during startup)
+            if isLoading {
+                LoadingProgressOverlay(
+                    progress: loadingProgress,
+                    message: loadingMessage
+                )
+                .zIndex(100)
+            }
             
             if showDebugBoxes && camera.u2netCoverageRect != .zero {
                 Rectangle()
@@ -84,7 +100,7 @@ struct SegmentForeground: View {
                     }
             }
             
-            if showingSaveSuccess {
+            if showingSaveSuccess && !isCapturingScreenshot {
                 VStack {
                     Spacer()
                     HStack(spacing: 12) {
@@ -154,8 +170,9 @@ struct SegmentForeground: View {
                     .padding(.trailing, 16)
                 }
                 .padding(.top, 60)
+                .opacity(isCapturingScreenshot ? 0 : 1)  // Hide during screenshot
                 
-                if let hint = camera.userGuidanceHint, !camera.isExamining {
+                if let hint = camera.userGuidanceHint, !camera.isExamining, !isCapturingScreenshot {
                     VStack(spacing: 4) {
                         HStack(spacing: 6) {
                             Image(systemName: hint.icon)
@@ -193,7 +210,7 @@ struct SegmentForeground: View {
                                 .background(Capsule().fill(Color.black.opacity(0.5)))
                                 .foregroundColor(.white)
                             } else {
-                                Text("Tap to capture photo")
+                                Text("Position furniture in frame")
                                     .font(.caption)
                                     .padding(8)
                                     .background(Capsule().fill(Color.black.opacity(0.5)))
@@ -237,6 +254,7 @@ struct SegmentForeground: View {
                             Button(action: {
                                 withAnimation {
                                     camera.finishExamining()
+                                    hasShownPerfectHaptic = false
                                 }
                             }) {
                                 HStack(spacing: 8) {
@@ -284,14 +302,32 @@ struct SegmentForeground: View {
                 }
                 .padding(.bottom, 50)
                 .padding(.horizontal)
+                .opacity(isCapturingScreenshot ? 0 : 1)  // Hide during screenshot
             }
         }
         .onAppear {
             print("🎨 [SegmentForeground] Starting scene detection...")
+            
+            // Stage 1: Camera initialization (0-30%)
+            loadingProgress = 0.0
+            loadingMessage = "Initializing camera..."
+            
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 if granted {
+                    DispatchQueue.main.async {
+                        self.loadingProgress = 0.3
+                        self.loadingMessage = "Loading U2-Net model..."
+                    }
+                    
+                    // Stage 2: Start camera session (30-50%)
                     camera.startSession()
                     
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        self.loadingProgress = 0.5
+                        self.loadingMessage = "Processing first frame..."
+                    }
+                    
+                    // Stage 3: Wait for first segmentation
                     let minDelay = 1.0
                     let maxDelay = 5.0
                     let checkInterval = 0.1
@@ -300,16 +336,38 @@ struct SegmentForeground: View {
                     func checkForSegmentation() {
                         elapsed += checkInterval
                         
+                        // Update progress while waiting (50-90%)
+                        let progressIncrement = min(0.4 * Float(elapsed / maxDelay), 0.4)
+                        DispatchQueue.main.async {
+                            self.loadingProgress = 0.5 + progressIncrement
+                        }
+                        
                         if camera.segmentedImage != nil && elapsed >= minDelay {
+                            // Stage 4: First segmentation complete! (90-100%)
                             DispatchQueue.main.async {
-                                withAnimation(.easeOut(duration: 0.4)) {
-                                    isInitialAppearance = false
+                                self.loadingProgress = 0.9
+                                self.loadingMessage = "Rendering..."
+                                
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    withAnimation(.easeOut(duration: 0.4)) {
+                                        self.loadingProgress = 1.0
+                                        self.isInitialAppearance = false
+                                    }
+                                    
+                                    // Hide loading overlay
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        withAnimation {
+                                            self.isLoading = false
+                                        }
+                                    }
                                 }
                             }
                         } else if elapsed >= maxDelay {
+                            // Timeout - hide loading anyway
                             DispatchQueue.main.async {
                                 withAnimation(.easeOut(duration: 0.4)) {
-                                    isInitialAppearance = false
+                                    self.isInitialAppearance = false
+                                    self.isLoading = false
                                 }
                             }
                         } else {
@@ -332,54 +390,170 @@ struct SegmentForeground: View {
     }
     
     private func savePhoto() {
-        guard let fullImage = camera.originalCameraImage else {
-            print("⚠️ No original camera image available")
-            return
-        }
+        // Hide UI elements for clean screenshot
+        isCapturingScreenshot = true
         
-        capturedImage = fullImage
-        
-        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-            DispatchQueue.main.async {
-                if status == .authorized || status == .limited {
-                    PHPhotoLibrary.shared().performChanges({
-                        PHAssetChangeRequest.creationRequestForAsset(from: fullImage)
-                    }) { success, error in
-                        DispatchQueue.main.async {
-                            if success {
-                                print("✅ Full photo saved to Photos!")
-                                
-                                withAnimation(.spring()) {
-                                    self.showingSaveSuccess = true
-                                }
-                                
-                                let generator = UINotificationFeedbackGenerator()
-                                generator.notificationOccurred(.success)
-                                
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                    withAnimation {
-                                        self.showingSaveSuccess = false
+        // Wait for next frame to ensure UI is hidden
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            // Capture screenshot of the entire view (3D room + furniture overlay)
+            guard let screenshot = self.captureScreenshot() else {
+                print("⚠️ Failed to capture screenshot")
+                self.isCapturingScreenshot = false
+                return
+            }
+            
+            // Show UI again
+            self.isCapturingScreenshot = false
+            
+            self.capturedImage = screenshot
+            
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                DispatchQueue.main.async {
+                    if status == .authorized || status == .limited {
+                        PHPhotoLibrary.shared().performChanges({
+                            PHAssetChangeRequest.creationRequestForAsset(from: screenshot)
+                        }) { success, error in
+                            DispatchQueue.main.async {
+                                if success {
+                                    print("✅ Screenshot saved to Photos!")
+                                    
+                                    withAnimation(.spring()) {
+                                        self.showingSaveSuccess = true
                                     }
                                     
+                                    let generator = UINotificationFeedbackGenerator()
+                                    generator.notificationOccurred(.success)
+                                    
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                        withAnimation {
+                                            self.showingSaveSuccess = false
+                                        }
+                                        
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                            self.isShowingCamera = false
+                                        }
+                                    }
+                                } else {
+                                    print("❌ Failed to save: \(error?.localizedDescription ?? "unknown error")")
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                         self.isShowingCamera = false
                                     }
                                 }
-                            } else {
-                                print("❌ Failed to save: \(error?.localizedDescription ?? "unknown error")")
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                    self.isShowingCamera = false
-                                }
                             }
                         }
-                    }
-                } else {
-                    print("⚠️ Photos access denied")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.isShowingCamera = false
+                    } else {
+                        print("⚠️ Photos access denied")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            self.isShowingCamera = false
+                        }
                     }
                 }
             }
+        }
+    }
+    
+    // MARK: - Capture Screenshot
+    private func captureScreenshot() -> UIImage? {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first(where: { $0.isKeyWindow }) else {
+            print("⚠️ Could not find key window")
+            return nil
+        }
+        
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        let screenshot = renderer.image { context in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        
+        print("📸 [Screenshot] Captured: \(Int(screenshot.size.width))x\(Int(screenshot.size.height))")
+        return screenshot
+    }
+}
+
+// MARK: - Loading Progress Overlay
+struct LoadingProgressOverlay: View {
+    let progress: Float
+    let message: String
+    
+    var body: some View {
+        ZStack {
+            // Blurred background
+            Color.black.opacity(0.7)
+                .ignoresSafeArea()
+                .blur(radius: 20)
+            
+            VStack(spacing: 24) {
+                // Animated icon
+                ZStack {
+                    Circle()
+                        .stroke(Color.purple.opacity(0.3), lineWidth: 4)
+                        .frame(width: 80, height: 80)
+                    
+                    Circle()
+                        .trim(from: 0, to: CGFloat(progress))
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(colors: [.purple, .blue]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                        )
+                        .frame(width: 80, height: 80)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.spring(response: 0.5), value: progress)
+                    
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 32))
+                        .foregroundColor(.purple)
+                }
+                
+                VStack(spacing: 12) {
+                    // Progress bar
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            // Background
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.2))
+                                .frame(height: 8)
+                            
+                            // Fill
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [.purple, .blue]),
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: geometry.size.width * CGFloat(progress), height: 8)
+                                .animation(.spring(response: 0.5), value: progress)
+                        }
+                    }
+                    .frame(width: 250, height: 8)
+                    
+                    // Message and percentage
+                    HStack {
+                        Text(message)
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.9))
+                        
+                        Spacer()
+                        
+                        Text("\(Int(progress * 100))%")
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: 250)
+                }
+            }
+            .padding(32)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(Color.black.opacity(0.8))
+                    .shadow(color: .purple.opacity(0.3), radius: 20)
+            )
         }
     }
 }
@@ -437,7 +611,7 @@ class ForegroundCameraModel: NSObject, ObservableObject {
     private let context = CIContext()
     
     private var lastProcessTime = Date()
-    private let processInterval: TimeInterval = 0.15  // Faster updates for smooth feed
+    private let processInterval: TimeInterval = 0.15
     private var isProcessing = false
     
     private var u2netMask: CVPixelBuffer?
@@ -608,15 +782,8 @@ class ForegroundCameraModel: NSObject, ObservableObject {
                 self.isExamining = true
             }
         } else if let locked = lockedMask {
-            // Use frozen mask during examination
             maskToUse = locked
-        } else {
-            // Live mode: use U2-Net mask directly (NO Canny processing!)
-            analyzeAndProvideGuidance(mask: maskToUse)
         }
-        
-        // Update visualization
-        updateU2NetVisualization(maskToUse)
         
         // Apply mask to create segmented image
         if !isExamining {
@@ -624,7 +791,6 @@ class ForegroundCameraModel: NSObject, ObservableObject {
             let ciImageForMask = CIImage(cvPixelBuffer: pixelBuffer)
             applyMaskToImage(original: ciImageForMask, mask: maskImage)
         } else if let frozen = lockedSegmentedImage {
-            // Show frozen segmented image during examination
             DispatchQueue.main.async {
                 self.segmentedImage = frozen
             }
@@ -632,17 +798,6 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         
         isProcessing = false
     }
-    
-    // REMOVED: All Canny edge detection methods
-    // - applyCannyEdgeSegmentation
-    // - cannyEdgeDetection
-    // - gaussianBlur
-    // - sobelGradients
-    // - nonMaximumSuppression
-    // - hysteresisThreshold
-    // - trackWeakEdges
-    // - fillEnclosedRegion
-    // - dilate
     
     private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
         let width = CVPixelBufferGetWidth(source)
@@ -678,57 +833,6 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         return destination
     }
     
-    private func analyzeAndProvideGuidance(mask: CVPixelBuffer) {
-        CVPixelBufferLockBaseAddress(mask, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
-        
-        let width = CVPixelBufferGetWidth(mask)
-        let height = CVPixelBufferGetHeight(mask)
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(mask)
-        guard let baseAddress = CVPixelBufferGetBaseAddress(mask) else { return }
-        let maskPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
-        
-        var minX = width, maxX = 0, minY = height, maxY = 0, pixelCount = 0
-        
-        for y in 0..<height {
-            let rowPtr = maskPtr.advanced(by: y * bytesPerRow)
-            for x in 0..<width {
-                if rowPtr[x] > 128 {
-                    minX = min(minX, x); maxX = max(maxX, x)
-                    minY = min(minY, y); maxY = max(maxY, y)
-                    pixelCount += 1
-                }
-            }
-        }
-        
-        guard pixelCount > 0 else {
-            DispatchQueue.main.async { self.userGuidanceHint = nil }
-            return
-        }
-        
-        let segmentArea = (maxX - minX) * (maxY - minY)
-        let coverageRatio = Float(segmentArea) / Float(width * height)
-        let edgeMargin = 5
-        let touchesEdges = minX < edgeMargin || maxX > width - edgeMargin || minY < edgeMargin || maxY > height - edgeMargin
-        
-        var hint: UserGuidanceHint? = nil
-        if touchesEdges && coverageRatio > 0.4 {
-            hint = UserGuidanceHint(message: "Step back to see full scene", icon: "arrow.down.backward.and.arrow.up.forward", color: .orange)
-        } else if coverageRatio < 0.15 {
-            hint = UserGuidanceHint(message: "Move closer to subject", icon: "arrow.up.left.and.arrow.down.right", color: .blue)
-        } else if coverageRatio > 0.7 {
-            hint = UserGuidanceHint(message: "Move back for better framing", icon: "arrow.down.backward.and.arrow.up.forward", color: .yellow)
-        }
-        
-        DispatchQueue.main.async {
-            withAnimation { self.userGuidanceHint = hint }
-        }
-    }
-    
-    private func updateU2NetVisualization(_ mask: CVPixelBuffer) {
-        // Disabled for performance
-    }
-    
     private func runU2NetSync(pixelBuffer: CVPixelBuffer) {
         guard let model = u2netModel else { return }
         let request = VNCoreMLRequest(model: model) { [weak self] request, error in
@@ -756,17 +860,15 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         let scaledMask = mask.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY)).samplingNearest()
         var finalMask = scaledMask
         
-        // Light blur for softer edges
         if let blurFilter = CIFilter(name: "CIGaussianBlur") {
             blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
-            blurFilter.setValue(0.5, forKey: kCIInputRadiusKey)  // Slightly more blur for smoother edges
+            blurFilter.setValue(0.5, forKey: kCIInputRadiusKey)
             if let blurred = blurFilter.outputImage { finalMask = blurred }
         }
         
-        // Sharpen contrast for cleaner cutout
         if let colorControls = CIFilter(name: "CIColorControls") {
             colorControls.setValue(finalMask, forKey: kCIInputImageKey)
-            colorControls.setValue(1.5, forKey: kCIInputContrastKey)  // Reduced from 2.0 for softer look
+            colorControls.setValue(1.5, forKey: kCIInputContrastKey)
             if let sharpened = colorControls.outputImage { finalMask = sharpened }
         }
         
