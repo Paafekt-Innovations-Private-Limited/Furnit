@@ -3,28 +3,26 @@ import AVFoundation
 import CoreML
 import Vision
 import CoreImage
+import Photos
 
 struct SegmentExamine: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
-    @StateObject private var camera = FastSAMCameraModel()
+    @StateObject private var camera = HybridSAMCameraModel()
     
     @State private var scaleMultiplier: CGFloat = 0.5
     @State private var dragOffset: CGSize = .zero
     @State private var accumulatedOffset: CGSize = .zero
     @State private var isInitialAppearance = true
     @State private var scannerRotation: Double = 0
-    @State private var lastHapticTime: Date = .distantPast
-    
-    private let showSensitivitySlider = false
+    @State private var showingSaveSuccess = false
     
     var body: some View {
         ZStack {
-            Color.clear
-                .ignoresSafeArea()
+            Color.clear.ignoresSafeArea()
             
-            if camera.segmentedImage == nil && !isInitialAppearance {
-                ScanningReticle(rotation: $scannerRotation)
+            if !camera.isExamining && camera.segmentedImage == nil && !isInitialAppearance {
+                ScanningReticleExamine(rotation: $scannerRotation)
                     .onAppear {
                         withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
                             scannerRotation = 360
@@ -43,9 +41,7 @@ struct SegmentExamine: View {
                              y: UIScreen.main.bounds.height / 2)
                     .gesture(
                         DragGesture()
-                            .onChanged { value in
-                                dragOffset = value.translation
-                            }
+                            .onChanged { value in dragOffset = value.translation }
                             .onEnded { value in
                                 accumulatedOffset.width += value.translation.width
                                 accumulatedOffset.height += value.translation.height
@@ -55,60 +51,42 @@ struct SegmentExamine: View {
                     .ignoresSafeArea()
                     .opacity(camera.furnitureOpacity)
                     .animation(.easeOut(duration: 0.3), value: camera.furnitureOpacity)
-                    .onChange(of: camera.detectionId) {
-                        let now = Date()
-                        if now.timeIntervalSince(lastHapticTime) > 2.0 {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                            generator.impactOccurred()
-                            lastHapticTime = now
-                        }
+            }
+            
+            if showingSaveSuccess {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill").font(.title2)
+                        Text("Furniture saved!").font(.headline)
                     }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 16)
+                    .background(Capsule().fill(Color.green.opacity(0.95)).shadow(radius: 10))
+                    .padding(.bottom, 150)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             
             VStack {
                 HStack {
                     HStack(spacing: 6) {
-                        Image(systemName: "minus.magnifyingglass")
-                            .foregroundColor(.white)
-                            .font(.system(size: 14))
-                        Slider(value: $scaleMultiplier, in: 0.3...1.0)
-                            .frame(width: 150)
-                            .accentColor(.white)
-                        Image(systemName: "plus.magnifyingglass")
-                            .foregroundColor(.white)
-                            .font(.system(size: 14))
+                        Image(systemName: "minus.magnifyingglass").foregroundColor(.white).font(.system(size: 14))
+                        Slider(value: $scaleMultiplier, in: 0.3...1.0).frame(width: 150).accentColor(.white)
+                        Image(systemName: "plus.magnifyingglass").foregroundColor(.white).font(.system(size: 14))
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(Capsule().fill(Color.black.opacity(0.7)))
                     .padding(.leading, 16)
                     
                     Spacer()
                     
-                    if accumulatedOffset != .zero || dragOffset != .zero {
-                        Button(action: {
-                            withAnimation(.spring()) {
-                                dragOffset = .zero
-                                accumulatedOffset = .zero
-                            }
-                        }) {
-                            Image(systemName: "arrow.counterclockwise.circle.fill")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .background(Circle().fill(Color.black.opacity(0.5)))
-                        }
-                        .padding(.trailing, 8)
-                        .transition(.scale)
-                    }
-                    
-                    Button(action: {
-                        isShowingCamera = false
-                    }) {
+                    Button(action: { isShowingCamera = false }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title)
                             .foregroundColor(.white)
                             .background(Circle().fill(Color.black.opacity(0.5)))
-                            .shadow(radius: 3)
                     }
                     .padding(.trailing, 16)
                 }
@@ -117,305 +95,228 @@ struct SegmentExamine: View {
                 Spacer()
                 
                 VStack(spacing: 12) {
-                    HStack {
+                    if !camera.isExamining {
                         if camera.segmentedImage == nil {
                             HStack(spacing: 4) {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(0.7)
-                                Text("Point at furniture")
-                                    .font(.caption)
+                                ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .white)).scaleEffect(0.7)
+                                Text("Detecting furniture...").font(.caption)
                             }
-                            .padding(8)
-                            .background(Capsule().fill(Color.black.opacity(0.5)))
-                            .foregroundColor(.white)
-                        } else {
-                            HStack(spacing: 8) {
-                                Text("Size: \(Int(scaleMultiplier * 100))%")
-                                    .font(.caption)
-                                    .padding(8)
-                                    .background(Capsule().fill(Color.black.opacity(0.5)))
-                                    .foregroundColor(.white)
-                                
-                                if camera.isAutoThresholding {
-                                    Text("Auto: \(Int(camera.confidenceThreshold * 100))%")
-                                        .font(.caption2)
-                                        .padding(6)
-                                        .background(Capsule().fill(Color.blue.opacity(0.3)))
-                                        .foregroundColor(.blue)
-                                }
-                            }
+                            .padding(8).background(Capsule().fill(Color.black.opacity(0.5))).foregroundColor(.white)
                         }
                     }
                     
-                    if showSensitivitySlider {
-                        HStack {
-                            Text("Sensitivity:")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                            Slider(value: $camera.confidenceThreshold, in: 0.3...0.7)
-                                .frame(width: 150)
-                                .accentColor(.green)
-                                .disabled(camera.isAutoThresholding)
-                            Text("\(Int(camera.confidenceThreshold * 100))%")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                                .frame(width: 40)
+                    HStack(spacing: 16) {
+                        if camera.isExamining {
+                            Button(action: { saveFurniture() }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "square.and.arrow.down.fill").font(.title3)
+                                    Text("Save").font(.headline)
+                                }
+                                .foregroundColor(.white).padding(.horizontal, 24).padding(.vertical, 12)
+                                .background(Capsule().fill(Color.green.opacity(0.9)))
+                            }
+                            
+                            Button(action: { withAnimation { camera.finishExamining() } }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.counterclockwise").font(.title3)
+                                    Text("Back").font(.headline)
+                                }
+                                .foregroundColor(.white).padding(.horizontal, 24).padding(.vertical, 12)
+                                .background(Capsule().fill(Color.gray.opacity(0.9)))
+                            }
+                        } else if camera.segmentedImage != nil {
+                            Button(action: {
+                                withAnimation { camera.startExamining() }
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "viewfinder.circle.fill").font(.title3)
+                                    Text("Examine").font(.headline)
+                                }
+                                .foregroundColor(.white).padding(.horizontal, 32).padding(.vertical, 12)
+                                .background(Capsule().fill(Color.green.opacity(0.9)))
+                            }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.black.opacity(0.5)))
-                        .opacity(camera.isAutoThresholding ? 0.6 : 1.0)
                     }
                 }
-                .padding(.bottom, 50)
-                .padding(.horizontal)
+                .padding(.bottom, 50).padding(.horizontal)
             }
         }
         .onAppear {
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 if granted {
                     camera.startSession()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        withAnimation(.easeOut(duration: 0.4)) {
-                            isInitialAppearance = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        withAnimation { isInitialAppearance = false }
+                    }
+                }
+            }
+        }
+        .onDisappear { camera.stopSession() }
+    }
+    
+    private func saveFurniture() {
+        guard let image = camera.segmentedImage else { return }
+        capturedImage = image
+        
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            DispatchQueue.main.async {
+                if status == .authorized || status == .limited {
+                    PHPhotoLibrary.shared().performChanges({
+                        PHAssetChangeRequest.creationRequestForAsset(from: image)
+                    }) { success, _ in
+                        DispatchQueue.main.async {
+                            if success {
+                                withAnimation { showingSaveSuccess = true }
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    withAnimation { showingSaveSuccess = false }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        isShowingCamera = false
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-        .onDisappear {
-            camera.stopSession()
+    }
+}
+
+struct ScanningReticleExamine: View {
+    @Binding var rotation: Double
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.3), lineWidth: 2).frame(width: 120, height: 120)
+            Rectangle()
+                .fill(LinearGradient(gradient: Gradient(colors: [.clear, .white.opacity(0.8), .clear]), startPoint: .top, endPoint: .bottom))
+                .frame(width: 2, height: 60).offset(y: -30).rotationEffect(.degrees(rotation))
+            Circle().fill(Color.white.opacity(0.5)).frame(width: 8, height: 8)
         }
     }
 }
 
-//struct ScanningReticle: View {
-//    @Binding var rotation: Double
-//
-//    var body: some View {
-//        ZStack {
-//            Circle()
-//                .stroke(Color.white.opacity(0.3), lineWidth: 2)
-//                .frame(width: 120, height: 120)
-//            Rectangle()
-//                .fill(LinearGradient(gradient: Gradient(colors: [.clear, .white.opacity(0.8), .clear]), startPoint: .top, endPoint: .bottom))
-//                .frame(width: 2, height: 60)
-//                .offset(y: -30)
-//                .rotationEffect(.degrees(rotation))
-//            Circle()
-//                .fill(Color.white.opacity(0.5))
-//                .frame(width: 8, height: 8)
-//            ForEach(0..<4) { i in
-//                CornerBracket()
-//                    .rotationEffect(.degrees(Double(i) * 90))
-//            }
-//        }
-//    }
-//}
-//
-//struct CornerBracket: View {
-//    var body: some View {
-//        Path { path in
-//            path.move(to: CGPoint(x: -60, y: -60))
-//            path.addLine(to: CGPoint(x: -40, y: -60))
-//            path.move(to: CGPoint(x: -60, y: -60))
-//            path.addLine(to: CGPoint(x: -60, y: -40))
-//        }
-//        .stroke(Color.white.opacity(0.6), lineWidth: 2)
-//    }
-//}
-
-struct FurnitureDetection {
-    let idx: Int
-    let score: Float
-    let conf: Float
-    let x: Float
-    let y: Float
-    let w: Float
-    let h: Float
-}
-
-class FastSAMCameraModel: NSObject, ObservableObject {
+// MARK: - Hybrid U2-Net + MobileSAM Camera Model
+class HybridSAMCameraModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
-    @Published var confidenceThreshold: Float = 0.5
-    @Published var isAutoAdjusting = false
-    @Published var isAutoThresholding = true
     @Published var furnitureOpacity: Double = 0.0
-    @Published var detectionId: UUID = UUID()
+    @Published var isExamining: Bool = false
     
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
-    private let videoQueue = DispatchQueue(label: "videoQueue", qos: .userInitiated)
+    private let videoQueue = DispatchQueue(label: "hybridSAMVideoQueue", qos: .userInitiated)
     
-    private var fastSAMModel: MLModel?
     private var u2netModel: VNCoreMLModel?
-    private let context = CIContext()
+    private var mobileSAMEncoder: MLModel?
+    private var mobileSAMDecoder: MLModel?
     
+    private let context = CIContext()
     private var lastProcessTime = Date()
     private let processInterval: TimeInterval = 0.2
     private var isProcessing = false
-    
     private var u2netMask: CVPixelBuffer?
-    private let u2netWeight: Float = 0.3
-    private let u2netQueue = DispatchQueue(label: "u2netQueue", qos: .userInitiated)
-    
-    private let frameWidth: Float = 640
-    private let frameHeight: Float = 640
-    private let frameCenterX: Float = 320
-    private let frameCenterY: Float = 320
-    private let frameArea: Float = 640 * 640
-    
-    private var trackedDetectionCenter: (x: Float, y: Float)?
-    private var trackingConfidence: Float = 0.0
-    private let trackingRadius: Float = 200
-    
-    private var consecutiveFramesWithSameDetection = 0
-    private let requiredConsecutiveFrames = 2
-    
-    private let minimumAcceptableScore: Float = 0.25
-    
-    private var detectionHistory: [(x: Float, y: Float, w: Float, h: Float, score: Float)] = []
-    private let historySize = 5
-    
-    private var stableDetectionTime: Date?
-    private let stabilityThreshold: TimeInterval = 2.0
-    private var noDetectionFrames = 0
-    private let autoAdjustTrigger = 15
-    
-    private var detectionConfidenceHistory: [[Float]] = []
-    private var framesSinceLastThresholdUpdate = 0
-    private let thresholdUpdateInterval = 30
-    private var sceneAnalysisFrames = 0
-    private let requiredAnalysisFrames = 5
-    
-    // ✅ Pure additive accumulation variables
-    private var accumulatedMask: [UInt8]?
-    private var maskWidth: Int = 0
-    private var maskHeight: Int = 0
-    private var framesInCurrentGroup = 0
-    private let maxAccumulationFrames = 15  // ✨ Reduced from 30 to 15 frames (3 seconds at 5 FPS)
+    private var lockedMask: CVPixelBuffer? = nil
+    private var shouldStartExaminingOnNextFrame = false
+    private var currentPixelBuffer: CVPixelBuffer?
+    private var currentImageEmbeddings: MLMultiArray?
     
     override init() {
         super.init()
-        checkCameraAuthorization()
-        loadFastSAMModel()
-        loadU2NetModel()
-        setupMemoryWarningHandler()
+        print("🎯 [HybridSAMCameraModel] Initializing...")
+        loadModels()
+        setupCamera()
     }
     
-    private func setupMemoryWarningHandler() {
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleMemoryWarning()
+    func startExamining() {
+        print("🔍 Starting examination mode")
+        shouldStartExaminingOnNextFrame = true
+    }
+    
+    func finishExamining() {
+        print("✅ Ending examination mode")
+        DispatchQueue.main.async {
+            self.isExamining = false
         }
+        lockedMask = nil
+        shouldStartExaminingOnNextFrame = false
+        segmentedImage = nil
+        furnitureOpacity = 0.0
     }
     
-    private func handleMemoryWarning() {
-        u2netMask = nil
-        detectionHistory.removeAll()
-        detectionConfidenceHistory.removeAll()
-    }
-    
-    private func checkCameraAuthorization() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            setupCamera()
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                if granted {
-                    DispatchQueue.main.async {
-                        self?.setupCamera()
-                    }
-                }
-            }
-        default:
-            break
-        }
-    }
-    
-    private func loadFastSAMModel() {
-        let modelNames = ["FastSAM-x", "FastSAM-embedded", "FastSAM", "yolov8x-seg"]
-        
+    private func loadModels() {
+        // Load U2-Net
+        let modelNames = ["u2netp", "U2Net", "u2net"]
         for name in modelNames {
-            for ext in ["mlmodelc", "mlpackage"] {
-                if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                    do {
-                        let model = try MLModel(contentsOf: url)
-                        self.fastSAMModel = model
-                        print("✅ Model loaded: \(name)")
-                        return
-                    } catch {
-                        continue
-                    }
+            if let modelURL = Bundle.main.url(forResource: name, withExtension: "mlmodelc") {
+                do {
+                    let model = try MLModel(contentsOf: modelURL)
+                    u2netModel = try VNCoreMLModel(for: model)
+                    print("✅ [HybridSAM] U2-Net loaded: \(name)")
+                    break
+                } catch {
+                    print("⚠️ Failed to load \(name): \(error)")
                 }
             }
         }
-        print("❌ No FastSAM model found")
-    }
-    
-    private func loadU2NetModel() {
-        let modelNames = ["u2netp", "U2Net", "u2net", "U2NetP", "U2NET"]
         
-        for name in modelNames {
-            for ext in ["mlmodelc", "mlpackage"] {
-                if let modelURL = Bundle.main.url(forResource: name, withExtension: ext) {
-                    do {
-                        let model = try MLModel(contentsOf: modelURL)
-                        u2netModel = try VNCoreMLModel(for: model)
-                        print("✅ U2-Net loaded: \(name)")
-                        return
-                    } catch {
-                        print("⚠️ Failed to load \(name).\(ext): \(error)")
-                    }
-                }
+        // Load MobileSAM Encoder
+        if let encoderURL = Bundle.main.url(forResource: "MobileSAMImageEncoder", withExtension: "mlmodelc") {
+            do {
+                let config = MLModelConfiguration()
+                config.computeUnits = .cpuAndGPU
+                mobileSAMEncoder = try MLModel(contentsOf: encoderURL, configuration: config)
+                print("✅ [HybridSAM] MobileSAM Encoder loaded")
+            } catch {
+                print("❌ Failed to load MobileSAM Encoder: \(error)")
             }
         }
-        print("⚠️ No U2-Net model loaded - will use FastSAM only")
+        
+        // Load MobileSAM Decoder
+        if let decoderURL = Bundle.main.url(forResource: "MobileSAMMaskDecoder", withExtension: "mlmodelc") {
+            do {
+                let config = MLModelConfiguration()
+                config.computeUnits = .cpuOnly  // CPU for stability
+                mobileSAMDecoder = try MLModel(contentsOf: decoderURL, configuration: config)
+                print("✅ [HybridSAM] MobileSAM Decoder loaded (CPU)")
+            } catch {
+                print("❌ Failed to load MobileSAM Decoder: \(error)")
+            }
+        }
     }
     
     private func setupCamera() {
         session.beginConfiguration()
         session.sessionPreset = .hd1280x720
         
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let input = try? AVCaptureDeviceInput(device: device) else {
+            print("❌ Camera setup failed")
             return
         }
         
-        do {
-            let input = try AVCaptureDeviceInput(device: device)
-            if session.canAddInput(input) {
-                session.addInput(input)
-            }
-            
-            videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
-            videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-            videoOutput.alwaysDiscardsLateVideoFrames = true
-            
-            if session.canAddOutput(videoOutput) {
-                session.addOutput(videoOutput)
-                
-                if let connection = videoOutput.connection(with: .video) {
-                    connection.videoRotationAngle = 90
-                    if connection.isVideoMirroringSupported {
-                        connection.isVideoMirrored = false
-                    }
-                }
-            }
-            
-            session.commitConfiguration()
-        } catch {
-            print("❌ Camera setup failed")
+        if session.canAddInput(input) {
+            session.addInput(input)
         }
+        
+        videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
+        videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        videoOutput.alwaysDiscardsLateVideoFrames = true
+        
+        if session.canAddOutput(videoOutput) {
+            session.addOutput(videoOutput)
+            videoOutput.connection(with: .video)?.videoRotationAngle = 90
+        }
+        
+        session.commitConfiguration()
+        print("✅ [HybridSAM] Camera configured")
     }
     
     func startSession() {
         if !session.isRunning {
             DispatchQueue.global(qos: .background).async {
                 self.session.startRunning()
+                print("✅ [HybridSAM] Camera session started")
             }
         }
     }
@@ -423,10 +324,11 @@ class FastSAMCameraModel: NSObject, ObservableObject {
     func stopSession() {
         if session.isRunning {
             session.stopRunning()
+            print("🛑 [HybridSAM] Camera session stopped")
         }
     }
     
-    private func processWithFastSAM(pixelBuffer: CVPixelBuffer) {
+    private func processFrame(pixelBuffer: CVPixelBuffer) {
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
         guard !isProcessing else { return }
@@ -434,630 +336,239 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         isProcessing = true
         lastProcessTime = now
         
-        guard let model = fastSAMModel else {
+        currentPixelBuffer = pixelBuffer
+        
+        // Step 1: Run U2-Net to find furniture
+        runU2Net(pixelBuffer: pixelBuffer)
+        
+        guard let u2netMask = u2netMask else {
             isProcessing = false
             return
         }
         
-        // Run U2-Net every frame for continuous updates
-        if u2netModel != nil {
-            runU2NetForGuidanceAsync(pixelBuffer: pixelBuffer)
+        var maskToUse = u2netMask
+        
+        if shouldStartExaminingOnNextFrame {
+            print("📸 Locking current frame...")
+            lockedMask = copyPixelBuffer(u2netMask)
+            shouldStartExaminingOnNextFrame = false
+            DispatchQueue.main.async { self.isExamining = true }
+        } else if let locked = lockedMask {
+            maskToUse = locked
         }
         
-        guard let resizedBuffer = resizePixelBuffer(pixelBuffer, width: 640, height: 640) else {
+        // Step 2: Get center point from U2-Net mask
+        guard let center = getFurnitureCenter(mask: maskToUse) else {
+            print("⚠️ U2-Net didn't detect furniture")
             isProcessing = false
             return
         }
         
-        let imageValue = MLFeatureValue(pixelBuffer: resizedBuffer)
+        print("\n🎯 === HYBRID PIPELINE ===")
+        print("📍 U2-Net found furniture center at: (\(center.x), \(center.y))")
         
-        guard let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) else {
-            isProcessing = false
-            return
+        // Step 3: Run MobileSAM Encoder for embeddings
+        if mobileSAMEncoder != nil {
+            runSAMEncoder(pixelBuffer: pixelBuffer)
         }
         
-        do {
-            let prediction = try model.prediction(from: provider)
-            
-            guard let detections = prediction.featureValue(for: "var_1550")?.multiArrayValue,
-                  let prototypes = prediction.featureValue(for: "p")?.multiArrayValue else {
-                handleNoDetection()
-                isProcessing = false
-                return
-            }
-            
-            let numDetections = detections.shape[2].intValue
-            updateAdaptiveThreshold(detections: detections, numDetections: numDetections)
-            
-            processWithContinuousGrouping(detections: detections, prototypes: prototypes, originalPixelBuffer: pixelBuffer)
-            
-        } catch {
-            print("❌ Prediction failed: \(error)")
-        }
+        // Step 4: Run MobileSAM Decoder with center point
+        processWithMobileSAM(pixelBuffer: pixelBuffer, centerPoint: center)
         
         isProcessing = false
     }
     
-    private func updateAdaptiveThreshold(detections: MLMultiArray, numDetections: Int) {
-        guard isAutoThresholding else { return }
+    private func getFurnitureCenter(mask: CVPixelBuffer) -> CGPoint? {
+        CVPixelBufferLockBaseAddress(mask, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
         
-        sceneAnalysisFrames += 1
-        framesSinceLastThresholdUpdate += 1
+        let width = CVPixelBufferGetWidth(mask)
+        let height = CVPixelBufferGetHeight(mask)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(mask)
         
-        let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
-        var confidences: [Float] = []
+        guard let baseAddress = CVPixelBufferGetBaseAddress(mask) else { return nil }
+        let maskPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
         
-        for i in 0..<numDetections {
-            let conf = detPointer[4 * numDetections + i]
-            if conf > 0.2 {
-                confidences.append(conf)
-            }
-        }
+        var minX = width, maxX = 0, minY = height, maxY = 0
+        var hasPixels = false
         
-        detectionConfidenceHistory.append(confidences)
-        if detectionConfidenceHistory.count > 5 {
-            detectionConfidenceHistory.removeFirst()
-        }
-        
-        if sceneAnalysisFrames >= requiredAnalysisFrames ||
-           framesSinceLastThresholdUpdate >= thresholdUpdateInterval {
-            calculateOptimalThreshold()
-            framesSinceLastThresholdUpdate = 0
-        }
-    }
-    
-    private func calculateOptimalThreshold() {
-        var allConfidences: [Float] = []
-        for frame in detectionConfidenceHistory {
-            allConfidences.append(contentsOf: frame)
-        }
-        
-        guard allConfidences.count >= 10 else { return }
-        
-        allConfidences.sort()
-        
-        let count = allConfidences.count
-        
-        let lowThreshold = allConfidences[count / 3]
-        let midThreshold = allConfidences[count / 2]
-        let highThreshold = allConfidences[2 * count / 3]
-        
-        let lowScore = scoreThreshold(lowThreshold, confidences: allConfidences)
-        let midScore = scoreThreshold(midThreshold, confidences: allConfidences)
-        let highScore = scoreThreshold(highThreshold, confidences: allConfidences)
-        
-        let bestThreshold: Float
-        if lowScore > midScore && lowScore > highScore {
-            bestThreshold = lowThreshold
-        } else if midScore > highScore {
-            bestThreshold = midThreshold
-        } else {
-            bestThreshold = highThreshold
-        }
-        
-        let clampedThreshold = max(0.3, min(0.7, bestThreshold))
-        let smoothedThreshold = confidenceThreshold * 0.7 + clampedThreshold * 0.3
-        
-        if abs(smoothedThreshold - confidenceThreshold) > 0.05 {
-            DispatchQueue.main.async {
-                self.confidenceThreshold = smoothedThreshold
-            }
-            print("🎯 Auto-threshold: \(String(format: "%.2f", smoothedThreshold))")
-        }
-    }
-    
-    private func scoreThreshold(_ threshold: Float, confidences: [Float]) -> Float {
-        let aboveCount = confidences.filter { $0 > threshold }.count
-        let ratio = Float(aboveCount) / Float(confidences.count)
-        
-        if ratio < 0.1 || ratio > 0.6 {
-            return 0
-        }
-        
-        let idealRatio: Float = 0.3
-        let ratioScore = 1.0 - abs(ratio - idealRatio) / idealRatio
-        
-        let acceptedConfidences = confidences.filter { $0 > threshold }
-        let meanAccepted = acceptedConfidences.isEmpty ? 0 : acceptedConfidences.reduce(0, +) / Float(acceptedConfidences.count)
-        
-        let confidenceScore = meanAccepted
-        
-        return ratioScore * 0.6 + confidenceScore * 0.4
-    }
-    
-    private func runU2NetForGuidanceAsync(pixelBuffer: CVPixelBuffer) {
-        guard let model = u2netModel else { return }
-        
-        u2netQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            let request = VNCoreMLRequest(model: model) { [weak self] request, error in
-                if let error = error {
-                    print("❌ U2-Net error: \(error)")
-                    return
-                }
-                
-                if let results = request.results as? [VNPixelBufferObservation],
-                   let maskBuffer = results.first?.pixelBuffer {
-                    self?.u2netMask = maskBuffer
-                }
-            }
-            
-            request.imageCropAndScaleOption = .scaleFit
-            let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-            
-            do {
-                try handler.perform([request])
-            } catch {
-                print("❌ U2-Net error: \(error)")
-            }
-        }
-    }
-    
-    private func processWithContinuousGrouping(detections: MLMultiArray, prototypes: MLMultiArray, originalPixelBuffer: CVPixelBuffer) {
-        let numDetections = detections.shape[2].intValue
-        let numValues = detections.shape[1].intValue
-        let numPrototypes = prototypes.shape[1].intValue
-        let protoHeight = prototypes.shape[2].intValue
-        let protoWidth = prototypes.shape[3].intValue
-        
-        let detPointer = detections.dataPointer.assumingMemoryBound(to: Float.self)
-        
-        print("\n🎯 === U2-Net FIRST: Identifying Furniture ===")
-        
-        // ✅ STEP 1: U2-Net identifies the furniture region
-        guard let u2netMask = u2netMask else {
-            print("⚠️ No U2-Net mask available")
-            handleNoDetection()
-            return
-        }
-        
-        CVPixelBufferLockBaseAddress(u2netMask, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(u2netMask, .readOnly) }
-        
-        let maskWidth = CVPixelBufferGetWidth(u2netMask)
-        let maskHeight = CVPixelBufferGetHeight(u2netMask)
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(u2netMask)
-        
-        guard let baseAddress = CVPixelBufferGetBaseAddress(u2netMask) else {
-            handleNoDetection()
-            return
-        }
-        
-        let u2netPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
-        
-        // Calculate U2-Net's furniture bounding box
-        var minX = protoWidth, maxX = 0, minY = protoHeight, maxY = 0
-        var u2netPixelCount = 0
-        
-        for y in 0..<protoHeight {
-            for x in 0..<protoWidth {
-                let sourceX = x * maskWidth / protoWidth
-                let sourceY = y * maskHeight / protoHeight
-                let sourceIdx = sourceY * bytesPerRow + sourceX
-                
-                if u2netPtr[sourceIdx] > 100 {
+        for y in 0..<height {
+            let rowPtr = maskPtr.advanced(by: y * bytesPerRow)
+            for x in 0..<width {
+                if rowPtr[x] > 100 {
+                    hasPixels = true
                     minX = min(minX, x)
                     maxX = max(maxX, x)
                     minY = min(minY, y)
                     maxY = max(maxY, y)
-                    u2netPixelCount += 1
                 }
             }
         }
         
-        guard minX <= maxX && minY <= maxY && u2netPixelCount > 500 else {
-            print("❌ U2-Net didn't detect furniture")
-            handleNoDetection()
-            return
-        }
+        guard hasPixels else { return nil }
         
-        let u2netCenterX = Float(minX + maxX) / 2.0
-        let u2netCenterY = Float(minY + maxY) / 2.0
-        let u2netWidth = Float(maxX - minX)
-        let u2netHeight = Float(maxY - minY)
+        let centerX = CGFloat(minX + maxX) / 2.0
+        let centerY = CGFloat(minY + maxY) / 2.0
         
-        // Scale to FastSAM coordinates (640x640)
-        let scaleX = frameWidth / Float(protoWidth)
-        let scaleY = frameHeight / Float(protoHeight)
+        return CGPoint(x: centerX, y: centerY)
+    }
+    
+    private func runSAMEncoder(pixelBuffer: CVPixelBuffer) {
+        guard let encoder = mobileSAMEncoder else { return }
         
-        let furnitureCenterX = u2netCenterX * scaleX
-        let furnitureCenterY = u2netCenterY * scaleY
-        let furnitureWidth = u2netWidth * scaleX
-        let furnitureHeight = u2netHeight * scaleY
-        
-        print("📍 U2-Net found furniture at: (\(Int(furnitureCenterX)), \(Int(furnitureCenterY))), size: \(Int(furnitureWidth))x\(Int(furnitureHeight))")
-        
-        // ✅ STEP 2: Find FastSAM detection that matches U2-Net's region
-        var bestDetection: FurnitureDetection? = nil
-        var bestOverlap: Float = 0.0
-        
-        for i in 0..<numDetections {
-            let conf = detPointer[4 * numDetections + i]
+        do {
+            guard let resized = resizePixelBuffer(pixelBuffer, width: 1024, height: 1024) else { return }
+            guard let imageArray = pixelBufferToMLMultiArray(resized) else { return }
             
-            if conf > confidenceThreshold {
-                let x = detPointer[0 * numDetections + i]
-                let y = detPointer[1 * numDetections + i]
-                let w = detPointer[2 * numDetections + i]
-                let h = detPointer[3 * numDetections + i]
+            let inputDict: [String: Any] = ["image": imageArray]
+            let inputProvider = try MLDictionaryFeatureProvider(dictionary: inputDict)
+            let output = try encoder.prediction(from: inputProvider)
+            
+            guard let embeddings = output.featureValue(for: "image_embeddings")?.multiArrayValue else { return }
+            
+            currentImageEmbeddings = embeddings
+            print("✅ SAM Encoder: embeddings shape \(embeddings.shape)")
+        } catch {
+            print("❌ SAM Encoder failed: \(error)")
+        }
+    }
+    
+    private func processWithMobileSAM(pixelBuffer: CVPixelBuffer, centerPoint: CGPoint) {
+        guard let embeddings = currentImageEmbeddings,
+              let decoder = mobileSAMDecoder else {
+            print("⚠️ MobileSAM not ready, falling back to U2-Net")
+            fallbackToU2Net(pixelBuffer: pixelBuffer)
+            return
+        }
+        
+        // Convert to normalized coordinates (0-1)
+        let originalWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let originalHeight = CVPixelBufferGetHeight(pixelBuffer)
+        
+        let normalizedX = Float(centerPoint.x) / Float(originalWidth)
+        let normalizedY = Float(centerPoint.y) / Float(originalHeight)
+        
+        print("📍 Point prompt (normalized): (\(String(format: "%.3f", normalizedX)), \(String(format: "%.3f", normalizedY)))")
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                // Create point_coords [1, 1, 2] - Float32
+                let pointCoords = try MLMultiArray(shape: [1, 1, 2], dataType: .float32)
+                pointCoords[[0, 0, 0] as [NSNumber]] = NSNumber(value: normalizedX)
+                pointCoords[[0, 0, 1] as [NSNumber]] = NSNumber(value: normalizedY)
                 
-                // Calculate overlap with U2-Net's region
-                let overlapRatio = calculateU2NetOverlap(x: x, y: y, width: w, height: h)
+                // Create point_labels [1, 1] - Float32
+                let pointLabels = try MLMultiArray(shape: [1, 1], dataType: .float32)
+                pointLabels[[0, 0] as [NSNumber]] = NSNumber(value: 1)  // 1 = positive point
                 
-                // Also check if detection is near U2-Net's center
-                let dx = abs(x - furnitureCenterX)
-                let dy = abs(y - furnitureCenterY)
-                let distance = sqrt(dx*dx + dy*dy)
-                let maxDistance = sqrt(furnitureWidth*furnitureWidth + furnitureHeight*furnitureHeight) / 2.0
+                let inputDict: [String: Any] = [
+                    "image_embeddings": embeddings,
+                    "point_coords": pointCoords,
+                    "point_labels": pointLabels
+                ]
                 
-                let proximity = 1.0 - min(1.0, distance / maxDistance)
-                let score = overlapRatio * 0.7 + proximity * 0.3
+                print("🔄 Running MobileSAM Decoder...")
+                let inputProvider = try MLDictionaryFeatureProvider(dictionary: inputDict)
+                let output = try decoder.prediction(from: inputProvider)
                 
-                if score > bestOverlap && score > 0.3 {
-                    bestOverlap = score
-                    bestDetection = FurnitureDetection(idx: i, score: score, conf: conf, x: x, y: y, w: w, h: h)
+                guard let masks = output.featureValue(for: "masks")?.multiArrayValue,
+                      let iouPredictions = output.featureValue(for: "iou_predictions")?.multiArrayValue else {
+                    print("❌ No masks from MobileSAM")
+                    self.fallbackToU2Net(pixelBuffer: pixelBuffer)
+                    return
+                }
+                
+                print("✅ MobileSAM generated masks")
+                
+                self.processMobileSAMMasks(
+                    masks: masks,
+                    iouPredictions: iouPredictions,
+                    originalPixelBuffer: pixelBuffer,
+                    originalSize: CGSize(width: originalWidth, height: originalHeight)
+                )
+                
+            } catch {
+                print("❌ MobileSAM error: \(error)")
+                self.fallbackToU2Net(pixelBuffer: pixelBuffer)
+            }
+        }
+    }
+    
+    private func processMobileSAMMasks(masks: MLMultiArray, iouPredictions: MLMultiArray, originalPixelBuffer: CVPixelBuffer, originalSize: CGSize) {
+        print("\n📊 === MOBILESAM RESULTS ===")
+        
+        // Get IOU score
+        let iouScore = iouPredictions[[0, 0] as [NSNumber]].floatValue
+        print("📊 IOU Score: \(String(format: "%.3f", iouScore))")
+        
+        // Extract mask (256x256) and apply threshold
+        let maskWidth = 256
+        let maskHeight = 256
+        var maskData = [UInt8](repeating: 0, count: maskWidth * maskHeight)
+        
+        let threshold: Float = 0.0  // MobileSAM: logits > 0 = object
+        var positivePixels = 0
+        
+        for y in 0..<maskHeight {
+            for x in 0..<maskWidth {
+                let logit = masks[[0, 0, y, x] as [NSNumber]].floatValue
+                if logit > threshold {
+                    maskData[y * maskWidth + x] = 255
+                    positivePixels += 1
+                } else {
+                    maskData[y * maskWidth + x] = 0
                 }
             }
         }
         
-        guard let primaryDetection = bestDetection else {
-            print("❌ No FastSAM detection matches U2-Net's furniture region")
-            handleNoDetection()
+        let coverage = Float(positivePixels) / Float(maskWidth * maskHeight) * 100
+        print("📊 Mask coverage: \(positivePixels) pixels (\(String(format: "%.1f", coverage))%)")
+        
+        if positivePixels == 0 {
+            print("⚠️ Empty mask - falling back to U2-Net")
+            fallbackToU2Net(pixelBuffer: originalPixelBuffer)
             return
         }
         
-        print("✅ FastSAM detection #\(primaryDetection.idx) matches U2-Net region (overlap: \(Int(bestOverlap * 100))%)")
-        print("🎯 FastSAM will segment U2-Net's furniture region with precise edges")
+        // Convert to CIImage and scale to original size
+        let data = Data(maskData)
+        guard let provider = CGDataProvider(data: data as CFData),
+              let cgImage = CGImage(
+                width: maskWidth,
+                height: maskHeight,
+                bitsPerComponent: 8,
+                bitsPerPixel: 8,
+                bytesPerRow: maskWidth,
+                space: CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: false,
+                intent: .defaultIntent
+              ) else {
+            print("❌ Failed to create mask image")
+            return
+        }
         
-        trackedDetectionCenter = (furnitureCenterX, furnitureCenterY)
-        trackingConfidence = min(1.0, trackingConfidence + 0.1)
-        noDetectionFrames = 0
-        
-        // ✅ STEP 3: Use FastSAM to segment U2-Net's region
-        let segMask = generateMaskForU2NetRegion(
-            detection: primaryDetection,
-            u2netBounds: (minX: minX, maxX: maxX, minY: minY, maxY: maxY),
-            prototypes: prototypes,
-            protoHeight: protoHeight,
-            protoWidth: protoWidth,
-            detPointer: detPointer,
-            numDetections: numDetections,
-            numValues: numValues,
-            numPrototypes: numPrototypes,
-            u2netPtr: u2netPtr,
-            u2netWidth: maskWidth,
-            u2netHeight: maskHeight,
-            u2netBytesPerRow: bytesPerRow
-        )
-        
+        let maskImage = CIImage(cgImage: cgImage)
         let ciImage = CIImage(cvPixelBuffer: originalPixelBuffer)
-        applyCleanSegmentation(original: ciImage, mask: segMask)
+        
+        // Apply mask to original image
+        applyMobileSAMMask(original: ciImage, mask: maskImage, originalSize: originalSize)
     }
     
-    private func handleNoDetection() {
-        noDetectionFrames += 1
-        
-        if noDetectionFrames > 10 {  // ✨ Was 5, now 10 frames
-            trackedDetectionCenter = nil
-            trackingConfidence = 0.0
-            consecutiveFramesWithSameDetection = 0
-            resetAccumulation()  // ✨ Reset accumulation when truly lost
-        }
-        
-        DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.5)) {
-                self.furnitureOpacity = 0.0
-            }
-        }
-    }
-    
-    // ✅ Reset accumulation function
-    private func resetAccumulation() {
-        accumulatedMask = nil
-        framesInCurrentGroup = 0
-        print("🔄 FastSAM: Manual reset of accumulation")
-    }
-    
-    private func calculateU2NetOverlap(x: Float, y: Float, width: Float, height: Float) -> Float {
-        guard let u2netMask = u2netMask else { return 0 }
-        
-        CVPixelBufferLockBaseAddress(u2netMask, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(u2netMask, .readOnly) }
-        
-        let maskWidth = CVPixelBufferGetWidth(u2netMask)
-        let maskHeight = CVPixelBufferGetHeight(u2netMask)
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(u2netMask)
-        guard let baseAddress = CVPixelBufferGetBaseAddress(u2netMask) else { return 0 }
-        
-        let scaleX = Float(maskWidth) / frameWidth
-        let scaleY = Float(maskHeight) / frameHeight
-        
-        let boxLeft = Int(max(0, (x - width/2) * scaleX))
-        let boxRight = Int(min(Float(maskWidth-1), (x + width/2) * scaleX))
-        let boxTop = Int(max(0, (y - height/2) * scaleY))
-        let boxBottom = Int(min(Float(maskHeight-1), (y + height/2) * scaleY))
-        
-        var overlapCount = 0
-        var totalCount = 0
-        
-        for row in boxTop...boxBottom {
-            let rowPtr = baseAddress.advanced(by: row * bytesPerRow).assumingMemoryBound(to: UInt8.self)
-            for col in boxLeft...boxRight {
-                totalCount += 1
-                if rowPtr[col] > 128 {
-                    overlapCount += 1
-                }
-            }
-        }
-        
-        return totalCount > 0 ? Float(overlapCount) / Float(totalCount) : 0
-    }
-    
-    // ✅ PURE ADDITIVE ACCUMULATION
-    private func accumulateMaskPure(current: [UInt8], width: Int, height: Int) -> [UInt8] {
-        framesInCurrentGroup += 1
-        
-        // ✅ Initialize or reset accumulated mask
-        if accumulatedMask == nil || maskWidth != width || maskHeight != height || framesInCurrentGroup > maxAccumulationFrames {
-            maskWidth = width
-            maskHeight = height
-            accumulatedMask = current
-            
-            if framesInCurrentGroup > maxAccumulationFrames {
-                print("🔄 FastSAM: Reset accumulated mask after \(maxAccumulationFrames) frames")
-                framesInCurrentGroup = 1
-            }
-            
-            return current
-        }
-        
-        guard var accumulated = accumulatedMask else {
-            return current
-        }
-        
-        // ✅ PURE ADDITIVE: Take MAX (no decay!)
-        var newPixelsAdded = 0
-        
-        for i in 0..<(width * height) {
-            let newValue = max(current[i], accumulated[i])
-            
-            if newValue > accumulated[i] {
-                newPixelsAdded += 1
-            }
-            
-            accumulated[i] = newValue
-        }
-        
-        accumulatedMask = accumulated
-        
-        if newPixelsAdded > 0 {
-            print("📊 FastSAM Frame \(framesInCurrentGroup)/\(maxAccumulationFrames) - Added \(newPixelsAdded) new pixels")
-        }
-        
-        return accumulated
-    }
-    
-    private func generateMaskForU2NetRegion(
-        detection: FurnitureDetection,
-        u2netBounds: (minX: Int, maxX: Int, minY: Int, maxY: Int),
-        prototypes: MLMultiArray,
-        protoHeight: Int,
-        protoWidth: Int,
-        detPointer: UnsafePointer<Float>,
-        numDetections: Int,
-        numValues: Int,
-        numPrototypes: Int,
-        u2netPtr: UnsafePointer<UInt8>,
-        u2netWidth: Int,
-        u2netHeight: Int,
-        u2netBytesPerRow: Int
-    ) -> CIImage {
-        
-        let protoPointer = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
-        let maskSize = protoHeight * protoWidth
-        
-        print("\n🎯 === MASK GENERATION (U2-Net Guided FastSAM) ===")
-        
-        // ✅ Get FastSAM's mask coefficients for this detection
-        var maskCoeffs = [Float](repeating: 0, count: numPrototypes)
-        for i in 0..<numPrototypes {
-            let coeffIdx = (numValues - numPrototypes + i) * numDetections + detection.idx
-            maskCoeffs[i] = detPointer[coeffIdx]
-        }
-        
-        // Generate detailed mask from prototypes
-        var detectionMask = [Float](repeating: 0, count: maskSize)
-        
-        for protoIdx in 0..<numPrototypes {
-            let coeff = maskCoeffs[protoIdx]
-            let protoOffset = protoIdx * maskSize
-            
-            for i in 0..<maskSize {
-                detectionMask[i] += coeff * protoPointer[protoOffset + i]
-            }
-        }
-        
-        // Apply sigmoid activation
-        for i in 0..<maskSize {
-            detectionMask[i] = 1.0 / (1.0 + exp(-detectionMask[i]))
-        }
-        
-        // ✅ Create mask constrained to U2-Net's region + margin
-        var pixelData = [UInt8](repeating: 0, count: maskSize)
-        
-        // Add margin around U2-Net bounds (allow FastSAM to extend for thin parts)
-        let margin = 15
-        let searchMinX = max(0, u2netBounds.minX - margin)
-        let searchMaxX = min(protoWidth - 1, u2netBounds.maxX + margin)
-        let searchMinY = max(0, u2netBounds.minY - margin)
-        let searchMaxY = min(protoHeight - 1, u2netBounds.maxY + margin)
-        
-        print("📊 U2-Net region: [\(u2netBounds.minX),\(u2netBounds.minY)] → [\(u2netBounds.maxX),\(u2netBounds.maxY)]")
-        print("🔍 FastSAM search area (with margin): [\(searchMinX),\(searchMinY)] → [\(searchMaxX),\(searchMaxY)]")
-        
-        var fastsamPixels = 0
-        let maskThreshold: Float = 0.5
-        
-        // Only process pixels within search area
-        for y in searchMinY...searchMaxY {
-            for x in searchMinX...searchMaxX {
-                let idx = y * protoWidth + x
-                
-                if detectionMask[idx] > maskThreshold {
-                    // Check if U2-Net also sees furniture here (or very close)
-                    let u2netX = x * u2netWidth / protoWidth
-                    let u2netY = y * u2netHeight / protoHeight
-                    let u2netIdx = u2netY * u2netBytesPerRow + u2netX
-                    let u2netValue = u2netPtr[u2netIdx]
-                    
-                    // Allow if:
-                    // 1. U2-Net sees furniture here (value > 50), OR
-                    // 2. We're within U2-Net's bounding box (even if weak signal)
-                    if u2netValue > 50 || (x >= u2netBounds.minX && x <= u2netBounds.maxX &&
-                                          y >= u2netBounds.minY && y <= u2netBounds.maxY) {
-                        pixelData[idx] = 255
-                        fastsamPixels += 1
-                    }
-                }
-            }
-        }
-        
-        print("📊 FastSAM segmented: \(fastsamPixels) pixels within U2-Net's furniture region")
-        
-        // ✅ Light morphology to smooth edges
-        pixelData = applyMorphologicalClosing(pixelData, width: protoWidth, height: protoHeight)
-        print("📊 After morphology: \(pixelData.filter { $0 == 255 }.count) pixels")
-        
-        // ✅ Accumulation
-        pixelData = accumulateMaskPure(current: pixelData, width: protoWidth, height: protoHeight)
-        print("📊 After accumulation: \(pixelData.filter { $0 == 255 }.count) pixels")
-        
-        return createCIImage(from: pixelData, width: protoWidth, height: protoHeight)
-    }
-    
-    private func createCIImage(from pixelData: [UInt8], width: Int, height: Int) -> CIImage {
-        let data = Data(pixelData)
-        guard let provider = CGDataProvider(data: data as CFData) else {
-            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
-        }
-        
-        let colorSpace = CGColorSpaceCreateDeviceGray()
-        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
-        
-        guard let cgImage = CGImage(
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bitsPerPixel: 8,
-            bytesPerRow: width,
-            space: colorSpace,
-            bitmapInfo: bitmapInfo,
-            provider: provider,
-            decode: nil,
-            shouldInterpolate: false,
-            intent: .defaultIntent
-        ) else {
-            return CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: width, height: height))
-        }
-        
-        return CIImage(cgImage: cgImage)
-    }
-    
-    private func applyMorphologicalClosing(_ input: [UInt8], width: Int, height: Int) -> [UInt8] {
-        let dilated = dilate(input, width: width, height: height, iterations: 3)
-        let closed = erode(dilated, width: width, height: height, iterations: 2)
-        return closed
-    }
-    
-    private func dilate(_ input: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
-        var result = input
-        
-        for _ in 0..<iterations {
-            var temp = result
-            
-            for y in 1..<(height - 1) {
-                for x in 1..<(width - 1) {
-                    let idx = y * width + x
-                    
-                    if result[idx] == 0 {
-                        var hasWhiteNeighbor = false
-                        
-                        for dy in -1...1 {
-                            for dx in -1...1 {
-                                if dx == 0 && dy == 0 { continue }
-                                let nIdx = (y + dy) * width + (x + dx)
-                                if result[nIdx] == 255 {
-                                    hasWhiteNeighbor = true
-                                    break
-                                }
-                            }
-                            if hasWhiteNeighbor { break }
-                        }
-                        
-                        if hasWhiteNeighbor {
-                            temp[idx] = 255
-                        }
-                    }
-                }
-            }
-            
-            result = temp
-        }
-        
-        return result
-    }
-    
-    private func erode(_ input: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
-        var result = input
-        
-        for _ in 0..<iterations {
-            var temp = result
-            
-            for y in 1..<(height - 1) {
-                for x in 1..<(width - 1) {
-                    let idx = y * width + x
-                    
-                    if result[idx] == 255 {
-                        var hasBlackNeighbor = false
-                        
-                        for dy in -1...1 {
-                            for dx in -1...1 {
-                                if dx == 0 && dy == 0 { continue }
-                                let nIdx = (y + dy) * width + (x + dx)
-                                if result[nIdx] == 0 {
-                                    hasBlackNeighbor = true
-                                    break
-                                }
-                            }
-                            if hasBlackNeighbor { break }
-                        }
-                        
-                        if hasBlackNeighbor {
-                            temp[idx] = 0
-                        }
-                    }
-                }
-            }
-            
-            result = temp
-        }
-        
-        return result
-    }
-    
-    private func applyCleanSegmentation(original: CIImage, mask: CIImage) {
+    private func applyMobileSAMMask(original: CIImage, mask: CIImage, originalSize: CGSize) {
+        // Scale mask from 256x256 to original size
         let scaleX = original.extent.width / mask.extent.width
         let scaleY = original.extent.height / mask.extent.height
-        
-        let scaledMask = mask
-            .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
-            .samplingNearest()
+        let scaledMask = mask.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
         
         var finalMask = scaledMask
         
+        // Apply blur for smooth edges
         if let blurFilter = CIFilter(name: "CIGaussianBlur") {
             blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
-            blurFilter.setValue(0.5, forKey: kCIInputRadiusKey)
+            blurFilter.setValue(2.0, forKey: kCIInputRadiusKey)
             if let blurred = blurFilter.outputImage {
                 finalMask = blurred
             }
@@ -1065,26 +576,61 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         
         finalMask = finalMask.cropped(to: original.extent)
         
-        guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
-            return
-        }
-        
-        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
-            .cropped(to: original.extent)
+        // Blend with transparent background
+        guard let blendFilter = CIFilter(name: "CIBlendWithMask") else { return }
+        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0)).cropped(to: original.extent)
         
         blendFilter.setValue(original, forKey: kCIInputImageKey)
         blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
         blendFilter.setValue(finalMask, forKey: kCIInputMaskImageKey)
         
-        guard let result = blendFilter.outputImage else {
-            return
+        guard let result = blendFilter.outputImage else { return }
+        
+        if let cgImage = context.createCGImage(result, from: result.extent) {
+            let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
+            
+            DispatchQueue.main.async {
+                self.segmentedImage = uiImage
+                withAnimation(.easeIn(duration: 0.2)) {
+                    self.furnitureOpacity = 1.0
+                }
+            }
+            
+            print("✅ MobileSAM segmentation applied")
+        }
+    }
+    
+    private func fallbackToU2Net(pixelBuffer: CVPixelBuffer) {
+        print("⚠️ Using U2-Net fallback")
+        guard let u2netMask = u2netMask else { return }
+        
+        let maskImage = CIImage(cvPixelBuffer: u2netMask)
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        
+        let scaleX = ciImage.extent.width / maskImage.extent.width
+        let scaleY = ciImage.extent.height / maskImage.extent.height
+        let scaledMask = maskImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+        
+        var finalMask = scaledMask
+        
+        if let blurFilter = CIFilter(name: "CIGaussianBlur") {
+            blurFilter.setValue(scaledMask, forKey: kCIInputImageKey)
+            blurFilter.setValue(2.0, forKey: kCIInputRadiusKey)
+            if let blurred = blurFilter.outputImage {
+                finalMask = blurred
+            }
         }
         
-        let context = CIContext(options: [
-            .workingColorSpace: CGColorSpaceCreateDeviceRGB(),
-            .outputPremultiplied: true,
-            .useSoftwareRenderer: false
-        ])
+        finalMask = finalMask.cropped(to: ciImage.extent)
+        
+        guard let blendFilter = CIFilter(name: "CIBlendWithMask") else { return }
+        let transparent = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0)).cropped(to: ciImage.extent)
+        
+        blendFilter.setValue(ciImage, forKey: kCIInputImageKey)
+        blendFilter.setValue(transparent, forKey: kCIInputBackgroundImageKey)
+        blendFilter.setValue(finalMask, forKey: kCIInputMaskImageKey)
+        
+        guard let result = blendFilter.outputImage else { return }
         
         if let cgImage = context.createCGImage(result, from: result.extent) {
             let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
@@ -1096,6 +642,54 @@ class FastSAMCameraModel: NSObject, ObservableObject {
                 }
             }
         }
+    }
+    
+    // CRITICAL: ImageNet normalization for MobileSAM
+    private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        
+        guard let array = try? MLMultiArray(shape: [1, 3, NSNumber(value: height), NSNumber(value: width)], dataType: .float32) else {
+            return nil
+        }
+        
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            return nil
+        }
+        
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
+        
+        // ImageNet normalization values
+        let mean: [Float] = [0.485, 0.456, 0.406]
+        let std: [Float] = [0.229, 0.224, 0.225]
+        
+        let arrayPointer = array.dataPointer.assumingMemoryBound(to: Float.self)
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                let pixelIndex = y * bytesPerRow + x * 4
+                
+                let b = Float(buffer[pixelIndex]) / 255.0
+                let g = Float(buffer[pixelIndex + 1]) / 255.0
+                let r = Float(buffer[pixelIndex + 2]) / 255.0
+                
+                // [batch, channel, y, x] layout
+                let rIndex = 0 * height * width + y * width + x
+                let gIndex = 1 * height * width + y * width + x
+                let bIndex = 2 * height * width + y * width + x
+                
+                // Apply ImageNet normalization
+                arrayPointer[rIndex] = (r - mean[0]) / std[0]
+                arrayPointer[gIndex] = (g - mean[1]) / std[1]
+                arrayPointer[bIndex] = (b - mean[2]) / std[2]
+            }
+        }
+        
+        return array
     }
     
     private func resizePixelBuffer(_ pixelBuffer: CVPixelBuffer, width: Int, height: Int) -> CVPixelBuffer? {
@@ -1112,16 +706,65 @@ class FastSAMCameraModel: NSObject, ObservableObject {
         let scaleY = CGFloat(height) / ciImage.extent.height
         let scaledImage = ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
         
-        let context = CIContext(options: [.useSoftwareRenderer: false])
         context.render(scaledImage, to: outputBuffer)
         
         return outputBuffer
     }
+    
+    private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
+        let width = CVPixelBufferGetWidth(source)
+        let height = CVPixelBufferGetHeight(source)
+        let format = CVPixelBufferGetPixelFormatType(source)
+        
+        var copy: CVPixelBuffer?
+        let attrs = [kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!] as CFDictionary
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, format, attrs, &copy) == kCVReturnSuccess,
+              let destination = copy else { return nil }
+        
+        CVPixelBufferLockBaseAddress(source, .readOnly)
+        CVPixelBufferLockBaseAddress(destination, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(source, .readOnly)
+            CVPixelBufferUnlockBaseAddress(destination, [])
+        }
+        
+        if let sourceData = CVPixelBufferGetBaseAddress(source),
+           let destData = CVPixelBufferGetBaseAddress(destination) {
+            let bytesPerRow = CVPixelBufferGetBytesPerRow(source)
+            memcpy(destData, sourceData, bytesPerRow * height)
+        }
+        
+        return destination
+    }
+    
+    private func runU2Net(pixelBuffer: CVPixelBuffer) {
+        guard let model = u2netModel else { return }
+        
+        let request = VNCoreMLRequest(model: model) { [weak self] request, error in
+            if let error = error {
+                print("❌ U2-Net error: \(error)")
+                return
+            }
+            
+            if let results = request.results as? [VNPixelBufferObservation],
+               let maskBuffer = results.first?.pixelBuffer {
+                self?.u2netMask = maskBuffer
+            }
+        }
+        
+        request.imageCropAndScaleOption = .scaleFill
+        
+        do {
+            try VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]).perform([request])
+        } catch {
+            print("❌ U2-Net handler error: \(error)")
+        }
+    }
 }
 
-extension FastSAMCameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
+extension HybridSAMCameraModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        processWithFastSAM(pixelBuffer: pixelBuffer)
+        processFrame(pixelBuffer: pixelBuffer)
     }
 }
