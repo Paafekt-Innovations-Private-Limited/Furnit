@@ -671,12 +671,11 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return upsampled
     }
     
-    
-    // MARK: - Apply High-Resolution Mask
+    // MARK: - Apply High-Resolution Mask with Smooth Edges
     private func applyHighResMask(mask: [Float],
                                   bbox: (x: Int, y: Int, width: Int, height: Int),
                                   to pixelBuffer: CVPixelBuffer,
-                                  className: String) {  // Add className parameter
+                                  className: String) {
         
         autoreleasepool {
             let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
@@ -722,9 +721,11 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
             
-            // Apply mask with threshold
+            // Apply Gaussian blur to mask for smoother edges
+            let smoothedMask = gaussianBlurMask(mask, width: bbox.width, height: bbox.height, sigma: 2.0)
+            
+            // Apply mask with SMOOTH gradient (no hard threshold!)
             var maskedCount = 0
-            let threshold: Float = 0.5
             
             for y in 0..<height {
                 for x in 0..<width {
@@ -739,15 +740,23 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                         let maskY = y - bbox.y
                         let maskIdx = maskY * bbox.width + maskX
                         
-                        if maskIdx >= 0 && maskIdx < mask.count {
-                            let maskValue = mask[maskIdx]
+                        if maskIdx >= 0 && maskIdx < smoothedMask.count {
+                            let maskValue = smoothedMask[maskIdx]
                             
-                            if maskValue > threshold {
-                                // Keep pixel (full alpha)
+                            // Apply SMOOTH alpha based on mask value (no hard threshold!)
+                            let alpha = UInt8(maskValue * 255)
+                            pixels[pixelIdx + 3] = alpha
+                            
+                            // Pre-multiply alpha for correct blending
+                            if alpha < 255 {
+                                let factor = Float(alpha) / 255.0
+                                pixels[pixelIdx] = UInt8(Float(pixels[pixelIdx]) * factor)
+                                pixels[pixelIdx + 1] = UInt8(Float(pixels[pixelIdx + 1]) * factor)
+                                pixels[pixelIdx + 2] = UInt8(Float(pixels[pixelIdx + 2]) * factor)
+                            }
+                            
+                            if alpha > 127 {
                                 maskedCount += 1
-                            } else {
-                                // Make transparent
-                                pixels[pixelIdx + 3] = 0
                             }
                         } else {
                             pixels[pixelIdx + 3] = 0
@@ -759,7 +768,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 }
             }
             
-            print("✅ Applied high-res mask: \(maskedCount) pixels kept")
+            print("✅ Applied smooth high-res mask: \(maskedCount) pixels kept")
             
             // Create final image
             if let finalImage = ctx.makeImage() {
@@ -767,7 +776,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 
                 DispatchQueue.main.async {
                     self.segmentedImage = uiImage
-                    self.detectedFurnitureTypes = [className]  // Use the passed className
+                    self.detectedFurnitureTypes = [className]
                     withAnimation(.easeIn(duration: 0.3)) {
                         self.furnitureOpacity = 1.0
                     }
@@ -776,6 +785,59 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             }
         }
     }
+
+    // Add Gaussian blur for smooth edges
+    private func gaussianBlurMask(_ mask: [Float], width: Int, height: Int, sigma: Float) -> [Float] {
+        var blurred = [Float](repeating: 0, count: width * height)
+        
+        // Create Gaussian kernel
+        let kernelSize = Int(ceil(sigma * 3)) * 2 + 1
+        let halfSize = kernelSize / 2
+        var kernel = [Float](repeating: 0, count: kernelSize * kernelSize)
+        var kernelSum: Float = 0
+        
+        // Generate kernel
+        for y in -halfSize...halfSize {
+            for x in -halfSize...halfSize {
+                let value = exp(-(Float(x*x + y*y)) / (2.0 * sigma * sigma))
+                kernel[(y + halfSize) * kernelSize + (x + halfSize)] = value
+                kernelSum += value
+            }
+        }
+        
+        // Normalize kernel
+        for i in 0..<kernel.count {
+            kernel[i] /= kernelSum
+        }
+        
+        // Apply convolution
+        for y in 0..<height {
+            for x in 0..<width {
+                var sum: Float = 0
+                var weightSum: Float = 0
+                
+                for ky in -halfSize...halfSize {
+                    for kx in -halfSize...halfSize {
+                        let sx = x + kx
+                        let sy = y + ky
+                        
+                        if sx >= 0 && sx < width && sy >= 0 && sy < height {
+                            let kidx = (ky + halfSize) * kernelSize + (kx + halfSize)
+                            let midx = sy * width + sx
+                            sum += mask[midx] * kernel[kidx]
+                            weightSum += kernel[kidx]
+                        }
+                    }
+                }
+                
+                blurred[y * width + x] = weightSum > 0 ? sum / weightSum : mask[y * width + x]
+            }
+        }
+        
+        return blurred
+    }
+    
+    
 }
 
 extension FurnitureSegmentationModel: AVCaptureVideoDataOutputSampleBufferDelegate {
