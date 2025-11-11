@@ -4,6 +4,7 @@ import CoreML
 import Vision
 import CoreImage
 import Photos
+import Accelerate
 
 struct SegmentFurniture: View {
     @Binding var capturedImage: UIImage?
@@ -42,15 +43,20 @@ struct SegmentFurniture: View {
                     .animation(.easeOut(duration: 0.3), value: camera.furnitureOpacity)
             }
             
-            // Show FPS counter
+            // Show FPS and detection info
             VStack {
                 HStack {
-                    Text("FPS: \(camera.currentFPS, specifier: "%.1f")")
-                        .font(.caption)
-                        .foregroundColor(.white)
-                        .padding(6)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(8)
+                    VStack(alignment: .leading) {
+                        Text("FPS: \(camera.currentFPS, specifier: "%.1f")")
+                        if camera.lastConfidence > 0 {
+                            Text("Conf: \(Int(camera.lastConfidence * 100))%")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundColor(.white)
+                    .padding(6)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(8)
                     Spacer()
                 }
                 .padding()
@@ -202,20 +208,33 @@ struct SegmentFurniture: View {
     }
 }
 
-// MARK: - YOLO11-Seg with Higher Frame Rate
+// MARK: - Detection Structure
+struct Detection {
+    let x: Float
+    let y: Float
+    let width: Float
+    let height: Float
+    let confidence: Float
+    let classIdx: Int
+    let className: String
+    let maskCoeffs: [Float]
+}
+
+// MARK: - YOLO11-Seg with Proper Upsampling (Retina Masks)
 class FurnitureSegmentationModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     @Published var furnitureOpacity: Double = 0.0
     @Published var isProcessing = false
     @Published var detectedFurnitureTypes: [String] = []
     @Published var currentFPS: Double = 0.0
+    @Published var lastConfidence: Float = 0.0
     
     private let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "furnitureSegQueue", qos: .userInitiated)
     
     private var yoloModel: VNCoreMLModel?
-    private let context = CIContext()
+    private let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
     
     private let furnitureClasses = [
         56: "chair",
@@ -227,14 +246,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     
     // Frame rate control
     private var lastProcessTime = Date()
-    private let processInterval: TimeInterval = 0.1  // 10 FPS instead of 2 FPS
+    private let processInterval: TimeInterval = 0.1  // 10 FPS
     private var frameCount = 0
     private var fpsStartTime = Date()
-    
-    // Quality tracking
-    private var bestConfidence: Float = 0
-    private var confidenceHistory: [Float] = []
-    private let historySize = 5
     
     override init() {
         super.init()
@@ -247,8 +261,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             self.segmentedImage = nil
             self.furnitureOpacity = 0.0
             self.detectedFurnitureTypes = []
-            self.bestConfidence = 0
-            self.confidenceHistory.removeAll()
+            self.lastConfidence = 0.0
         }
     }
     
@@ -272,7 +285,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     
     private func setupCamera() {
         session.beginConfiguration()
-        session.sessionPreset = .hd1280x720  // HD quality
+        session.sessionPreset = .hd1280x720
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("❌ No camera available")
@@ -333,29 +346,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             frameCount = 0
             fpsStartTime = Date()
         }
-    }
-    
-    private func shouldProcessFrame(confidence: Float) -> Bool {
-        // Always process if we don't have a good result yet
-        if segmentedImage == nil { return true }
-        
-        // Process if confidence is significantly better
-        if confidence > bestConfidence * 1.1 { return true }
-        
-        // Process if confidence is stable and high
-        confidenceHistory.append(confidence)
-        if confidenceHistory.count > historySize {
-            confidenceHistory.removeFirst()
-        }
-        
-        if confidenceHistory.count == historySize {
-            let avg = confidenceHistory.reduce(0, +) / Float(historySize)
-            if avg > 0.8 && confidence > 0.75 {
-                return true
-            }
-        }
-        
-        return false
     }
     
     private func processWithYOLO(pixelBuffer: CVPixelBuffer) {
@@ -429,92 +419,35 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             return
         }
         
-        processInstanceSegmentation(detections: detections,
-                                   prototypes: prototypes,
-                                   originalImage: originalImage)
-    }
-    
-    // MARK: - Dynamic Threshold Calculation
-    private func calculateOtsuThreshold(_ values: [Float]) -> Float {
-        let bins = 256
-        var histogram = [Int](repeating: 0, count: bins)
+        // Extract all valid detections
+        let validDetections = extractDetections(from: detections)
         
-        for value in values {
-            let bin = min(bins - 1, Int(value * Float(bins - 1)))
-            histogram[bin] += 1
-        }
+        // Apply NMS
+        let nmsDetections = applyNMS(detections: validDetections, iouThreshold: 0.45)
         
-        let total = values.count
-        var sum: Float = 0
-        for i in 0..<bins {
-            sum += Float(i) * Float(histogram[i])
-        }
-        
-        var sumB: Float = 0
-        var wB = 0
-        var wF: Int
-        
-        var varMax: Float = 0
-        var threshold: Float = 0
-        
-        for t in 0..<bins {
-            wB += histogram[t]
-            if wB == 0 { continue }
-            
-            wF = total - wB
-            if wF == 0 { break }
-            
-            sumB += Float(t) * Float(histogram[t])
-            
-            let mB = sumB / Float(wB)
-            let mF = (sum - sumB) / Float(wF)
-            
-            let varBetween = Float(wB) * Float(wF) * (mB - mF) * (mB - mF)
-            
-            if varBetween > varMax {
-                varMax = varBetween
-                threshold = Float(t) / Float(bins - 1)
+        guard let bestDetection = nmsDetections.first else {
+            DispatchQueue.main.async {
+                self.isProcessing = false
+                self.segmentedImage = nil
+                self.furnitureOpacity = 0.0
+                self.lastConfidence = 0.0
             }
+            return
         }
         
-        return threshold
+        print("🪑 After NMS: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%)")
+        
+        // Process mask with proper upsampling
+        processMaskWithRetina(detection: bestDetection,
+                             prototypes: prototypes,
+                             originalImage: originalImage)
     }
     
-    private func calculateDynamicThreshold(mask: [Float], confidence: Float) -> Float {
-        let otsuThreshold = calculateOtsuThreshold(mask)
+    // MARK: - Extract All Detections
+    private func extractDetections(from detections: MLMultiArray) -> [Detection] {
+        var allDetections: [Detection] = []
+        let confThreshold: Float = 0.5
         
-        // More aggressive adjustment based on confidence
-        let confAdjustment = 0.15 * (1.0 - confidence)
-        
-        let sorted = mask.sorted()
-        let p60 = sorted[Int(Float(sorted.count) * 0.6)]
-        let p70 = sorted[Int(Float(sorted.count) * 0.7)]
-        
-        var finalThreshold = otsuThreshold
-        
-        if otsuThreshold < 0.3 {
-            finalThreshold = p60
-        } else if otsuThreshold > 0.7 {
-            finalThreshold = p70
-        }
-        
-        finalThreshold += confAdjustment
-        finalThreshold = max(0.25, min(0.75, finalThreshold))
-        
-        return finalThreshold
-    }
-    
-    private func processInstanceSegmentation(detections: MLMultiArray,
-                                            prototypes: MLMultiArray,
-                                            originalImage: CVPixelBuffer) {
-        
-        let confThreshold: Float = 0.6  // Higher threshold for quality
-        var bestConf: Float = 0
-        var bestClass = ""
-        var bestBox: (x: Float, y: Float, w: Float, h: Float)?
-        var bestMaskCoeffs = [Float](repeating: 0, count: 32)
-        
-        // Process more anchors for better detection
         for anchor in 0..<8400 {
             let x = detections[[0, 0, anchor] as [NSNumber]].floatValue
             let y = detections[[0, 1, anchor] as [NSNumber]].floatValue
@@ -524,330 +457,322 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             for (classIdx, className) in furnitureClasses {
                 let conf = detections[[0, 4 + classIdx, anchor] as [NSNumber]].floatValue
                 
-                if conf > bestConf {
-                    bestConf = conf
-                    bestClass = className
-                    bestBox = (x, y, w, h)
-                    
+                if conf > confThreshold {
+                    var maskCoeffs = [Float](repeating: 0, count: 32)
                     for i in 0..<32 {
-                        bestMaskCoeffs[i] = detections[[0, 84 + i, anchor] as [NSNumber]].floatValue
+                        maskCoeffs[i] = detections[[0, 84 + i, anchor] as [NSNumber]].floatValue
                     }
+                    
+                    allDetections.append(Detection(
+                        x: x, y: y, width: w, height: h,
+                        confidence: conf,
+                        classIdx: classIdx,
+                        className: className,
+                        maskCoeffs: maskCoeffs
+                    ))
                 }
             }
         }
         
-        guard bestConf > confThreshold,
-              let box = bestBox else {
-            DispatchQueue.main.async {
-                self.isProcessing = false
-                // Don't clear if we have a good result already
-                if self.bestConfidence < 0.7 {
-                    self.segmentedImage = nil
-                    self.furnitureOpacity = 0.0
+        print("📊 Found \(allDetections.count) detections before NMS")
+        return allDetections
+    }
+    
+    // MARK: - Non-Maximum Suppression
+    private func applyNMS(detections: [Detection], iouThreshold: Float) -> [Detection] {
+        guard !detections.isEmpty else { return [] }
+        
+        let sorted = detections.sorted { $0.confidence > $1.confidence }
+        var kept: [Detection] = []
+        var suppressed = Set<Int>()
+        
+        for (idx, detection) in sorted.enumerated() {
+            if suppressed.contains(idx) { continue }
+            
+            kept.append(detection)
+            
+            for (otherIdx, other) in sorted.enumerated() where otherIdx > idx {
+                if suppressed.contains(otherIdx) { continue }
+                
+                let iou = calculateIoU(detection, other)
+                if iou > iouThreshold {
+                    suppressed.insert(otherIdx)
                 }
             }
-            return
         }
         
-        // Only update if this is better than what we have
-        if !shouldProcessFrame(confidence: bestConf) {
-            DispatchQueue.main.async {
-                self.isProcessing = false
-            }
-            return
+        print("📊 After NMS: \(kept.count) detections")
+        return kept
+    }
+    
+    private func calculateIoU(_ a: Detection, _ b: Detection) -> Float {
+        let x1 = max(a.x - a.width/2, b.x - b.width/2)
+        let y1 = max(a.y - a.height/2, b.y - b.height/2)
+        let x2 = min(a.x + a.width/2, b.x + b.width/2)
+        let y2 = min(a.y + a.height/2, b.y + b.height/2)
+        
+        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
+        let areaA = a.width * a.height
+        let areaB = b.width * b.height
+        let union = areaA + areaB - intersection
+        
+        return union > 0 ? intersection / union : 0
+    }
+    
+    // MARK: - Process Mask with Retina (High-Resolution)
+    private func processMaskWithRetina(detection: Detection,
+                                       prototypes: MLMultiArray,
+                                       originalImage: CVPixelBuffer) {
+        
+        DispatchQueue.main.async {
+            self.lastConfidence = detection.confidence
         }
         
-        print("🪑 Found \(bestClass) with confidence \(bestConf)")
+        // 1. Generate 160x160 mask
+        let lowResMask = generateMask(coefficients: detection.maskCoeffs, prototypes: prototypes)
         
-        if bestConf > bestConfidence {
-            bestConfidence = bestConf
-        }
+        // 2. Calculate bbox in image coordinates
+        let imageWidth = CVPixelBufferGetWidth(originalImage)
+        let imageHeight = CVPixelBufferGetHeight(originalImage)
         
-        // Generate mask with higher quality
+        let scale = Float(imageWidth) / 640.0
+        
+        let bboxX = Int(detection.x * scale)
+        let bboxY = Int(detection.y * scale)
+        let bboxW = Int(detection.width * scale)
+        let bboxH = Int(detection.height * scale)
+        
+        let x1 = max(0, bboxX - bboxW/2)
+        let y1 = max(0, bboxY - bboxH/2)
+        let x2 = min(imageWidth, bboxX + bboxW/2)
+        let y2 = min(imageHeight, bboxY + bboxH/2)
+        
+        let actualBboxWidth = x2 - x1
+        let actualBboxHeight = y2 - y1
+        
+        print("📦 BBox: [\(x1), \(y1)] size: \(actualBboxWidth)x\(actualBboxHeight)")
+        
+        // 3. Crop mask to bbox region (from 160x160 to bbox proportion)
+        let maskBbox = cropMaskToBbox(mask: lowResMask,
+                                      detection: detection,
+                                      maskSize: 160)
+        
+        // 4. Upsample cropped mask to bbox size (KEY STEP!)
+        let highResMask = upsampleMask(mask: maskBbox.mask,
+                                       fromSize: (maskBbox.width, maskBbox.height),
+                                       toSize: (actualBboxWidth, actualBboxHeight))
+        
+        print("🔍 Upsampled mask from \(maskBbox.width)x\(maskBbox.height) to \(actualBboxWidth)x\(actualBboxHeight)")
+        
+        // 5. Apply high-res mask to image
+        applyHighResMask(mask: highResMask,
+                        bbox: (x1, y1, actualBboxWidth, actualBboxHeight),
+                        to: originalImage,
+                        className: detection.className)  // Pass className here
+    }
+    
+    // Generate 160x160 mask
+    private func generateMask(coefficients: [Float], prototypes: MLMultiArray) -> [Float] {
         var mask = [Float](repeating: 0, count: 160 * 160)
         
         for y in 0..<160 {
             for x in 0..<160 {
-                var value: Float = 0
+                var sum: Float = 0
+                
+                // Matrix multiplication
                 for i in 0..<32 {
                     let protoValue = prototypes[[0, i, y, x] as [NSNumber]].floatValue
-                    value += bestMaskCoeffs[i] * protoValue
+                    sum += coefficients[i] * protoValue
                 }
-                mask[y * 160 + x] = 1.0 / (1.0 + exp(-value))
-            }
-        }
-        
-        let threshold = calculateDynamicThreshold(mask: mask, confidence: bestConf)
-        print("🎯 Dynamic threshold: \(threshold) for confidence \(bestConf)")
-        
-        smoothMaskWithThreshold(&mask, width: 160, height: 160, threshold: threshold)
-        
-        applySegmentationMask(mask: mask,
-                             bbox: box,
-                             to: originalImage,
-                             className: bestClass)
-    }
-    
-    // MARK: - Morphological Operations
-    private func smoothMaskWithThreshold(_ mask: inout [Float], width: Int, height: Int, threshold: Float) {
-        // Apply threshold
-        for i in 0..<(width * height) {
-            mask[i] = mask[i] > threshold ? 1.0 : 0.0
-        }
-        
-        // Remove small islands
-        removeSmallComponents(&mask, width: width, height: height, minSize: 30)
-        
-        // Morphological close
-        dilate(&mask, width: width, height: height, iterations: 2)
-        erode(&mask, width: width, height: height, iterations: 2)
-        
-        // Light gaussian blur
-        gaussianBlur(&mask, width: width, height: height, sigma: 0.8)
-        
-        // Final smoothing
-        for i in 0..<(width * height) {
-            if mask[i] > 0.95 {
-                mask[i] = 1.0
-            } else if mask[i] < 0.05 {
-                mask[i] = 0.0
-            } else {
-                mask[i] = smoothstep(0.05, 0.95, mask[i])
-            }
-        }
-    }
-    
-    private func removeSmallComponents(_ mask: inout [Float], width: Int, height: Int, minSize: Int) {
-        var labeled = [Int](repeating: 0, count: width * height)
-        var label = 0
-        
-        for y in 0..<height {
-            for x in 0..<width {
-                let idx = y * width + x
-                if mask[idx] > 0.5 && labeled[idx] == 0 {
-                    label += 1
-                    let size = floodFill(&labeled, mask: mask, x: x, y: y, width: width, height: height, label: label)
-                    
-                    if size < minSize {
-                        removeComponent(&mask, labeled: labeled, width: width, height: height, label: label)
-                    }
-                }
-            }
-        }
-    }
-    
-    private func floodFill(_ labeled: inout [Int], mask: [Float], x: Int, y: Int,
-                          width: Int, height: Int, label: Int) -> Int {
-        var stack = [(x, y)]
-        var size = 0
-        
-        while !stack.isEmpty {
-            let (cx, cy) = stack.removeLast()
-            let idx = cy * width + cx
-            
-            if cx < 0 || cx >= width || cy < 0 || cy >= height { continue }
-            if labeled[idx] != 0 || mask[idx] < 0.5 { continue }
-            
-            labeled[idx] = label
-            size += 1
-            
-            stack.append((cx + 1, cy))
-            stack.append((cx - 1, cy))
-            stack.append((cx, cy + 1))
-            stack.append((cx, cy - 1))
-        }
-        
-        return size
-    }
-    
-    private func removeComponent(_ mask: inout [Float], labeled: [Int],
-                                width: Int, height: Int, label: Int) {
-        for i in 0..<(width * height) {
-            if labeled[i] == label {
-                mask[i] = 0
-            }
-        }
-    }
-    
-    private func dilate(_ mask: inout [Float], width: Int, height: Int, iterations: Int) {
-        for _ in 0..<iterations {
-            var temp = mask
-            for y in 1..<(height-1) {
-                for x in 1..<(width-1) {
-                    var maxVal: Float = 0
-                    for dy in -1...1 {
-                        for dx in -1...1 {
-                            maxVal = max(maxVal, mask[(y + dy) * width + (x + dx)])
-                        }
-                    }
-                    temp[y * width + x] = maxVal
-                }
-            }
-            mask = temp
-        }
-    }
-    
-    private func erode(_ mask: inout [Float], width: Int, height: Int, iterations: Int) {
-        for _ in 0..<iterations {
-            var temp = mask
-            for y in 1..<(height-1) {
-                for x in 1..<(width-1) {
-                    var minVal: Float = 1.0
-                    for dy in -1...1 {
-                        for dx in -1...1 {
-                            minVal = min(minVal, mask[(y + dy) * width + (x + dx)])
-                        }
-                    }
-                    temp[y * width + x] = minVal
-                }
-            }
-            mask = temp
-        }
-    }
-    
-    private func gaussianBlur(_ mask: inout [Float], width: Int, height: Int, sigma: Float) {
-        let kernelSize = 5
-        let halfSize = kernelSize / 2
-        var kernel = [Float](repeating: 0, count: kernelSize * kernelSize)
-        var sum: Float = 0
-        
-        for y in -halfSize...halfSize {
-            for x in -halfSize...halfSize {
-                let value = exp(-(Float(x*x + y*y)) / (2.0 * sigma * sigma))
-                kernel[(y + halfSize) * kernelSize + (x + halfSize)] = value
-                sum += value
-            }
-        }
-        
-        for i in 0..<kernel.count {
-            kernel[i] /= sum
-        }
-        
-        var temp = [Float](repeating: 0, count: width * height)
-        for y in halfSize..<(height - halfSize) {
-            for x in halfSize..<(width - halfSize) {
-                var value: Float = 0
-                for ky in -halfSize...halfSize {
-                    for kx in -halfSize...halfSize {
-                        value += mask[(y + ky) * width + (x + kx)] * kernel[(ky + halfSize) * kernelSize + (kx + halfSize)]
-                    }
-                }
-                temp[y * width + x] = value
-            }
-        }
-        mask = temp
-    }
-    
-    private func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
-        let t = max(0, min(1, (x - edge0) / (edge1 - edge0)))
-        return t * t * (3 - 2 * t)
-    }
-    
-    private func applySegmentationMask(mask: [Float],
-                                       bbox: (x: Float, y: Float, w: Float, h: Float),
-                                       to pixelBuffer: CVPixelBuffer,
-                                       className: String) {
-        
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
-            DispatchQueue.main.async {
-                self.isProcessing = false
-            }
-            return
-        }
-        
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let ctx = CGContext(data: nil,
-                                 width: width,
-                                 height: height,
-                                 bitsPerComponent: 8,
-                                 bytesPerRow: width * 4,
-                                 space: colorSpace,
-                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-            DispatchQueue.main.async {
-                self.isProcessing = false
-            }
-            return
-        }
-        
-        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-        
-        guard let data = ctx.data else {
-            DispatchQueue.main.async {
-                self.isProcessing = false
-            }
-            return
-        }
-        
-        let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
-        
-        let scaleX = Float(width) / 640.0
-        let scaleY = Float(height) / 640.0
-        
-        let x1 = Int(max(0, (bbox.x - bbox.w/2) * scaleX))
-        let y1 = Int(max(0, (bbox.y - bbox.h/2) * scaleY))
-        let x2 = Int(min(Float(width), (bbox.x + bbox.w/2) * scaleX))
-        let y2 = Int(min(Float(height), (bbox.y + bbox.h/2) * scaleY))
-        
-        // Use bicubic interpolation for smoother upscaling
-        for py in 0..<height {
-            for px in 0..<width {
-                let idx = (py * width + px) * 4
                 
-                if px >= x1 && px < x2 && py >= y1 && py < y2 {
-                    // Bicubic interpolation
-                    let fx = Float(px - x1) * 160.0 / Float(x2 - x1)
-                    let fy = Float(py - y1) * 160.0 / Float(y2 - y1)
+                // Apply sigmoid AFTER the sum
+                mask[y * 160 + x] = 1.0 / (1.0 + exp(-sum))
+            }
+        }
+        
+        let highConf = mask.filter { $0 > 0.5 }.count
+        print("📊 Low-res mask: \(highConf)/25600 pixels (\(highConf * 100 / 25600)%)")
+        
+        return mask
+    }
+    
+    // Crop mask to bbox region
+    private func cropMaskToBbox(mask: [Float], detection: Detection, maskSize: Int) -> (mask: [Float], width: Int, height: Int) {
+        // Convert bbox to mask coordinates (0-160)
+        let scale = Float(maskSize) / 640.0
+        
+        let bboxX = Int(detection.x * scale)
+        let bboxY = Int(detection.y * scale)
+        let bboxW = Int(detection.width * scale)
+        let bboxH = Int(detection.height * scale)
+        
+        let x1 = max(0, bboxX - bboxW/2)
+        let y1 = max(0, bboxY - bboxH/2)
+        let x2 = min(maskSize, bboxX + bboxW/2)
+        let y2 = min(maskSize, bboxY + bboxH/2)
+        
+        let cropWidth = x2 - x1
+        let cropHeight = y2 - y1
+        
+        var croppedMask = [Float](repeating: 0, count: cropWidth * cropHeight)
+        
+        for y in 0..<cropHeight {
+            for x in 0..<cropWidth {
+                let srcIdx = (y + y1) * maskSize + (x + x1)
+                let dstIdx = y * cropWidth + x
+                croppedMask[dstIdx] = mask[srcIdx]
+            }
+        }
+        
+        return (croppedMask, cropWidth, cropHeight)
+    }
+    
+    // MARK: - Bilinear Upsampling (KEY FOR QUALITY!)
+    private func upsampleMask(mask: [Float], fromSize: (width: Int, height: Int), toSize: (width: Int, height: Int)) -> [Float] {
+        let srcWidth = fromSize.width
+        let srcHeight = fromSize.height
+        let dstWidth = toSize.width
+        let dstHeight = toSize.height
+        
+        var upsampled = [Float](repeating: 0, count: dstWidth * dstHeight)
+        
+        let xRatio = Float(srcWidth) / Float(dstWidth)
+        let yRatio = Float(srcHeight) / Float(dstHeight)
+        
+        for dstY in 0..<dstHeight {
+            for dstX in 0..<dstWidth {
+                // Find corresponding position in source
+                let srcX = Float(dstX) * xRatio
+                let srcY = Float(dstY) * yRatio
+                
+                // Get integer and fractional parts
+                let x0 = Int(srcX)
+                let y0 = Int(srcY)
+                let x1 = min(x0 + 1, srcWidth - 1)
+                let y1 = min(y0 + 1, srcHeight - 1)
+                
+                let dx = srcX - Float(x0)
+                let dy = srcY - Float(y0)
+                
+                // Bilinear interpolation
+                let v00 = mask[y0 * srcWidth + x0]
+                let v10 = mask[y0 * srcWidth + x1]
+                let v01 = mask[y1 * srcWidth + x0]
+                let v11 = mask[y1 * srcWidth + x1]
+                
+                let v0 = v00 * (1 - dx) + v10 * dx
+                let v1 = v01 * (1 - dx) + v11 * dx
+                let value = v0 * (1 - dy) + v1 * dy
+                
+                upsampled[dstY * dstWidth + dstX] = value
+            }
+        }
+        
+        return upsampled
+    }
+    
+    
+    // MARK: - Apply High-Resolution Mask
+    private func applyHighResMask(mask: [Float],
+                                  bbox: (x: Int, y: Int, width: Int, height: Int),
+                                  to pixelBuffer: CVPixelBuffer,
+                                  className: String) {  // Add className parameter
+        
+        autoreleasepool {
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            
+            let width = CVPixelBufferGetWidth(pixelBuffer)
+            let height = CVPixelBufferGetHeight(pixelBuffer)
+            
+            guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
+                DispatchQueue.main.async {
+                    self.isProcessing = false
+                }
+                return
+            }
+            
+            // Create context
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+            let bytesPerPixel = 4
+            let bytesPerRow = width * bytesPerPixel
+            
+            guard let ctx = CGContext(data: nil,
+                                     width: width,
+                                     height: height,
+                                     bitsPerComponent: 8,
+                                     bytesPerRow: bytesPerRow,
+                                     space: colorSpace,
+                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                DispatchQueue.main.async {
+                    self.isProcessing = false
+                }
+                return
+            }
+            
+            // Draw original image
+            ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            
+            // Get pixel data
+            guard let data = ctx.data else {
+                DispatchQueue.main.async {
+                    self.isProcessing = false
+                }
+                return
+            }
+            
+            let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
+            
+            // Apply mask with threshold
+            var maskedCount = 0
+            let threshold: Float = 0.5
+            
+            for y in 0..<height {
+                for x in 0..<width {
+                    let pixelIdx = (y * width + x) * 4
                     
-                    let mx = Int(fx)
-                    let my = Int(fy)
-                    
-                    if mx >= 0 && mx < 159 && my >= 0 && my < 159 {
-                        // Bilinear interpolation for smoother edges
-                        let dx = fx - Float(mx)
-                        let dy = fy - Float(my)
+                    // Check if pixel is within bbox
+                    if x >= bbox.x && x < (bbox.x + bbox.width) &&
+                       y >= bbox.y && y < (bbox.y + bbox.height) {
                         
-                        let v00 = mask[my * 160 + mx]
-                        let v10 = mask[my * 160 + mx + 1]
-                        let v01 = mask[(my + 1) * 160 + mx]
-                        let v11 = mask[(my + 1) * 160 + mx + 1]
+                        // Get mask value
+                        let maskX = x - bbox.x
+                        let maskY = y - bbox.y
+                        let maskIdx = maskY * bbox.width + maskX
                         
-                        let v0 = v00 * (1 - dx) + v10 * dx
-                        let v1 = v01 * (1 - dx) + v11 * dx
-                        let maskValue = v0 * (1 - dy) + v1 * dy
-                        
-                        let alpha = UInt8(maskValue * 255)
-                        pixels[idx + 3] = alpha
-                        
-                        if alpha < 255 {
-                            let factor = Float(alpha) / 255.0
-                            pixels[idx] = UInt8(Float(pixels[idx]) * factor)
-                            pixels[idx + 1] = UInt8(Float(pixels[idx + 1]) * factor)
-                            pixels[idx + 2] = UInt8(Float(pixels[idx + 2]) * factor)
+                        if maskIdx >= 0 && maskIdx < mask.count {
+                            let maskValue = mask[maskIdx]
+                            
+                            if maskValue > threshold {
+                                // Keep pixel (full alpha)
+                                maskedCount += 1
+                            } else {
+                                // Make transparent
+                                pixels[pixelIdx + 3] = 0
+                            }
+                        } else {
+                            pixels[pixelIdx + 3] = 0
                         }
                     } else {
-                        pixels[idx + 3] = 0
+                        // Outside bbox - make transparent
+                        pixels[pixelIdx + 3] = 0
                     }
-                } else {
-                    pixels[idx + 3] = 0
                 }
             }
-        }
-        
-        if let finalImage = ctx.makeImage() {
-            let uiImage = UIImage(cgImage: finalImage, scale: 1.0, orientation: .up)
             
-            DispatchQueue.main.async {
-                self.segmentedImage = uiImage
-                self.detectedFurnitureTypes = [className]
-                withAnimation(.easeIn(duration: 0.3)) {
-                    self.furnitureOpacity = 1.0
+            print("✅ Applied high-res mask: \(maskedCount) pixels kept")
+            
+            // Create final image
+            if let finalImage = ctx.makeImage() {
+                let uiImage = UIImage(cgImage: finalImage, scale: 1.0, orientation: .up)
+                
+                DispatchQueue.main.async {
+                    self.segmentedImage = uiImage
+                    self.detectedFurnitureTypes = [className]  // Use the passed className
+                    withAnimation(.easeIn(duration: 0.3)) {
+                        self.furnitureOpacity = 1.0
+                    }
+                    self.isProcessing = false
                 }
-                self.isProcessing = false
             }
         }
     }
