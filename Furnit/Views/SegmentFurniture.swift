@@ -499,7 +499,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return mask
     }
     
-    // MARK: - Apply Mask with MUCH MORE AGGRESSIVE Expansion
+    // MARK: - SUPER AGGRESSIVE Expansion
     private func applyMaskToImage(mask: [Float],
                                  detection: Detection,
                                  to pixelBuffer: CVPixelBuffer) {
@@ -542,7 +542,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
             
-            // MUCH MORE AGGRESSIVE BBOX EXPANSION
+            // SUPER AGGRESSIVE BBOX EXPANSION
             let scale = Float(width) / 640.0
             
             let origX1 = Int((detection.x - detection.width/2) * scale)
@@ -553,61 +553,68 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             let bboxHeight = origY2 - origY1
             let bboxWidth = origX2 - origX1
             
-            // VERY AGGRESSIVE expansion values
+            // EXTREMELY AGGRESSIVE expansion values
             let bottomExpansion: Float
             let topExpansion: Float
             let sideExpansion: Float
             
             switch detection.className {
             case "chair":
-                // MUCH MORE for chair to capture full seat and legs
-                bottomExpansion = 0.7   // 70% more for legs AND seat
-                topExpansion = 0.3      // 30% for high backrest
-                sideExpansion = 0.3     // 30% for armrests
-                print("🪑 Chair - MAJOR expansion (70% bottom)")
+                // EXTREME expansion for chair
+                bottomExpansion = 1.0   // 100% more (double height down)
+                topExpansion = 0.5      // 50% for tall backrest
+                sideExpansion = 0.5     // 50% for wide armrests
+                print("🪑 Chair - EXTREME expansion (100% bottom!)")
                 
             case "bed":
-                // HUGE expansion for bed
-                bottomExpansion = 0.5   // 50% for bed frame
-                topExpansion = 0.6      // 60% for headboard
-                sideExpansion = 0.5     // 50% for full width
-                print("🛏️ Bed - HUGE expansion all around")
+                // MASSIVE expansion for bed
+                bottomExpansion = 0.8   // 80% for bed frame/feet
+                topExpansion = 1.0      // 100% for tall headboard
+                sideExpansion = 0.8     // 80% for full bed width
+                print("🛏️ Bed - MASSIVE expansion (100% top!)")
                 
             case "couch", "sofa":
-                bottomExpansion = 0.5
-                topExpansion = 0.4
-                sideExpansion = 0.4
-                print("🛋️ Couch - large expansion")
+                bottomExpansion = 0.7   // 70%
+                topExpansion = 0.6      // 60%
+                sideExpansion = 0.6     // 60%
+                print("🛋️ Couch - very large expansion")
                 
             case "dining table", "table":
-                bottomExpansion = 0.8   // 80% for table legs
-                topExpansion = 0.1
-                sideExpansion = 0.3
-                print("🪑 Table - massive bottom expansion")
+                bottomExpansion = 1.2   // 120% for long table legs
+                topExpansion = 0.2      // 20%
+                sideExpansion = 0.5     // 50%
+                print("🪑 Table - extreme bottom (120%)")
                 
             case "person":
-                bottomExpansion = 0.2
-                topExpansion = 0.2
-                sideExpansion = 0.15
+                bottomExpansion = 0.3   // 30%
+                topExpansion = 0.3      // 30%
+                sideExpansion = 0.25    // 25%
                 print("👤 Person - moderate expansion")
                 
+            case "tv", "laptop", "keyboard", "monitor":
+                bottomExpansion = 0.3
+                topExpansion = 0.3
+                sideExpansion = 0.4
+                print("💻 Electronics - balanced expansion")
+                
             default:
-                // Default still generous
-                bottomExpansion = 0.35
-                topExpansion = 0.35
-                sideExpansion = 0.35
-                print("📦 \(detection.className) - generous default")
+                // Very generous default
+                bottomExpansion = 0.6   // 60%
+                topExpansion = 0.6      // 60%
+                sideExpansion = 0.5     // 50%
+                print("📦 \(detection.className) - very generous default (60%)")
             }
             
-            // Apply expansion with debug info
+            // Apply expansion with safety limits
             let x1 = max(0, origX1 - Int(Float(bboxWidth) * sideExpansion))
             let y1 = max(0, origY1 - Int(Float(bboxHeight) * topExpansion))
             let x2 = min(width, origX2 + Int(Float(bboxWidth) * sideExpansion))
             let y2 = min(height, origY2 + Int(Float(bboxHeight) * bottomExpansion))
             
-            print("📦 Original: [\(origX1),\(origY1)]-[\(origX2),\(origY2)]")
-            print("📦 Expanded: [\(x1),\(y1)]-[\(x2),\(y2)]")
-            print("📦 Expansion: T=\(Int(topExpansion*100))% B=\(Int(bottomExpansion*100))% S=\(Int(sideExpansion*100))%")
+            print("📦 Original BBox: [\(origX1),\(origY1)]-[\(origX2),\(origY2)]")
+            print("📦 Expanded BBox: [\(x1),\(y1)]-[\(x2),\(y2)]")
+            print("📦 Size change: \(x2-x1)x\(y2-y1) vs \(origX2-origX1)x\(origY2-origY1)")
+            print("📦 Expansion: Top=\(Int(topExpansion*100))% Bottom=\(Int(bottomExpansion*100))% Sides=\(Int(sideExpansion*100))%")
             
             // Apply mask
             var maskedPixels = 0
