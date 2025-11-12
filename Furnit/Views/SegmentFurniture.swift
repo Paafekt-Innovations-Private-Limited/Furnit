@@ -29,7 +29,7 @@ struct CameraPreviewLayer: UIViewRepresentable {
 struct SegmentFurniture: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
-    let roomImage: UIImage? // 3D room image from previous screen
+    let roomImage: UIImage?
     
     @StateObject private var camera = FurnitureSegmentationModel()
     
@@ -74,7 +74,7 @@ struct SegmentFurniture: View {
                                     let delta = value / lastScale
                                     lastScale = value
                                     let newScale = scaleMultiplier * delta
-                                    scaleMultiplier = min(max(newScale, 0.2), 2.0) // Clamp between 0.2x and 2.0x
+                                    scaleMultiplier = min(max(newScale, 0.2), 2.0)
                                 }
                                 .onEnded { value in
                                     lastScale = 1.0
@@ -84,32 +84,6 @@ struct SegmentFurniture: View {
                     .ignoresSafeArea()
                     .opacity(camera.furnitureOpacity)
                     .animation(.easeOut(duration: 0.3), value: camera.furnitureOpacity)
-            }
-            
-            // FPS Display
-            VStack {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text("FPS: \(camera.currentFPS, specifier: "%.1f")")
-                        if camera.lastConfidence > 0 {
-                            Text("Conf: \(Int(camera.lastConfidence * 100))%")
-                        }
-                        if !camera.lastDetectedClass.isEmpty {
-                            Text("\(camera.lastDetectedClass)")
-                                .font(.caption2)
-                        }
-                        Text("Scale: \(scaleMultiplier, specifier: "%.1f")x")
-                            .font(.caption2)
-                    }
-                    .font(.caption)
-                    .foregroundColor(.white)
-                    .padding(6)
-                    .background(Color.black.opacity(0.7))
-                    .cornerRadius(8)
-                    Spacer()
-                }
-                .padding()
-                Spacer()
             }
             
             // Controls
@@ -164,7 +138,7 @@ struct SegmentFurniture: View {
                     }
                     .padding(.bottom, 50)
                     .padding(.trailing, 20)
-                    .frame(maxWidth: .infinity, alignment: .trailing)  // ← This keeps both on the right
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
             
@@ -193,6 +167,47 @@ struct SegmentFurniture: View {
                     .padding()
                     .background(Capsule().fill(Color.green))
                     Spacer().frame(height: 100)
+                }
+            }
+            
+            // Initialization progress
+            if camera.isInitializing {
+                ZStack {
+                    Color.black.opacity(0.8)
+                        .ignoresSafeArea()
+                    
+                    VStack(spacing: 24) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.blue.opacity(0.2))
+                                .frame(width: 100, height: 100)
+                            
+                            Image(systemName: "camera.viewfinder")
+                                .font(.system(size: 40))
+                                .foregroundColor(.blue)
+                        }
+                        
+                        VStack(spacing: 12) {
+                            Text("Detecting Furniture")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            
+                            Text(camera.initStage)
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                        }
+                        
+                        VStack(spacing: 8) {
+                            ProgressView(value: camera.initProgress, total: 1.0)
+                                .progressViewStyle(LinearProgressViewStyle(tint: .blue))
+                                .frame(width: 250)
+                            
+                            Text("\(Int(camera.initProgress * 100))%")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                    }
                 }
             }
         }
@@ -235,7 +250,7 @@ struct SegmentFurniture: View {
         // Draw room
         room.draw(at: .zero)
         
-        // Draw furniture centered (ignore drag/scale for now)
+        // Draw furniture centered
         let furnitureRect = CGRect(
             x: (room.size.width - furniture.size.width) / 2,
             y: (room.size.height - furniture.size.height) / 2,
@@ -300,6 +315,11 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     @Published var currentFPS: Double = 0.0
     @Published var lastConfidence: Float = 0.0
     @Published var lastDetectedClass: String = ""
+    
+    // Progress tracking
+    @Published var isInitializing = true
+    @Published var initProgress: Double = 0.0
+    @Published var initStage = ""
     
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -406,11 +426,19 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     
     func startSession() {
         if !session.isRunning {
+            DispatchQueue.main.async {
+                self.isInitializing = true
+                self.initProgress = 0.0
+                self.initStage = "Starting camera..."
+            }
+            
             DispatchQueue.global(qos: .background).async {
                 self.session.startRunning()
                 DispatchQueue.main.async {
                     print("✅ Camera started")
                     self.fpsStartTime = Date()
+                    self.initProgress = 0.5
+                    self.initStage = "Detecting furniture..."
                 }
             }
         }
@@ -750,6 +778,13 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     self.segmentedImage = uiImage
                     withAnimation(.easeIn(duration: 0.3)) {
                         self.furnitureOpacity = 1.0
+                    }
+                    
+                    // Mark initialization complete
+                    if self.isInitializing {
+                        self.isInitializing = false
+                        self.initProgress = 1.0
+                        self.initStage = "Ready!"
                     }
                 }
             }
