@@ -24,16 +24,14 @@ struct ModelViewerView: View {
     @State private var showingSegmentFurniture = false
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
+    
+    // ARView snapshot trigger (proper way to capture 3D content)
+    @State private var shouldCaptureARViewSnapshot = false
 
-    // Progress bar state
+    // Progress bar state (only for camera)
     @State private var isInitializingCamera = false
     @State private var cameraInitProgress: Double = 0.0
     @State private var initializationTimer: Timer?
-    
-    // Furniture segmentation progress
-    @State private var isInitializingFurniture = false
-    @State private var furnitureInitProgress: Double = 0.0
-    @State private var furnitureInitTimer: Timer?
 
     init(model: USDZModel) {
         self.model = model
@@ -50,13 +48,14 @@ struct ModelViewerView: View {
                     model: model,
                     cameraMovementManager: cameraMovementManager,
                     arObjectPlacementManager: arObjectPlacementManager,
-                    isARActive: isARActive
+                    isARActive: isARActive,
+                    shouldCaptureSnapshot: $shouldCaptureARViewSnapshot,
+                    capturedSnapshot: $roomSnapshot
                 )
                 .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture))
                 .ignoresSafeArea(.all)
 
                 if isInitializingCamera { cameraInitializationOverlay }
-                if isInitializingFurniture { furnitureInitializationOverlay }
 
                 if showingCameraPreview {
                     SimpleCameraOverlay(
@@ -139,36 +138,6 @@ struct ModelViewerView: View {
         }
         .transition(.opacity)
     }
-    
-    private var furnitureInitializationOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.9).ignoresSafeArea()
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle().fill(Color.green.opacity(0.2)).frame(width: 100, height: 100)
-                    Image(systemName: "chair.fill").font(.system(size: 40)).foregroundColor(.green)
-                }
-                VStack(spacing: 12) {
-                    Text("Initializing Furniture Segmentation").font(.title2).fontWeight(.semibold).foregroundColor(.white)
-                    Text(furnitureProgressMessage).font(.subheadline).foregroundColor(.gray)
-                        .multilineTextAlignment(.center).padding(.horizontal, 40)
-                }
-                VStack(spacing: 8) {
-                    ProgressView(value: furnitureInitProgress, total: 1.0)
-                        .progressViewStyle(LinearProgressViewStyle(tint: .green))
-                        .frame(width: 250)
-                    Text("\(Int(furnitureInitProgress * 100))%").font(.caption).foregroundColor(.gray)
-                }
-                Button(action: { cancelFurnitureInitialization() }) {
-                    Text("Cancel").font(.body).foregroundColor(.white)
-                        .padding(.horizontal, 32).padding(.vertical, 12)
-                        .background(Color.red.opacity(0.8)).cornerRadius(25)
-                }
-                .padding(.top, 8)
-            }
-        }
-        .transition(.opacity)
-    }
 
     private var progressMessage: String {
         if cameraInitProgress < 0.3 { return "Checking camera permissions..." }
@@ -176,25 +145,17 @@ struct ModelViewerView: View {
         else if cameraInitProgress < 0.9 { return "Preparing segmentation..." }
         else { return "Almost ready..." }
     }
-    
-    private var furnitureProgressMessage: String {
-        if furnitureInitProgress < 0.3 { return "Capturing room view..." }
-        else if furnitureInitProgress < 0.6 { return "Loading YOLO11 segmentation model..." }
-        else if furnitureInitProgress < 0.9 { return "Initializing camera..." }
-        else { return "Starting furniture detection..." }
-    }
 
     private func isLandscape(geometry: GeometryProxy) -> Bool {
         geometry.size.width > geometry.size.height
     }
 
-    // PORTRAIT controls - NO SCREENSHOT BUTTON
+    // PORTRAIT controls
     private var portraitControls: some View {
         VStack {
             HStack {
                 backButton
                 Spacer()
-                // Removed screenshot button
             }.padding()
             
             Spacer()
@@ -224,13 +185,12 @@ struct ModelViewerView: View {
         }
     }
 
-    // LANDSCAPE controls - NO SCREENSHOT BUTTON
+    // LANDSCAPE controls
     private var landscapeControls: some View {
         HStack {
             VStack {
                 HStack(spacing: 12) {
                     backButton
-                    // Removed screenshot button
                 }
                 Spacer()
             }
@@ -313,7 +273,18 @@ struct ModelViewerView: View {
             if showingSegmentFurniture {
                 showingSegmentFurniture = false
             } else {
-                startFurnitureInitialization()
+                // Trigger ARView snapshot (will be handled by RealityKitView)
+                shouldCaptureARViewSnapshot = true
+                
+                // Hide other overlays
+                showingCameraPreview = false
+                showingSegmentExamine = false
+                showingSegmentForeground = false
+                
+                // Wait briefly for snapshot to complete, then open scanner
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.showingSegmentFurniture = true
+                }
             }
         }) {
             Image(systemName: "chair.fill")
@@ -323,63 +294,6 @@ struct ModelViewerView: View {
         }
     }
     
-    // MARK: - Furniture Initialization with Progress
-    
-    private func startFurnitureInitialization() {
-        // Hide other overlays
-        showingCameraPreview = false
-        showingSegmentExamine = false
-        showingSegmentForeground = false
-        
-        // Start progress
-        isARActive = false
-        isInitializingFurniture = true
-        furnitureInitProgress = 0.0
-        
-        // Simulate progress
-        furnitureInitTimer = Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { timer in
-            self.furnitureInitProgress += 0.015
-            
-            // Capture room at 30%
-            if self.furnitureInitProgress >= 0.3 && self.furnitureInitProgress < 0.35 && self.roomSnapshot == nil {
-                self.captureRoomSnapshot()
-            }
-            
-            if self.furnitureInitProgress >= 1.0 {
-                timer.invalidate()
-                self.furnitureInitTimer = nil
-                withAnimation(.easeOut(duration: 0.3)) {
-                    self.isInitializingFurniture = false
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    self.showingSegmentFurniture = true
-                    self.manageARSessionForOverlays()
-                }
-            }
-        }
-    }
-    
-    private func cancelFurnitureInitialization() {
-        furnitureInitTimer?.invalidate()
-        furnitureInitTimer = nil
-        withAnimation(.easeOut(duration: 0.2)) {
-            isInitializingFurniture = false
-            furnitureInitProgress = 0.0
-        }
-        manageARSessionForOverlays()
-    }
-    
-    private func captureRoomSnapshot() {
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-            self.roomSnapshot = renderer.image { context in
-                window.layer.render(in: context.cgContext)
-            }
-            print("📸 Room captured during initialization")
-        }
-    }
-
     // MARK: - Camera Init
 
     private func startCameraInitialization() {
@@ -412,7 +326,7 @@ struct ModelViewerView: View {
     }
 
     private func manageARSessionForOverlays() {
-        let shouldRunAR = !anyCameraOverlayActive && !isInitializingCamera && !isInitializingFurniture
+        let shouldRunAR = !anyCameraOverlayActive && !isInitializingCamera
         if isARActive != shouldRunAR {
             isARActive = shouldRunAR
         }

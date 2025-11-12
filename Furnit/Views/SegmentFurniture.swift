@@ -173,7 +173,7 @@ struct SegmentFurniture: View {
         }
         .onAppear {
             camera.startSession()
-            print("📸 Room image: \(roomImage != nil ? "Available" : "Not available")")
+            print("📸 Room image: \(roomImage != nil ? "Available (\(Int(roomImage!.size.width))x\(Int(roomImage!.size.height)))" : "Not available")")
         }
         .onDisappear { camera.stopSession() }
     }
@@ -191,24 +191,31 @@ struct SegmentFurniture: View {
         
         print("📸 Creating composite with 3D room...")
         
-        // STEP 1: Capture the 3D RealityKit scene (NOT roomImage!)
-        guard let roomBackground = captureCurrentView() else {
-            print("❌ Failed to capture 3D room, saving furniture only")
-            // Fallback: save furniture only
-            capturedImage = furniture
-            UIImageWriteToSavedPhotosAlbum(furniture, nil, nil, nil)
-            saveMessage = "Furniture saved (no room)"
+        // CRITICAL: roomImage MUST be captured by caller BEFORE opening this sheet
+        // The 3D room is hidden behind the sheet, so it CANNOT be captured from here!
+        //
+        // CALLER MUST DO THIS:
+        // 1. Capture 3D room: let snapshot = captureRoomView()
+        // 2. Pass it here: SegmentFurniture(roomImage: snapshot)
+        //
+        // See captureRoomView() helper function at bottom of this file
+        
+        guard let roomBackground = roomImage else {
+            print("❌ CRITICAL: No roomImage provided by caller!")
+            print("⚠️ The 3D room MUST be captured BEFORE opening this sheet")
+            print("⚠️ See comments in captureFurnitureWithRoom() for instructions")
+            
+            saveMessage = "Error: No room provided!"
             showingSaveSuccess = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 showingSaveSuccess = false
-                isShowingCamera = false
             }
             return
         }
         
-        print("✅ Captured 3D room: \(roomBackground.size)")
+        print("✅ Using provided 3D room: \(roomBackground.size)")
         
-        // STEP 2: Create composite WITHOUT any UI elements
+        // Create composite WITHOUT any UI elements
         UIGraphicsBeginImageContextWithOptions(roomBackground.size, false, roomBackground.scale)
         defer { UIGraphicsEndImageContext() }
         
@@ -239,7 +246,9 @@ struct SegmentFurniture: View {
             return
         }
         
-        // STEP 3: Save to photos with proper permissions
+        print("✅ Composite created: \(composite.size)")
+        
+        // Save to photos with proper permissions
         capturedImage = composite
         
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
@@ -273,13 +282,30 @@ struct SegmentFurniture: View {
         }
     }
 
-    // REQUIRED: Add this helper function
-    private func captureCurrentView() -> UIImage? {
+    // HELPER: This function MUST be called by the CALLER (parent view)
+    // BEFORE opening SegmentFurniture sheet to capture the 3D room
+    //
+    // USAGE IN CALLER:
+    //
+    // @State private var roomSnapshot: UIImage?
+    //
+    // Button("Scan Furniture") {
+    //     roomSnapshot = captureRoomView()  // Capture 3D room FIRST
+    //     showingSegmentFurniture = true    // Then open sheet
+    // }
+    // .sheet(isPresented: $showingSegmentFurniture) {
+    //     SegmentFurniture(
+    //         capturedImage: $capturedImage,
+    //         isShowingCamera: $showingSegmentFurniture,
+    //         roomImage: roomSnapshot  // Pass captured room
+    //     )
+    // }
+    //
+    private func captureRoomView() -> UIImage? {
         guard let window = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first?.windows
             .first(where: { $0.isKeyWindow }) else {
-            print("❌ Could not find key window")
             return nil
         }
         
@@ -310,7 +336,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     @Published var lastConfidence: Float = 0.0
     @Published var lastDetectedClass: String = ""
     
-    let session = AVCaptureSession()  // Not private - accessible by View
+    let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "furnitureSegQueue", qos: .userInitiated)
     
@@ -623,7 +649,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return mask
     }
     
-    // MARK: - SUPER AGGRESSIVE Expansion
     private func applyMaskToImage(mask: [Float],
                                  detection: Detection,
                                  to pixelBuffer: CVPixelBuffer) {
@@ -657,7 +682,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
             
-            // SUPER AGGRESSIVE BBOX EXPANSION
             let scale = Float(width) / 640.0
             
             let origX1 = Int((detection.x - detection.width/2) * scale)
@@ -668,57 +692,47 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             let bboxHeight = origY2 - origY1
             let bboxWidth = origX2 - origX1
             
-            // EXTREMELY AGGRESSIVE expansion values
             let bottomExpansion: Float
             let topExpansion: Float
             let sideExpansion: Float
             
             switch detection.className {
             case "chair":
-                bottomExpansion = 1.0   // 100% more (doubles height down for legs)
-                topExpansion = 0.5      // 50% for backrest
-                sideExpansion = 0.5     // 50% for armrests
-                print("🪑 Chair - EXTREME expansion")
+                bottomExpansion = 1.0
+                topExpansion = 0.5
+                sideExpansion = 0.5
                 
             case "bed":
                 bottomExpansion = 0.8
                 topExpansion = 1.0
                 sideExpansion = 0.8
-                print("🛏️ Bed - MASSIVE expansion")
                 
             case "couch", "sofa":
                 bottomExpansion = 0.7
                 topExpansion = 0.6
                 sideExpansion = 0.6
-                print("🛋️ Couch")
                 
             case "dining table":
-                bottomExpansion = 1.2   // 120% for table legs
+                bottomExpansion = 1.2
                 topExpansion = 0.2
                 sideExpansion = 0.5
-                print("🪑 Table")
                 
             case "person":
                 bottomExpansion = 0.3
                 topExpansion = 0.3
                 sideExpansion = 0.25
-                print("👤 Person")
                 
             default:
                 bottomExpansion = 0.5
                 topExpansion = 0.5
                 sideExpansion = 0.4
-                print("📦 \(detection.className)")
             }
             
-            // Apply expansion
             let x1 = max(0, origX1 - Int(Float(bboxWidth) * sideExpansion))
             let y1 = max(0, origY1 - Int(Float(bboxHeight) * topExpansion))
             let x2 = min(width, origX2 + Int(Float(bboxWidth) * sideExpansion))
             let y2 = min(height, origY2 + Int(Float(bboxHeight) * bottomExpansion))
             
-            // Apply mask
-            var maskedPixels = 0
             let threshold: Float = 0.5
             
             for py in 0..<height {
@@ -730,17 +744,17 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     
                     let x0 = Int(maskX)
                     let y0 = Int(maskY)
-                    let x1 = min(x0 + 1, 159)
-                    let y1 = min(y0 + 1, 159)
+                    let x1Val = min(x0 + 1, 159)
+                    let y1Val = min(y0 + 1, 159)
                     
                     if x0 >= 0 && x0 < 160 && y0 >= 0 && y0 < 160 {
                         let dx = maskX - Float(x0)
                         let dy = maskY - Float(y0)
                         
                         let v00 = mask[y0 * 160 + x0]
-                        let v10 = mask[y0 * 160 + x1]
-                        let v01 = mask[y1 * 160 + x0]
-                        let v11 = mask[y1 * 160 + x1]
+                        let v10 = mask[y0 * 160 + x1Val]
+                        let v01 = mask[y1Val * 160 + x0]
+                        let v11 = mask[y1Val * 160 + x1Val]
                         
                         let v0 = v00 * (1.0 - dx) + v10 * dx
                         let v1 = v01 * (1.0 - dx) + v11 * dx
@@ -755,8 +769,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                             pixels[idx] = UInt8(Float(pixels[idx]) * alpha)
                             pixels[idx + 1] = UInt8(Float(pixels[idx + 1]) * alpha)
                             pixels[idx + 2] = UInt8(Float(pixels[idx + 2]) * alpha)
-                            
-                            maskedPixels += 1
                         } else {
                             pixels[idx + 3] = 0
                         }
@@ -765,8 +777,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     }
                 }
             }
-            
-            print("✅ Applied: \(maskedPixels) pixels")
             
             if let finalImage = ctx.makeImage() {
                 let uiImage = UIImage(cgImage: finalImage, scale: 1.0, orientation: .up)

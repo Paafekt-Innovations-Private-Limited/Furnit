@@ -8,6 +8,9 @@ struct RealityKitView: UIViewRepresentable {
     let arObjectPlacementManager: ARObjectPlacementManager
     let isARActive: Bool
     
+    // ✅ NEW: Snapshot capability - for capturing clean 3D room
+    @Binding var shouldCaptureSnapshot: Bool
+    @Binding var capturedSnapshot: UIImage?
     
     // Access quality settings from environment
     @Environment(\.appState) private var appState
@@ -24,6 +27,9 @@ struct RealityKitView: UIViewRepresentable {
         
         // Use .nonAR mode for custom camera control that allows rotation without moving position
         let arView = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
+        
+        // ✅ NEW: Store ARView reference in Coordinator for snapshot
+        context.coordinator.arView = arView
         
         // Configure ARView for room viewing in non-AR mode
         arView.renderOptions.insert(.disablePersonOcclusion)
@@ -61,6 +67,29 @@ struct RealityKitView: UIViewRepresentable {
         case .fast:
             cameraMovementManager.setSpeed(.fast)
         }
+        
+        // ✅ FIXED: Handle snapshot requests
+        if shouldCaptureSnapshot {
+            print("📸 [RealityKitView] Snapshot requested, capturing ARView...")
+            
+            // Capture the bindings to mutate them in the async closure
+            let capturedSnapshotBinding = $capturedSnapshot
+            let shouldCaptureSnapshotBinding = $shouldCaptureSnapshot
+            
+            // Use ARView's built-in snapshot method to capture ONLY 3D content
+            uiView.snapshot(saveToHDR: false) { image in
+                DispatchQueue.main.async {
+                    capturedSnapshotBinding.wrappedValue = image
+                    shouldCaptureSnapshotBinding.wrappedValue = false
+                    
+                    if let image = image {
+                        print("✅ [RealityKitView] Snapshot captured: \(Int(image.size.width))x\(Int(image.size.height))")
+                    } else {
+                        print("❌ [RealityKitView] Snapshot failed - no image returned")
+                    }
+                }
+            }
+        }
     }
     
     class Coordinator {
@@ -74,6 +103,9 @@ struct RealityKitView: UIViewRepresentable {
 
         // World anchor for object placement (the model anchor)
         var worldAnchor: AnchorEntity?
+        
+        // ✅ NEW: Store ARView reference for snapshot
+        weak var arView: ARView?
         
         func setupGestures(for arView: ARView, placementManager: ARObjectPlacementManager) {
             gestureHandlers = RealityKitGestureHandlers(arView: arView)
