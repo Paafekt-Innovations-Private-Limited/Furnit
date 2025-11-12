@@ -140,7 +140,7 @@ struct ModelViewerView: View {
 
     private var progressMessage: String {
         if cameraInitProgress < 0.3 { return "Checking camera permissions..." }
-        else if cameraInitProgress < 0.6 { return "Loading U²-Net model..." }
+        else if cameraInitProgress < 0.6 { return "Loading YOLO11-seg model..." }
         else if cameraInitProgress < 0.9 { return "Preparing segmentation..." }
         else { return "Almost ready..." }
     }
@@ -149,19 +149,22 @@ struct ModelViewerView: View {
         geometry.size.width > geometry.size.height
     }
 
-    // PORTRAIT controls - JOYSTICK MOVED DOWN
+    // PORTRAIT controls - BUTTONS AND JOYSTICK MOVED MUCH LOWER
     private var portraitControls: some View {
         VStack {
             HStack { backButton; Spacer(); screenshotButton }.padding()
             Spacer()
-            HStack(alignment: .top) {
+            HStack(alignment: .bottom) {
+                // Blue buttons moved lower with padding
                 VStack(spacing: 16) {
+                    Spacer() // Push buttons down
                     cameraButton
                     segmentExamineButton
                     segmentForegroundButton
                     segmentFurnitureButton
                 }
                 .padding(.leading, 8)
+                .padding(.bottom, 150) // Blue buttons moved down
 
                 Spacer()
 
@@ -169,8 +172,8 @@ struct ModelViewerView: View {
                     .onChange(of: joystickOffset) { _, newOffset in
                         cameraMovementManager.updateJoystickInput(newOffset)
                     }
-                    .padding(.top, 120)  // Moved down from 60
-                    .padding(.bottom, 20) // Added bottom padding
+                    .padding(.bottom, 50)  // Joystick at very bottom
+                    .padding(.trailing, 100) // Space for Save/Retry buttons
 
                 Spacer()
             }
@@ -179,7 +182,7 @@ struct ModelViewerView: View {
         }
     }
 
-    // LANDSCAPE controls - JOYSTICK ADJUSTED
+    // LANDSCAPE controls
     private var landscapeControls: some View {
         HStack {
             VStack {
@@ -198,7 +201,7 @@ struct ModelViewerView: View {
                     .onChange(of: joystickOffset) { _, newOffset in
                         cameraMovementManager.updateJoystickInput(newOffset)
                     }
-                    .padding(.top, 40)
+                    .padding(.top, 20)
                 Spacer()
             }
             .padding()
@@ -220,7 +223,6 @@ struct ModelViewerView: View {
         }
     }
 
-    // BUTTON 1: Simple camera overlay
     private var cameraButton: some View {
         Button(action: {
             if showingCameraPreview {
@@ -239,7 +241,6 @@ struct ModelViewerView: View {
         }
     }
 
-    // BUTTON 2: SegmentExamine (FastSAM)
     private var segmentExamineButton: some View {
         Button(action: {
             showingCameraPreview = false
@@ -254,7 +255,6 @@ struct ModelViewerView: View {
         }
     }
 
-    // BUTTON 3: SegmentForeground
     private var segmentForegroundButton: some View {
         Button(action: {
             showingCameraPreview = false
@@ -269,7 +269,6 @@ struct ModelViewerView: View {
         }
     }
 
-    // BUTTON 4: SegmentFurniture (YOLO11-seg)
     private var segmentFurnitureButton: some View {
         Button(action: {
             showingCameraPreview = false
@@ -335,8 +334,6 @@ struct ModelViewerView: View {
         UIImageWriteToSavedPhotosAlbum(screenshot, saver, #selector(ScreenshotSaver.image(_:didFinishSavingWithError:contextInfo:)), nil)
     }
 
-    // MARK: - AR <-> Overlay coordination
-
     private func manageARSessionForOverlays() {
         let shouldRunAR = !anyCameraOverlayActive && !isInitializingCamera
         if isARActive != shouldRunAR {
@@ -345,7 +342,6 @@ struct ModelViewerView: View {
     }
 }
 
-// Screenshot helper
 class ScreenshotSaver: NSObject {
     var onComplete: ((Bool, Error?) -> Void)?
     @objc func image(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {

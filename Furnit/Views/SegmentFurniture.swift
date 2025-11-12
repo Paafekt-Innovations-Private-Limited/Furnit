@@ -92,26 +92,31 @@ struct SegmentFurniture: View {
                 
                 Spacer()
                 
-                HStack(spacing: 16) {
-                    if camera.segmentedImage != nil {
+                // Save/Retry icons next to joystick
+                if camera.segmentedImage != nil {
+                    HStack(spacing: 16) {
                         Button(action: { saveFurniture() }) {
-                            Label("Save", systemImage: "square.and.arrow.down.fill")
+                            Image(systemName: "square.and.arrow.down.fill")
+                                .font(.system(size: 24))
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(Capsule().fill(Color.green))
+                                .frame(width: 50, height: 50)
+                                .background(Circle().fill(Color.green))
+                                .shadow(radius: 3)
                         }
                         
                         Button(action: { camera.resetSegmentation() }) {
-                            Label("Retry", systemImage: "arrow.counterclockwise")
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 24))
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                                .background(Capsule().fill(Color.orange))
+                                .frame(width: 50, height: 50)
+                                .background(Circle().fill(Color.orange))
+                                .shadow(radius: 3)
                         }
                     }
+                    .padding(.bottom, 50)
+                    .padding(.trailing, 20)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
-                .padding(.bottom, 50)
             }
         }
         .onAppear { camera.startSession() }
@@ -445,9 +450,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             self.lastConfidence = detection.confidence
         }
         
-        // Generate mask with light edge cleanup
-        let mask = generateMaskWithEdgeCleanup(coefficients: detection.maskCoeffs,
-                                               prototypes: prototypes)
+        // Generate raw mask without erosion
+        let mask = generateMaskUltralytics(coefficients: detection.maskCoeffs,
+                                          prototypes: prototypes)
         
         let positivePixels = mask.filter { $0 > 0.5 }.count
         print("✅ Mask pixels: \(positivePixels)")
@@ -455,8 +460,8 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         applyMaskToImage(mask: mask, detection: detection, to: originalImage)
     }
     
-    // MARK: - Generate Mask with Edge Cleanup
-    private func generateMaskWithEdgeCleanup(coefficients: [Float], prototypes: MLMultiArray) -> [Float] {
+    // MARK: - Generate Mask (NO EROSION for better detail)
+    private func generateMaskUltralytics(coefficients: [Float], prototypes: MLMultiArray) -> [Float] {
         var mask = [Float](repeating: 0, count: 160 * 160)
         
         // Matrix multiplication then sigmoid
@@ -471,53 +476,10 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             }
         }
         
-        // Light erosion to clean up thin edge artifacts (like curtain lines)
-        mask = lightErodeForEdgeCleanup(mask: mask, width: 160, height: 160)
-        
         return mask
     }
     
-    // MARK: - Light Erosion for Edge Cleanup
-    private func lightErodeForEdgeCleanup(mask: [Float], width: Int, height: Int) -> [Float] {
-        var result = mask
-        
-        // Only erode pixels that are weak (between 0.5 and 0.7)
-        // This preserves strong mask areas while cleaning edges
-        for y in 1..<(height-1) {
-            for x in 1..<(width-1) {
-                let idx = y * width + x
-                let currentValue = mask[idx]
-                
-                // Only process edge pixels
-                if currentValue > 0.5 && currentValue < 0.7 {
-                    // Check neighbors
-                    var neighborSum: Float = 0
-                    var count = 0
-                    
-                    for dy in -1...1 {
-                        for dx in -1...1 {
-                            if dy == 0 && dx == 0 { continue }
-                            let ny = y + dy
-                            let nx = x + dx
-                            neighborSum += mask[ny * width + nx]
-                            count += 1
-                        }
-                    }
-                    
-                    let avgNeighbor = neighborSum / Float(count)
-                    
-                    // If neighbors are weak, reduce this pixel
-                    if avgNeighbor < 0.6 {
-                        result[idx] = currentValue * 0.8  // Reduce by 20%
-                    }
-                }
-            }
-        }
-        
-        return result
-    }
-    
-    // MARK: - Apply Mask with Dynamic BBox Expansion
+    // MARK: - Apply Mask with IMPROVED Dynamic BBox Expansion
     private func applyMaskToImage(mask: [Float],
                                  detection: Detection,
                                  to pixelBuffer: CVPixelBuffer) {
@@ -560,7 +522,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
             
-            // DYNAMIC BBOX EXPANSION BASED ON FURNITURE TYPE
+            // IMPROVED BBOX EXPANSION
             let scale = Float(width) / 640.0
             
             // Original bbox from detection
@@ -572,30 +534,48 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             let bboxHeight = origY2 - origY1
             let bboxWidth = origX2 - origX1
             
-            // Dynamic expansion based on furniture type
+            // OPTIMIZED expansion for different furniture
             let bottomExpansion: Float
-            let topExpansion: Float = 0.1    // 10% top for all
-            let sideExpansion: Float = 0.15  // 15% sides for all
+            let topExpansion: Float
+            let sideExpansion: Float
             
             switch detection.className {
             case "chair":
-                bottomExpansion = 0.4  // 40% bottom for chair legs
-                print("🪑 Chair detected - expanding bottom by 40% for legs")
-            case "couch", "sofa":
-                bottomExpansion = 0.25  // 25% bottom for couch legs
-                print("🛋️ Couch detected - expanding bottom by 25%")
+                bottomExpansion = 0.4  // 40% bottom for legs
+                topExpansion = 0.1     // 10% top
+                sideExpansion = 0.15   // 15% sides
+                print("🪑 Chair - expanding bottom by 40% for legs")
+                
             case "bed":
-                bottomExpansion = 0.2  // 20% bottom for bed frame
-                print("🛏️ Bed detected - expanding bottom by 20%")
+                // BED needs more expansion all around
+                bottomExpansion = 0.15  // Less bottom (beds are low)
+                topExpansion = 0.25     // More top (headboard/pillows)
+                sideExpansion = 0.25    // More sides (bed width)
+                print("🛏️ Bed - expanding all sides for full coverage")
+                
+            case "couch", "sofa":
+                bottomExpansion = 0.25
+                topExpansion = 0.15
+                sideExpansion = 0.2
+                print("🛋️ Couch - balanced expansion")
+                
             case "dining table", "table":
-                bottomExpansion = 0.5  // 50% bottom for table legs
-                print("🪑 Table detected - expanding bottom by 50% for legs")
+                bottomExpansion = 0.5   // 50% for table legs
+                topExpansion = 0.05     // Minimal top
+                sideExpansion = 0.1     // Minimal sides
+                print("🪑 Table - major bottom expansion for legs")
+                
             case "toilet":
-                bottomExpansion = 0.3  // 30% bottom for base
-                print("🚽 Toilet detected - expanding bottom by 30%")
+                bottomExpansion = 0.3
+                topExpansion = 0.2
+                sideExpansion = 0.15
+                print("🚽 Toilet - moderate expansion")
+                
             default:
-                bottomExpansion = 0.25  // Default 25%
-                print("📦 Furniture detected - default expansion")
+                bottomExpansion = 0.25
+                topExpansion = 0.15
+                sideExpansion = 0.2
+                print("📦 Default furniture expansion")
             }
             
             // Apply expansion
@@ -606,7 +586,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             print("📦 BBox: [\(origX1),\(origY1)]-[\(origX2),\(origY2)] → [\(x1),\(y1)]-[\(x2),\(y2)]")
             
-            // Apply mask with full 160x160 space (no cropping in mask space)
+            // Apply mask with full 160x160 space
             var maskedPixels = 0
             let threshold: Float = 0.5
             
@@ -614,7 +594,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 for px in 0..<width {
                     let idx = (py * width + px) * 4
                     
-                    // Map to FULL 160x160 mask (not cropped)
+                    // Map to FULL 160x160 mask
                     let maskX = Float(px) * 160.0 / Float(width)
                     let maskY = Float(py) * 160.0 / Float(height)
                     
@@ -628,13 +608,11 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                         let dx = maskX - Float(x0)
                         let dy = maskY - Float(y0)
                         
-                        // Get four corner values
                         let v00 = mask[y0 * 160 + x0]
                         let v10 = mask[y0 * 160 + x1]
                         let v01 = mask[y1 * 160 + x0]
                         let v11 = mask[y1 * 160 + x1]
                         
-                        // Bilinear interpolation
                         let v0 = v00 * (1.0 - dx) + v10 * dx
                         let v1 = v01 * (1.0 - dx) + v11 * dx
                         let maskValue = v0 * (1.0 - dy) + v1 * dy
@@ -643,11 +621,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                         let inBbox = px >= x1 && px < x2 && py >= y1 && py < y2
                         
                         if maskValue > threshold && inBbox {
-                            // Use mask value directly for smooth alpha
                             let alpha = maskValue
                             pixels[idx + 3] = UInt8(alpha * 255.0)
                             
-                            // Pre-multiply alpha
                             pixels[idx] = UInt8(Float(pixels[idx]) * alpha)
                             pixels[idx + 1] = UInt8(Float(pixels[idx + 1]) * alpha)
                             pixels[idx + 2] = UInt8(Float(pixels[idx + 2]) * alpha)
