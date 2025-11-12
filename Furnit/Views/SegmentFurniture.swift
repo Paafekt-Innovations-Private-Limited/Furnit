@@ -34,6 +34,7 @@ struct SegmentFurniture: View {
     @StateObject private var camera = FurnitureSegmentationModel()
     
     @State private var scaleMultiplier: CGFloat = 0.5
+    @State private var lastScale: CGFloat = 1.0
     @State private var dragOffset: CGSize = .zero
     @State private var accumulatedOffset: CGSize = .zero
     @State private var showingSaveSuccess = false
@@ -56,13 +57,29 @@ struct SegmentFurniture: View {
                     .position(x: UIScreen.main.bounds.width / 2,
                              y: UIScreen.main.bounds.height / 2)
                     .gesture(
-                        DragGesture()
-                            .onChanged { value in dragOffset = value.translation }
-                            .onEnded { value in
-                                accumulatedOffset.width += value.translation.width
-                                accumulatedOffset.height += value.translation.height
-                                dragOffset = .zero
-                            }
+                        SimultaneousGesture(
+                            // Drag gesture
+                            DragGesture()
+                                .onChanged { value in
+                                    dragOffset = value.translation
+                                }
+                                .onEnded { value in
+                                    accumulatedOffset.width += value.translation.width
+                                    accumulatedOffset.height += value.translation.height
+                                    dragOffset = .zero
+                                },
+                            // Pinch gesture
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    let delta = value / lastScale
+                                    lastScale = value
+                                    let newScale = scaleMultiplier * delta
+                                    scaleMultiplier = min(max(newScale, 0.2), 2.0) // Clamp between 0.2x and 2.0x
+                                }
+                                .onEnded { value in
+                                    lastScale = 1.0
+                                }
+                        )
                     )
                     .ignoresSafeArea()
                     .opacity(camera.furnitureOpacity)
@@ -81,6 +98,8 @@ struct SegmentFurniture: View {
                             Text("\(camera.lastDetectedClass)")
                                 .font(.caption2)
                         }
+                        Text("Scale: \(scaleMultiplier, specifier: "%.1f")x")
+                            .font(.caption2)
                     }
                     .font(.caption)
                     .foregroundColor(.white)
@@ -96,18 +115,6 @@ struct SegmentFurniture: View {
             // Controls
             VStack {
                 HStack {
-                    if camera.segmentedImage != nil {
-                        HStack(spacing: 6) {
-                            Image(systemName: "minus.magnifyingglass")
-                            Slider(value: $scaleMultiplier, in: 0.3...1.0)
-                                .frame(width: 150)
-                            Image(systemName: "plus.magnifyingglass")
-                        }
-                        .foregroundColor(.white)
-                        .padding(8)
-                        .background(Capsule().fill(Color.black.opacity(0.7)))
-                    }
-                    
                     Spacer()
                     
                     Button(action: { isShowingCamera = false }) {
@@ -121,24 +128,29 @@ struct SegmentFurniture: View {
                 
                 Spacer()
                 
-                // Save and Reset buttons ONLY
+                // Capture and Reset buttons
                 if camera.segmentedImage != nil {
                     HStack(spacing: 16) {
-                        // Save - furniture + 3D room
+                        // Capture - furniture + 3D room
                         Button(action: { captureFurnitureWithRoom() }) {
                             VStack {
-                                Image(systemName: "square.and.arrow.down")
+                                Image(systemName: "camera.circle.fill")
                                 Text("Capture")
                                     .font(.caption2)
                             }
                             .foregroundColor(.white)
-                            .frame(width: 60, height: 60)
+                            .frame(width: 70, height: 70)
                             .background(Circle().fill(Color.green))
-                            .shadow(radius: 3)
+                            .shadow(radius: 5)
                         }
                         
                         // Reset
-                        Button(action: { camera.resetSegmentation() }) {
+                        Button(action: {
+                            camera.resetSegmentation()
+                            scaleMultiplier = 0.5
+                            dragOffset = .zero
+                            accumulatedOffset = .zero
+                        }) {
                             VStack {
                                 Image(systemName: "arrow.counterclockwise")
                                 Text("Reset")
@@ -152,7 +164,20 @@ struct SegmentFurniture: View {
                     }
                     .padding(.bottom, 50)
                     .padding(.trailing, 20)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(maxWidth: .infinity, alignment: .trailing)  // ← This keeps both on the right
+                }
+            }
+            
+            // Gesture hint
+            if camera.segmentedImage != nil {
+                VStack {
+                    Spacer()
+                    Text("Pinch to scale • Drag to move")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                        .padding(8)
+                        .background(Capsule().fill(Color.black.opacity(0.6)))
+                        .padding(.bottom, 120)
                 }
             }
             
@@ -189,55 +214,36 @@ struct SegmentFurniture: View {
             return
         }
         
-        print("📸 Creating composite with 3D room...")
+        print("✅ Furniture: \(furniture.size)")
         
-        // CRITICAL: roomImage MUST be captured by caller BEFORE opening this sheet
-        // The 3D room is hidden behind the sheet, so it CANNOT be captured from here!
-        //
-        // CALLER MUST DO THIS:
-        // 1. Capture 3D room: let snapshot = captureRoomView()
-        // 2. Pass it here: SegmentFurniture(roomImage: snapshot)
-        //
-        // See captureRoomView() helper function at bottom of this file
-        
-        guard let roomBackground = roomImage else {
-            print("❌ CRITICAL: No roomImage provided by caller!")
-            print("⚠️ The 3D room MUST be captured BEFORE opening this sheet")
-            print("⚠️ See comments in captureFurnitureWithRoom() for instructions")
-            
-            saveMessage = "Error: No room provided!"
+        guard let room = roomImage else {
+            print("❌ No room image!")
+            saveMessage = "No room image!"
             showingSaveSuccess = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 showingSaveSuccess = false
             }
             return
         }
         
-        print("✅ Using provided 3D room: \(roomBackground.size)")
+        print("✅ Room: \(room.size)")
         
-        // Create composite WITHOUT any UI elements
-        UIGraphicsBeginImageContextWithOptions(roomBackground.size, false, roomBackground.scale)
+        // Create composite - simple centered furniture
+        UIGraphicsBeginImageContextWithOptions(room.size, false, room.scale)
         defer { UIGraphicsEndImageContext() }
         
-        // Draw 3D room background
-        roomBackground.draw(at: .zero)
+        // Draw room
+        room.draw(at: .zero)
         
-        // Calculate furniture position (matching current screen position)
-        let furnitureSize = CGSize(
-            width: furniture.size.width * scaleMultiplier,
-            height: furniture.size.height * scaleMultiplier
+        // Draw furniture centered (ignore drag/scale for now)
+        let furnitureRect = CGRect(
+            x: (room.size.width - furniture.size.width) / 2,
+            y: (room.size.height - furniture.size.height) / 2,
+            width: furniture.size.width,
+            height: furniture.size.height
         )
         
-        let centerX = roomBackground.size.width / 2
-        let centerY = roomBackground.size.height / 2
-        
-        let furnitureOrigin = CGPoint(
-            x: centerX - furnitureSize.width / 2 + dragOffset.width + accumulatedOffset.width,
-            y: centerY - furnitureSize.height / 2 + dragOffset.height + accumulatedOffset.height
-        )
-        
-        // Draw furniture with transparency on top of 3D room
-        furniture.draw(in: CGRect(origin: furnitureOrigin, size: furnitureSize))
+        furniture.draw(in: furnitureRect)
         
         guard let composite = UIGraphicsGetImageFromCurrentImageContext() else {
             print("❌ Failed to create composite")
@@ -246,11 +252,9 @@ struct SegmentFurniture: View {
             return
         }
         
-        print("✅ Composite created: \(composite.size)")
+        print("✅ Composite: \(composite.size)")
         
-        // Save to photos with proper permissions
-        capturedImage = composite
-        
+        // Save
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
             DispatchQueue.main.async {
                 if status == .authorized || status == .limited {
@@ -259,59 +263,20 @@ struct SegmentFurniture: View {
                     }) { success, error in
                         DispatchQueue.main.async {
                             if success {
-                                self.saveMessage = "Saved to Photos!"
+                                self.saveMessage = "Saved!"
                                 self.showingSaveSuccess = true
-                                print("✅ Composite saved: 3D room + furniture")
-                                
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                                     self.showingSaveSuccess = false
                                     self.isShowingCamera = false
                                 }
                             } else {
-                                self.saveMessage = "Save failed!"
+                                self.saveMessage = "Failed!"
                                 self.showingSaveSuccess = true
-                                print("❌ Failed to save: \(error?.localizedDescription ?? "unknown")")
                             }
                         }
                     }
-                } else {
-                    self.saveMessage = "Permission denied!"
-                    self.showingSaveSuccess = true
                 }
             }
-        }
-    }
-
-    // HELPER: This function MUST be called by the CALLER (parent view)
-    // BEFORE opening SegmentFurniture sheet to capture the 3D room
-    //
-    // USAGE IN CALLER:
-    //
-    // @State private var roomSnapshot: UIImage?
-    //
-    // Button("Scan Furniture") {
-    //     roomSnapshot = captureRoomView()  // Capture 3D room FIRST
-    //     showingSegmentFurniture = true    // Then open sheet
-    // }
-    // .sheet(isPresented: $showingSegmentFurniture) {
-    //     SegmentFurniture(
-    //         capturedImage: $capturedImage,
-    //         isShowingCamera: $showingSegmentFurniture,
-    //         roomImage: roomSnapshot  // Pass captured room
-    //     )
-    // }
-    //
-    private func captureRoomView() -> UIImage? {
-        guard let window = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first?.windows
-            .first(where: { $0.isKeyWindow }) else {
-            return nil
-        }
-        
-        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-        return renderer.image { context in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
         }
     }
 }
