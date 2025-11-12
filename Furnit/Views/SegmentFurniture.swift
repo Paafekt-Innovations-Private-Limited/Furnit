@@ -6,21 +6,46 @@ import CoreImage
 import Photos
 import Accelerate
 
+// MARK: - Camera Preview Layer
+struct CameraPreviewLayer: UIViewRepresentable {
+    let session: AVCaptureSession
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.videoGravity = .resizeAspectFill
+        view.layer.addSublayer(previewLayer)
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        if let layer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
+            layer.frame = uiView.bounds
+        }
+    }
+}
+
 // MARK: - Main View
 struct SegmentFurniture: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
+    let roomImage: UIImage? // 3D room image from previous screen
+    
     @StateObject private var camera = FurnitureSegmentationModel()
     
     @State private var scaleMultiplier: CGFloat = 0.5
     @State private var dragOffset: CGSize = .zero
     @State private var accumulatedOffset: CGSize = .zero
     @State private var showingSaveSuccess = false
+    @State private var saveMessage = ""
     
     var body: some View {
         ZStack {
-            Color.clear.ignoresSafeArea()
+            // Camera preview for furniture detection
+            CameraPreviewLayer(session: camera.session)
+                .ignoresSafeArea()
             
+            // Segmented furniture overlay
             if let segmented = camera.segmentedImage {
                 Image(uiImage: segmented)
                     .resizable()
@@ -96,25 +121,33 @@ struct SegmentFurniture: View {
                 
                 Spacer()
                 
-                // Save/Retry icons next to joystick
+                // Save and Reset buttons ONLY
                 if camera.segmentedImage != nil {
                     HStack(spacing: 16) {
-                        Button(action: { saveFurniture() }) {
-                            Image(systemName: "square.and.arrow.down.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.white)
-                                .frame(width: 50, height: 50)
-                                .background(Circle().fill(Color.green))
-                                .shadow(radius: 3)
+                        // Save - furniture + 3D room
+                        Button(action: { captureFurnitureWithRoom() }) {
+                            VStack {
+                                Image(systemName: "square.and.arrow.down")
+                                Text("Capture")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(Color.green))
+                            .shadow(radius: 3)
                         }
                         
+                        // Reset
                         Button(action: { camera.resetSegmentation() }) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 24))
-                                .foregroundColor(.white)
-                                .frame(width: 50, height: 50)
-                                .background(Circle().fill(Color.orange))
-                                .shadow(radius: 3)
+                            VStack {
+                                Image(systemName: "arrow.counterclockwise")
+                                Text("Reset")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(Color.orange))
+                            .shadow(radius: 3)
                         }
                     }
                     .padding(.bottom, 50)
@@ -122,27 +155,137 @@ struct SegmentFurniture: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
+            
+            // Success message
+            if showingSaveSuccess {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text(saveMessage)
+                    }
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Capsule().fill(Color.green))
+                    Spacer().frame(height: 100)
+                }
+            }
         }
-        .onAppear { camera.startSession() }
+        .onAppear {
+            camera.startSession()
+            print("📸 Room image: \(roomImage != nil ? "Available" : "Not available")")
+        }
         .onDisappear { camera.stopSession() }
     }
     
-    private func saveFurniture() {
-        guard let image = camera.segmentedImage else { return }
-        capturedImage = image
+    private func captureFurnitureWithRoom() {
+        guard let furniture = camera.segmentedImage else {
+            print("❌ No furniture image")
+            saveMessage = "No furniture detected!"
+            showingSaveSuccess = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                showingSaveSuccess = false
+            }
+            return
+        }
+        
+        print("📸 Creating composite with 3D room...")
+        
+        // STEP 1: Capture the 3D RealityKit scene (NOT roomImage!)
+        guard let roomBackground = captureCurrentView() else {
+            print("❌ Failed to capture 3D room, saving furniture only")
+            // Fallback: save furniture only
+            capturedImage = furniture
+            UIImageWriteToSavedPhotosAlbum(furniture, nil, nil, nil)
+            saveMessage = "Furniture saved (no room)"
+            showingSaveSuccess = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                showingSaveSuccess = false
+                isShowingCamera = false
+            }
+            return
+        }
+        
+        print("✅ Captured 3D room: \(roomBackground.size)")
+        
+        // STEP 2: Create composite WITHOUT any UI elements
+        UIGraphicsBeginImageContextWithOptions(roomBackground.size, false, roomBackground.scale)
+        defer { UIGraphicsEndImageContext() }
+        
+        // Draw 3D room background
+        roomBackground.draw(at: .zero)
+        
+        // Calculate furniture position (matching current screen position)
+        let furnitureSize = CGSize(
+            width: furniture.size.width * scaleMultiplier,
+            height: furniture.size.height * scaleMultiplier
+        )
+        
+        let centerX = roomBackground.size.width / 2
+        let centerY = roomBackground.size.height / 2
+        
+        let furnitureOrigin = CGPoint(
+            x: centerX - furnitureSize.width / 2 + dragOffset.width + accumulatedOffset.width,
+            y: centerY - furnitureSize.height / 2 + dragOffset.height + accumulatedOffset.height
+        )
+        
+        // Draw furniture with transparency on top of 3D room
+        furniture.draw(in: CGRect(origin: furnitureOrigin, size: furnitureSize))
+        
+        guard let composite = UIGraphicsGetImageFromCurrentImageContext() else {
+            print("❌ Failed to create composite")
+            saveMessage = "Composite failed!"
+            showingSaveSuccess = true
+            return
+        }
+        
+        // STEP 3: Save to photos with proper permissions
+        capturedImage = composite
         
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-            if status == .authorized || status == .limited {
-                PHPhotoLibrary.shared().performChanges({
-                    PHAssetChangeRequest.creationRequestForAsset(from: image)
-                }) { success, _ in
-                    if success {
+            DispatchQueue.main.async {
+                if status == .authorized || status == .limited {
+                    PHPhotoLibrary.shared().performChanges({
+                        PHAssetChangeRequest.creationRequestForAsset(from: composite)
+                    }) { success, error in
                         DispatchQueue.main.async {
-                            isShowingCamera = false
+                            if success {
+                                self.saveMessage = "Saved to Photos!"
+                                self.showingSaveSuccess = true
+                                print("✅ Composite saved: 3D room + furniture")
+                                
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                    self.showingSaveSuccess = false
+                                    self.isShowingCamera = false
+                                }
+                            } else {
+                                self.saveMessage = "Save failed!"
+                                self.showingSaveSuccess = true
+                                print("❌ Failed to save: \(error?.localizedDescription ?? "unknown")")
+                            }
                         }
                     }
+                } else {
+                    self.saveMessage = "Permission denied!"
+                    self.showingSaveSuccess = true
                 }
             }
+        }
+    }
+
+    // REQUIRED: Add this helper function
+    private func captureCurrentView() -> UIImage? {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first?.windows
+            .first(where: { $0.isKeyWindow }) else {
+            print("❌ Could not find key window")
+            return nil
+        }
+        
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        return renderer.image { context in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
         }
     }
 }
@@ -159,23 +302,22 @@ struct Detection {
     let maskCoeffs: [Float]
 }
 
-// MARK: - Main Model
+// MARK: - Main Model with ALL COCO Classes
 class FurnitureSegmentationModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     @Published var furnitureOpacity: Double = 0.0
-    @Published var isProcessing = false
     @Published var currentFPS: Double = 0.0
     @Published var lastConfidence: Float = 0.0
     @Published var lastDetectedClass: String = ""
     
-    private let session = AVCaptureSession()
+    let session = AVCaptureSession()  // Not private - accessible by View
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "furnitureSegQueue", qos: .userInitiated)
     
     private var yoloModel: VNCoreMLModel?
     private let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
     
-    // All COCO classes
+    // ALL COCO classes (80 classes)
     private let cocoClasses = [
         0: "person", 1: "bicycle", 2: "car", 3: "motorcycle", 4: "airplane",
         5: "bus", 6: "train", 7: "truck", 8: "boat", 9: "traffic light",
@@ -306,21 +448,13 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
-        guard !isProcessing else { return }
         
         lastProcessTime = now
         updateFPS()
         
-        DispatchQueue.main.async {
-            self.isProcessing = true
-        }
-        
         let request = VNCoreMLRequest(model: model) { [weak self] request, error in
             if let error = error {
                 print("❌ YOLO error: \(error)")
-                DispatchQueue.main.async {
-                    self?.isProcessing = false
-                }
                 return
             }
             
@@ -335,17 +469,11 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             try handler.perform([request])
         } catch {
             print("❌ Inference failed: \(error)")
-            DispatchQueue.main.async {
-                self.isProcessing = false
-            }
         }
     }
     
     private func processYOLOResults(_ results: [Any]?, originalImage: CVPixelBuffer) {
         guard let observations = results as? [VNCoreMLFeatureValueObservation] else {
-            DispatchQueue.main.async {
-                self.isProcessing = false
-            }
             return
         }
         
@@ -366,9 +494,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         
         guard let detections = detectionOutput,
               let prototypes = prototypeOutput else {
-            DispatchQueue.main.async {
-                self.isProcessing = false
-            }
             return
         }
         
@@ -377,7 +502,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         
         guard let bestDetection = nmsDetections.first else {
             DispatchQueue.main.async {
-                self.isProcessing = false
                 self.segmentedImage = nil
                 self.furnitureOpacity = 0.0
                 self.lastConfidence = 0.0
@@ -511,9 +635,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             let height = CVPixelBufferGetHeight(pixelBuffer)
             
             guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
-                DispatchQueue.main.async {
-                    self.isProcessing = false
-                }
                 return
             }
             
@@ -525,18 +646,12 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                                      bytesPerRow: width * 4,
                                      space: colorSpace,
                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-                DispatchQueue.main.async {
-                    self.isProcessing = false
-                }
                 return
             }
             
             ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
             
             guard let data = ctx.data else {
-                DispatchQueue.main.async {
-                    self.isProcessing = false
-                }
                 return
             }
             
@@ -560,61 +675,47 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             switch detection.className {
             case "chair":
-                // EXTREME expansion for chair
-                bottomExpansion = 1.0   // 100% more (double height down)
-                topExpansion = 0.5      // 50% for tall backrest
-                sideExpansion = 0.5     // 50% for wide armrests
-                print("🪑 Chair - EXTREME expansion (100% bottom!)")
+                bottomExpansion = 1.0   // 100% more (doubles height down for legs)
+                topExpansion = 0.5      // 50% for backrest
+                sideExpansion = 0.5     // 50% for armrests
+                print("🪑 Chair - EXTREME expansion")
                 
             case "bed":
-                // MASSIVE expansion for bed
-                bottomExpansion = 0.8   // 80% for bed frame/feet
-                topExpansion = 1.0      // 100% for tall headboard
-                sideExpansion = 0.8     // 80% for full bed width
-                print("🛏️ Bed - MASSIVE expansion (100% top!)")
+                bottomExpansion = 0.8
+                topExpansion = 1.0
+                sideExpansion = 0.8
+                print("🛏️ Bed - MASSIVE expansion")
                 
             case "couch", "sofa":
-                bottomExpansion = 0.7   // 70%
-                topExpansion = 0.6      // 60%
-                sideExpansion = 0.6     // 60%
-                print("🛋️ Couch - very large expansion")
+                bottomExpansion = 0.7
+                topExpansion = 0.6
+                sideExpansion = 0.6
+                print("🛋️ Couch")
                 
-            case "dining table", "table":
-                bottomExpansion = 1.2   // 120% for long table legs
-                topExpansion = 0.2      // 20%
-                sideExpansion = 0.5     // 50%
-                print("🪑 Table - extreme bottom (120%)")
+            case "dining table":
+                bottomExpansion = 1.2   // 120% for table legs
+                topExpansion = 0.2
+                sideExpansion = 0.5
+                print("🪑 Table")
                 
             case "person":
-                bottomExpansion = 0.3   // 30%
-                topExpansion = 0.3      // 30%
-                sideExpansion = 0.25    // 25%
-                print("👤 Person - moderate expansion")
-                
-            case "tv", "laptop", "keyboard", "monitor":
                 bottomExpansion = 0.3
                 topExpansion = 0.3
-                sideExpansion = 0.4
-                print("💻 Electronics - balanced expansion")
+                sideExpansion = 0.25
+                print("👤 Person")
                 
             default:
-                // Very generous default
-                bottomExpansion = 0.6   // 60%
-                topExpansion = 0.6      // 60%
-                sideExpansion = 0.5     // 50%
-                print("📦 \(detection.className) - very generous default (60%)")
+                bottomExpansion = 0.5
+                topExpansion = 0.5
+                sideExpansion = 0.4
+                print("📦 \(detection.className)")
             }
             
-            // Apply expansion with safety limits
+            // Apply expansion
             let x1 = max(0, origX1 - Int(Float(bboxWidth) * sideExpansion))
             let y1 = max(0, origY1 - Int(Float(bboxHeight) * topExpansion))
             let x2 = min(width, origX2 + Int(Float(bboxWidth) * sideExpansion))
             let y2 = min(height, origY2 + Int(Float(bboxHeight) * bottomExpansion))
-            
-            print("📦 Original BBox: [\(origX1),\(origY1)]-[\(origX2),\(origY2)]")
-            print("📦 Expanded BBox: [\(x1),\(y1)]-[\(x2),\(y2)]")
-            print("📦 Size change: \(x2-x1)x\(y2-y1) vs \(origX2-origX1)x\(origY2-origY1)")
-            print("📦 Expansion: Top=\(Int(topExpansion*100))% Bottom=\(Int(bottomExpansion*100))% Sides=\(Int(sideExpansion*100))%")
             
             // Apply mask
             var maskedPixels = 0
@@ -665,7 +766,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 }
             }
             
-            print("✅ Applied: \(maskedPixels) pixels kept")
+            print("✅ Applied: \(maskedPixels) pixels")
             
             if let finalImage = ctx.makeImage() {
                 let uiImage = UIImage(cgImage: finalImage, scale: 1.0, orientation: .up)
@@ -675,7 +776,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     withAnimation(.easeIn(duration: 0.3)) {
                         self.furnitureOpacity = 1.0
                     }
-                    self.isProcessing = false
                 }
             }
         }

@@ -1,6 +1,7 @@
 import SwiftUI
 import RealityKit
 import Combine
+import Photos
 
 struct ModelViewerView: View {
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
@@ -16,21 +17,23 @@ struct ModelViewerView: View {
     @StateObject private var arObjectPlacementManager = RealityKitObjectPlacementManager()
     @State private var isARActive = false
 
-    // Screenshot state
-    @State private var showScreenshotAlert = false
-    @State private var screenshotMessage = "Screenshot saved to Photos"
-
     // Camera/Segmentation state
     @State private var showingCameraPreview = false
     @State private var showingSegmentExamine = false
     @State private var showingSegmentForeground = false
     @State private var showingSegmentFurniture = false
     @State private var capturedImage: UIImage? = nil
+    @State private var roomSnapshot: UIImage? = nil
 
     // Progress bar state
     @State private var isInitializingCamera = false
     @State private var cameraInitProgress: Double = 0.0
     @State private var initializationTimer: Timer?
+    
+    // Furniture segmentation progress
+    @State private var isInitializingFurniture = false
+    @State private var furnitureInitProgress: Double = 0.0
+    @State private var furnitureInitTimer: Timer?
 
     init(model: USDZModel) {
         self.model = model
@@ -53,6 +56,7 @@ struct ModelViewerView: View {
                 .ignoresSafeArea(.all)
 
                 if isInitializingCamera { cameraInitializationOverlay }
+                if isInitializingFurniture { furnitureInitializationOverlay }
 
                 if showingCameraPreview {
                     SimpleCameraOverlay(
@@ -81,7 +85,8 @@ struct ModelViewerView: View {
                 if showingSegmentFurniture {
                     SegmentFurniture(
                         capturedImage: $capturedImage,
-                        isShowingCamera: $showingSegmentFurniture
+                        isShowingCamera: $showingSegmentFurniture,
+                        roomImage: roomSnapshot
                     )
                     .zIndex(9000)
                 }
@@ -96,9 +101,6 @@ struct ModelViewerView: View {
         .navigationBarHidden(true)
         .statusBarHidden(true)
         .preferredColorScheme(.dark)
-        .alert("Screenshot", isPresented: $showScreenshotAlert) {
-            Button("OK", role: .cancel) { }
-        } message: { Text(screenshotMessage) }
         .onChange(of: showingCameraPreview) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentExamine) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentForeground) { _, _ in manageARSessionForOverlays() }
@@ -137,6 +139,36 @@ struct ModelViewerView: View {
         }
         .transition(.opacity)
     }
+    
+    private var furnitureInitializationOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.9).ignoresSafeArea()
+            VStack(spacing: 24) {
+                ZStack {
+                    Circle().fill(Color.green.opacity(0.2)).frame(width: 100, height: 100)
+                    Image(systemName: "chair.fill").font(.system(size: 40)).foregroundColor(.green)
+                }
+                VStack(spacing: 12) {
+                    Text("Initializing Furniture Segmentation").font(.title2).fontWeight(.semibold).foregroundColor(.white)
+                    Text(furnitureProgressMessage).font(.subheadline).foregroundColor(.gray)
+                        .multilineTextAlignment(.center).padding(.horizontal, 40)
+                }
+                VStack(spacing: 8) {
+                    ProgressView(value: furnitureInitProgress, total: 1.0)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                        .frame(width: 250)
+                    Text("\(Int(furnitureInitProgress * 100))%").font(.caption).foregroundColor(.gray)
+                }
+                Button(action: { cancelFurnitureInitialization() }) {
+                    Text("Cancel").font(.body).foregroundColor(.white)
+                        .padding(.horizontal, 32).padding(.vertical, 12)
+                        .background(Color.red.opacity(0.8)).cornerRadius(25)
+                }
+                .padding(.top, 8)
+            }
+        }
+        .transition(.opacity)
+    }
 
     private var progressMessage: String {
         if cameraInitProgress < 0.3 { return "Checking camera permissions..." }
@@ -144,21 +176,30 @@ struct ModelViewerView: View {
         else if cameraInitProgress < 0.9 { return "Preparing segmentation..." }
         else { return "Almost ready..." }
     }
+    
+    private var furnitureProgressMessage: String {
+        if furnitureInitProgress < 0.3 { return "Capturing room view..." }
+        else if furnitureInitProgress < 0.6 { return "Loading YOLO11 segmentation model..." }
+        else if furnitureInitProgress < 0.9 { return "Initializing camera..." }
+        else { return "Starting furniture detection..." }
+    }
 
     private func isLandscape(geometry: GeometryProxy) -> Bool {
         geometry.size.width > geometry.size.height
     }
 
-    // PORTRAIT controls - ALL AT BOTTOM
+    // PORTRAIT controls - NO SCREENSHOT BUTTON
     private var portraitControls: some View {
         VStack {
-            HStack { backButton; Spacer(); screenshotButton }.padding()
+            HStack {
+                backButton
+                Spacer()
+                // Removed screenshot button
+            }.padding()
             
-            Spacer() // Push everything to bottom
+            Spacer()
             
-            // All controls at bottom
             HStack(alignment: .bottom, spacing: 0) {
-                // Blue buttons at bottom left
                 VStack(spacing: 16) {
                     cameraButton
                     segmentExamineButton
@@ -166,29 +207,31 @@ struct ModelViewerView: View {
                     segmentFurnitureButton
                 }
                 .padding(.leading, 16)
-                .padding(.bottom, 20) // Near bottom edge
+                .padding(.bottom, 20)
                 
                 Spacer()
                 
-                // Joystick at bottom center-right
                 VirtualJoystick(joystickOffset: $joystickOffset)
                     .onChange(of: joystickOffset) { _, newOffset in
                         cameraMovementManager.updateJoystickInput(newOffset)
                     }
-                    .padding(.bottom, 20)  // Same level as buttons
-                    .padding(.trailing, 100) // Space for Save/Retry
+                    .padding(.bottom, 20)
+                    .padding(.trailing, 100)
                 
                 Spacer()
             }
-            .padding(.bottom, 20) // Overall bottom padding
+            .padding(.bottom, 20)
         }
     }
 
-    // LANDSCAPE controls
+    // LANDSCAPE controls - NO SCREENSHOT BUTTON
     private var landscapeControls: some View {
         HStack {
             VStack {
-                HStack(spacing: 12) { backButton; screenshotButton }
+                HStack(spacing: 12) {
+                    backButton
+                    // Removed screenshot button
+                }
                 Spacer()
             }
             .padding()
@@ -217,14 +260,6 @@ struct ModelViewerView: View {
             .foregroundColor(.white)
             .padding(.horizontal, 16).padding(.vertical, 8)
             .background(Color.black.opacity(0.7)).cornerRadius(20)
-    }
-
-    private var screenshotButton: some View {
-        Button(action: { takeScreenshot() }) {
-            Image(systemName: "camera.circle.fill")
-                .font(.system(size: 32)).foregroundColor(.white)
-                .background(Circle().fill(Color.black.opacity(0.5))).shadow(radius: 5)
-        }
     }
 
     private var cameraButton: some View {
@@ -275,10 +310,11 @@ struct ModelViewerView: View {
 
     private var segmentFurnitureButton: some View {
         Button(action: {
-            showingCameraPreview = false
-            showingSegmentExamine = false
-            showingSegmentForeground = false
-            showingSegmentFurniture.toggle()
+            if showingSegmentFurniture {
+                showingSegmentFurniture = false
+            } else {
+                startFurnitureInitialization()
+            }
         }) {
             Image(systemName: "chair.fill")
                 .font(.system(size: 28)).foregroundColor(.white)
@@ -286,8 +322,65 @@ struct ModelViewerView: View {
                 .background(Circle().fill(showingSegmentFurniture ? Color.green : Color.blue).shadow(radius: 5))
         }
     }
+    
+    // MARK: - Furniture Initialization with Progress
+    
+    private func startFurnitureInitialization() {
+        // Hide other overlays
+        showingCameraPreview = false
+        showingSegmentExamine = false
+        showingSegmentForeground = false
+        
+        // Start progress
+        isARActive = false
+        isInitializingFurniture = true
+        furnitureInitProgress = 0.0
+        
+        // Simulate progress
+        furnitureInitTimer = Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { timer in
+            self.furnitureInitProgress += 0.015
+            
+            // Capture room at 30%
+            if self.furnitureInitProgress >= 0.3 && self.furnitureInitProgress < 0.35 && self.roomSnapshot == nil {
+                self.captureRoomSnapshot()
+            }
+            
+            if self.furnitureInitProgress >= 1.0 {
+                timer.invalidate()
+                self.furnitureInitTimer = nil
+                withAnimation(.easeOut(duration: 0.3)) {
+                    self.isInitializingFurniture = false
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.showingSegmentFurniture = true
+                    self.manageARSessionForOverlays()
+                }
+            }
+        }
+    }
+    
+    private func cancelFurnitureInitialization() {
+        furnitureInitTimer?.invalidate()
+        furnitureInitTimer = nil
+        withAnimation(.easeOut(duration: 0.2)) {
+            isInitializingFurniture = false
+            furnitureInitProgress = 0.0
+        }
+        manageARSessionForOverlays()
+    }
+    
+    private func captureRoomSnapshot() {
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+            self.roomSnapshot = renderer.image { context in
+                window.layer.render(in: context.cgContext)
+            }
+            print("📸 Room captured during initialization")
+        }
+    }
 
-    // MARK: - Init/cancel flow
+    // MARK: - Camera Init
 
     private func startCameraInitialization() {
         isARActive = false
@@ -302,7 +395,7 @@ struct ModelViewerView: View {
                 withAnimation(.easeOut(duration: 0.3)) { self.isInitializingCamera = false }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     self.showingCameraPreview = true
-                    manageARSessionForOverlays()
+                    self.manageARSessionForOverlays()
                 }
             }
         }
@@ -318,37 +411,10 @@ struct ModelViewerView: View {
         manageARSessionForOverlays()
     }
 
-    private func takeScreenshot() {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first else {
-            screenshotMessage = "Failed to capture screenshot"
-            showScreenshotAlert = true
-            return
-        }
-        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-        let screenshot = renderer.image { ctx in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
-        let saver = ScreenshotSaver()
-        saver.onComplete = { success, error in
-            DispatchQueue.main.async {
-                self.screenshotMessage = success ? "Screenshot saved to Photos" :
-                "Failed: \(error?.localizedDescription ?? "Please enable Photos access in Settings")"
-                self.showScreenshotAlert = true
-            }
-        }
-        UIImageWriteToSavedPhotosAlbum(screenshot, saver, #selector(ScreenshotSaver.image(_:didFinishSavingWithError:contextInfo:)), nil)
-    }
-
     private func manageARSessionForOverlays() {
-        let shouldRunAR = !anyCameraOverlayActive && !isInitializingCamera
+        let shouldRunAR = !anyCameraOverlayActive && !isInitializingCamera && !isInitializingFurniture
         if isARActive != shouldRunAR {
             isARActive = shouldRunAR
         }
-    }
-}
-
-class ScreenshotSaver: NSObject {
-    var onComplete: ((Bool, Error?) -> Void)?
-    @objc func image(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
-        onComplete?(error == nil, error)
     }
 }
