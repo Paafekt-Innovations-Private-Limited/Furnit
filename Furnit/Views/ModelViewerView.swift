@@ -149,36 +149,38 @@ struct ModelViewerView: View {
         geometry.size.width > geometry.size.height
     }
 
-    // PORTRAIT controls - BUTTONS AND JOYSTICK MOVED MUCH LOWER
+    // PORTRAIT controls - ALL AT BOTTOM
     private var portraitControls: some View {
         VStack {
             HStack { backButton; Spacer(); screenshotButton }.padding()
-            Spacer()
-            HStack(alignment: .bottom) {
-                // Blue buttons moved lower with padding
+            
+            Spacer() // Push everything to bottom
+            
+            // All controls at bottom
+            HStack(alignment: .bottom, spacing: 0) {
+                // Blue buttons at bottom left
                 VStack(spacing: 16) {
-                    Spacer() // Push buttons down
                     cameraButton
                     segmentExamineButton
                     segmentForegroundButton
                     segmentFurnitureButton
                 }
-                .padding(.leading, 8)
-                .padding(.bottom, 150) // Blue buttons moved down
-
+                .padding(.leading, 16)
+                .padding(.bottom, 20) // Near bottom edge
+                
                 Spacer()
-
+                
+                // Joystick at bottom center-right
                 VirtualJoystick(joystickOffset: $joystickOffset)
                     .onChange(of: joystickOffset) { _, newOffset in
                         cameraMovementManager.updateJoystickInput(newOffset)
                     }
-                    .padding(.bottom, 50)  // Joystick at very bottom
-                    .padding(.trailing, 100) // Space for Save/Retry buttons
-
+                    .padding(.bottom, 20)  // Same level as buttons
+                    .padding(.trailing, 100) // Space for Save/Retry
+                
                 Spacer()
             }
-            .padding(.bottom, 40)
-            .padding(.horizontal)
+            .padding(.bottom, 20) // Overall bottom padding
         }
     }
 
@@ -190,7 +192,9 @@ struct ModelViewerView: View {
                 Spacer()
             }
             .padding()
+            
             Spacer()
+            
             VStack(spacing: 16) {
                 cameraButton
                 segmentExamineButton

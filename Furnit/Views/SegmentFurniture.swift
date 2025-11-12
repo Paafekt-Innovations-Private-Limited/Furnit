@@ -52,6 +52,10 @@ struct SegmentFurniture: View {
                         if camera.lastConfidence > 0 {
                             Text("Conf: \(Int(camera.lastConfidence * 100))%")
                         }
+                        if !camera.lastDetectedClass.isEmpty {
+                            Text("\(camera.lastDetectedClass)")
+                                .font(.caption2)
+                        }
                     }
                     .font(.caption)
                     .foregroundColor(.white)
@@ -162,6 +166,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     @Published var isProcessing = false
     @Published var currentFPS: Double = 0.0
     @Published var lastConfidence: Float = 0.0
+    @Published var lastDetectedClass: String = ""
     
     private let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -170,9 +175,25 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     private var yoloModel: VNCoreMLModel?
     private let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
     
-    private let furnitureClasses = [
-        56: "chair", 57: "couch", 59: "bed",
-        60: "dining table", 61: "toilet"
+    // All COCO classes
+    private let cocoClasses = [
+        0: "person", 1: "bicycle", 2: "car", 3: "motorcycle", 4: "airplane",
+        5: "bus", 6: "train", 7: "truck", 8: "boat", 9: "traffic light",
+        10: "fire hydrant", 11: "stop sign", 12: "parking meter", 13: "bench",
+        14: "bird", 15: "cat", 16: "dog", 17: "horse", 18: "sheep", 19: "cow",
+        20: "elephant", 21: "bear", 22: "zebra", 23: "giraffe", 24: "backpack",
+        25: "umbrella", 26: "handbag", 27: "tie", 28: "suitcase", 29: "frisbee",
+        30: "skis", 31: "snowboard", 32: "sports ball", 33: "kite", 34: "baseball bat",
+        35: "baseball glove", 36: "skateboard", 37: "surfboard", 38: "tennis racket",
+        39: "bottle", 40: "wine glass", 41: "cup", 42: "fork", 43: "knife",
+        44: "spoon", 45: "bowl", 46: "banana", 47: "apple", 48: "sandwich",
+        49: "orange", 50: "broccoli", 51: "carrot", 52: "hot dog", 53: "pizza",
+        54: "donut", 55: "cake", 56: "chair", 57: "couch", 58: "potted plant",
+        59: "bed", 60: "dining table", 61: "toilet", 62: "tv", 63: "laptop",
+        64: "mouse", 65: "remote", 66: "keyboard", 67: "cell phone", 68: "microwave",
+        69: "oven", 70: "toaster", 71: "sink", 72: "refrigerator", 73: "book",
+        74: "clock", 75: "vase", 76: "scissors", 77: "teddy bear", 78: "hair drier",
+        79: "toothbrush"
     ]
     
     private var lastProcessTime = Date()
@@ -195,6 +216,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             self.segmentedImage = nil
             self.furnitureOpacity = 0.0
             self.lastConfidence = 0.0
+            self.lastDetectedClass = ""
         }
     }
     
@@ -279,7 +301,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         }
     }
     
-    // MARK: - Process with YOLO
     private func processWithYOLO(pixelBuffer: CVPixelBuffer) {
         guard let model = yoloModel else { return }
         
@@ -360,21 +381,25 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 self.segmentedImage = nil
                 self.furnitureOpacity = 0.0
                 self.lastConfidence = 0.0
+                self.lastDetectedClass = ""
             }
             return
         }
         
-        print("🪑 Detected: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%)")
+        print("✅ Detected: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%)")
+        
+        DispatchQueue.main.async {
+            self.lastDetectedClass = bestDetection.className
+        }
         
         processAndApplyMask(detection: bestDetection,
                            prototypes: prototypes,
                            originalImage: originalImage)
     }
     
-    // MARK: - Extract Detections
     private func extractDetections(from detections: MLMultiArray) -> [Detection] {
         var allDetections: [Detection] = []
-        let confThreshold: Float = 0.5
+        let confThreshold: Float = 0.3
         
         for anchor in 0..<8400 {
             let x = detections[[0, 0, anchor] as [NSNumber]].floatValue
@@ -382,7 +407,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             let w = detections[[0, 2, anchor] as [NSNumber]].floatValue
             let h = detections[[0, 3, anchor] as [NSNumber]].floatValue
             
-            for (classIdx, className) in furnitureClasses {
+            for (classIdx, className) in cocoClasses {
                 let conf = detections[[0, 4 + classIdx, anchor] as [NSNumber]].floatValue
                 
                 if conf > confThreshold {
@@ -403,7 +428,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return allDetections
     }
     
-    // MARK: - NMS
     private func applyNMS(detections: [Detection], iouThreshold: Float) -> [Detection] {
         guard !detections.isEmpty else { return [] }
         
@@ -441,7 +465,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return union > 0 ? intersection / union : 0
     }
     
-    // MARK: - Process and Apply Mask
     private func processAndApplyMask(detection: Detection,
                                     prototypes: MLMultiArray,
                                     originalImage: CVPixelBuffer) {
@@ -450,7 +473,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             self.lastConfidence = detection.confidence
         }
         
-        // Generate raw mask without erosion
         let mask = generateMaskUltralytics(coefficients: detection.maskCoeffs,
                                           prototypes: prototypes)
         
@@ -460,11 +482,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         applyMaskToImage(mask: mask, detection: detection, to: originalImage)
     }
     
-    // MARK: - Generate Mask (NO EROSION for better detail)
     private func generateMaskUltralytics(coefficients: [Float], prototypes: MLMultiArray) -> [Float] {
         var mask = [Float](repeating: 0, count: 160 * 160)
         
-        // Matrix multiplication then sigmoid
         for y in 0..<160 {
             for x in 0..<160 {
                 var sum: Float = 0
@@ -479,7 +499,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return mask
     }
     
-    // MARK: - Apply Mask with IMPROVED Dynamic BBox Expansion
+    // MARK: - Apply Mask with MUCH MORE AGGRESSIVE Expansion
     private func applyMaskToImage(mask: [Float],
                                  detection: Detection,
                                  to pixelBuffer: CVPixelBuffer) {
@@ -522,10 +542,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
             
-            // IMPROVED BBOX EXPANSION
+            // MUCH MORE AGGRESSIVE BBOX EXPANSION
             let scale = Float(width) / 640.0
             
-            // Original bbox from detection
             let origX1 = Int((detection.x - detection.width/2) * scale)
             let origY1 = Int((detection.y - detection.height/2) * scale)
             let origX2 = Int((detection.x + detection.width/2) * scale)
@@ -534,59 +553,63 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             let bboxHeight = origY2 - origY1
             let bboxWidth = origX2 - origX1
             
-            // OPTIMIZED expansion for different furniture
+            // VERY AGGRESSIVE expansion values
             let bottomExpansion: Float
             let topExpansion: Float
             let sideExpansion: Float
             
             switch detection.className {
             case "chair":
-                bottomExpansion = 0.4  // 40% bottom for legs
-                topExpansion = 0.1     // 10% top
-                sideExpansion = 0.15   // 15% sides
-                print("🪑 Chair - expanding bottom by 40% for legs")
+                // MUCH MORE for chair to capture full seat and legs
+                bottomExpansion = 0.7   // 70% more for legs AND seat
+                topExpansion = 0.3      // 30% for high backrest
+                sideExpansion = 0.3     // 30% for armrests
+                print("🪑 Chair - MAJOR expansion (70% bottom)")
                 
             case "bed":
-                // BED needs more expansion all around
-                bottomExpansion = 0.15  // Less bottom (beds are low)
-                topExpansion = 0.25     // More top (headboard/pillows)
-                sideExpansion = 0.25    // More sides (bed width)
-                print("🛏️ Bed - expanding all sides for full coverage")
+                // HUGE expansion for bed
+                bottomExpansion = 0.5   // 50% for bed frame
+                topExpansion = 0.6      // 60% for headboard
+                sideExpansion = 0.5     // 50% for full width
+                print("🛏️ Bed - HUGE expansion all around")
                 
             case "couch", "sofa":
-                bottomExpansion = 0.25
-                topExpansion = 0.15
-                sideExpansion = 0.2
-                print("🛋️ Couch - balanced expansion")
+                bottomExpansion = 0.5
+                topExpansion = 0.4
+                sideExpansion = 0.4
+                print("🛋️ Couch - large expansion")
                 
             case "dining table", "table":
-                bottomExpansion = 0.5   // 50% for table legs
-                topExpansion = 0.05     // Minimal top
-                sideExpansion = 0.1     // Minimal sides
-                print("🪑 Table - major bottom expansion for legs")
+                bottomExpansion = 0.8   // 80% for table legs
+                topExpansion = 0.1
+                sideExpansion = 0.3
+                print("🪑 Table - massive bottom expansion")
                 
-            case "toilet":
-                bottomExpansion = 0.3
+            case "person":
+                bottomExpansion = 0.2
                 topExpansion = 0.2
                 sideExpansion = 0.15
-                print("🚽 Toilet - moderate expansion")
+                print("👤 Person - moderate expansion")
                 
             default:
-                bottomExpansion = 0.25
-                topExpansion = 0.15
-                sideExpansion = 0.2
-                print("📦 Default furniture expansion")
+                // Default still generous
+                bottomExpansion = 0.35
+                topExpansion = 0.35
+                sideExpansion = 0.35
+                print("📦 \(detection.className) - generous default")
             }
             
-            // Apply expansion
+            // Apply expansion with debug info
             let x1 = max(0, origX1 - Int(Float(bboxWidth) * sideExpansion))
             let y1 = max(0, origY1 - Int(Float(bboxHeight) * topExpansion))
             let x2 = min(width, origX2 + Int(Float(bboxWidth) * sideExpansion))
             let y2 = min(height, origY2 + Int(Float(bboxHeight) * bottomExpansion))
             
-            print("📦 BBox: [\(origX1),\(origY1)]-[\(origX2),\(origY2)] → [\(x1),\(y1)]-[\(x2),\(y2)]")
+            print("📦 Original: [\(origX1),\(origY1)]-[\(origX2),\(origY2)]")
+            print("📦 Expanded: [\(x1),\(y1)]-[\(x2),\(y2)]")
+            print("📦 Expansion: T=\(Int(topExpansion*100))% B=\(Int(bottomExpansion*100))% S=\(Int(sideExpansion*100))%")
             
-            // Apply mask with full 160x160 space
+            // Apply mask
             var maskedPixels = 0
             let threshold: Float = 0.5
             
@@ -594,11 +617,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 for px in 0..<width {
                     let idx = (py * width + px) * 4
                     
-                    // Map to FULL 160x160 mask
                     let maskX = Float(px) * 160.0 / Float(width)
                     let maskY = Float(py) * 160.0 / Float(height)
                     
-                    // Bilinear interpolation
                     let x0 = Int(maskX)
                     let y0 = Int(maskY)
                     let x1 = min(x0 + 1, 159)
@@ -617,7 +638,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                         let v1 = v01 * (1.0 - dx) + v11 * dx
                         let maskValue = v0 * (1.0 - dy) + v1 * dy
                         
-                        // Check expanded bbox
                         let inBbox = px >= x1 && px < x2 && py >= y1 && py < y2
                         
                         if maskValue > threshold && inBbox {
