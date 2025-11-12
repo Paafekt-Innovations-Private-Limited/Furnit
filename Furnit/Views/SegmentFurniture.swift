@@ -6,6 +6,7 @@ import CoreImage
 import Photos
 import Accelerate
 
+// MARK: - Main View (unchanged)
 struct SegmentFurniture: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
@@ -43,7 +44,7 @@ struct SegmentFurniture: View {
                     .animation(.easeOut(duration: 0.3), value: camera.furnitureOpacity)
             }
             
-            // Show FPS and detection info
+            // FPS Display
             VStack {
                 HStack {
                     VStack(alignment: .leading) {
@@ -63,46 +64,19 @@ struct SegmentFurniture: View {
                 Spacer()
             }
             
-            if showingSaveSuccess {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title2)
-                        Text("Furniture saved!")
-                            .font(.headline)
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 16)
-                    .background(
-                        Capsule()
-                            .fill(Color.green.opacity(0.95))
-                            .shadow(radius: 10)
-                    )
-                    .padding(.bottom, 150)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            
+            // Controls
             VStack {
                 HStack {
                     if camera.segmentedImage != nil {
                         HStack(spacing: 6) {
                             Image(systemName: "minus.magnifyingglass")
-                                .foregroundColor(.white)
-                                .font(.system(size: 14))
                             Slider(value: $scaleMultiplier, in: 0.3...1.0)
                                 .frame(width: 150)
-                                .accentColor(.white)
                             Image(systemName: "plus.magnifyingglass")
-                                .foregroundColor(.white)
-                                .font(.system(size: 14))
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .foregroundColor(.white)
+                        .padding(8)
                         .background(Capsule().fill(Color.black.opacity(0.7)))
-                        .padding(.leading, 16)
                     }
                     
                     Spacer()
@@ -111,72 +85,37 @@ struct SegmentFurniture: View {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title)
                             .foregroundColor(.white)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
                     }
-                    .padding(.trailing, 16)
                 }
                 .padding(.top, 60)
+                .padding(.horizontal)
                 
                 Spacer()
                 
                 HStack(spacing: 16) {
                     if camera.segmentedImage != nil {
                         Button(action: { saveFurniture() }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "square.and.arrow.down.fill")
-                                    .font(.title3)
-                                Text("Save")
-                                    .font(.headline)
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
-                            .background(Capsule().fill(Color.green.opacity(0.9)))
+                            Label("Save", systemImage: "square.and.arrow.down.fill")
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .background(Capsule().fill(Color.green))
                         }
                         
-                        Button(action: {
-                            camera.resetSegmentation()
-                        }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.title3)
-                                Text("Retry")
-                                    .font(.headline)
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
-                            .background(Capsule().fill(Color.orange.opacity(0.9)))
+                        Button(action: { camera.resetSegmentation() }) {
+                            Label("Retry", systemImage: "arrow.counterclockwise")
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .background(Capsule().fill(Color.orange))
                         }
-                    }
-                    
-                    Button(action: { isShowingCamera = false }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.title3)
-                            Text("Cancel")
-                                .font(.headline)
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 12)
-                        .background(Capsule().fill(Color.gray.opacity(0.9)))
                     }
                 }
                 .padding(.bottom, 50)
-                .padding(.horizontal)
             }
         }
-        .onAppear {
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                if granted {
-                    camera.startSession()
-                }
-            }
-        }
-        .onDisappear {
-            camera.stopSession()
-        }
+        .onAppear { camera.startSession() }
+        .onDisappear { camera.stopSession() }
     }
     
     private func saveFurniture() {
@@ -184,22 +123,13 @@ struct SegmentFurniture: View {
         capturedImage = image
         
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-            DispatchQueue.main.async {
-                if status == .authorized || status == .limited {
-                    PHPhotoLibrary.shared().performChanges({
-                        PHAssetChangeRequest.creationRequestForAsset(from: image)
-                    }) { success, _ in
+            if status == .authorized || status == .limited {
+                PHPhotoLibrary.shared().performChanges({
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                }) { success, _ in
+                    if success {
                         DispatchQueue.main.async {
-                            if success {
-                                withAnimation { showingSaveSuccess = true }
-                                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                    withAnimation { showingSaveSuccess = false }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        isShowingCamera = false
-                                    }
-                                }
-                            }
+                            isShowingCamera = false
                         }
                     }
                 }
@@ -220,12 +150,11 @@ struct Detection {
     let maskCoeffs: [Float]
 }
 
-// MARK: - YOLO11-Seg Implementation with Ultralytics-based Fixes
+// MARK: - Main Model with Morphological Operations
 class FurnitureSegmentationModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     @Published var furnitureOpacity: Double = 0.0
     @Published var isProcessing = false
-    @Published var detectedFurnitureTypes: [String] = []
     @Published var currentFPS: Double = 0.0
     @Published var lastConfidence: Float = 0.0
     
@@ -237,23 +166,15 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     private let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
     
     private let furnitureClasses = [
-        56: "chair",
-        57: "couch",
-        59: "bed",
-        60: "dining table",
-        61: "toilet"
+        56: "chair", 57: "couch", 59: "bed",
+        60: "dining table", 61: "toilet"
     ]
     
-    // Frame rate control
     private var lastProcessTime = Date()
-    private let processInterval: TimeInterval = 0.1  // 10 FPS
+    private let processInterval: TimeInterval = 0.1
     private var frameCount = 0
     private var fpsStartTime = Date()
     
-    // Debug flags
-    private var hasDebuggedPrototypes = false
-    
-    // Helper function for sigmoid calculation
     private func sigmoid(_ x: Float) -> Float {
         return 1.0 / (1.0 + exp(-x))
     }
@@ -268,7 +189,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         DispatchQueue.main.async {
             self.segmentedImage = nil
             self.furnitureOpacity = 0.0
-            self.detectedFurnitureTypes = []
             self.lastConfidence = 0.0
         }
     }
@@ -282,21 +202,20 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 do {
                     let model = try MLModel(contentsOf: modelURL)
                     yoloModel = try VNCoreMLModel(for: model)
-                    print("✅ YOLO11-seg loaded successfully!")
+                    print("✅ YOLO11-seg loaded!")
                     return
                 } catch {
-                    print("⚠️ Failed to load: \(error)")
+                    print("❌ Failed: \(error)")
                 }
             }
         }
     }
     
     private func setupCamera() {
-        session.beginConfiguration()
         session.sessionPreset = .hd1280x720
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            print("❌ No camera available")
+            print("❌ No camera")
             return
         }
         
@@ -319,7 +238,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 }
             }
             
-            session.commitConfiguration()
             print("✅ Camera configured")
         } catch {
             print("❌ Camera setup failed: \(error)")
@@ -356,6 +274,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         }
     }
     
+    // MARK: - Process with YOLO
     private func processWithYOLO(pixelBuffer: CVPixelBuffer) {
         guard let model = yoloModel else { return }
         
@@ -389,7 +308,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         do {
             try handler.perform([request])
         } catch {
-            print("❌ Failed to perform YOLO inference: \(error)")
+            print("❌ Inference failed: \(error)")
             DispatchQueue.main.async {
                 self.isProcessing = false
             }
@@ -427,16 +346,8 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             return
         }
         
-        // Debug prototypes once
-        if !hasDebuggedPrototypes {
-            debugPrototypes(prototypes)
-            hasDebuggedPrototypes = true
-        }
-        
-        // Extract all valid detections
+        // Extract and apply NMS
         let validDetections = extractDetections(from: detections)
-        
-        // Apply NMS
         let nmsDetections = applyNMS(detections: validDetections, iouThreshold: 0.45)
         
         guard let bestDetection = nmsDetections.first else {
@@ -449,47 +360,11 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             return
         }
         
-        print("🪑 After NMS: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%)")
+        print("🪑 Detected: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%)")
         
-        // Process mask with corrected approach
-        processMaskUltralytics(detection: bestDetection,
-                              prototypes: prototypes,
-                              originalImage: originalImage)
-    }
-    
-    // MARK: - Debug Prototypes
-    private func debugPrototypes(_ prototypes: MLMultiArray) {
-        print("\n🔍 ===== PROTOTYPE DEBUG =====")
-        print("📏 Shape: \(prototypes.shape)")
-        print("📊 Strides: \(prototypes.strides)")
-        
-        var channelStats: [(channel: Int, min: Float, max: Float, mean: Float, variance: Float)] = []
-        
-        for channel in 0..<32 {
-            var values: [Float] = []
-            
-            for y in 0..<160 {
-                for x in 0..<160 {
-                    let val = prototypes[[0, channel, y, x] as [NSNumber]].floatValue
-                    values.append(val)
-                }
-            }
-            
-            let min = values.min() ?? 0
-            let max = values.max() ?? 0
-            let mean = values.reduce(0, +) / Float(values.count)
-            let variance = values.reduce(0) { $0 + pow($1 - mean, 2) } / Float(values.count)
-            
-            channelStats.append((channel, min, max, mean, variance))
-        }
-        
-        // Check for dead channels
-        let deadChannels = channelStats.filter { abs($0.variance) < 0.001 }
-        if !deadChannels.isEmpty {
-            print("  ⚠️ Dead channels: \(deadChannels.map { $0.channel })")
-        }
-        
-        print("===== END DEBUG =====\n")
+        processMaskWithMorphology(detection: bestDetection,
+                                 prototypes: prototypes,
+                                 originalImage: originalImage)
     }
     
     // MARK: - Extract Detections
@@ -514,16 +389,13 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     
                     allDetections.append(Detection(
                         x: x, y: y, width: w, height: h,
-                        confidence: conf,
-                        classIdx: classIdx,
-                        className: className,
-                        maskCoeffs: maskCoeffs
+                        confidence: conf, classIdx: classIdx,
+                        className: className, maskCoeffs: maskCoeffs
                     ))
                 }
             }
         }
         
-        print("📊 Found \(allDetections.count) detections before NMS")
         return allDetections
     }
     
@@ -550,7 +422,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             }
         }
         
-        print("📊 After NMS: \(kept.count) detections")
         return kept
     }
     
@@ -561,42 +432,39 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         let y2 = min(a.y + a.height/2, b.y + b.height/2)
         
         let intersection = max(0, x2 - x1) * max(0, y2 - y1)
-        let areaA = a.width * a.height
-        let areaB = b.width * b.height
-        let union = areaA + areaB - intersection
+        let union = a.width * a.height + b.width * b.height - intersection
         
         return union > 0 ? intersection / union : 0
     }
     
-    // MARK: - Corrected Mask Processing Based on Ultralytics
-    private func processMaskUltralytics(detection: Detection,
-                                       prototypes: MLMultiArray,
-                                       originalImage: CVPixelBuffer) {
+    // MARK: - Process Mask with Morphological Operations
+    private func processMaskWithMorphology(detection: Detection,
+                                          prototypes: MLMultiArray,
+                                          originalImage: CVPixelBuffer) {
         
         DispatchQueue.main.async {
             self.lastConfidence = detection.confidence
         }
         
-        print("\n🧪 Processing mask with Ultralytics approach...")
-        
-        // Generate mask with proper approach
-        let mask = generateMaskUltralytics(coefficients: detection.maskCoeffs,
+        // Step 1: Generate base mask
+        var mask = generateMaskUltralytics(coefficients: detection.maskCoeffs,
                                           prototypes: prototypes)
         
-        // Count positive pixels after sigmoid
-        let positivePixels = mask.filter { $0 > 0.5 }.count
-        print("✅ Mask generated: \(positivePixels) pixels above threshold")
+        // Step 2: Apply morphological operations for smoother edges
+//        mask = applyMorphologicalOperations(mask: mask, width: 160, height: 160)
         
-        // Apply mask to image
+        let positivePixels = mask.filter { $0 > 0.5 }.count
+        print("✅ After morphology: \(positivePixels) pixels")
+        
+        // Step 3: Apply to image
         applyMaskToImage(mask: mask, detection: detection, to: originalImage)
     }
     
-    // MARK: - Corrected Mask Generation (Ultralytics approach)
+    // MARK: - Generate Mask (Ultralytics approach)
     private func generateMaskUltralytics(coefficients: [Float], prototypes: MLMultiArray) -> [Float] {
         var mask = [Float](repeating: 0, count: 160 * 160)
         
-        // Step 1: Matrix multiplication (coefficients @ prototypes)
-        // No sigmoid on prototypes - they're already processed!
+        // Matrix multiplication
         for y in 0..<160 {
             for x in 0..<160 {
                 var sum: Float = 0
@@ -604,11 +472,11 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     let protoValue = prototypes[[0, c, y, x] as [NSNumber]].floatValue
                     sum += coefficients[c] * protoValue
                 }
-                mask[y * 160 + x] = sum  // Raw sum, no sigmoid yet
+                mask[y * 160 + x] = sum
             }
         }
         
-        // Step 2: Apply sigmoid to the entire mask
+        // Apply sigmoid
         for i in 0..<mask.count {
             mask[i] = sigmoid(mask[i])
         }
@@ -616,7 +484,103 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return mask
     }
     
-    // MARK: - Apply Mask to Image
+    // MARK: - Morphological Operations
+    private func applyMorphologicalOperations(mask: [Float], width: Int, height: Int) -> [Float] {
+        var processedMask = mask
+        
+        // Convert to binary (0 or 1) for morphological operations
+        var binaryMask = [Float](repeating: 0, count: width * height)
+        for i in 0..<mask.count {
+            binaryMask[i] = mask[i] > 0.5 ? 1.0 : 0.0
+        }
+        
+        // Apply closing (dilation followed by erosion) to fill small gaps
+        binaryMask = dilate(mask: binaryMask, width: width, height: height, iterations: 2)
+        binaryMask = erode(mask: binaryMask, width: width, height: height, iterations: 2)
+        
+        // Apply opening (erosion followed by dilation) to remove small noise
+        binaryMask = erode(mask: binaryMask, width: width, height: height, iterations: 1)
+        binaryMask = dilate(mask: binaryMask, width: width, height: height, iterations: 1)
+        
+        // Blend with original mask for smoother edges
+        for i in 0..<mask.count {
+            processedMask[i] = binaryMask[i] * 0.3 + mask[i] * 0.7  // Weighted blend
+        }
+        
+        return processedMask
+    }
+    
+    // MARK: - Morphological Dilation
+    private func dilate(mask: [Float], width: Int, height: Int, iterations: Int) -> [Float] {
+        var result = mask
+        let kernel = 3  // 3x3 kernel
+        let offset = kernel / 2
+        
+        for _ in 0..<iterations {
+            var temp = result
+            
+            for y in 0..<height {
+                for x in 0..<width {
+                    var maxVal: Float = 0
+                    
+                    // Check all kernel positions
+                    for ky in -offset...offset {
+                        for kx in -offset...offset {
+                            let ny = y + ky
+                            let nx = x + kx
+                            
+                            if ny >= 0 && ny < height && nx >= 0 && nx < width {
+                                maxVal = max(maxVal, result[ny * width + nx])
+                            }
+                        }
+                    }
+                    
+                    temp[y * width + x] = maxVal
+                }
+            }
+            
+            result = temp
+        }
+        
+        return result
+    }
+    
+    // MARK: - Morphological Erosion
+    private func erode(mask: [Float], width: Int, height: Int, iterations: Int) -> [Float] {
+        var result = mask
+        let kernel = 3  // 3x3 kernel
+        let offset = kernel / 2
+        
+        for _ in 0..<iterations {
+            var temp = result
+            
+            for y in 0..<height {
+                for x in 0..<width {
+                    var minVal: Float = 1
+                    
+                    // Check all kernel positions
+                    for ky in -offset...offset {
+                        for kx in -offset...offset {
+                            let ny = y + ky
+                            let nx = x + kx
+                            
+                            if ny >= 0 && ny < height && nx >= 0 && nx < width {
+                                minVal = min(minVal, result[ny * width + nx])
+                            }
+                        }
+                    }
+                    
+                    temp[y * width + x] = minVal
+                }
+            }
+            
+            result = temp
+        }
+        
+        return result
+    }
+    
+    // REPLACE the entire applyMaskToImage method with this:
     private func applyMaskToImage(mask: [Float],
                                  detection: Detection,
                                  to pixelBuffer: CVPixelBuffer) {
@@ -634,7 +598,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 return
             }
             
-            // Create context with alpha channel
             let colorSpace = CGColorSpaceCreateDeviceRGB()
             guard let ctx = CGContext(data: nil,
                                      width: width,
@@ -649,10 +612,8 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 return
             }
             
-            // Draw original image
             ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
             
-            // Get pixel data
             guard let data = ctx.data else {
                 DispatchQueue.main.async {
                     self.isProcessing = false
@@ -662,108 +623,76 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
             
-            // Calculate bbox in image coordinates
+            // Calculate bbox for checking bounds only
             let scale = Float(width) / 640.0
+            let x1 = max(0, Int((detection.x - detection.width/2) * scale))
+            let y1 = max(0, Int((detection.y - detection.height/2) * scale))
+            let x2 = min(width, Int((detection.x + detection.width/2) * scale))
+            let y2 = min(height, Int((detection.y + detection.height/2) * scale))
             
-            let bboxX = Int(detection.x * scale)
-            let bboxY = Int(detection.y * scale)
-            let bboxW = Int(detection.width * scale)
-            let bboxH = Int(detection.height * scale)
-            
-            let x1 = max(0, bboxX - bboxW/2)
-            let y1 = max(0, bboxY - bboxH/2)
-            let x2 = min(width, bboxX + bboxW/2)
-            let y2 = min(height, bboxY + bboxH/2)
-            
-            print("📦 Bbox: [\(x1),\(y1)] to [\(x2),\(y2)]")
-            
-            // Map bbox to mask space (160x160)
-            let maskScale: Float = 160.0 / 640.0
-            let maskBboxX = Int(detection.x * maskScale)
-            let maskBboxY = Int(detection.y * maskScale)
-            let maskBboxW = Int(detection.width * maskScale)
-            let maskBboxH = Int(detection.height * maskScale)
-            
-            let maskX1 = max(0, maskBboxX - maskBboxW/2)
-            let maskY1 = max(0, maskBboxY - maskBboxH/2)
-            let maskX2 = min(160, maskBboxX + maskBboxW/2)
-            let maskY2 = min(160, maskBboxY + maskBboxH/2)
-            
-            // Apply mask with bilinear interpolation
+            // DON'T map to cropped mask space - use FULL mask
             var maskedPixels = 0
-            let threshold: Float = 0.5  // Use 0.5 threshold after sigmoid!
+            let threshold: Float = 0.5
             
             for py in 0..<height {
                 for px in 0..<width {
-                    let pixelIdx = (py * width + px) * 4
+                    let idx = (py * width + px) * 4
                     
-                    // Check if pixel is within bbox
-                    if px >= x1 && px < x2 && py >= y1 && py < y2 {
-                        // Map to cropped mask coordinates
-                        let relX = Float(px - x1) / Float(x2 - x1)
-                        let relY = Float(py - y1) / Float(y2 - y1)
+                    // Map pixel to FULL 160x160 mask space (not cropped)
+                    let maskX = Float(px) * 160.0 / Float(width)
+                    let maskY = Float(py) * 160.0 / Float(height)
+                    
+                    // Bilinear interpolation
+                    let x0 = Int(maskX)
+                    let y0 = Int(maskY)
+                    let x1 = min(x0 + 1, 159)
+                    let y1 = min(y0 + 1, 159)
+                    
+                    if x0 >= 0 && x0 < 160 && y0 >= 0 && y0 < 160 {
+                        let dx = maskX - Float(x0)
+                        let dy = maskY - Float(y0)
                         
-                        let maskX = Float(maskX1) + relX * Float(maskX2 - maskX1)
-                        let maskY = Float(maskY1) + relY * Float(maskY2 - maskY1)
+                        // Get four corner values
+                        let v00 = mask[y0 * 160 + x0]
+                        let v10 = mask[y0 * 160 + x1]
+                        let v01 = mask[y1 * 160 + x0]
+                        let v11 = mask[y1 * 160 + x1]
                         
                         // Bilinear interpolation
-                        let x0 = Int(maskX)
-                        let y0 = Int(maskY)
-                        let x1 = min(x0 + 1, 159)
-                        let y1 = min(y0 + 1, 159)
+                        let v0 = v00 * (1.0 - dx) + v10 * dx
+                        let v1 = v01 * (1.0 - dx) + v11 * dx
+                        let maskValue = v0 * (1.0 - dy) + v1 * dy
                         
-                        if x0 >= 0 && x0 < 160 && y0 >= 0 && y0 < 160 {
-                            let dx = maskX - Float(x0)
-                            let dy = maskY - Float(y0)
+                        // Check bbox AFTER getting mask value
+                        let inBbox = px >= x1 && px < x2 && py >= y1 && py < y2
+                        
+                        if maskValue > threshold && inBbox {
+                            // Use mask value directly for smoother alpha
+                            let alpha = maskValue  // Already 0-1 from sigmoid
+                            pixels[idx + 3] = UInt8(alpha * 255.0)
                             
-                            // Get four corner values (already sigmoid-ed)
-                            let v00 = mask[y0 * 160 + x0]
-                            let v10 = mask[y0 * 160 + x1]
-                            let v01 = mask[y1 * 160 + x0]
-                            let v11 = mask[y1 * 160 + x1]
+                            // Pre-multiply alpha
+                            pixels[idx] = UInt8(Float(pixels[idx]) * alpha)
+                            pixels[idx + 1] = UInt8(Float(pixels[idx + 1]) * alpha)
+                            pixels[idx + 2] = UInt8(Float(pixels[idx + 2]) * alpha)
                             
-                            // Bilinear interpolation
-                            let v0 = v00 * (1.0 - dx) + v10 * dx
-                            let v1 = v01 * (1.0 - dx) + v11 * dx
-                            let maskValue = v0 * (1.0 - dy) + v1 * dy
-                            
-                            // Apply threshold (0.5 since mask is already sigmoid-ed)
-                            if maskValue > threshold {
-                                // Use mask value directly as alpha (it's already 0-1)
-                                let alpha = maskValue
-                                pixels[pixelIdx + 3] = UInt8(alpha * 255.0)
-                                
-                                // Pre-multiply alpha
-                                if alpha < 1.0 {
-                                    pixels[pixelIdx] = UInt8(Float(pixels[pixelIdx]) * alpha)
-                                    pixels[pixelIdx + 1] = UInt8(Float(pixels[pixelIdx + 1]) * alpha)
-                                    pixels[pixelIdx + 2] = UInt8(Float(pixels[pixelIdx + 2]) * alpha)
-                                }
-                                
-                                maskedPixels += 1
-                            } else {
-                                // Make transparent
-                                pixels[pixelIdx + 3] = 0
-                            }
+                            maskedPixels += 1
                         } else {
-                            pixels[pixelIdx + 3] = 0
+                            pixels[idx + 3] = 0
                         }
                     } else {
-                        // Outside bbox - make transparent
-                        pixels[pixelIdx + 3] = 0
+                        pixels[idx + 3] = 0
                     }
                 }
             }
             
-            print("✅ Applied mask: \(maskedPixels) pixels kept")
+            print("✅ Applied: \(maskedPixels) pixels kept")
             
-            // Create final image
             if let finalImage = ctx.makeImage() {
                 let uiImage = UIImage(cgImage: finalImage, scale: 1.0, orientation: .up)
                 
                 DispatchQueue.main.async {
                     self.segmentedImage = uiImage
-                    self.detectedFurnitureTypes = [detection.className]
                     withAnimation(.easeIn(duration: 0.3)) {
                         self.furnitureOpacity = 1.0
                     }
@@ -772,6 +701,8 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             }
         }
     }
+        
+    
 }
 
 extension FurnitureSegmentationModel: AVCaptureVideoDataOutputSampleBufferDelegate {
