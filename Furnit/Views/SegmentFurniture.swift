@@ -6,7 +6,7 @@ import CoreImage
 import Photos
 import Accelerate
 
-// MARK: - Main View (unchanged)
+// MARK: - Main View
 struct SegmentFurniture: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
@@ -436,7 +436,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return union > 0 ? intersection / union : 0
     }
     
-    // MARK: - Process and Apply Mask (SIMPLIFIED - NO MORPHOLOGY FOR NOW)
+    // MARK: - Process and Apply Mask
     private func processAndApplyMask(detection: Detection,
                                     prototypes: MLMultiArray,
                                     originalImage: CVPixelBuffer) {
@@ -445,9 +445,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             self.lastConfidence = detection.confidence
         }
         
-        // Generate mask WITHOUT morphology for now (cleaner results)
-        let mask = generateMaskUltralytics(coefficients: detection.maskCoeffs,
-                                          prototypes: prototypes)
+        // Generate mask with light edge cleanup
+        let mask = generateMaskWithEdgeCleanup(coefficients: detection.maskCoeffs,
+                                               prototypes: prototypes)
         
         let positivePixels = mask.filter { $0 > 0.5 }.count
         print("✅ Mask pixels: \(positivePixels)")
@@ -455,8 +455,8 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         applyMaskToImage(mask: mask, detection: detection, to: originalImage)
     }
     
-    // MARK: - Generate Mask (Ultralytics approach)
-    private func generateMaskUltralytics(coefficients: [Float], prototypes: MLMultiArray) -> [Float] {
+    // MARK: - Generate Mask with Edge Cleanup
+    private func generateMaskWithEdgeCleanup(coefficients: [Float], prototypes: MLMultiArray) -> [Float] {
         var mask = [Float](repeating: 0, count: 160 * 160)
         
         // Matrix multiplication then sigmoid
@@ -467,12 +467,54 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     let protoValue = prototypes[[0, c, y, x] as [NSNumber]].floatValue
                     sum += coefficients[c] * protoValue
                 }
-                // Apply sigmoid after sum
                 mask[y * 160 + x] = sigmoid(sum)
             }
         }
         
+        // Light erosion to clean up thin edge artifacts (like curtain lines)
+        mask = lightErodeForEdgeCleanup(mask: mask, width: 160, height: 160)
+        
         return mask
+    }
+    
+    // MARK: - Light Erosion for Edge Cleanup
+    private func lightErodeForEdgeCleanup(mask: [Float], width: Int, height: Int) -> [Float] {
+        var result = mask
+        
+        // Only erode pixels that are weak (between 0.5 and 0.7)
+        // This preserves strong mask areas while cleaning edges
+        for y in 1..<(height-1) {
+            for x in 1..<(width-1) {
+                let idx = y * width + x
+                let currentValue = mask[idx]
+                
+                // Only process edge pixels
+                if currentValue > 0.5 && currentValue < 0.7 {
+                    // Check neighbors
+                    var neighborSum: Float = 0
+                    var count = 0
+                    
+                    for dy in -1...1 {
+                        for dx in -1...1 {
+                            if dy == 0 && dx == 0 { continue }
+                            let ny = y + dy
+                            let nx = x + dx
+                            neighborSum += mask[ny * width + nx]
+                            count += 1
+                        }
+                    }
+                    
+                    let avgNeighbor = neighborSum / Float(count)
+                    
+                    // If neighbors are weak, reduce this pixel
+                    if avgNeighbor < 0.6 {
+                        result[idx] = currentValue * 0.8  // Reduce by 20%
+                    }
+                }
+            }
+        }
+        
+        return result
     }
     
     // MARK: - Apply Mask with Dynamic BBox Expansion
