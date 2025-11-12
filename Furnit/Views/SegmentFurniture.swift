@@ -150,7 +150,7 @@ struct Detection {
     let maskCoeffs: [Float]
 }
 
-// MARK: - Main Model with Morphological Operations
+// MARK: - Main Model
 class FurnitureSegmentationModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     @Published var furnitureOpacity: Double = 0.0
@@ -346,7 +346,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             return
         }
         
-        // Extract and apply NMS
         let validDetections = extractDetections(from: detections)
         let nmsDetections = applyNMS(detections: validDetections, iouThreshold: 0.45)
         
@@ -362,9 +361,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         
         print("🪑 Detected: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%)")
         
-        processMaskWithMorphology(detection: bestDetection,
-                                 prototypes: prototypes,
-                                 originalImage: originalImage)
+        processAndApplyMask(detection: bestDetection,
+                           prototypes: prototypes,
+                           originalImage: originalImage)
     }
     
     // MARK: - Extract Detections
@@ -437,26 +436,22 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return union > 0 ? intersection / union : 0
     }
     
-    // MARK: - Process Mask with Morphological Operations
-    private func processMaskWithMorphology(detection: Detection,
-                                          prototypes: MLMultiArray,
-                                          originalImage: CVPixelBuffer) {
+    // MARK: - Process and Apply Mask (SIMPLIFIED - NO MORPHOLOGY FOR NOW)
+    private func processAndApplyMask(detection: Detection,
+                                    prototypes: MLMultiArray,
+                                    originalImage: CVPixelBuffer) {
         
         DispatchQueue.main.async {
             self.lastConfidence = detection.confidence
         }
         
-        // Step 1: Generate base mask
-        var mask = generateMaskUltralytics(coefficients: detection.maskCoeffs,
+        // Generate mask WITHOUT morphology for now (cleaner results)
+        let mask = generateMaskUltralytics(coefficients: detection.maskCoeffs,
                                           prototypes: prototypes)
         
-        // Step 2: Apply morphological operations for smoother edges
-//        mask = applyMorphologicalOperations(mask: mask, width: 160, height: 160)
-        
         let positivePixels = mask.filter { $0 > 0.5 }.count
-        print("✅ After morphology: \(positivePixels) pixels")
+        print("✅ Mask pixels: \(positivePixels)")
         
-        // Step 3: Apply to image
         applyMaskToImage(mask: mask, detection: detection, to: originalImage)
     }
     
@@ -464,7 +459,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     private func generateMaskUltralytics(coefficients: [Float], prototypes: MLMultiArray) -> [Float] {
         var mask = [Float](repeating: 0, count: 160 * 160)
         
-        // Matrix multiplication
+        // Matrix multiplication then sigmoid
         for y in 0..<160 {
             for x in 0..<160 {
                 var sum: Float = 0
@@ -472,115 +467,15 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     let protoValue = prototypes[[0, c, y, x] as [NSNumber]].floatValue
                     sum += coefficients[c] * protoValue
                 }
-                mask[y * 160 + x] = sum
+                // Apply sigmoid after sum
+                mask[y * 160 + x] = sigmoid(sum)
             }
-        }
-        
-        // Apply sigmoid
-        for i in 0..<mask.count {
-            mask[i] = sigmoid(mask[i])
         }
         
         return mask
     }
     
-    // MARK: - Morphological Operations
-    private func applyMorphologicalOperations(mask: [Float], width: Int, height: Int) -> [Float] {
-        var processedMask = mask
-        
-        // Convert to binary (0 or 1) for morphological operations
-        var binaryMask = [Float](repeating: 0, count: width * height)
-        for i in 0..<mask.count {
-            binaryMask[i] = mask[i] > 0.5 ? 1.0 : 0.0
-        }
-        
-        // Apply closing (dilation followed by erosion) to fill small gaps
-        binaryMask = dilate(mask: binaryMask, width: width, height: height, iterations: 2)
-        binaryMask = erode(mask: binaryMask, width: width, height: height, iterations: 2)
-        
-        // Apply opening (erosion followed by dilation) to remove small noise
-        binaryMask = erode(mask: binaryMask, width: width, height: height, iterations: 1)
-        binaryMask = dilate(mask: binaryMask, width: width, height: height, iterations: 1)
-        
-        // Blend with original mask for smoother edges
-        for i in 0..<mask.count {
-            processedMask[i] = binaryMask[i] * 0.3 + mask[i] * 0.7  // Weighted blend
-        }
-        
-        return processedMask
-    }
-    
-    // MARK: - Morphological Dilation
-    private func dilate(mask: [Float], width: Int, height: Int, iterations: Int) -> [Float] {
-        var result = mask
-        let kernel = 3  // 3x3 kernel
-        let offset = kernel / 2
-        
-        for _ in 0..<iterations {
-            var temp = result
-            
-            for y in 0..<height {
-                for x in 0..<width {
-                    var maxVal: Float = 0
-                    
-                    // Check all kernel positions
-                    for ky in -offset...offset {
-                        for kx in -offset...offset {
-                            let ny = y + ky
-                            let nx = x + kx
-                            
-                            if ny >= 0 && ny < height && nx >= 0 && nx < width {
-                                maxVal = max(maxVal, result[ny * width + nx])
-                            }
-                        }
-                    }
-                    
-                    temp[y * width + x] = maxVal
-                }
-            }
-            
-            result = temp
-        }
-        
-        return result
-    }
-    
-    // MARK: - Morphological Erosion
-    private func erode(mask: [Float], width: Int, height: Int, iterations: Int) -> [Float] {
-        var result = mask
-        let kernel = 3  // 3x3 kernel
-        let offset = kernel / 2
-        
-        for _ in 0..<iterations {
-            var temp = result
-            
-            for y in 0..<height {
-                for x in 0..<width {
-                    var minVal: Float = 1
-                    
-                    // Check all kernel positions
-                    for ky in -offset...offset {
-                        for kx in -offset...offset {
-                            let ny = y + ky
-                            let nx = x + kx
-                            
-                            if ny >= 0 && ny < height && nx >= 0 && nx < width {
-                                minVal = min(minVal, result[ny * width + nx])
-                            }
-                        }
-                    }
-                    
-                    temp[y * width + x] = minVal
-                }
-            }
-            
-            result = temp
-        }
-        
-        return result
-    }
-    
-    // REPLACE the entire applyMaskToImage method with this:
+    // MARK: - Apply Mask with Dynamic BBox Expansion
     private func applyMaskToImage(mask: [Float],
                                  detection: Detection,
                                  to pixelBuffer: CVPixelBuffer) {
@@ -623,14 +518,53 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
             
-            // Calculate bbox for checking bounds only
+            // DYNAMIC BBOX EXPANSION BASED ON FURNITURE TYPE
             let scale = Float(width) / 640.0
-            let x1 = max(0, Int((detection.x - detection.width/2) * scale))
-            let y1 = max(0, Int((detection.y - detection.height/2) * scale))
-            let x2 = min(width, Int((detection.x + detection.width/2) * scale))
-            let y2 = min(height, Int((detection.y + detection.height/2) * scale))
             
-            // DON'T map to cropped mask space - use FULL mask
+            // Original bbox from detection
+            let origX1 = Int((detection.x - detection.width/2) * scale)
+            let origY1 = Int((detection.y - detection.height/2) * scale)
+            let origX2 = Int((detection.x + detection.width/2) * scale)
+            let origY2 = Int((detection.y + detection.height/2) * scale)
+            
+            let bboxHeight = origY2 - origY1
+            let bboxWidth = origX2 - origX1
+            
+            // Dynamic expansion based on furniture type
+            let bottomExpansion: Float
+            let topExpansion: Float = 0.1    // 10% top for all
+            let sideExpansion: Float = 0.15  // 15% sides for all
+            
+            switch detection.className {
+            case "chair":
+                bottomExpansion = 0.4  // 40% bottom for chair legs
+                print("🪑 Chair detected - expanding bottom by 40% for legs")
+            case "couch", "sofa":
+                bottomExpansion = 0.25  // 25% bottom for couch legs
+                print("🛋️ Couch detected - expanding bottom by 25%")
+            case "bed":
+                bottomExpansion = 0.2  // 20% bottom for bed frame
+                print("🛏️ Bed detected - expanding bottom by 20%")
+            case "dining table", "table":
+                bottomExpansion = 0.5  // 50% bottom for table legs
+                print("🪑 Table detected - expanding bottom by 50% for legs")
+            case "toilet":
+                bottomExpansion = 0.3  // 30% bottom for base
+                print("🚽 Toilet detected - expanding bottom by 30%")
+            default:
+                bottomExpansion = 0.25  // Default 25%
+                print("📦 Furniture detected - default expansion")
+            }
+            
+            // Apply expansion
+            let x1 = max(0, origX1 - Int(Float(bboxWidth) * sideExpansion))
+            let y1 = max(0, origY1 - Int(Float(bboxHeight) * topExpansion))
+            let x2 = min(width, origX2 + Int(Float(bboxWidth) * sideExpansion))
+            let y2 = min(height, origY2 + Int(Float(bboxHeight) * bottomExpansion))
+            
+            print("📦 BBox: [\(origX1),\(origY1)]-[\(origX2),\(origY2)] → [\(x1),\(y1)]-[\(x2),\(y2)]")
+            
+            // Apply mask with full 160x160 space (no cropping in mask space)
             var maskedPixels = 0
             let threshold: Float = 0.5
             
@@ -638,7 +572,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 for px in 0..<width {
                     let idx = (py * width + px) * 4
                     
-                    // Map pixel to FULL 160x160 mask space (not cropped)
+                    // Map to FULL 160x160 mask (not cropped)
                     let maskX = Float(px) * 160.0 / Float(width)
                     let maskY = Float(py) * 160.0 / Float(height)
                     
@@ -663,12 +597,12 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                         let v1 = v01 * (1.0 - dx) + v11 * dx
                         let maskValue = v0 * (1.0 - dy) + v1 * dy
                         
-                        // Check bbox AFTER getting mask value
+                        // Check expanded bbox
                         let inBbox = px >= x1 && px < x2 && py >= y1 && py < y2
                         
                         if maskValue > threshold && inBbox {
-                            // Use mask value directly for smoother alpha
-                            let alpha = maskValue  // Already 0-1 from sigmoid
+                            // Use mask value directly for smooth alpha
+                            let alpha = maskValue
                             pixels[idx + 3] = UInt8(alpha * 255.0)
                             
                             // Pre-multiply alpha
@@ -701,8 +635,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             }
         }
     }
-        
-    
 }
 
 extension FurnitureSegmentationModel: AVCaptureVideoDataOutputSampleBufferDelegate {
