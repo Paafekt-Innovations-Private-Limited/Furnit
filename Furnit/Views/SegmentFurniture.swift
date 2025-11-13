@@ -642,6 +642,174 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return mask
     }
     
+    // NEW: Flood fill to eliminate enclosed background holes (ADDED)
+    private func fillMaskHoles(_ mask: [Float], threshold: Float = 0.3) -> [Float] {
+        let width = 160
+        let height = 160
+        
+        // Create binary mask
+        var binaryMask = [Bool](repeating: false, count: width * height)
+        for i in 0..<(width * height) {
+            binaryMask[i] = mask[i] > threshold
+        }
+        
+        // Mark background via flood fill from edges
+        var isBackground = [Bool](repeating: false, count: width * height)
+        var queue: [(Int, Int)] = []
+        
+        // Add all edge pixels to queue
+        for x in 0..<width {
+            queue.append((0, x))           // Top edge
+            queue.append((height-1, x))    // Bottom edge
+        }
+        for y in 0..<height {
+            queue.append((y, 0))           // Left edge
+            queue.append((y, width-1))     // Right edge
+        }
+        
+        // Flood fill background
+        while !queue.isEmpty {
+            let (y, x) = queue.removeFirst()
+            
+            if x < 0 || x >= width || y < 0 || y >= height { continue }
+            
+            let idx = y * width + x
+            if isBackground[idx] || binaryMask[idx] { continue }
+            
+            isBackground[idx] = true
+            
+            // Add 4-connected neighbors
+            queue.append((y-1, x))
+            queue.append((y+1, x))
+            queue.append((y, x-1))
+            queue.append((y, x+1))
+        }
+        
+        // Fill holes: anything not background = furniture
+        var filledMask = mask
+        for i in 0..<(width * height) {
+            if !isBackground[i] {
+                filledMask[i] = max(filledMask[i], 0.8)  // Fill holes with high confidence
+            }
+        }
+        
+        print("✅ Holes filled via flood fill")
+        return filledMask
+    }
+    
+    // NEW: Remove small connected components (noise filtering) (ADDED)
+    private func removeSmallComponents(_ mask: [Float], minSize: Int, threshold: Float = 0.3) -> [Float] {
+        let width = 160
+        let height = 160
+        
+        // Create binary mask
+        var binaryMask = [Bool](repeating: false, count: width * height)
+        for i in 0..<(width * height) {
+            binaryMask[i] = mask[i] > threshold
+        }
+        
+        var visited = [Bool](repeating: false, count: width * height)
+        var componentMask = [Bool](repeating: false, count: width * height)
+        
+        // Find all connected components and keep only large ones
+        for startIdx in 0..<(width * height) {
+            if visited[startIdx] || !binaryMask[startIdx] { continue }
+            
+            // BFS to find component size
+            var queue: [Int] = [startIdx]
+            var component: [Int] = []
+            visited[startIdx] = true
+            
+            while !queue.isEmpty {
+                let idx = queue.removeFirst()
+                component.append(idx)
+                
+                let y = idx / width
+                let x = idx % width
+                
+                // Check 4-connected neighbors
+                let neighbors = [
+                    (y-1, x), (y+1, x), (y, x-1), (y, x+1)
+                ]
+                
+                for (ny, nx) in neighbors {
+                    if ny < 0 || ny >= height || nx < 0 || nx >= width { continue }
+                    
+                    let nIdx = ny * width + nx
+                    if visited[nIdx] || !binaryMask[nIdx] { continue }
+                    
+                    visited[nIdx] = true
+                    queue.append(nIdx)
+                }
+            }
+            
+            // Keep component if it's large enough
+            if component.count >= minSize {
+                for idx in component {
+                    componentMask[idx] = true
+                }
+            }
+        }
+        
+        // Apply component mask
+        var cleanedMask = [Float](repeating: 0, count: width * height)
+        for i in 0..<(width * height) {
+            if componentMask[i] {
+                cleanedMask[i] = mask[i]  // Keep original value
+            } else {
+                cleanedMask[i] = 0.0  // Remove small components
+            }
+        }
+        
+        print("✅ Small components removed (min size: \(minSize) pixels)")
+        return cleanedMask
+    }
+    
+    // NEW: Gaussian-like edge smoothing (anti-aliasing) (ADDED)
+    private func smoothEdges(_ mask: [Float], kernelSize: Int = 3) -> [Float] {
+        let width = 160
+        let height = 160
+        let radius = kernelSize / 2
+        
+        var smoothed = [Float](repeating: 0, count: width * height)
+        
+        // Gaussian-like weights for 3x3 kernel (normalized)
+        let weights: [[Float]] = [
+            [0.077847, 0.123317, 0.077847],
+            [0.123317, 0.195346, 0.123317],
+            [0.077847, 0.123317, 0.077847]
+        ]
+        
+        for y in radius..<(height - radius) {
+            for x in radius..<(width - radius) {
+                var sum: Float = 0
+                
+                // Apply weighted average
+                for dy in -radius...radius {
+                    for dx in -radius...radius {
+                        let maskValue = mask[(y + dy) * width + (x + dx)]
+                        let weight = weights[dy + radius][dx + radius]
+                        sum += maskValue * weight
+                    }
+                }
+                
+                smoothed[y * width + x] = sum
+            }
+        }
+        
+        // Copy edges unchanged to avoid boundary artifacts
+        for y in 0..<height {
+            for x in 0..<width {
+                if y < radius || y >= (height - radius) || x < radius || x >= (width - radius) {
+                    smoothed[y * width + x] = mask[y * width + x]
+                }
+            }
+        }
+        
+        print("✅ Edges smoothed (Gaussian-like blur)")
+        return smoothed
+    }
+    
     private func applyMaskToImage(mask: [Float],
                                  detection: Detection,
                                  to pixelBuffer: CVPixelBuffer) {
@@ -693,7 +861,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             case "chair":
                 bottomExpansion = 1.0
                 topExpansion = 0.5
-                sideExpansion = 0.5
+                sideExpansion = 0.8
                 
             case "bed":
                 bottomExpansion = 0.8
@@ -726,7 +894,60 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             let x2 = min(width, origX2 + Int(Float(bboxWidth) * sideExpansion))
             let y2 = min(height, origY2 + Int(Float(bboxHeight) * bottomExpansion))
             
-            let threshold: Float = 0.5
+            // ENHANCED: Stronger morphological closing to fill handle gaps
+            var refinedMask = [Float](repeating: 0, count: 160 * 160)
+            var dilated = [Float](repeating: 0, count: 160 * 160)
+            var temp = mask
+            
+            // NEW: Stronger closing for chairs (larger kernel, more iterations)
+            let iterations = detection.className == "chair" ? 3 : 1
+            let kernelRadius = detection.className == "chair" ? 2 : 1  // 5x5 for chairs, 3x3 for others
+            
+            for _ in 0..<iterations {
+                // Dilation pass
+                for y in kernelRadius..<(160-kernelRadius) {
+                    for x in kernelRadius..<(160-kernelRadius) {
+                        var maxVal: Float = temp[y * 160 + x]
+                        for dy in -kernelRadius...kernelRadius {
+                            for dx in -kernelRadius...kernelRadius {
+                                maxVal = max(maxVal, temp[(y + dy) * 160 + (x + dx)])
+                            }
+                        }
+                        dilated[y * 160 + x] = maxVal
+                    }
+                }
+                
+                // Erosion pass (completes closing)
+                for y in kernelRadius..<(160-kernelRadius) {
+                    for x in kernelRadius..<(160-kernelRadius) {
+                        var minVal: Float = dilated[y * 160 + x]
+                        for dy in -kernelRadius...kernelRadius {
+                            for dx in -kernelRadius...kernelRadius {
+                                minVal = min(minVal, dilated[(y + dy) * 160 + (x + dx)])
+                            }
+                        }
+                        refinedMask[y * 160 + x] = minVal
+                    }
+                }
+                
+                temp = refinedMask  // Use result for next iteration
+            }
+            
+            // NEW: Apply hole filling and noise removal (ADDED)
+            var finalMask = refinedMask
+            
+            // Step 1: Fill enclosed holes via flood fill
+            finalMask = fillMaskHoles(finalMask, threshold: 0.3)
+            
+            // Step 2: Remove small noise components
+            let minComponentSize = detection.className == "chair" ? 50 : 100
+            finalMask = removeSmallComponents(finalMask, minSize: minComponentSize, threshold: 0.3)
+            
+            // Step 3: Smooth edges for anti-aliasing (ADDED)
+            finalMask = smoothEdges(finalMask, kernelSize: 3)
+            
+            // Adaptive threshold - lower for chairs to catch thin parts like handles
+            let threshold: Float = detection.className == "chair" ? 0.3 : 0.5
             
             for py in 0..<height {
                 for px in 0..<width {
@@ -744,10 +965,11 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                         let dx = maskX - Float(x0)
                         let dy = maskY - Float(y0)
                         
-                        let v00 = mask[y0 * 160 + x0]
-                        let v10 = mask[y0 * 160 + x1Val]
-                        let v01 = mask[y1Val * 160 + x0]
-                        let v11 = mask[y1Val * 160 + x1Val]
+                        // Use finalMask with smoothed edges
+                        let v00 = finalMask[y0 * 160 + x0]
+                        let v10 = finalMask[y0 * 160 + x1Val]
+                        let v01 = finalMask[y1Val * 160 + x0]
+                        let v11 = finalMask[y1Val * 160 + x1Val]
                         
                         let v0 = v00 * (1.0 - dx) + v10 * dx
                         let v1 = v01 * (1.0 - dx) + v11 * dx
