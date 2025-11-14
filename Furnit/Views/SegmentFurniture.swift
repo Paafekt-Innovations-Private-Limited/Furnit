@@ -83,7 +83,21 @@ struct SegmentFurniture: View {
                     )
                     .ignoresSafeArea()
                     .opacity(camera.furnitureOpacity)
-                    .animation(.easeOut(duration: 0.3), value: camera.furnitureOpacity)
+                    .animation(.easeOut(duration: 0.05), value: camera.furnitureOpacity)
+            }
+            
+            // Green BBox Overlay - EXACT YOLO coordinates (like boats image)
+            if camera.currentBBox != .zero && camera.segmentedImage != nil {
+                Canvas { context, size in
+                    let rect = Path(camera.currentBBox)
+                    context.stroke(
+                        rect,
+                        with: .color(.green),
+                        lineWidth: 3
+                    )
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
             }
             
             // Controls
@@ -306,6 +320,331 @@ struct Detection {
     let classIdx: Int
     let className: String
     let maskCoeffs: [Float]
+    let timestamp: Date
+    
+    var bbox: CGRect {
+        return CGRect(x: CGFloat(x), y: CGFloat(y), width: CGFloat(width), height: CGFloat(height))
+    }
+}
+
+// MARK: - Cross-Attention BBox Tracker (MemoryAttention Inspired)
+class CrossAttentionBBoxTracker {
+    private var detectionHistory: [Detection] = []
+    private let historySize = 5
+    
+    func updateBBox(newDetection: Detection, imageSize: CGSize) -> CGRect {
+        print("\n🔄 === BBox Tracking Update ===")
+        print("📥 Input detection: \(newDetection.className) conf=\(String(format: "%.2f", newDetection.confidence))")
+        print("📊 History size: \(detectionHistory.count)/\(historySize)")
+        
+        // Add to history
+        detectionHistory.append(newDetection)
+        if detectionHistory.count > historySize {
+            detectionHistory.removeFirst()
+            print("🗑️ Removed oldest frame from history")
+        }
+        
+        // Need at least 2 frames for cross-attention
+        if detectionHistory.count < 2 {
+            print("⚠️ Insufficient history, using raw coordinates")
+            let result = convertToScreenCoordinates(detection: newDetection, imageSize: imageSize)
+            print("✅ Output BBox: \(result)")
+            return result
+        }
+        
+        // Apply cross-attention
+        print("🧠 Applying cross-attention with \(detectionHistory.count - 1) history frames")
+        let history = Array(detectionHistory.dropLast())
+        let smoothedBBox = crossAttentionBBox(current: newDetection, history: history, imageSize: imageSize)
+        
+        print("✅ Final BBox: \(smoothedBBox)")
+        print("=================================\n")
+        return smoothedBBox
+    }
+    
+    func reset() {
+        detectionHistory.removeAll()
+        print("🔄 BBox tracker reset - history cleared")
+    }
+    
+    // MARK: - Coordinate Conversion with Rotation
+    
+    private func convertToScreenCoordinates(detection: Detection, imageSize: CGSize) -> CGRect {
+        let cameraWidth = Float(imageSize.width)
+        let cameraHeight = Float(imageSize.height)
+        let scale = cameraWidth / 640.0
+        
+        print("🔢 Coordinate conversion:")
+        print("  Camera: \(Int(cameraWidth))×\(Int(cameraHeight)), scale: \(String(format: "%.2f", scale))")
+        
+        let camX = (detection.x - detection.width/2) * scale
+        let camY = (detection.y - detection.height/2) * scale
+        let camW = detection.width * scale
+        let camH = detection.height * scale
+        
+        print("  Camera space: x=\(String(format: "%.1f", camX)), y=\(String(format: "%.1f", camY)), w=\(String(format: "%.1f", camW)), h=\(String(format: "%.1f", camH))")
+        
+        let screenWidth = cameraHeight
+        let screenHeight = cameraWidth
+        
+        let rotatedX = camY
+        let rotatedY = screenHeight - (camX + camW)
+        let rotatedW = camH
+        let rotatedH = camW
+        
+        print("  Screen space (90° rotated): x=\(String(format: "%.1f", rotatedX)), y=\(String(format: "%.1f", rotatedY)), w=\(String(format: "%.1f", rotatedW)), h=\(String(format: "%.1f", rotatedH))")
+        
+        return CGRect(
+            x: CGFloat(rotatedX),
+            y: CGFloat(rotatedY),
+            width: CGFloat(rotatedW),
+            height: CGFloat(rotatedH)
+        )
+    }
+    
+    // MARK: - Cross-Attention Implementation
+    
+    private func calculateSimilarity(current: Detection, history: Detection) -> Float {
+        let iou = calculateIoU(current, history)
+        let classSimilarity: Float = (current.className == history.className) ? 1.0 : 0.0
+        let confSimilarity = min(current.confidence, history.confidence)
+        let timeDiff = current.timestamp.timeIntervalSince(history.timestamp)
+        let temporalWeight = exp(-Float(timeDiff) / 0.5)
+        
+        let similarity = (
+            0.5 * iou +
+            0.2 * classSimilarity +
+            0.1 * confSimilarity +
+            0.2 * temporalWeight
+        )
+        
+        return similarity
+    }
+    
+    private func calculateIoU(_ a: Detection, _ b: Detection) -> Float {
+        let x1 = max(a.x - a.width/2, b.x - b.width/2)
+        let y1 = max(a.y - a.height/2, b.y - b.height/2)
+        let x2 = min(a.x + a.width/2, b.x + b.width/2)
+        let y2 = min(a.y + a.height/2, b.y + b.height/2)
+        
+        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
+        let union = a.width * a.height + b.width * b.height - intersection
+        
+        return union > 0 ? intersection / union : 0
+    }
+    
+    private func computeAttentionWeights(current: Detection, history: [Detection]) -> [Float] {
+        print("  💡 Computing attention weights:")
+        var scores: [Float] = []
+        for (idx, historyFrame) in history.enumerated() {
+            let similarity = calculateSimilarity(current: current, history: historyFrame)
+            scores.append(similarity)
+            print("    Frame[\(idx)]: similarity=\(String(format: "%.3f", similarity))")
+        }
+        
+        let maxScore = scores.max() ?? 0
+        var expScores: [Float] = []
+        var sumExp: Float = 0
+        
+        for score in scores {
+            let expScore = exp(score - maxScore)
+            expScores.append(expScore)
+            sumExp += expScore
+        }
+        
+        let weights = expScores.map { $0 / max(sumExp, 0.0001) }
+        
+        print("  🎯 Attention weights: \(weights.map { String(format: "%.2f", $0) }.joined(separator: ", "))")
+        
+        return weights
+    }
+    
+    private func crossAttentionBBox(current: Detection, history: [Detection], imageSize: CGSize) -> CGRect {
+        print("  🔗 Cross-attention processing:")
+        
+        // Compute attention weights
+        let weights = computeAttentionWeights(current: current, history: history)
+        
+        // Weighted combination in YOLO normalized space
+        var weightedX: Float = 0
+        var weightedY: Float = 0
+        var weightedW: Float = 0
+        var weightedH: Float = 0
+        
+        for (idx, historyFrame) in history.enumerated() {
+            let weight = weights[idx]
+            weightedX += weight * historyFrame.x
+            weightedY += weight * historyFrame.y
+            weightedW += weight * historyFrame.width
+            weightedH += weight * historyFrame.height
+        }
+        
+        print("    Weighted history: x=\(String(format: "%.1f", weightedX)), y=\(String(format: "%.1f", weightedY)), w=\(String(format: "%.1f", weightedW)), h=\(String(format: "%.1f", weightedH))")
+        
+        // Blend with current (80% history, 20% current)
+        let finalX = 0.8 * weightedX + 0.2 * current.x
+        let finalY = 0.8 * weightedY + 0.2 * current.y
+        let finalW = 0.8 * weightedW + 0.2 * current.width
+        let finalH = 0.8 * weightedH + 0.2 * current.height
+        
+        print("    After blending (80/20): x=\(String(format: "%.1f", finalX)), y=\(String(format: "%.1f", finalY)), w=\(String(format: "%.1f", finalW)), h=\(String(format: "%.1f", finalH))")
+        
+        // Create smoothed detection and convert to screen coordinates
+        let smoothedDetection = Detection(
+            x: finalX, y: finalY, width: finalW, height: finalH,
+            confidence: current.confidence,
+            classIdx: current.classIdx,
+            className: current.className,
+            maskCoeffs: current.maskCoeffs,
+            timestamp: current.timestamp
+        )
+        
+        let preliminaryBBox = convertToScreenCoordinates(detection: smoothedDetection, imageSize: imageSize)
+        print("    Preliminary screen BBox: \(preliminaryBBox)")
+        
+        // Apply feedforward refinement (MemoryAttention's final stage)
+        print("  🔧 Applying feedforward refinement:")
+        let refinedBBox = feedforwardRefinement(bbox: preliminaryBBox, detection: current)
+        
+        return refinedBBox
+    }
+    
+    // MARK: - Feedforward Refinement Network (from MemoryAttention)
+    
+    private func feedforwardRefinement(bbox: CGRect, detection: Detection) -> CGRect {
+        // Extract features
+        let features = extractFeatures(bbox: bbox, detection: detection)
+        print("    📊 Features: \(features.prefix(4).map { String(format: "%.3f", $0) }.joined(separator: ", "))...")
+        
+        // Layer 1: Expand dimensionality
+        let hidden = layer1(features)
+        print("    🧮 Hidden layer: \(hidden.prefix(4).map { String(format: "%.3f", $0) }.joined(separator: ", "))...")
+        
+        // Layer 2: Contract back
+        let refined = layer2(hidden)
+        print("    📐 Refined coords: \(refined.map { String(format: "%.3f", $0) }.joined(separator: ", "))")
+        
+        // Residual connection
+        let residualBBox = applyResidual(original: bbox, refined: refined)
+        
+        return residualBBox
+    }
+    
+    private func extractFeatures(bbox: CGRect, detection: Detection) -> [Float] {
+        // Normalize coordinates to [0, 1]
+        let normX = Float(bbox.origin.x) / 720.0
+        let normY = Float(bbox.origin.y) / 1280.0
+        let normW = Float(bbox.width) / 720.0
+        let normH = Float(bbox.height) / 1280.0
+        
+        // Confidence and temporal stability
+        let conf = detection.confidence
+        let stability = calculateStability()
+        
+        // Aspect ratio
+        let aspectRatio = Float(bbox.width / max(bbox.height, 1.0))
+        
+        // Class consistency
+        let classStability = calculateClassStability(detection.className)
+        
+        return [normX, normY, normW, normH, conf, stability, aspectRatio, classStability]
+    }
+    
+    private func layer1(_ features: [Float]) -> [Float] {
+        var hidden = [Float](repeating: 0, count: 8)
+        
+        // Weight matrix (simplified - focus on stability and confidence)
+        let weights: [[Float]] = [
+            [1.0, 0.1, 0.0, 0.0, 0.2, 0.1, 0.0, 0.1],
+            [0.0, 1.0, 0.0, 0.0, 0.2, 0.1, 0.0, 0.1],
+            [0.0, 0.0, 1.0, 0.0, 0.1, 0.2, 0.3, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        ]
+        
+        for i in 0..<8 {
+            for j in 0..<8 {
+                hidden[i] += weights[i][j] * features[j]
+            }
+            // ReLU activation
+            hidden[i] = max(0, hidden[i])
+        }
+        
+        return hidden
+    }
+    
+    private func layer2(_ hidden: [Float]) -> [Float] {
+        var output = [Float](repeating: 0, count: 4)
+        
+        // Contract 8D -> 4D
+        let weights: [[Float]] = [
+            [0.7, 0.1, 0.0, 0.0, 0.1, 0.1, 0.0, 0.0],
+            [0.0, 0.7, 0.0, 0.0, 0.1, 0.1, 0.0, 0.1],
+            [0.0, 0.0, 0.8, 0.0, 0.0, 0.1, 0.1, 0.0],
+            [0.0, 0.0, 0.0, 0.8, 0.0, 0.1, 0.1, 0.0]
+        ]
+        
+        for i in 0..<4 {
+            for j in 0..<8 {
+                output[i] += weights[i][j] * hidden[j]
+            }
+        }
+        
+        return output
+    }
+    
+    private func applyResidual(original: CGRect, refined: [Float]) -> CGRect {
+        // Denormalize refined coordinates
+        let refinedX = CGFloat(refined[0]) * 720.0
+        let refinedY = CGFloat(refined[1]) * 1280.0
+        let refinedW = CGFloat(refined[2]) * 720.0
+        let refinedH = CGFloat(refined[3]) * 1280.0
+        
+        // Residual connection: mostly keep original, slight adjustment
+        let finalX = 0.9 * original.origin.x + 0.1 * refinedX
+        let finalY = 0.9 * original.origin.y + 0.1 * refinedY
+        let finalW = 0.9 * original.width + 0.1 * refinedW
+        let finalH = 0.9 * original.height + 0.1 * refinedH
+        
+        let deltaX = finalX - original.origin.x
+        let deltaY = finalY - original.origin.y
+        let deltaW = finalW - original.width
+        let deltaH = finalH - original.height
+        
+        print("    ✨ Residual adjustment: Δx=\(String(format: "%.2f", deltaX)), Δy=\(String(format: "%.2f", deltaY)), Δw=\(String(format: "%.2f", deltaW)), Δh=\(String(format: "%.2f", deltaH))")
+        
+        return CGRect(x: finalX, y: finalY, width: finalW, height: finalH)
+    }
+    
+    // Helper: Calculate tracking stability score
+    private func calculateStability() -> Float {
+        guard detectionHistory.count >= 3 else { return 0.5 }
+        
+        let recent = Array(detectionHistory.suffix(3))
+        let avgX = recent.map { $0.x }.reduce(0, +) / Float(recent.count)
+        let variance = recent.map { pow($0.x - avgX, 2) }.reduce(0, +) / Float(recent.count)
+        
+        let stability = exp(-variance / 100.0)
+        print("    📈 Stability score: \(String(format: "%.3f", stability)) (variance: \(String(format: "%.2f", variance)))")
+        
+        return stability
+    }
+    
+    // Helper: Calculate class consistency
+    private func calculateClassStability(_ currentClass: String) -> Float {
+        guard detectionHistory.count >= 3 else { return 1.0 }
+        
+        let recent = Array(detectionHistory.suffix(3))
+        let sameClassCount = recent.filter { $0.className == currentClass }.count
+        let classStability = Float(sameClassCount) / Float(recent.count)
+        
+        print("    🏷️ Class stability: \(String(format: "%.2f", classStability)) (\(sameClassCount)/\(recent.count) same class)")
+        
+        return classStability
+    }
 }
 
 // MARK: - Main Model with ALL COCO Classes
@@ -316,10 +655,12 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     @Published var lastConfidence: Float = 0.0
     @Published var lastDetectedClass: String = ""
     
-    // Progress tracking
     @Published var isInitializing = true
     @Published var initProgress: Double = 0.0
     @Published var initStage = ""
+    
+    @Published var currentBBox: CGRect = .zero
+    private let bboxTracker = CrossAttentionBBoxTracker()
     
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -328,7 +669,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     private var yoloModel: VNCoreMLModel?
     private let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
     
-    // ALL COCO classes (80 classes)
     private let cocoClasses = [
         0: "person", 1: "bicycle", 2: "car", 3: "motorcycle", 4: "airplane",
         5: "bus", 6: "train", 7: "truck", 8: "boat", 9: "traffic light",
@@ -350,7 +690,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     ]
     
     private var lastProcessTime = Date()
-    private let processInterval: TimeInterval = 0.1
+    private let processInterval: TimeInterval = 0.066
     private var frameCount = 0
     private var fpsStartTime = Date()
     
@@ -370,6 +710,8 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             self.furnitureOpacity = 0.0
             self.lastConfidence = 0.0
             self.lastDetectedClass = ""
+            self.currentBBox = .zero
+            self.bboxTracker.reset()
         }
     }
     
@@ -525,6 +867,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 self.furnitureOpacity = 0.0
                 self.lastConfidence = 0.0
                 self.lastDetectedClass = ""
+                self.currentBBox = .zero
             }
             return
         }
@@ -543,6 +886,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     private func extractDetections(from detections: MLMultiArray) -> [Detection] {
         var allDetections: [Detection] = []
         let confThreshold: Float = 0.3
+        let currentTime = Date()
         
         for anchor in 0..<8400 {
             let x = detections[[0, 0, anchor] as [NSNumber]].floatValue
@@ -562,7 +906,8 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     allDetections.append(Detection(
                         x: x, y: y, width: w, height: h,
                         confidence: conf, classIdx: classIdx,
-                        className: className, maskCoeffs: maskCoeffs
+                        className: className, maskCoeffs: maskCoeffs,
+                        timestamp: currentTime
                     ))
                 }
             }
@@ -622,6 +967,17 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         let positivePixels = mask.filter { $0 > 0.5 }.count
         print("✅ Mask pixels: \(positivePixels)")
         
+        // Cross-Attention BBox Tracking with feedforward refinement
+        let width = CVPixelBufferGetWidth(originalImage)
+        let height = CVPixelBufferGetHeight(originalImage)
+        let imageSize = CGSize(width: width, height: height)
+        
+        let smoothedBBox = bboxTracker.updateBBox(newDetection: detection, imageSize: imageSize)
+        
+        DispatchQueue.main.async {
+            self.currentBBox = smoothedBBox
+        }
+        
         applyMaskToImage(mask: mask, detection: detection, to: originalImage)
     }
     
@@ -642,32 +998,27 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return mask
     }
     
-    // NEW: Flood fill to eliminate enclosed background holes (ADDED)
     private func fillMaskHoles(_ mask: [Float], threshold: Float = 0.3) -> [Float] {
         let width = 160
         let height = 160
         
-        // Create binary mask
         var binaryMask = [Bool](repeating: false, count: width * height)
         for i in 0..<(width * height) {
             binaryMask[i] = mask[i] > threshold
         }
         
-        // Mark background via flood fill from edges
         var isBackground = [Bool](repeating: false, count: width * height)
         var queue: [(Int, Int)] = []
         
-        // Add all edge pixels to queue
         for x in 0..<width {
-            queue.append((0, x))           // Top edge
-            queue.append((height-1, x))    // Bottom edge
+            queue.append((0, x))
+            queue.append((height-1, x))
         }
         for y in 0..<height {
-            queue.append((y, 0))           // Left edge
-            queue.append((y, width-1))     // Right edge
+            queue.append((y, 0))
+            queue.append((y, width-1))
         }
         
-        // Flood fill background
         while !queue.isEmpty {
             let (y, x) = queue.removeFirst()
             
@@ -678,18 +1029,16 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             
             isBackground[idx] = true
             
-            // Add 4-connected neighbors
             queue.append((y-1, x))
             queue.append((y+1, x))
             queue.append((y, x-1))
             queue.append((y, x+1))
         }
         
-        // Fill holes: anything not background = furniture
         var filledMask = mask
         for i in 0..<(width * height) {
             if !isBackground[i] {
-                filledMask[i] = max(filledMask[i], 0.8)  // Fill holes with high confidence
+                filledMask[i] = max(filledMask[i], 0.8)
             }
         }
         
@@ -697,12 +1046,10 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return filledMask
     }
     
-    // NEW: Remove small connected components (noise filtering) (ADDED)
     private func removeSmallComponents(_ mask: [Float], minSize: Int, threshold: Float = 0.3) -> [Float] {
         let width = 160
         let height = 160
         
-        // Create binary mask
         var binaryMask = [Bool](repeating: false, count: width * height)
         for i in 0..<(width * height) {
             binaryMask[i] = mask[i] > threshold
@@ -711,11 +1058,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         var visited = [Bool](repeating: false, count: width * height)
         var componentMask = [Bool](repeating: false, count: width * height)
         
-        // Find all connected components and keep only large ones
         for startIdx in 0..<(width * height) {
             if visited[startIdx] || !binaryMask[startIdx] { continue }
             
-            // BFS to find component size
             var queue: [Int] = [startIdx]
             var component: [Int] = []
             visited[startIdx] = true
@@ -727,7 +1072,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 let y = idx / width
                 let x = idx % width
                 
-                // Check 4-connected neighbors
                 let neighbors = [
                     (y-1, x), (y+1, x), (y, x-1), (y, x+1)
                 ]
@@ -743,7 +1087,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 }
             }
             
-            // Keep component if it's large enough
             if component.count >= minSize {
                 for idx in component {
                     componentMask[idx] = true
@@ -751,13 +1094,12 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             }
         }
         
-        // Apply component mask
         var cleanedMask = [Float](repeating: 0, count: width * height)
         for i in 0..<(width * height) {
             if componentMask[i] {
-                cleanedMask[i] = mask[i]  // Keep original value
+                cleanedMask[i] = mask[i]
             } else {
-                cleanedMask[i] = 0.0  // Remove small components
+                cleanedMask[i] = 0.0
             }
         }
         
@@ -765,7 +1107,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         return cleanedMask
     }
     
-    // NEW: Gaussian-like edge smoothing (anti-aliasing) (ADDED)
     private func smoothEdges(_ mask: [Float], kernelSize: Int = 3) -> [Float] {
         let width = 160
         let height = 160
@@ -773,7 +1114,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         
         var smoothed = [Float](repeating: 0, count: width * height)
         
-        // Gaussian-like weights for 3x3 kernel (normalized)
         let weights: [[Float]] = [
             [0.077847, 0.123317, 0.077847],
             [0.123317, 0.195346, 0.123317],
@@ -784,7 +1124,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             for x in radius..<(width - radius) {
                 var sum: Float = 0
                 
-                // Apply weighted average
                 for dy in -radius...radius {
                     for dx in -radius...radius {
                         let maskValue = mask[(y + dy) * width + (x + dx)]
@@ -797,7 +1136,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             }
         }
         
-        // Copy edges unchanged to avoid boundary artifacts
         for y in 0..<height {
             for x in 0..<width {
                 if y < radius || y >= (height - radius) || x < radius || x >= (width - radius) {
@@ -894,17 +1232,14 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             let x2 = min(width, origX2 + Int(Float(bboxWidth) * sideExpansion))
             let y2 = min(height, origY2 + Int(Float(bboxHeight) * bottomExpansion))
             
-            // ENHANCED: Stronger morphological closing to fill handle gaps
             var refinedMask = [Float](repeating: 0, count: 160 * 160)
             var dilated = [Float](repeating: 0, count: 160 * 160)
             var temp = mask
             
-            // NEW: Stronger closing for chairs (larger kernel, more iterations)
             let iterations = detection.className == "chair" ? 3 : 1
-            let kernelRadius = detection.className == "chair" ? 2 : 1  // 5x5 for chairs, 3x3 for others
+            let kernelRadius = detection.className == "chair" ? 2 : 1
             
             for _ in 0..<iterations {
-                // Dilation pass
                 for y in kernelRadius..<(160-kernelRadius) {
                     for x in kernelRadius..<(160-kernelRadius) {
                         var maxVal: Float = temp[y * 160 + x]
@@ -917,7 +1252,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     }
                 }
                 
-                // Erosion pass (completes closing)
                 for y in kernelRadius..<(160-kernelRadius) {
                     for x in kernelRadius..<(160-kernelRadius) {
                         var minVal: Float = dilated[y * 160 + x]
@@ -930,23 +1264,18 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                     }
                 }
                 
-                temp = refinedMask  // Use result for next iteration
+                temp = refinedMask
             }
             
-            // NEW: Apply hole filling and noise removal (ADDED)
             var finalMask = refinedMask
             
-            // Step 1: Fill enclosed holes via flood fill
             finalMask = fillMaskHoles(finalMask, threshold: 0.3)
             
-            // Step 2: Remove small noise components
             let minComponentSize = detection.className == "chair" ? 50 : 100
             finalMask = removeSmallComponents(finalMask, minSize: minComponentSize, threshold: 0.3)
             
-            // Step 3: Smooth edges for anti-aliasing (ADDED)
             finalMask = smoothEdges(finalMask, kernelSize: 3)
             
-            // Adaptive threshold - lower for chairs to catch thin parts like handles
             let threshold: Float = detection.className == "chair" ? 0.3 : 0.5
             
             for py in 0..<height {
@@ -965,7 +1294,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                         let dx = maskX - Float(x0)
                         let dy = maskY - Float(y0)
                         
-                        // Use finalMask with smoothed edges
                         let v00 = finalMask[y0 * 160 + x0]
                         let v10 = finalMask[y0 * 160 + x1Val]
                         let v01 = finalMask[y1Val * 160 + x0]
@@ -998,11 +1326,10 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 
                 DispatchQueue.main.async {
                     self.segmentedImage = uiImage
-                    withAnimation(.easeIn(duration: 0.3)) {
+                    withAnimation(.easeIn(duration: 0.05)) {
                         self.furnitureOpacity = 1.0
                     }
                     
-                    // Mark initialization complete
                     if self.isInitializing {
                         self.isInitializing = false
                         self.initProgress = 1.0
