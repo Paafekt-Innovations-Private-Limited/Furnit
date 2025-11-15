@@ -86,7 +86,7 @@ struct SegmentFurniture: View {
                     .animation(.easeOut(duration: 0.05), value: camera.furnitureOpacity)
             }
             
-            // Green BBox Overlay - EXACT YOLO coordinates (like boats image)
+            // Green BBox Overlay
             if camera.currentBBox != .zero && camera.segmentedImage != nil {
                 Canvas { context, size in
                     let rect = Path(camera.currentBBox)
@@ -98,6 +98,31 @@ struct SegmentFurniture: View {
                 }
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
+            }
+            
+            // Model indicator - show which model is being used
+            if camera.segmentedImage != nil {
+                VStack {
+                    HStack {
+                        Spacer()
+                        
+                        // Model badge
+                        HStack(spacing: 4) {
+                            Image(systemName: camera.usingCustomModel ? "star.fill" : "cube.fill")
+                                .font(.caption2)
+                            Text(camera.usingCustomModel ? "Custom Table Model" : "General Model")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(camera.usingCustomModel ? Color.orange : Color.blue))
+                        .padding(.trailing, 100)
+                    }
+                    .padding(.top, 70)
+                    
+                    Spacer()
+                }
             }
             
             // Controls
@@ -327,7 +352,7 @@ struct Detection {
     }
 }
 
-// MARK: - Cross-Attention BBox Tracker (MemoryAttention Inspired)
+// MARK: - Cross-Attention BBox Tracker
 class CrossAttentionBBoxTracker {
     private var detectionHistory: [Detection] = []
     private let historySize = 5
@@ -337,23 +362,17 @@ class CrossAttentionBBoxTracker {
         print("📥 Input detection: \(newDetection.className) conf=\(String(format: "%.2f", newDetection.confidence))")
         print("📊 History size: \(detectionHistory.count)/\(historySize)")
         
-        // Add to history
         detectionHistory.append(newDetection)
         if detectionHistory.count > historySize {
             detectionHistory.removeFirst()
-            print("🗑️ Removed oldest frame from history")
         }
         
-        // Need at least 2 frames for cross-attention
         if detectionHistory.count < 2 {
-            print("⚠️ Insufficient history, using raw coordinates")
             let result = convertToScreenCoordinates(detection: newDetection, imageSize: imageSize)
             print("✅ Output BBox: \(result)")
             return result
         }
         
-        // Apply cross-attention
-        print("🧠 Applying cross-attention with \(detectionHistory.count - 1) history frames")
         let history = Array(detectionHistory.dropLast())
         let smoothedBBox = crossAttentionBBox(current: newDetection, history: history, imageSize: imageSize)
         
@@ -367,22 +386,15 @@ class CrossAttentionBBoxTracker {
         print("🔄 BBox tracker reset - history cleared")
     }
     
-    // MARK: - Coordinate Conversion with Rotation
-    
     private func convertToScreenCoordinates(detection: Detection, imageSize: CGSize) -> CGRect {
         let cameraWidth = Float(imageSize.width)
         let cameraHeight = Float(imageSize.height)
         let scale = cameraWidth / 640.0
         
-        print("🔢 Coordinate conversion:")
-        print("  Camera: \(Int(cameraWidth))×\(Int(cameraHeight)), scale: \(String(format: "%.2f", scale))")
-        
         let camX = (detection.x - detection.width/2) * scale
         let camY = (detection.y - detection.height/2) * scale
         let camW = detection.width * scale
         let camH = detection.height * scale
-        
-        print("  Camera space: x=\(String(format: "%.1f", camX)), y=\(String(format: "%.1f", camY)), w=\(String(format: "%.1f", camW)), h=\(String(format: "%.1f", camH))")
         
         let screenWidth = cameraHeight
         let screenHeight = cameraWidth
@@ -392,8 +404,6 @@ class CrossAttentionBBoxTracker {
         let rotatedW = camH
         let rotatedH = camW
         
-        print("  Screen space (90° rotated): x=\(String(format: "%.1f", rotatedX)), y=\(String(format: "%.1f", rotatedY)), w=\(String(format: "%.1f", rotatedW)), h=\(String(format: "%.1f", rotatedH))")
-        
         return CGRect(
             x: CGFloat(rotatedX),
             y: CGFloat(rotatedY),
@@ -402,8 +412,6 @@ class CrossAttentionBBoxTracker {
         )
     }
     
-    // MARK: - Cross-Attention Implementation
-    
     private func calculateSimilarity(current: Detection, history: Detection) -> Float {
         let iou = calculateIoU(current, history)
         let classSimilarity: Float = (current.className == history.className) ? 1.0 : 0.0
@@ -411,14 +419,12 @@ class CrossAttentionBBoxTracker {
         let timeDiff = current.timestamp.timeIntervalSince(history.timestamp)
         let temporalWeight = exp(-Float(timeDiff) / 0.5)
         
-        let similarity = (
+        return (
             0.5 * iou +
             0.2 * classSimilarity +
             0.1 * confSimilarity +
             0.2 * temporalWeight
         )
-        
-        return similarity
     }
     
     private func calculateIoU(_ a: Detection, _ b: Detection) -> Float {
@@ -434,12 +440,9 @@ class CrossAttentionBBoxTracker {
     }
     
     private func computeAttentionWeights(current: Detection, history: [Detection]) -> [Float] {
-        print("  💡 Computing attention weights:")
         var scores: [Float] = []
-        for (idx, historyFrame) in history.enumerated() {
-            let similarity = calculateSimilarity(current: current, history: historyFrame)
-            scores.append(similarity)
-            print("    Frame[\(idx)]: similarity=\(String(format: "%.3f", similarity))")
+        for historyFrame in history {
+            scores.append(calculateSimilarity(current: current, history: historyFrame))
         }
         
         let maxScore = scores.max() ?? 0
@@ -452,20 +455,12 @@ class CrossAttentionBBoxTracker {
             sumExp += expScore
         }
         
-        let weights = expScores.map { $0 / max(sumExp, 0.0001) }
-        
-        print("  🎯 Attention weights: \(weights.map { String(format: "%.2f", $0) }.joined(separator: ", "))")
-        
-        return weights
+        return expScores.map { $0 / max(sumExp, 0.0001) }
     }
     
     private func crossAttentionBBox(current: Detection, history: [Detection], imageSize: CGSize) -> CGRect {
-        print("  🔗 Cross-attention processing:")
-        
-        // Compute attention weights
         let weights = computeAttentionWeights(current: current, history: history)
         
-        // Weighted combination in YOLO normalized space
         var weightedX: Float = 0
         var weightedY: Float = 0
         var weightedW: Float = 0
@@ -479,17 +474,11 @@ class CrossAttentionBBoxTracker {
             weightedH += weight * historyFrame.height
         }
         
-        print("    Weighted history: x=\(String(format: "%.1f", weightedX)), y=\(String(format: "%.1f", weightedY)), w=\(String(format: "%.1f", weightedW)), h=\(String(format: "%.1f", weightedH))")
-        
-        // Blend with current (80% history, 20% current)
         let finalX = 0.8 * weightedX + 0.2 * current.x
         let finalY = 0.8 * weightedY + 0.2 * current.y
         let finalW = 0.8 * weightedW + 0.2 * current.width
         let finalH = 0.8 * weightedH + 0.2 * current.height
         
-        print("    After blending (80/20): x=\(String(format: "%.1f", finalX)), y=\(String(format: "%.1f", finalY)), w=\(String(format: "%.1f", finalW)), h=\(String(format: "%.1f", finalH))")
-        
-        // Create smoothed detection and convert to screen coordinates
         let smoothedDetection = Detection(
             x: finalX, y: finalY, width: finalW, height: finalH,
             confidence: current.confidence,
@@ -499,161 +488,18 @@ class CrossAttentionBBoxTracker {
             timestamp: current.timestamp
         )
         
-        let preliminaryBBox = convertToScreenCoordinates(detection: smoothedDetection, imageSize: imageSize)
-        print("    Preliminary screen BBox: \(preliminaryBBox)")
-        
-        // Apply feedforward refinement (MemoryAttention's final stage)
-        print("  🔧 Applying feedforward refinement:")
-        let refinedBBox = feedforwardRefinement(bbox: preliminaryBBox, detection: current)
-        
-        return refinedBBox
-    }
-    
-    // MARK: - Feedforward Refinement Network (from MemoryAttention)
-    
-    private func feedforwardRefinement(bbox: CGRect, detection: Detection) -> CGRect {
-        // Extract features
-        let features = extractFeatures(bbox: bbox, detection: detection)
-        print("    📊 Features: \(features.prefix(4).map { String(format: "%.3f", $0) }.joined(separator: ", "))...")
-        
-        // Layer 1: Expand dimensionality
-        let hidden = layer1(features)
-        print("    🧮 Hidden layer: \(hidden.prefix(4).map { String(format: "%.3f", $0) }.joined(separator: ", "))...")
-        
-        // Layer 2: Contract back
-        let refined = layer2(hidden)
-        print("    📐 Refined coords: \(refined.map { String(format: "%.3f", $0) }.joined(separator: ", "))")
-        
-        // Residual connection
-        let residualBBox = applyResidual(original: bbox, refined: refined)
-        
-        return residualBBox
-    }
-    
-    private func extractFeatures(bbox: CGRect, detection: Detection) -> [Float] {
-        // Normalize coordinates to [0, 1]
-        let normX = Float(bbox.origin.x) / 720.0
-        let normY = Float(bbox.origin.y) / 1280.0
-        let normW = Float(bbox.width) / 720.0
-        let normH = Float(bbox.height) / 1280.0
-        
-        // Confidence and temporal stability
-        let conf = detection.confidence
-        let stability = calculateStability()
-        
-        // Aspect ratio
-        let aspectRatio = Float(bbox.width / max(bbox.height, 1.0))
-        
-        // Class consistency
-        let classStability = calculateClassStability(detection.className)
-        
-        return [normX, normY, normW, normH, conf, stability, aspectRatio, classStability]
-    }
-    
-    private func layer1(_ features: [Float]) -> [Float] {
-        var hidden = [Float](repeating: 0, count: 8)
-        
-        // Weight matrix (simplified - focus on stability and confidence)
-        let weights: [[Float]] = [
-            [1.0, 0.1, 0.0, 0.0, 0.2, 0.1, 0.0, 0.1],
-            [0.0, 1.0, 0.0, 0.0, 0.2, 0.1, 0.0, 0.1],
-            [0.0, 0.0, 1.0, 0.0, 0.1, 0.2, 0.3, 0.0],
-            [0.0, 0.0, 0.0, 1.0, 0.1, 0.2, 0.3, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-        ]
-        
-        for i in 0..<8 {
-            for j in 0..<8 {
-                hidden[i] += weights[i][j] * features[j]
-            }
-            // ReLU activation
-            hidden[i] = max(0, hidden[i])
-        }
-        
-        return hidden
-    }
-    
-    private func layer2(_ hidden: [Float]) -> [Float] {
-        var output = [Float](repeating: 0, count: 4)
-        
-        // Contract 8D -> 4D
-        let weights: [[Float]] = [
-            [0.7, 0.1, 0.0, 0.0, 0.1, 0.1, 0.0, 0.0],
-            [0.0, 0.7, 0.0, 0.0, 0.1, 0.1, 0.0, 0.1],
-            [0.0, 0.0, 0.8, 0.0, 0.0, 0.1, 0.1, 0.0],
-            [0.0, 0.0, 0.0, 0.8, 0.0, 0.1, 0.1, 0.0]
-        ]
-        
-        for i in 0..<4 {
-            for j in 0..<8 {
-                output[i] += weights[i][j] * hidden[j]
-            }
-        }
-        
-        return output
-    }
-    
-    private func applyResidual(original: CGRect, refined: [Float]) -> CGRect {
-        // Denormalize refined coordinates
-        let refinedX = CGFloat(refined[0]) * 720.0
-        let refinedY = CGFloat(refined[1]) * 1280.0
-        let refinedW = CGFloat(refined[2]) * 720.0
-        let refinedH = CGFloat(refined[3]) * 1280.0
-        
-        // Residual connection: mostly keep original, slight adjustment
-        let finalX = 0.9 * original.origin.x + 0.1 * refinedX
-        let finalY = 0.9 * original.origin.y + 0.1 * refinedY
-        let finalW = 0.9 * original.width + 0.1 * refinedW
-        let finalH = 0.9 * original.height + 0.1 * refinedH
-        
-        let deltaX = finalX - original.origin.x
-        let deltaY = finalY - original.origin.y
-        let deltaW = finalW - original.width
-        let deltaH = finalH - original.height
-        
-        print("    ✨ Residual adjustment: Δx=\(String(format: "%.2f", deltaX)), Δy=\(String(format: "%.2f", deltaY)), Δw=\(String(format: "%.2f", deltaW)), Δh=\(String(format: "%.2f", deltaH))")
-        
-        return CGRect(x: finalX, y: finalY, width: finalW, height: finalH)
-    }
-    
-    // Helper: Calculate tracking stability score
-    private func calculateStability() -> Float {
-        guard detectionHistory.count >= 3 else { return 0.5 }
-        
-        let recent = Array(detectionHistory.suffix(3))
-        let avgX = recent.map { $0.x }.reduce(0, +) / Float(recent.count)
-        let variance = recent.map { pow($0.x - avgX, 2) }.reduce(0, +) / Float(recent.count)
-        
-        let stability = exp(-variance / 100.0)
-        print("    📈 Stability score: \(String(format: "%.3f", stability)) (variance: \(String(format: "%.2f", variance)))")
-        
-        return stability
-    }
-    
-    // Helper: Calculate class consistency
-    private func calculateClassStability(_ currentClass: String) -> Float {
-        guard detectionHistory.count >= 3 else { return 1.0 }
-        
-        let recent = Array(detectionHistory.suffix(3))
-        let sameClassCount = recent.filter { $0.className == currentClass }.count
-        let classStability = Float(sameClassCount) / Float(recent.count)
-        
-        print("    🏷️ Class stability: \(String(format: "%.2f", classStability)) (\(sameClassCount)/\(recent.count) same class)")
-        
-        return classStability
+        return convertToScreenCoordinates(detection: smoothedDetection, imageSize: imageSize)
     }
 }
 
-// MARK: - Main Model with ALL COCO Classes
+// MARK: - Main Model with DUAL YOLO Models
 class FurnitureSegmentationModel: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     @Published var furnitureOpacity: Double = 0.0
     @Published var currentFPS: Double = 0.0
     @Published var lastConfidence: Float = 0.0
     @Published var lastDetectedClass: String = ""
+    @Published var usingCustomModel = false // NEW: Track which model is active
     
     @Published var isInitializing = true
     @Published var initProgress: Double = 0.0
@@ -666,7 +512,10 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "furnitureSegQueue", qos: .userInitiated)
     
-    private var yoloModel: VNCoreMLModel?
+    // DUAL MODELS
+    private var generalYoloModel: VNCoreMLModel?  // yolo11x-seg for all furniture
+    private var customTableModel: VNCoreMLModel?   // best.pt for YOUR table
+    
     private let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
     
     private let cocoClasses = [
@@ -700,7 +549,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     
     override init() {
         super.init()
-        loadYOLOModel()
+        loadAllModels()
         setupCamera()
     }
     
@@ -711,25 +560,55 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             self.lastConfidence = 0.0
             self.lastDetectedClass = ""
             self.currentBBox = .zero
+            self.usingCustomModel = false
             self.bboxTracker.reset()
         }
     }
     
-    private func loadYOLOModel() {
-        print("🔍 Loading YOLO11-seg model...")
+    // MARK: - DUAL MODEL LOADING
+    private func loadAllModels() {
+        print("🔍 Loading DUAL YOLO models...")
         
+        // Load general model (yolo11x-seg)
         for ext in ["mlmodelc", "mlpackage"] {
             if let modelURL = Bundle.main.url(forResource: "yolo11x-seg", withExtension: ext) {
-                print("📦 Found model: yolo11x-seg.\(ext)")
+                print("📦 Found general model: yolo11x-seg.\(ext)")
                 do {
                     let model = try MLModel(contentsOf: modelURL)
-                    yoloModel = try VNCoreMLModel(for: model)
-                    print("✅ YOLO11-seg loaded!")
-                    return
+                    generalYoloModel = try VNCoreMLModel(for: model)
+                    print("✅ General YOLO11-seg loaded!")
                 } catch {
-                    print("❌ Failed: \(error)")
+                    print("❌ General model failed: \(error)")
                 }
+                break
             }
+        }
+        
+        // Load custom table model (best.pt converted to CoreML)
+        for ext in ["mlmodelc", "mlpackage"] {
+            if let modelURL = Bundle.main.url(forResource: "best", withExtension: ext) {
+                print("📦 Found custom table model: best.\(ext)")
+                do {
+                    let model = try MLModel(contentsOf: modelURL)
+                    customTableModel = try VNCoreMLModel(for: model)
+                    print("✅ Custom table model loaded!")
+                } catch {
+                    print("❌ Custom model failed: \(error)")
+                }
+                break
+            }
+        }
+        
+        if generalYoloModel != nil && customTableModel != nil {
+            print("🎉 DUAL MODEL SYSTEM READY!")
+            print("   - General: All 80 COCO classes")
+            print("   - Custom: YOUR table (optimized)")
+        } else if generalYoloModel != nil {
+            print("⚠️ Only general model loaded")
+        } else if customTableModel != nil {
+            print("⚠️ Only custom table model loaded")
+        } else {
+            print("❌ NO MODELS LOADED!")
         }
     }
     
@@ -804,38 +683,92 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         }
     }
     
-    private func processWithYOLO(pixelBuffer: CVPixelBuffer) {
-        guard let model = yoloModel else { return }
-        
+    // MARK: - DUAL MODEL INFERENCE STRATEGY
+    private func processWithDualModels(pixelBuffer: CVPixelBuffer) {
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
         
         lastProcessTime = now
         updateFPS()
         
-        let request = VNCoreMLRequest(model: model) { [weak self] request, error in
-            if let error = error {
-                print("❌ YOLO error: \(error)")
-                return
+        // Strategy: Try custom model first, fallback to general
+        // Custom model is faster and more accurate for YOUR table
+        
+        if let customModel = customTableModel {
+            // First: Try custom table model
+            let customRequest = VNCoreMLRequest(model: customModel) { [weak self] request, error in
+                if let error = error {
+                    print("❌ Custom model error: \(error)")
+                    return
+                }
+                
+                // Check if we got good table detection
+                if let detections = self?.processYOLOResults(request.results, originalImage: pixelBuffer, isCustomModel: true),
+                   !detections.isEmpty {
+                    // Custom model found table!
+                    print("⭐ Using CUSTOM table model")
+                    return
+                }
+                
+                // Custom model didn't find table, try general model
+                if let generalModel = self?.generalYoloModel {
+                    print("🔄 Switching to GENERAL model")
+                    let generalRequest = VNCoreMLRequest(model: generalModel) { request, error in
+                        if let error = error {
+                            print("❌ General model error: \(error)")
+                            return
+                        }
+                        
+                        self?.processYOLOResults(request.results, originalImage: pixelBuffer, isCustomModel: false)
+                    }
+                    
+                    generalRequest.imageCropAndScaleOption = .scaleFill
+                    
+                    let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+                    do {
+                        try handler.perform([generalRequest])
+                    } catch {
+                        print("❌ General inference failed: \(error)")
+                    }
+                }
             }
             
-            self?.processYOLOResults(request.results, originalImage: pixelBuffer)
-        }
-        
-        request.imageCropAndScaleOption = .scaleFill
-        
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
-        
-        do {
-            try handler.perform([request])
-        } catch {
-            print("❌ Inference failed: \(error)")
+            customRequest.imageCropAndScaleOption = .scaleFill
+            
+            let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+            do {
+                try handler.perform([customRequest])
+            } catch {
+                print("❌ Custom inference failed: \(error)")
+            }
+            
+        } else if let generalModel = generalYoloModel {
+            // Only general model available
+            let request = VNCoreMLRequest(model: generalModel) { [weak self] request, error in
+                if let error = error {
+                    print("❌ YOLO error: \(error)")
+                    return
+                }
+                
+                self?.processYOLOResults(request.results, originalImage: pixelBuffer, isCustomModel: false)
+            }
+            
+            request.imageCropAndScaleOption = .scaleFill
+            
+            let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+            
+            do {
+                try handler.perform([request])
+            } catch {
+                print("❌ Inference failed: \(error)")
+            }
         }
     }
     
-    private func processYOLOResults(_ results: [Any]?, originalImage: CVPixelBuffer) {
+    @discardableResult
+    private func processYOLOResults(_ results: [Any]?, originalImage: CVPixelBuffer, isCustomModel: Bool) -> [Detection] {
         guard let observations = results as? [VNCoreMLFeatureValueObservation] else {
-            return
+            return []
         }
         
         var detectionOutput: MLMultiArray?
@@ -855,7 +788,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         
         guard let detections = detectionOutput,
               let prototypes = prototypeOutput else {
-            return
+            return []
         }
         
         let validDetections = extractDetections(from: detections)
@@ -869,18 +802,21 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 self.lastDetectedClass = ""
                 self.currentBBox = .zero
             }
-            return
+            return []
         }
         
-        print("✅ Detected: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%)")
+        print("✅ Detected: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%) - \(isCustomModel ? "CUSTOM" : "GENERAL") model")
         
         DispatchQueue.main.async {
             self.lastDetectedClass = bestDetection.className
+            self.usingCustomModel = isCustomModel
         }
         
         processAndApplyMask(detection: bestDetection,
                            prototypes: prototypes,
                            originalImage: originalImage)
+        
+        return nmsDetections
     }
     
     private func extractDetections(from detections: MLMultiArray) -> [Detection] {
@@ -967,7 +903,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         let positivePixels = mask.filter { $0 > 0.5 }.count
         print("✅ Mask pixels: \(positivePixels)")
         
-        // Cross-Attention BBox Tracking with feedforward refinement
         let width = CVPixelBufferGetWidth(originalImage)
         let height = CVPixelBufferGetHeight(originalImage)
         let imageSize = CGSize(width: width, height: height)
@@ -1042,7 +977,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             }
         }
         
-        print("✅ Holes filled via flood fill")
         return filledMask
     }
     
@@ -1098,12 +1032,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         for i in 0..<(width * height) {
             if componentMask[i] {
                 cleanedMask[i] = mask[i]
-            } else {
-                cleanedMask[i] = 0.0
             }
         }
         
-        print("✅ Small components removed (min size: \(minSize) pixels)")
         return cleanedMask
     }
     
@@ -1144,7 +1075,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             }
         }
         
-        print("✅ Edges smoothed (Gaussian-like blur)")
         return smoothed
     }
     
@@ -1344,6 +1274,6 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
 extension FurnitureSegmentationModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        processWithYOLO(pixelBuffer: pixelBuffer)
+        processWithDualModels(pixelBuffer: pixelBuffer)
     }
 }
