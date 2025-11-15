@@ -311,7 +311,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     
     private let furnitureClasses = [
         56: "chair", 57: "couch", 59: "bed",
-        60: "dining table", 61: "toilet"
+        60: "dining table", 61: "toilet", 0: "table"
     ]
     
     private var lastProcessTime = Date()
@@ -343,6 +343,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         
         for ext in ["mlmodelc", "mlpackage"] {
             if let modelURL = Bundle.main.url(forResource: "yolo11x-seg", withExtension: ext) {
+//            if let modelURL = Bundle.main.url(forResource: "best", withExtension: ext) {
                 print("📦 Found model: yolo11x-seg.\(ext)")
                 do {
                     let model = try MLModel(contentsOf: modelURL)

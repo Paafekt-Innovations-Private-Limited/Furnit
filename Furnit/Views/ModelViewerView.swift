@@ -22,6 +22,7 @@ struct ModelViewerView: View {
     @State private var showingSegmentExamine = false
     @State private var showingSegmentForeground = false
     @State private var showingSegmentFurniture = false
+    @State private var showingSmartyPants = false  // NEW: YOLOE
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
     
@@ -36,7 +37,7 @@ struct ModelViewerView: View {
     }
 
     private var anyCameraOverlayActive: Bool {
-        showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture
+        showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingSmartyPants
     }
 
     var body: some View {
@@ -50,7 +51,7 @@ struct ModelViewerView: View {
                     shouldCaptureSnapshot: $shouldCaptureARViewSnapshot,
                     capturedSnapshot: $roomSnapshot
                 )
-                .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture))
+                .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingSmartyPants))
                 .ignoresSafeArea(.all)
 
                 if showingCameraPreview {
@@ -86,6 +87,16 @@ struct ModelViewerView: View {
                     .zIndex(9000)
                 }
 
+                // NEW: SmartyPants overlay
+                if showingSmartyPants {
+                    SmartyPantsView(
+                        capturedImage: $capturedImage,
+                        isShowingCamera: $showingSmartyPants,
+                        roomImage: roomSnapshot
+                    )
+                    .zIndex(9000)
+                }
+
                 if isLandscape(geometry: geometry) {
                     landscapeControls
                 } else {
@@ -100,6 +111,7 @@ struct ModelViewerView: View {
         .onChange(of: showingSegmentExamine) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentForeground) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentFurniture) { _, _ in manageARSessionForOverlays() }
+        .onChange(of: showingSmartyPants) { _, _ in manageARSessionForOverlays() }
         .onAppear { isARActive = true }
     }
 
@@ -125,6 +137,7 @@ struct ModelViewerView: View {
                     segmentExamineButton
                     segmentForegroundButton
                     segmentFurnitureButton
+                    smartyPantsButton  // NEW
                 }
                 .padding(.leading, 16)
                 .padding(.bottom, 20)
@@ -162,6 +175,7 @@ struct ModelViewerView: View {
                 segmentExamineButton
                 segmentForegroundButton
                 segmentFurnitureButton
+                smartyPantsButton  // NEW
                 Spacer()
                 VirtualJoystick(joystickOffset: $joystickOffset)
                     .onChange(of: joystickOffset) { _, newOffset in
@@ -189,6 +203,7 @@ struct ModelViewerView: View {
                 showingSegmentExamine = false
                 showingSegmentForeground = false
                 showingSegmentFurniture = false
+                showingSmartyPants = false
                 showingCameraPreview = true
             }
         }) {
@@ -204,6 +219,7 @@ struct ModelViewerView: View {
             showingCameraPreview = false
             showingSegmentForeground = false
             showingSegmentFurniture = false
+            showingSmartyPants = false
             showingSegmentExamine.toggle()
         }) {
             Image(systemName: "crop.rotate")
@@ -218,6 +234,7 @@ struct ModelViewerView: View {
             showingCameraPreview = false
             showingSegmentExamine = false
             showingSegmentFurniture = false
+            showingSmartyPants = false
             showingSegmentForeground.toggle()
         }) {
             Image(systemName: "viewfinder")
@@ -243,6 +260,7 @@ struct ModelViewerView: View {
                     showingCameraPreview = false
                     showingSegmentExamine = false
                     showingSegmentForeground = false
+                    showingSmartyPants = false
                     
                     // Wait briefly for snapshot to complete, then open scanner
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -271,6 +289,34 @@ struct ModelViewerView: View {
                 }
                 .frame(width: 60, height: 60)
             }
+        }
+    }
+
+    // NEW: SmartyPants Button (YOLOE - 168 furniture classes!)
+    private var smartyPantsButton: some View {
+        Button(action: {
+            if showingSmartyPants {
+                showingSmartyPants = false
+            } else {
+                // Trigger ARView snapshot
+                shouldCaptureARViewSnapshot = true
+                
+                // Hide other overlays
+                showingCameraPreview = false
+                showingSegmentExamine = false
+                showingSegmentForeground = false
+                showingSegmentFurniture = false
+                
+                // Wait briefly for snapshot to complete
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.showingSmartyPants = true
+                }
+            }
+        }) {
+            Image(systemName: "brain.head.profile")
+                .font(.system(size: 28)).foregroundColor(.white)
+                .frame(width: 60, height: 60)
+                .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
         }
     }
 
