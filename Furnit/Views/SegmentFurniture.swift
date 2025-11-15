@@ -15,6 +15,7 @@ struct SegmentFurniture: View {
     @StateObject private var camera = FurnitureSegmentationModel()
     
     @State private var scaleMultiplier: CGFloat = 0.5
+    @State private var lastScale: CGFloat = 1.0
     @State private var dragOffset: CGSize = .zero
     @State private var accumulatedOffset: CGSize = .zero
     @State private var showingSaveSuccess = false
@@ -34,13 +35,27 @@ struct SegmentFurniture: View {
                     .position(x: UIScreen.main.bounds.width / 2,
                              y: UIScreen.main.bounds.height / 2)
                     .gesture(
-                        DragGesture()
-                            .onChanged { value in dragOffset = value.translation }
-                            .onEnded { value in
-                                accumulatedOffset.width += value.translation.width
-                                accumulatedOffset.height += value.translation.height
-                                dragOffset = .zero
-                            }
+                        SimultaneousGesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    dragOffset = value.translation
+                                }
+                                .onEnded { value in
+                                    accumulatedOffset.width += value.translation.width
+                                    accumulatedOffset.height += value.translation.height
+                                    dragOffset = .zero
+                                },
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    let delta = value / lastScale
+                                    lastScale = value
+                                    let newScale = scaleMultiplier * delta
+                                    scaleMultiplier = min(max(newScale, 0.3), 2.0)
+                                }
+                                .onEnded { value in
+                                    lastScale = 1.0
+                                }
+                        )
                     )
                     .ignoresSafeArea()
                     .opacity(camera.furnitureOpacity)
@@ -100,18 +115,6 @@ struct SegmentFurniture: View {
             // Controls
             VStack {
                 HStack {
-                    if camera.segmentedImage != nil {
-                        HStack(spacing: 6) {
-                            Image(systemName: "minus.magnifyingglass")
-                            Slider(value: $scaleMultiplier, in: 0.3...1.0)
-                                .frame(width: 150)
-                            Image(systemName: "plus.magnifyingglass")
-                        }
-                        .foregroundColor(.white)
-                        .padding(8)
-                        .background(Capsule().fill(Color.black.opacity(0.7)))
-                    }
-                    
                     Spacer()
                     
                     Button(action: { isShowingCamera = false }) {
