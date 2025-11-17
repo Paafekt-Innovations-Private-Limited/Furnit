@@ -3,7 +3,6 @@ import AVFoundation
 import CoreML
 import CoreImage
 import Photos
-import Accelerate
 
 struct SmartyPantsView: View {
     @Binding var capturedImage: UIImage?
@@ -35,9 +34,7 @@ struct SmartyPantsView: View {
                     .gesture(
                         SimultaneousGesture(
                             DragGesture()
-                                .onChanged { value in
-                                    dragOffset = value.translation
-                                }
+                                .onChanged { value in dragOffset = value.translation }
                                 .onEnded { value in
                                     accumulatedOffset.width += value.translation.width
                                     accumulatedOffset.height += value.translation.height
@@ -47,12 +44,9 @@ struct SmartyPantsView: View {
                                 .onChanged { value in
                                     let delta = value / lastScale
                                     lastScale = value
-                                    let newScale = scaleMultiplier * delta
-                                    scaleMultiplier = min(max(newScale, 0.3), 2.0)
+                                    scaleMultiplier = min(max(scaleMultiplier * delta, 0.3), 2.0)
                                 }
-                                .onEnded { _ in
-                                    lastScale = 1.0
-                                }
+                                .onEnded { _ in lastScale = 1.0 }
                         )
                     )
                     .ignoresSafeArea()
@@ -76,11 +70,11 @@ struct SmartyPantsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("FPS: \(camera.currentFPS, specifier: "%.1f")")
                         if camera.lastConfidence > 0 {
-                            Text("Conf: \(Int(camera.lastConfidence * 100))%")
+                            Text("\(Int(camera.lastConfidence * 100))%")
                         }
-                        Text("PURE YOLO11")
+                        Text("PRODUCTION")
                             .font(.caption2)
-                            .foregroundColor(.green)
+                            .foregroundColor(.white)
                     }
                     .font(.caption)
                     .foregroundColor(.white)
@@ -112,8 +106,7 @@ struct SmartyPantsView: View {
                         Button(action: { captureFurnitureWithRoom() }) {
                             VStack {
                                 Image(systemName: "camera.circle.fill")
-                                Text("Capture")
-                                    .font(.caption2)
+                                Text("Capture").font(.caption2)
                             }
                             .foregroundColor(.white)
                             .frame(width: 70, height: 70)
@@ -129,8 +122,7 @@ struct SmartyPantsView: View {
                         }) {
                             VStack {
                                 Image(systemName: "arrow.counterclockwise")
-                                Text("Reset")
-                                    .font(.caption2)
+                                Text("Reset").font(.caption2)
                             }
                             .foregroundColor(.white)
                             .frame(width: 60, height: 60)
@@ -147,7 +139,7 @@ struct SmartyPantsView: View {
             if camera.segmentedImage != nil {
                 VStack {
                     Spacer()
-                    Text("Pinch to scale • Drag to move")
+                    Text("Pinch • Drag")
                         .font(.caption)
                         .foregroundColor(.white)
                         .padding(8)
@@ -175,25 +167,16 @@ struct SmartyPantsView: View {
     }
     
     private func captureFurnitureWithRoom() {
-        guard let furniture = camera.segmentedImage, let room = roomImage else {
-            saveMessage = "Error!"
-            showingSaveSuccess = true
-            return
-        }
-        
+        guard let furniture = camera.segmentedImage, let room = roomImage else { return }
         UIGraphicsBeginImageContextWithOptions(room.size, false, room.scale)
         defer { UIGraphicsEndImageContext() }
-        
         room.draw(at: .zero)
         furniture.draw(in: CGRect(
             x: (room.size.width - furniture.size.width) / 2,
             y: (room.size.height - furniture.size.height) / 2,
-            width: furniture.size.width,
-            height: furniture.size.height
+            width: furniture.size.width, height: furniture.size.height
         ))
-        
         guard let composite = UIGraphicsGetImageFromCurrentImageContext() else { return }
-        
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
             DispatchQueue.main.async {
                 if status == .authorized || status == .limited {
@@ -223,7 +206,6 @@ struct DetectionSmarty {
     let maskCoeffs: [Float]
 }
 
-// MARK: - PURE YOLO11 - EXACTLY LIKE ULTRALYTICS
 class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     @Published var segmentedImage: UIImage?
     @Published var furnitureOpacity: Double = 0.0
@@ -236,7 +218,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "yoloeVideo", qos: .userInitiated)
     private let detectionQueue = DispatchQueue(label: "yoloeDetection", qos: .userInitiated)
-    
     private var mlModel: MLModel?
     private let context = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
     
@@ -315,10 +296,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             videoOutput.alwaysDiscardsLateVideoFrames = true
             if session.canAddOutput(videoOutput) {
                 session.addOutput(videoOutput)
-                if let connection = videoOutput.connection(with: .video) {
-                    connection.videoRotationAngle = 90
-                    connection.isVideoMirrored = false
-                }
+                videoOutput.connection(with: .video)?.videoRotationAngle = 90
             }
         } catch { }
     }
@@ -332,9 +310,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         }
     }
     
-    func stopSession() {
-        if session.isRunning { session.stopRunning() }
-    }
+    func stopSession() { if session.isRunning { session.stopRunning() } }
     
     private func updateFPS() {
         frameCount += 1
@@ -349,38 +325,28 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     private func processWithYOLO(pixelBuffer: CVPixelBuffer) {
         guard let model = mlModel else { return }
         let now = Date()
-        guard now.timeIntervalSince(lastProcessTime) >= processInterval else { return }
-        guard !isProcessing else { return }
-        
+        guard now.timeIntervalSince(lastProcessTime) >= processInterval, !isProcessing else { return }
         lastProcessTime = now
         updateFPS()
         DispatchQueue.main.async { self.isProcessing = true }
         
         detectionQueue.async { [weak self] in
-            guard let self = self else { return }
-            guard let resized = self.resizePixelBuffer(pixelBuffer, width: 640, height: 640),
-                  let inputArray = self.pixelBufferToMLMultiArray(resized) else {
-                DispatchQueue.main.async { self.isProcessing = false }
-                return
-            }
-            
-            let inputDict: [String: Any] = ["image": inputArray]
-            guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: inputDict),
+            guard let self = self,
+                  let resized = self.resizePixelBuffer(pixelBuffer, width: 640, height: 640),
+                  let inputArray = self.pixelBufferToMLMultiArray(resized),
+                  let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]),
                   let output = try? model.prediction(from: inputProvider),
                   let detectionsArray = output.featureValue(for: "var_2421")?.multiArrayValue,
                   let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
-                DispatchQueue.main.async { self.isProcessing = false }
+                DispatchQueue.main.async { self?.isProcessing = false }
                 return
             }
-            
             self.processYOLOResults(detectionsArray, prototypes: prototypesArray, originalImage: pixelBuffer)
         }
     }
     
     private func processYOLOResults(_ detections: MLMultiArray, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
-        let validDetections = extractDetections(from: detections)
-        let nmsDetections = applyNMS(detections: validDetections, iouThreshold: 0.45)
-        
+        let nmsDetections = applyNMS(detections: extractDetections(from: detections), iouThreshold: 0.45)
         guard let best = nmsDetections.first else {
             DispatchQueue.main.async {
                 self.isProcessing = false
@@ -404,7 +370,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             self.lastConfidence = best.confidence
         }
         
-        // PURE YOLO11: proto @ coeff → sigmoid → crop_mask
+        // Generate and process mask
         var mask = [Float](repeating: 0, count: 160 * 160)
         for y in 0..<160 {
             for x in 0..<160 {
@@ -416,16 +382,92 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             }
         }
         
-        // Crop to bbox in 160x160 space
+        // Post-process: morphology + scanline
         let scale: Float = 160.0 / 640.0
-        let bx1 = max(0, min(159, Int((best.x - best.width/2) * scale)))
-        let by1 = max(0, min(159, Int((best.y - best.height/2) * scale)))
-        let bx2 = max(0, min(159, Int((best.x + best.width/2) * scale)))
-        let by2 = max(0, min(159, Int((best.y + best.height/2) * scale)))
+        let bx1 = max(1, min(158, Int((best.x - best.width/2) * scale)))
+        let by1 = max(1, min(158, Int((best.y - best.height/2) * scale)))
+        let bx2 = max(1, min(158, Int((best.x + best.width/2) * scale)))
+        let by2 = max(1, min(158, Int((best.y + best.height/2) * scale)))
         
-        print("📦 BBox in mask: (\(bx1),\(by1)) to (\(bx2),\(by2))")
+        var binary = [[UInt8]](repeating: [UInt8](repeating: 0, count: 160), count: 160)
+        for y in 0..<160 {
+            for x in 0..<160 {
+                binary[y][x] = mask[y * 160 + x] > 0.5 ? 1 : 0
+            }
+        }
         
-        // Zero outside bbox
+        // Morphological closing
+        for _ in 0..<5 {
+            var dilated = binary
+            for y in (by1+1)..<by2 {
+                for x in (bx1+1)..<bx2 {
+                    if binary[y][x] == 0 {
+                        if binary[y-1][x] == 1 || binary[y+1][x] == 1 ||
+                           binary[y][x-1] == 1 || binary[y][x+1] == 1 ||
+                           binary[y-1][x-1] == 1 || binary[y-1][x+1] == 1 ||
+                           binary[y+1][x-1] == 1 || binary[y+1][x+1] == 1 {
+                            dilated[y][x] = 1
+                        }
+                    }
+                }
+            }
+            binary = dilated
+        }
+        
+        for _ in 0..<5 {
+            var eroded = binary
+            for y in (by1+1)..<by2 {
+                for x in (bx1+1)..<bx2 {
+                    if binary[y][x] == 1 {
+                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
+                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
+                            eroded[y][x] = 0
+                        }
+                    }
+                }
+            }
+            binary = eroded
+        }
+        
+        // Scanline fill
+        for y in (by1+1)..<by2 {
+            var firstX = -1, lastX = -1
+            for x in (bx1+1)..<bx2 {
+                if binary[y][x] == 1 {
+                    if firstX == -1 { firstX = x }
+                    lastX = x
+                }
+            }
+            if firstX != -1 && lastX != -1 && lastX > firstX + 1 {
+                for x in (firstX+1)..<lastX {
+                    binary[y][x] = 1
+                }
+            }
+        }
+        
+        for x in (bx1+1)..<bx2 {
+            var firstY = -1, lastY = -1
+            for y in (by1+1)..<by2 {
+                if binary[y][x] == 1 {
+                    if firstY == -1 { firstY = y }
+                    lastY = y
+                }
+            }
+            if firstY != -1 && lastY != -1 && lastY > firstY + 1 {
+                for y in (firstY+1)..<lastY {
+                    binary[y][x] = 1
+                }
+            }
+        }
+        
+        // Convert to float
+        for y in 0..<160 {
+            for x in 0..<160 {
+                mask[y * 160 + x] = Float(binary[y][x])
+            }
+        }
+        
+        // Crop to bbox
         for y in 0..<160 {
             for x in 0..<160 {
                 if y < by1 || y > by2 || x < bx1 || x > bx2 {
@@ -460,20 +502,16 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let scaleX = CGFloat(width) / CGFloat(CVPixelBufferGetWidth(pixelBuffer))
         let scaleY = CGFloat(height) / CGFloat(CVPixelBufferGetHeight(pixelBuffer))
-        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
         var out: CVPixelBuffer?
         CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &out)
         guard let dst = out else { return nil }
-        CIContext().render(scaled, to: dst)
+        CIContext().render(ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY)), to: dst)
         return dst
     }
     
     private func extractDetections(from detections: MLMultiArray) -> [DetectionSmarty] {
         var all: [DetectionSmarty] = []
-        let confThreshold: Float = 0.3
-        let anchors = detections.shape[2].intValue
-        
-        for anchor in 0..<anchors {
+        for anchor in 0..<detections.shape[2].intValue {
             let x = detections[[0, 0, anchor] as [NSNumber]].floatValue
             let y = detections[[0, 1, anchor] as [NSNumber]].floatValue
             let w = detections[[0, 2, anchor] as [NSNumber]].floatValue
@@ -481,16 +519,12 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             
             for (classIdx, className) in furnitureClasses {
                 let conf = detections[[0, 4 + classIdx, anchor] as [NSNumber]].floatValue
-                if conf > confThreshold {
+                if conf > 0.3 {
                     var coeffs = [Float](repeating: 0, count: 32)
                     for i in 0..<32 {
                         coeffs[i] = detections[[0, 4 + 4585 + i, anchor] as [NSNumber]].floatValue
                     }
-                    all.append(DetectionSmarty(
-                        x: x, y: y, width: w, height: h,
-                        confidence: conf, classIdx: classIdx,
-                        className: className, maskCoeffs: coeffs
-                    ))
+                    all.append(DetectionSmarty(x: x, y: y, width: w, height: h, confidence: conf, classIdx: classIdx, className: className, maskCoeffs: coeffs))
                 }
             }
         }
@@ -508,23 +542,19 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             kept.append(det)
             for (j, other) in sorted.enumerated() where j > i {
                 if suppressed.contains(j) { continue }
-                let iou = calculateIoU(det, other)
-                if iou > iouThreshold { suppressed.insert(j) }
+                let x1 = max(det.x - det.width/2, other.x - other.width/2)
+                let y1 = max(det.y - det.height/2, other.y - other.height/2)
+                let x2 = min(det.x + det.width/2, other.x + other.width/2)
+                let y2 = min(det.y + det.height/2, other.y + other.height/2)
+                let intersection = max(0, x2 - x1) * max(0, y2 - y1)
+                let union = det.width * det.height + other.width * other.height - intersection
+                if union > 0 && intersection / union > iouThreshold { suppressed.insert(j) }
             }
         }
         return kept
     }
     
-    private func calculateIoU(_ a: DetectionSmarty, _ b: DetectionSmarty) -> Float {
-        let x1 = max(a.x - a.width/2, b.x - b.width/2)
-        let y1 = max(a.y - a.height/2, b.y - b.height/2)
-        let x2 = min(a.x + a.width/2, b.x + b.width/2)
-        let y2 = min(a.y + a.height/2, b.y + b.height/2)
-        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
-        let union = a.width * a.height + b.width * b.height - intersection
-        return union > 0 ? intersection / union : 0
-    }
-    
+    // PRODUCTION: Real furniture colors, fully opaque, transparent background
     private func applyMaskToImage(mask: [Float], to pixelBuffer: CVPixelBuffer) {
         autoreleasepool {
             let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
@@ -535,63 +565,43 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                   let ctx = CGContext(data: nil, width: width, height: height,
                                      bitsPerComponent: 8, bytesPerRow: width * 4,
                                      space: CGColorSpaceCreateDeviceRGB(),
-                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-            else {
+                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+                  let data = ctx.data else {
                 DispatchQueue.main.async { self.isProcessing = false }
                 return
             }
             
             ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-            guard let data = ctx.data else {
-                DispatchQueue.main.async { self.isProcessing = false }
-                return
-            }
-            
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
-            let threshold: Float = 0.5
             
             for py in 0..<height {
                 for px in 0..<width {
                     let idx = (py * width + px) * 4
                     let mx = Float(px) * 160.0 / Float(width)
                     let my = Float(py) * 160.0 / Float(height)
-                    
                     let x0 = Int(mx), y0 = Int(my)
+                    
                     guard x0 >= 0 && x0 < 160 && y0 >= 0 && y0 < 160 else {
                         pixels[idx + 3] = 0
                         continue
                     }
                     
-                    let x1 = min(x0 + 1, 159), y1 = min(y0 + 1, 159)
-                    let dx = mx - Float(x0), dy = my - Float(y0)
+                    let maskValue = mask[y0 * 160 + x0]
                     
-                    let v00 = mask[y0 * 160 + x0]
-                    let v10 = mask[y0 * 160 + x1]
-                    let v01 = mask[y1 * 160 + x0]
-                    let v11 = mask[y1 * 160 + x1]
-                    
-                    let maskValue = (v00 * (1 - dx) + v10 * dx) * (1 - dy) +
-                                    (v01 * (1 - dx) + v11 * dx) * dy
-                    
-                    if maskValue > threshold {
-                        pixels[idx + 3] = UInt8(min(maskValue * 255.0, 255.0))
-                        // GREEN TINT
-                        pixels[idx] = UInt8(Float(pixels[idx]) * 0.5)
-                        pixels[idx + 1] = UInt8(min(255, Float(pixels[idx + 1]) * 1.4))
-                        pixels[idx + 2] = UInt8(Float(pixels[idx + 2]) * 0.5)
+                    if maskValue > 0.5 {
+                        // Keep original colors, just set alpha to fully opaque
+                        pixels[idx + 3] = 255
                     } else {
+                        // Transparent background
                         pixels[idx + 3] = 0
                     }
                 }
             }
             
             if let outImage = ctx.makeImage() {
-                let ui = UIImage(cgImage: outImage, scale: 1.0, orientation: .up)
                 DispatchQueue.main.async {
-                    self.segmentedImage = ui
-                    withAnimation(.easeIn(duration: 0.3)) {
-                        self.furnitureOpacity = 1.0
-                    }
+                    self.segmentedImage = UIImage(cgImage: outImage, scale: 1.0, orientation: .up)
+                    withAnimation(.easeIn(duration: 0.3)) { self.furnitureOpacity = 1.0 }
                     self.isProcessing = false
                 }
             } else {

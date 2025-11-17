@@ -21,47 +21,16 @@ struct ContentView: View {
     }
 }
 
-// MARK: - HomeViewWithBottomBar
+// MARK: - HomeViewWithBottomBar (Bottom bar removed)
 struct HomeViewWithBottomBar: View {
     @ObservedObject var authManager: AuthenticationManager
-    @State private var selectedTab = 0
     
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // Home Tab
-            HomeTab()
-                .tabItem {
-                    Label("Home", systemImage: "house.fill")
-                }
-                .tag(0)
-            
-            // Explore Tab
-            ExploreTab()
-                .tabItem {
-                    Label("Explore", systemImage: "magnifyingglass")
-                }
-                .tag(1)
-            
-            // Favorites Tab
-            FavoritesTab()
-                .tabItem {
-                    Label("Favorites", systemImage: "heart.fill")
-                }
-                .tag(2)
-            
-            // Profile Tab
-            ProfileTab(authManager: authManager)
-                .tabItem {
-                    Label("Profile", systemImage: "person.circle.fill")
-                }
-                .tag(3)
-        }
-        .onAppear {
-            print("🏠 [HomeViewWithBottomBar] Rendering with selected tab: \(selectedTab)")
-        }
-        .onChange(of: selectedTab) { oldValue, newValue in
-            print("🏠 [HomeViewWithBottomBar] Tab changed from \(oldValue) to \(newValue)")
-        }
+        // Just show the Home tab directly without TabView
+        HomeTab()
+            .onAppear {
+                print("🏠 [HomeViewWithBottomBar] Rendering without bottom bar")
+            }
     }
 }
 
@@ -96,7 +65,7 @@ struct HomeTab: View {
                             .font(.headline)
                             .foregroundColor(.white)
                             .padding()
-                            .background(Color.blue)
+                            .background(Color.green)
                             .cornerRadius(12)
                         }
                     }
@@ -391,7 +360,7 @@ struct ProfileTab: View {
                     HStack(spacing: 12) {
                         // Profile Picture Placeholder
                         Circle()
-                            .fill(Color.blue.gradient)
+                            .fill(Color.purple.gradient)
                             .frame(width: 60, height: 60)
                             .overlay(
                                 Image(systemName: "person.fill")
@@ -497,10 +466,10 @@ struct HomeViewModelRow: View {
     var body: some View {
         HStack {
             Image(systemName: "cube.fill")
-                .foregroundColor(.blue)
+                .foregroundColor(.green)
                 .font(.title2)
                 .frame(width: 40, height: 40)
-                .background(Color.blue.opacity(0.1))
+                .background(Color.green.opacity(0.1))
                 .cornerRadius(8)
             
             VStack(alignment: .leading, spacing: 4) {
@@ -530,10 +499,10 @@ struct ExploreModelCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: "cube.fill")
                 .font(.system(size: 50))
-                .foregroundColor(.blue)
+                .foregroundColor(.green)
                 .frame(maxWidth: .infinity)
                 .frame(height: 120)
-                .background(Color.blue.opacity(0.1))
+                .background(Color.green.opacity(0.1))
                 .cornerRadius(12)
             
             Text(model.displayName)
@@ -566,7 +535,7 @@ struct CategoryButton: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(isSelected ? Color.blue : Color(.systemGray6))
+            .background(isSelected ? Color.green : Color(.systemGray6))
             .foregroundColor(isSelected ? .white : .primary)
             .cornerRadius(20)
         }
