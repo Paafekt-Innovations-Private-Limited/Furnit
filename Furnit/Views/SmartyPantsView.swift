@@ -1285,21 +1285,21 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             }
             binary = dilated
         }
-//        
-//        for _ in 0..<5 {
-//            var eroded = binary
-//            for y in (by1+1)..<by2 {
-//                for x in (bx1+1)..<bx2 {
-//                    if binary[y][x] == 1 {
-//                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
-//                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
-//                            eroded[y][x] = 0
-//                        }
-//                    }
-//                }
-//            }
-//            binary = eroded
-//        }
+        
+        for _ in 0..<5 {
+            var eroded = binary
+            for y in (by1+1)..<by2 {
+                for x in (bx1+1)..<bx2 {
+                    if binary[y][x] == 1 {
+                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
+                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
+                            eroded[y][x] = 0
+                        }
+                    }
+                }
+            }
+            binary = eroded
+        }
         
 //        // Scanline fill
 //        for y in (by1+1)..<by2 {
