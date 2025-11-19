@@ -345,7 +345,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         }
     }
     
-    private func processYOLOResults(_ detections: MLMultiArray, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
+    private func processYOLOResultss(_ detections: MLMultiArray, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
         let nmsDetections = applyNMS(detections: extractDetections(from: detections), iouThreshold: 0.45)
         guard let best = nmsDetections.first else {
             DispatchQueue.main.async {
@@ -608,6 +608,258 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 DispatchQueue.main.async { self.isProcessing = false }
             }
         }
+    }
+    
+    private func processYOLOResults(_ detections: MLMultiArray, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
+        let nmsDetections = applyNMS(detections: extractDetections(from: detections), iouThreshold: 0.45)
+        guard let best = nmsDetections.first else {
+            DispatchQueue.main.async {
+                self.isProcessing = false
+                self.segmentedImage = nil
+                self.furnitureOpacity = 0.0
+                self.lastConfidence = 0.0
+                self.currentBBox = .zero
+            }
+            return
+        }
+        
+        // CROPPING LOGIC STARTS HERE
+        let imageWidth = CVPixelBufferGetWidth(originalImage)
+        let imageHeight = CVPixelBufferGetHeight(originalImage)
+        
+        // Convert detection coords from 640x640 to actual image size
+        let scaleX = Float(imageWidth) / 640.0
+        let scaleY = Float(imageHeight) / 640.0
+        
+        // Calculate crop region with 30% padding
+        let padding: Float = 1.3
+        let cropWidth = max(100, best.width * scaleX * padding)
+        let cropHeight = max(100, best.height * scaleY * padding)
+        
+        let centerX = best.x * scaleX
+        let centerY = best.y * scaleY
+        
+        let cropX = Int(max(0, centerX - cropWidth/2))
+        let cropY = Int(max(0, centerY - cropHeight/2))
+        let cropW = Int(min(Float(imageWidth - cropX), cropWidth))
+        let cropH = Int(min(Float(imageHeight - cropY), cropHeight))
+        
+        // Skip crop if too small
+        if cropW >= 100 && cropH >= 100 {
+            // Try cropping for better detail
+            if let croppedBuffer = cropPixelBuffer(originalImage, x: cropX, y: cropY, width: cropW, height: cropH),
+               let croppedResized = resizePixelBuffer(croppedBuffer, width: 640, height: 640),
+               let croppedArray = pixelBufferToMLMultiArray(croppedResized),
+               let model = mlModel,
+               let croppedInput = try? MLDictionaryFeatureProvider(dictionary: ["image": croppedArray]),
+               let croppedOutput = try? model.prediction(from: croppedInput),
+               let croppedDetections = croppedOutput.featureValue(for: "var_2421")?.multiArrayValue,
+               let croppedPrototypes = croppedOutput.featureValue(for: "p")?.multiArrayValue {
+                
+                // Process cropped detections
+                let croppedNMS = applyNMS(detections: extractDetections(from: croppedDetections), iouThreshold: 0.45)
+                
+                if let croppedBest = croppedNMS.first {
+                    // Use cropped detection for better mask quality
+                    processCroppedMask(croppedBest, croppedPrototypes: croppedPrototypes, originalBest: best, originalImage: originalImage)
+                    return
+                }
+            }
+        }
+        // CROPPING LOGIC ENDS - FALLBACK TO ORIGINAL
+        
+        // Original processing continues here
+        processOriginalMask(best, prototypes: prototypes, originalImage: originalImage)
+    }
+
+    // Add helper method for cropped mask processing
+    private func processCroppedMask(_ detection: DetectionSmarty, croppedPrototypes: MLMultiArray, originalBest: DetectionSmarty, originalImage: CVPixelBuffer) {
+        // Generate mask from cropped detection
+        var mask = [Float](repeating: 0, count: 160 * 160)
+        for y in 0..<160 {
+            for x in 0..<160 {
+                var sum: Float = 0
+                for c in 0..<32 {
+                    sum += detection.maskCoeffs[c] * croppedPrototypes[[0, c, y, x] as [NSNumber]].floatValue
+                }
+                mask[y * 160 + x] = sigmoid(sum)
+            }
+        }
+        
+        // Use original bbox for UI
+        let bbox = CGRect(
+            x: CGFloat(originalBest.x - originalBest.width / 2),
+            y: CGFloat(originalBest.y - originalBest.height / 2),
+            width: CGFloat(originalBest.width),
+            height: CGFloat(originalBest.height)
+        )
+        
+        DispatchQueue.main.async {
+            self.currentBBox = bbox
+            self.lastConfidence = originalBest.confidence
+        }
+        
+        // Apply same post-processing
+        applyPostProcessingAndMask(mask: mask, best: originalBest, to: originalImage)
+    }
+
+    // Add helper for original mask processing
+    private func processOriginalMask(_ best: DetectionSmarty, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
+        let bbox = CGRect(
+            x: CGFloat(best.x - best.width / 2),
+            y: CGFloat(best.y - best.height / 2),
+            width: CGFloat(best.width),
+            height: CGFloat(best.height)
+        )
+        
+        DispatchQueue.main.async {
+            self.currentBBox = bbox
+            self.lastConfidence = best.confidence
+        }
+        
+        // Generate mask
+        var mask = [Float](repeating: 0, count: 160 * 160)
+        for y in 0..<160 {
+            for x in 0..<160 {
+                var sum: Float = 0
+                for c in 0..<32 {
+                    sum += best.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
+                }
+                mask[y * 160 + x] = sigmoid(sum)
+            }
+        }
+        
+        applyPostProcessingAndMask(mask: mask, best: best, to: originalImage)
+    }
+
+    // Refactored post-processing into shared method
+    private func applyPostProcessingAndMask(mask: [Float], best: DetectionSmarty, to originalImage: CVPixelBuffer) {
+        var mask = mask // Create mutable copy
+        // Post-process: morphology + scanline (your existing code)
+        let scale: Float = 160.0 / 640.0
+        let bx1 = max(1, min(158, Int((best.x - best.width/2) * scale)))
+        let by1 = max(1, min(158, Int((best.y - best.height/2) * scale)))
+        let bx2 = max(1, min(158, Int((best.x + best.width/2) * scale)))
+        let by2 = max(1, min(158, Int((best.y + best.height/2) * scale)))
+        
+        var binary = [[UInt8]](repeating: [UInt8](repeating: 0, count: 160), count: 160)
+        for y in 0..<160 {
+            for x in 0..<160 {
+                binary[y][x] = mask[y * 160 + x] > 0.5 ? 1 : 0
+            }
+        }
+        
+        // Morphological closing
+        for _ in 0..<5 {
+            var dilated = binary
+            for y in (by1+1)..<by2 {
+                for x in (bx1+1)..<bx2 {
+                    if binary[y][x] == 0 {
+                        if binary[y-1][x] == 1 || binary[y+1][x] == 1 ||
+                           binary[y][x-1] == 1 || binary[y][x+1] == 1 ||
+                           binary[y-1][x-1] == 1 || binary[y-1][x+1] == 1 ||
+                           binary[y+1][x-1] == 1 || binary[y+1][x+1] == 1 {
+                            dilated[y][x] = 1
+                        }
+                    }
+                }
+            }
+            binary = dilated
+        }
+        
+        for _ in 0..<5 {
+            var eroded = binary
+            for y in (by1+1)..<by2 {
+                for x in (bx1+1)..<bx2 {
+                    if binary[y][x] == 1 {
+                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
+                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
+                            eroded[y][x] = 0
+                        }
+                    }
+                }
+            }
+            binary = eroded
+        }
+        
+        // Scanline fill
+        for y in (by1+1)..<by2 {
+            var firstX = -1, lastX = -1
+            for x in (bx1+1)..<bx2 {
+                if binary[y][x] == 1 {
+                    if firstX == -1 { firstX = x }
+                    lastX = x
+                }
+            }
+            if firstX != -1 && lastX != -1 && lastX > firstX + 1 {
+                for x in (firstX+1)..<lastX {
+                    binary[y][x] = 1
+                }
+            }
+        }
+        
+        for x in (bx1+1)..<bx2 {
+            var firstY = -1, lastY = -1
+            for y in (by1+1)..<by2 {
+                if binary[y][x] == 1 {
+                    if firstY == -1 { firstY = y }
+                    lastY = y
+                }
+            }
+            if firstY != -1 && lastY != -1 && lastY > firstY + 1 {
+                for y in (firstY+1)..<lastY {
+                    binary[y][x] = 1
+                }
+            }
+        }
+        
+        // Convert to float
+        for y in 0..<160 {
+            for x in 0..<160 {
+                mask[y * 160 + x] = Float(binary[y][x])
+            }
+        }
+        
+        // Crop to bbox
+        for y in 0..<160 {
+            for x in 0..<160 {
+                if y < by1 || y > by2 || x < bx1 || x > bx2 {
+                    mask[y * 160 + x] = 0
+                }
+            }
+        }
+        
+        applyMaskToImage(mask: mask, to: originalImage)
+    }
+
+    // Add the crop pixel buffer method
+    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, x: Int, y: Int, width: Int, height: Int) -> CVPixelBuffer? {
+        guard width > 50 && height > 50 else { return nil }
+        
+        let imageWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let imageHeight = CVPixelBufferGetHeight(pixelBuffer)
+        
+        let validX = max(0, min(x, imageWidth - 1))
+        let validY = max(0, min(y, imageHeight - 1))
+        let validWidth = min(width, imageWidth - validX)
+        let validHeight = min(height, imageHeight - validY)
+        
+        guard validWidth >= 50 && validHeight >= 50 else { return nil }
+        
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let cropRect = CGRect(x: validX, y: validY, width: validWidth, height: validHeight)
+        
+        guard ciImage.extent.intersects(cropRect) else { return nil }
+        
+        let croppedImage = ciImage.cropped(to: cropRect)
+        
+        var newPixelBuffer: CVPixelBuffer?
+        CVPixelBufferCreate(kCFAllocatorDefault, validWidth, validHeight, kCVPixelFormatType_32BGRA, nil, &newPixelBuffer)
+        
+        guard let outputBuffer = newPixelBuffer else { return nil }
+        context.render(croppedImage, to: outputBuffer, bounds: croppedImage.extent, colorSpace: CGColorSpaceCreateDeviceRGB())
+        
+        return outputBuffer
     }
 }
 
