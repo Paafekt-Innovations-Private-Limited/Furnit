@@ -341,143 +341,172 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 DispatchQueue.main.async { self?.isProcessing = false }
                 return
             }
+            
+            // PRINT RAW YOLO OUTPUT INFO
+                print("\n🔬 ========== RAW YOLO OUTPUT ==========")
+                print("Detections shape: \(detectionsArray.shape)")  // [1, 4621, 8400]
+                print("Prototypes shape: \(prototypesArray.shape)")   // [1, 32, 160, 160]
+                
+                // Check a few anchors for raw values
+                print("\nFirst 3 anchors raw data:")
+                for anchor in 0..<min(3, detectionsArray.shape[2].intValue) {
+                    let x = detectionsArray[[0, 0, anchor] as [NSNumber]].floatValue
+                    let y = detectionsArray[[0, 1, anchor] as [NSNumber]].floatValue
+                    let w = detectionsArray[[0, 2, anchor] as [NSNumber]].floatValue
+                    let h = detectionsArray[[0, 3, anchor] as [NSNumber]].floatValue
+                    
+                    // Check max confidence across all classes for this anchor
+                    var maxConf: Float = 0
+                    var maxClass = -1
+                    for classIdx in 4..<4589 {
+                        let conf = detectionsArray[[0, classIdx, anchor] as [NSNumber]].floatValue
+                        if conf > maxConf {
+                            maxConf = conf
+                            maxClass = classIdx - 4
+                        }
+                    }
+                    
+                    print("Anchor \(anchor): pos(\(Int(x)),\(Int(y))) size(\(Int(w))x\(Int(h))) maxConf:\(Int(maxConf*100))% class:\(maxClass)")
+                }
+                
+                print("========================================\n")
             self.processYOLOResults(detectionsArray, prototypes: prototypesArray, originalImage: pixelBuffer)
         }
     }
     
-    private func processYOLOResultss(_ detections: MLMultiArray, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
-        let nmsDetections = applyNMS(detections: extractDetections(from: detections), iouThreshold: 0.45)
-        guard let best = nmsDetections.first else {
-            DispatchQueue.main.async {
-                self.isProcessing = false
-                self.segmentedImage = nil
-                self.furnitureOpacity = 0.0
-                self.lastConfidence = 0.0
-                self.currentBBox = .zero
-            }
-            return
-        }
-        
-        let bbox = CGRect(
-            x: CGFloat(best.x - best.width / 2),
-            y: CGFloat(best.y - best.height / 2),
-            width: CGFloat(best.width),
-            height: CGFloat(best.height)
-        )
-        
-        DispatchQueue.main.async {
-            self.currentBBox = bbox
-            self.lastConfidence = best.confidence
-        }
-        
-        // Generate and process mask
-        var mask = [Float](repeating: 0, count: 160 * 160)
-        for y in 0..<160 {
-            for x in 0..<160 {
-                var sum: Float = 0
-                for c in 0..<32 {
-                    sum += best.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
-                }
-                mask[y * 160 + x] = sigmoid(sum)
-            }
-        }
-        
-        // Post-process: morphology + scanline
-        let scale: Float = 160.0 / 640.0
-        let bx1 = max(1, min(158, Int((best.x - best.width/2) * scale)))
-        let by1 = max(1, min(158, Int((best.y - best.height/2) * scale)))
-        let bx2 = max(1, min(158, Int((best.x + best.width/2) * scale)))
-        let by2 = max(1, min(158, Int((best.y + best.height/2) * scale)))
-        
-        var binary = [[UInt8]](repeating: [UInt8](repeating: 0, count: 160), count: 160)
-        for y in 0..<160 {
-            for x in 0..<160 {
-                binary[y][x] = mask[y * 160 + x] > 0.5 ? 1 : 0
-            }
-        }
-        
-        // Morphological closing
-        for _ in 0..<5 {
-            var dilated = binary
-            for y in (by1+1)..<by2 {
-                for x in (bx1+1)..<bx2 {
-                    if binary[y][x] == 0 {
-                        if binary[y-1][x] == 1 || binary[y+1][x] == 1 ||
-                           binary[y][x-1] == 1 || binary[y][x+1] == 1 ||
-                           binary[y-1][x-1] == 1 || binary[y-1][x+1] == 1 ||
-                           binary[y+1][x-1] == 1 || binary[y+1][x+1] == 1 {
-                            dilated[y][x] = 1
-                        }
-                    }
-                }
-            }
-            binary = dilated
-        }
-        
-        for _ in 0..<5 {
-            var eroded = binary
-            for y in (by1+1)..<by2 {
-                for x in (bx1+1)..<bx2 {
-                    if binary[y][x] == 1 {
-                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
-                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
-                            eroded[y][x] = 0
-                        }
-                    }
-                }
-            }
-            binary = eroded
-        }
-        
-        // Scanline fill
-        for y in (by1+1)..<by2 {
-            var firstX = -1, lastX = -1
-            for x in (bx1+1)..<bx2 {
-                if binary[y][x] == 1 {
-                    if firstX == -1 { firstX = x }
-                    lastX = x
-                }
-            }
-            if firstX != -1 && lastX != -1 && lastX > firstX + 1 {
-                for x in (firstX+1)..<lastX {
-                    binary[y][x] = 1
-                }
-            }
-        }
-        
-        for x in (bx1+1)..<bx2 {
-            var firstY = -1, lastY = -1
-            for y in (by1+1)..<by2 {
-                if binary[y][x] == 1 {
-                    if firstY == -1 { firstY = y }
-                    lastY = y
-                }
-            }
-            if firstY != -1 && lastY != -1 && lastY > firstY + 1 {
-                for y in (firstY+1)..<lastY {
-                    binary[y][x] = 1
-                }
-            }
-        }
-        
-        // Convert to float
-        for y in 0..<160 {
-            for x in 0..<160 {
-                mask[y * 160 + x] = Float(binary[y][x])
-            }
-        }
-        
-        // Crop to bbox
-        for y in 0..<160 {
-            for x in 0..<160 {
-                if y < by1 || y > by2 || x < bx1 || x > bx2 {
-                    mask[y * 160 + x] = 0
-                }
-            }
-        }
-        
-        applyMaskToImage(mask: mask, to: originalImage)
-    }
+//    private func processYOLOResultss(_ detections: MLMultiArray, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
+//        let nmsDetections = applyNMS(detections: extractDetections(from: detections), iouThreshold: 0.45)
+//        guard let best = nmsDetections.first else {
+//            DispatchQueue.main.async {
+//                self.isProcessing = false
+//                self.segmentedImage = nil
+//                self.furnitureOpacity = 0.0
+//                self.lastConfidence = 0.0
+//                self.currentBBox = .zero
+//            }
+//            return
+//        }
+//        
+//        let bbox = CGRect(
+//            x: CGFloat(best.x - best.width / 2),
+//            y: CGFloat(best.y - best.height / 2),
+//            width: CGFloat(best.width),
+//            height: CGFloat(best.height)
+//        )
+//        
+//        DispatchQueue.main.async {
+//            self.currentBBox = bbox
+//            self.lastConfidence = best.confidence
+//        }
+//        
+//        // Generate and process mask
+//        var mask = [Float](repeating: 0, count: 160 * 160)
+//        for y in 0..<160 {
+//            for x in 0..<160 {
+//                var sum: Float = 0
+//                for c in 0..<32 {
+//                    sum += best.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
+//                }
+//                mask[y * 160 + x] = sigmoid(sum)
+//            }
+//        }
+//        
+//        // Post-process: morphology + scanline
+//        let scale: Float = 160.0 / 640.0
+//        let bx1 = max(1, min(158, Int((best.x - best.width/2) * scale)))
+//        let by1 = max(1, min(158, Int((best.y - best.height/2) * scale)))
+//        let bx2 = max(1, min(158, Int((best.x + best.width/2) * scale)))
+//        let by2 = max(1, min(158, Int((best.y + best.height/2) * scale)))
+//        
+//        var binary = [[UInt8]](repeating: [UInt8](repeating: 0, count: 160), count: 160)
+//        for y in 0..<160 {
+//            for x in 0..<160 {
+//                binary[y][x] = mask[y * 160 + x] > 0.5 ? 1 : 0
+//            }
+//        }
+//        
+//        // Morphological closing
+//        for _ in 0..<5 {
+//            var dilated = binary
+//            for y in (by1+1)..<by2 {
+//                for x in (bx1+1)..<bx2 {
+//                    if binary[y][x] == 0 {
+//                        if binary[y-1][x] == 1 || binary[y+1][x] == 1 ||
+//                           binary[y][x-1] == 1 || binary[y][x+1] == 1 ||
+//                           binary[y-1][x-1] == 1 || binary[y-1][x+1] == 1 ||
+//                           binary[y+1][x-1] == 1 || binary[y+1][x+1] == 1 {
+//                            dilated[y][x] = 1
+//                        }
+//                    }
+//                }
+//            }
+//            binary = dilated
+//        }
+//        
+//        for _ in 0..<5 {
+//            var eroded = binary
+//            for y in (by1+1)..<by2 {
+//                for x in (bx1+1)..<bx2 {
+//                    if binary[y][x] == 1 {
+//                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
+//                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
+//                            eroded[y][x] = 0
+//                        }
+//                    }
+//                }
+//            }
+//            binary = eroded
+//        }
+//        
+//        // Scanline fill
+//        for y in (by1+1)..<by2 {
+//            var firstX = -1, lastX = -1
+//            for x in (bx1+1)..<bx2 {
+//                if binary[y][x] == 1 {
+//                    if firstX == -1 { firstX = x }
+//                    lastX = x
+//                }
+//            }
+//            if firstX != -1 && lastX != -1 && lastX > firstX + 1 {
+//                for x in (firstX+1)..<lastX {
+//                    binary[y][x] = 1
+//                }
+//            }
+//        }
+//        
+//        for x in (bx1+1)..<bx2 {
+//            var firstY = -1, lastY = -1
+//            for y in (by1+1)..<by2 {
+//                if binary[y][x] == 1 {
+//                    if firstY == -1 { firstY = y }
+//                    lastY = y
+//                }
+//            }
+//            if firstY != -1 && lastY != -1 && lastY > firstY + 1 {
+//                for y in (firstY+1)..<lastY {
+//                    binary[y][x] = 1
+//                }
+//            }
+//        }
+//        
+//        // Convert to float
+//        for y in 0..<160 {
+//            for x in 0..<160 {
+//                mask[y * 160 + x] = Float(binary[y][x])
+//            }
+//        }
+//        
+//        // Crop to bbox
+//        for y in 0..<160 {
+//            for x in 0..<160 {
+//                if y < by1 || y > by2 || x < bx1 || x > bx2 {
+//                    mask[y * 160 + x] = 0
+//                }
+//            }
+//        }
+//        
+//        applyMaskToImage(mask: mask, to: originalImage)
+//    }
     
     private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
         guard let array = try? MLMultiArray(shape: [1, 3, 640, 640], dataType: .float16) else { return nil }
@@ -511,15 +540,22 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     
     private func extractDetections(from detections: MLMultiArray) -> [DetectionSmarty] {
         var all: [DetectionSmarty] = []
+        
+        print("\n🔍 ========== ALL DETECTIONS EXTRACTED ==========")
+        
         for anchor in 0..<detections.shape[2].intValue {
             let x = detections[[0, 0, anchor] as [NSNumber]].floatValue
             let y = detections[[0, 1, anchor] as [NSNumber]].floatValue
             let w = detections[[0, 2, anchor] as [NSNumber]].floatValue
             let h = detections[[0, 3, anchor] as [NSNumber]].floatValue
             
+            var anchorDetections: [(String, Float)] = []
+            
             for (classIdx, className) in furnitureClasses {
                 let conf = detections[[0, 4 + classIdx, anchor] as [NSNumber]].floatValue
                 if conf > 0.3 {
+                    anchorDetections.append((className, conf))
+                    
                     var coeffs = [Float](repeating: 0, count: 32)
                     for i in 0..<32 {
                         coeffs[i] = detections[[0, 4 + 4585 + i, anchor] as [NSNumber]].floatValue
@@ -527,7 +563,28 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     all.append(DetectionSmarty(x: x, y: y, width: w, height: h, confidence: conf, classIdx: classIdx, className: className, maskCoeffs: coeffs))
                 }
             }
+            
+            // Print if this anchor has detections
+            if !anchorDetections.isEmpty {
+                print("Anchor \(anchor): pos(\(Int(x)),\(Int(y))) size(\(Int(w))x\(Int(h)))")
+                for (name, conf) in anchorDetections.sorted(by: { $0.1 > $1.1 }) {
+                    print("  - \(name): \(Int(conf * 100))%")
+                }
+            }
         }
+        
+        // Summary
+        let grouped = Dictionary(grouping: all) { $0.className }
+        print("\n📊 DETECTION SUMMARY:")
+        print("Total detections: \(all.count)")
+        print("Unique classes detected:")
+        for (className, detections) in grouped.sorted(by: { $0.value.count > $1.value.count }) {
+            let confidences = detections.map { Int($0.confidence * 100) }
+            print("  - \(className): \(detections.count) detection(s), conf: \(confidences)%")
+        }
+        
+        print("================================================\n")
+        
         return all
     }
     
@@ -537,9 +594,18 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         var suppressed = Set<Int>()
         let sorted = detections.sorted { $0.confidence > $1.confidence }
         
+        print("\n🔍 NMS Processing:")
+        print("Top 5 by confidence:")
+        for (i, det) in sorted.prefix(5).enumerated() {
+            print("  \(i+1). \(det.className): \(Int(det.confidence * 100))% at (\(Int(det.x)),\(Int(det.y)))")
+        }
+        
         for (i, det) in sorted.enumerated() {
             if suppressed.contains(i) { continue }
             kept.append(det)
+            print("✅ KEPT #\(i): \(det.className) @ \(Int(det.confidence * 100))%")
+            
+            var suppressedThisRound: [String] = []
             for (j, other) in sorted.enumerated() where j > i {
                 if suppressed.contains(j) { continue }
                 let x1 = max(det.x - det.width/2, other.x - other.width/2)
@@ -548,9 +614,21 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 let y2 = min(det.y + det.height/2, other.y + other.height/2)
                 let intersection = max(0, x2 - x1) * max(0, y2 - y1)
                 let union = det.width * det.height + other.width * other.height - intersection
-                if union > 0 && intersection / union > iouThreshold { suppressed.insert(j) }
+                if union > 0 && intersection / union > iouThreshold {
+                    suppressed.insert(j)
+                    suppressedThisRound.append("\(other.className)(\(Int(other.confidence * 100))%)")
+                }
+            }
+            if !suppressedThisRound.isEmpty {
+                print("   ❌ Suppressed: \(suppressedThisRound.joined(separator: ", "))")
             }
         }
+        
+        print("Final kept: \(kept.count) detections")
+        for det in kept {
+            print("  - \(det.className): \(Int(det.confidence * 100))%")
+        }
+        
         return kept
     }
     
@@ -588,7 +666,8 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     
                     let maskValue = mask[y0 * 160 + x0]
                     
-                    if maskValue > 0.5 {
+                    let smoothedValue = sigmoid(maskValue * 4 - 2)
+                    if smoothedValue > 0.5 {
                         // Keep original colors, just set alpha to fully opaque
                         pixels[idx + 3] = 255
                     } else {
@@ -611,8 +690,16 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     }
     
     private func processYOLOResults(_ detections: MLMultiArray, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
-        let nmsDetections = applyNMS(detections: extractDetections(from: detections), iouThreshold: 0.45)
+        print("\n📱 ==================== FRAME PROCESSING START ====================")
+        
+        let allDetections = extractDetections(from: detections)
+        print("📊 [DETECTION] Extracted \(allDetections.count) raw detections")
+        
+        let nmsDetections = applyNMS(detections: allDetections, iouThreshold: 0.45)
+        print("📊 [NMS] Filtered to \(nmsDetections.count) detections after NMS")
+        
         guard let best = nmsDetections.first else {
+            print("❌ [DETECTION] No valid detections found")
             DispatchQueue.main.async {
                 self.isProcessing = false
                 self.segmentedImage = nil
@@ -623,13 +710,22 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             return
         }
         
-        // CROPPING LOGIC STARTS HERE
+        print("✅ [BEST] Selected: \(best.className) @ \(Int(best.confidence * 100))%")
+        print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
+        
+        // Save original image
+        saveDebugImage(pixelBuffer: originalImage, stage: "1_original")
+        
+        // CROPPING LOGIC STARTS
+        print("\n🔍 ========== CROPPING PHASE ==========")
         let imageWidth = CVPixelBufferGetWidth(originalImage)
         let imageHeight = CVPixelBufferGetHeight(originalImage)
+        print("📐 [IMAGE] Original dimensions: \(imageWidth)x\(imageHeight)")
         
         // Convert detection coords from 640x640 to actual image size
         let scaleX = Float(imageWidth) / 640.0
         let scaleY = Float(imageHeight) / 640.0
+        print("📐 [SCALE] X: \(String(format: "%.2f", scaleX)), Y: \(String(format: "%.2f", scaleY))")
         
         // Calculate crop region with 30% padding
         let padding: Float = 1.3
@@ -644,49 +740,238 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         let cropW = Int(min(Float(imageWidth - cropX), cropWidth))
         let cropH = Int(min(Float(imageHeight - cropY), cropHeight))
         
+        print("📐 [CROP] Center: (\(Int(centerX)), \(Int(centerY)))")
+        print("📐 [CROP] Region: origin(\(cropX), \(cropY)), size(\(cropW)x\(cropH))")
+        
         // Skip crop if too small
         if cropW >= 100 && cropH >= 100 {
+            print("✅ [CROP] Size valid, attempting crop...")
+            
+            // Save image with bbox drawn
+            saveDebugImageWithBBox(pixelBuffer: originalImage, bbox: best, stage: "2_bbox_marked")
+            
             // Try cropping for better detail
-            if let croppedBuffer = cropPixelBuffer(originalImage, x: cropX, y: cropY, width: cropW, height: cropH),
-               let croppedResized = resizePixelBuffer(croppedBuffer, width: 640, height: 640),
-               let croppedArray = pixelBufferToMLMultiArray(croppedResized),
-               let model = mlModel,
-               let croppedInput = try? MLDictionaryFeatureProvider(dictionary: ["image": croppedArray]),
-               let croppedOutput = try? model.prediction(from: croppedInput),
-               let croppedDetections = croppedOutput.featureValue(for: "var_2421")?.multiArrayValue,
-               let croppedPrototypes = croppedOutput.featureValue(for: "p")?.multiArrayValue {
+            if let croppedBuffer = cropPixelBuffer(originalImage, x: cropX, y: cropY, width: cropW, height: cropH) {
+                print("✅ [CROP] Successfully cropped image")
+                saveDebugImage(pixelBuffer: croppedBuffer, stage: "3_cropped_region")
                 
-                // Process cropped detections
-                let croppedNMS = applyNMS(detections: extractDetections(from: croppedDetections), iouThreshold: 0.45)
-                
-                if let croppedBest = croppedNMS.first {
-                    // Use cropped detection for better mask quality
-                    processCroppedMask(croppedBest, croppedPrototypes: croppedPrototypes, originalBest: best, originalImage: originalImage)
-                    return
+                if let croppedResized = resizePixelBuffer(croppedBuffer, width: 640, height: 640) {
+                    print("✅ [CROP] Resized to 640x640")
+                    saveDebugImage(pixelBuffer: croppedResized, stage: "4_cropped_resized")
+                    
+                    if let croppedArray = pixelBufferToMLMultiArray(croppedResized),
+                       let model = mlModel,
+                       let croppedInput = try? MLDictionaryFeatureProvider(dictionary: ["image": croppedArray]),
+                       let croppedOutput = try? model.prediction(from: croppedInput),
+                       let croppedDetections = croppedOutput.featureValue(for: "var_2421")?.multiArrayValue,
+                       let croppedPrototypes = croppedOutput.featureValue(for: "p")?.multiArrayValue {
+                        
+                        print("✅ [CROP] Inference successful on cropped region")
+                        
+                        // Process multiple cropped detections
+                        processCroppedMultiMask(croppedDetections, croppedPrototypes: croppedPrototypes,
+                                               originalBest: best, originalImage: originalImage,
+                                               originalPrototypes: prototypes)  // Pass original prototypes
+                        return
+                        
+                    } else {
+                        print("❌ [CROP] Inference failed on cropped region")
+                    }
+                } else {
+                    print("❌ [CROP] Failed to resize cropped buffer")
                 }
+            } else {
+                print("❌ [CROP] Failed to crop pixel buffer")
             }
+        } else {
+            print("⚠️ [CROP] Crop dimensions too small: \(cropW)x\(cropH), minimum 100x100")
         }
-        // CROPPING LOGIC ENDS - FALLBACK TO ORIGINAL
         
-        // Original processing continues here
+        // FALLBACK TO ORIGINAL
+        print("⚠️ [FALLBACK] Using original detection without crop")
         processOriginalMask(best, prototypes: prototypes, originalImage: originalImage)
     }
 
-    // Add helper method for cropped mask processing
-    private func processCroppedMask(_ detection: DetectionSmarty, croppedPrototypes: MLMultiArray, originalBest: DetectionSmarty, originalImage: CVPixelBuffer) {
-        // Generate mask from cropped detection
-        var mask = [Float](repeating: 0, count: 160 * 160)
+//    private func processCroppedMultiMask(_ croppedDetections: MLMultiArray, croppedPrototypes: MLMultiArray,
+//                                         originalBest: DetectionSmarty, originalImage: CVPixelBuffer,
+//                                         originalPrototypes: MLMultiArray) {
+//        print("\n🎨 ========== MULTI-DETECTION MASK GENERATION ==========")
+//        
+//        let croppedAllDetections = extractDetections(from: croppedDetections)
+//        print("📊 [CROP] Found \(croppedAllDetections.count) raw detections in crop")
+//        
+//        let croppedNMS = applyNMS(detections: croppedAllDetections, iouThreshold: 0.45)
+//        print("📊 [CROP] After NMS: \(croppedNMS.count) detections")
+//        
+//        guard !croppedNMS.isEmpty else {
+//            print("⚠️ [CROP] No detections found in cropped region")
+//            processOriginalMask(originalBest, prototypes: originalPrototypes, originalImage: originalImage)
+//            return
+//        }
+//        
+//        // Use IoU to filter truly unique detections
+//        var uniqueDetections: [DetectionSmarty] = []
+//        
+//        for detection in croppedNMS {
+//            // Check if this overlaps too much with already selected detections
+//            var shouldAdd = true
+//            
+//            for existing in uniqueDetections {
+//                // Calculate IoU between this detection and existing ones
+//                let iou = calculateIoU(det1: detection, det2: existing)
+//                
+//                // If high overlap AND same class, skip it
+//                if iou > 0.7 && detection.classIdx == existing.classIdx {
+//                    print("   ⚠️ Skipping duplicate: \(detection.className) @ \(Int(detection.confidence * 100))% (IoU=\(Int(iou*100))% with existing)")
+//                    shouldAdd = false
+//                    break
+//                }
+//                
+//                // If moderate overlap but different class, keep it (pillow on chair case)
+//                if iou > 0.3 && iou < 0.7 && detection.classIdx != existing.classIdx {
+//                    print("   ℹ️ Keeping overlapping different class: \(detection.className) on \(existing.className) (IoU=\(Int(iou*100))%)")
+//                }
+//            }
+//            
+//            if shouldAdd {
+//                uniqueDetections.append(detection)
+//                print("   ✅ Adding: \(detection.className) @ \(Int(detection.confidence * 100))% at pos(\(Int(detection.x)),\(Int(detection.y)))")
+//                
+//                // Limit to 4 detections
+//                if uniqueDetections.count >= 4 { break }
+//            }
+//        }
+//        
+//        print("📊 [MULTI] Using \(uniqueDetections.count) unique detections")
+//        
+//        // Generate combined mask from all unique detections
+//        var combinedMask = [Float](repeating: 0, count: 160 * 160)
+//        
+//        for (index, detection) in uniqueDetections.enumerated() {
+//            var detectionMask = [Float](repeating: 0, count: 160 * 160)
+//            
+//            for y in 0..<160 {
+//                for x in 0..<160 {
+//                    var sum: Float = 0
+//                    for c in 0..<32 {
+//                        sum += detection.maskCoeffs[c] * croppedPrototypes[[0, c, y, x] as [NSNumber]].floatValue
+//                    }
+//                    detectionMask[y * 160 + x] = sigmoid(sum)
+//                }
+//            }
+//            
+//            // Save individual masks for debugging
+//            saveMaskAsImage(mask: detectionMask, stage: "5_crop_mask_\(index+1)_\(detection.className)")
+//            
+//            // Combine masks
+//            for i in 0..<(160 * 160) {
+//                combinedMask[i] = max(combinedMask[i], detectionMask[i])
+//            }
+//        }
+//        
+//        let nonZeroCount = combinedMask.filter { $0 > 0.5 }.count
+//        print("📊 [MASK] Combined mask has \(nonZeroCount) positive pixels")
+//        
+//        saveMaskAsImage(mask: combinedMask, stage: "5_combined_multi_mask")
+//        
+//        let bbox = CGRect(
+//            x: CGFloat(originalBest.x - originalBest.width / 2),
+//            y: CGFloat(originalBest.y - originalBest.height / 2),
+//            width: CGFloat(originalBest.width),
+//            height: CGFloat(originalBest.height)
+//        )
+//        
+//        DispatchQueue.main.async {
+//            self.currentBBox = bbox
+//            self.lastConfidence = originalBest.confidence
+//        }
+//        
+//        applyPostProcessingAndMask(mask: combinedMask, best: originalBest, to: originalImage, stage: "multi")
+//    }
+    
+    
+    private func processCroppedMultiMask(_ croppedDetections: MLMultiArray, croppedPrototypes: MLMultiArray,
+                                         originalBest: DetectionSmarty, originalImage: CVPixelBuffer,
+                                         originalPrototypes: MLMultiArray) {
+        print("\n🎨 ========== MULTI-DETECTION MASK GENERATION ==========")
+        
+        // First, generate the ORIGINAL mask (to avoid holes)
+        var originalMask = [Float](repeating: 0, count: 160 * 160)
         for y in 0..<160 {
             for x in 0..<160 {
                 var sum: Float = 0
                 for c in 0..<32 {
-                    sum += detection.maskCoeffs[c] * croppedPrototypes[[0, c, y, x] as [NSNumber]].floatValue
+                    sum += originalBest.maskCoeffs[c] * originalPrototypes[[0, c, y, x] as [NSNumber]].floatValue
                 }
-                mask[y * 160 + x] = sigmoid(sum)
+                originalMask[y * 160 + x] = sigmoid(sum)
+            }
+        }
+        print("✅ [ORIGINAL] Generated mask for: \(originalBest.className)")
+        
+        let croppedAllDetections = extractDetections(from: croppedDetections)
+        print("📊 [CROP] Found \(croppedAllDetections.count) raw detections")
+        
+        for detection in croppedAllDetections {
+            if detection.className.contains("daybed") || detection.className.contains("day bed") {
+                print("🛏️ \(detection.className): pos(\(Int(detection.x)),\(Int(detection.y))) size(\(Int(detection.width))x\(Int(detection.height)))")
             }
         }
         
-        // Use original bbox for UI
+        // Apply HIERARCHICAL NMS instead of standard NMS
+//        let hierarchicalDetections = applyHierarchicalNMS(detections: croppedAllDetections, iouThreshold: 0.45)
+        let hierarchicalDetections = croppedAllDetections
+        print("📊 [H-NMS] Kept \(hierarchicalDetections.count) detections after hierarchical NMS")
+        
+        print("📊 [HierarchyKKK] Selected \(hierarchicalDetections.count)  detections:")
+            for det in hierarchicalDetections {
+                print("   - \(det.className) @ \(Int(det.confidence * 100))%")
+                print("   - \(det.className) @ \(Int(det.confidence * 100))% size:\(Int(det.width))x\(Int(det.height))")
+            }
+
+        
+        // Take top 10 detections
+//        let topDetections = Array(hierarchicalDetections.prefix(10))
+        
+        let topDetections = getDiverseDetections(from: hierarchicalDetections, maxCount: 10)
+
+        
+        print("📊 [MULTI] Processing top \(topDetections.count) detections:")
+        for det in topDetections {
+            print("   - \(det.className) @ \(Int(det.confidence * 100))% size:\(Int(det.width))x\(Int(det.height))")
+        }
+        
+        // Generate combined mask starting with original
+        var combinedMask = originalMask
+        
+        for (index, detection) in topDetections.enumerated() {
+            var detectionMask = [Float](repeating: 0, count: 160 * 160)
+            
+            for y in 0..<160 {
+                for x in 0..<160 {
+                    var sum: Float = 0
+                    for c in 0..<32 {
+                        sum += detection.maskCoeffs[c] * croppedPrototypes[[0, c, y, x] as [NSNumber]].floatValue
+                    }
+                    detectionMask[y * 160 + x] = sigmoid(sum)
+                }
+            }
+            
+            if index < 3 {  // Save first 3 for debugging
+                saveMaskAsImage(mask: detectionMask, stage: "5_crop_\(index+1)_\(detection.className)")
+            }
+            
+            // Combine masks
+            for i in 0..<(160 * 160) {
+//                combinedMask[i] = max(combinedMask[i], detectionMask[i])
+                combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * 0.5)
+            }
+        }
+        
+        let nonZeroCount = combinedMask.filter { $0 > 0.5 }.count
+        print("📊 [FINAL] Combined mask has \(nonZeroCount) positive pixels")
+        
+        saveMaskAsImage(mask: combinedMask, stage: "5_combined_hierarchical")
+        
         let bbox = CGRect(
             x: CGFloat(originalBest.x - originalBest.width / 2),
             y: CGFloat(originalBest.y - originalBest.height / 2),
@@ -699,12 +984,241 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             self.lastConfidence = originalBest.confidence
         }
         
-        // Apply same post-processing
-        applyPostProcessingAndMask(mask: mask, best: originalBest, to: originalImage)
+        applyPostProcessingAndMask(mask: combinedMask, best: originalBest, to: originalImage, stage: "hierarchical")
+    }
+    
+    private func getDiverseDetections(from detections: [DetectionSmarty], maxCount: Int) -> [DetectionSmarty] {
+        var selected: [DetectionSmarty] = []
+        var seenClasses = Set<Int>()
+        
+        // First pass: Take best of each unique class
+        for detection in detections {
+            if !seenClasses.contains(detection.classIdx) {
+                selected.append(detection)
+                seenClasses.insert(detection.classIdx)
+                if selected.count >= maxCount { break }
+            }
+        }
+        
+        // Second pass: If still room, add remaining by confidence
+        if selected.count < maxCount {
+            for detection in detections {
+                if !selected.contains(where: { $0.classIdx == detection.classIdx && $0.confidence == detection.confidence }) {
+                    selected.append(detection)
+                    if selected.count >= maxCount { break }
+                }
+            }
+        }
+        
+        print("📊 [DIVERSE] Selected \(selected.count) diverse detections:")
+        for det in selected {
+            print("   - \(det.className) @ \(Int(det.confidence * 100))%")
+        }
+        
+        return selected
     }
 
-    // Add helper for original mask processing
+    // New Hierarchical NMS function
+    private func applyHierarchicalNMS(detections: [DetectionSmarty], iouThreshold: Float) -> [DetectionSmarty] {
+        guard !detections.isEmpty else { return [] }
+        
+        var kept: [DetectionSmarty] = []
+        var suppressed = Set<Int>()
+        let sorted = detections.sorted { $0.confidence > $1.confidence }
+        
+        print("\n🔍 Hierarchical NMS Processing:")
+        
+        for (i, det) in sorted.enumerated() {
+            if suppressed.contains(i) { continue }
+            
+            // Check if this should be kept
+            var shouldSuppress = false
+            var reason = ""
+            
+            for existing in kept {
+                let iou = calculateDetectionIoU(det1: det, det2: existing)
+                let sizeRatio = (det.width * det.height) / (existing.width * existing.height)
+                let isInside = isBoxInside(small: det, large: existing)
+                
+                // Hierarchical rules:
+                if iou > iouThreshold {
+                    // Rule 1: Different classes + one inside other = KEEP BOTH
+                    if det.classIdx != existing.classIdx && (isInside || sizeRatio < 0.5) {
+                        reason = "Different class, hierarchical (\(det.className) on \(existing.className))"
+                        shouldSuppress = false
+                        break
+                    }
+                    
+                    // Rule 2: Same class + similar size = SUPPRESS
+                    if det.classIdx == existing.classIdx && sizeRatio > 0.7 && sizeRatio < 1.3 {
+                        reason = "Same class duplicate"
+                        shouldSuppress = true
+                        break
+                    }
+                    
+                    // Rule 3: Significantly different sizes = KEEP (could be parts)
+                    if sizeRatio < 0.3 || sizeRatio > 3.0 {
+                        reason = "Size difference (ratio: \(String(format: "%.2f", sizeRatio)))"
+                        shouldSuppress = false
+                    }
+                    // Rule 4: Default high IoU = SUPPRESS
+                    else if iou > 0.7 {
+                        reason = "High overlap"
+                        shouldSuppress = true
+                        break
+                    }
+                }
+            }
+            
+            if !shouldSuppress {
+                kept.append(det)
+                if !reason.isEmpty {
+                    print("✅ KEPT: \(det.className) @ \(Int(det.confidence * 100))% - \(reason)")
+                } else {
+                    print("✅ KEPT: \(det.className) @ \(Int(det.confidence * 100))%")
+                }
+            } else {
+                suppressed.insert(i)
+                print("❌ SUPPRESSED: \(det.className) @ \(Int(det.confidence * 100))% - \(reason)")
+            }
+        }
+        
+        print("Hierarchical NMS: \(sorted.count) → \(kept.count) detections")
+        
+        return kept
+    }
+
+    // Helper: Calculate IoU between detections
+    private func calculateDetectionIoU(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
+        let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
+        let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
+        let x2 = min(det1.x + det1.width/2, det2.x + det2.width/2)
+        let y2 = min(det1.y + det1.height/2, det2.y + det2.height/2)
+        
+        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
+        let union = det1.width * det1.height + det2.width * det2.height - intersection
+        
+        return union > 0 ? intersection / union : 0
+    }
+
+    // Helper: Check if smaller box is inside larger box
+    private func isBoxInside(small: DetectionSmarty, large: DetectionSmarty) -> Bool {
+        let smallLeft = small.x - small.width/2
+        let smallRight = small.x + small.width/2
+        let smallTop = small.y - small.height/2
+        let smallBottom = small.y + small.height/2
+        
+        let largeLeft = large.x - large.width/2
+        let largeRight = large.x + large.width/2
+        let largeTop = large.y - large.height/2
+        let largeBottom = large.y + large.height/2
+        
+        // Check if small box is mostly inside large box (80% threshold)
+        let overlapX = min(smallRight, largeRight) - max(smallLeft, largeLeft)
+        let overlapY = min(smallBottom, largeBottom) - max(smallTop, largeTop)
+        let overlapArea = overlapX * overlapY
+        let smallArea = small.width * small.height
+        
+        return overlapArea > (smallArea * 0.8)
+    }
+
+    // Helper function to calculate IoU
+    private func calculateIoU(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
+        // Calculate intersection
+        let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
+        let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
+        let x2 = min(det1.x + det1.width/2, det2.x + det2.width/2)
+        let y2 = min(det1.y + det1.height/2, det2.y + det2.height/2)
+        
+        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
+        
+        // Calculate union
+        let area1 = det1.width * det1.height
+        let area2 = det2.width * det2.height
+        let union = area1 + area2 - intersection
+        
+        // Return IoU
+        return union > 0 ? intersection / union : 0
+    }
+
+
+//    // Enhanced cropped mask processing with multiple detections
+//    private func processCroppedMask(_ detection: DetectionSmarty, croppedPrototypes: MLMultiArray, originalBest: DetectionSmarty, originalImage: CVPixelBuffer) {
+//        print("\n🎨 ========== CROPPED MASK GENERATION (MULTI-DETECTION) ==========")
+//        
+//        // Get top detections from crop
+//        let croppedAllDetections = extractDetections(from: croppedDetections)
+//        let croppedNMS = applyNMS(detections: croppedAllDetections, iouThreshold: 0.45)
+//        
+//        // Take top 4 detections
+//        let topDetections = Array(croppedNMS.prefix(4))
+//        print("📊 [MULTI] Processing top \(topDetections.count) detections from crop")
+//        
+//        // Filter out duplicate of original detection
+//        let filteredDetections = topDetections.filter { cropped in
+//            // Check if this is essentially the same furniture as original
+//            // If confidence is very similar and class is same, likely duplicate
+//            let confDiff = abs(cropped.confidence - originalBest.confidence)
+//            let sameClass = cropped.classIdx == originalBest.classIdx
+//            let isDuplicate = sameClass && confDiff < 0.1
+//            
+//            if isDuplicate {
+//                print("   ⚠️ Skipping duplicate: \(cropped.className) @ \(Int(cropped.confidence * 100))% (original was \(Int(originalBest.confidence * 100))%)")
+//            }
+//            return !isDuplicate
+//        }
+//        
+//        print("📊 [MULTI] After filtering duplicates: \(filteredDetections.count) unique detections")
+//        
+//        // Generate combined mask from all detections
+//        var combinedMask = [Float](repeating: 0, count: 160 * 160)
+//        
+//        for (index, detection) in filteredDetections.enumerated() {
+//            print("   Processing #\(index + 1): \(detection.className) @ \(Int(detection.confidence * 100))%")
+//            
+//            var detectionMask = [Float](repeating: 0, count: 160 * 160)
+//            for y in 0..<160 {
+//                for x in 0..<160 {
+//                    var sum: Float = 0
+//                    for c in 0..<32 {
+//                        sum += detection.maskCoeffs[c] * croppedPrototypes[[0, c, y, x] as [NSNumber]].floatValue
+//                    }
+//                    detectionMask[y * 160 + x] = sigmoid(sum)
+//                }
+//            }
+//            
+//            // Combine masks using maximum (union)
+//            for i in 0..<(160 * 160) {
+//                combinedMask[i] = max(combinedMask[i], detectionMask[i])
+//            }
+//        }
+//        
+//        let nonZeroCount = combinedMask.filter { $0 > 0.5 }.count
+//        print("📊 [MASK] Combined mask has \(nonZeroCount) positive pixels")
+//        
+//        saveMaskAsImage(mask: combinedMask, stage: "5_cropped_combined_mask")
+//        
+//        // Use original bbox for UI
+//        let bbox = CGRect(
+//            x: CGFloat(originalBest.x - originalBest.width / 2),
+//            y: CGFloat(originalBest.y - originalBest.height / 2),
+//            width: CGFloat(originalBest.width),
+//            height: CGFloat(originalBest.height)
+//        )
+//        
+//        DispatchQueue.main.async {
+//            self.currentBBox = bbox
+//            self.lastConfidence = originalBest.confidence
+//        }
+//        
+//        applyPostProcessingAndMask(mask: combinedMask, best: originalBest, to: originalImage, stage: "cropped_multi")
+//    }
+
+    // Enhanced original mask processing with logging
     private func processOriginalMask(_ best: DetectionSmarty, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
+        print("\n🎨 ========== ORIGINAL MASK GENERATION ==========")
+        print("📊 [MASK] Generating from original detection")
+        
         let bbox = CGRect(
             x: CGFloat(best.x - best.width / 2),
             y: CGFloat(best.y - best.height / 2),
@@ -717,8 +1231,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             self.lastConfidence = best.confidence
         }
         
-        // Generate mask
         var mask = [Float](repeating: 0, count: 160 * 160)
+        var nonZeroCount = 0
+        
         for y in 0..<160 {
             for x in 0..<160 {
                 var sum: Float = 0
@@ -726,10 +1241,14 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     sum += best.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
                 }
                 mask[y * 160 + x] = sigmoid(sum)
+                if mask[y * 160 + x] > 0.5 { nonZeroCount += 1 }
             }
         }
         
-        applyPostProcessingAndMask(mask: mask, best: best, to: originalImage)
+        print("📊 [MASK] Generated mask with \(nonZeroCount) positive pixels")
+        saveMaskAsImage(mask: mask, stage: "5_original_mask_raw")
+        
+        applyPostProcessingAndMask(mask: mask, best: best, to: originalImage, stage: "original")
     }
 
     // Refactored post-processing into shared method
@@ -766,52 +1285,52 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             }
             binary = dilated
         }
+//        
+//        for _ in 0..<5 {
+//            var eroded = binary
+//            for y in (by1+1)..<by2 {
+//                for x in (bx1+1)..<bx2 {
+//                    if binary[y][x] == 1 {
+//                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
+//                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
+//                            eroded[y][x] = 0
+//                        }
+//                    }
+//                }
+//            }
+//            binary = eroded
+//        }
         
-        for _ in 0..<5 {
-            var eroded = binary
-            for y in (by1+1)..<by2 {
-                for x in (bx1+1)..<bx2 {
-                    if binary[y][x] == 1 {
-                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
-                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
-                            eroded[y][x] = 0
-                        }
-                    }
-                }
-            }
-            binary = eroded
-        }
+//        // Scanline fill
+//        for y in (by1+1)..<by2 {
+//            var firstX = -1, lastX = -1
+//            for x in (bx1+1)..<bx2 {
+//                if binary[y][x] == 1 {
+//                    if firstX == -1 { firstX = x }
+//                    lastX = x
+//                }
+//            }
+//            if firstX != -1 && lastX != -1 && lastX > firstX + 1 {
+//                for x in (firstX+1)..<lastX {
+//                    binary[y][x] = 1
+//                }
+//            }
+//        }
         
-        // Scanline fill
-        for y in (by1+1)..<by2 {
-            var firstX = -1, lastX = -1
-            for x in (bx1+1)..<bx2 {
-                if binary[y][x] == 1 {
-                    if firstX == -1 { firstX = x }
-                    lastX = x
-                }
-            }
-            if firstX != -1 && lastX != -1 && lastX > firstX + 1 {
-                for x in (firstX+1)..<lastX {
-                    binary[y][x] = 1
-                }
-            }
-        }
-        
-        for x in (bx1+1)..<bx2 {
-            var firstY = -1, lastY = -1
-            for y in (by1+1)..<by2 {
-                if binary[y][x] == 1 {
-                    if firstY == -1 { firstY = y }
-                    lastY = y
-                }
-            }
-            if firstY != -1 && lastY != -1 && lastY > firstY + 1 {
-                for y in (firstY+1)..<lastY {
-                    binary[y][x] = 1
-                }
-            }
-        }
+//        for x in (bx1+1)..<bx2 {
+//            var firstY = -1, lastY = -1
+//            for y in (by1+1)..<by2 {
+//                if binary[y][x] == 1 {
+//                    if firstY == -1 { firstY = y }
+//                    lastY = y
+//                }
+//            }
+//            if firstY != -1 && lastY != -1 && lastY > firstY + 1 {
+//                for y in (firstY+1)..<lastY {
+//                    binary[y][x] = 1
+//                }
+//            }
+//        }
         
         // Convert to float
         for y in 0..<160 {
@@ -860,6 +1379,177 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         context.render(croppedImage, to: outputBuffer, bounds: croppedImage.extent, colorSpace: CGColorSpaceCreateDeviceRGB())
         
         return outputBuffer
+    }
+    
+    // Enhanced post-processing with logging
+    private func applyPostProcessingAndMask(mask: [Float], best: DetectionSmarty, to originalImage: CVPixelBuffer, stage: String) {
+        print("\n🔧 ========== POST-PROCESSING ==========")
+        var mask = mask
+        
+        let scale: Float = 160.0 / 640.0
+        let bx1 = max(1, min(158, Int((best.x - best.width/2) * scale)))
+        let by1 = max(1, min(158, Int((best.y - best.height/2) * scale)))
+        let bx2 = max(1, min(158, Int((best.x + best.width/2) * scale)))
+        let by2 = max(1, min(158, Int((best.y + best.height/2) * scale)))
+        
+        print("📐 [BBOX] Mask space: (\(bx1),\(by1)) to (\(bx2),\(by2))")
+        
+        var binary = [[UInt8]](repeating: [UInt8](repeating: 0, count: 160), count: 160)
+        var binaryCount = 0
+        for y in 0..<160 {
+            for x in 0..<160 {
+                binary[y][x] = mask[y * 160 + x] > 0.5 ? 1 : 0
+                if binary[y][x] == 1 { binaryCount += 1 }
+            }
+        }
+        print("📊 [BINARY] Converted to binary: \(binaryCount) pixels")
+        
+        // Morphological closing
+        print("🔧 [MORPH] Applying dilation (5 iterations)...")
+        for i in 0..<5 {
+            var dilated = binary
+            var changeCount = 0
+            for y in (by1+1)..<by2 {
+                for x in (bx1+1)..<bx2 {
+                    if binary[y][x] == 0 {
+                        if binary[y-1][x] == 1 || binary[y+1][x] == 1 ||
+                           binary[y][x-1] == 1 || binary[y][x+1] == 1 ||
+                           binary[y-1][x-1] == 1 || binary[y-1][x+1] == 1 ||
+                           binary[y+1][x-1] == 1 || binary[y+1][x+1] == 1 {
+                            dilated[y][x] = 1
+                            changeCount += 1
+                        }
+                    }
+                }
+            }
+            binary = dilated
+            print("   Iteration \(i+1): \(changeCount) pixels added")
+        }
+        
+        saveMaskAsImage(mask: binaryToFloat(binary), stage: "6_\(stage)_dilated")
+        
+        print("🔧 [MORPH] Applying erosion (5 iterations)...")
+        for i in 0..<5 {
+            var eroded = binary
+            var changeCount = 0
+            for y in (by1+1)..<by2 {
+                for x in (bx1+1)..<bx2 {
+                    if binary[y][x] == 1 {
+                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
+                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
+                            eroded[y][x] = 0
+                            changeCount += 1
+                        }
+                    }
+                }
+            }
+            binary = eroded
+            print("   Iteration \(i+1): \(changeCount) pixels removed")
+        }
+        
+        saveMaskAsImage(mask: binaryToFloat(binary), stage: "7_\(stage)_eroded")
+        
+        // Convert back to float
+        var finalCount = 0
+        for y in 0..<160 {
+            for x in 0..<160 {
+                mask[y * 160 + x] = Float(binary[y][x])
+                if mask[y * 160 + x] > 0 { finalCount += 1 }
+            }
+        }
+        
+        // Crop to bbox
+        var croppedCount = 0
+        for y in 0..<160 {
+            for x in 0..<160 {
+                if y < by1 || y > by2 || x < bx1 || x > bx2 {
+                    mask[y * 160 + x] = 0
+                } else if mask[y * 160 + x] > 0 {
+                    croppedCount += 1
+                }
+            }
+        }
+        
+        print("📊 [FINAL] Mask pixels after morphology: \(finalCount)")
+        print("📊 [FINAL] After bbox crop: \(croppedCount) pixels")
+        
+        saveMaskAsImage(mask: mask, stage: "8_\(stage)_final_mask")
+        
+        print("🎨 [APPLY] Applying final mask to image")
+        applyMaskToImage(mask: mask, to: originalImage)
+        
+        print("✅ ==================== FRAME COMPLETE ====================\n")
+    }
+    
+    // Helper to convert binary to float for visualization
+    private func binaryToFloat(_ binary: [[UInt8]]) -> [Float] {
+        var result = [Float](repeating: 0, count: 160 * 160)
+        for y in 0..<160 {
+            for x in 0..<160 {
+                result[y * 160 + x] = Float(binary[y][x])
+            }
+        }
+        return result
+    }
+    
+    // Debug image saving helpers
+    private func saveDebugImage(pixelBuffer: CVPixelBuffer, stage: String) {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
+        let uiImage = UIImage(cgImage: cgImage)
+        UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
+        print("💾 [SAVE] Saved: \(stage)")
+    }
+
+    private func saveDebugImageWithBBox(pixelBuffer: CVPixelBuffer, bbox: DetectionSmarty, stage: String) {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
+        
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        let scale = Float(width) / 640.0
+        let bboxRect = CGRect(
+            x: CGFloat((bbox.x - bbox.width/2) * scale),
+            y: CGFloat((bbox.y - bbox.height/2) * scale),
+            width: CGFloat(bbox.width * scale),
+            height: CGFloat(bbox.height * scale)
+        )
+        
+        ctx.setStrokeColor(UIColor.green.cgColor)
+        ctx.setLineWidth(3)
+        ctx.stroke(bboxRect)
+        
+        guard let finalImage = UIGraphicsGetImageFromCurrentImageContext() else { return }
+        UIGraphicsEndImageContext()
+        
+        UIImageWriteToSavedPhotosAlbum(finalImage, nil, nil, nil)
+        print("💾 [SAVE] Saved: \(stage)")
+    }
+
+    private func saveMaskAsImage(mask: [Float], stage: String) {
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: 160, height: 160), false, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        
+        for y in 0..<160 {
+            for x in 0..<160 {
+                let value = mask[y * 160 + x]
+                let gray = CGFloat(value)
+                ctx.setFillColor(UIColor(white: gray, alpha: 1.0).cgColor)
+                ctx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+            }
+        }
+        
+        guard let maskImage = UIGraphicsGetImageFromCurrentImageContext() else { return }
+        UIGraphicsEndImageContext()
+        
+        UIImageWriteToSavedPhotosAlbum(maskImage, nil, nil, nil)
+        print("💾 [SAVE] Saved mask: \(stage)")
     }
 }
 
