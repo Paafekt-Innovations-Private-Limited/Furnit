@@ -5,6 +5,8 @@ import CoreImage
 import Photos
 import Accelerate
 
+private let SEGMENT_DEBUG_SAVE_IMAGES = false
+
 struct SmartyPantsView: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
@@ -487,9 +489,11 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     private func processDirectMultiMask(_ detections: MLMultiArray, prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
         print("\n📱 ==================== DIRECT MULTI-MASK PROCESSING ====================")
         
-        // Save original image
-//        saveDebugImage(pixelBuffer: originalImage, stage: "1_original")
-        
+        // Save original image (optional)
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            saveDebugImage(pixelBuffer: originalImage, stage: "1_original")
+        }
+
         // Extract all detections
         let allDetections = extractDetections(from: detections)
         print("📊 [DETECTION] Extracted \(allDetections.count) raw detections")
@@ -555,10 +559,15 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 }
             }
             
-            let stageName = "final_filtered_\(index+1)_\(detection.className)_\(Int(detection.confidence * 100))pct"
-            saveMaskAsImage(mask: individualMask, stage: stageName)
+            if SEGMENT_DEBUG_SAVE_IMAGES {
+                let stageName = "final_filtered_\(index+1)_\(detection.className)_\(Int(detection.confidence * 100))pct"
+                saveMaskAsImage(mask: individualMask, stage: stageName)
+            }
+            
         }
-        print("📊 [SAVED] Generated and saved \(maskFilteredDetections.count) final filtered masks")
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            print("📊 [SAVED] Generated and saved \(maskFilteredDetections.count) final filtered masks")
+        }
         
         
         // Use the best detection for bbox
@@ -566,9 +575,10 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
         print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
         
-        // Save image with bbox
-//        saveDebugImageWithBBox(pixelBuffer: originalImage, bbox: best, stage: "2_bbox_marked")
-        
+//        if SEGMENT_DEBUG_SAVE_IMAGES {
+//            saveMaskAsImage(mask: combinedMask, stage: "4_combined_raw")
+//        }
+
         // Set UI bbox
         let bbox = CGRect(
             x: CGFloat(best.x - best.width / 2),
@@ -786,16 +796,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
 
             var protoMatrix = [Float](repeating: 0, count: C * spatial)
 
-//            for c in 0..<C {
-//                for y in 0..<Hp {
-//                    for x in 0..<Wp {
-//                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
-//                        let dstIndex = c * spatial + (y * Wp + x)
-//                        protoMatrix[dstIndex] = val
-//                    }
-//                }
-//            }
-
             // ---- 2) Build per-detection masks with vDSP_mmul ----
             var masks: [[Float]] = []
             masks.reserveCapacity(sorted.count)
@@ -828,11 +828,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             for (i, det) in sorted.enumerated() {
                 
                 let candidateMask = masks[i]
-                
-                // Check if detection is daybed or day bed
-//                if det.className == "daybed" || det.className == "day bed" {
-//                    print("i am present")
-//                }
 
                 var mergedWithExisting = false
                 var mergeTargetIndex = -1
@@ -865,9 +860,11 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                         print("   → Keeping existing detection info: \(kept[mergeTargetIndex].className) @ \(Int(kept[mergeTargetIndex].confidence * 100))%")
                     }
                     
-                    // Save merged mask for debugging
-                    let stageName = "merged_\(mergeTargetIndex + 1)_\(kept[mergeTargetIndex].className)_with_\(det.className)"
-                    saveMaskAsImage(mask: mergedMask, stage: stageName)
+                    if SEGMENT_DEBUG_SAVE_IMAGES {
+                        let stageName = "merged_\(mergeTargetIndex + 1)_\(kept[mergeTargetIndex].className)_with_\(det.className)"
+                        saveMaskAsImage(mask: mergedMask, stage: stageName)
+                    }
+
                     
                 } else {
                     // No overlap found, add as new detection
@@ -875,9 +872,12 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     keptMasks.append(candidateMask)
                     print("✅ KEEP \(det.className) @ \(Int(det.confidence * 100))%")
 
-                    // 🔍 dump the kept mask so you can see it
-                    let stageName = "kept_\(kept.count)_\(det.className)"
-                    saveMaskAsImage(mask: candidateMask, stage: stageName)
+                    if SEGMENT_DEBUG_SAVE_IMAGES {
+                        // 🔍 dump the kept mask so you can see it
+                        let stageName = "kept_\(kept.count)_\(det.className)"
+                        saveMaskAsImage(mask: candidateMask, stage: stageName)
+                    }
+
                 }
             }
 
@@ -905,31 +905,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     
     // Simple post-processing with morphology and bbox cropping
     private func applyPostProcessingAndMask(mask: [Float], best: DetectionSmarty, to originalImage: CVPixelBuffer, stage: String) {
-        print("\n🔧 ========== POST-PROCESSING ==========")
-//        var mask = mask
-        
-        // Calculate bbox in mask coordinates
-//        let scale: Float = 160.0 / 640.0
-//        let bx1 = max(0, min(159, Int((best.x - best.width/2) * scale)))
-//        let by1 = max(0, min(159, Int((best.y - best.height/2) * scale)))
-//        let bx2 = max(0, min(159, Int((best.x + best.width/2) * scale)))
-//        let by2 = max(0, min(159, Int((best.y + best.height/2) * scale)))
-//        
-//        print("📐 [BBOX] Mask space: (\(bx1),\(by1)) to (\(bx2),\(by2))")
-//        
-//        // Convert to binary
-//        var binary = [[UInt8]](repeating: [UInt8](repeating: 0, count: 160), count: 160)
-//        var binaryCount = 0
-//        for y in 0..<160 {
-//            for x in 0..<160 {
-//                binary[y][x] = mask[y * 160 + x] > 0.3 ? 1 : 0  // Slightly lower threshold
-//                if binary[y][x] == 1 { binaryCount += 1 }
-//            }
-//        }
-//        print("📊 [BINARY] Converted to binary: \(binaryCount) pixels")
-       
-        
-//        print("🎨 [APPLY] Applying final enhanced mask to image")
+        print("🎨 [APPLY] Applying final enhanced mask to image")
         applyMaskToImage(mask: mask, to: originalImage)
         
         print("✅ ==================== FRAME COMPLETE ====================\n")
@@ -1108,14 +1084,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         return union > 0 ? intersection / union : 0
     }
-
-//    // Then modify processDirectMultiMask to use it:
-//    // Replace:
-//    let diverseDetections = getDiverseDetections(from: allDetections, maxCount: 5)
-//
-//    // With:
-//    let hierarchicalDetections = applyHierarchicalNMS(detections: allDetections, iouThreshold: 0.45)
-//    let diverseDetections = getDiverseDetections(from: hierarchicalDetections, maxCount: 10)
 
     private func saveMaskAsImage(mask: [Float], stage: String) {
         UIGraphicsBeginImageContextWithOptions(CGSize(width: 160, height: 160), false, 1.0)
