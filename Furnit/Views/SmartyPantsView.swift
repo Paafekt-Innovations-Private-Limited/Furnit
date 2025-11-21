@@ -508,23 +508,14 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             print("H-NMS #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height)) | BBox: [\(String(format: "%.1f", detection.x - detection.width/2)), \(String(format: "%.1f", detection.y - detection.height/2)), \(String(format: "%.1f", detection.x + detection.width/2)), \(String(format: "%.1f", detection.y + detection.height/2))] | Mask: [\(detection.maskCoeffs.prefix(5).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
         }
         
-        // Apply Mask IoU filtering RIGHT AFTER bbox IoU
-        let maskFilteredDetections = applyMaskIoU(detections: hierarchicalDetections, iouThreshold: 0.3, prototypes: prototypes)
-        
-        print("📊 [MASK-FILTERED] Final detections after Mask IoU filtering:")
-        for (index, detection) in maskFilteredDetections.enumerated() {
-            print("Mask-Filtered #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height))")
-        }
-        print("📊 [MASK-FILTERED] Total kept: \(maskFilteredDetections.count) detections")
-        
                 
         
         // Get diverse detections (max 5 different classes)
 //        let diverseDetections = getDiverseDetections(from: hierarchicalDetections, maxCount: 5)
 //        print("📊 [DIVERSE] Using \(diverseDetections.count) detections")
         
-        guard !maskFilteredDetections.isEmpty else {
-            print("❌ [DETECTION] No valid detections found after mask filtering")
+        guard !hierarchicalDetections.isEmpty else {
+            print("❌ [DETECTION] No valid detections found")
             DispatchQueue.main.async {
                 self.isProcessing = false
                 self.segmentedImage = nil
@@ -535,9 +526,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             return
         }
         
-        // Save masks from maskFilteredDetections
-        print("\n💾 ========== SAVING FINAL FILTERED MASKS ==========")
-        for (index, detection) in maskFilteredDetections.enumerated() {
+        // Save masks from hierarchicalDetections
+        print("\n💾 ========== SAVING HIERARCHICAL MASKS ==========")
+        for (index, detection) in hierarchicalDetections.enumerated() {
             print("Generating mask for \(detection.className) @ \(Int(detection.confidence * 100))%")
             
             // Generate individual mask for this detection
@@ -554,14 +545,14 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 }
             }
             
-            let stageName = "final_filtered_\(index+1)_\(detection.className)_\(Int(detection.confidence * 100))pct"
+            let stageName = "hierarchical_\(index+1)_\(detection.className)_\(Int(detection.confidence * 100))pct"
             saveMaskAsImage(mask: individualMask, stage: stageName)
         }
-        print("📊 [SAVED] Generated and saved \(maskFilteredDetections.count) final filtered masks")
+        print("📊 [SAVED] Generated and saved \(hierarchicalDetections.count) individual masks")
         
         
         // Use the best detection for bbox
-        let best = maskFilteredDetections.first!
+        let best = hierarchicalDetections.first!
         print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
         print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
         
@@ -589,7 +580,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         var minX = Float.infinity, minY = Float.infinity
         var maxX = -Float.infinity, maxY = -Float.infinity
         
-        for detection in maskFilteredDetections {
+        for detection in hierarchicalDetections {
             let x1 = (detection.x - detection.width/2) * scale
             let y1 = (detection.y - detection.height/2) * scale
             let x2 = (detection.x + detection.width/2) * scale
@@ -614,6 +605,16 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         // Initialize combined mask - ONLY for bbox area (not full 160x160)
         var combinedMask = [Float](repeating: 0, count: 160 * 160)
+        
+        // Apply Mask IoU filtering
+        let maskFilteredDetections = applyMaskIoU(detections: hierarchicalDetections, iouThreshold: 0.8, prototypes: prototypes)
+        
+        print("📊 [MASK-FILTERED] Final detections after Mask IoU filtering:")
+        for (index, detection) in maskFilteredDetections.enumerated() {
+            print("Mask-Filtered #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height))")
+        }
+        print("📊 [MASK-FILTERED] Total kept: \(maskFilteredDetections.count) detections")
+        
         
         for (index, detection) in maskFilteredDetections.enumerated() {
             print("Processing #\(index+1): \(detection.className) @ \(Int(detection.confidence * 100))%")
@@ -655,7 +656,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             // Sort by confidence (high → low)
             let sorted = detections.sorted { $0.confidence > $1.confidence }
 
-            print("\n🔍 Mask-NMS (pure mask IoU, no class logic):")
+            print("\n🔍 Confidence-Aware Mask-NMS:")
 
             // ---- 1) Flatten prototypes into [C × (Hp*Wp)] as Float ----
             let shape = prototypes.shape.map { $0.intValue }      // [1, 32, 160, 160]
@@ -666,15 +667,15 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
 
             var protoMatrix = [Float](repeating: 0, count: C * spatial)
 
-//            for c in 0..<C {
-//                for y in 0..<Hp {
-//                    for x in 0..<Wp {
-//                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
-//                        let dstIndex = c * spatial + (y * Wp + x)
-//                        protoMatrix[dstIndex] = val
-//                    }
-//                }
-//            }
+            for c in 0..<C {
+                for y in 0..<Hp {
+                    for x in 0..<Wp {
+                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
+                        let dstIndex = c * spatial + (y * Wp + x)
+                        protoMatrix[dstIndex] = val
+                    }
+                }
+            }
 
             // ---- 2) Build per-detection masks with vDSP_mmul ----
             var masks: [[Float]] = []
@@ -701,42 +702,69 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 masks.append(mask)
             }
 
-            // ---- 3) Simple mask-based NMS (no class checks) ----
+            // ---- 3) CONFIDENCE-AWARE mask-based NMS ----
             var kept: [DetectionSmarty] = []
             var keptMasks: [[Float]] = []
 
             for (i, det) in sorted.enumerated() {
                 
                 let candidateMask = masks[i]
+                let candidateConf = det.confidence
                 
-                // Check if detection is daybed or day bed
-//                if det.className == "daybed" || det.className == "day bed" {
-//                    print("i am present")
-//                }
-
                 var isDuplicate = false
+                var suppressorInfo = ""
 
-                for existingMask in keptMasks {
+                for (existingIndex, existingMask) in keptMasks.enumerated() {
+                    let existingDet = kept[existingIndex]
+                    let existingConf = existingDet.confidence
                     let iou = calculateMaskIoU(mask1: candidateMask, mask2: existingMask)
+                    
                     if iou >= iouThreshold {
-                        isDuplicate = true
-                        print("❌ DUPLICATE (IoU \(Int(iou * 100))%) \(det.className) @ \(Int(det.confidence * 100))%")
-                        break
+                        // CONFIDENCE-AWARE LOGIC:
+                        let confDiff = candidateConf - existingConf
+                        
+                        if confDiff >= 0.15 {
+                            // Candidate is SIGNIFICANTLY higher confidence (15%+)
+                            // REPLACE the existing detection
+                            print("🔄 REPLACE: \(Int(candidateConf*100))% \(det.className) replaces \(Int(existingConf*100))% \(existingDet.className) (IoU: \(Int(iou*100))%)")
+                            kept[existingIndex] = det
+                            keptMasks[existingIndex] = candidateMask
+                            isDuplicate = true // Don't add as new
+                            break
+                        } else if confDiff <= -0.05 {
+                            // Existing is higher confidence (5%+) - suppress candidate
+                            isDuplicate = true
+                            suppressorInfo = "by \(Int(existingConf*100))% \(existingDet.className)"
+                            break
+                        } else {
+                            // Similar confidence (within 5%) - keep both if different classes
+                            if det.classIdx != existingDet.classIdx {
+                                print("✅ KEEP BOTH: Similar conf \(Int(candidateConf*100))% \(det.className) vs \(Int(existingConf*100))% \(existingDet.className)")
+                                // Don't suppress - keep both
+                            } else {
+                                // Same class, similar confidence - suppress lower one
+                                isDuplicate = true
+                                suppressorInfo = "same class, similar conf"
+                                break
+                            }
+                        }
                     }
                 }
 
                 if !isDuplicate {
                     kept.append(det)
                     keptMasks.append(candidateMask)
-                    print("✅ KEEP \(det.className) @ \(Int(det.confidence * 100))%")
+                    print("✅ KEEP \(Int(candidateConf*100))% \(det.className)")
 
-                    // 🔍 dump the kept mask so you can see it
-                    let stageName = "kept_\(kept.count)_\(det.className)"
-                    saveMaskAsImage(mask: candidateMask, stage: stageName)
+                    // Save the kept mask with confidence overlay
+                    let stageName = "kept_\(kept.count)_\(det.className)_\(Int(candidateConf * 100))pct"
+                    saveMaskAsImageWithConfidence(mask: candidateMask, stage: stageName, confidence: candidateConf)
+                } else if !suppressorInfo.isEmpty {
+                    print("❌ SUPPRESS \(Int(candidateConf*100))% \(det.className) \(suppressorInfo)")
                 }
             }
 
-            print("Mask-NMS: \(sorted.count) → \(kept.count) unique masks (by IoU)")
+            print("Confidence-Aware Mask-NMS: \(sorted.count) → \(kept.count) detections")
             return kept
         }
     
@@ -933,60 +961,25 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     let x0 = Int(mx), y0 = Int(my)
                     
                     guard x0 >= 0 && x0 < 160 && y0 >= 0 && y0 < 160 else {
-                        pixels[idx + 3] = 0
+                        pixels[idx + 3] = 0  // Transparent
                         continue
                     }
                     
                     let maskValue = mask[y0 * 160 + x0]
                     
                     if maskValue > 0.0 {
-                        // Fill furniture pixels with green
-                        pixels[idx] = 0      // Blue
-                        pixels[idx + 1] = 255  // Green
-                        pixels[idx + 2] = 0    // Red
-                        pixels[idx + 3] = 255  // Alpha (fully opaque)
+                        // Keep furniture pixels as they are (don't change RGB)
+                        pixels[idx + 3] = 255  // Fully opaque
                     } else {
-                        // Fill background pixels with green too
-                        pixels[idx] = 0      // Blue
-                        pixels[idx + 1] = 0  // Green
-                        pixels[idx + 2] = 255  // Red
-                        pixels[idx + 3] = 255  // Alpha (fully opaque)
+                        // Make background transparent
+                        pixels[idx + 3] = 0    // Transparent
                     }
                 }
             }
             
-            
-            
-            
-            // After setting alpha values, do a hole-filling pass
-//            for py in 1..<(height-1) {
-//                for px in 1..<(width-1) {
-//                    let idx = (py * width + px) * 4
-                    
-                    // If current pixel is transparent (hole)
-//                    if pixels[idx + 3] == 0 {
-                        // Check 8 neighbors
-//                        var opaqueNeighbors = 0
-//                        let offsets = [
-//                            (-1, -1), (-1, 0), (-1, 1),
-//                            (0, -1),           (0, 1),
-//                            (1, -1),  (1, 0),  (1, 1)
-//                        ]
-                        
-//                        for (dy, dx) in offsets {
-//                            let nIdx = ((py + dy) * width + (px + dx)) * 4
-//                            if pixels[nIdx + 3] == 255 {
-//                                opaqueNeighbors += 1
-//                            }
-//                        }
-                        
-//                        // If surrounded by 6+ opaque pixels, fill the hole
-//                        if opaqueNeighbors >= 6 {
-//                            pixels[idx + 3] = 255  // Fill the hole
-//                        }
-//                    }
-//                }
-//            }
+            // Fill holes within chair boundaries
+            // Apply contour-based largest object hole filling
+            fillHolesInChair(pixels: pixels, width: width, height: height)
             
             if let outImage = ctx.makeImage() {
                 DispatchQueue.main.async {
@@ -997,6 +990,198 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             } else {
                 DispatchQueue.main.async { self.isProcessing = false }
             }
+        }
+    }
+    
+    // CONTOUR-BASED LARGEST OBJECT FILLING - for chair/bed scenarios
+    private func fillHolesInChair(pixels: UnsafeMutablePointer<UInt8>, width: Int, height: Int) {
+        print("🪑 [CONTOUR] Starting largest object hole filling for \(width)x\(height)")
+        
+        // Create binary mask from alpha channel
+        var binaryMask = [UInt8](repeating: 0, count: width * height)
+        var initialPixelCount = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                let pixelIdx = (y * width + x) * 4
+                if pixels[pixelIdx + 3] > 0 {
+                    binaryMask[y * width + x] = 255
+                    initialPixelCount += 1
+                } else {
+                    binaryMask[y * width + x] = 0
+                }
+            }
+        }
+        
+        print("🪑 [CONTOUR] Initial furniture pixels: \(initialPixelCount)")
+        
+        // Find all connected components
+        var visited = [Bool](repeating: false, count: width * height)
+        var allComponents: [[Int]] = []
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                let idx = y * width + x
+                if binaryMask[idx] == 255 && !visited[idx] {
+                    var component: [Int] = []
+                    floodFill(mask: &binaryMask, visited: &visited, x: x, y: y, width: width, height: height, component: &component)
+                    
+                    if component.count > 50 {  // Only consider meaningful components
+                        allComponents.append(component)
+                    }
+                }
+            }
+        }
+        
+        // Sort components by size (largest first)
+        allComponents.sort { $0.count > $1.count }
+        
+        guard !allComponents.isEmpty else {
+            print("🪑 [CONTOUR] No significant components found")
+            return
+        }
+        
+        // Take the LARGEST component (chair main body, bed main surface, etc.)
+        let largestComponent = allComponents[0]
+        let largestSize = largestComponent.count
+        
+        print("🪑 [CONTOUR] Found \(allComponents.count) components")
+        print("🪑 [CONTOUR] Largest component: \(largestSize) pixels (\(Int(Float(largestSize)/Float(width*height)*100))% of image)")
+        
+        // Create mask with ONLY the largest component
+        var cleanMask = [UInt8](repeating: 0, count: width * height)
+        for idx in largestComponent {
+            if idx >= 0 && idx < cleanMask.count {
+                cleanMask[idx] = 255
+            }
+        }
+        
+        // Find bounding box of the largest component for efficient hole filling
+        var minX = width, maxX = 0, minY = height, maxY = 0
+        for idx in largestComponent {
+            let x = idx % width
+            let y = idx / width
+            minX = min(minX, x)
+            maxX = max(maxX, x)
+            minY = min(minY, y)
+            maxY = max(maxY, y)
+        }
+        
+        print("🪑 [CONTOUR] Bounding box: (\(minX),\(minY)) to (\(maxX),\(maxY))")
+        
+        // CONTOUR HOLE FILLING - Fill interior holes in the main furniture object
+        // This is perfect for chairs (fill seat holes) and beds (fill sheet gaps)
+        var filledPixels = 0
+        
+        for y in minY...maxY {
+            var inside = false
+            var lastPixel: UInt8 = 0
+            
+            for x in minX...maxX {
+                let idx = y * width + x
+                let currentPixel = cleanMask[idx]
+                
+                // Cross from outside to inside furniture boundary
+                if currentPixel == 255 && lastPixel == 0 {
+                    inside = !inside
+                } 
+                // Cross from inside to outside furniture boundary  
+                else if currentPixel == 0 && lastPixel == 255 {
+                    inside = !inside
+                }
+                
+                // Fill holes INSIDE the furniture contour
+                if inside && currentPixel == 0 {
+                    cleanMask[idx] = 255
+                    filledPixels += 1
+                }
+                
+                lastPixel = currentPixel
+            }
+        }
+        
+        print("🪑 [CONTOUR] Filled \(filledPixels) hole pixels inside largest object")
+        print("🪑 [CONTOUR] Total pixels after filling: \(largestSize + filledPixels)")
+        
+        // Apply the filled contour mask back to the original image
+        var appliedPixels = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                let maskIdx = y * width + x
+                let pixelIdx = maskIdx * 4
+                
+                if cleanMask[maskIdx] == 255 {
+                    if binaryMask[maskIdx] == 0 {
+                        // This pixel was a hole that got filled - interpolate color from nearby furniture
+                        var avgR: Int = 0, avgG: Int = 0, avgB: Int = 0, count = 0
+                        
+                        // Sample colors from nearby furniture pixels (3x3 neighborhood)
+                        for dy in -1...1 {
+                            for dx in -1...1 {
+                                let ny = y + dy
+                                let nx = x + dx
+                                if ny >= 0 && ny < height && nx >= 0 && nx < width {
+                                    let nearbyIdx = (ny * width + nx) * 4
+                                    if binaryMask[ny * width + nx] == 255 {  // Original furniture pixel
+                                        avgR += Int(pixels[nearbyIdx + 2])      // Red
+                                        avgG += Int(pixels[nearbyIdx + 1])      // Green  
+                                        avgB += Int(pixels[nearbyIdx])          // Blue
+                                        count += 1
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if count > 0 {
+                            // Use interpolated color from nearby furniture
+                            pixels[pixelIdx] = UInt8(avgB / count)      // Blue
+                            pixels[pixelIdx + 1] = UInt8(avgG / count)  // Green
+                            pixels[pixelIdx + 2] = UInt8(avgR / count)  // Red
+                            pixels[pixelIdx + 3] = 255                  // Alpha
+                            appliedPixels += 1
+                        } else {
+                            // Fallback to neutral tone if no nearby furniture
+                            pixels[pixelIdx] = 100      // Blue
+                            pixels[pixelIdx + 1] = 90   // Green
+                            pixels[pixelIdx + 2] = 80   // Red
+                            pixels[pixelIdx + 3] = 255  // Alpha
+                            appliedPixels += 1
+                        }
+                    } else {
+                        // Keep existing furniture pixel as is
+                        pixels[pixelIdx + 3] = 255  // Ensure it stays opaque
+                    }
+                } else {
+                    // Not part of largest object - make transparent
+                    pixels[pixelIdx + 3] = 0
+                }
+            }
+        }
+        
+        print("🪑 [CONTOUR] Applied filling to \(appliedPixels) pixels")
+        print("🪑 [CONTOUR] Contour-based largest object processing complete!")
+    }
+    
+    // Iterative flood fill to find connected components (prevents stack overflow)
+    private func floodFill(mask: inout [UInt8], visited: inout [Bool], x: Int, y: Int, width: Int, height: Int, component: inout [Int]) {
+        var stack: [(Int, Int)] = [(x, y)]
+        
+        while !stack.isEmpty {
+            let (currentX, currentY) = stack.removeLast()
+            let idx = currentY * width + currentX
+            
+            if currentX < 0 || currentX >= width || currentY < 0 || currentY >= height || 
+               visited[idx] || mask[idx] == 0 {
+                continue
+            }
+            
+            visited[idx] = true
+            component.append(idx)
+            
+            // Add 4-connected neighbors to stack
+            stack.append((currentX + 1, currentY))
+            stack.append((currentX - 1, currentY))
+            stack.append((currentX, currentY + 1))
+            stack.append((currentX, currentY - 1))
         }
     }
     
@@ -1011,48 +1196,22 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         return result
     }
     
-    // Debug image saving helpers
-    private func saveDebugImage(pixelBuffer: CVPixelBuffer, stage: String) {
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
-        let uiImage = UIImage(cgImage: cgImage)
-        UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
-        print("💾 [SAVE] Saved: \(stage)")
+    // Add IoU calculation helper
+    private func calculateIoU(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
+        let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
+        let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
+        let x2 = min(det1.x + det1.width/2, det2.x + det2.width/2)
+        let y2 = min(det1.y + det1.height/2, det2.y + det2.height/2)
+        
+        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
+        let area1 = det1.width * det1.height
+        let area2 = det2.width * det2.height
+        let union = area1 + area2 - intersection
+        
+        return union > 0 ? intersection / union : 0
     }
 
-    private func saveDebugImageWithBBox(pixelBuffer: CVPixelBuffer, bbox: DetectionSmarty, stage: String) {
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
-        
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        
-        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
-        guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        
-        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-        
-        let scale = Float(width) / 640.0
-        let bboxRect = CGRect(
-            x: CGFloat((bbox.x - bbox.width/2) * scale),
-            y: CGFloat((bbox.y - bbox.height/2) * scale),
-            width: CGFloat(bbox.width * scale),
-            height: CGFloat(bbox.height * scale)
-        )
-        
-        ctx.setStrokeColor(UIColor.green.cgColor)
-        ctx.setLineWidth(3)
-        ctx.stroke(bboxRect)
-        
-        guard let finalImage = UIGraphicsGetImageFromCurrentImageContext() else { return }
-        UIGraphicsEndImageContext()
-        
-        UIImageWriteToSavedPhotosAlbum(finalImage, nil, nil, nil)
-        print("💾 [SAVE] Saved: \(stage)")
-    }
-    
-    // Add this function after extractDetections:
-
+    // Add hierarchical NMS
     private func applyHierarchicalNMS(detections: [DetectionSmarty], iouThreshold: Float) -> [DetectionSmarty] {
         guard !detections.isEmpty else { return [] }
         
@@ -1065,7 +1224,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         for (i, det) in sorted.enumerated() {
             if suppressed.contains(i) { continue }
-//            if kept.count >= 10 { break }  // Keep up to 10
             
             var shouldSuppress = false
             
@@ -1096,28 +1254,49 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         return kept
     }
 
-    // Add IoU calculation helper:
-    private func calculateIoU(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
-        let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
-        let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
-        let x2 = min(det1.x + det1.width/2, det2.x + det2.width/2)
-        let y2 = min(det1.y + det1.height/2, det2.y + det2.height/2)
+    private func saveMaskAsImageWithConfidence(mask: [Float], stage: String, confidence: Float) {
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: 160, height: 160), false, 2.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
         
-        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
-        let area1 = det1.width * det1.height
-        let area2 = det2.width * det2.height
-        let union = area1 + area2 - intersection
+        // Find min/max for normalization
+        let minVal = mask.min() ?? 0
+        let maxVal = mask.max() ?? 1
+        let range = maxVal - minVal
         
-        return union > 0 ? intersection / union : 0
+        for y in 0..<160 {
+            for x in 0..<160 {
+                let rawValue = mask[y * 160 + x]
+                // Normalize to 0-1 range for visualization
+                let normalizedValue = range > 0 ? (rawValue - minVal) / range : 0
+                let gray = CGFloat(max(0, min(1, normalizedValue)))
+                ctx.setFillColor(UIColor(white: gray, alpha: 1.0).cgColor)
+                ctx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+            }
+        }
+        
+        // Add confidence text overlay
+        let confidenceText = "\(Int(confidence * 100))%"
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.boldSystemFont(ofSize: 14),
+            .foregroundColor: UIColor.red
+        ]
+        
+        let textSize = confidenceText.size(withAttributes: attributes)
+        let textRect = CGRect(x: 5, y: 5, width: textSize.width, height: textSize.height)
+        
+        // Add white background for text
+        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.fill(textRect.insetBy(dx: -2, dy: -1))
+        
+        // Draw text
+        confidenceText.draw(in: textRect, withAttributes: attributes)
+        
+        guard let maskImage = UIGraphicsGetImageFromCurrentImageContext() else { return }
+        UIGraphicsEndImageContext()
+        
+        UIImageWriteToSavedPhotosAlbum(maskImage, nil, nil, nil)
+        print("💾 [SAVE] Saved mask with confidence: \(stage)")
     }
-
-//    // Then modify processDirectMultiMask to use it:
-//    // Replace:
-//    let diverseDetections = getDiverseDetections(from: allDetections, maxCount: 5)
-//
-//    // With:
-//    let hierarchicalDetections = applyHierarchicalNMS(detections: allDetections, iouThreshold: 0.45)
-//    let diverseDetections = getDiverseDetections(from: hierarchicalDetections, maxCount: 10)
 
     private func saveMaskAsImage(mask: [Float], stage: String) {
         UIGraphicsBeginImageContextWithOptions(CGSize(width: 160, height: 160), false, 1.0)
