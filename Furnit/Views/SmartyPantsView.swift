@@ -613,42 +613,139 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         print("📐 [UNION BBOX] Processing area: (\(bx1),\(by1)) to (\(bx2),\(by2)) - \(bboxWidth)x\(bboxHeight) pixels")
         
-        // Initialize combined mask - ONLY for bbox area (not full 160x160)
-//        var combinedMask = [Float](repeating: 0, count: 160 * 160)
+        // ---- Flatten prototypes into [C × (Hp*Wp)] as Float (same as applyMaskIoU) ----
+        let shape = prototypes.shape.map { $0.intValue }      // [1, 32, 160, 160]
+        let C = shape[1]
+        let Hp = shape[2]
+        let Wp = shape[3]
+        let spatial = Hp * Wp                                 // 25600
+
+        var protoMatrix = [Float](repeating: 0, count: C * spatial)
+
+        for c in 0..<C {
+            for y in 0..<Hp {
+                for x in 0..<Wp {
+                    let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
+                    let dstIndex = c * spatial + (y * Wp + x)
+                    protoMatrix[dstIndex] = val
+                }
+            }
+        }
+        
+        // 🔍 VALIDATION: Check if prototype matrix is populated
+        let nonZeroProtos = protoMatrix.filter { $0 != 0.0 }.count
+        print("📊 [PROTO] Prototype matrix: \(nonZeroProtos) non-zero values out of \(protoMatrix.count) total")
+
+        // Initialize combined mask
         var combinedMask = individualMask
-        //kishore
+        
+        // Process each detection using vDSP_mmul (like applyMaskIoU)
+//        for (index, detection) in maskFilteredDetections.enumerated() {
+//            var detectionMask = [Float](repeating: 0, count: spatial)
+//            
+//            print("Processing #\(index+1): \(detection.className) @ \(Int(detection.confidence * 100))%")
+//            
+//            // Use vDSP_mmul for efficient matrix multiplication
+//            vDSP_mmul(
+//                detection.maskCoeffs, 1,           // A: 1×C
+//                protoMatrix, 1,                    // B: C×spatial
+//                &detectionMask, 1,                 // C: 1×spatial
+//                1,
+//                vDSP_Length(spatial),
+//                vDSP_Length(C)
+//            )
+//
+//            // Apply sigmoid to get soft mask [0,1]
+//            for i in 0..<spatial {
+//                let v = detectionMask[i]
+////                detectionMask[i] = 1.0 / (1.0 + exp(-v))
+//                detectionMask[i] = sigmoid(v) 
+//            }
+//            
+//            // 🔍 VALIDATION: Check mask values after sigmoid
+//            let nonZeroMask = detectionMask.filter { $0 > 0.1 }.count
+//            let maxMask = detectionMask.max() ?? 0
+//            let minMask = detectionMask.min() ?? 0
+//            print("   📊 [MASK] Detection mask: \(nonZeroMask) pixels >0.1, range: \(String(format: "%.3f", minMask)) to \(String(format: "%.3f", maxMask))")
+//            
+////            for c in 0..<C {
+////                for y in 0..<Hp {
+////                    for x in 0..<Wp {
+////                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
+////                        let dstIndex = c * spatial + (y * Wp + x)
+////                        protoMatrix[dstIndex] = val
+////                    }
+////                }
+////            }
+//            
+//            // Combine masks with confidence weighting
+//            let weight = detection.confidence
+//            for i in 0..<(160 * 160) {
+////                combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * weight)
+//                combinedMask[i] = min(combinedMask[i] ,detectionMask[i])
+//            }
+//            
+//            // 🔍 VALIDATION: Check combined mask after adding this detection
+//            let combinedNonZero = combinedMask.filter { $0 > 0.1 }.count
+//            let combinedMax = combinedMask.max() ?? 0
+//            print("   📊 [COMBINED] After adding: \(combinedNonZero) pixels >0.1, max: \(String(format: "%.3f", combinedMax))")
+//        }
+        
+        
+        
+        
         for (index, detection) in maskFilteredDetections.enumerated() {
             var detectionMask = [Float](repeating: 0, count: 160 * 160)
-                        
+            
             print("Processing #\(index+1): \(detection.className) @ \(Int(detection.confidence * 100))%")
             
-            // Only process within bounding box area
+            // Pre-alias coefficients once
+            let coeffs = detection.maskCoeffs  // [Float] of length 32
+            
+            // Temp buffer for prototypes at one pixel (32 channels)
+            var protoVec = [Float](repeating: 0, count: 32)
+            
             for y in by1...by2 {
                 for x in bx1...bx2 {
-                    var sum: Float = 0
+                    // ---- gather prototypes for this pixel into protoVec ----
                     for c in 0..<32 {
-                        sum += detection.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
+                        protoVec[c] = prototypes[[0, c, y, x] as [NSNumber]].floatValue
                     }
-                    detectionMask[y * 160 + x] = sigmoid(sum)
-//                    let maskValue = sigmoid(sum)
-//                    let maskValue = sum
                     
-                    // Combine masks using MAX operation (keep highest confidence for each pixel)
-//                    let idx = y * 160 + x
-//                    let weight = detection.confidence
-//                    combinedMask[idx] = min(1.0, combinedMask[idx] + maskValue * 0.5)
-//                    combinedMask[idx] = max(combinedMask[idx], maskValue)
+                    // ---- vDSP_mmul: (1 x 32) * (32 x 1) = (1 x 1) ----
+                    var sum: Float = 0.0
+                    coeffs.withUnsafeBufferPointer { aPtr in        // A: 1x32 (maskCoeffs)
+                        protoVec.withUnsafeBufferPointer { bPtr in  // B: 32x1 (prototypes at this pixel)
+                            withUnsafeMutablePointer(to: &sum) { cPtr in // C: 1x1 result
+                                vDSP_mmul(
+                                    aPtr.baseAddress!, 1,   // A, stride
+                                    bPtr.baseAddress!, 1,   // B, stride
+                                    cPtr, 1,                // C, stride
+                                    1, 1, 32                // M=1, N=1, K=32
+                                )
+                            }
+                        }
+                    }
                     
-                    // Combine masks
+                    // Same as your current logic
+                    let value = sigmoid(sum)
+                    let idx = y * 160 + x
+                    detectionMask[idx] = value
+                    
+                    // Combine masks (unchanged, still inside x/y loops)
                     for i in 0..<(160 * 160) {
-        //                combinedMask[i] = max(combinedMask[i], detectionMask[i])
-        //                combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * 0.5)
                         let weight = detection.confidence
                         combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * weight)
                     }
                 }
             }
         }
+
+        
+        
+        
+        
+        
         
 //        print("📊 [BBOX OPTIMIZED] Processed \(bboxWidth * bboxHeight) pixels instead of \(160 * 160)")
         
