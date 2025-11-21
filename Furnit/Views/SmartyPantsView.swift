@@ -17,6 +17,7 @@ struct SmartyPantsView: View {
     @State private var accumulatedOffset: CGSize = .zero
     @State private var showingSaveSuccess = false
     @State private var saveMessage = ""
+    @State private var bboxPulse: CGFloat = 1.0
     
     var body: some View {
         ZStack {
@@ -57,9 +58,87 @@ struct SmartyPantsView: View {
             if camera.currentBBox != .zero && camera.segmentedImage != nil {
                 Canvas { context, size in
                     let rect = Path(camera.currentBBox)
-                    context.stroke(rect, with: .color(.blue.opacity(0.3)), lineWidth: 8)
-                    context.stroke(rect, with: .color(.blue.opacity(0.6)), lineWidth: 5)
-                    context.stroke(rect, with: .color(.blue), lineWidth: 2)
+                    
+                    // Strong green border - multiple layers for visibility with pulse effect
+                    let pulseScale = bboxPulse
+                    context.stroke(rect, with: .color(.green.opacity(0.4 * pulseScale)), lineWidth: 12 * pulseScale)
+                    context.stroke(rect, with: .color(.green.opacity(0.7)), lineWidth: 8)
+                    context.stroke(rect, with: .color(.green), lineWidth: 4)
+                    context.stroke(rect, with: .color(.white), lineWidth: 2)
+                    
+                    // Add corner markers for extra visibility
+                    let cornerSize: CGFloat = 20 * pulseScale
+                    let corners = [
+                        (camera.currentBBox.minX, camera.currentBBox.minY), // Top-left
+                        (camera.currentBBox.maxX, camera.currentBBox.minY), // Top-right
+                        (camera.currentBBox.minX, camera.currentBBox.maxY), // Bottom-left
+                        (camera.currentBBox.maxX, camera.currentBBox.maxY)  // Bottom-right
+                    ]
+                    
+                    context.stroke(
+                        Path { path in
+                            for (x, y) in corners {
+                                // Horizontal corner lines
+                                path.move(to: CGPoint(x: x - cornerSize/2, y: y))
+                                path.addLine(to: CGPoint(x: x + cornerSize/2, y: y))
+                                
+                                // Vertical corner lines
+                                path.move(to: CGPoint(x: x, y: y - cornerSize/2))
+                                path.addLine(to: CGPoint(x: x, y: y + cornerSize/2))
+                            }
+                        },
+                        with: .color(.green.opacity(pulseScale)),
+                        lineWidth: 6 * pulseScale
+                    )
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .onAppear {
+                    // Start pulsing animation
+                    withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                        bboxPulse = 1.3
+                    }
+                }
+                .onDisappear {
+                    bboxPulse = 1.0
+                }
+            }
+            
+            // Mask-based bounding box (tighter fit to actual object)
+            if camera.maskBBox != .zero && camera.segmentedImage != nil {
+                Canvas { context, size in
+                    let maskRect = Path(camera.maskBBox)
+                    
+                    // Blue border for mask-based bbox (different from detection bbox)
+                    let pulseScale = bboxPulse * 0.8  // Slightly smaller pulse
+                    context.stroke(maskRect, with: .color(.blue.opacity(0.3 * pulseScale)), lineWidth: 10 * pulseScale)
+                    context.stroke(maskRect, with: .color(.blue.opacity(0.6)), lineWidth: 6)
+                    context.stroke(maskRect, with: .color(.blue), lineWidth: 3)
+                    context.stroke(maskRect, with: .color(.white), lineWidth: 1)
+                    
+                    // Add smaller corner markers for mask bbox
+                    let cornerSize: CGFloat = 15 * pulseScale
+                    let corners = [
+                        (camera.maskBBox.minX, camera.maskBBox.minY), // Top-left
+                        (camera.maskBBox.maxX, camera.maskBBox.minY), // Top-right
+                        (camera.maskBBox.minX, camera.maskBBox.maxY), // Bottom-left
+                        (camera.maskBBox.maxX, camera.maskBBox.maxY)  // Bottom-right
+                    ]
+                    
+                    context.stroke(
+                        Path { path in
+                            for (x, y) in corners {
+                                // Draw diamond-shaped corners instead of crosses
+                                path.move(to: CGPoint(x: x - cornerSize/3, y: y))
+                                path.addLine(to: CGPoint(x: x, y: y - cornerSize/3))
+                                path.addLine(to: CGPoint(x: x + cornerSize/3, y: y))
+                                path.addLine(to: CGPoint(x: x, y: y + cornerSize/3))
+                                path.closeSubpath()
+                            }
+                        },
+                        with: .color(.blue.opacity(pulseScale)),
+                        lineWidth: 4 * pulseScale
+                    )
                 }
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
@@ -71,6 +150,11 @@ struct SmartyPantsView: View {
                         Text("FPS: \(camera.currentFPS, specifier: "%.1f")")
                         if camera.lastConfidence > 0 {
                             Text("\(Int(camera.lastConfidence * 100))%")
+                        }
+                        if camera.maskBBox != .zero {
+                            Text("MASK: \(Int(camera.maskBBox.width))×\(Int(camera.maskBBox.height))")
+                                .font(.caption2)
+                                .foregroundColor(.blue)
                         }
                         Text("PRODUCTION")
                             .font(.caption2)
@@ -213,6 +297,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     @Published var currentFPS: Double = 0.0
     @Published var lastConfidence: Float = 0.0
     @Published var currentBBox: CGRect = .zero
+    @Published var maskBBox: CGRect = .zero  // New: mask-based bounding box
     
     private let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -256,6 +341,66 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     
     private func sigmoid(_ x: Float) -> Float { 1.0 / (1.0 + exp(-x)) }
     
+    // Calculate bounding box from actual mask pixels
+    private func calculateMaskBoundingBox(from mask: [Float], originalImageWidth: Int, originalImageHeight: Int) -> CGRect {
+        var minX = 160, maxX = 0, minY = 160, maxY = 0
+        var foundPixels = false
+        
+        // Find bounds of mask pixels
+        for y in 0..<160 {
+            for x in 0..<160 {
+                if mask[y * 160 + x] > 0.2 {  // Threshold for mask presence
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                    foundPixels = true
+                }
+            }
+        }
+        
+        guard foundPixels else { 
+            print("🔍 [MASK_BBOX] No mask pixels found above threshold")
+            return .zero 
+        }
+        
+        print("🔍 [MASK_BBOX] Found mask bounds in 160x160 space: (\(minX),\(minY)) to (\(maxX),\(maxY))")
+        
+        // Convert from 160x160 mask space to 640x640 YOLO space
+        let yoloMinX = Float(minX) * (640.0 / 160.0)
+        let yoloMinY = Float(minY) * (640.0 / 160.0)
+        let yoloMaxX = Float(maxX) * (640.0 / 160.0)
+        let yoloMaxY = Float(maxY) * (640.0 / 160.0)
+        
+        print("🔍 [MASK_BBOX] Converted to YOLO 640x640 space: (\(Int(yoloMinX)),\(Int(yoloMinY))) to (\(Int(yoloMaxX)),\(Int(yoloMaxY)))")
+        
+        // Convert from YOLO 640x640 space to actual image space
+        let imageScaleX = Float(originalImageWidth) / 640.0
+        let imageScaleY = Float(originalImageHeight) / 640.0
+        
+        let imageMinX = yoloMinX * imageScaleX
+        let imageMinY = yoloMinY * imageScaleY
+        let imageMaxX = yoloMaxX * imageScaleX
+        let imageMaxY = yoloMaxY * imageScaleY
+        
+        print("🔍 [MASK_BBOX] Converted to image space: (\(Int(imageMinX)),\(Int(imageMinY))) to (\(Int(imageMaxX)),\(Int(imageMaxY)))")
+        
+        // Convert to screen coordinates (same logic as YOLO detection bbox)
+        let screenWidth = UIScreen.main.bounds.width
+        let screenHeight = UIScreen.main.bounds.height
+        
+        // Account for camera rotation (90 degrees)
+        let screenX = CGFloat(imageMinY) * (screenWidth / CGFloat(originalImageHeight))
+        let screenY = CGFloat(imageMinX) * (screenHeight / CGFloat(originalImageWidth))
+        let screenW = CGFloat(imageMaxY - imageMinY) * (screenWidth / CGFloat(originalImageHeight))
+        let screenH = CGFloat(imageMaxX - imageMinX) * (screenHeight / CGFloat(originalImageWidth))
+        
+        let finalRect = CGRect(x: screenX, y: screenY, width: screenW, height: screenH)
+        print("🔍 [MASK_BBOX] Final screen rect: \(finalRect)")
+        
+        return finalRect
+    }
+    
     override init() {
         super.init()
         loadYOLOModel()
@@ -268,6 +413,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             self.furnitureOpacity = 0.0
             self.lastConfidence = 0.0
             self.currentBBox = .zero
+            self.maskBBox = .zero  // Reset mask bbox too
         }
     }
     
@@ -800,28 +946,20 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         // DRAW AND SAVE EDGE
         print("🎨 [EDGE] Drawing furniture edges...")
-        print("🎨 [EDGE] Image dimensions: \(width)x\(height)")
         
         // Create edge image
         UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
-        guard let edgeCtx = UIGraphicsGetCurrentContext() else { 
-            print("❌ [EDGE] Failed to create graphics context")
-            return 
-        }
+        guard let edgeCtx = UIGraphicsGetCurrentContext() else { return }
         
         // Black background
         edgeCtx.setFillColor(UIColor.black.cgColor)
         edgeCtx.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        print("🎨 [EDGE] Set black background")
         
         // Draw solid yellow edges
         edgeCtx.setFillColor(UIColor.yellow.cgColor)
-        print("🎨 [EDGE] Set yellow fill color")
         
         // Find and draw edge pixels
         var edgePixelCount = 0
-        print("🎨 [EDGE] Scanning for edge pixels...")
-        
         for y in 1..<(height-1) {
             for x in 1..<(width-1) {
                 let idx = y * width + x
@@ -838,34 +976,451 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                         // This is an edge pixel - draw as solid yellow
                         edgeCtx.fill(CGRect(x: x, y: y, width: 1, height: 1))
                         edgePixelCount += 1
+                    }
+                }
+            }
+        }
+        
+        guard let edgeImage = UIGraphicsGetImageFromCurrentImageContext() else { return }
+        UIGraphicsEndImageContext()
+        
+        // Save edge image
+        UIImageWriteToSavedPhotosAlbum(edgeImage, nil, nil, nil)
+        print("🎨 [EDGE] Detected \(edgePixelCount) edge pixels and saved image")
+        
+        // SOBEL EDGE DETECTION - Alternative method
+        print("🔍 [SOBEL] Starting Sobel edge detection...")
+        
+        // Create grayscale version of cleanMask for Sobel
+        var grayMask = [Float](repeating: 0, count: width * height)
+        for i in 0..<(width * height) {
+            grayMask[i] = Float(cleanMask[i]) / 255.0  // Convert to 0.0-1.0 range
+        }
+        
+        // Sobel kernels
+        let sobelX: [[Float]] = [
+            [-1, 0, 1],
+            [-2, 0, 2],
+            [-1, 0, 1]
+        ]
+        
+        let sobelY: [[Float]] = [
+            [-1, -2, -1],
+            [ 0,  0,  0],
+            [ 1,  2,  1]
+        ]
+        
+        // Apply Sobel edge detection
+        var sobelEdges = [Float](repeating: 0, count: width * height)
+        var sobelEdgeCount = 0
+        
+        for y in 1..<(height-1) {
+            for x in 1..<(width-1) {
+                var gx: Float = 0
+                var gy: Float = 0
+                
+                // Apply Sobel kernels
+                for ky in 0..<3 {
+                    for kx in 0..<3 {
+                        let pixelY = y - 1 + ky
+                        let pixelX = x - 1 + kx
+                        let pixelValue = grayMask[pixelY * width + pixelX]
                         
-                        // Debug: print first 5 edge pixels found
-                        if edgePixelCount <= 5 {
-                            print("🎨 [EDGE] Found edge pixel #\(edgePixelCount) at (\(x),\(y))")
+                        gx += pixelValue * sobelX[ky][kx]
+                        gy += pixelValue * sobelY[ky][kx]
+                    }
+                }
+                
+                // Calculate gradient magnitude
+                let magnitude = sqrt(gx * gx + gy * gy)
+                sobelEdges[y * width + x] = magnitude
+                
+                // Count significant edges (threshold = 0.3)
+                if magnitude > 0.3 {
+                    sobelEdgeCount += 1
+                }
+            }
+        }
+        
+        print("🔍 [SOBEL] Found \(sobelEdgeCount) Sobel edge pixels")
+        
+        // Create Sobel edge image
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
+        guard let sobelCtx = UIGraphicsGetCurrentContext() else { 
+            print("❌ [SOBEL] Failed to create graphics context")
+            return 
+        }
+        
+        // Black background
+        sobelCtx.setFillColor(UIColor.black.cgColor)
+        sobelCtx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        
+        // Draw Sobel edges in cyan
+        for y in 0..<height {
+            for x in 0..<width {
+                let magnitude = sobelEdges[y * width + x]
+                if magnitude > 0.3 {  // Threshold for significant edges
+                    // Use magnitude as intensity (brighter = stronger edge)
+                    let intensity = min(magnitude, 1.0)
+                    sobelCtx.setFillColor(UIColor(red: 0, green: CGFloat(intensity), blue: CGFloat(intensity), alpha: 1).cgColor)
+                    sobelCtx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
+        
+        guard let sobelImage = UIGraphicsGetImageFromCurrentImageContext() else { 
+            print("❌ [SOBEL] Failed to create Sobel edge image")
+            return 
+        }
+        UIGraphicsEndImageContext()
+        
+        // Save Sobel edge image
+        UIImageWriteToSavedPhotosAlbum(sobelImage, nil, nil, nil)
+        print("🔍 [SOBEL] Saved Sobel edge detection image (cyan edges)")
+        
+        // MORPHOLOGICAL EDGE DETECTION
+        print("🔶 [MORPH] Starting morphological edge detection...")
+        
+        // Create dilated version of cleanMask
+        var dilated = [UInt8](repeating: 0, count: width * height)
+        for y in 1..<(height-1) {
+            for x in 1..<(width-1) {
+                let idx = y * width + x
+                if cleanMask[idx] == 255 {
+                    // Dilate: expand by 1 pixel in all directions
+                    for dy in -1...1 {
+                        for dx in -1...1 {
+                            let newIdx = (y + dy) * width + (x + dx)
+                            if newIdx >= 0 && newIdx < (width * height) {
+                                dilated[newIdx] = 255
+                            }
                         }
                     }
                 }
             }
-            
-            // Progress update every 100 rows
-            if y % 100 == 0 {
-                print("🎨 [EDGE] Processed row \(y)/\(height), found \(edgePixelCount) edges so far")
+        }
+        
+        // Morphological edge = dilated - original
+        var morphEdges = [UInt8](repeating: 0, count: width * height)
+        var morphEdgeCount = 0
+        for i in 0..<(width * height) {
+            if dilated[i] == 255 && cleanMask[i] == 0 {
+                morphEdges[i] = 255
+                morphEdgeCount += 1
             }
         }
         
-        print("🎨 [EDGE] Finished scanning, total edge pixels: \(edgePixelCount)")
+        print("🔶 [MORPH] Found \(morphEdgeCount) morphological edge pixels")
         
-        guard let edgeImage = UIGraphicsGetImageFromCurrentImageContext() else { 
-            print("❌ [EDGE] Failed to create edge image from context")
+        // Create morphological edge image (magenta edges)
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
+        guard let morphCtx = UIGraphicsGetCurrentContext() else { 
+            print("❌ [MORPH] Failed to create graphics context")
+            return 
+        }
+        
+        // Black background
+        morphCtx.setFillColor(UIColor.black.cgColor)
+        morphCtx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        
+        // Draw morphological edges in magenta
+        morphCtx.setFillColor(UIColor.magenta.cgColor)
+        for y in 0..<height {
+            for x in 0..<width {
+                if morphEdges[y * width + x] == 255 {
+                    morphCtx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
+        
+        guard let morphImage = UIGraphicsGetImageFromCurrentImageContext() else { 
+            print("❌ [MORPH] Failed to create morphological edge image")
             return 
         }
         UIGraphicsEndImageContext()
-        print("🎨 [EDGE] Successfully created edge image")
         
-        // Save edge image
-        print("🎨 [EDGE] Attempting to save edge image to photo library...")
-        UIImageWriteToSavedPhotosAlbum(edgeImage, nil, nil, nil)
-        print("🎨 [EDGE] Detected \(edgePixelCount) edge pixels and saved image")
+        // Save morphological edge image
+        UIImageWriteToSavedPhotosAlbum(morphImage, nil, nil, nil)
+        print("🔶 [MORPH] Saved morphological edge detection image (magenta edges)")
+        
+        // CANNY EDGE DETECTION (simplified version)
+        print("🌊 [CANNY] Starting Canny edge detection...")
+        
+        // Step 1: Apply Gaussian blur to reduce noise
+        var blurred = [Float](repeating: 0, count: width * height)
+        let gaussianKernel: [[Float]] = [
+            [1, 2, 1],
+            [2, 4, 2],
+            [1, 2, 1]
+        ]
+        let kernelSum: Float = 16
+        
+        for y in 1..<(height-1) {
+            for x in 1..<(width-1) {
+                var sum: Float = 0
+                for ky in 0..<3 {
+                    for kx in 0..<3 {
+                        let pixelY = y - 1 + ky
+                        let pixelX = x - 1 + kx
+                        let pixelValue = Float(cleanMask[pixelY * width + pixelX]) / 255.0
+                        sum += pixelValue * gaussianKernel[ky][kx]
+                    }
+                }
+                blurred[y * width + x] = sum / kernelSum
+            }
+        }
+        
+        // Step 2: Calculate gradients (reuse Sobel from above)
+        var cannyEdges = [Float](repeating: 0, count: width * height)
+        var cannyEdgeCount = 0
+        
+        for y in 1..<(height-1) {
+            for x in 1..<(width-1) {
+                var gx: Float = 0
+                var gy: Float = 0
+                
+                // Apply Sobel kernels to blurred image
+                for ky in 0..<3 {
+                    for kx in 0..<3 {
+                        let pixelY = y - 1 + ky
+                        let pixelX = x - 1 + kx
+                        let pixelValue = blurred[pixelY * width + pixelX]
+                        
+                        gx += pixelValue * sobelX[ky][kx]
+                        gy += pixelValue * sobelY[ky][kx]
+                    }
+                }
+                
+                // Calculate gradient magnitude and direction
+                let magnitude = sqrt(gx * gx + gy * gy)
+                cannyEdges[y * width + x] = magnitude
+                
+                // Apply double threshold (simplified)
+                if magnitude > 0.5 {  // High threshold
+                    cannyEdgeCount += 1
+                }
+            }
+        }
+        
+        // Step 3: Non-maximum suppression (simplified)
+        var suppressedEdges = [Float](repeating: 0, count: width * height)
+        for y in 1..<(height-1) {
+            for x in 1..<(width-1) {
+                let idx = y * width + x
+                let magnitude = cannyEdges[idx]
+                
+                if magnitude > 0.5 {
+                    // Check if this is a local maximum
+                    let neighbors = [
+                        cannyEdges[(y-1) * width + x],     // top
+                        cannyEdges[(y+1) * width + x],     // bottom
+                        cannyEdges[y * width + (x-1)],     // left
+                        cannyEdges[y * width + (x+1)]      // right
+                    ]
+                    
+                    if magnitude >= neighbors.max()! {
+                        suppressedEdges[idx] = magnitude
+                    }
+                }
+            }
+        }
+        
+        print("🌊 [CANNY] Found \(cannyEdgeCount) Canny edge candidates")
+        
+        // Create Canny edge image (green edges)
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
+        guard let cannyCtx = UIGraphicsGetCurrentContext() else { 
+            print("❌ [CANNY] Failed to create graphics context")
+            return 
+        }
+        
+        // Black background
+        cannyCtx.setFillColor(UIColor.black.cgColor)
+        cannyCtx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        
+        // Draw Canny edges in green with intensity
+        for y in 0..<height {
+            for x in 0..<width {
+                let magnitude = suppressedEdges[y * width + x]
+                if magnitude > 0.3 {  // Lower threshold for display
+                    let intensity = CGFloat(min(magnitude, 1.0))
+                    cannyCtx.setFillColor(UIColor(red: 0, green: intensity, blue: 0, alpha: 1).cgColor)
+                    cannyCtx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
+        
+        guard let cannyImage = UIGraphicsGetImageFromCurrentImageContext() else { 
+            print("❌ [CANNY] Failed to create Canny edge image")
+            return 
+        }
+        UIGraphicsEndImageContext()
+        
+        // Save Canny edge image
+        UIImageWriteToSavedPhotosAlbum(cannyImage, nil, nil, nil)
+        print("🌊 [CANNY] Saved Canny edge detection image (green edges)")
+        
+        // COMBINED VISUALIZATION - All 4 methods in one image
+        print("🎨 [COMBINED] Creating combined edge visualization...")
+        
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
+        guard let combinedCtx = UIGraphicsGetCurrentContext() else { 
+            print("❌ [COMBINED] Failed to create graphics context")
+            return 
+        }
+        
+        // Black background
+        combinedCtx.setFillColor(UIColor.black.cgColor)
+        combinedCtx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        
+        // Draw all edge methods with different colors
+        for y in 0..<height {
+            for x in 0..<width {
+                let idx = y * width + x
+                var finalColor: UIColor = UIColor.black
+                
+                // Priority order: Canny > Morphological > Sobel > Original
+                // This way, the "best" edges show on top
+                
+                // 1. Original edges (Yellow) - lowest priority
+                if y > 0 && y < height-1 && x > 0 && x < width-1 && cleanMask[idx] == 255 {
+                    let neighbors = [
+                        cleanMask[(y-1) * width + x],     // top
+                        cleanMask[(y+1) * width + x],     // bottom  
+                        cleanMask[y * width + (x-1)],     // left
+                        cleanMask[y * width + (x+1)]      // right
+                    ]
+                    if neighbors.contains(0) {
+                        finalColor = UIColor.yellow.withAlphaComponent(0.7)
+                    }
+                }
+                
+                // 2. Sobel edges (Cyan) - medium-low priority
+                let sobelMagnitude = sobelEdges[idx]
+                if sobelMagnitude > 0.3 {
+                    let intensity = min(sobelMagnitude, 1.0)
+                    finalColor = UIColor(red: 0, green: CGFloat(intensity * 0.8), blue: CGFloat(intensity), alpha: 0.8)
+                }
+                
+                // 3. Morphological edges (Magenta) - medium-high priority
+                if morphEdges[idx] == 255 {
+                    finalColor = UIColor.magenta.withAlphaComponent(0.9)
+                }
+                
+                // 4. Canny edges (Green) - highest priority
+                let cannyMagnitude = suppressedEdges[idx]
+                if cannyMagnitude > 0.3 {
+                    let intensity = min(cannyMagnitude, 1.0)
+                    finalColor = UIColor(red: 0, green: CGFloat(intensity), blue: 0, alpha: 1.0)
+                }
+                
+                // Draw the final color if it's not black
+                if finalColor != UIColor.black {
+                    combinedCtx.setFillColor(finalColor.cgColor)
+                    combinedCtx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
+        
+        guard let combinedImage = UIGraphicsGetImageFromCurrentImageContext() else { 
+            print("❌ [COMBINED] Failed to create combined edge image")
+            return 
+        }
+        UIGraphicsEndImageContext()
+        
+        // Save combined edge image
+        UIImageWriteToSavedPhotosAlbum(combinedImage, nil, nil, nil)
+        print("🎨 [COMBINED] Saved combined edge visualization!")
+        print("     🟡 Yellow = Original (neighbor-based)")
+        print("     🔵 Cyan = Sobel (gradient-based)")
+        print("     🟣 Magenta = Morphological (dilation outline)")
+        print("     🟢 Green = Canny (refined edges)")
+        
+        // ENHANCED MORPHOLOGICAL - Create thicker band
+        print("🔶 [MORPH+] Creating enhanced morphological band...")
+        
+        // Create multiple dilation levels for thicker band
+        var dilated2 = [UInt8](repeating: 0, count: width * height)
+        var dilated3 = [UInt8](repeating: 0, count: width * height)
+        
+        // Second dilation (2-pixel expansion)
+        for y in 2..<(height-2) {
+            for x in 2..<(width-2) {
+                let idx = y * width + x
+                if cleanMask[idx] == 255 {
+                    for dy in -2...2 {
+                        for dx in -2...2 {
+                            let newIdx = (y + dy) * width + (x + dx)
+                            if newIdx >= 0 && newIdx < (width * height) {
+                                dilated2[newIdx] = 255
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Third dilation (3-pixel expansion)
+        for y in 3..<(height-3) {
+            for x in 3..<(width-3) {
+                let idx = y * width + x
+                if cleanMask[idx] == 255 {
+                    for dy in -3...3 {
+                        for dx in -3...3 {
+                            let newIdx = (y + dy) * width + (x + dx)
+                            if newIdx >= 0 && newIdx < (width * height) {
+                                dilated3[newIdx] = 255
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Create band visualization
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
+        guard let bandCtx = UIGraphicsGetCurrentContext() else { return }
+        
+        // Black background
+        bandCtx.setFillColor(UIColor.black.cgColor)
+        bandCtx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        
+        // Draw graduated band
+        for y in 0..<height {
+            for x in 0..<width {
+                let idx = y * width + x
+                
+                // Original furniture (white)
+                if cleanMask[idx] == 255 {
+                    bandCtx.setFillColor(UIColor.white.cgColor)
+                    bandCtx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+                // 3-pixel band (dark red)
+                else if dilated3[idx] == 255 {
+                    bandCtx.setFillColor(UIColor.red.withAlphaComponent(0.3).cgColor)
+                    bandCtx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+                // 2-pixel band (medium red)  
+                else if dilated2[idx] == 255 {
+                    bandCtx.setFillColor(UIColor.red.withAlphaComponent(0.6).cgColor)
+                    bandCtx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+                // 1-pixel band (bright red)
+                else if dilated[idx] == 255 {
+                    bandCtx.setFillColor(UIColor.red.cgColor)
+                    bandCtx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
+        
+        guard let bandImage = UIGraphicsGetImageFromCurrentImageContext() else { return }
+        UIGraphicsEndImageContext()
+        
+        // Save enhanced morphological band
+        UIImageWriteToSavedPhotosAlbum(bandImage, nil, nil, nil)
+        print("🔶 [MORPH+] Saved enhanced morphological band visualization!")
+        print("     ⚪ White = Original furniture")
+        print("     🔴 Red bands = 1-3 pixel expansion zones")
         
         print("🪑 [CONTOUR] Contour-based largest object processing complete!")
     }
@@ -876,6 +1431,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
             let width = CVPixelBufferGetWidth(pixelBuffer)
             let height = CVPixelBufferGetHeight(pixelBuffer)
+            
+            // Calculate mask bounding box before processing
+            let calculatedMaskBBox = calculateMaskBoundingBox(from: mask, originalImageWidth: width, originalImageHeight: height)
             
             guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent),
                   let ctx = CGContext(data: nil, width: width, height: height,
@@ -904,7 +1462,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     
                     let maskValue = mask[y0 * 160 + x0]
                     
-//                    let smoothedValue = sigmoid(maskValue * 4 - 2)
                     if maskValue > 0.2 {
                         // Keep original colors, just set alpha to fully opaque
                         pixels[idx + 3] = 255
@@ -920,6 +1477,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             if let outImage = ctx.makeImage() {
                 DispatchQueue.main.async {
                     self.segmentedImage = UIImage(cgImage: outImage, scale: 1.0, orientation: .up)
+                    self.maskBBox = calculatedMaskBBox  // Update mask bounding box
                     withAnimation(.easeIn(duration: 0.3)) { self.furnitureOpacity = 1.0 }
                     self.isProcessing = false
                 }
@@ -1515,105 +2073,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         applyPostProcessingAndMask(mask: mask, best: best, to: originalImage, stage: "original")
     }
 
-    // Refactored post-processing into shared method
-    private func applyPostProcessingAndMask(mask: [Float], best: DetectionSmarty, to originalImage: CVPixelBuffer) {
-        var mask = mask // Create mutable copy
-        // Post-process: morphology + scanline (your existing code)
-        let scale: Float = 160.0 / 640.0
-        let bx1 = max(1, min(158, Int((best.x - best.width/2) * scale)))
-        let by1 = max(1, min(158, Int((best.y - best.height/2) * scale)))
-        let bx2 = max(1, min(158, Int((best.x + best.width/2) * scale)))
-        let by2 = max(1, min(158, Int((best.y + best.height/2) * scale)))
-        
-        var binary = [[UInt8]](repeating: [UInt8](repeating: 0, count: 160), count: 160)
-        for y in 0..<160 {
-            for x in 0..<160 {
-                binary[y][x] = mask[y * 160 + x] > 0.5 ? 1 : 0
-            }
-        }
-        
-        // Morphological closing
-        for _ in 0..<5 {
-            var dilated = binary
-            for y in (by1+1)..<by2 {
-                for x in (bx1+1)..<bx2 {
-                    if binary[y][x] == 0 {
-                        if binary[y-1][x] == 1 || binary[y+1][x] == 1 ||
-                           binary[y][x-1] == 1 || binary[y][x+1] == 1 ||
-                           binary[y-1][x-1] == 1 || binary[y-1][x+1] == 1 ||
-                           binary[y+1][x-1] == 1 || binary[y+1][x+1] == 1 {
-                            dilated[y][x] = 1
-                        }
-                    }
-                }
-            }
-            binary = dilated
-        }
-//
-//        for _ in 0..<5 {
-//            var eroded = binary
-//            for y in (by1+1)..<by2 {
-//                for x in (bx1+1)..<bx2 {
-//                    if binary[y][x] == 1 {
-//                        if binary[y-1][x] == 0 || binary[y+1][x] == 0 ||
-//                           binary[y][x-1] == 0 || binary[y][x+1] == 0 {
-//                            eroded[y][x] = 0
-//                        }
-//                    }
-//                }
-//            }
-//            binary = eroded
-//        }
-        
-//        // Scanline fill
-//        for y in (by1+1)..<by2 {
-//            var firstX = -1, lastX = -1
-//            for x in (bx1+1)..<bx2 {
-//                if binary[y][x] == 1 {
-//                    if firstX == -1 { firstX = x }
-//                    lastX = x
-//                }
-//            }
-//            if firstX != -1 && lastX != -1 && lastX > firstX + 1 {
-//                for x in (firstX+1)..<lastX {
-//                    binary[y][x] = 1
-//                }
-//            }
-//        }
-        
-//        for x in (bx1+1)..<bx2 {
-//            var firstY = -1, lastY = -1
-//            for y in (by1+1)..<by2 {
-//                if binary[y][x] == 1 {
-//                    if firstY == -1 { firstY = y }
-//                    lastY = y
-//                }
-//            }
-//            if firstY != -1 && lastY != -1 && lastY > firstY + 1 {
-//                for y in (firstY+1)..<lastY {
-//                    binary[y][x] = 1
-//                }
-//            }
-//        }
-        
-        // Convert to float
-        for y in 0..<160 {
-            for x in 0..<160 {
-                mask[y * 160 + x] = Float(binary[y][x])
-            }
-        }
-        
-        // Crop to bbox
-        for y in 0..<160 {
-            for x in 0..<160 {
-                if y < by1 || y > by2 || x < bx1 || x > bx2 {
-                    mask[y * 160 + x] = 0
-                }
-            }
-        }
-        
-        applyMaskToImage(mask: mask, to: originalImage)
-    }
+
 
     // Add the crop pixel buffer method
     private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, x: Int, y: Int, width: Int, height: Int) -> CVPixelBuffer? {
