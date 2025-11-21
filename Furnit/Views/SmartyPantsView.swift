@@ -260,6 +260,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     private let processInterval: TimeInterval = 0.1
     private var frameCount = 0
     private var fpsStartTime = Date()
+    private var debugFrameCount = 0  // Add this for debugging
     
     private func sigmoid(_ x: Float) -> Float { 1.0 / (1.0 + exp(-x)) }
     
@@ -607,13 +608,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             }
         }
         
-//        print("📊 [BBOX OPTIMIZED] Processed \(bboxWidth * bboxHeight) pixels instead of \(160 * 160)")
-        
-//        let nonZeroCount = combinedMask.filter { $0 > 0.5 }.count
-//        print("📊 [COMBINED] Mask has \(nonZeroCount) positive pixels before post-processing")
-        
-//        saveMaskAsImage(mask: combinedMask, stage: "4_combined_raw")
-        
         // Apply simple post-processing
         applyPostProcessingAndMask(mask: combinedMask, best: best, to: originalImage, stage: "multi")
     }
@@ -761,7 +755,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     // Simple post-processing with morphology and bbox cropping
     private func applyPostProcessingAndMask(mask: [Float], best: DetectionSmarty, to originalImage: CVPixelBuffer, stage: String) {
         print("\n🔧 ========== POST-PROCESSING ==========")
-//        var mask = mask
+        
+        // Increment debug frame counter
+        debugFrameCount += 1
         
         // Calculate bbox in mask coordinates
         let scale: Float = 160.0 / 640.0
@@ -772,132 +768,31 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         print("📐 [BBOX] Mask space: (\(bx1),\(by1)) to (\(bx2),\(by2))")
         
-        // Convert to binary
+        // Convert to binary with DEBUGGING
         var binary = [[UInt8]](repeating: [UInt8](repeating: 0, count: 160), count: 160)
         var binaryCount = 0
+        
+        if debugFrameCount <= 3 {
+            print("🔍 [DEBUG] Frame \(debugFrameCount) - Sampling mask values within bbox:")
+        }
+        
         for y in 0..<160 {
             for x in 0..<160 {
-                binary[y][x] = mask[y * 160 + x] > 0.4 ? 1 : 0  // Slightly lower threshold
+                let maskValue = mask[y * 160 + x]
+                binary[y][x] = maskValue > 0.4 ? 1 : 0  // Use actual mask values with 0.4 threshold
+                
+                // Print samples within bbox for first 3 frames
+                if debugFrameCount <= 3 && y >= by1 && y <= by2 && x >= bx1 && x <= bx2 {
+                    if (y - by1) % 10 == 0 && (x - bx1) % 10 == 0 {  // Sample every 10th pixel
+                        print("   Pixel(\(x),\(y)): mask=\(String(format: "%.3f", maskValue)) → binary=\(binary[y][x])")
+                    }
+                }
+                
                 if binary[y][x] == 1 { binaryCount += 1 }
             }
         }
-        print("📊 [BINARY] Converted to binary: \(binaryCount) pixels")
         
-     
-        
-        
-//        saveMaskAsImage(mask: binaryToFloat(binary), stage: "6_\(stage)_eroded")
-        
-        // Convert back to float
-//        var finalCount = 0
-//        for y in 0..<160 {
-//            for x in 0..<160 {
-//                mask[y * 160 + x] = Float(binary[y][x])
-//                if mask[y * 160 + x] > 0 { finalCount += 1 }
-//            }
-//        }
-        
-//        // CRITICAL: Crop mask to bbox to prevent background intrusion
-//        var croppedCount = 0
-//        for y in 0..<160 {
-//            for x in 0..<160 {
-//                if y < by1 || y > by2 || x < bx1 || x > bx2 {
-//                    mask[y * 160 + x] = 0  // Zero out everything outside bbox
-//                } else if mask[y * 160 + x] > 0 {
-//                    croppedCount += 1
-//                }
-//            }
-//        }
-        
-//        print("📊 [FINAL] Mask pixels after morphology: \(finalCount)")
-//        print("📊 [FINAL] After bbox crop: \(croppedCount) pixels")
-        
-//        saveMaskAsImage(mask: mask, stage: "7_\(stage)_final_mask")
-        
-        // Enhance weak pixels: boost anything > 0 to full strength
-        print("\n🔧 ========== WEAK PIXEL ENHANCEMENT ==========")
-        
-//        // Count pixels before enhancement
-//        var zeroPixels = 0
-//        var weakPixels = 0
-//        var strongPixels = 0
-//        var pixelDistribution = [String: Int]()
-        
-//        for i in 0..<mask.count {
-//            let value = mask[i]
-//            if value == 0.0 {
-//                zeroPixels += 1
-//            } else if value > 0.0 && value < 1.0 {
-//                weakPixels += 1
-//                let bucket = String(format: "%.1f", value)
-//                pixelDistribution[bucket, default: 0] += 1
-//            } else if value == 1.0 {
-//                strongPixels += 1
-//            }
-//        }
-        
-//        print("📊 [BEFORE] Total pixels: \(mask.count)")
-//        print("📊 [BEFORE] Zero pixels (0.0): \(zeroPixels)")
-//        print("📊 [BEFORE] Weak pixels (0.0 < x < 1.0): \(weakPixels)")
-//        print("📊 [BEFORE] Strong pixels (1.0): \(strongPixels)")
-//        
-//        if !pixelDistribution.isEmpty {
-//            print("📊 [BEFORE] Weak pixel distribution:")
-//            for (value, count) in pixelDistribution.sorted(by: { $0.key < $1.key }) {
-//                print("           Value \(value): \(count) pixels")
-//            }
-//        }
-        
-//        print("🔧 [ENHANCE] Now boosting weak pixels to full strength...")
-//        
-//        // Enhance weak pixels
-//        var enhancedCount = 0
-//        var enhancementDetails = [String: Int]()
-//        
-//        for i in 0..<mask.count {
-//            if mask[i] > 0.0 && mask[i] < 1.0 {
-//                let oldValue = String(format: "%.3f", mask[i])
-//                mask[i] = 1.0  // Boost weak pixels to full strength
-//                enhancedCount += 1
-//                enhancementDetails[oldValue, default: 0] += 1
-//            }
-//        }
-        
-        // Count pixels after enhancement
-//        var newZeroPixels = 0
-//        var newWeakPixels = 0
-//        var newStrongPixels = 0
-//        
-//        for i in 0..<mask.count {
-//            let value = mask[i]
-//            if value == 0.0 {
-//                newZeroPixels += 1
-//            } else if value > 0.0 && value < 1.0 {
-//                newWeakPixels += 1
-//            } else if value == 1.0 {
-//                newStrongPixels += 1
-//            }
-//        }
-        
-//        print("✅ [ENHANCED] Boosted \(enhancedCount) weak pixels to full strength")
-//        print("📊 [AFTER] Zero pixels (0.0): \(newZeroPixels)")
-//        print("📊 [AFTER] Weak pixels (0.0 < x < 1.0): \(newWeakPixels)")
-//        print("📊 [AFTER] Strong pixels (1.0): \(newStrongPixels)")
-//        
-//        if !enhancementDetails.isEmpty && enhancementDetails.count <= 10 {
-//            print("📊 [ENHANCED] Enhancement details:")
-//            for (oldValue, count) in enhancementDetails.sorted(by: { $0.key < $1.key }) {
-//                print("           \(oldValue) → 1.0: \(count) pixels")
-//            }
-//        } else if enhancementDetails.count > 10 {
-//            print("📊 [ENHANCED] Enhanced \(enhancementDetails.count) different value ranges")
-//        }
-//        
-//        let enhancement = newStrongPixels - strongPixels
-//        print("📈 [RESULT] Strong pixel increase: +\(enhancement) pixels")
-//        print("================================================\n")
-//        
-//        saveMaskAsImage(mask: mask, stage: "8_\(stage)_enhanced_mask")
+        print("📊 [BINARY] Frame \(debugFrameCount): Converted to binary: \(binaryCount) pixels using 0.4 threshold")
         
         print("🎨 [APPLY] Applying final enhanced mask to image")
         applyMaskToImage(mask: mask, to: originalImage)
@@ -951,7 +846,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             
             // Fill holes within chair boundaries
             // Apply contour-based largest object hole filling
-            fillHolesInChair(pixels: pixels, width: width, height: height)
+//            fillHolesInChair(pixels: pixels, width: width, height: height)
             
             if let outImage = ctx.makeImage() {
                 DispatchQueue.main.async {
@@ -1255,11 +1150,11 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 // Key hierarchical rule: Keep different classes even if high overlap
                 if iou > iouThreshold {
                     // Only suppress if SAME class and high overlap
-                    if det.classIdx == existing.classIdx {
+//                    if det.classIdx == existing.classIdx {
                         shouldSuppress = true
                         print("❌ Suppressed duplicate: \(det.className) @ \(Int(det.confidence * 100))%")
                         break
-                    }
+//                    }
                     // Different class = keep it (chair vs office chair)
                     print("✅ Keeping overlapping: \(det.className) overlaps \(existing.className)")
                 }
