@@ -615,11 +615,16 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         // ---- Flatten prototypes into [C × (Hp*Wp)] as Float (same as applyMaskIoU) ----
         let shape = prototypes.shape.map { $0.intValue }      // [1, 32, 160, 160]
-        let C = shape[1]
+        let maskW = 160
+        let maskH = 160
+        let C = 32
+        let maskSize = maskW * maskH
+        let spatial = maskSize
+//        let C = shape[1]
         let Hp = shape[2]
         let Wp = shape[3]
-        let spatial = Hp * Wp                                 // 25600
-
+//        let spatial = Hp * Wp                                 // 25600
+//
         var protoMatrix = [Float](repeating: 0, count: C * spatial)
 
         for c in 0..<C {
@@ -631,10 +636,10 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 }
             }
         }
-        
-        // 🔍 VALIDATION: Check if prototype matrix is populated
-        let nonZeroProtos = protoMatrix.filter { $0 != 0.0 }.count
-        print("📊 [PROTO] Prototype matrix: \(nonZeroProtos) non-zero values out of \(protoMatrix.count) total")
+//        
+//        // 🔍 VALIDATION: Check if prototype matrix is populated
+//        let nonZeroProtos = protoMatrix.filter { $0 != 0.0 }.count
+//        print("📊 [PROTO] Prototype matrix: \(nonZeroProtos) non-zero values out of \(protoMatrix.count) total")
 
         // Initialize combined mask
         var combinedMask = individualMask
@@ -765,9 +770,11 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         
         
-        let maskW = 160
-        let maskH = 160
-        let maskSize = maskW * maskH
+//        let maskW = 160
+//        let maskH = 160
+//        let maskSize = maskW * maskH
+////        let C = 32
+//        let spatial = maskSize
 
         // Reuse this across detections
         var detectionMask = [Float](repeating: 0, count: maskSize)
@@ -780,13 +787,8 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
 
                 print("Processing #\(index + 1): \(detection.className) @ \(Int(detection.confidence * 100))%")
 
-                // Reset per-detection mask to zero (same as new array each time)
-                for i in 0..<maskSize {
-                    detectionMask[i] = 0
-                }
-
                 let coeffs = detection.maskCoeffs
-                var weight = detection.confidence
+                let weight = detection.confidence
 
                 coeffs.withUnsafeBufferPointer { coeffPtr in
                     detectionMask.withUnsafeMutableBufferPointer { detPtr in
@@ -796,7 +798,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                             let detBase   = detPtr.baseAddress!      // 160*160
                             let combBase  = combPtr.baseAddress!     // 160*160
 
-                            // C and spatial come from above in this function
+                            // 🔄 reset detectionMask to zero using vDSP (same as for-loop)
+                            vDSP_vclr(detBase, 1, vDSP_Length(maskSize))
+
                             for y in by1...by2 {
                                 for x in bx1...bx2 {
 
@@ -821,16 +825,22 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                                     let value = sigmoid(sum)
                                     (detBase + pos).pointee = value
 
-                                    // ---- 3) Combine masks: EXACT same math as original ----
+                                    // ---- 3) Combine masks: EXACT same math as original, but only
+                                    //         up to the current pixel index.
                                     //
-                                    // for i in 0..<maskSize {
-                                    //     combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * weight)
-                                    // }
+                                    // Original:
+                                    //   for i in 0..<maskSize {
+                                    //       combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * weight)
+                                    //   }
+                                    //
+                                    // Here we do the same, but only over i in [0, pos].
+                                    // For i > pos, detectionMask[i] is still 0, so skipping is a no-op.
                                     //
                                     var cPtrRun = combBase
                                     var dPtrRun = detBase
                                     var i = 0
-                                    while i < maskSize {
+                                    let limit = pos + 1
+                                    while i < limit {
                                         let v = cPtrRun.pointee + dPtrRun.pointee * weight
                                         cPtrRun.pointee = v > 1.0 ? 1.0 : v
                                         cPtrRun = cPtrRun.advanced(by: 1)
@@ -844,6 +854,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 }
             }
         }
+
 
 
 
