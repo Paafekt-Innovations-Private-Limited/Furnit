@@ -617,164 +617,49 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         let shape = prototypes.shape.map { $0.intValue }      // [1, 32, 160, 160]
         let maskW = 160
         let maskH = 160
-        let C = 32
-        let maskSize = maskW * maskH
-        let spatial = maskSize
-//        let C = shape[1]
-        let Hp = shape[2]
-        let Wp = shape[3]
-//        let spatial = Hp * Wp                                 // 25600
-//
+        let C = shape[1]               // 32
+        let Hp = shape[2]              // 160
+        let Wp = shape[3]              // 160
+        let maskSize = maskW * maskH   // 25600
+        let spatial = Hp * Wp          // 25600
+
         var protoMatrix = [Float](repeating: 0, count: C * spatial)
 
-        for c in 0..<C {
-            for y in 0..<Hp {
-                for x in 0..<Wp {
-                    let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
-                    let dstIndex = c * spatial + (y * Wp + x)
-                    protoMatrix[dstIndex] = val
+        // Fast path: direct pointer access when prototypes are Float32
+        if prototypes.dataType == .float32 {
+           let srcBase = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
+
+            // MLMultiArray is row-major with default strides:
+            // index = c * (Hp*Wp) + y * Wp + x   for shape [1, C, Hp, Wp] and b = 0.
+            for c in 0..<C {
+                let srcChannelOffset = c * Hp * Wp
+                let dstChannelOffset = c * spatial
+                for y in 0..<Hp {
+                    let rowOffset = y * Wp
+                    for x in 0..<Wp {
+                        let idx = rowOffset + x
+                        let srcIndex = srcChannelOffset + idx          // from MLMultiArray buffer
+                        let dstIndex = dstChannelOffset + idx          // into protoMatrix
+                        protoMatrix[dstIndex] = srcBase[srcIndex]
+                    }
+                }
+            }
+
+        } else {
+            // Fallback: old safe path via multiArray subscript + floatValue
+            for c in 0..<C {
+                for y in 0..<Hp {
+                    for x in 0..<Wp {
+                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
+                        let dstIndex = c * spatial + (y * Wp + x)
+                        protoMatrix[dstIndex] = val
+                    }
                 }
             }
         }
-//        
-//        // 🔍 VALIDATION: Check if prototype matrix is populated
-//        let nonZeroProtos = protoMatrix.filter { $0 != 0.0 }.count
-//        print("📊 [PROTO] Prototype matrix: \(nonZeroProtos) non-zero values out of \(protoMatrix.count) total")
 
         // Initialize combined mask
         var combinedMask = individualMask
-        
-        // Process each detection using vDSP_mmul (like applyMaskIoU)
-//        for (index, detection) in maskFilteredDetections.enumerated() {
-//            var detectionMask = [Float](repeating: 0, count: spatial)
-//            
-//            print("Processing #\(index+1): \(detection.className) @ \(Int(detection.confidence * 100))%")
-//            
-//            // Use vDSP_mmul for efficient matrix multiplication
-//            vDSP_mmul(
-//                detection.maskCoeffs, 1,           // A: 1×C
-//                protoMatrix, 1,                    // B: C×spatial
-//                &detectionMask, 1,                 // C: 1×spatial
-//                1,
-//                vDSP_Length(spatial),
-//                vDSP_Length(C)
-//            )
-//
-//            // Apply sigmoid to get soft mask [0,1]
-//            for i in 0..<spatial {
-//                let v = detectionMask[i]
-////                detectionMask[i] = 1.0 / (1.0 + exp(-v))
-//                detectionMask[i] = sigmoid(v) 
-//            }
-//            
-//            // 🔍 VALIDATION: Check mask values after sigmoid
-//            let nonZeroMask = detectionMask.filter { $0 > 0.1 }.count
-//            let maxMask = detectionMask.max() ?? 0
-//            let minMask = detectionMask.min() ?? 0
-//            print("   📊 [MASK] Detection mask: \(nonZeroMask) pixels >0.1, range: \(String(format: "%.3f", minMask)) to \(String(format: "%.3f", maxMask))")
-//            
-////            for c in 0..<C {
-////                for y in 0..<Hp {
-////                    for x in 0..<Wp {
-////                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
-////                        let dstIndex = c * spatial + (y * Wp + x)
-////                        protoMatrix[dstIndex] = val
-////                    }
-////                }
-////            }
-//            
-//            // Combine masks with confidence weighting
-//            let weight = detection.confidence
-//            for i in 0..<(160 * 160) {
-////                combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * weight)
-//                combinedMask[i] = min(combinedMask[i] ,detectionMask[i])
-//            }
-//            
-//            // 🔍 VALIDATION: Check combined mask after adding this detection
-//            let combinedNonZero = combinedMask.filter { $0 > 0.1 }.count
-//            let combinedMax = combinedMask.max() ?? 0
-//            print("   📊 [COMBINED] After adding: \(combinedNonZero) pixels >0.1, max: \(String(format: "%.3f", combinedMax))")
-//        }
-        
-        
-        
-        
-        
-
-//        let maskSize = 160 * 160
-//        var detectionMask = [Float](repeating: 0, count: maskSize)
-//        var protoVec      = [Float](repeating: 0, count: 32)
-//
-//        for (index, detection) in maskFilteredDetections.enumerated() {
-//
-//            // reset per-detection mask
-//            for i in 0..<maskSize {
-//                detectionMask[i] = 0
-//            }
-//
-//            print("Processing #\(index+1): \(detection.className) @ \(Int(detection.confidence * 100))%")
-//
-//            let coeffs = detection.maskCoeffs
-//            let weight = detection.confidence
-//
-//            coeffs.withUnsafeBufferPointer { aPtr in
-//                protoVec.withUnsafeMutableBufferPointer { bPtr in
-//                    detectionMask.withUnsafeMutableBufferPointer { dPtr in
-//                        combinedMask.withUnsafeMutableBufferPointer { cPtr in
-//
-//                            // starting addresses for the whole mask
-//                            let dStart = dPtr.baseAddress!
-//                            let cStart = cPtr.baseAddress!
-//
-//                            for y in by1...by2 {
-//                                for x in bx1...bx2 {
-//
-//                                    // 1) fill protoVec for this pixel
-//                                    for c in 0..<32 {
-//                                        bPtr[c] = prototypes[[0, c, y, x] as [NSNumber]].floatValue
-//                                    }
-//
-//                                    // 2) dot product via vDSP_dotpr
-//                                    var sum: Float = 0.0
-//                                    vDSP_dotpr(
-//                                        aPtr.baseAddress!, 1,
-//                                        bPtr.baseAddress!, 1,
-//                                        &sum,
-//                                        vDSP_Length(32)
-//                                    )
-//
-//                                    // 3) same sigmoid + write detectionMask at idx
-//                                    let value = sigmoid(sum)
-//                                    let idx   = y * 160 + x
-//                                    (dStart + idx).pointee = value   // pointer write, same as detectionMask[idx]
-//
-//                                    // 4) combine: EXACT same math as before, just using pointers
-//                                    var cPtrRun = cStart
-//                                    var dPtrRun = dStart
-//                                    for _ in 0..<maskSize {
-//                                        let v = cPtrRun.pointee + dPtrRun.pointee * weight
-//                                        cPtrRun.pointee = v > 1.0 ? 1.0 : v
-//                                        cPtrRun = cPtrRun.advanced(by: 1)
-//                                        dPtrRun = dPtrRun.advanced(by: 1)
-//                                    }
-//                                }
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-//        }
-        
-        
-        
-        
-        
-        
-//        let maskW = 160
-//        let maskH = 160
-//        let maskSize = maskW * maskH
-////        let C = 32
-//        let spatial = maskSize
 
         // Reuse this across detections
         var detectionMask = [Float](repeating: 0, count: maskSize)
@@ -854,7 +739,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 }
             }
         }
-
 
 
 
