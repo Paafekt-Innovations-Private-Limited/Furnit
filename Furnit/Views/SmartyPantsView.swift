@@ -109,8 +109,17 @@ struct SmartyPantsView: View {
                 Canvas { context, size in
                     let maskRect = Path(camera.maskBBox)
                     
+                    print("🎨 [CANVAS] Drawing mask bbox: \(camera.maskBBox)")
+                    print("🎨 [CANVAS] Canvas size: \(size)")
+                    
                     // Blue border for mask-based bbox (different from detection bbox)
                     let pulseScale = bboxPulse * 0.8  // Slightly smaller pulse
+                    
+                    // Draw a test rectangle to make sure Canvas is working
+                    let testRect = Path(CGRect(x: 50, y: 50, width: 100, height: 100))
+                    context.stroke(testRect, with: .color(.red), lineWidth: 3)
+                    
+                    // Draw the actual mask bbox
                     context.stroke(maskRect, with: .color(.blue.opacity(0.3 * pulseScale)), lineWidth: 10 * pulseScale)
                     context.stroke(maskRect, with: .color(.blue.opacity(0.6)), lineWidth: 6)
                     context.stroke(maskRect, with: .color(.blue), lineWidth: 3)
@@ -349,7 +358,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         // Find bounds of mask pixels
         for y in 0..<160 {
             for x in 0..<160 {
-                if mask[y * 160 + x] > 0.2 {  // Threshold for mask presence
+                if mask[y * 160 + x] > 0.3 {  // Threshold for mask presence
                     minX = min(minX, x)
                     maxX = max(maxX, x)
                     minY = min(minY, y)
@@ -366,39 +375,33 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         print("🔍 [MASK_BBOX] Found mask bounds in 160x160 space: (\(minX),\(minY)) to (\(maxX),\(maxY))")
         
-        // Convert from 160x160 mask space to 640x640 YOLO space
-        let yoloMinX = Float(minX) * (640.0 / 160.0)
-        let yoloMinY = Float(minY) * (640.0 / 160.0)
-        let yoloMaxX = Float(maxX) * (640.0 / 160.0)
-        let yoloMaxY = Float(maxY) * (640.0 / 160.0)
+        // SIMPLIFIED: Convert mask coordinates to screen coordinates using the same scale as the green box
+        // The mask is 160x160 but represents the same 640x640 space as YOLO detections
         
-        print("🔍 [MASK_BBOX] Converted to YOLO 640x640 space: (\(Int(yoloMinX)),\(Int(yoloMinY))) to (\(Int(yoloMaxX)),\(Int(yoloMaxY)))")
+        // Scale mask coordinates to 640x640 YOLO space
+        let scale640: Float = 640.0 / 160.0
+        let yolo_minX = Float(minX) * scale640
+        let yolo_minY = Float(minY) * scale640
+        let yolo_maxX = Float(maxX) * scale640
+        let yolo_maxY = Float(maxY) * scale640
         
-        // Convert from YOLO 640x640 space to actual image space
-        let imageScaleX = Float(originalImageWidth) / 640.0
-        let imageScaleY = Float(originalImageHeight) / 640.0
+        // Create a fake detection to use the same coordinate system as the green box
+        let maskWidth = yolo_maxX - yolo_minX
+        let maskHeight = yolo_maxY - yolo_minY
+        let centerX = (yolo_minX + yolo_maxX) / 2
+        let centerY = (yolo_minY + yolo_maxY) / 2
         
-        let imageMinX = yoloMinX * imageScaleX
-        let imageMinY = yoloMinY * imageScaleY
-        let imageMaxX = yoloMaxX * imageScaleX
-        let imageMaxY = yoloMaxY * imageScaleY
+        // Use the same coordinate transformation as the green box (currentBBox)
+        let rect = CGRect(
+            x: CGFloat(centerX - maskWidth / 2),
+            y: CGFloat(centerY - maskHeight / 2),
+            width: CGFloat(maskWidth),
+            height: CGFloat(maskHeight)
+        )
         
-        print("🔍 [MASK_BBOX] Converted to image space: (\(Int(imageMinX)),\(Int(imageMinY))) to (\(Int(imageMaxX)),\(Int(imageMaxY)))")
+        print("🔍 [MASK_BBOX] Final rect in YOLO coordinates: \(rect)")
         
-        // Convert to screen coordinates (same logic as YOLO detection bbox)
-        let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
-        
-        // Account for camera rotation (90 degrees)
-        let screenX = CGFloat(imageMinY) * (screenWidth / CGFloat(originalImageHeight))
-        let screenY = CGFloat(imageMinX) * (screenHeight / CGFloat(originalImageWidth))
-        let screenW = CGFloat(imageMaxY - imageMinY) * (screenWidth / CGFloat(originalImageHeight))
-        let screenH = CGFloat(imageMaxX - imageMinX) * (screenHeight / CGFloat(originalImageWidth))
-        
-        let finalRect = CGRect(x: screenX, y: screenY, width: screenW, height: screenH)
-        print("🔍 [MASK_BBOX] Final screen rect: \(finalRect)")
-        
-        return finalRect
+        return rect
     }
     
     override init() {
@@ -1462,7 +1465,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     
                     let maskValue = mask[y0 * 160 + x0]
                     
-                    if maskValue > 0.2 {
+                    if maskValue > 0.3 {
                         // Keep original colors, just set alpha to fully opaque
                         pixels[idx + 3] = 255
                     } else {
@@ -1472,7 +1475,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 }
             }
             
-            fillHolesInChair(pixels: pixels, width: width, height: height)
+//            fillHolesInChair(pixels: pixels, width: width, height: height)
             
             if let outImage = ctx.makeImage() {
                 DispatchQueue.main.async {
@@ -1785,7 +1788,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             // Combine masks
             for i in 0..<(160 * 160) {
 //                combinedMask[i] = max(combinedMask[i], detectionMask[i])
-                combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * 0.5)
+//                combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * 0.5)
+                let weight = detection.confidence
+                combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * weight)
             }
         }
         
@@ -2122,33 +2127,33 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         var binaryCount = 0
         for y in 0..<160 {
             for x in 0..<160 {
-                binary[y][x] = mask[y * 160 + x] > 0.2 ? 1 : 0
+                binary[y][x] = mask[y * 160 + x] > 0.3 ? 1 : 0
                 if binary[y][x] == 1 { binaryCount += 1 }
             }
         }
         print("📊 [BINARY] Converted to binary: \(binaryCount) pixels")
         
         // Morphological closing
-        print("🔧 [MORPH] Applying dilation (5 iterations)...")
-        for i in 0..<5 {
-            var dilated = binary
-            var changeCount = 0
-            for y in (by1+1)..<by2 {
-                for x in (bx1+1)..<bx2 {
-                    if binary[y][x] == 0 {
-                        if binary[y-1][x] == 1 || binary[y+1][x] == 1 ||
-                           binary[y][x-1] == 1 || binary[y][x+1] == 1 ||
-                           binary[y-1][x-1] == 1 || binary[y-1][x+1] == 1 ||
-                           binary[y+1][x-1] == 1 || binary[y+1][x+1] == 1 {
-                            dilated[y][x] = 1
-                            changeCount += 1
-                        }
-                    }
-                }
-            }
-            binary = dilated
-            print("   Iteration \(i+1): \(changeCount) pixels added")
-        }
+//        print("🔧 [MORPH] Applying dilation (5 iterations)...")
+//        for i in 0..<5 {
+//            var dilated = binary
+//            var changeCount = 0
+//            for y in (by1+1)..<by2 {
+//                for x in (bx1+1)..<bx2 {
+//                    if binary[y][x] == 0 {
+//                        if binary[y-1][x] == 1 || binary[y+1][x] == 1 ||
+//                           binary[y][x-1] == 1 || binary[y][x+1] == 1 ||
+//                           binary[y-1][x-1] == 1 || binary[y-1][x+1] == 1 ||
+//                           binary[y+1][x-1] == 1 || binary[y+1][x+1] == 1 {
+//                            dilated[y][x] = 1
+//                            changeCount += 1
+//                        }
+//                    }
+//                }
+//            }
+//            binary = dilated
+//            print("   Iteration \(i+1): \(changeCount) pixels added")
+//        }
 //        
 //        saveMaskAsImage(mask: binaryToFloat(binary), stage: "6_\(stage)_dilated")
 //        
