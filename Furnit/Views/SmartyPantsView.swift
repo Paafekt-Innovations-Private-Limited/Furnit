@@ -526,38 +526,19 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             return
         }
         
-        // Save masks from hierarchicalDetections
-        print("\n💾 ========== SAVING HIERARCHICAL MASKS ==========")
-        for (index, detection) in hierarchicalDetections.enumerated() {
-            print("Generating mask for \(detection.className) @ \(Int(detection.confidence * 100))%")
-            
-            // Generate individual mask for this detection
-            var individualMask = [Float](repeating: 0, count: 160 * 160)
-            
-            for y in 0..<160 {
-                for x in 0..<160 {
-                    var sum: Float = 0
-                    for c in 0..<32 {
-                        sum += detection.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
-                    }
-                    // Save raw sum values (before sigmoid) to see original form
-                    individualMask[y * 160 + x] = sum
-                }
-            }
-            
-            let stageName = "hierarchical_\(index+1)_\(detection.className)_\(Int(detection.confidence * 100))pct"
-            saveMaskAsImage(mask: individualMask, stage: stageName)
-        }
-        print("📊 [SAVED] Generated and saved \(hierarchicalDetections.count) individual masks")
+        // Apply Mask IoU filtering
+        let maskFilteredDetections = applyMaskIoU(detections: hierarchicalDetections, iouThreshold: 0.8, prototypes: prototypes)
         
+        print("📊 [MASK-FILTERED] Final detections after Mask IoU filtering:")
+        for (index, detection) in maskFilteredDetections.enumerated() {
+            print("Mask-Filtered #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height))")
+        }
+        print("📊 [MASK-FILTERED] Total kept: \(maskFilteredDetections.count) detections")
         
         // Use the best detection for bbox
         let best = hierarchicalDetections.first!
         print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
         print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
-        
-        // Save image with bbox
-//        saveDebugImageWithBBox(pixelBuffer: originalImage, bbox: best, stage: "2_bbox_marked")
         
         // Set UI bbox
         let bbox = CGRect(
@@ -572,15 +553,15 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             self.lastConfidence = best.confidence
         }
         
-        // Generate combined mask from diverse detections - BBOX OPTIMIZED
+        // Generate combined mask from mask-filtered detections - BBOX OPTIMIZED
         print("\n🎨 ========== GENERATING COMBINED MASK ==========")
         
-        // Calculate union bbox of all detections
+        // Calculate union bbox of mask-filtered detections
         let scale: Float = 160.0 / 640.0
         var minX = Float.infinity, minY = Float.infinity
         var maxX = -Float.infinity, maxY = -Float.infinity
         
-        for detection in hierarchicalDetections {
+        for detection in maskFilteredDetections {
             let x1 = (detection.x - detection.width/2) * scale
             let y1 = (detection.y - detection.height/2) * scale
             let x2 = (detection.x + detection.width/2) * scale
@@ -605,15 +586,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         // Initialize combined mask - ONLY for bbox area (not full 160x160)
         var combinedMask = [Float](repeating: 0, count: 160 * 160)
-        
-        // Apply Mask IoU filtering
-        let maskFilteredDetections = applyMaskIoU(detections: hierarchicalDetections, iouThreshold: 0.8, prototypes: prototypes)
-        
-        print("📊 [MASK-FILTERED] Final detections after Mask IoU filtering:")
-        for (index, detection) in maskFilteredDetections.enumerated() {
-            print("Mask-Filtered #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height))")
-        }
-        print("📊 [MASK-FILTERED] Total kept: \(maskFilteredDetections.count) detections")
         
         
         for (index, detection) in maskFilteredDetections.enumerated() {
@@ -993,9 +965,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         }
     }
     
-    // CONTOUR-BASED LARGEST OBJECT FILLING - for chair/bed scenarios
+    // ULTRALYTICS CONTOUR APPROACH - Using cv2.findContours equivalent
     private func fillHolesInChair(pixels: UnsafeMutablePointer<UInt8>, width: Int, height: Int) {
-        print("🪑 [CONTOUR] Starting largest object hole filling for \(width)x\(height)")
+        print("🪑 [ULTRALYTICS] Starting contour-based largest object filling for \(width)x\(height)")
         
         // Create binary mask from alpha channel
         var binaryMask = [UInt8](repeating: 0, count: width * height)
@@ -1012,98 +984,48 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             }
         }
         
-        print("🪑 [CONTOUR] Initial furniture pixels: \(initialPixelCount)")
+        print("🪑 [ULTRALYTICS] Initial furniture pixels: \(initialPixelCount)")
         
-        // Find all connected components
+        // ULTRALYTICS APPROACH: Find all contours (like cv2.findContours with RETR_EXTERNAL)
         var visited = [Bool](repeating: false, count: width * height)
-        var allComponents: [[Int]] = []
+        var allContours: [[CGPoint]] = []
         
         for y in 0..<height {
             for x in 0..<width {
                 let idx = y * width + x
                 if binaryMask[idx] == 255 && !visited[idx] {
-                    var component: [Int] = []
-                    floodFill(mask: &binaryMask, visited: &visited, x: x, y: y, width: width, height: height, component: &component)
-                    
-                    if component.count > 50 {  // Only consider meaningful components
-                        allComponents.append(component)
+                    // Trace contour boundary
+                    let contour = traceContourBoundary(mask: &binaryMask, visited: &visited, startX: x, startY: y, width: width, height: height)
+                    if contour.count > 50 {  // Only meaningful contours
+                        allContours.append(contour)
                     }
                 }
             }
         }
         
-        // Sort components by size (largest first)
-        allComponents.sort { $0.count > $1.count }
-        
-        guard !allComponents.isEmpty else {
-            print("🪑 [CONTOUR] No significant components found")
+        guard !allContours.isEmpty else {
+            print("🪑 [ULTRALYTICS] No contours found")
             return
         }
         
-        // Take the LARGEST component (chair main body, bed main surface, etc.)
-        let largestComponent = allComponents[0]
-        let largestSize = largestComponent.count
+        // ULTRALYTICS strategy="largest": Select contour with most points
+        let largestContour = allContours.max { $0.count < $1.count }!
+        let contourLength = largestContour.count
         
-        print("🪑 [CONTOUR] Found \(allComponents.count) components")
-        print("🪑 [CONTOUR] Largest component: \(largestSize) pixels (\(Int(Float(largestSize)/Float(width*height)*100))% of image)")
+        print("🪑 [ULTRALYTICS] Found \(allContours.count) contours")
+        print("🪑 [ULTRALYTICS] Largest contour: \(contourLength) points")
         
-        // Create mask with ONLY the largest component
+        // Fill the largest contour completely (like Ultralytics does)
         var cleanMask = [UInt8](repeating: 0, count: width * height)
-        for idx in largestComponent {
-            if idx >= 0 && idx < cleanMask.count {
-                cleanMask[idx] = 255
-            }
-        }
+        fillContour(mask: &cleanMask, contour: largestContour, width: width, height: height)
         
-        // Find bounding box of the largest component for efficient hole filling
-        var minX = width, maxX = 0, minY = height, maxY = 0
-        for idx in largestComponent {
-            let x = idx % width
-            let y = idx / width
-            minX = min(minX, x)
-            maxX = max(maxX, x)
-            minY = min(minY, y)
-            maxY = max(maxY, y)
-        }
+        let filledPixelCount = cleanMask.filter { $0 == 255 }.count
+        let holeFillCount = filledPixelCount - initialPixelCount
         
-        print("🪑 [CONTOUR] Bounding box: (\(minX),\(minY)) to (\(maxX),\(maxY))")
-        
-        // CONTOUR HOLE FILLING - Fill interior holes in the main furniture object
-        // This is perfect for chairs (fill seat holes) and beds (fill sheet gaps)
-        var filledPixels = 0
-        
-        for y in minY...maxY {
-            var inside = false
-            var lastPixel: UInt8 = 0
-            
-            for x in minX...maxX {
-                let idx = y * width + x
-                let currentPixel = cleanMask[idx]
-                
-                // Cross from outside to inside furniture boundary
-                if currentPixel == 255 && lastPixel == 0 {
-                    inside = !inside
-                } 
-                // Cross from inside to outside furniture boundary  
-                else if currentPixel == 0 && lastPixel == 255 {
-                    inside = !inside
-                }
-                
-                // Fill holes INSIDE the furniture contour
-                if inside && currentPixel == 0 {
-                    cleanMask[idx] = 255
-                    filledPixels += 1
-                }
-                
-                lastPixel = currentPixel
-            }
-        }
-        
-        print("🪑 [CONTOUR] Filled \(filledPixels) hole pixels inside largest object")
-        print("🪑 [CONTOUR] Total pixels after filling: \(largestSize + filledPixels)")
+        print("🪑 [ULTRALYTICS] Filled contour area: \(filledPixelCount) pixels")
+        print("🪑 [ULTRALYTICS] Holes filled: \(holeFillCount) pixels")
         
         // Apply the filled contour mask back to the original image
-        var appliedPixels = 0
         for y in 0..<height {
             for x in 0..<width {
                 let maskIdx = y * width + x
@@ -1111,20 +1033,20 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 
                 if cleanMask[maskIdx] == 255 {
                     if binaryMask[maskIdx] == 0 {
-                        // This pixel was a hole that got filled - interpolate color from nearby furniture
+                        // This pixel was a hole that got filled - interpolate color
                         var avgR: Int = 0, avgG: Int = 0, avgB: Int = 0, count = 0
                         
-                        // Sample colors from nearby furniture pixels (3x3 neighborhood)
-                        for dy in -1...1 {
-                            for dx in -1...1 {
+                        // Sample colors from nearby original furniture pixels
+                        for dy in -2...2 {
+                            for dx in -2...2 {
                                 let ny = y + dy
                                 let nx = x + dx
                                 if ny >= 0 && ny < height && nx >= 0 && nx < width {
                                     let nearbyIdx = (ny * width + nx) * 4
-                                    if binaryMask[ny * width + nx] == 255 {  // Original furniture pixel
-                                        avgR += Int(pixels[nearbyIdx + 2])      // Red
-                                        avgG += Int(pixels[nearbyIdx + 1])      // Green  
-                                        avgB += Int(pixels[nearbyIdx])          // Blue
+                                    if binaryMask[ny * width + nx] == 255 {
+                                        avgR += Int(pixels[nearbyIdx + 2])
+                                        avgG += Int(pixels[nearbyIdx + 1])
+                                        avgB += Int(pixels[nearbyIdx])
                                         count += 1
                                     }
                                 }
@@ -1132,35 +1054,108 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                         }
                         
                         if count > 0 {
-                            // Use interpolated color from nearby furniture
-                            pixels[pixelIdx] = UInt8(avgB / count)      // Blue
-                            pixels[pixelIdx + 1] = UInt8(avgG / count)  // Green
-                            pixels[pixelIdx + 2] = UInt8(avgR / count)  // Red
-                            pixels[pixelIdx + 3] = 255                  // Alpha
-                            appliedPixels += 1
+                            pixels[pixelIdx] = UInt8(avgB / count)
+                            pixels[pixelIdx + 1] = UInt8(avgG / count)
+                            pixels[pixelIdx + 2] = UInt8(avgR / count)
+                            pixels[pixelIdx + 3] = 255
                         } else {
-                            // Fallback to neutral tone if no nearby furniture
-                            pixels[pixelIdx] = 100      // Blue
-                            pixels[pixelIdx + 1] = 90   // Green
-                            pixels[pixelIdx + 2] = 80   // Red
-                            pixels[pixelIdx + 3] = 255  // Alpha
-                            appliedPixels += 1
+                            pixels[pixelIdx] = 90
+                            pixels[pixelIdx + 1] = 85
+                            pixels[pixelIdx + 2] = 80
+                            pixels[pixelIdx + 3] = 255
                         }
                     } else {
-                        // Keep existing furniture pixel as is
-                        pixels[pixelIdx + 3] = 255  // Ensure it stays opaque
+                        // Keep existing furniture pixel
+                        pixels[pixelIdx + 3] = 255
                     }
                 } else {
-                    // Not part of largest object - make transparent
+                    // Not part of largest contour - make transparent
                     pixels[pixelIdx + 3] = 0
                 }
             }
         }
         
-        print("🪑 [CONTOUR] Applied filling to \(appliedPixels) pixels")
-        print("🪑 [CONTOUR] Contour-based largest object processing complete!")
+        print("🪑 [ULTRALYTICS] Ultralytics contour approach complete!")
     }
     
+    // Ultralytics-style contour tracing (equivalent to cv2.findContours)
+    private func traceContourBoundary(mask: inout [UInt8], visited: inout [Bool], startX: Int, startY: Int, width: Int, height: Int) -> [CGPoint] {
+        var contour: [CGPoint] = []
+        var component: [Int] = []
+        
+        // First, find all pixels in this connected component
+        floodFill(mask: &mask, visited: &visited, x: startX, y: startY, width: width, height: height, component: &component)
+        
+        // Convert to contour points (simplified - just the boundary pixels)
+        for idx in component {
+            let x = idx % width
+            let y = idx / width
+            
+            // Check if this is a boundary pixel (has at least one non-furniture neighbor)
+            var isBoundary = false
+            for dy in -1...1 {
+                for dx in -1...1 {
+                    let nx = x + dx
+                    let ny = y + dy
+                    if nx >= 0 && nx < width && ny >= 0 && ny < height {
+                        let neighborIdx = ny * width + nx
+                        if mask[neighborIdx] == 0 {  // Non-furniture neighbor
+                            isBoundary = true
+                            break
+                        }
+                    } else {
+                        // Edge of image
+                        isBoundary = true
+                        break
+                    }
+                }
+                if isBoundary { break }
+            }
+            
+            if isBoundary {
+                contour.append(CGPoint(x: x, y: y))
+            }
+        }
+        
+        return contour
+    }
+    
+    // Fill contour area completely (like Ultralytics does)
+    private func fillContour(mask: inout [UInt8], contour: [CGPoint], width: Int, height: Int) {
+        guard !contour.isEmpty else { return }
+        
+        // Find bounding box
+        let minX = Int(contour.map { $0.x }.min() ?? 0)
+        let maxX = Int(contour.map { $0.x }.max() ?? 0)
+        let minY = Int(contour.map { $0.y }.min() ?? 0)
+        let maxY = Int(contour.map { $0.y }.max() ?? 0)
+        
+        // Fill the entire contour area using scanline approach
+        for y in minY...maxY {
+            let scanlinePoints = contour.filter { Int($0.y) == y }.map { Int($0.x) }.sorted()
+            
+            if scanlinePoints.count >= 2 {
+                // Fill between first and last point on this scanline
+                let startX = scanlinePoints.first!
+                let endX = scanlinePoints.last!
+                
+                for x in startX...endX {
+                    let idx = y * width + x
+                    if idx >= 0 && idx < mask.count {
+                        mask[idx] = 255
+                    }
+                }
+            } else if scanlinePoints.count == 1 {
+                // Single point on scanline
+                let x = scanlinePoints[0]
+                let idx = y * width + x
+                if idx >= 0 && idx < mask.count {
+                    mask[idx] = 255
+                }
+            }
+        }
+    }
+
     // Iterative flood fill to find connected components (prevents stack overflow)
     private func floodFill(mask: inout [UInt8], visited: inout [Bool], x: Int, y: Int, width: Int, height: Int, component: inout [Int]) {
         var stack: [(Int, Int)] = [(x, y)]
@@ -1196,22 +1191,48 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         return result
     }
     
-    // Add IoU calculation helper
-    private func calculateIoU(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
-        let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
-        let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
-        let x2 = min(det1.x + det1.width/2, det2.x + det2.width/2)
-        let y2 = min(det1.y + det1.height/2, det2.y + det2.height/2)
-        
-        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
-        let area1 = det1.width * det1.height
-        let area2 = det2.width * det2.height
-        let union = area1 + area2 - intersection
-        
-        return union > 0 ? intersection / union : 0
+    // Debug image saving helpers
+    private func saveDebugImage(pixelBuffer: CVPixelBuffer, stage: String) {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
+        let uiImage = UIImage(cgImage: cgImage)
+        UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
+        print("💾 [SAVE] Saved: \(stage)")
     }
 
-    // Add hierarchical NMS
+    private func saveDebugImageWithBBox(pixelBuffer: CVPixelBuffer, bbox: DetectionSmarty, stage: String) {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
+        
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        let scale = Float(width) / 640.0
+        let bboxRect = CGRect(
+            x: CGFloat((bbox.x - bbox.width/2) * scale),
+            y: CGFloat((bbox.y - bbox.height/2) * scale),
+            width: CGFloat(bbox.width * scale),
+            height: CGFloat(bbox.height * scale)
+        )
+        
+        ctx.setStrokeColor(UIColor.green.cgColor)
+        ctx.setLineWidth(3)
+        ctx.stroke(bboxRect)
+        
+        guard let finalImage = UIGraphicsGetImageFromCurrentImageContext() else { return }
+        UIGraphicsEndImageContext()
+        
+        UIImageWriteToSavedPhotosAlbum(finalImage, nil, nil, nil)
+        print("💾 [SAVE] Saved: \(stage)")
+    }
+    
+    // Add this function after extractDetections:
+
     private func applyHierarchicalNMS(detections: [DetectionSmarty], iouThreshold: Float) -> [DetectionSmarty] {
         guard !detections.isEmpty else { return [] }
         
@@ -1224,6 +1245,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         for (i, det) in sorted.enumerated() {
             if suppressed.contains(i) { continue }
+//            if kept.count >= 10 { break }  // Keep up to 10
             
             var shouldSuppress = false
             
@@ -1254,6 +1276,30 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         return kept
     }
 
+    // Add IoU calculation helper:
+    private func calculateIoU(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
+        let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
+        let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
+        let x2 = min(det1.x + det1.width/2, det2.x + det2.width/2)
+        let y2 = min(det1.y + det1.height/2, det2.y + det2.height/2)
+        
+        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
+        let area1 = det1.width * det1.height
+        let area2 = det2.width * det2.height
+        let union = area1 + area2 - intersection
+        
+        return union > 0 ? intersection / union : 0
+    }
+
+//    // Then modify processDirectMultiMask to use it:
+//    // Replace:
+//    let diverseDetections = getDiverseDetections(from: allDetections, maxCount: 5)
+//
+//    // With:
+//    let hierarchicalDetections = applyHierarchicalNMS(detections: allDetections, iouThreshold: 0.45)
+//    let diverseDetections = getDiverseDetections(from: hierarchicalDetections, maxCount: 10)
+
+    
     private func saveMaskAsImageWithConfidence(mask: [Float], stage: String, confidence: Float) {
         UIGraphicsBeginImageContextWithOptions(CGSize(width: 160, height: 160), false, 2.0)
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
