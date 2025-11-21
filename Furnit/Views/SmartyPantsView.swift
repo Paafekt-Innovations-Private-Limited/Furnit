@@ -694,52 +694,164 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         
         
-        for (index, detection) in maskFilteredDetections.enumerated() {
-            var detectionMask = [Float](repeating: 0, count: 160 * 160)
-            
-            print("Processing #\(index+1): \(detection.className) @ \(Int(detection.confidence * 100))%")
-            
-            // Pre-alias coefficients once
-            let coeffs = detection.maskCoeffs  // [Float] of length 32
-            
-            // Temp buffer for prototypes at one pixel (32 channels)
-            var protoVec = [Float](repeating: 0, count: 32)
-            
-            for y in by1...by2 {
-                for x in bx1...bx2 {
-                    // ---- gather prototypes for this pixel into protoVec ----
-                    for c in 0..<32 {
-                        protoVec[c] = prototypes[[0, c, y, x] as [NSNumber]].floatValue
-                    }
-                    
-                    // ---- vDSP_mmul: (1 x 32) * (32 x 1) = (1 x 1) ----
-                    var sum: Float = 0.0
-                    coeffs.withUnsafeBufferPointer { aPtr in        // A: 1x32 (maskCoeffs)
-                        protoVec.withUnsafeBufferPointer { bPtr in  // B: 32x1 (prototypes at this pixel)
-                            withUnsafeMutablePointer(to: &sum) { cPtr in // C: 1x1 result
-                                vDSP_mmul(
-                                    aPtr.baseAddress!, 1,   // A, stride
-                                    bPtr.baseAddress!, 1,   // B, stride
-                                    cPtr, 1,                // C, stride
-                                    1, 1, 32                // M=1, N=1, K=32
-                                )
+        
+
+//        let maskSize = 160 * 160
+//        var detectionMask = [Float](repeating: 0, count: maskSize)
+//        var protoVec      = [Float](repeating: 0, count: 32)
+//
+//        for (index, detection) in maskFilteredDetections.enumerated() {
+//
+//            // reset per-detection mask
+//            for i in 0..<maskSize {
+//                detectionMask[i] = 0
+//            }
+//
+//            print("Processing #\(index+1): \(detection.className) @ \(Int(detection.confidence * 100))%")
+//
+//            let coeffs = detection.maskCoeffs
+//            let weight = detection.confidence
+//
+//            coeffs.withUnsafeBufferPointer { aPtr in
+//                protoVec.withUnsafeMutableBufferPointer { bPtr in
+//                    detectionMask.withUnsafeMutableBufferPointer { dPtr in
+//                        combinedMask.withUnsafeMutableBufferPointer { cPtr in
+//
+//                            // starting addresses for the whole mask
+//                            let dStart = dPtr.baseAddress!
+//                            let cStart = cPtr.baseAddress!
+//
+//                            for y in by1...by2 {
+//                                for x in bx1...bx2 {
+//
+//                                    // 1) fill protoVec for this pixel
+//                                    for c in 0..<32 {
+//                                        bPtr[c] = prototypes[[0, c, y, x] as [NSNumber]].floatValue
+//                                    }
+//
+//                                    // 2) dot product via vDSP_dotpr
+//                                    var sum: Float = 0.0
+//                                    vDSP_dotpr(
+//                                        aPtr.baseAddress!, 1,
+//                                        bPtr.baseAddress!, 1,
+//                                        &sum,
+//                                        vDSP_Length(32)
+//                                    )
+//
+//                                    // 3) same sigmoid + write detectionMask at idx
+//                                    let value = sigmoid(sum)
+//                                    let idx   = y * 160 + x
+//                                    (dStart + idx).pointee = value   // pointer write, same as detectionMask[idx]
+//
+//                                    // 4) combine: EXACT same math as before, just using pointers
+//                                    var cPtrRun = cStart
+//                                    var dPtrRun = dStart
+//                                    for _ in 0..<maskSize {
+//                                        let v = cPtrRun.pointee + dPtrRun.pointee * weight
+//                                        cPtrRun.pointee = v > 1.0 ? 1.0 : v
+//                                        cPtrRun = cPtrRun.advanced(by: 1)
+//                                        dPtrRun = dPtrRun.advanced(by: 1)
+//                                    }
+//                                }
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        }
+        
+        
+        
+        
+        
+        
+        let maskW = 160
+        let maskH = 160
+        let maskSize = maskW * maskH
+
+        // Reuse this across detections
+        var detectionMask = [Float](repeating: 0, count: maskSize)
+
+        // Use the already-built protoMatrix
+        protoMatrix.withUnsafeBufferPointer { protoPtr in
+            let protoBase = protoPtr.baseAddress!   // [C * spatial], C=32, spatial=160*160
+
+            for (index, detection) in maskFilteredDetections.enumerated() {
+
+                print("Processing #\(index + 1): \(detection.className) @ \(Int(detection.confidence * 100))%")
+
+                // Reset per-detection mask to zero (same as new array each time)
+                for i in 0..<maskSize {
+                    detectionMask[i] = 0
+                }
+
+                let coeffs = detection.maskCoeffs
+                var weight = detection.confidence
+
+                coeffs.withUnsafeBufferPointer { coeffPtr in
+                    detectionMask.withUnsafeMutableBufferPointer { detPtr in
+                        combinedMask.withUnsafeMutableBufferPointer { combPtr in
+
+                            let coeffBase = coeffPtr.baseAddress!    // 32 coeffs
+                            let detBase   = detPtr.baseAddress!      // 160*160
+                            let combBase  = combPtr.baseAddress!     // 160*160
+
+                            // C and spatial come from above in this function
+                            for y in by1...by2 {
+                                for x in bx1...bx2 {
+
+                                    let pos = y * maskW + x          // 0 .. 25599
+
+                                    // ---- 1) Dot product over channels using protoMatrix ----
+                                    //
+                                    // protoMatrix layout: [c * spatial + pos]
+                                    // So for this pixel, first channel is protoBase + pos,
+                                    // then each next channel is +spatial away.
+                                    //
+                                    var sum: Float = 0.0
+                                    let protoPixelPtr = protoBase + pos
+                                    vDSP_dotpr(
+                                        coeffBase,           1,          // coeffs (length C)
+                                        protoPixelPtr,       spatial,    // prototypes[:, y, x] with stride=spatial
+                                        &sum,
+                                        vDSP_Length(C)
+                                    )
+
+                                    // ---- 2) Write mask value at this pixel (same as before) ----
+                                    let value = sigmoid(sum)
+                                    (detBase + pos).pointee = value
+
+                                    // ---- 3) Combine masks: EXACT same math as original ----
+                                    //
+                                    // for i in 0..<maskSize {
+                                    //     combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * weight)
+                                    // }
+                                    //
+                                    var cPtrRun = combBase
+                                    var dPtrRun = detBase
+                                    var i = 0
+                                    while i < maskSize {
+                                        let v = cPtrRun.pointee + dPtrRun.pointee * weight
+                                        cPtrRun.pointee = v > 1.0 ? 1.0 : v
+                                        cPtrRun = cPtrRun.advanced(by: 1)
+                                        dPtrRun = dPtrRun.advanced(by: 1)
+                                        i += 1
+                                    }
+                                }
                             }
                         }
-                    }
-                    
-                    // Same as your current logic
-                    let value = sigmoid(sum)
-                    let idx = y * 160 + x
-                    detectionMask[idx] = value
-                    
-                    // Combine masks (unchanged, still inside x/y loops)
-                    for i in 0..<(160 * 160) {
-                        let weight = detection.confidence
-                        combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * weight)
                     }
                 }
             }
         }
+
+
+
+
+
+
+
+
 
         
         
