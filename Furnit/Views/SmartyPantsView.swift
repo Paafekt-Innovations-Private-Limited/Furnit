@@ -61,14 +61,16 @@ struct SmartyPantsView: View {
                 Canvas { context, size in
                     let rect = Path(camera.currentBBox)
                     
-                    // LIVE GREEN DEBUG LINES - Highly visible
-                    context.stroke(rect, with: .color(.green.opacity(0.9)), lineWidth: 8)  // Thick green outline
-                    context.stroke(rect, with: .color(.green), lineWidth: 4)  // Bright green core
-                    context.stroke(rect, with: .color(.white.opacity(0.8)), lineWidth: 1)  // White inner line for contrast
-                    
-                    // Original blue lines (background)
-                    context.stroke(rect, with: .color(.blue.opacity(0.2)), lineWidth: 6)
-                    context.stroke(rect, with: .color(.blue.opacity(0.4)), lineWidth: 3)
+                    if SEGMENT_DEBUG_SAVE_IMAGES {
+                        // LIVE GREEN DEBUG LINES - Highly visible
+                        context.stroke(rect, with: .color(.green.opacity(0.9)), lineWidth: 8)  // Thick green outline
+                        context.stroke(rect, with: .color(.green), lineWidth: 4)  // Bright green core
+                        context.stroke(rect, with: .color(.white.opacity(0.8)), lineWidth: 1)  // White inner line for contrast
+                        
+                        // Original blue lines (background)
+                        context.stroke(rect, with: .color(.blue.opacity(0.2)), lineWidth: 6)
+                        context.stroke(rect, with: .color(.blue.opacity(0.4)), lineWidth: 3)
+                    }
                 }
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
@@ -76,7 +78,7 @@ struct SmartyPantsView: View {
             
             VStack {
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("FPS: \(camera.currentFPS, specifier: "%.1f")")
                         if camera.lastConfidence > 0 {
                             Text("\(Int(camera.lastConfidence * 100))%")
@@ -90,11 +92,42 @@ struct SmartyPantsView: View {
                     .padding(6)
                     .background(Color.black.opacity(0.7))
                     .cornerRadius(8)
+
                     Spacer()
                 }
-                .padding()
+                .padding(.horizontal)
+                .padding(.top)
+
+                // 🌟 Friendly slider: “Less object” <-> “More object”
+                if camera.segmentedImage != nil {
+                    HStack {
+                        Text("Less object")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.8))
+
+                        Slider(
+                            value: Binding(
+                                get: { Double(camera.maskCutoff) },
+                                set: { camera.maskCutoff = Float($0) }
+                            ),
+                            in: 0.1...0.8
+                        )
+
+                        Text("More object")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+                    .padding(.bottom, 4)
+                    .background(Color.black.opacity(0.6))
+                    .cornerRadius(10)
+                    .padding(.horizontal)
+                }
+
                 Spacer()
             }
+
             
             VStack {
                 HStack {
@@ -223,6 +256,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     @Published var lastConfidence: Float = 0.0
     @Published var currentBBox: CGRect = .zero
     
+    // 🌟 User-tunable “how much object to keep”
+    @Published var maskCutoff: Float = 0.3
+    
     private let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let videoQueue = DispatchQueue(label: "yoloeVideo", qos: .userInitiated)
@@ -259,7 +295,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     ]
     
     private var lastProcessTime = Date()
-    private let processInterval: TimeInterval = 0.1
+    private let processInterval: TimeInterval = 0.05
     private var frameCount = 0
     private var fpsStartTime = Date()
     
@@ -350,13 +386,14 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 DispatchQueue.main.async { self?.isProcessing = false }
                 return
             }
-            
-            // PRINT RAW YOLO OUTPUT INFO
-            print("\n🔬 ========== RAW YOLO OUTPUT ==========")
-            print("Detections shape: \(detectionsArray.shape)")
-            print("Prototypes shape: \(prototypesArray.shape)")
-            
-            print("\nFirst 3 anchors raw data:")
+            if SEGMENT_DEBUG_SAVE_IMAGES {
+                // PRINT RAW YOLO OUTPUT INFO
+                print("\n🔬 ========== RAW YOLO OUTPUT ==========")
+                print("Detections shape: \(detectionsArray.shape)")
+                print("Prototypes shape: \(prototypesArray.shape)")
+                
+                print("\nFirst 3 anchors raw data:")
+            }
 //            for anchor in 0..<min(3, detectionsArray.shape[2].intValue) {
 //                let x = detectionsArray[[0, 0, anchor] as [NSNumber]].floatValue
 //                let y = detectionsArray[[0, 1, anchor] as [NSNumber]].floatValue
@@ -438,12 +475,12 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 }
             }
             
-            if !anchorDetections.isEmpty {
-                print("Anchor \(anchor): pos(\(Int(x)),\(Int(y))) size(\(Int(w))x\(Int(h)))")
-                for (name, conf) in anchorDetections.sorted(by: { $0.1 > $1.1 }) {
-                    print("  - \(name): \(Int(conf * 100))%")
-                }
-            }
+//            if !anchorDetections.isEmpty {
+//                print("Anchor \(anchor): pos(\(Int(x)),\(Int(y))) size(\(Int(w))x\(Int(h)))")
+//                for (name, conf) in anchorDetections.sorted(by: { $0.1 > $1.1 }) {
+//                    print("  - \(name): \(Int(conf * 100))%")
+//                }
+//            }
         }
         
         let grouped = Dictionary(grouping: all) { $0.className }
@@ -498,34 +535,34 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         let allDetections = extractDetections(from: detections)
         print("📊 [DETECTION] Extracted \(allDetections.count) raw detections")
         
-        // Print all values of allDetections
-        print("\n🔍 ========== ALL DETECTIONS VALUES ==========")
-        for (index, detection) in allDetections.enumerated() {
-            print("Det #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height)) | BBox: [\(String(format: "%.1f", detection.x - detection.width/2)), \(String(format: "%.1f", detection.y - detection.height/2)), \(String(format: "%.1f", detection.x + detection.width/2)), \(String(format: "%.1f", detection.y + detection.height/2))] | Mask: [\(detection.maskCoeffs.prefix(5).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            // Print all values of allDetections
+            print("\n🔍 ========== ALL DETECTIONS VALUES ==========")
+            for (index, detection) in allDetections.enumerated() {
+                print("Det #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height)) | BBox: [\(String(format: "%.1f", detection.x - detection.width/2)), \(String(format: "%.1f", detection.y - detection.height/2)), \(String(format: "%.1f", detection.x + detection.width/2)), \(String(format: "%.1f", detection.y + detection.height/2))] | Mask: [\(detection.maskCoeffs.prefix(5).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
+            }
+            print("============================================\n")
         }
-        print("============================================\n")
         
         // Apply HIERARCHICAL NMS
         let hierarchicalDetections = applyHierarchicalNMS(detections: allDetections, iouThreshold: 0.9)
         print("📊 [H-NMS] Kept \(hierarchicalDetections.count) detections after hierarchical NMS")
-        for (index, detection) in hierarchicalDetections.enumerated() {
-            print("H-NMS #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height)) | BBox: [\(String(format: "%.1f", detection.x - detection.width/2)), \(String(format: "%.1f", detection.y - detection.height/2)), \(String(format: "%.1f", detection.x + detection.width/2)), \(String(format: "%.1f", detection.y + detection.height/2))] | Mask: [\(detection.maskCoeffs.prefix(5).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            for (index, detection) in hierarchicalDetections.enumerated() {
+                print("H-NMS #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height)) | BBox: [\(String(format: "%.1f", detection.x - detection.width/2)), \(String(format: "%.1f", detection.y - detection.height/2)), \(String(format: "%.1f", detection.x + detection.width/2)), \(String(format: "%.1f", detection.y + detection.height/2))] | Mask: [\(detection.maskCoeffs.prefix(5).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
+            }
         }
         
         // Apply Mask IoU filtering RIGHT AFTER bbox IoU
         let maskFilteredDetections = applyMaskIoU(detections: hierarchicalDetections, iouThreshold: 0.2, prototypes: prototypes)
         
-        print("📊 [MASK-FILTERED] Final detections after Mask IoU filtering:")
-        for (index, detection) in maskFilteredDetections.enumerated() {
-            print("Mask-Filtered #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height))")
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            print("📊 [MASK-FILTERED] Final detections after Mask IoU filtering:")
+            for (index, detection) in maskFilteredDetections.enumerated() {
+                print("Mask-Filtered #\(index): \(detection.className) (\(detection.classIdx)) | Conf: \(String(format: "%.3f", detection.confidence)) (\(Int(detection.confidence * 100))%) | Pos: (\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))) | Size: \(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height))")
+            }
         }
         print("📊 [MASK-FILTERED] Total kept: \(maskFilteredDetections.count) detections")
-        
-                
-        
-        // Get diverse detections (max 5 different classes)
-//        let diverseDetections = getDiverseDetections(from: hierarchicalDetections, maxCount: 5)
-//        print("📊 [DIVERSE] Using \(diverseDetections.count) detections")
         
         guard !maskFilteredDetections.isEmpty else {
             print("❌ [DETECTION] No valid detections found after mask filtering")
@@ -750,20 +787,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             }
         }
 
-
-
-
-
-
-
-
-
-        
-        
-        
-        
-        
-        
 //        print("📊 [BBOX OPTIMIZED] Processed \(bboxWidth * bboxHeight) pixels instead of \(160 * 160)")
         
 //        let nonZeroCount = combinedMask.filter { $0 > 0.5 }.count
@@ -911,57 +934,57 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         print("✅ ==================== FRAME COMPLETE ====================\n")
     }
     
-    // Apply mask to image
     private func applyMaskToImage(mask: [Float], to pixelBuffer: CVPixelBuffer) {
         autoreleasepool {
             let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
             let width = CVPixelBufferGetWidth(pixelBuffer)
             let height = CVPixelBufferGetHeight(pixelBuffer)
-            
+
+            // Snapshot of user setting for this frame
+            let cutoff = self.maskCutoff
+
             guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent),
-                  let ctx = CGContext(data: nil, width: width, height: height,
-                                     bitsPerComponent: 8, bytesPerRow: width * 4,
-                                     space: CGColorSpaceCreateDeviceRGB(),
-                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+                  let ctx = CGContext(
+                        data: nil,
+                        width: width,
+                        height: height,
+                        bitsPerComponent: 8,
+                        bytesPerRow: width * 4,
+                        space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ),
                   let data = ctx.data else {
                 DispatchQueue.main.async { self.isProcessing = false }
                 return
             }
-            
+
             ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
-            
+
             for py in 0..<height {
                 for px in 0..<width {
                     let idx = (py * width + px) * 4
                     let mx = Float(px) * 160.0 / Float(width)
                     let my = Float(py) * 160.0 / Float(height)
                     let x0 = Int(mx), y0 = Int(my)
-                    
+
                     guard x0 >= 0 && x0 < 160 && y0 >= 0 && y0 < 160 else {
                         pixels[idx + 3] = 0
                         continue
                     }
-                    
+
                     let maskValue = mask[y0 * 160 + x0]
-                    
-                    if maskValue > 0.0 {
-                        // Fill furniture pixels with green
-//                        pixels[idx] = 0      // Blue
-//                        pixels[idx + 1] = 255  // Green
-//                        pixels[idx + 2] = 0    // Red
-                        pixels[idx + 3] = 255  // Alpha (fully opaque)
+
+                    if maskValue >= cutoff {
+                        // keep furniture pixel
+                        pixels[idx + 3] = 255
                     } else {
-//                        // Fill background pixels with green too
-//                        pixels[idx] = 0      // Blue
-//                        pixels[idx + 1] = 0  // Green
-//                        pixels[idx + 2] = 255  // Red
-                        pixels[idx + 3] = 0  // Alpha (fully opaque)
+                        // hide background pixel
+                        pixels[idx + 3] = 0
                     }
                 }
             }
-            
-            
+
             if let outImage = ctx.makeImage() {
                 DispatchQueue.main.async {
                     self.segmentedImage = UIImage(cgImage: outImage, scale: 1.0, orientation: .up)
@@ -973,6 +996,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             }
         }
     }
+
     
     // Helper to convert binary to float
     private func binaryToFloat(_ binary: [[UInt8]]) -> [Float] {
@@ -1014,9 +1038,11 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             height: CGFloat(bbox.height * scale)
         )
         
-        ctx.setStrokeColor(UIColor.green.cgColor)
-        ctx.setLineWidth(3)
-        ctx.stroke(bboxRect)
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            ctx.setStrokeColor(UIColor.green.cgColor)
+            ctx.setLineWidth(3)
+            ctx.stroke(bboxRect)
+        }
         
         guard let finalImage = UIGraphicsGetImageFromCurrentImageContext() else { return }
         UIGraphicsEndImageContext()
@@ -1049,10 +1075,12 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 // Key hierarchical rule: Keep different classes even if high overlap
                 if iou > iouThreshold {
                     // Only suppress if SAME class and high overlap
-//                    if det.classIdx == existing.classIdx {
-                        shouldSuppress = true
+                    //                    if det.classIdx == existing.classIdx {
+                    shouldSuppress = true
+                    if SEGMENT_DEBUG_SAVE_IMAGES {
                         print("❌ Suppressed duplicate: \(det.className) @ \(Int(det.confidence * 100))%")
-                        break
+                    }
+                    break
 //                    }
                     // Different class = keep it (chair vs office chair)
                     print("✅ Keeping overlapping: \(det.className) overlaps \(existing.className)")
