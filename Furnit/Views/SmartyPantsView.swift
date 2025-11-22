@@ -77,27 +77,8 @@ struct SmartyPantsView: View {
             }
             
             VStack {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("FPS: \(camera.currentFPS, specifier: "%.1f")")
-                        if camera.lastConfidence > 0 {
-                            Text("\(Int(camera.lastConfidence * 100))%")
-                        }
-                        Text("MULTI-MASK")
-                            .font(.caption2)
-                            .foregroundColor(.white)
-                    }
-                    .font(.caption)
-                    .foregroundColor(.white)
-                    .padding(6)
-                    .background(Color.black.opacity(0.7))
-                    .cornerRadius(8)
-
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.top)
-
+                // 🔻 Removed the FPS / % / MULTI-MASK HUD here.
+                
                 // 🌟 Friendly slider: “Less object” <-> “More object”
                 if camera.segmentedImage != nil {
                     HStack {
@@ -394,24 +375,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 
                 print("\nFirst 3 anchors raw data:")
             }
-//            for anchor in 0..<min(3, detectionsArray.shape[2].intValue) {
-//                let x = detectionsArray[[0, 0, anchor] as [NSNumber]].floatValue
-//                let y = detectionsArray[[0, 1, anchor] as [NSNumber]].floatValue
-//                let w = detectionsArray[[0, 2, anchor] as [NSNumber]].floatValue
-//                let h = detectionsArray[[0, 3, anchor] as [NSNumber]].floatValue
-//                
-//                var maxConf: Float = 0
-//                var maxClass = -1
-//                for classIdx in 4..<4589 {
-//                    let conf = detectionsArray[[0, classIdx, anchor] as [NSNumber]].floatValue
-//                    if conf > maxConf {
-//                        maxConf = conf
-//                        maxClass = classIdx - 4
-//                    }
-//                }
-//                
-//                print("Anchor \(anchor): pos(\(Int(x)),\(Int(y))) size(\(Int(w))x\(Int(h))) maxConf:\(Int(maxConf*100))% class:\(maxClass)")
-//            }
             
             print("========================================\n")
             
@@ -474,13 +437,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     all.append(DetectionSmarty(x: x, y: y, width: w, height: h, confidence: conf, classIdx: classIdx, className: className, maskCoeffs: coeffs))
                 }
             }
-            
-//            if !anchorDetections.isEmpty {
-//                print("Anchor \(anchor): pos(\(Int(x)),\(Int(y))) size(\(Int(w))x\(Int(h)))")
-//                for (name, conf) in anchorDetections.sorted(by: { $0.1 > $1.1 }) {
-//                    print("  - \(name): \(Int(conf * 100))%")
-//                }
-//            }
         }
         
         let grouped = Dictionary(grouping: all) { $0.className }
@@ -582,16 +538,12 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         for (index, detection) in maskFilteredDetections.enumerated() {
             print("Generating mask for \(detection.className) @ \(Int(detection.confidence * 100))%")
             
-            // Generate individual mask for this detection
-            
-            
             for y in 0..<160 {
                 for x in 0..<160 {
                     var sum: Float = 0
                     for c in 0..<32 {
                         sum += detection.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
                     }
-                    // Save raw sum values (before sigmoid) to see original form
                     individualMask[y * 160 + x] = sum
                 }
             }
@@ -612,10 +564,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
         print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
         
-//        if SEGMENT_DEBUG_SAVE_IMAGES {
-//            saveMaskAsImage(mask: combinedMask, stage: "4_combined_raw")
-//        }
-
         // Set UI bbox
         let bbox = CGRect(
             x: CGFloat(best.x - best.width / 2),
@@ -757,17 +705,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                                     let value = sigmoid(sum)
                                     (detBase + pos).pointee = value
 
-                                    // ---- 3) Combine masks: EXACT same math as original, but only
-                                    //         up to the current pixel index.
-                                    //
-                                    // Original:
-                                    //   for i in 0..<maskSize {
-                                    //       combinedMask[i] = min(1.0, combinedMask[i] + detectionMask[i] * weight)
-                                    //   }
-                                    //
-                                    // Here we do the same, but only over i in [0, pos].
-                                    // For i > pos, detectionMask[i] is still 0, so skipping is a no-op.
-                                    //
+                                    // ---- 3) Combine masks
                                     var cPtrRun = combBase
                                     var dPtrRun = detBase
                                     var i = 0
@@ -786,13 +724,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 }
             }
         }
-
-//        print("📊 [BBOX OPTIMIZED] Processed \(bboxWidth * bboxHeight) pixels instead of \(160 * 160)")
-        
-//        let nonZeroCount = combinedMask.filter { $0 > 0.5 }.count
-//        print("📊 [COMBINED] Mask has \(nonZeroCount) positive pixels before post-processing")
-        
-//        saveMaskAsImage(mask: combinedMask, stage: "4_combined_raw")
         
         // Apply simple post-processing
         applyPostProcessingAndMask(mask: combinedMask, best: best, to: originalImage, stage: "multi")
@@ -1051,8 +982,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         print("💾 [SAVE] Saved: \(stage)")
     }
     
-    // Add this function after extractDetections:
-
     private func applyHierarchicalNMS(detections: [DetectionSmarty], iouThreshold: Float) -> [DetectionSmarty] {
         guard !detections.isEmpty else { return [] }
         
@@ -1065,25 +994,18 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         for (i, det) in sorted.enumerated() {
             if suppressed.contains(i) { continue }
-//            if kept.count >= 10 { break }  // Keep up to 10
             
             var shouldSuppress = false
             
             for existing in kept {
                 let iou = calculateIoU(det1: det, det2: existing)
                 
-                // Key hierarchical rule: Keep different classes even if high overlap
                 if iou > iouThreshold {
-                    // Only suppress if SAME class and high overlap
-                    //                    if det.classIdx == existing.classIdx {
                     shouldSuppress = true
                     if SEGMENT_DEBUG_SAVE_IMAGES {
                         print("❌ Suppressed duplicate: \(det.className) @ \(Int(det.confidence * 100))%")
                     }
                     break
-//                    }
-                    // Different class = keep it (chair vs office chair)
-                    print("✅ Keeping overlapping: \(det.className) overlaps \(existing.className)")
                 }
             }
             
@@ -1098,7 +1020,6 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         return kept
     }
 
-    // Add IoU calculation helper:
     private func calculateIoU(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
         let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
         let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
