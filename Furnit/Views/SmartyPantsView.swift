@@ -119,27 +119,9 @@ struct SmartyPantsView: View {
                 .allowsHitTesting(false)
             }
             
-            // Top overlay: detected furniture names (up to 3)
+            // Removed the entire VStack with visibleDetectionNames (top overlay)
+            // Slider and other overlays remain unchanged
             VStack {
-                if !camera.visibleDetectionNames.isEmpty {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(Array(camera.visibleDetectionNames.prefix(3).enumerated()), id: \.offset) { _, name in
-                                Text(name)
-                                    .font(.caption2)
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .padding(6)
-                        .background(Color.black.opacity(0.7))
-                        .cornerRadius(8)
-                        
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top)
-                }
-                
                 // Slider: Less object <-> More object
                 if camera.segmentedImage != nil {
                     HStack {
@@ -384,7 +366,10 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     
     private func setupCamera() {
         session.sessionPreset = .hd1280x720
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else { return }
+        // Try to use the 0.5x ultra-wide camera if available, else fallback to wide angle
+        let device = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) ??
+                     AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+        guard let device = device else { return }
         do {
             let input = try AVCaptureDeviceInput(device: device)
             if session.canAddInput(input) { session.addInput(input) }
@@ -1076,7 +1061,19 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     }
     
     private func saveDebugImage(pixelBuffer: CVPixelBuffer, stage: String) {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        print("saveDebugImage: pixelBuffer size = \(width) x \(height)")
+        guard width > 0 && height > 0 else { 
+            print("Skipping saveDebugImage due to zero size")
+            return 
+        }
+        guard CVPixelBufferGetBaseAddress(pixelBuffer) != nil else {
+            print("Skipping saveDebugImage: pixelBuffer has nil baseAddress")
+            return
+        }
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        print("saveDebugImage: CIImage extent = \(ciImage.extent), pixelBuffer base address = \(CVPixelBufferGetBaseAddress(pixelBuffer) as Optional)")
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
         let uiImage = UIImage(cgImage: cgImage)
         UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
@@ -1084,11 +1081,21 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     }
 
     private func saveDebugImageWithBBox(pixelBuffer: CVPixelBuffer, bbox: DetectionSmarty, stage: String) {
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
-        
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
+        print("saveDebugImageWithBBox: pixelBuffer size = \(width) x \(height)")
+        guard width > 0 && height > 0 else {
+            print("Skipping saveDebugImageWithBBox due to zero size")
+            return
+        }
+        guard CVPixelBufferGetBaseAddress(pixelBuffer) != nil else {
+            print("Skipping saveDebugImageWithBBox: pixelBuffer has nil baseAddress")
+            return
+        }
+        
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        print("saveDebugImageWithBBox: CIImage extent = \(ciImage.extent), pixelBuffer base address = \(CVPixelBufferGetBaseAddress(pixelBuffer) as Optional)")
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
         
         UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
