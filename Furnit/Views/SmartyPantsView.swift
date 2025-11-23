@@ -78,12 +78,8 @@ struct SmartyPantsView: View {
                     
                     // Model coordinates are in 640x640 space; map each bbox accordingly
                     for detection in camera.currentDetections {
-                        let modelRect = CGRect(
-                            x: CGFloat(detection.x - detection.width / 2),
-                            y: CGFloat(detection.y - detection.height / 2),
-                            width: CGFloat(detection.width),
-                            height: CGFloat(detection.height)
-                        )
+                        guard let tight = detection.tightBBox else { continue }
+                        let modelRect = tight
                         
                         // Map modelRect from 640x640 to displayed imageRect
                         let scaleX = imageRect.width / 640.0
@@ -96,16 +92,14 @@ struct SmartyPantsView: View {
                             height: modelRect.height * scaleY
                         )
                         
+                        // Log which bbox is used for drawing
+                        print("🖼️ Drawing bbox for \(detection.className) using tightBBox: \(modelRect)")
+                        print("    Original model bbox: x=\(detection.x), y=\(detection.y), w=\(detection.width), h=\(detection.height)")
+                        
                         let path = Path(mappedRect)
                         
-                        // LIVE GREEN DEBUG LINES - Highly visible
-                        context.stroke(path, with: .color(.green.opacity(0.9)), lineWidth: 8)
-                        context.stroke(path, with: .color(.green), lineWidth: 4)
-                        context.stroke(path, with: .color(.white.opacity(0.8)), lineWidth: 1)
-                        
-                        // Original blue lines (background)
-                        context.stroke(path, with: .color(.blue.opacity(0.2)), lineWidth: 6)
-                        context.stroke(path, with: .color(.blue.opacity(0.4)), lineWidth: 3)
+                        // SINGLE THIN GREEN LINE ONLY
+                        context.stroke(path, with: .color(.green), lineWidth: 2)
                         
                         // Draw class name label at top-left of bbox with background using resolved Text
                         let label = Text(detection.className)
@@ -293,6 +287,7 @@ struct DetectionSmarty {
     let x: Float; let y: Float; let width: Float; let height: Float
     let confidence: Float; let classIdx: Int; let className: String
     let maskCoeffs: [Float]
+    var tightBBox: CGRect? = nil
 }
 
 class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
@@ -579,16 +574,83 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         )
         
         print("📊 [MASK-FILTERED] Total kept: \(maskFilteredDetections.count) detections")
+
+        // Compute tight bounding boxes for each maskFilteredDetection
+        let cutoff = self.maskCutoff
+        var detectionsWithTightBBox: [DetectionSmarty] = []
+        for detection in maskFilteredDetections {
+            var individualMask = [Float](repeating: 0, count: 160 * 160)
+            for y in 0..<160 {
+                for x in 0..<160 {
+                    var sum: Float = 0
+                    for c in 0..<32 {
+                        sum += detection.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
+                    }
+                    individualMask[y * 160 + x] = sum
+                }
+            }
+            
+            // Compute tight bbox in mask space (160x160)
+            var minX = 160
+            var minY = 160
+            var maxX = -1
+            var maxY = -1
+            for y in 0..<160 {
+                for x in 0..<160 {
+                    if individualMask[y * 160 + x] >= cutoff {
+                        if x < minX { minX = x }
+                        if x > maxX { maxX = x }
+                        if y < minY { minY = y }
+                        if y > maxY { maxY = y }
+                    }
+                }
+            }
+            
+            var tightBBox: CGRect? = nil
+            if maxX >= minX && maxY >= minY {
+                // Convert tight bbox from mask space (160x160) to model space (640x640)
+                let scale: CGFloat = 4.0
+                let originX = CGFloat(minX) * scale
+                let originY = CGFloat(minY) * scale
+                let width = CGFloat(maxX - minX + 1) * scale
+                let height = CGFloat(maxY - minY + 1) * scale
+                tightBBox = CGRect(x: originX, y: originY, width: width, height: height)
+            }
+            
+            // LOGGING for tight bounding boxes
+            print("🔎 Detection \(detection.className) @ \(Int(detection.confidence * 100))%")
+            print("    Mask space tight bbox: minX=\(minX), maxX=\(maxX), minY=\(minY), maxY=\(maxY)")
+            if let tight = tightBBox {
+                print("    Model space tightBBox: \(tight)")
+            } else {
+                print("    No valid tightBBox computed")
+            }
+            print("    Original model bbox: x=\(detection.x), y=\(detection.y), width=\(detection.width), height=\(detection.height)")
+            
+            var detectionWithBBox = detection
+            detectionWithBBox.tightBBox = tightBBox
+            
+            if SEGMENT_DEBUG_SAVE_IMAGES {
+                let stageName = "final_filtered_\(detection.className)_\(Int(detection.confidence * 100))pct"
+                saveMaskAsImage(mask: individualMask, stage: stageName)
+            }
+            
+            detectionsWithTightBBox.append(detectionWithBBox)
+        }
+
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            print("📊 [SAVED] Generated and saved \(detectionsWithTightBBox.count) final filtered masks")
+        }
         
         // Update visible detection names for UI (top 3 by confidence)
-        let sortedForNames = maskFilteredDetections.sorted { $0.confidence > $1.confidence }
+        let sortedForNames = detectionsWithTightBBox.sorted { $0.confidence > $1.confidence }
         let labelNames = sortedForNames.prefix(3).map { $0.className }
         DispatchQueue.main.async {
             self.visibleDetectionNames = labelNames
-            self.currentDetections = maskFilteredDetections
+            self.currentDetections = detectionsWithTightBBox
         }
         
-        guard !maskFilteredDetections.isEmpty else {
+        guard !detectionsWithTightBBox.isEmpty else {
             print("❌ [DETECTION] No valid detections found after mask filtering")
             DispatchQueue.main.async {
                 self.isProcessing = false
@@ -603,52 +665,19 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             return
         }
         
-        print("\n💾 ========== SAVING FINAL FILTERED MASKS ==========")
-        var individualMask = [Float](repeating: 0, count: 160 * 160)
-        for (index, detection) in maskFilteredDetections.enumerated() {
-            print("Generating mask for \(detection.className) @ \(Int(detection.confidence * 100))%")
-            
-            for y in 0..<160 {
-                for x in 0..<160 {
-                    var sum: Float = 0
-                    for c in 0..<32 {
-                        sum += detection.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
-                    }
-                    individualMask[y * 160 + x] = sum
-                }
-            }
-            
-            if SEGMENT_DEBUG_SAVE_IMAGES {
-                let stageName = "final_filtered_\(index+1)_\(detection.className)_\(Int(detection.confidence * 100))pct"
-                saveMaskAsImage(mask: individualMask, stage: stageName)
-            }
-        }
-        if SEGMENT_DEBUG_SAVE_IMAGES {
-            print("📊 [SAVED] Generated and saved \(maskFilteredDetections.count) final filtered masks")
-        }
-        
-        let best = maskFilteredDetections.first!
+        let best = detectionsWithTightBBox.first!
         print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
         print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
         
-        let bbox = CGRect(
+        let bbox = best.tightBBox ?? CGRect(
             x: CGFloat(best.x - best.width / 2),
             y: CGFloat(best.y - best.height / 2),
             width: CGFloat(best.width),
             height: CGFloat(best.height)
         )
         
-        // Calculate all bboxes for maskFilteredDetections
-        var allBBoxes: [CGRect] = []
-        for det in maskFilteredDetections {
-            let rect = CGRect(
-                x: CGFloat(det.x - det.width / 2),
-                y: CGFloat(det.y - det.height / 2),
-                width: CGFloat(det.width),
-                height: CGFloat(det.height)
-            )
-            allBBoxes.append(rect)
-        }
+        // Calculate all bboxes for maskFilteredDetections using tightBBox only
+        let allBBoxes: [CGRect] = detectionsWithTightBBox.compactMap { $0.tightBBox }
         
         DispatchQueue.main.async {
             self.currentBBox = bbox
@@ -662,7 +691,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         var minX = Float.infinity, minY = Float.infinity
         var maxX = -Float.infinity, maxY = -Float.infinity
         
-        for detection in maskFilteredDetections {
+        for detection in detectionsWithTightBBox {
             let x1 = (detection.x - detection.width/2) * scale
             let y1 = (detection.y - detection.height/2) * scale
             let x2 = (detection.x + detection.width/2) * scale
@@ -722,13 +751,13 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             }
         }
 
-        var combinedMask = individualMask
+        var combinedMask = [Float](repeating: 0, count: maskSize)
         var detectionMask = [Float](repeating: 0, count: maskSize)
 
         protoMatrix.withUnsafeBufferPointer { protoPtr in
             let protoBase = protoPtr.baseAddress!
             
-            for (index, detection) in maskFilteredDetections.enumerated() {
+            for (index, detection) in detectionsWithTightBBox.enumerated() {
                 print("Processing #\(index + 1): \(detection.className) @ \(Int(detection.confidence * 100))%")
                 
                 let coeffs = detection.maskCoeffs
@@ -1119,3 +1148,4 @@ extension FurnitureSegmentationModelSmarty: AVCaptureVideoDataOutputSampleBuffer
         processWithYOLO(pixelBuffer: pixelBuffer)
     }
 }
+
