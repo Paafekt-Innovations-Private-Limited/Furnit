@@ -121,6 +121,8 @@ struct SmartyPantsView: View {
             
             // Removed the entire VStack with visibleDetectionNames (top overlay)
             // Slider and other overlays remain unchanged
+            
+            /*
             VStack {
                 // Slider: Less object <-> More object
                 if camera.segmentedImage != nil {
@@ -151,6 +153,7 @@ struct SmartyPantsView: View {
 
                 Spacer()
             }
+            */
             
             VStack {
                 HStack {
@@ -284,7 +287,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     // Added published property to hold all mask-filtered detections
     @Published var currentDetections: [DetectionSmarty] = []
 
-    // User-tunable "how much object to keep"
+    // The slider is disabled; maskCutoff is now fixed at 0.0
     @Published var maskCutoff: Float = 0.3
     
     // Names of detections for UI (e.g. ["bed", "chair", "couch"])
@@ -803,22 +806,14 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             
             let cutoff = self.maskCutoff
             
-            // For each pixel, accumulate mask colors with alpha blending
+            // Render only mask areas as opaque, everything else is fully transparent.
             for py in 0..<height {
                 for px in 0..<width {
                     let idx = (py * width + px) * 4
                     
-                    // Start with original pixel color (unmodified)
-                    var origR = Float(pixels[idx])
-                    var origG = Float(pixels[idx + 1])
-                    var origB = Float(pixels[idx + 2])
-                    var origA = Float(pixels[idx + 3])
-                    
-                    // Prepare final color accumulation (in float)
-                    var outR = origR
-                    var outG = origG
-                    var outB = origB
-                    var outA = origA
+                    // Find the mask with highest mask value at this pixel if above cutoff
+                    var maxMaskValue: Float = 0
+                    var maxMaskIndex: Int? = nil
                     
                     // Convert pixel to mask coordinate space
                     let mx = Float(px) * Float(maskW) / Float(width)
@@ -826,31 +821,30 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     let x0 = Int(mx)
                     let y0 = Int(my)
                     
-                    // Ensure valid mask coordinates
                     if x0 >= 0 && x0 < maskW && y0 >= 0 && y0 < maskH {
-                        // For each detection, blend color if mask value above cutoff
                         for (i, mask) in masks.enumerated() {
                             let maskValue = mask[y0 * maskW + x0]
-                            if maskValue >= cutoff {
-                                let color = palette[i % palette.count]
-                                // Alpha blending formula:
-                                // outColor = maskAlpha * maskColor + (1 - maskAlpha) * outColor
-                                let alphaBlend = color.a * maskValue
-                                outR = alphaBlend * (color.r * 255.0) + (1 - alphaBlend) * outR
-                                outG = alphaBlend * (color.g * 255.0) + (1 - alphaBlend) * outG
-                                outB = alphaBlend * (color.b * 255.0) + (1 - alphaBlend) * outB
-                                outA = 255 // Fully opaque if any mask overlays
+                            if maskValue >= cutoff && maskValue > maxMaskValue {
+                                maxMaskValue = maskValue
+                                maxMaskIndex = i
                             }
                         }
-                    } else {
-                        // Outside mask area: fully transparent
-                        outA = 0
                     }
                     
-                    pixels[idx] = UInt8(max(0, min(255, outR)))
-                    pixels[idx + 1] = UInt8(max(0, min(255, outG)))
-                    pixels[idx + 2] = UInt8(max(0, min(255, outB)))
-                    pixels[idx + 3] = UInt8(max(0, min(255, outA)))
+                    if let maxIndex = maxMaskIndex {
+                        // Use only the color of the mask with highest mask value (opaque)
+                        let color = palette[maxIndex % palette.count]
+                        pixels[idx] = UInt8(max(0, min(255, color.r * 255.0)))
+                        pixels[idx + 1] = UInt8(max(0, min(255, color.g * 255.0)))
+                        pixels[idx + 2] = UInt8(max(0, min(255, color.b * 255.0)))
+                        pixels[idx + 3] = 255
+                    } else {
+                        // No mask present, fully transparent pixel
+                        pixels[idx] = 0
+                        pixels[idx + 1] = 0
+                        pixels[idx + 2] = 0
+                        pixels[idx + 3] = 0
+                    }
                 }
             }
             
