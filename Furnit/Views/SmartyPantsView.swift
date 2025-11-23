@@ -685,45 +685,35 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             self.lastConfidence = best.confidence
         }
         
-        print("\n🎨 ========== GENERATING COMBINED MASK ==========")
+        print("\n🎨 ========== GENERATING COLORED MASKS COMPOSITE ==========")
         
-        let scale: Float = 160.0 / 640.0
-        var minX = Float.infinity, minY = Float.infinity
-        var maxX = -Float.infinity, maxY = -Float.infinity
-        
-        for detection in detectionsWithTightBBox {
-            let x1 = (detection.x - detection.width/2) * scale
-            let y1 = (detection.y - detection.height/2) * scale
-            let x2 = (detection.x + detection.width/2) * scale
-            let y2 = (detection.y + detection.height/2) * scale
-            
-            minX = min(minX, x1)
-            minY = min(minY, y1)
-            maxX = max(maxX, x2)
-            maxY = max(maxY, y2)
-        }
-        
-        let bx1 = max(0, min(159, Int(minX)))
-        let by1 = max(0, min(159, Int(minY)))
-        let bx2 = max(0, min(159, Int(maxX)))
-        let by2 = max(0, min(159, Int(maxY)))
-        
-        let bboxWidth = bx2 - bx1 + 1
-        let bboxHeight = by2 - by1 + 1
-        
-        print("📐 [UNION BBOX] Processing area: (\(bx1),\(by1)) to (\(bx2),\(by2)) - \(bboxWidth)x\(bboxHeight) pixels")
+        // Generate combined colored masks image
+        generateColoredMasksComposite(detections: detectionsWithTightBBox, prototypes: prototypes, originalImage: originalImage)
+    }
+    
+    private func generateColoredMasksComposite(detections: [DetectionSmarty], prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
+        // Palette colors for masks (RGBA), semi-transparent alpha = 0.5
+        let palette: [(r: Float, g: Float, b: Float, a: Float)] = [
+            (1.0, 0.0, 0.0, 0.5),   // Red
+            (0.0, 1.0, 0.0, 0.5),   // Green
+            (0.0, 0.0, 1.0, 0.5),   // Blue
+            (1.0, 1.0, 0.0, 0.5),   // Yellow
+            (1.0, 0.0, 1.0, 0.5),   // Magenta
+            (0.0, 1.0, 1.0, 0.5),   // Cyan
+            (1.0, 0.5, 0.0, 0.5),   // Orange
+            (0.5, 0.0, 1.0, 0.5),   // Purple
+            (0.0, 0.5, 0.5, 0.5),   // Teal
+            (0.5, 0.5, 0.5, 0.5)    // Gray
+        ]
         
         let shape = prototypes.shape.map { $0.intValue }      // [1, 32, 160, 160]
-        let maskW = 160
-        let maskH = 160
         let C = shape[1]
         let Hp = shape[2]
         let Wp = shape[3]
-        let maskSize = maskW * maskH
         let spatial = Hp * Wp
-
+        
         var protoMatrix = [Float](repeating: 0, count: C * spatial)
-
+        
         if prototypes.dataType == .float32 {
             let srcBase = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
             for c in 0..<C {
@@ -750,66 +740,122 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 }
             }
         }
-
-        var combinedMask = [Float](repeating: 0, count: maskSize)
-        var detectionMask = [Float](repeating: 0, count: maskSize)
-
-        protoMatrix.withUnsafeBufferPointer { protoPtr in
-            let protoBase = protoPtr.baseAddress!
+        
+        let maskW = 160
+        let maskH = 160
+        let maskSize = maskW * maskH
+        
+        // Generate individual masks and color them
+        var masks: [[Float]] = []
+        masks.reserveCapacity(detections.count)
+        
+        for detection in detections {
+            var mask = [Float](repeating: 0, count: spatial)
             
-            for (index, detection) in detectionsWithTightBBox.enumerated() {
-                print("Processing #\(index + 1): \(detection.className) @ \(Int(detection.confidence * 100))%")
-                
-                let coeffs = detection.maskCoeffs
-                let weight = detection.confidence
-                
-                coeffs.withUnsafeBufferPointer { coeffPtr in
-                    detectionMask.withUnsafeMutableBufferPointer { detPtr in
-                        combinedMask.withUnsafeMutableBufferPointer { combPtr in
-                            
-                            let coeffBase = coeffPtr.baseAddress!
-                            let detBase   = detPtr.baseAddress!
-                            let combBase  = combPtr.baseAddress!
-                            
-                            vDSP_vclr(detBase, 1, vDSP_Length(maskSize))
-                            
-                            for y in by1...by2 {
-                                for x in bx1...bx2 {
-                                    
-                                    let pos = y * maskW + x
-                                    
-                                    var sum: Float = 0.0
-                                    let protoPixelPtr = protoBase + pos
-                                    vDSP_dotpr(
-                                        coeffBase,      1,
-                                        protoPixelPtr,  spatial,
-                                        &sum,
-                                        vDSP_Length(C)
-                                    )
-                                    
-                                    let value = sigmoid(sum)
-                                    (detBase + pos).pointee = value
-                                    
-                                    var cPtrRun = combBase
-                                    var dPtrRun = detBase
-                                    var i = 0
-                                    let limit = pos + 1
-                                    while i < limit {
-                                        let v = cPtrRun.pointee + dPtrRun.pointee * weight
-                                        cPtrRun.pointee = v > 1.0 ? 1.0 : v
-                                        cPtrRun = cPtrRun.advanced(by: 1)
-                                        dPtrRun = dPtrRun.advanced(by: 1)
-                                        i += 1
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            vDSP_mmul(
+                detection.maskCoeffs, 1,
+                protoMatrix, 1,
+                &mask, 1,
+                1,
+                vDSP_Length(spatial),
+                vDSP_Length(C)
+            )
+            
+            for i in 0..<spatial {
+                let v = mask[i]
+                mask[i] = 1.0 / (1.0 + exp(-v))
             }
+            
+            masks.append(mask)
         }
         
-        applyPostProcessingAndMask(mask: combinedMask, best: best, to: originalImage, stage: "multi")
+        // Prepare to composite colored masks on original image pixels
+        autoreleasepool {
+            let ciImage = CIImage(cvPixelBuffer: originalImage)
+            let width = CVPixelBufferGetWidth(originalImage)
+            let height = CVPixelBufferGetHeight(originalImage)
+            
+            guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent),
+                  let ctx = CGContext(
+                        data: nil,
+                        width: width,
+                        height: height,
+                        bitsPerComponent: 8,
+                        bytesPerRow: width * 4,
+                        space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ),
+                  let data = ctx.data else {
+                DispatchQueue.main.async { self.isProcessing = false }
+                return
+            }
+            
+            ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
+            
+            let cutoff = self.maskCutoff
+            
+            // For each pixel, accumulate mask colors with alpha blending
+            for py in 0..<height {
+                for px in 0..<width {
+                    let idx = (py * width + px) * 4
+                    
+                    // Start with original pixel color (unmodified)
+                    var origR = Float(pixels[idx])
+                    var origG = Float(pixels[idx + 1])
+                    var origB = Float(pixels[idx + 2])
+                    var origA = Float(pixels[idx + 3])
+                    
+                    // Prepare final color accumulation (in float)
+                    var outR = origR
+                    var outG = origG
+                    var outB = origB
+                    var outA = origA
+                    
+                    // Convert pixel to mask coordinate space
+                    let mx = Float(px) * Float(maskW) / Float(width)
+                    let my = Float(py) * Float(maskH) / Float(height)
+                    let x0 = Int(mx)
+                    let y0 = Int(my)
+                    
+                    // Ensure valid mask coordinates
+                    if x0 >= 0 && x0 < maskW && y0 >= 0 && y0 < maskH {
+                        // For each detection, blend color if mask value above cutoff
+                        for (i, mask) in masks.enumerated() {
+                            let maskValue = mask[y0 * maskW + x0]
+                            if maskValue >= cutoff {
+                                let color = palette[i % palette.count]
+                                // Alpha blending formula:
+                                // outColor = maskAlpha * maskColor + (1 - maskAlpha) * outColor
+                                let alphaBlend = color.a * maskValue
+                                outR = alphaBlend * (color.r * 255.0) + (1 - alphaBlend) * outR
+                                outG = alphaBlend * (color.g * 255.0) + (1 - alphaBlend) * outG
+                                outB = alphaBlend * (color.b * 255.0) + (1 - alphaBlend) * outB
+                                outA = 255 // Fully opaque if any mask overlays
+                            }
+                        }
+                    } else {
+                        // Outside mask area: fully transparent
+                        outA = 0
+                    }
+                    
+                    pixels[idx] = UInt8(max(0, min(255, outR)))
+                    pixels[idx + 1] = UInt8(max(0, min(255, outG)))
+                    pixels[idx + 2] = UInt8(max(0, min(255, outB)))
+                    pixels[idx + 3] = UInt8(max(0, min(255, outA)))
+                }
+            }
+            
+            if let outImage = ctx.makeImage() {
+                DispatchQueue.main.async {
+                    self.segmentedImage = UIImage(cgImage: outImage, scale: 1.0, orientation: .up)
+                    withAnimation(.easeIn(duration: 0.3)) { self.furnitureOpacity = 1.0 }
+                    self.isProcessing = false
+                }
+            } else {
+                DispatchQueue.main.async { self.isProcessing = false }
+            }
+        }
     }
     
     private func applyMaskIoU(
@@ -953,6 +999,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     
     private func applyPostProcessingAndMask(mask: [Float], best: DetectionSmarty, to originalImage: CVPixelBuffer, stage: String) {
         print("🎨 [APPLY] Applying final enhanced mask to image")
+        // This method is no longer used (replaced by generateColoredMasksComposite)
         applyMaskToImage(mask: mask, to: originalImage)
         
         print("✅ ==================== FRAME COMPLETE ====================\n")
@@ -1148,4 +1195,3 @@ extension FurnitureSegmentationModelSmarty: AVCaptureVideoDataOutputSampleBuffer
         processWithYOLO(pixelBuffer: pixelBuffer)
     }
 }
-
