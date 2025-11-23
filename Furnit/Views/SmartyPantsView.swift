@@ -5,7 +5,7 @@ import CoreImage
 import Photos
 import Accelerate
 
-private let SEGMENT_DEBUG_SAVE_IMAGES = false
+private let SEGMENT_DEBUG_SAVE_IMAGES = true
 
 struct SmartyPantsView: View {
     @Binding var capturedImage: UIImage?
@@ -57,20 +57,68 @@ struct SmartyPantsView: View {
                     .animation(.easeOut(duration: 0.3), value: camera.furnitureOpacity)
             }
             
-            // (Optional) single bbox canvas – only when debug flag on
-            if camera.currentBBox != .zero && camera.segmentedImage != nil {
+            // (Optional) multiple bbox canvas with class labels – only when debug flag on
+            if SEGMENT_DEBUG_SAVE_IMAGES && !camera.currentDetections.isEmpty && camera.segmentedImage != nil {
                 Canvas { context, size in
-                    let rect = Path(camera.currentBBox)
+                    guard let segmented = camera.segmentedImage else { return }
                     
-                    if SEGMENT_DEBUG_SAVE_IMAGES {
+                    // Calculate displayed image rect on screen
+                    // Image is positioned at screen center with scale and offset applied
+                    let screenCenter = CGPoint(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2)
+                    let imageSize = segmented.size
+                    let scaledImageSize = CGSize(width: imageSize.width * scaleMultiplier,
+                                                 height: imageSize.height * scaleMultiplier)
+                    
+                    let offsetX = dragOffset.width + accumulatedOffset.width
+                    let offsetY = dragOffset.height + accumulatedOffset.height
+                    
+                    let imageOrigin = CGPoint(x: screenCenter.x - scaledImageSize.width / 2 + offsetX,
+                                              y: screenCenter.y - scaledImageSize.height / 2 + offsetY)
+                    let imageRect = CGRect(origin: imageOrigin, size: scaledImageSize)
+                    
+                    // Model coordinates are in 640x640 space; map each bbox accordingly
+                    for detection in camera.currentDetections {
+                        let modelRect = CGRect(
+                            x: CGFloat(detection.x - detection.width / 2),
+                            y: CGFloat(detection.y - detection.height / 2),
+                            width: CGFloat(detection.width),
+                            height: CGFloat(detection.height)
+                        )
+                        
+                        // Map modelRect from 640x640 to displayed imageRect
+                        let scaleX = imageRect.width / 640.0
+                        let scaleY = imageRect.height / 640.0
+                        
+                        let mappedRect = CGRect(
+                            x: imageRect.minX + modelRect.minX * scaleX,
+                            y: imageRect.minY + modelRect.minY * scaleY,
+                            width: modelRect.width * scaleX,
+                            height: modelRect.height * scaleY
+                        )
+                        
+                        let path = Path(mappedRect)
+                        
                         // LIVE GREEN DEBUG LINES - Highly visible
-                        context.stroke(rect, with: .color(.green.opacity(0.9)), lineWidth: 8)
-                        context.stroke(rect, with: .color(.green), lineWidth: 4)
-                        context.stroke(rect, with: .color(.white.opacity(0.8)), lineWidth: 1)
+                        context.stroke(path, with: .color(.green.opacity(0.9)), lineWidth: 8)
+                        context.stroke(path, with: .color(.green), lineWidth: 4)
+                        context.stroke(path, with: .color(.white.opacity(0.8)), lineWidth: 1)
                         
                         // Original blue lines (background)
-                        context.stroke(rect, with: .color(.blue.opacity(0.2)), lineWidth: 6)
-                        context.stroke(rect, with: .color(.blue.opacity(0.4)), lineWidth: 3)
+                        context.stroke(path, with: .color(.blue.opacity(0.2)), lineWidth: 6)
+                        context.stroke(path, with: .color(.blue.opacity(0.4)), lineWidth: 3)
+                        
+                        // Draw class name label at top-left of bbox with background using resolved Text
+                        let label = Text(detection.className)
+                            .font(.caption2)
+                            .foregroundColor(.white)
+                        
+                        let resolvedText = context.resolve(label)
+                        let textSize = resolvedText.measure(in: size)
+                        let textPosition = CGPoint(x: mappedRect.minX + 4, y: mappedRect.minY + 2)
+                        let bgRect = CGRect(x: textPosition.x, y: textPosition.y, width: textSize.width, height: textSize.height)
+                        
+                        context.fill(Path(bgRect), with: .color(.black.opacity(0.7)))
+                        context.draw(resolvedText, at: textPosition, anchor: .topLeading)
                     }
                 }
                 .ignoresSafeArea()
@@ -254,7 +302,11 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     @Published var currentFPS: Double = 0.0
     @Published var lastConfidence: Float = 0.0
     @Published var currentBBox: CGRect = .zero
+    @Published var currentBBoxes: [CGRect] = []
     
+    // Added published property to hold all mask-filtered detections
+    @Published var currentDetections: [DetectionSmarty] = []
+
     // User-tunable “how much object to keep”
     @Published var maskCutoff: Float = 0.3
     
@@ -315,7 +367,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             self.furnitureOpacity = 0.0
             self.lastConfidence = 0.0
             self.currentBBox = .zero
+            self.currentBBoxes = []
             self.visibleDetectionNames = []
+            self.currentDetections = []
         }
     }
     
@@ -531,6 +585,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         let labelNames = sortedForNames.prefix(3).map { $0.className }
         DispatchQueue.main.async {
             self.visibleDetectionNames = labelNames
+            self.currentDetections = maskFilteredDetections
         }
         
         guard !maskFilteredDetections.isEmpty else {
@@ -541,7 +596,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 self.furnitureOpacity = 0.0
                 self.lastConfidence = 0.0
                 self.currentBBox = .zero
+                self.currentBBoxes = []
                 self.visibleDetectionNames = []
+                self.currentDetections = []
             }
             return
         }
@@ -581,8 +638,21 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             height: CGFloat(best.height)
         )
         
+        // Calculate all bboxes for maskFilteredDetections
+        var allBBoxes: [CGRect] = []
+        for det in maskFilteredDetections {
+            let rect = CGRect(
+                x: CGFloat(det.x - det.width / 2),
+                y: CGFloat(det.y - det.height / 2),
+                width: CGFloat(det.width),
+                height: CGFloat(det.height)
+            )
+            allBBoxes.append(rect)
+        }
+        
         DispatchQueue.main.async {
             self.currentBBox = bbox
+            self.currentBBoxes = allBBoxes
             self.lastConfidence = best.confidence
         }
         
