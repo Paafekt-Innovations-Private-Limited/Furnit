@@ -77,7 +77,7 @@ struct SmartyPantsView: View {
                     let imageRect = CGRect(origin: imageOrigin, size: scaledImageSize)
                     
                     // Model coordinates are in 640x640 space; map each bbox accordingly
-                    for detection in camera.currentDetections {
+                    for (index, detection) in camera.currentDetections.enumerated() {
                         guard let tight = detection.tightBBox else { continue }
                         let modelRect = tight
                         
@@ -102,7 +102,7 @@ struct SmartyPantsView: View {
                         context.stroke(path, with: .color(.green), lineWidth: 2)
                         
                         // Draw class name label at top-left of bbox with background using resolved Text
-                        let label = Text(detection.className)
+                        let label = Text(index == 0 ? "\(detection.className) main" : detection.className)
                             .font(.caption2)
                             .foregroundColor(.white)
                         
@@ -284,7 +284,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     // Added published property to hold all mask-filtered detections
     @Published var currentDetections: [DetectionSmarty] = []
 
-    // User-tunable “how much object to keep”
+    // User-tunable "how much object to keep"
     @Published var maskCutoff: Float = 0.3
     
     // Names of detections for UI (e.g. ["bed", "chair", "couch"])
@@ -355,7 +355,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             let config = MLModelConfiguration()
             config.computeUnits = .all
             for ext in ["mlmodelc", "mlpackage"] {
-                if let url = Bundle.main.url(forResource: "yoloe-11s-seg-pf", withExtension: ext) {
+                if let url = Bundle.main.url(forResource: "yoloe-11l-seg-pf", withExtension: ext) {
                     mlModel = try MLModel(contentsOf: url, configuration: config)
                     print("✅ Model loaded")
                     return
@@ -418,8 +418,8 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                   let inputArray = self.pixelBufferToMLMultiArray(resized),
                   let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]),
                   let output = try? model.prediction(from: inputProvider),
-//                  let detectionsArray = output.featureValue(for: "var_2421")?.multiArrayValue,
-                  let detectionsArray = output.featureValue(for: "var_1432")?.multiArrayValue,
+                  let detectionsArray = output.featureValue(for: "var_2421")?.multiArrayValue,
+//                  let detectionsArray = output.featureValue(for: "var_1432")?.multiArrayValue,
                   let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
                 DispatchQueue.main.async { self?.isProcessing = false }
                 return
@@ -549,7 +549,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             print("============================================\n")
         }
         
-        let hierarchicalDetections = applyHierarchicalNMS(detections: allDetections, iouThreshold: 0.9)
+        let hierarchicalDetections = applyHierarchicalNMS(detections: allDetections, iouThreshold: 1.0)
         print("📊 [H-NMS] Kept \(hierarchicalDetections.count) detections after hierarchical NMS")
         
         let maskFilteredDetections = applyMaskIoU(
@@ -560,10 +560,12 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         print("📊 [MASK-FILTERED] Total kept: \(maskFilteredDetections.count) detections")
 
-        // Compute tight bounding boxes for each maskFilteredDetection
-        let cutoff = self.maskCutoff
+        // 🔧 BBOX: use a fixed, higher cutoff for tight bbox (independent of slider)
+        let bboxCutoff: Float = 0.6
         var detectionsWithTightBBox: [DetectionSmarty] = []
+        
         for detection in maskFilteredDetections {
+            // Generate individual mask in mask space (160x160)
             var individualMask = [Float](repeating: 0, count: 160 * 160)
             for y in 0..<160 {
                 for x in 0..<160 {
@@ -571,51 +573,72 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     for c in 0..<32 {
                         sum += detection.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
                     }
-                    individualMask[y * 160 + x] = sum
+                    // ✅ Apply sigmoid BEFORE storing
+                    let sigmoidValue = 1.0 / (1.0 + exp(-sum))
+                    individualMask[y * 160 + x] = sigmoidValue
                 }
             }
             
-            // Compute tight bbox in mask space (160x160)
+            // Compute tight bbox in mask space (160x160) based on bboxCutoff
             var minX = 160
             var minY = 160
             var maxX = -1
             var maxY = -1
+            var pixelCount = 0
+            
             for y in 0..<160 {
                 for x in 0..<160 {
-                    if individualMask[y * 160 + x] >= cutoff {
+                    if individualMask[y * 160 + x] >= bboxCutoff {
                         if x < minX { minX = x }
                         if x > maxX { maxX = x }
                         if y < minY { minY = y }
                         if y > maxY { maxY = y }
+                        pixelCount += 1
                     }
                 }
             }
             
             var tightBBox: CGRect? = nil
-            if maxX >= minX && maxY >= minY {
+            if maxX >= minX && maxY >= minY && pixelCount > 10 { // ✅ Require at least 10 pixels
                 // Convert tight bbox from mask space (160x160) to model space (640x640)
-                let scale: CGFloat = 4.0
-                let originX = CGFloat(minX) * scale
-                let originY = CGFloat(minY) * scale
-                let width = CGFloat(maxX - minX + 1) * scale
-                let height = CGFloat(maxY - minY + 1) * scale
+                let scale: CGFloat = 4.0  // 640 / 160 = 4
+                
+                // ❌ removed extra padding – let bbox hug the mask
+                let originX = max<CGFloat>(0, CGFloat(minX) * scale)
+                let originY = max<CGFloat>(0, CGFloat(minY) * scale)
+                let width = min<CGFloat>(640 - originX, CGFloat(maxX - minX + 1) * scale)
+                let height = min<CGFloat>(640 - originY, CGFloat(maxY - minY + 1) * scale)
+                
                 tightBBox = CGRect(x: originX, y: originY, width: width, height: height)
             }
             
-            // LOGGING for tight bounding boxes
+            // ✅ IMPROVED LOGGING
             print("🔎 Detection \(detection.className) @ \(Int(detection.confidence * 100))%")
-            print("    Mask space tight bbox: minX=\(minX), maxX=\(maxX), minY=\(minY), maxY=\(maxY)")
+            print("    Mask space: minX=\(minX), maxX=\(maxX), minY=\(minY), maxY=\(maxY), pixels=\(pixelCount)")
+            
             if let tight = tightBBox {
-                print("    Model space tightBBox: \(tight)")
+                print("    Tight bbox (640x640): \(tight)")
+                
+                // Convert YOLO center bbox to corner format for comparison
+                let yoloMinX = detection.x - detection.width / 2
+                let yoloMinY = detection.y - detection.height / 2
+                let yoloMaxX = detection.x + detection.width / 2
+                let yoloMaxY = detection.y + detection.height / 2
+                print("    YOLO bbox (640x640): x=[\(Int(yoloMinX))-\(Int(yoloMaxX))], y=[\(Int(yoloMinY))-\(Int(yoloMaxY))], w=\(Int(detection.width)), h=\(Int(detection.height))")
+                
+                // Calculate how much tighter
+                let tightArea = tight.width * tight.height
+                let yoloArea = CGFloat(detection.width * detection.height)
+                let areaRatio = (tightArea / yoloArea) * 100
+                print("    Tight is \(Int(areaRatio))% of YOLO bbox area")
             } else {
-                print("    No valid tightBBox computed")
+                print("    No valid tightBBox (mask too small or sparse)")
             }
-            print("    Original model bbox: x=\(detection.x), y=\(detection.y), width=\(detection.width), height=\(detection.height)")
             
             var detectionWithBBox = detection
             detectionWithBBox.tightBBox = tightBBox
             
-            if SEGMENT_DEBUG_SAVE_IMAGES {
+            if SEGMENT_DEBUG_SAVE_IMAGES && tightBBox != nil {
                 let stageName = "final_filtered_\(detection.className)_\(Int(detection.confidence * 100))pct"
                 saveMaskAsImage(mask: individualMask, stage: stageName)
             }
@@ -1064,9 +1087,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
         print("saveDebugImage: pixelBuffer size = \(width) x \(height)")
-        guard width > 0 && height > 0 else { 
+        guard width > 0 && height > 0 else {
             print("Skipping saveDebugImage due to zero size")
-            return 
+            return
         }
         guard CVPixelBufferGetBaseAddress(pixelBuffer) != nil else {
             print("Skipping saveDebugImage: pixelBuffer has nil baseAddress")
@@ -1202,3 +1225,4 @@ extension FurnitureSegmentationModelSmarty: AVCaptureVideoDataOutputSampleBuffer
         processWithYOLO(pixelBuffer: pixelBuffer)
     }
 }
+
