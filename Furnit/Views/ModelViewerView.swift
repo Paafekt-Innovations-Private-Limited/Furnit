@@ -2,8 +2,10 @@ import SwiftUI
 import RealityKit
 import Combine
 import Photos
+import CoreML
 
 struct ModelViewerView: View {
+    @State private var mlModel: MLModel? = nil
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass
     let model: USDZModel
@@ -89,10 +91,11 @@ struct ModelViewerView: View {
 
                 // NEW: SmartyPants overlay
                 if showingSmartyPants {
-                    SmartyPantsView(
+                    SmartyPantsUIView(
                         capturedImage: $capturedImage,
                         isShowingCamera: $showingSmartyPants,
-                        roomImage: roomSnapshot
+                        roomImage: roomSnapshot,
+                        mlModel: mlModel
                     )
                     .zIndex(9000)
                 }
@@ -327,3 +330,24 @@ struct ModelViewerView: View {
         }
     }
 }
+
+struct SmartyPantsUIView: UIViewRepresentable {
+    @Binding var capturedImage: UIImage?
+    @Binding var isShowingCamera: Bool
+    var roomImage: UIImage?
+    var mlModel: MLModel?
+
+    func makeUIView(context: Context) -> SmartyPantsView {
+        let view = SmartyPantsView()
+        view.mlModel = mlModel
+        return view
+    }
+
+    func updateUIView(_ uiView: SmartyPantsView, context: Context) {
+        // update overlay or state; ensure you have a public setter for mask image if needed
+        if !isShowingCamera {
+            uiView.setOverlayImage(nil) // implement setOverlayImage in SmartyPantsView
+        }
+    }
+}
+
