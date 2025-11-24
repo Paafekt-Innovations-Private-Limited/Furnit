@@ -5,7 +5,7 @@ import CoreImage
 import Photos
 import Accelerate
 
-private let SEGMENT_DEBUG_SAVE_IMAGES = true
+private let SEGMENT_DEBUG_SAVE_IMAGES = false
 
 struct SmartyPantsView: View {
     @Binding var capturedImage: UIImage?
@@ -58,7 +58,7 @@ struct SmartyPantsView: View {
             }
             
             // (Optional) multiple bbox canvas with class labels – only when debug flag on
-            if SEGMENT_DEBUG_SAVE_IMAGES && !camera.currentDetections.isEmpty && camera.segmentedImage != nil {
+            if  !camera.currentDetections.isEmpty && camera.segmentedImage != nil {
                 Canvas { context, size in
                     guard let segmented = camera.segmentedImage else { return }
                     
@@ -77,7 +77,7 @@ struct SmartyPantsView: View {
                     let imageRect = CGRect(origin: imageOrigin, size: scaledImageSize)
                     
                     // Model coordinates are in 640x640 space; map each bbox accordingly
-                    for (index, detection) in camera.currentDetections.enumerated() {
+                    for detection in camera.currentDetections {
                         guard let tight = detection.tightBBox else { continue }
                         let modelRect = tight
                         
@@ -102,7 +102,7 @@ struct SmartyPantsView: View {
                         context.stroke(path, with: .color(.green), lineWidth: 2)
                         
                         // Draw class name label at top-left of bbox with background using resolved Text
-                        let label = Text(index == 0 ? "\(detection.className) main" : detection.className)
+                        let label = Text(detection.className)
                             .font(.caption2)
                             .foregroundColor(.white)
                         
@@ -119,41 +119,29 @@ struct SmartyPantsView: View {
                 .allowsHitTesting(false)
             }
             
-            // Removed the entire VStack with visibleDetectionNames (top overlay)
-            // Slider and other overlays remain unchanged
-            
-            /*
+            // Top overlay: detected furniture names (up to 3)
             VStack {
-                // Slider: Less object <-> More object
-                if camera.segmentedImage != nil {
+                if !camera.visibleDetectionNames.isEmpty {
                     HStack {
-                        Text("Less object")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.8))
-
-                        Slider(
-                            value: Binding(
-                                get: { Double(camera.maskCutoff) },
-                                set: { camera.maskCutoff = Float($0) }
-                            ),
-                            in: 0.1...0.8
-                        )
-
-                        Text("More object")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.8))
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(camera.visibleDetectionNames.prefix(3).enumerated()), id: \.offset) { _, name in
+                                Text(name)
+                                    .font(.caption2)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .padding(6)
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(8)
+                        
+                        Spacer()
                     }
                     .padding(.horizontal)
-                    .padding(.top, 4)
-                    .padding(.bottom, 4)
-                    .background(Color.black.opacity(0.6))
-                    .cornerRadius(10)
-                    .padding(.horizontal)
+                    .padding(.top)
                 }
-
+                
                 Spacer()
             }
-            */
             
             VStack {
                 HStack {
@@ -287,8 +275,8 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     // Added published property to hold all mask-filtered detections
     @Published var currentDetections: [DetectionSmarty] = []
 
-    // The slider is disabled; maskCutoff is now fixed at 0.0
-    @Published var maskCutoff: Float = 0.3
+    // User-tunable “how much object to keep”
+    @Published var maskCutoff: Float = 0.04
     
     // Names of detections for UI (e.g. ["bed", "chair", "couch"])
     @Published var visibleDetectionNames: [String] = []
@@ -369,10 +357,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     
     private func setupCamera() {
         session.sessionPreset = .hd1280x720
-        // Try to use the 0.5x ultra-wide camera if available, else fallback to wide angle
-        let device = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) ??
-                     AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-        guard let device = device else { return }
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else { return }
         do {
             let input = try AVCaptureDeviceInput(device: device)
             if session.canAddInput(input) { session.addInput(input) }
@@ -563,12 +548,10 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         print("📊 [MASK-FILTERED] Total kept: \(maskFilteredDetections.count) detections")
 
-        // 🔧 BBOX: use a fixed, higher cutoff for tight bbox (independent of slider)
-        let bboxCutoff: Float = 0.6
+        // Compute tight bounding boxes for each maskFilteredDetection
+        let cutoff = self.maskCutoff
         var detectionsWithTightBBox: [DetectionSmarty] = []
-        
         for detection in maskFilteredDetections {
-            // Generate individual mask in mask space (160x160)
             var individualMask = [Float](repeating: 0, count: 160 * 160)
             for y in 0..<160 {
                 for x in 0..<160 {
@@ -576,72 +559,65 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     for c in 0..<32 {
                         sum += detection.maskCoeffs[c] * prototypes[[0, c, y, x] as [NSNumber]].floatValue
                     }
-                    // ✅ Apply sigmoid BEFORE storing
-                    let sigmoidValue = 1.0 / (1.0 + exp(-sum))
-                    individualMask[y * 160 + x] = sigmoidValue
+                    individualMask[y * 160 + x] = sum
                 }
             }
             
-            // Compute tight bbox in mask space (160x160) based on bboxCutoff
+            // Compute tight bbox in mask space (160x160)
             var minX = 160
             var minY = 160
             var maxX = -1
             var maxY = -1
             var pixelCount = 0
-            
             for y in 0..<160 {
                 for x in 0..<160 {
-                    if individualMask[y * 160 + x] >= bboxCutoff {
+                    if individualMask[y * 160 + x] >= cutoff {
+                        pixelCount += 1
                         if x < minX { minX = x }
                         if x > maxX { maxX = x }
                         if y < minY { minY = y }
                         if y > maxY { maxY = y }
-                        pixelCount += 1
                     }
                 }
             }
             
             var tightBBox: CGRect? = nil
-            if maxX >= minX && maxY >= minY && pixelCount > 10 { // ✅ Require at least 10 pixels
+            if maxX >= minX && maxY >= minY && pixelCount > 10 {
                 // Convert tight bbox from mask space (160x160) to model space (640x640)
-                let scale: CGFloat = 4.0  // 640 / 160 = 4
+                let scale: CGFloat = 4.0
+                var originX = CGFloat(minX) * scale
+                var originY = CGFloat(minY) * scale
+                var width = CGFloat(maxX - minX + 1) * scale
+                var height = CGFloat(maxY - minY + 1) * scale
                 
-                // ❌ removed extra padding – let bbox hug the mask
-                let originX = max<CGFloat>(0, CGFloat(minX) * scale)
-                let originY = max<CGFloat>(0, CGFloat(minY) * scale)
-                let width = min<CGFloat>(640 - originX, CGFloat(maxX - minX + 1) * scale)
-                let height = min<CGFloat>(640 - originY, CGFloat(maxY - minY + 1) * scale)
+                // Clamp to valid model image bounds [0..640]
+                originX = max(0, originX)
+                originY = max(0, originY)
+                if originX + width > 640 { width = 640 - originX }
+                if originY + height > 640 { height = 640 - originY }
                 
                 tightBBox = CGRect(x: originX, y: originY, width: width, height: height)
             }
             
-            // ✅ IMPROVED LOGGING
+            // Improved logging for detection info and bbox details
             print("🔎 Detection \(detection.className) @ \(Int(detection.confidence * 100))%")
-            print("    Mask space: minX=\(minX), maxX=\(maxX), minY=\(minY), maxY=\(maxY), pixels=\(pixelCount)")
-            
+            print("    Mask pixels >= cutoff: \(pixelCount)")
             if let tight = tightBBox {
-                print("    Tight bbox (640x640): \(tight)")
-                
-                // Convert YOLO center bbox to corner format for comparison
-                let yoloMinX = detection.x - detection.width / 2
-                let yoloMinY = detection.y - detection.height / 2
-                let yoloMaxX = detection.x + detection.width / 2
-                let yoloMaxY = detection.y + detection.height / 2
-                print("    YOLO bbox (640x640): x=[\(Int(yoloMinX))-\(Int(yoloMaxX))], y=[\(Int(yoloMinY))-\(Int(yoloMaxY))], w=\(Int(detection.width)), h=\(Int(detection.height))")
-                
-                // Calculate how much tighter
-                let tightArea = tight.width * tight.height
+                let bboxArea = tight.width * tight.height
                 let yoloArea = CGFloat(detection.width * detection.height)
-                let areaRatio = (tightArea / yoloArea) * 100
-                print("    Tight is \(Int(areaRatio))% of YOLO bbox area")
+                let areaRatio = bboxArea / yoloArea
+                print("    Model space tightBBox: \(tight) (area: \(Int(bboxArea)))")
+                print("    Original YOLO bbox: x=\(detection.x), y=\(detection.y), width=\(detection.width), height=\(detection.height) (area: \(Int(yoloArea)))")
+                print("    Area ratio tightBBox / YOLO bbox: \(String(format: "%.2f", areaRatio))")
             } else {
-                print("    No valid tightBBox (mask too small or sparse)")
+                print("    No valid tightBBox computed (pixelCount: \(pixelCount))")
+                print("    Original YOLO bbox: x=\(detection.x), y=\(detection.y), width=\(detection.width), height=\(detection.height)")
             }
             
             var detectionWithBBox = detection
             detectionWithBBox.tightBBox = tightBBox
             
-            if SEGMENT_DEBUG_SAVE_IMAGES && tightBBox != nil {
+            if SEGMENT_DEBUG_SAVE_IMAGES {
                 let stageName = "final_filtered_\(detection.className)_\(Int(detection.confidence * 100))pct"
                 saveMaskAsImage(mask: individualMask, stage: stageName)
             }
@@ -704,6 +680,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     
     private func generateColoredMasksComposite(detections: [DetectionSmarty], prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
         // Palette colors for masks (RGBA), semi-transparent alpha = 0.5
+        /*
         let palette: [(r: Float, g: Float, b: Float, a: Float)] = [
             (1.0, 0.0, 0.0, 0.5),   // Red
             (0.0, 1.0, 0.0, 0.5),   // Green
@@ -716,6 +693,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             (0.0, 0.5, 0.5, 0.5),   // Teal
             (0.5, 0.5, 0.5, 0.5)    // Gray
         ]
+        */
         
         let shape = prototypes.shape.map { $0.intValue }      // [1, 32, 160, 160]
         let C = shape[1]
@@ -806,14 +784,11 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             
             let cutoff = self.maskCutoff
             
-            // Render only mask areas as opaque, everything else is fully transparent.
+            // For each pixel, if covered by any mask >= cutoff, copy original RGB and set alpha to 255,
+            // else set alpha to 0 (fully transparent)
             for py in 0..<height {
                 for px in 0..<width {
                     let idx = (py * width + px) * 4
-                    
-                    // Find the mask with highest mask value at this pixel if above cutoff
-                    var maxMaskValue: Float = 0
-                    var maxMaskIndex: Int? = nil
                     
                     // Convert pixel to mask coordinate space
                     let mx = Float(px) * Float(maskW) / Float(width)
@@ -821,28 +796,22 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                     let x0 = Int(mx)
                     let y0 = Int(my)
                     
+                    // Check if any mask covers this pixel above cutoff
+                    var covered = false
                     if x0 >= 0 && x0 < maskW && y0 >= 0 && y0 < maskH {
-                        for (i, mask) in masks.enumerated() {
-                            let maskValue = mask[y0 * maskW + x0]
-                            if maskValue >= cutoff && maskValue > maxMaskValue {
-                                maxMaskValue = maskValue
-                                maxMaskIndex = i
+                        for mask in masks {
+                            if mask[y0 * maskW + x0] >= cutoff {
+                                covered = true
+                                break
                             }
                         }
                     }
                     
-                    if let maxIndex = maxMaskIndex {
-                        // Use only the color of the mask with highest mask value (opaque)
-                        let color = palette[maxIndex % palette.count]
-                        pixels[idx] = UInt8(max(0, min(255, color.r * 255.0)))
-                        pixels[idx + 1] = UInt8(max(0, min(255, color.g * 255.0)))
-                        pixels[idx + 2] = UInt8(max(0, min(255, color.b * 255.0)))
+                    if covered {
+                        // Keep original RGB, set alpha to 255 (fully opaque)
                         pixels[idx + 3] = 255
                     } else {
-                        // No mask present, fully transparent pixel
-                        pixels[idx] = 0
-                        pixels[idx + 1] = 0
-                        pixels[idx + 2] = 0
+                        // Set alpha to 0 (fully transparent)
                         pixels[idx + 3] = 0
                     }
                 }
@@ -1078,19 +1047,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     }
     
     private func saveDebugImage(pixelBuffer: CVPixelBuffer, stage: String) {
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        print("saveDebugImage: pixelBuffer size = \(width) x \(height)")
-        guard width > 0 && height > 0 else {
-            print("Skipping saveDebugImage due to zero size")
-            return
-        }
-        guard CVPixelBufferGetBaseAddress(pixelBuffer) != nil else {
-            print("Skipping saveDebugImage: pixelBuffer has nil baseAddress")
-            return
-        }
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        print("saveDebugImage: CIImage extent = \(ciImage.extent), pixelBuffer base address = \(CVPixelBufferGetBaseAddress(pixelBuffer) as Optional)")
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
         let uiImage = UIImage(cgImage: cgImage)
         UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
@@ -1098,21 +1055,11 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
     }
 
     private func saveDebugImageWithBBox(pixelBuffer: CVPixelBuffer, bbox: DetectionSmarty, stage: String) {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
+        
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
-        print("saveDebugImageWithBBox: pixelBuffer size = \(width) x \(height)")
-        guard width > 0 && height > 0 else {
-            print("Skipping saveDebugImageWithBBox due to zero size")
-            return
-        }
-        guard CVPixelBufferGetBaseAddress(pixelBuffer) != nil else {
-            print("Skipping saveDebugImageWithBBox: pixelBuffer has nil baseAddress")
-            return
-        }
-        
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        print("saveDebugImageWithBBox: CIImage extent = \(ciImage.extent), pixelBuffer base address = \(CVPixelBufferGetBaseAddress(pixelBuffer) as Optional)")
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
         
         UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: height), false, 1.0)
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
@@ -1219,4 +1166,3 @@ extension FurnitureSegmentationModelSmarty: AVCaptureVideoDataOutputSampleBuffer
         processWithYOLO(pixelBuffer: pixelBuffer)
     }
 }
-
