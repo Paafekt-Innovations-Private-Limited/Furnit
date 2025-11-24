@@ -28,8 +28,8 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var processInterval: TimeInterval = 0.07
     var scoreThreshold: Float = 0.25
     var active: Bool = false
-    var debugShowTop1: Bool = true // Debug flag for showing only top-1 mask
-    var debugSaveImages: Bool = true // Debug flag for saving images at each stage
+    var debugShowTop1: Bool = false // Debug flag for showing only top-1 mask
+    var debugSaveImages: Bool = false // Debug flag for saving images at each stage
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
         let v = SmartyPantsContainerView()
@@ -283,17 +283,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // Exposed: call this with CVPixelBuffer frames from your existing capture pipeline.
     // It will run the optimized YOLOE inference and update maskImageView with only masks (transparent background).
     func processFrame(_ pixelBuffer: CVPixelBuffer) {
-        guard let model = mlModel else { 
-            print("❌ No ML model available")
-            return 
-        }
+        guard let model = mlModel else { return }
         let now = Date()
-        guard now.timeIntervalSince(lastProcessTime) >= processInterval, !processing else { 
-            print("⏰ Skipping frame - too soon or already processing")
-            return 
-        }
+        guard now.timeIntervalSince(lastProcessTime) >= processInterval, !processing else { return }
         
-        print("🧠 Starting ML inference...")
         lastProcessTime = now
         let startTime = CFAbsoluteTimeGetCurrent()
         let timestamp = String(format: "%.0f", startTime)
@@ -301,41 +294,42 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         detectionQueue.async { [weak self] in
             guard let self = self else { return }
-            // 1) Prepare model input MLMultiArray (assumes model expects float16 [1,3,640,640])
+            
             guard let inputArray = self.pixelBufferToMLMultiArray(pixelBuffer, width: 640, height: 640) else {
                 DispatchQueue.main.async { self.processing = false }
                 return
             }
             
-            // Debug: Save input image
             if self.debugSaveImages {
-                let inputImage = self.pixelBufferToUIImage(pixelBuffer)
-                if let inputImage = inputImage {
+                if let inputImage = self.pixelBufferToUIImage(pixelBuffer) {
                     self.saveDebugImage(inputImage, name: "01_input", timestamp: timestamp)
                 }
             }
 
-            // 2) Run prediction
             guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]),
                   let output = try? model.prediction(from: inputProvider) else {
                 DispatchQueue.main.async { self.processing = false }
                 return
             }
 
-            // 3) Get outputs
             guard let prototypesArr = output.featureValue(for: "p")?.multiArrayValue,
                   let detectionsArr = output.featureValue(for: "var_2421")?.multiArrayValue else {
                 DispatchQueue.main.async { self.processing = false }
                 return
             }
 
-            // Debug shapes (adjust keys above if your compiled model uses different names)
-            #if DEBUG
-            print("prototypes shape:", prototypesArr.shape)
-            print("detections shape:", detectionsArr.shape)
-            #endif
+            let numPredictions = detectionsArr.shape[1].intValue
+            let numFeatures = detectionsArr.shape[2].intValue
+            let K = self.protoK  // 32
+            
+            print("═══════════════════════════════════════════════════════")
+            print("Detections: [1, \(numPredictions), \(numFeatures)]")
+            print("═══════════════════════════════════════════════════════")
+            
+            // Mask coefficients are in the LAST 32 features
+            let coeffStartIdx = numFeatures - K
 
-            // 4) Convert prototypes (Float16) -> Float32 once into protoFloatBuf (reuse buffer)
+            // Convert prototypes to Float32
             let protoCount = prototypesArr.count
             if self.protoFloatBuf == nil || self.protoFloatCount != protoCount {
                 self.protoFloatBuf?.deallocate()
@@ -348,142 +342,37 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             self.copyFloat16MultiArrayToFloatBuffer(prototypesArr, dest: protoBuf)
 
-            // Get array dimensions first
-            let detectionsRows = detectionsArr.shape[1].intValue
-            let detectionsCols = detectionsArr.shape[2].intValue
-            let K = self.protoK
+            // Use MLMultiArray subscript for correct access
+            func getDetValue(pred p: Int, feat f: Int) -> Float {
+                return detectionsArr[[0 as NSNumber, p as NSNumber, f as NSNumber]].floatValue
+            }
+            
+            // For YOLOE, scores might be at a different position
+            // Let's scan for the score column - look for values in [0,1] range
+            // Try feature indices 4, 5, 6... until we find one with valid scores
+            var scoreIdx = 4
+            for f in 4..<min(20, numFeatures - K) {
+                var validCount = 0
+                for p in stride(from: numPredictions - 100, to: numPredictions, by: 1) {
+                    let v = getDetValue(pred: p, feat: f)
+                    if v >= 0 && v <= 1 { validCount += 1 }
+                }
+                if validCount > 50 {
+                    scoreIdx = f
+                    break
+                }
+            }
+            print("Using scoreIdx=\(scoreIdx), coeffStartIdx=\(coeffStartIdx)")
 
-            // Safe element access for detections MLMultiArray (for initial coefficient discovery only)
-            func getDetVal(_ arr: MLMultiArray, _ r: Int, _ c: Int) -> Float {
-                return arr[[0 as NSNumber, r as NSNumber, c as NSNumber]].floatValue
-            }
-            
-            // Contiguous copy using strides (fast) - copy detections into Float buffer for faster access
-            let detCount = detectionsRows * detectionsCols
-            if self.detectionsBuf == nil || self.detectionsBufCount != detCount {
-                self.detectionsBuf?.deallocate()
-                self.detectionsBuf = UnsafeMutablePointer<Float>.allocate(capacity: detCount)
-                self.detectionsBufCount = detCount
-            }
-            guard let detBuf = self.detectionsBuf else {
-                DispatchQueue.main.async { self.processing = false }
-                return
-            }
-            
-            // Safe copy with type conversion (MLMultiArray might be Float16)
-            if detectionsArr.dataType == .float32 {
-                // Direct copy if already Float32
-                let srcPtr = detectionsArr.dataPointer.bindMemory(to: Float.self, capacity: detCount)
-                detBuf.initialize(from: srcPtr, count: detCount)
-            } else if detectionsArr.dataType == .float16 {
-                // Convert Float16 to Float32
-                let srcPtr = detectionsArr.dataPointer.bindMemory(to: UInt16.self, capacity: detCount)
-                for i in 0..<detCount {
-                    detBuf[i] = float32FromFloat16Bits(srcPtr[i])
-                }
-            } else {
-                // Fallback: use MLMultiArray subscript (slower but safe)
-                for r in 0..<detectionsRows {
-                    for c in 0..<detectionsCols {
-                        let idx = r * detectionsCols + c
-                        detBuf[idx] = detectionsArr[[0 as NSNumber, r as NSNumber, c as NSNumber]].floatValue
-                    }
-                }
-            }
-            
-            // Fast element access function for Float buffer
-            func getDetBufVal(_ r: Int, _ c: Int) -> Float {
-                return detBuf[r * detectionsCols + c]
-            }
-            
-            // Sanity-filter rows early (drop NaN/Inf/huge rows)
-            func isFiniteAndReasonable(_ v: Float) -> Bool {
-                return v.isFinite && abs(v) < 1e6
-            }
-            
-            // Robust auto-scaling (improve heuristic)
-            func chooseScale(_ coeffsRaw: [Float]) -> Float {
-                let scales: [Float] = [1, 255.0, 256.0, 32768.0]
-                
-                for s in scales {
-                    let scaled = coeffsRaw.map { $0 / s }
-                    let maxAbs = scaled.map(abs).max() ?? 0
-                    if maxAbs < 50 { return s }
-                }
-                return 1 // fallback
-            }
-            
-            // Cache indices after first successful detection parse
-            var coeffStart: Int
-            var scoreIdx: Int
-            
-            if let cachedCoeffStart = self.coeffStartCached, let cachedScoreIdx = self.scoreIdxCached {
-                // Use cached values
-                coeffStart = cachedCoeffStart
-                scoreIdx = cachedScoreIdx
-                print("✅ Using cached indices - scoreIdx: \(scoreIdx), coeffStart: \(coeffStart)")
-            } else {
-                // First time - do the scan to find indices
-                print("🔍 First run - scanning for coefficient and score indices...")
-                
-                // Heuristics: find coeffStart using safe indexing
-                var chosenCoeffStart: Int? = nil
-                for s in 0..<(detectionsCols - K) {
-                    // Compute mean absolute value in this block
-                    var meanAbs: Float = 0
-                    for k in 0..<K {
-                        meanAbs += abs(getDetVal(detectionsArr, 0, s + k))
-                    }
-                    meanAbs /= Float(K)
-                    // heuristics: coefficients are typically not huge integers; choose a plausible block
-                    if meanAbs > 0.0001 && meanAbs < 50.0 { // reasonable float coeffs (expanded range)
-                        // further sanity: check values aren't identical (not all same)
-                        let first = getDetVal(detectionsArr, 0, s)
-                        var allSame = true
-                        for k in 1..<min(K, 4) {
-                            if getDetVal(detectionsArr, 0, s + k) != first { allSame = false; break }
-                        }
-                        if !allSame {
-                            chosenCoeffStart = s
-                            break
-                        }
-                    }
-                }
-                
-                if chosenCoeffStart == nil {
-                    // fallback to last K
-                    chosenCoeffStart = detectionsCols - K
-                }
-                
-                coeffStart = chosenCoeffStart!
-                
-                // Find score index: search first 12 columns for reasonable values
-                scoreIdx = 4 // default
-                for c in 0..<min(12, detectionsCols) {
-                    let avg = getDetVal(detectionsArr, 0, c)
-                    if avg > 0.01 && avg < 1.0 { // look for confidence scores in [0,1] range
-                        scoreIdx = c
-                        break
-                    }
-                }
-                
-                // Cache the results
-                self.coeffStartCached = coeffStart
-                self.scoreIdxCached = scoreIdx
-                
-                print("🎯 Discovered indices - scoreIdx: \(scoreIdx), coeffStart: \(coeffStart)")
-            }
-
-            // canvas size (pixel)
+            // Canvas setup
             let scale = UIScreen.main.scale
             let canvasW = Int(round(self.bounds.width * scale))
             let canvasH = Int(round(self.bounds.height * scale))
-            if canvasW == 0 || canvasH == 0 {
+            guard canvasW > 0 && canvasH > 0 else {
                 DispatchQueue.main.async { self.processing = false }
                 return
             }
 
-            // Allocate reusable mask buffer once
             let protoPixels = self.protoH * self.protoW
             if self.maskFloatBuf == nil {
                 self.maskFloatBuf = UnsafeMutablePointer<Float>.allocate(capacity: protoPixels)
@@ -495,206 +384,137 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
             var masksAlpha: [CGImage] = []
             var colors: [UIColor] = []
-            var detectionScores: [Float] = []
-
-            // ADD TEST: Create a simple test mask to verify rendering works (skip in debug mode)
-            if !debugShowTopMask {
-                let testMask = self.createTestMask(canvasW: canvasW, canvasH: canvasH)
-                if let testMask = testMask {
-                    masksAlpha.append(testMask)
-                    colors.append(UIColor.yellow)
-                    detectionScores.append(1.0)
-                    print("🧪 Added test mask for verification")
-                }
-            }
-
-            var detectedCount = 0
-            var maxScore: Float = 0
             
-            // Collect all valid detections first for sorting
-            var validDetections: [(row: Int, score: Float, coeffs: [Float])] = []
-
-            // First pass: collect all valid detections with robust filtering
-            for r in 0..<detectionsRows {
-                let score = getDetBufVal(r, scoreIdx)
-                maxScore = max(maxScore, score)
+            // Collect valid detections with QUALITY coefficient check
+            var validDetections: [(pred: Int, score: Float, coeffs: [Float])] = []
+            
+            for p in 0..<numPredictions {
+                let score = getDetValue(pred: p, feat: scoreIdx)
                 
-                // 1) Sanity-filter rows early
-                guard isFiniteAndReasonable(score) else { continue } // skip corrupted row
-                if score < self.scoreThreshold { continue }
+                // Valid scores in [threshold, 1]
+                guard score >= self.scoreThreshold && score <= 1.0 else { continue }
                 
-                // 2) Validate coeff vector before using
-                var coeffsRaw = [Float](repeating: 0, count: K)
-                var maxAbs: Float = 0
-                var minAbs: Float = .greatestFiniteMagnitude
-                var bad = false
+                // Extract coefficients
+                var coeffs = [Float](repeating: 0, count: K)
+                var valid = true
+                var hasPositive = false
+                var hasNegative = false
+                var coeffMin: Float = .greatestFiniteMagnitude
+                var coeffMax: Float = -.greatestFiniteMagnitude
                 
                 for k in 0..<K {
-                    let v = getDetBufVal(r, coeffStart + k)
-                    if !v.isFinite { bad = true; break }
-                    coeffsRaw[k] = v
-                    maxAbs = max(maxAbs, abs(v))
-                    minAbs = min(minAbs, abs(v))
+                    let v = getDetValue(pred: p, feat: coeffStartIdx + k)
+                    if !v.isFinite || abs(v) > 100 {  // Reject garbage values
+                        valid = false
+                        break
+                    }
+                    coeffs[k] = v
+                    coeffMin = min(coeffMin, v)
+                    coeffMax = max(coeffMax, v)
+                    if v > 0.1 { hasPositive = true }
+                    if v < -0.1 { hasNegative = true }
                 }
                 
-                if bad || maxAbs == 0 || (minAbs == maxAbs) { continue } // skip invalid coeffs
+                // CRITICAL: Only accept detections with MIXED positive/negative coefficients
+                // This filters out degenerate masks (all 0s, all positive, all negative)
+                guard valid else { continue }
+                guard hasPositive && hasNegative else { continue }
                 
-                // 3) Robust auto-scaling
-                let scale = chooseScale(coeffsRaw)
-                let coeffs = coeffsRaw.map { $0 / scale }
+                // Also reject if coefficient range is too small (near-uniform)
+                let coeffRange = coeffMax - coeffMin
+                guard coeffRange > 0.5 else { continue }
                 
-                if r < 3 && scale != 1 {
-                    print("🔧 Row \(r): auto-scaling by \(scale), maxAbs: \(maxAbs)")
-                }
-                
-                validDetections.append((row: r, score: score, coeffs: coeffs))
+                validDetections.append((pred: p, score: score, coeffs: coeffs))
             }
             
-            // 4) Limit detections processed (speed + robustness)
             validDetections.sort { $0.score > $1.score }
-            let candidates = validDetections.sorted(by: { $0.score > $1.score }).prefix(64)
-            let toDecode = Array(candidates.prefix(12)) // decode only 12 masks
+            let toDecode = Array(validDetections.prefix(10))
             
-            print("🔍 Found \(validDetections.count) valid detections, processing top \(toDecode.count)")
+            print("\n🔍 Found \(validDetections.count) valid detections with good coefficients, processing top \(toDecode.count)")
             
-            // Second pass: build masks for top detections only
-            for detection in toDecode {
-                detectedCount += 1
-                print("🎯 Detection \(detectedCount): score=\(detection.score) (row=\(detection.row))")
-
-                // Print raw coeffs for first few detections to inspect them
-                if detection.row < 3 {
-                    print("processed coeffs r\(detection.row):", detection.coeffs.prefix(8).map { String(format: "%.6g", $0) }.joined(separator: " "))
-                }
-
-                // 5) Use BLAS (cblas_sgemv) for mask build + vDSP sigmoid - big speed win
-                self.buildMaskFromPrototypesOptimizedBLAS(protoBuf: protoBuf, protoH: self.protoH, protoW: self.protoW, protoK: self.protoK, coeffs: detection.coeffs, outMask: maskFloatBuf)
-
-                // Debug: Save raw mask before thresholding
-                if self.debugSaveImages {
-                    self.saveDebugFloatMask(maskFloatBuf, width: self.protoW, height: self.protoH, name: "02_raw_mask_\(detection.row)", timestamp: timestamp)
-                }
-
-                // Post-process: use adaptive thresholding to prevent data loss
-                let threshold: Float = 0.5
-                var validPixels = 0
+            for (idx, det) in toDecode.enumerated() {
+                let coeffMin = det.coeffs.min() ?? 0
+                let coeffMax = det.coeffs.max() ?? 0
+                print("\n🎯 Det[\(idx)]: score=\(String(format: "%.3f", det.score)), pred=\(det.pred), coeffRange=[\(String(format: "%.2f", coeffMin)), \(String(format: "%.2f", coeffMax))]")
                 
-                // First pass: calculate statistics to determine if we need adaptive threshold
-                var maxMaskValue: Float = 0.0
-                var avgMaskValue: Float = 0.0
-                var nonZeroPixels = 0
+                // Build mask manually
                 for i in 0..<protoPixels {
-                    let val = maskFloatBuf[i]
-                    if val > 0.01 {
-                        nonZeroPixels += 1
-                        maxMaskValue = max(maxMaskValue, val)
-                        avgMaskValue += val
+                    var sum: Float = 0
+                    for k in 0..<K {
+                        sum += det.coeffs[k] * protoBuf[k * protoPixels + i]
                     }
+                    maskFloatBuf[i] = 1.0 / (1.0 + exp(-sum))
                 }
                 
-                if nonZeroPixels > 0 {
-                    avgMaskValue /= Float(nonZeroPixels)
-                }
-                
-                // Adaptive threshold: if max value is low, reduce threshold to preserve data
-                let adaptiveThreshold: Float
-                if maxMaskValue < 0.7 && maxMaskValue > 0.1 {
-                    // Use a percentage of max value to preserve weak but valid detections
-                    adaptiveThreshold = maxMaskValue * 0.4  // 40% of max value
-                    print("📊 Detection \(detection.row): adaptive threshold \(String(format: "%.3f", adaptiveThreshold)) (max: \(String(format: "%.3f", maxMaskValue)), avg: \(String(format: "%.3f", avgMaskValue)))")
-                } else {
-                    adaptiveThreshold = threshold
-                    print("📊 Detection \(detection.row): standard threshold \(adaptiveThreshold) (max: \(String(format: "%.3f", maxMaskValue)))")
-                }
-                
-                // Second pass: apply threshold and count valid pixels
+                // Check mask statistics
+                var minV: Float = 1, maxV: Float = 0
                 for i in 0..<protoPixels {
-                    if maskFloatBuf[i] > adaptiveThreshold {
+                    minV = min(minV, maskFloatBuf[i])
+                    maxV = max(maxV, maskFloatBuf[i])
+                }
+                print("   mask range: [\(String(format: "%.3f", minV)), \(String(format: "%.3f", maxV))]")
+                
+                if self.debugSaveImages {
+                    self.saveDebugFloatMask(maskFloatBuf, width: self.protoW, height: self.protoH, name: "02_mask_\(det.pred)", timestamp: timestamp)
+                }
+                
+                // Apply threshold
+                var validPixels = 0
+                for i in 0..<protoPixels {
+                    if maskFloatBuf[i] > 0.5 {
                         validPixels += 1
                     } else {
-                        maskFloatBuf[i] = 0.0 // Clear low-confidence pixels
+                        maskFloatBuf[i] = 0
                     }
                 }
                 
-                // Debug: Save thresholded mask
-                if self.debugSaveImages {
-                    self.saveDebugFloatMask(maskFloatBuf, width: self.protoW, height: self.protoH, name: "03_thresholded_mask_\(detection.row)", timestamp: timestamp)
+                let coverage = Float(validPixels) / Float(protoPixels) * 100
+                print("   coverage: \(String(format: "%.1f", coverage))%")
+                
+                // Accept masks with 5-90% coverage (reasonable object sizes)
+                let minCov = protoPixels * 2 / 100   // 5%
+                let maxCov = protoPixels * 90 / 100  // 90%
+                
+                if validPixels < minCov {
+                    print("   ⚠️ Skipped - too small (<5%)")
+                    continue
+                }
+                if validPixels > maxCov {
+                    print("   ⚠️ Skipped - too large (>90%)")
+                    continue
                 }
                 
-                // Only add masks with significant coverage
-                let minCoverage = protoPixels / 100 // At least 1% of pixels
-                let coveragePercent = Float(validPixels) / Float(protoPixels) * 100.0
-                
-                print("📊 Coverage check: \(validPixels)/\(protoPixels) pixels (\(String(format: "%.2f", coveragePercent))%) - threshold: \(minCoverage)")
-                
-                if validPixels > minCoverage {
-                    print("✅ Sufficient coverage - proceeding with resize")
-                    // resize to canvas and convert to alpha CGImage
-                    if let alpha = self.resizeFloatMaskToAlphaImageOptimized(maskFloat: maskFloatBuf, srcW: self.protoW, srcH: self.protoH, dstW: canvasW, dstH: canvasH) {
-                        // Debug: Save resized mask
-                        if self.debugSaveImages {
-                            self.saveDebugCGImage(alpha, name: "04_resized_mask_\(detection.row)", timestamp: timestamp)
-                        }
-                        
-                        masksAlpha.append(alpha)
-                        colors.append(self.colorForIndex(detection.row))
-                        detectionScores.append(detection.score)
-                        print("✅ Added mask for detection \(detectedCount) with \(validPixels) valid pixels")
-                    } else {
-                        print("❌ Resize failed for detection \(detectedCount) - could not create CGImage")
-                    }
-                } else {
-                    print("⚠️ Insufficient coverage (\(String(format: "%.2f", coveragePercent))%) - skipping mask for detection \(detectedCount)")
+                if let alpha = self.resizeFloatMaskToAlphaImageOptimized(
+                    maskFloat: maskFloatBuf,
+                    srcW: self.protoW,
+                    srcH: self.protoH,
+                    dstW: canvasW,
+                    dstH: canvasH
+                ) {
+                    masksAlpha.append(alpha)
+                    colors.append(self.colorForIndex(idx))
+                    print("   ✅ Added mask")
                 }
             }
-            
-            print("🔍 Processed \(detectionsRows) detections, found \(validDetections.count) above threshold, generated \(masksAlpha.count) masks (max score: \(maxScore))")
             
             let totalTime = CFAbsoluteTimeGetCurrent() - startTime
-            print("⏱️ Total inference time: \(String(format: "%.1f", totalTime * 1000))ms")
+            print("\n⏱️ Time: \(String(format: "%.0f", totalTime * 1000))ms, masks: \(masksAlpha.count)")
 
-            // Note: maskFloatBuf is now reused, don't deallocate here
-
-            // When you update the UI with the final image, also expose topMaskImage and use debugShowTopMask
-            // Find the code that sets `self.maskImageView.image = outImage` and replace with:
             let outImage: UIImage?
-            if debugShowTopMask, let top1 = masksAlpha.first, let topColor = colors.first {
-                // Debug mode: show only the highest-score mask (if available)
-                outImage = self.compositeMasksAdditive(masksAlpha: [top1], colors: [topColor], canvasW: canvasW, canvasH: canvasH)
-                print("🔍 Debug mode: showing top-1 mask only")
-                
-                // Debug: Save debug mode output
-                if let outImage = outImage, self.debugSaveImages {
-                    self.saveDebugImage(outImage, name: "05_debug_top1_output", timestamp: timestamp)
-                }
+            if self.debugShowTopMask, let top = masksAlpha.first, let topColor = colors.first {
+                outImage = self.compositeMasksAdditive(masksAlpha: [top], colors: [topColor], canvasW: canvasW, canvasH: canvasH)
             } else {
-                // Normal mode: composite all masks
                 outImage = self.compositeMasksAdditive(masksAlpha: masksAlpha, colors: colors, canvasW: canvasW, canvasH: canvasH)
-                print("🎨 Normal mode: showing composite of \(masksAlpha.count) masks")
-                
-                // Debug: Save composite output
-                if let outImage = outImage, self.debugSaveImages {
-                    self.saveDebugImage(outImage, name: "05_composite_output", timestamp: timestamp)
-                }
+            }
+            
+            if let outImage = outImage, self.debugSaveImages {
+                self.saveDebugImage(outImage, name: "05_output", timestamp: timestamp)
             }
 
-            // update UI on main
             DispatchQueue.main.async {
                 self.maskImageView.image = outImage
-                
-                // Temporary: Add a semi-transparent background to make sure the view is visible
-                if outImage != nil {
-                    self.maskImageView.backgroundColor = UIColor.red.withAlphaComponent(0.1)
-                } else {
-                    self.maskImageView.backgroundColor = .clear
-                }
-                
+                self.maskImageView.backgroundColor = .clear
                 self.processing = false
-                if outImage != nil {
-                    print("✅ Updated mask overlay with new image (size: \(outImage!.size))")
-                } else {
-                    print("⚠️ No mask image to display")
-                }
             }
         }
     }
@@ -828,11 +648,19 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private func buildMaskFromPrototypesOptimizedBLAS(protoBuf: UnsafeMutablePointer<Float>, protoH: Int, protoW: Int, protoK: Int, coeffs: [Float], outMask: UnsafeMutablePointer<Float>) {
         let HW = protoH * protoW
         
-        // Use cblas_sgemv for matrix-vector multiply: A * coeffs = s
+        // FIX: Prototype buffer is laid out as [K, H, W] (K planes of HW pixels each)
+        // We need to compute: mask[pixel] = sum_k(coeffs[k] * proto[k, pixel])
+        // This requires transposing the matrix view
         coeffs.withUnsafeBufferPointer { coeffPtr in
-            cblas_sgemv(CblasRowMajor, CblasNoTrans, Int32(HW), Int32(protoK), 
-                       1.0, protoBuf, Int32(protoK), coeffPtr.baseAddress!, 1, 
-                       0.0, outMask, 1)
+            cblas_sgemv(CblasRowMajor, CblasTrans,  // Changed to CblasTrans
+                       Int32(protoK),               // M = K (rows before transpose)
+                       Int32(HW),                   // N = HW (cols before transpose)
+                       1.0,
+                       protoBuf,
+                       Int32(HW),                   // lda = HW (stride between rows)
+                       coeffPtr.baseAddress!, 1,
+                       0.0,
+                       outMask, 1)
         }
         
         // Apply sigmoid using vForce (faster than manual computation)
@@ -886,7 +714,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         vvrecf(outMask, &onePlusExp, &count)
     }
 
-    // Optimized resize with buffer reuse and better error handling
+    // Improved resize with morphological operations to preserve mask integrity
     private func resizeFloatMaskToAlphaImageOptimized(maskFloat: UnsafePointer<Float>, srcW: Int, srcH: Int, dstW: Int, dstH: Int) -> CGImage? {
         let srcCount = srcW * srcH
         let dstCount = dstW * dstH
@@ -921,97 +749,249 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("📦 Allocated new buffers with capacity: \(bufferCapacity)")
         }
         
-        guard let srcU8 = srcU8Buf, let dstU8 = dstU8Buf else { 
+        guard let srcU8 = srcU8Buf, let dstU8 = dstU8Buf else {
             print("❌ Buffer allocation failed")
-            return nil 
+            return nil
         }
 
-        // Convert Float to UInt8 with better range mapping
-        // Map [0, maxValue] to [0, 255] to preserve dynamic range
-        let scale = maxValue > 0.01 ? (255.0 / maxValue) : 255.0
+        // STEP 1: Apply morphological closing to fill gaps before conversion
+        let cleanedMask = UnsafeMutablePointer<Float>.allocate(capacity: srcCount)
+        defer { cleanedMask.deallocate() }
+        
+        // Copy original mask
+        for i in 0..<srcCount {
+            cleanedMask[i] = maskFloat[i]
+        }
+        
+        // Simple morphological operation: fill isolated gaps
+        let kernelSize = 3
+        let halfKernel = kernelSize / 2
+        
+        for y in halfKernel..<(srcH - halfKernel) {
+            for x in halfKernel..<(srcW - halfKernel) {
+                let centerIdx = y * srcW + x
+                
+                if cleanedMask[centerIdx] < 0.3 { // If center is weak/empty
+                    var neighborSum: Float = 0
+                    var neighborCount = 0
+                    
+                    // Check 3x3 neighborhood
+                    for dy in -halfKernel...halfKernel {
+                        for dx in -halfKernel...halfKernel {
+                            let ny = y + dy
+                            let nx = x + dx
+                            let idx = ny * srcW + nx
+                            
+                            if maskFloat[idx] > 0.5 { // Strong neighbor
+                                neighborSum += maskFloat[idx]
+                                neighborCount += 1
+                            }
+                        }
+                    }
+                    
+                    // If surrounded by strong pixels, fill the gap
+                    if neighborCount >= 5 { // More than half the neighborhood
+                        cleanedMask[centerIdx] = neighborSum / Float(neighborCount) * 0.8
+                    }
+                }
+            }
+        }
+
+        // STEP 2: Convert to UInt8 using vImage
+        // FIX: vImageConvert_PlanarFtoPlanar8 parameters are (maxFloat, minFloat)
+        // This maps maxFloat → 255 and minFloat → 0
         var srcF = vImage_Buffer(
-            data: UnsafeMutableRawPointer(mutating: maskFloat), 
-            height: vImagePixelCount(srcH), 
-            width: vImagePixelCount(srcW), 
+            data: UnsafeMutableRawPointer(cleanedMask),
+            height: vImagePixelCount(srcH),
+            width: vImagePixelCount(srcW),
             rowBytes: srcW * MemoryLayout<Float>.size
         )
         var dstU8buf = vImage_Buffer(
-            data: srcU8, 
-            height: vImagePixelCount(srcH), 
-            width: vImagePixelCount(srcW), 
+            data: srcU8,
+            height: vImagePixelCount(srcH),
+            width: vImagePixelCount(srcW),
             rowBytes: srcW
         )
         
-        let convErr = vImageConvert_PlanarFtoPlanar8(&srcF, &dstU8buf, scale, 0.0, vImage_Flags(kvImageNoFlags))
-        if convErr != kvImageNoError { 
+        // Parameters: (src, dst, maxFloat, minFloat, flags)
+        // maxFloat (1.0) maps to 255, minFloat (0.0) maps to 0
+        let convErr = vImageConvert_PlanarFtoPlanar8(&srcF, &dstU8buf, 1.0, 0.0, vImage_Flags(kvImageNoFlags))
+        if convErr != kvImageNoError {
             print("❌ Float→UInt8 conversion failed: \(convErr)")
-            return nil 
+            return nil
         }
         
         // Debug: Check conversion results
         var convertedNonZero = 0
+        var minU8: UInt8 = 255
+        var maxU8: UInt8 = 0
         for i in 0..<srcCount {
-            if srcU8[i] > 0 { convertedNonZero += 1 }
+            if srcU8[i] > 10 {
+                convertedNonZero += 1
+                minU8 = min(minU8, srcU8[i])
+                maxU8 = max(maxU8, srcU8[i])
+            }
         }
         print("   Converted: \(convertedNonZero)/\(srcCount) nonzero pixels (\(String(format: "%.1f", Float(convertedNonZero)/Float(srcCount)*100))%)")
-        print("   Scaling factor: \(String(format: "%.2f", scale))")
+        print("   UInt8 range: \(minU8) - \(maxU8)")
 
-        // Resize using high-quality resampling
+        // STEP 3: Resize using high-quality resampling
         var srcBuf = vImage_Buffer(
-            data: srcU8, 
-            height: vImagePixelCount(srcH), 
-            width: vImagePixelCount(srcW), 
+            data: srcU8,
+            height: vImagePixelCount(srcH),
+            width: vImagePixelCount(srcW),
             rowBytes: srcW
         )
         var dstBuf = vImage_Buffer(
-            data: dstU8, 
-            height: vImagePixelCount(dstH), 
-            width: vImagePixelCount(dstW), 
+            data: dstU8,
+            height: vImagePixelCount(dstH),
+            width: vImagePixelCount(dstW),
             rowBytes: dstW
         )
         
         let scaleErr = vImageScale_Planar8(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageHighQualityResampling))
-        if scaleErr != kvImageNoError { 
+        if scaleErr != kvImageNoError {
             print("❌ Scaling failed: \(scaleErr)")
-            return nil 
+            return nil
+        }
+        
+        // STEP 4: Post-resize cleanup - threshold low values to reduce noise
+        let cleanupThreshold: UInt8 = 20
+        for i in 0..<dstCount {
+            if dstU8[i] < cleanupThreshold {
+                dstU8[i] = 0
+            }
         }
         
         // Debug: Check final result
         var finalNonZero = 0
         for i in 0..<dstCount {
-            if dstU8[i] > 0 { finalNonZero += 1 }
+            if dstU8[i] > 10 { finalNonZero += 1 }
         }
         print("   Final result: \(finalNonZero)/\(dstCount) nonzero pixels (\(String(format: "%.1f", Float(finalNonZero)/Float(dstCount)*100))%)")
-        
-        if finalNonZero == 0 {
-            print("⚠️ Final mask has no pixels - resize lost all data!")
-            return nil
-        }
 
         // Create CGImage
-        guard let provider = CGDataProvider(data: CFDataCreate(nil, dstU8, dstCount)) else { 
+        guard let provider = CGDataProvider(data: CFDataCreate(nil, dstU8, dstCount)) else {
             print("❌ CGDataProvider creation failed")
-            return nil 
+            return nil
         }
         
         let cs = CGColorSpaceCreateDeviceGray()
         let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
         let cg = CGImage(
-            width: dstW, 
-            height: dstH, 
-            bitsPerComponent: 8, 
-            bitsPerPixel: 8, 
-            bytesPerRow: dstW, 
-            space: cs, 
-            bitmapInfo: bitmapInfo, 
-            provider: provider, 
-            decode: nil, 
-            shouldInterpolate: true, 
+            width: dstW,
+            height: dstH,
+            bitsPerComponent: 8,
+            bitsPerPixel: 8,
+            bytesPerRow: dstW,
+            space: cs,
+            bitmapInfo: bitmapInfo,
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
             intent: .defaultIntent
         )
         
         print("✅ Successfully created resized mask: \(dstW)x\(dstH)")
         return cg
+    }
+    
+    // Alternative resize method using Core Graphics (fallback for difficult cases)
+    private func resizeFloatMaskUsingCoreGraphics(maskFloat: UnsafePointer<Float>, srcW: Int, srcH: Int, dstW: Int, dstH: Int) -> CGImage? {
+        print("🔄 Trying Core Graphics resize fallback")
+        
+        let srcCount = srcW * srcH
+        
+        // Convert to UInt8 manually with better control
+        let srcData = UnsafeMutablePointer<UInt8>.allocate(capacity: srcCount)
+        defer { srcData.deallocate() }
+        
+        // Find value range for optimal scaling
+        var maxVal: Float = 0
+        for i in 0..<srcCount {
+            if maskFloat[i] > 0.01 {
+                maxVal = max(maxVal, maskFloat[i])
+            }
+        }
+        
+        let scale = maxVal > 0.01 ? (255.0 / maxVal) : 255.0
+        
+        // Convert with thresholding
+        for i in 0..<srcCount {
+            let val = maskFloat[i]
+            if val > 0.1 { // Higher threshold to avoid noise
+                srcData[i] = UInt8(min(255, val * scale))
+            } else {
+                srcData[i] = 0
+            }
+        }
+        
+        // Create source CGImage
+        guard let srcProvider = CGDataProvider(data: CFDataCreate(nil, srcData, srcCount)) else { return nil }
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        
+        guard let srcImage = CGImage(
+            width: srcW,
+            height: srcH,
+            bitsPerComponent: 8,
+            bitsPerPixel: 8,
+            bytesPerRow: srcW,
+            space: colorSpace,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+            provider: srcProvider,
+            decode: nil,
+            shouldInterpolate: false, // Disable interpolation for crisp edges
+            intent: .defaultIntent
+        ) else { return nil }
+        
+        // Create destination context
+        let dstData = UnsafeMutablePointer<UInt8>.allocate(capacity: dstW * dstH)
+        defer { dstData.deallocate() }
+        
+        guard let context = CGContext(
+            data: dstData,
+            width: dstW,
+            height: dstH,
+            bitsPerComponent: 8,
+            bytesPerRow: dstW,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+        
+        // Set high-quality rendering
+        context.interpolationQuality = .high
+        
+        // Draw with scaling
+        context.draw(srcImage, in: CGRect(x: 0, y: 0, width: dstW, height: dstH))
+        
+        // Post-process: apply threshold to clean up gray pixels
+        for i in 0..<(dstW * dstH) {
+            if dstData[i] < 50 {
+                dstData[i] = 0
+            } else if dstData[i] < 150 {
+                dstData[i] = 180 // Boost mid-range values
+            }
+        }
+        
+        // Create final CGImage
+        guard let dstProvider = CGDataProvider(data: CFDataCreate(nil, dstData, dstW * dstH)) else { return nil }
+        
+        let result = CGImage(
+            width: dstW,
+            height: dstH,
+            bitsPerComponent: 8,
+            bitsPerPixel: 8,
+            bytesPerRow: dstW,
+            space: colorSpace,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+            provider: dstProvider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        )
+        
+        print("✅ Core Graphics resize completed")
+        return result
     }
 
     // Resize float mask to grayscale CGImage (alpha) using vImage
