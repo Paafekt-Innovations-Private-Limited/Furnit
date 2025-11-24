@@ -7,6 +7,43 @@ import Accelerate
 
 private let SEGMENT_DEBUG_SAVE_IMAGES = false
 
+struct ServerDetection: Decodable, Identifiable {
+    let id: UUID
+    let box: [CGFloat]
+    let `class`: Int
+    let class_name: String
+    let mask_png: String?  // Added optional mask_png field
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = UUID()
+        self.box = try container.decode([CGFloat].self, forKey: .box)
+        self.`class` = try container.decode(Int.self, forKey: .`class`)
+        self.class_name = try container.decode(String.self, forKey: .class_name)
+        self.mask_png = try container.decodeIfPresent(String.self, forKey: .mask_png)
+    }
+    
+    init(box: [CGFloat], class: Int, class_name: String, mask_png: String?) {
+        self.id = UUID()
+        self.box = box
+        self.`class` = `class`
+        self.class_name = class_name
+        self.mask_png = mask_png
+    }
+    
+    private enum CodingKeys: String, CodingKey {
+        case box, `class`, class_name, mask_png
+    }
+    
+    func maskImage() -> UIImage? {
+        // Convert base64 PNG string to UIImage if available
+        guard let mask_png = mask_png,
+              let data = Data(base64Encoded: mask_png, options: .ignoreUnknownCharacters),
+              let img = UIImage(data: data) else { return nil }
+        return img
+    }
+}
+
 struct SmartyPantsView: View {
     @Binding var capturedImage: UIImage?
     @Binding var isShowingCamera: Bool
@@ -20,6 +57,9 @@ struct SmartyPantsView: View {
     @State private var accumulatedOffset: CGSize = .zero
     @State private var showingSaveSuccess = false
     @State private var saveMessage = ""
+    @State private var serverDetections: [ServerDetection] = []
+    @State private var isLoadingServerDetection = false
+    @State private var showTestComparison = false
     
     var body: some View {
         ZStack {
@@ -57,61 +97,46 @@ struct SmartyPantsView: View {
                     .animation(.easeOut(duration: 0.3), value: camera.furnitureOpacity)
             }
             
-            // (Optional) multiple bbox canvas with class labels – only when debug flag on
-            if  !camera.currentDetections.isEmpty && camera.segmentedImage != nil {
+            // Server Detection Overlays
+            if !serverDetections.isEmpty {
+                // Overlay server detection masks
+                ForEach(serverDetections) { detection in
+                    if let maskImg = detection.maskImage() {
+                        Image(uiImage: maskImg)
+                            .resizable()
+                            .scaledToFill()
+                            .scaleEffect(scaleMultiplier)
+                            .offset(x: dragOffset.width + accumulatedOffset.width,
+                                    y: dragOffset.height + accumulatedOffset.height)
+                            .position(x: UIScreen.main.bounds.width / 2,
+                                      y: UIScreen.main.bounds.height / 2)
+                            .opacity(0.6)
+                            .blendMode(.multiply)
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                    }
+                }
+                
+                // Server detection bounding boxes
                 Canvas { context, size in
-                    guard let segmented = camera.segmentedImage else { return }
-                    
-                    // Calculate displayed image rect on screen
-                    // Image is positioned at screen center with scale and offset applied
-                    let screenCenter = CGPoint(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2)
-                    let imageSize = segmented.size
-                    let scaledImageSize = CGSize(width: imageSize.width * scaleMultiplier,
-                                                 height: imageSize.height * scaleMultiplier)
-                    
-                    let offsetX = dragOffset.width + accumulatedOffset.width
-                    let offsetY = dragOffset.height + accumulatedOffset.height
-                    
-                    let imageOrigin = CGPoint(x: screenCenter.x - scaledImageSize.width / 2 + offsetX,
-                                              y: screenCenter.y - scaledImageSize.height / 2 + offsetY)
-                    let imageRect = CGRect(origin: imageOrigin, size: scaledImageSize)
-                    
-                    // Model coordinates are in 640x640 space; map each bbox accordingly
-                    for detection in camera.currentDetections {
-                        guard let tight = detection.tightBBox else { continue }
-                        let modelRect = tight
+                    for detection in serverDetections {
+                        guard detection.box.count == 4 else { continue }
+                        let box = detection.box
+                        let rect = CGRect(x: box[0], y: box[1], width: box[2], height: box[3])
                         
-                        // Map modelRect from 640x640 to displayed imageRect
-                        let scaleX = imageRect.width / 640.0
-                        let scaleY = imageRect.height / 640.0
+                        let path = Path(rect)
+                        context.stroke(path, with: .color(.red), lineWidth: 2)
                         
-                        let mappedRect = CGRect(
-                            x: imageRect.minX + modelRect.minX * scaleX,
-                            y: imageRect.minY + modelRect.minY * scaleY,
-                            width: modelRect.width * scaleX,
-                            height: modelRect.height * scaleY
-                        )
-                        
-                        // Log which bbox is used for drawing
-                        print("🖼️ Drawing bbox for \(detection.className) using tightBBox: \(modelRect)")
-                        print("    Original model bbox: x=\(detection.x), y=\(detection.y), w=\(detection.width), h=\(detection.height)")
-                        
-                        let path = Path(mappedRect)
-                        
-                        // SINGLE THIN GREEN LINE ONLY
-                        context.stroke(path, with: .color(.green), lineWidth: 2)
-                        
-                        // Draw class name label at top-left of bbox with background using resolved Text
-                        let label = Text(detection.className)
+                        let label = Text(detection.class_name)
                             .font(.caption2)
                             .foregroundColor(.white)
                         
                         let resolvedText = context.resolve(label)
                         let textSize = resolvedText.measure(in: size)
-                        let textPosition = CGPoint(x: mappedRect.minX + 4, y: mappedRect.minY + 2)
+                        let textPosition = CGPoint(x: rect.minX + 4, y: rect.minY + 2)
                         let bgRect = CGRect(x: textPosition.x, y: textPosition.y, width: textSize.width, height: textSize.height)
                         
-                        context.fill(Path(bgRect), with: .color(.black.opacity(0.7)))
+                        context.fill(Path(bgRect), with: .color(.red.opacity(0.8)))
                         context.draw(resolvedText, at: textPosition, anchor: .topLeading)
                     }
                 }
@@ -170,11 +195,30 @@ struct SmartyPantsView: View {
                             .shadow(radius: 5)
                         }
                         
+                        Button(action: { testServerDetection() }) {
+                            VStack {
+                                if isLoadingServerDetection {
+                                    ProgressView()
+                                        .scaleEffect(0.6)
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "globe")
+                                }
+                                Text("Server").font(.caption2)
+                            }
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(Color.green))
+                            .shadow(radius: 3)
+                        }
+                        .disabled(isLoadingServerDetection)
+                        
                         Button(action: {
                             camera.resetSegmentation()
                             scaleMultiplier = 0.5
                             dragOffset = .zero
                             accumulatedOffset = .zero
+                            serverDetections = []
                         }) {
                             VStack {
                                 Image(systemName: "arrow.counterclockwise")
@@ -193,15 +237,32 @@ struct SmartyPantsView: View {
             }
             
             if camera.segmentedImage != nil {
-                VStack {
+                VStack(spacing: 12) {
                     Spacer()
                     Text("Pinch • Drag")
                         .font(.caption)
                         .foregroundColor(.white)
                         .padding(8)
                         .background(Capsule().fill(Color.black.opacity(0.6)))
-                        .padding(.bottom, 120)
+                    
+                    // Server Detection Status
+                    if !serverDetections.isEmpty {
+                        VStack(spacing: 4) {
+                            Text("🌐 Server Detections: \(serverDetections.count)")
+                                .font(.caption2)
+                                .foregroundColor(.white)
+                            
+                            ForEach(serverDetections.prefix(3)) { detection in
+                                Text("• \(detection.class_name)")
+                                    .font(.caption2)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .padding(8)
+                        .background(Capsule().fill(Color.green.opacity(0.7)))
+                    }
                 }
+                .padding(.bottom, 20)
             }
             
             if showingSaveSuccess {
@@ -218,8 +279,12 @@ struct SmartyPantsView: View {
                 }
             }
         }
-        .onAppear { camera.startSession() }
-        .onDisappear { camera.stopSession() }
+        .onAppear { 
+            camera.startSession()
+        }
+        .onDisappear { 
+            camera.stopSession()
+        }
     }
     
     private func captureFurnitureWithRoom() {
@@ -253,6 +318,111 @@ struct SmartyPantsView: View {
                 }
             }
         }
+    }
+    
+    // MARK: - Server Detection Testing
+    private func testServerDetection() {
+        // Use the current segmented image, captured image, or room image
+        let imageToTest = camera.segmentedImage ?? capturedImage ?? roomImage
+        
+        guard let image = imageToTest else {
+            print("[TEST] No image available for server detection")
+            return
+        }
+        
+        print("[TEST] 🧪 Testing server detection with Railway URL")
+        isLoadingServerDetection = true
+        
+        fetchDetectionsFromServer(image: image) { detections in
+            DispatchQueue.main.async {
+                self.isLoadingServerDetection = false
+                self.serverDetections = detections
+                
+                if detections.isEmpty {
+                    print("[TEST] ❌ No detections received from server")
+                } else {
+                    print("[TEST] ✅ Received \(detections.count) detections:")
+                    for detection in detections {
+                        print("[TEST]   - \(detection.class_name) (class: \(detection.`class`))")
+                        print("[TEST]     Box: \(detection.box)")
+                        if detection.mask_png != nil {
+                            print("[TEST]     Has mask data: YES")
+                        } else {
+                            print("[TEST]     Has mask data: NO")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - External Detection
+    private func fetchDetectionsFromServer(image: UIImage, completion: @escaping ([ServerDetection]) -> Void) {
+        print("[YOLOE] fetchDetectionsFromServer called")
+        print("[YOLOE] Input image size: \(image.size)")
+        
+        guard let url = URL(string: "https://pkttintelligence-production.up.railway.app/detect_details"),
+              let jpegData = image.jpegData(compressionQuality: 0.9) else {
+            print("[YOLOE] Invalid URL or image encoding failed")
+            completion([])
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30.0
+        
+        let boundary = UUID().uuidString
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(jpegData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+        
+        print("[YOLOE] Sending POST to /detect_details ...")
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("[YOLOE] Request error: \(error.localizedDescription)")
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("[YOLOE] HTTP status: \(httpResponse.statusCode)")
+                guard httpResponse.statusCode == 200 else {
+                    print("[YOLOE] Server returned error status: \(httpResponse.statusCode)")
+                    DispatchQueue.main.async { completion([]) }
+                    return
+                }
+            }
+            
+            guard let data = data else {
+                print("[YOLOE] No data in response")
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
+            
+            do {
+                let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let arr = dict?["results"] as? [[String: Any]] ?? []
+                let detections: [ServerDetection] = arr.compactMap { elem in
+                    guard let box = elem["box"] as? [Double],
+                          let cls = elem["class"] as? Int,
+                          let name = elem["class_name"] as? String else { return nil }
+                    let mask_png = elem["mask_png"] as? String
+                    return ServerDetection(box: box.map { CGFloat($0) }, class: cls, class_name: name, mask_png: mask_png)
+                }
+                print("[YOLOE] Parsed \(detections.count) detections from server")
+                DispatchQueue.main.async { completion(detections) }
+            } catch {
+                print("[YOLOE] JSON parse error: \(error)")
+                DispatchQueue.main.async { completion([]) }
+            }
+        }.resume()
     }
 }
 
@@ -400,8 +570,8 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         updateFPS()
         DispatchQueue.main.async { self.isProcessing = true }
         
-        detectionQueue.async { [weak self] in
-            guard let self = self,
+        detectionQueue.async {
+            guard
                   let resized = self.resizePixelBuffer(pixelBuffer, width: 640, height: 640),
                   let inputArray = self.pixelBufferToMLMultiArray(resized),
                   let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]),
@@ -409,7 +579,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                   let detectionsArray = output.featureValue(for: "var_2421")?.multiArrayValue,
 //                  let detectionsArray = output.featureValue(for: "var_1432")?.multiArrayValue,
                   let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
-                DispatchQueue.main.async { self?.isProcessing = false }
+                DispatchQueue.main.async { self.isProcessing = false }
                 return
             }
             if SEGMENT_DEBUG_SAVE_IMAGES {
@@ -538,7 +708,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         }
         
         let hierarchicalDetections = applyHierarchicalNMS(detections: allDetections, iouThreshold: 1.0)
-        print("📊 [H-NMS] Kept \(hierarchicalDetections.count) detections after hierarchical NMS")
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            print("📊 [H-NMS] Kept \(hierarchicalDetections.count) detections after hierarchical NMS")
+        }
         
         let maskFilteredDetections = applyMaskIoU(
             detections: hierarchicalDetections,
@@ -732,7 +904,7 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
         
         let maskW = 160
         let maskH = 160
-        let maskSize = maskW * maskH
+        _ = maskW * maskH  // Use underscore to indicate intentionally unused
         
         // Generate individual masks and color them
         var masks: [[Float]] = []
@@ -783,6 +955,12 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
             
             let cutoff = self.maskCutoff
+            
+            // Draw a green rectangle border with the same dimensions as the image
+            ctx.setStrokeColor(UIColor.green.cgColor)
+            ctx.setLineWidth(8.0)
+            let greenRect = CGRect(x: 4, y: 4, width: width - 8, height: height - 8)
+            ctx.stroke(greenRect)
             
             // For each pixel, if covered by any mask >= cutoff, copy original RGB and set alpha to 255,
             // else set alpha to 0 (fully transparent)
@@ -912,7 +1090,9 @@ class FurnitureSegmentationModelSmarty: NSObject, ObservableObject {
                 if iou >= iouThreshold {
                     mergedWithExisting = true
                     mergeTargetIndex = existingIndex
-                    print("🔄 MERGING (IoU \(Int(iou * 100))%) \(det.className) @ \(Int(det.confidence * 100))% with existing \(kept[mergeTargetIndex].className) @ \(Int(kept[mergeTargetIndex].confidence * 100))%")
+                    if SEGMENT_DEBUG_SAVE_IMAGES {
+                        print("🔄 MERGING (IoU \(Int(iou * 100))%) \(det.className) @ \(Int(det.confidence * 100))% with existing \(kept[mergeTargetIndex].className) @ \(Int(kept[mergeTargetIndex].confidence * 100))%")
+                    }
                     break
                 }
             }
