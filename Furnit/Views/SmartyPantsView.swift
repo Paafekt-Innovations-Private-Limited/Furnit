@@ -51,6 +51,15 @@ final class SmartyPantsContainerView: UIView {
     var debugShowTopMask: Bool = false
     var debugSaveImages: Bool = false
 
+    // Camera session
+    private let captureSession = AVCaptureSession()
+    private let videoOutput = AVCaptureVideoDataOutput()
+    private let sampleQueue = DispatchQueue(label: "com.furnit.smarty.sample", qos: .userInitiated)
+    private var isSessionRunning = false
+    
+    // Frame counting for debug logging
+    private var frameCount = 0
+
     // UI
     private let maskImageView: UIImageView = {
         let iv = UIImageView()
@@ -109,6 +118,9 @@ final class SmartyPantsContainerView: UIView {
             maskImageView.topAnchor.constraint(equalTo: topAnchor),
             maskImageView.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+        
+        print("🎭 SmartyPants: CommonInit completed")
+        setupCamera()
     }
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -116,27 +128,278 @@ final class SmartyPantsContainerView: UIView {
     }
 
     deinit {
+        print("🎭 SmartyPants: Deinit - cleaning up camera and buffers")
+        stopCamera()
         protoFloatBuf?.deallocate()
         detectionsBuf?.deallocate()
         maskFloatBuf?.deallocate()
         planar8BufA?.deallocate()
         planar8BufB?.deallocate()
+        print("🎭 SmartyPants: Cleanup completed")
     }
 
     // Public API
     func setModel(_ model: MLModel?) {
         detectionQueue.sync {
             self.mlModel = model
-            print("SmartyPants: model set -> \(model != nil)")
+            print("🎭 SmartyPants: Model set -> \(model != nil ? "✅ LOADED" : "❌ NIL")")
         }
     }
-    func startIfNeeded() { /* if you manage capture here start session */ }
-    func stop() { /* stop capture if needed */ }
+    
+    func startIfNeeded() { 
+        print("🎭 SmartyPants: startIfNeeded() called")
+        requestCameraPermissionAndStart()
+    }
+    
+    func stop() { 
+        print("🎭 SmartyPants: stop() called")
+        stopCamera()
+    }
+    
+    // MARK: - Camera Setup & Management
+    
+    private func setupCamera() {
+        print("🎥 === SMARTYPANTS CAMERA SETUP STARTING ===")
+        captureSession.beginConfiguration()
+        print("📋 SmartyPants: Session configuration began")
+        
+        // Log initial state
+        print("📊 SmartyPants: Initial session state:")
+        print("   - isRunning: \(captureSession.isRunning)")
+        print("   - canSetSessionPreset: \(captureSession.canSetSessionPreset(.hd1280x720))")
+        
+        captureSession.sessionPreset = .hd1280x720
+        print("📐 SmartyPants: Session preset set to HD 1280x720")
+        
+        // Clear existing inputs/outputs
+        let existingInputs = captureSession.inputs.count
+        let existingOutputs = captureSession.outputs.count
+        captureSession.inputs.forEach { captureSession.removeInput($0) }
+        captureSession.outputs.forEach { captureSession.removeOutput($0) }
+        print("🗑️ SmartyPants: Cleared \(existingInputs) inputs and \(existingOutputs) outputs")
+        
+        // Find camera
+        print("🔍 SmartyPants: Searching for back camera...")
+        let discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera],
+            mediaType: .video,
+            position: .unspecified
+        )
+        
+        print("📱 SmartyPants: Available camera devices:")
+        for device in discoverySession.devices {
+            print("   - \(device.localizedName) (position: \(device.position.rawValue))")
+        }
+        
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+            print("❌ SmartyPants: CRITICAL - No back camera available")
+            captureSession.commitConfiguration()
+            return
+        }
+        
+        print("✅ SmartyPants: Found back camera: \(device.localizedName)")
+        print("📊 SmartyPants: Camera device info:")
+        print("   - uniqueID: \(device.uniqueID)")
+        print("   - modelID: \(device.modelID)")
+        print("   - isConnected: \(device.isConnected)")
+        print("   - isSuspended: \(device.isSuspended)")
+        
+        do {
+            print("🔌 SmartyPants: Creating camera input...")
+            let input = try AVCaptureDeviceInput(device: device)
+            
+            if captureSession.canAddInput(input) {
+                captureSession.addInput(input)
+                print("✅ SmartyPants: Camera input added successfully")
+            } else {
+                print("❌ SmartyPants: CRITICAL - Cannot add camera input to session")
+                captureSession.commitConfiguration()
+                return
+            }
+            
+            // Configure video output
+            print("📹 SmartyPants: Configuring video output...")
+            print("📊 SmartyPants: Video output settings:")
+            print("   - Pixel format: kCVPixelFormatType_32BGRA")
+            print("   - Sample buffer delegate queue: \(sampleQueue.label)")
+            
+            videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
+            videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+            videoOutput.alwaysDiscardsLateVideoFrames = true
+            
+            if captureSession.canAddOutput(videoOutput) {
+                captureSession.addOutput(videoOutput)
+                print("✅ SmartyPants: Video output added successfully")
+                
+                if let connection = videoOutput.connection(with: .video) {
+                    print("🔗 SmartyPants: Configuring video connection...")
+                    print("   - isActive: \(connection.isActive)")
+                    print("   - isEnabled: \(connection.isEnabled)")
+                    print("   - isVideoMirroringSupported: \(connection.isVideoMirroringSupported)")
+                    
+                    connection.videoRotationAngle = 90
+                    if connection.isVideoMirroringSupported {
+                        connection.isVideoMirrored = false
+                        print("   - Video mirroring disabled")
+                    }
+                    print("   - Video rotation set to 90°")
+                    print("✅ SmartyPants: Video connection configured successfully")
+                } else {
+                    print("⚠️ SmartyPants: Warning - No video connection found")
+                }
+            } else {
+                print("❌ SmartyPants: CRITICAL - Cannot add video output to session")
+                captureSession.commitConfiguration()
+                return
+            }
+            
+            print("💾 SmartyPants: Committing session configuration...")
+            captureSession.commitConfiguration()
+            print("✅ SmartyPants: Camera configured successfully")
+            
+        } catch {
+            print("❌ SmartyPants: CRITICAL - Camera setup failed:")
+            print("   Error: \(error.localizedDescription)")
+            if let avError = error as? AVError {
+                print("   AVError code: \(avError.code.rawValue)")
+                print("   AVError description: \(avError.localizedDescription)")
+            }
+            captureSession.commitConfiguration()
+        }
+        
+        print("🎥 === SMARTYPANTS CAMERA SETUP COMPLETED ===")
+    }
+    
+    private func requestCameraPermissionAndStart() {
+        print("🔐 SmartyPants: Requesting camera permission...")
+        AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+            DispatchQueue.main.async {
+                print("🔐 SmartyPants: Camera permission result: \(granted ? "✅ GRANTED" : "❌ DENIED")")
+                if granted {
+                    self?.startCamera()
+                } else {
+                    print("❌ SmartyPants: Cannot start camera - permission denied")
+                    print("💡 SmartyPants: Check Settings > Privacy & Security > Camera")
+                }
+            }
+        }
+    }
+    
+    private func startCamera() {
+        print("🚀 === SMARTYPANTS START CAMERA REQUESTED ===")
+        print("📊 SmartyPants: Pre-start session status:")
+        print("   - isRunning: \(captureSession.isRunning)")
+        print("   - inputs count: \(captureSession.inputs.count)")
+        print("   - outputs count: \(captureSession.outputs.count)")
+        
+        guard !isSessionRunning else {
+            print("⚠️ SmartyPants: Camera session already running")
+            return
+        }
+        
+        if !captureSession.isRunning {
+            print("▶️ SmartyPants: Session not running - attempting to start...")
+            DispatchQueue.global(qos: .background).async { [weak self] in
+                print("🔄 SmartyPants: Starting session on background queue...")
+                self?.captureSession.startRunning()
+                
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.isSessionRunning = self.captureSession.isRunning
+                    print("📊 SmartyPants: Post-start session status:")
+                    print("   - isRunning: \(self.captureSession.isRunning)")
+                    print("   - isSessionRunning flag: \(self.isSessionRunning)")
+                    
+                    if self.captureSession.isRunning {
+                        print("✅ SmartyPants: Camera session started successfully!")
+                    } else {
+                        print("❌ SmartyPants: CRITICAL - Session failed to start!")
+                    }
+                    
+                    // Debug check after delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.debugSessionStatus()
+                    }
+                }
+            }
+        } else {
+            print("⚠️ SmartyPants: Session already running")
+            isSessionRunning = true
+            debugSessionStatus()
+        }
+        print("🚀 === SMARTYPANTS START CAMERA REQUEST COMPLETED ===")
+    }
+    
+    private func stopCamera() {
+        print("🛑 === SMARTYPANTS STOP CAMERA REQUESTED ===")
+        print("📊 SmartyPants: Pre-stop session status:")
+        print("   - isRunning: \(captureSession.isRunning)")
+        print("   - isSessionRunning flag: \(isSessionRunning)")
+        
+        if captureSession.isRunning {
+            print("⏹️ SmartyPants: Stopping camera session...")
+            captureSession.stopRunning()
+            isSessionRunning = false
+            print("🛑 SmartyPants: Camera session stopped")
+        } else {
+            print("⚠️ SmartyPants: Session was already stopped")
+            isSessionRunning = false
+        }
+        
+        print("📊 SmartyPants: Post-stop session status:")
+        print("   - isRunning: \(captureSession.isRunning)")
+        print("   - isSessionRunning flag: \(isSessionRunning)")
+        print("🛑 === SMARTYPANTS STOP CAMERA COMPLETED ===")
+    }
+    
+    private func debugSessionStatus() {
+        print("🔍 === SMARTYPANTS CAMERA DEBUG STATUS ===")
+        print("📊 SmartyPants: Session Status:")
+        print("   - isRunning: \(captureSession.isRunning)")
+        print("   - isSessionRunning flag: \(isSessionRunning)")
+        print("   - sessionPreset: \(captureSession.sessionPreset.rawValue)")
+        print("   - inputs count: \(captureSession.inputs.count)")
+        print("   - outputs count: \(captureSession.outputs.count)")
+        
+        print("📋 SmartyPants: Detailed Input Information:")
+        for (index, input) in captureSession.inputs.enumerated() {
+            print("   Input \(index): \(type(of: input))")
+            if let deviceInput = input as? AVCaptureDeviceInput {
+                print("      Device: \(deviceInput.device.localizedName)")
+                print("      Connected: \(deviceInput.device.isConnected)")
+                print("      Position: \(deviceInput.device.position.rawValue)")
+            }
+        }
+        
+        print("📤 SmartyPants: Detailed Output Information:")
+        for (index, output) in captureSession.outputs.enumerated() {
+            print("   Output \(index): \(type(of: output))")
+            if let videoOutput = output as? AVCaptureVideoDataOutput {
+                if let connection = videoOutput.connection(with: .video) {
+                    print("      Connection active: \(connection.isActive)")
+                    print("      Connection enabled: \(connection.isEnabled)")
+                    print("      Video rotation: \(connection.videoRotationAngle)°")
+                } else {
+                    print("      ❌ No video connection!")
+                }
+            }
+        }
+        
+        print("🔧 SmartyPants: Session Capabilities:")
+        print("   - canSetSessionPreset(hd1280x720): \(captureSession.canSetSessionPreset(.hd1280x720))")
+        print("   - canSetSessionPreset(high): \(captureSession.canSetSessionPreset(.high))")
+        print("   - canSetSessionPreset(medium): \(captureSession.canSetSessionPreset(.medium))")
+        
+        print("🔍 === SMARTYPANTS DEBUG STATUS COMPLETE ===")
+    }
 
     // MARK: - Main processing entry
     // Call this with a CVPixelBuffer from your camera capture pipeline.
     func processFrame(_ pixelBuffer: CVPixelBuffer) {
-        guard let model = mlModel else { return }
+        guard let model = mlModel else { 
+            print("🎭 SmartyPants: No ML model available for processing")
+            return 
+        }
 
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval, !processing else { return }
@@ -146,8 +409,12 @@ final class SmartyPantsContainerView: UIView {
 
         detectionQueue.async { [weak self] in
             guard let self = self else { return }
+            
+            print("🎭 SmartyPants: Processing frame...")
+            
             // Convert buffer -> MLMultiArray input
             guard let inputArray = self.pixelBufferToMLMultiArray(pixelBuffer, width: 640, height: 640) else {
+                print("❌ SmartyPants: Failed to convert pixel buffer to MLMultiArray")
                 DispatchQueue.main.async { self.processing = false }
                 return
             }
@@ -384,7 +651,7 @@ final class SmartyPantsContainerView: UIView {
             // Composite or top-1
             var outImage: UIImage?
             if self.debugShowTopMask, let top = masksAlpha.first {
-                outImage = self.composeSingleMask(top, color: colors.first ?? .red, canvasW: canvasW, canvasH: canvasH)
+                outImage = self.composeSingleMask(top, color: colors.first ?? .cyan, canvasW: canvasW, canvasH: canvasH)
             } else {
                 outImage = self.compositeMasksAdditive(masksAlpha: masksAlpha, colors: colors, canvasW: canvasW, canvasH: canvasH)
             }
@@ -591,15 +858,49 @@ final class SmartyPantsContainerView: UIView {
         return arr
     }
 
-    // Color palette
+    // Color palette - Cyan theme
     private func colorForIndex(_ idx: Int) -> UIColor {
         let palette: [UIColor] = [
-            UIColor(red: 0.95, green: 0.3, blue: 0.25, alpha: 1),
-            UIColor(red: 0.25, green: 0.6, blue: 0.95, alpha: 1),
-            UIColor(red: 0.2, green: 0.8, blue: 0.4, alpha: 1),
-            UIColor(red: 0.9, green: 0.6, blue: 0.2, alpha: 1),
-            UIColor(red: 0.6, green: 0.3, blue: 0.8, alpha: 1)
+            UIColor.cyan,                                          // Primary cyan
+            UIColor(red: 0.0, green: 0.8, blue: 0.8, alpha: 1),  // Bright cyan
+            UIColor(red: 0.0, green: 0.6, blue: 0.8, alpha: 1),  // Blue-cyan
+            UIColor(red: 0.2, green: 0.9, blue: 0.9, alpha: 1),  // Light cyan
+            UIColor(red: 0.0, green: 0.7, blue: 0.7, alpha: 1)   // Medium cyan
         ]
         return palette[idx % palette.count].withAlphaComponent(0.9)
+    }
+}
+
+// MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
+extension SmartyPantsContainerView: AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        // Log first few frames to confirm camera is working
+        frameCount += 1
+        
+        if frameCount <= 5 {
+            print("📹 SmartyPants: Frame \(frameCount) received from camera")
+            if frameCount == 1 {
+                print("✅ SMARTYPANTS CAMERA IS WORKING - receiving video frames!")
+            }
+        } else if frameCount == 6 {
+            print("📹 SmartyPants: Camera working normally - suppressing frame logs...")
+        }
+        
+        // Extract pixel buffer
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            print("❌ SmartyPants: Failed to extract pixel buffer from sample")
+            return
+        }
+        
+        // Log pixel buffer details for first few frames
+        if frameCount <= 2 {
+            let width = CVPixelBufferGetWidth(pixelBuffer)
+            let height = CVPixelBufferGetHeight(pixelBuffer)
+            let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
+            print("📊 SmartyPants: Pixel buffer info: \(width)x\(height), format: \(format)")
+        }
+        
+        // Process the frame
+        processFrame(pixelBuffer)
     }
 }
