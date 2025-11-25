@@ -14,7 +14,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var processInterval: TimeInterval = 0.07
     var scoreThreshold: Float = 0.25
     var active: Bool = false
-    var debugShowTop1: Bool = true
+    var debugShowTop1: Bool = false // Changed to false to show all detections by default
     var debugSaveImages: Bool = true
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -614,6 +614,7 @@ final class SmartyPantsContainerView: UIView {
                 for i in 0..<HW {
                     let v = maskFloat[i]
                     minV = min(minV, v); maxV = max(maxV, v)
+                    //kishore
                     if v > 0.5 { validPixels += 1 } else { maskFloat[i] = 0 }
                 }
                 let coveragePct = Float(validPixels) / Float(HW) * 100.0
@@ -638,9 +639,10 @@ final class SmartyPantsContainerView: UIView {
                 }
 
                 masksAlpha.append(alphaCG)
-                colors.append(self.colorForIndex(idx))
+                let assignedColor = self.colorForIndex(idx)
+                colors.append(assignedColor)
                 let formattedCoverage = String(format: "%.1f", coveragePct)
-                print("Added mask pred \(c.pred) cov \(formattedCoverage)%")
+                print("✅ Added mask pred \(c.pred) as detection \(idx) - coverage \(formattedCoverage)%, color: \(assignedColor)")
             }
 
             Aptr.deallocate()
@@ -648,12 +650,16 @@ final class SmartyPantsContainerView: UIView {
             let frameTime = CFAbsoluteTimeGetCurrent() - frameStart
             print("Frame total time: \(Int(frameTime * 1000))ms, masks: \(masksAlpha.count)")
 
-            // Composite or top-1
+            // Always use additive composite to show all detections in different colors
             var outImage: UIImage?
-            if self.debugShowTopMask, let top = masksAlpha.first {
-                outImage = self.composeSingleMask(top, color: colors.first ?? .cyan, canvasW: canvasW, canvasH: canvasH)
+            if self.debugShowTopMask && masksAlpha.count == 1, let top = masksAlpha.first {
+                print("Using single mask composite (only 1 detection)")
+                outImage = self.composeSingleMask(top, color: colors.first ?? .red, canvasW: canvasW, canvasH: canvasH)
+                print("Single mask composite result: \(outImage != nil)")
             } else {
+                print("Using additive composite for \(masksAlpha.count) detections")
                 outImage = self.compositeMasksAdditive(masksAlpha: masksAlpha, colors: colors, canvasW: canvasW, canvasH: canvasH)
+                print("Additive composite result: \(outImage != nil)")
             }
 
             DispatchQueue.main.async {
@@ -741,37 +747,73 @@ final class SmartyPantsContainerView: UIView {
         return cg
     }
 
-    // Composite masks additively onto transparent canvas
+    // Composite masks with distinct colors on opaque background
     private func compositeMasksAdditive(masksAlpha: [CGImage], colors: [UIColor], canvasW: Int, canvasH: Int) -> UIImage? {
-        guard masksAlpha.count == colors.count else { return nil }
+        guard masksAlpha.count == colors.count else { 
+            print("compositeMasksAdditive: count mismatch - masks:\(masksAlpha.count) colors:\(colors.count)")
+            return nil 
+        }
+        guard masksAlpha.count > 0 else {
+            print("compositeMasksAdditive: no masks to composite")
+            return nil
+        }
+        
         let scale = UIScreen.main.scale
         let size = CGSize(width: CGFloat(canvasW)/scale, height: CGFloat(canvasH)/scale)
-        UIGraphicsBeginImageContextWithOptions(size, false, scale)
-        guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return nil }
-        ctx.clear(CGRect(origin: .zero, size: size))
+        print("compositeMasksAdditive: canvas \(canvasW)x\(canvasH), UI size \(size), scale \(scale)")
+        
+        // Use opaque context with dark background
+        UIGraphicsBeginImageContextWithOptions(size, true, scale)
+        guard let ctx = UIGraphicsGetCurrentContext() else { 
+            UIGraphicsEndImageContext()
+            print("compositeMasksAdditive: failed to get graphics context")
+            return nil 
+        }
+        
+        // Fill with dark semi-transparent background to show unmasked areas
+        ctx.setFillColor(UIColor.black.withAlphaComponent(0.3).cgColor)
+        ctx.fill(CGRect(origin: .zero, size: size))
+        
+        // Composite each mask with distinct color
         for i in 0..<masksAlpha.count {
             let alphaImg = masksAlpha[i]
             let color = colors[i]
+            print("compositeMasksAdditive: compositing mask \(i) - \(alphaImg.width)x\(alphaImg.height), color \(color)")
             ctx.saveGState()
-            // clip to alpha mask and fill with color
+            
+            // Use blend mode to combine masks properly
+            ctx.setBlendMode(.normal)
             ctx.clip(to: CGRect(x: 0, y: 0, width: size.width, height: size.height), mask: alphaImg)
             ctx.setFillColor(color.cgColor)
-            ctx.setAlpha(1.0)
             ctx.fill(CGRect(x: 0, y: 0, width: size.width, height: size.height))
             ctx.restoreGState()
         }
+        
         let out = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
+        print("compositeMasksAdditive: result \(out != nil), size: \(out?.size ?? .zero)")
         return out
     }
 
-    // Compose single mask (top-1) as colored image
+    // Compose single mask (top-1) as colored image with opaque background
     private func composeSingleMask(_ alpha: CGImage, color: UIColor, canvasW: Int, canvasH: Int) -> UIImage? {
         let scale = UIScreen.main.scale
         let size = CGSize(width: CGFloat(canvasW)/scale, height: CGFloat(canvasH)/scale)
-        UIGraphicsBeginImageContextWithOptions(size, false, scale)
-        guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return nil }
-        ctx.clear(CGRect(origin: .zero, size: size))
+        print("composeSingleMask: canvas \(canvasW)x\(canvasH), UI size \(size), scale \(scale)")
+        print("composeSingleMask: mask \(alpha.width)x\(alpha.height), color \(color)")
+        
+        // Use opaque context with background
+        UIGraphicsBeginImageContextWithOptions(size, true, scale)
+        guard let ctx = UIGraphicsGetCurrentContext() else { 
+            UIGraphicsEndImageContext()
+            print("composeSingleMask: failed to get graphics context")
+            return nil 
+        }
+        
+        // Fill with dark semi-transparent background to show unmasked areas
+        ctx.setFillColor(UIColor.black.withAlphaComponent(0.3).cgColor)
+        ctx.fill(CGRect(origin: .zero, size: size))
+        
         ctx.saveGState()
         ctx.clip(to: CGRect(x: 0, y: 0, width: size.width, height: size.height), mask: alpha)
         ctx.setFillColor(color.cgColor)
@@ -779,6 +821,7 @@ final class SmartyPantsContainerView: UIView {
         ctx.restoreGState()
         let out = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
+        print("composeSingleMask: result \(out != nil), size: \(out?.size ?? .zero)")
         return out
     }
 
@@ -858,16 +901,25 @@ final class SmartyPantsContainerView: UIView {
         return arr
     }
 
-    // Color palette - Cyan theme
+    // Color palette - Distinct RGB colors for different detections
     private func colorForIndex(_ idx: Int) -> UIColor {
         let palette: [UIColor] = [
-            UIColor.cyan,                                          // Primary cyan
-            UIColor(red: 0.0, green: 0.8, blue: 0.8, alpha: 1),  // Bright cyan
-            UIColor(red: 0.0, green: 0.6, blue: 0.8, alpha: 1),  // Blue-cyan
-            UIColor(red: 0.2, green: 0.9, blue: 0.9, alpha: 1),  // Light cyan
-            UIColor(red: 0.0, green: 0.7, blue: 0.7, alpha: 1)   // Medium cyan
+            UIColor.red,                                           // Pure red - Detection 1
+            UIColor.green,                                         // Pure green - Detection 2  
+            UIColor.blue,                                          // Pure blue - Detection 3
+            UIColor.yellow,                                        // Pure yellow - Detection 4
+            UIColor.magenta,                                       // Pure magenta - Detection 5
+            UIColor.cyan,                                          // Pure cyan - Detection 6
+            UIColor.orange,                                        // Orange - Detection 7
+            UIColor(red: 1.0, green: 0.0, blue: 0.5, alpha: 1.0), // Hot pink - Detection 8
+            UIColor(red: 0.5, green: 1.0, blue: 0.0, alpha: 1.0), // Lime - Detection 9
+            UIColor(red: 0.0, green: 0.5, blue: 1.0, alpha: 1.0), // Sky blue - Detection 10
+            UIColor(red: 1.0, green: 0.5, blue: 0.0, alpha: 1.0), // Orange-red - Detection 11
+            UIColor(red: 0.5, green: 0.0, blue: 1.0, alpha: 1.0)  // Purple - Detection 12
         ]
-        return palette[idx % palette.count].withAlphaComponent(0.9)
+        let color = palette[idx % palette.count]
+        print("Detection \(idx) assigned color: \(color)")
+        return color
     }
 }
 
