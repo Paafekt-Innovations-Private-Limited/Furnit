@@ -290,10 +290,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             guard let maskFloat = self.maskFloatBuf else { DispatchQueue.main.async { self.processing = false }; return }
 
             // Planar8 buffers for resizing
-//            let canvasW = Int(round(self.bounds.width * UIScreen.main.scale))
-            let canvasW = Int(round(self.bounds.width))
-//            let canvasH = Int(round(self.bounds.height * UIScreen.main.scale))
-            let canvasH = Int(round(self.bounds.height))
+            let scale = UIScreen.main.scale
+            let canvasW = Int(round(self.bounds.width * UIScreen.main.scale))
+//            let canvasW = Int(round(self.bounds.width))
+            let canvasH = Int(round(self.bounds.height * UIScreen.main.scale))
+//            let canvasH = Int(round(self.bounds.height))
             let dstCount = canvasW * canvasH
             if self.planar8BufCount < max(HW, dstCount) {
                 self.planar8BufA?.deallocate()
@@ -404,11 +405,35 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     localMaskFloat[i] = s[i]
                 }
 
+                // Debug: Print localMaskFloat as 40x40 rectangle with pixel values
+                print("🔍 LOCALMASKFLOAT DEBUG - Candidate \(idx) as 40x40 grid:")
+                print("  Source: \(self.protoW)x\(self.protoH) = \(localMaskFloat.count) pixels")
+                let gridSize = 40
+                let stepX = max(1, self.protoW / gridSize)
+                let stepY = max(1, self.protoH / gridSize)
+                for row in 0..<gridSize {
+                    var rowStr = "  "
+                    for col in 0..<gridSize {
+                        let x = min(col * stepX, self.protoW - 1)
+                        let y = min(row * stepY, self.protoH - 1)
+                        let pixelIdx = y * self.protoW + x
+                        if pixelIdx < localMaskFloat.count {
+                            let val = localMaskFloat[pixelIdx]
+                            rowStr += String(format: "%.2f ", val)
+                        } else {
+                            rowStr += "---- "
+                        }
+                    }
+                    print(rowStr)
+                }
+                print("  Candidate \(idx) localMaskFloat stats - count: \(localMaskFloat.count)")
+                print("---")
+
                 // 3) REJECT SATURATED MASKS EARLY
                 let mean = localMaskFloat.reduce(0, +) / Float(HW)
                 var validPixels = 0
                 for i in 0..<HW { 
-                    if localMaskFloat[i] > 0.5 { validPixels += 1 }
+                    if localMaskFloat[i] > 0.3 { validPixels += 1 }
                 }
                 let coverage = Float(validPixels) / Float(HW)
                 
@@ -425,6 +450,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let maxCov = HW * 100 / 100  // Increased max coverage - was too restrictive
                 
                 print("Candidate \(idx): score=\(String(format: "%.3f", cand.score)), coverage=\(String(format: "%.1f", coveragePct))%, validPixels=\(validPixels), minCov=\(minCov), maxCov=\(maxCov)")
+                
                 
                 if validPixels > minCov && validPixels <= maxCov {
                     if cand.score > bestScore {
@@ -470,7 +496,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //                        if val > 0.8 { row += "█" }       // Very high confidence
 //                        else if val > 0.6 { row += "▓" }  // High confidence  
 //                        else
-                        if val > 0.5 { row += "▒" }  // Medium confidence
+                        if val > 0.3 { row += "▒" }  // Medium confidence
 //                        if val > 0.0 { row += "val: \(val)" }  // Medium confidence
 //                        else if val > 0.2 { row += "░" }  // Low confidence
                         else { row += "·" }               // Background
@@ -493,7 +519,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
                 
                 // Convert to display image
-                let displayMask = self.addTightBboxToMask(cleanMask, width: self.protoW, height: self.protoH)
+//                let displayMask = self.addTightBboxToMask(cleanMask, width: self.protoW, height: self.protoH)
+                let displayMask = cleanMask
                 
                 // Debug: Print displayMask pixel values in 20x20 grid (sampling every 8th pixel)
                 print("📊 DISPLAYMASK DEBUG - 20x20 grid (sampling every 8th pixel):")
@@ -656,7 +683,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         for y in 0..<height {
             for x in 0..<width {
                 let idx = y * width + x
-                if maskFloat[idx] > 0.4 {
+                //kish
+                if maskFloat[idx] > 0.3 {
                     minX = min(minX, x)
                     maxX = max(maxX, x)
                     minY = min(minY, y)
@@ -787,7 +815,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private func compositeMaskWithBbox(masksAlpha: [CGImage], canvasW: Int, canvasH: Int) -> UIImage? {
         guard masksAlpha.count > 0 else { return nil }
         let size = CGSize(width: CGFloat(canvasW), height: CGFloat(canvasH))
-        UIGraphicsBeginImageContextWithOptions(size, false, 1)
+        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return nil }
         ctx.clear(CGRect(origin: .zero, size: size))
         
@@ -827,7 +855,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // Create black background when no masks are found
     private func createBlackBackground(canvasW: Int, canvasH: Int) -> UIImage? {
         let size = CGSize(width: CGFloat(canvasW), height: CGFloat(canvasH))
-        UIGraphicsBeginImageContextWithOptions(size, false, 1)
+        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return nil }
         
         // Fill entire background with black
@@ -850,7 +878,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private func createBinaryMask(masksAlpha: [CGImage], canvasW: Int, canvasH: Int) -> UIImage? {
         guard masksAlpha.count > 0 else { return nil }
         let size = CGSize(width: CGFloat(canvasW), height: CGFloat(canvasH))
-        UIGraphicsBeginImageContextWithOptions(size, false, 1)
+        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return nil }
         
         // Fill entire background with black
@@ -886,7 +914,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //        let scale = UIScreen.main.scale
 //        let size = CGSize(width: CGFloat(canvasW)/scale, height: CGFloat(canvasH)/scale)
         let size = CGSize(width: CGFloat(canvasW), height: CGFloat(canvasH))
-        UIGraphicsBeginImageContextWithOptions(size, false, 1)
+        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return nil }
         ctx.clear(CGRect(origin: .zero, size: size))
         for (index, alphaImg) in masksAlpha.enumerated() {
@@ -914,40 +942,83 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return out
     }
 
-    // Create transparent overlay with threshold: >0.3 = red overlay (detected objects), ≤0.3 = transparent (background)
+    // Create minimal border overlay to show detection is active
     private func createTransparentOverlay(masksAlpha: [CGImage], canvasW: Int, canvasH: Int) -> UIImage? {
         guard masksAlpha.count > 0 else { return nil }
         let size = CGSize(width: CGFloat(canvasW), height: CGFloat(canvasH))
-        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return nil }
         
         // Start with fully transparent background
-        ctx.clear(CGRect(origin: .zero, size: size))
+        ctx.clear(CGRect(x: 0, y: 0, width: size.width, height: size.height))
         
-        for alphaImg in masksAlpha {
-            // Create a thresholded version of the mask
-            guard let thresholdedMask = self.createSimpleThresholdMask(from: alphaImg) else { continue }
-            
+        // Apply each mask to create opaque areas (showing real camera pixels)
+        for (index, alphaImg) in masksAlpha.enumerated() {
             ctx.saveGState()
-            ctx.clip(to: CGRect(x: 0, y: 0, width: size.width, height: size.height), mask: thresholdedMask)
             
-            // Fill areas where original pixels > 0.3 with colored overlay (DETECTED OBJECTS)
-            ctx.setFillColor(UIColor.red.withAlphaComponent(0.8).cgColor)
+            // Use the alpha mask to clip the drawing area
+            ctx.clip(to: CGRect(x: 0, y: 0, width: size.width, height: size.height), mask: alphaImg)
+            
+            // Fill the masked area with fully opaque white (this will show the camera through)
+            ctx.setFillColor(UIColor.white.cgColor)
             ctx.fill(CGRect(x: 0, y: 0, width: size.width, height: size.height))
             
             ctx.restoreGState()
+            
+            print("Applied mask \(index) for opaque cutout")
         }
         
         let out = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
 
         if let image = out {
-            print("Threshold overlay created (>0.3=red_objects, ≤0.3=transparent_background): \(image.size)")
+            print("Opaque cutout mask created: \(image.size), masks applied: \(masksAlpha.count)")
         } else {
-            print("Failed to create threshold overlay")
+            print("Failed to create opaque cutout mask")
         }
 
         return out
+    }
+    
+    // Inverted threshold: pixels > 0.05 become black (transparent holes), pixels ≤ 0.05 become white (show overlay)
+    private func createInvertedThresholdMask(from sourceImage: CGImage) -> CGImage? {
+        let width = sourceImage.width
+        let height = sourceImage.height
+        
+        guard let dataProvider = sourceImage.dataProvider,
+              let pixelData = dataProvider.data else { return nil }
+        
+        let data = CFDataGetBytePtr(pixelData)
+        let dataLength = CFDataGetLength(pixelData)
+        
+        let outputData = UnsafeMutablePointer<UInt8>.allocate(capacity: dataLength)
+        defer { outputData.deallocate() }
+        
+        let thresholdByte: UInt8 = 13  // 0.05 * 255 = 12.55 ≈ 13
+        
+        var opaquePixels = 0
+        var transparentPixels = 0
+        
+        for i in 0..<dataLength {
+            let pixelValue = data?[i] ?? 0
+            if pixelValue > thresholdByte {
+                outputData[i] = 0    // Will be transparent holes (show camera) - DETECTED OBJECTS
+                transparentPixels += 1
+            } else {
+                outputData[i] = 255  // Will be opaque (show green overlay) - BACKGROUND
+                opaquePixels += 1
+            }
+        }
+        
+        print("🔄 Inverted threshold result: detected_objects(transparent)=\(transparentPixels), background(green_overlay)=\(opaquePixels)")
+        
+        guard let provider = CGDataProvider(data: CFDataCreate(nil, outputData, dataLength)) else { return nil }
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+        
+        return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8, 
+                      bytesPerRow: width, space: colorSpace, bitmapInfo: bitmapInfo, 
+                      provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
     
     // Flipped threshold: pixels > 0.3 become white (will show overlay), pixels ≤ 0.3 become black (transparent)
@@ -964,7 +1035,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let outputData = UnsafeMutablePointer<UInt8>.allocate(capacity: dataLength)
         defer { outputData.deallocate() }
         
-        let thresholdByte: UInt8 = 76  // 0.3 * 255 = 76.5 ≈ 76
+        let thresholdByte: UInt8 = 13  // 0.05 * 255 = 12.55 ≈ 13
         
         var opaquePixels = 0
         var transparentPixels = 0
@@ -994,7 +1065,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // Create fully transparent background when no masks are found
     private func createTransparentBackground(canvasW: Int, canvasH: Int) -> UIImage? {
         let size = CGSize(width: CGFloat(canvasW), height: CGFloat(canvasH))
-        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return nil }
         
         // Fill entire background with transparent (this creates a fully transparent image)
@@ -1015,7 +1086,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // Debug helper: fill entire canvas with a solid red image
     private func makeSolidRedOverlay(canvasW: Int, canvasH: Int) -> UIImage? {
         let size = CGSize(width: CGFloat(canvasW), height: CGFloat(canvasH))
-        UIGraphicsBeginImageContextWithOptions(size, false, 1)
+        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
         guard let ctx = UIGraphicsGetCurrentContext() else { UIGraphicsEndImageContext(); return nil }
         ctx.setFillColor(UIColor.red.withAlphaComponent(0.5).cgColor)
         ctx.fill(CGRect(origin: .zero, size: size))
