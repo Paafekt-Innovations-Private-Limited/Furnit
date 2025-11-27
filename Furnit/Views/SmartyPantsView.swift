@@ -332,7 +332,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 candidates.append((pred: p, score: score, coeffs: coeffs))
             }
 
-            candidates.sort { $0.score > $1.score }
+            candidates = candidates.filter { $0.score >= 0.2 && $0.score <= 1.0 }.sorted { $0.score > $1.score }
             let topN = min(12, candidates.count)
             let toDecode = Array(candidates.prefix(topN))
             print("Found \(candidates.count) candidates, decoding top \(topN)")
@@ -345,7 +345,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 for k in 0..<K { Aptr[base + k] = protoBuf[k * HW + i] }
             }
 
-            // Debug: print candidate scores and show mask patterns
+            // Debug: print candidate scores and show mask patterns, reject saturated masks early
+            var validCandidates: [(Int, (pred: Int, score: Float, coeffs: [Float]))] = []
             for (i, cand) in toDecode.enumerated() {
                 // Calculate mask for this candidate
                 var coeffVec = cand.coeffs
@@ -359,28 +360,77 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     s[j] = 1.0 / (1.0 + expNegS[j])
                 }
                 
+                // REJECT SATURATED MASKS EARLY (moved from later)
+                let mean = s.reduce(0, +) / Float(HW)
+                
                 var validPixels = 0
                 for j in 0..<HW { 
-                    if s[j] > 0.5 { validPixels += 1 }
+                    if s[j] > 0.5 { validPixels += 1 }  // MINIMAL THRESHOLD (just noise filter)
                 }
-                let coverage = Float(validPixels) / Float(HW) * 100.0
+                let coverage = Float(validPixels) / Float(HW)
                 
-                print("Candidate \(i): score=\(String(format: "%.3f", cand.score)) pred=\(cand.pred) validPixels=\(validPixels) coverage=\(String(format: "%.1f", coverage))%")
+                // Reject if mean > 0.9 or coverage > 0.9 (saturated/whole scene masks)
+//                if mean > 0.5 || coverage > 0.9 || mean < 0.1 || coverage < 0.1 {
+//                    print("🚫 Rejected saturated mask \(i): score=\(String(format: "%.3f", cand.score)), mean=\(String(format: "%.3f", mean)), coverage=\(String(format: "%.3f", coverage))")
+//                    continue
+//                }
                 
-                // Print mask in rectangular format (showing every 8th pixel for readability)
-                print("Mask \(i) as \(self.protoW)x\(self.protoH) grid (sampling every 8th pixel):")
-                let step = 8  // Sample every 8th pixel to make output readable
-                for y in stride(from: 0, to: self.protoH, by: step) {
-                    var row = ""
-                    for x in stride(from: 0, to: self.protoW, by: step) {
+                validCandidates.append((i, cand))
+                
+                // Print candidate mask in 20x20 grid (sampling every 8th pixel)
+                print("🎯 Candidate \(i) mask as 20x20 grid (sampling every 8th pixel):")
+                let candidateGridSize = 20
+                let candidateStepX = self.protoW / candidateGridSize
+                let candidateStepY = self.protoH / candidateGridSize
+                for row in 0..<candidateGridSize {
+                    var rowStr = "  "
+                    for col in 0..<candidateGridSize {
+                        let x = col * candidateStepX
+                        let y = row * candidateStepY
                         let pixelIdx = y * self.protoW + x
-                        let val = s[pixelIdx]
-                        row += String(format: "%.2f ", val)
+                        if pixelIdx < s.count {
+                            let val = s[pixelIdx]
+                            rowStr += String(format: "%.3f ", val)  // Show actual value
+                        } else {
+                            rowStr += "---- "                       // Out of bounds
+                        }
                     }
-                    print(row)
+                    print(rowStr)
                 }
+                print("  Score: \(String(format: "%.3f", cand.score)), Mean: \(String(format: "%.3f", mean)), Coverage: \(String(format: "%.3f", coverage))")
                 print("---")
+                
+//                let coveragePct = coverage * 100.0
+                
+                // Only consider masks with reasonable coverage (not too sparse, not too dense)
+//                let minCov = HW * 2 / 100
+//                let maxCov = HW * 70 / 100  // Increased max coverage - was too restrictive
+//                
+//                print("Candidate \(i): score=\(String(format: "%.3f", cand.score)) pred=\(cand.pred) validPixels=\(validPixels) coverage=\(String(format: "%.1f", coveragePct))%")
+                
+//                if validPixels > minCov && validPixels <= maxCov {
+//                    validCandidates.append((i, cand))
+//                    print("✅ Accepted candidate \(i) for global mask")
+//                    
+//                    // Print mask in rectangular format (showing every 8th pixel for readability)
+//                    print("Mask \(i) as \(self.protoW)x\(self.protoH) grid (sampling every 8th pixel):")
+//                    let step = 8  // Sample every 8th pixel to make output readable
+//                    for y in stride(from: 0, to: self.protoH, by: step) {
+//                        var row = ""
+//                        for x in stride(from: 0, to: self.protoW, by: step) {
+//                            let pixelIdx = y * self.protoW + x
+//                            let val = s[pixelIdx]
+//                            row += String(format: "%.2f ", val)
+//                        }
+//                        print(row)
+//                    }
+//                    print("---")
+//                } else {
+//                    print("❌ Rejected candidate \(i) - coverage out of range (\(String(format: "%.1f", coveragePct))%)")
+//                }
             }
+            
+            print("Valid candidates after saturation filtering: \(validCandidates.count) out of \(toDecode.count)")
 
             var masksAlpha: [CGImage] = []
             
@@ -392,101 +442,70 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             // Global mask to accumulate strongest pixels from all candidates
             var globalMask = [Float](repeating: 0.0, count: HW)
 
-            for (idx, cand) in toDecode.enumerated() {
+            for (originalIdx, cand) in validCandidates {
                 var coeffVec = cand.coeffs
                 var s = [Float](repeating: 0, count: HW)
                 cblas_sgemv(CblasRowMajor, CblasNoTrans, Int32(HW), Int32(K), 1.0, Aptr, Int32(K), &coeffVec, 1, 0, &s, 1)
-                // sigmoid: s = 1/(1+exp(-s))
-                var negS = s.map { -$0 }
-                var expNegS = [Float](repeating: 0, count: HW)
-                vvexpf(&expNegS, &negS, [Int32(HW)])
                 
-                // Use local mask buffer for this iteration
-                var localMaskFloat = [Float](repeating: 0, count: HW)
+                // 🔍 DEBUG: Check raw BLAS output values
+                let sampleIndices = [0, HW/4, HW/2, 3*HW/4, HW-1]
+                print("🔍 Raw BLAS output for candidate \(originalIdx):")
+                for sampleIdx in sampleIndices {
+                    if sampleIdx < HW {
+                        print("  s[\(sampleIdx)] = \(String(format: "%.3f", s[sampleIdx]))")
+                    }
+                }
+                let sMin = s.min() ?? 0.0
+                let sMax = s.max() ?? 0.0
+                let sAvg = s.reduce(0, +) / Float(HW)
+                print("  s range: [\(String(format: "%.3f", sMin)), \(String(format: "%.3f", sMax))], avg: \(String(format: "%.3f", sAvg))")
+                
+                // Skip normalization and sigmoid - use raw values with simple clipping
+                print("  Using raw BLAS values (no normalization or sigmoid)...")
+                
                 for i in 0..<HW { 
-                    s[i] = 1.0 / (1.0 + expNegS[i])
-                    localMaskFloat[i] = s[i]
-                    
-                    // 🎯 YOUR LOGIC: Accumulate strongest pixels across all candidates
+                    // 🎯 Accumulate strongest pixels across all valid candidates
                     if s[i] > globalMask[i] {
                         globalMask[i] = s[i]
                     }
                 }
-
-                // Debug: Print localMaskFloat as 40x40 rectangle with pixel values
-                print("🔍 LOCALMASKFLOAT DEBUG - Candidate \(idx) as 40x40 grid:")
-                print("  Source: \(self.protoW)x\(self.protoH) = \(localMaskFloat.count) pixels")
-                let gridSize = 20
-                let stepX = max(1, self.protoW / gridSize)
-                let stepY = max(1, self.protoH / gridSize)
-                for row in 0..<gridSize {
-                    var rowStr = "  "
-                    for col in 0..<gridSize {
-                        let x = min(col * stepX, self.protoW - 1)
-                        let y = min(row * stepY, self.protoH - 1)
-                        let pixelIdx = y * self.protoW + x
-                        if pixelIdx < localMaskFloat.count {
-                            let val = localMaskFloat[pixelIdx]
-                            rowStr += String(format: "%.2f ", val)
-                        } else {
-                            rowStr += "---- "
-                        }
+                
+                // 🔍 DEBUG: Check final clamped values
+                print("🔍 Clamped BLAS output for candidate \(originalIdx):")
+                for sampleIdx in sampleIndices {
+                    if sampleIdx < HW {
+                        print("  clamped_s[\(sampleIdx)] = \(String(format: "%.3f", s[sampleIdx]))")
                     }
-                    print(rowStr)
                 }
-                print("  Candidate \(idx) localMaskFloat stats - count: \(localMaskFloat.count)")
-                print("---")
+                let clampedMin = s.min() ?? 0.0
+                let clampedMax = s.max() ?? 0.0
+                let clampedAvg = s.reduce(0, +) / Float(HW)
+                print("  clamped range: [\(String(format: "%.3f", clampedMin)), \(String(format: "%.3f", clampedMax))], avg: \(String(format: "%.3f", clampedAvg))")
 
-                // 3) REJECT SATURATED MASKS EARLY
-                let mean = localMaskFloat.reduce(0, +) / Float(HW)
-                
-                // Count ALL pixels with any confidence - they're all part of the same mask
-                var validPixels = 0
-                for i in 0..<HW { 
-                    if localMaskFloat[i] > 0.01 { validPixels += 1 }  // 🎯 MINIMAL THRESHOLD (just noise filter)
-                }
-                let coverage = Float(validPixels) / Float(HW)
-                
-                // Reject if mean > 0.9 or coverage > 0.9 (saturated/whole scene masks)
-                if mean > 0.9 || coverage > 0.9 {
-                    print("🚫 Rejected saturated mask \(idx): mean=\(String(format: "%.3f", mean)), coverage=\(String(format: "%.3f", coverage))")
-                    continue
-                }
-                
-                let coveragePct = coverage * 100.0
-                
-                // Only consider masks with reasonable coverage (not too sparse, not too dense)
-                let minCov = HW * 2 / 100
-                let maxCov = HW * 100 / 100  // Increased max coverage - was too restrictive
-                
-                print("Candidate \(idx): score=\(String(format: "%.3f", cand.score)), coverage=\(String(format: "%.1f", coveragePct))%, validPixels=\(validPixels), minCov=\(minCov), maxCov=\(maxCov)")
-                
-                
-                if validPixels > minCov && validPixels <= maxCov {
-                    if cand.score > bestScore {
-                        bestMask = localMaskFloat
-                        bestScore = cand.score
-                        bestCandidateIdx = idx
-                        print("✅ New best mask: candidate \(idx), score: \(String(format: "%.3f", cand.score)), coverage: \(String(format: "%.1f", coveragePct))%")
-                    } else {
-                        print("⚡ Good coverage but lower score than current best (\(String(format: "%.3f", bestScore)))")
-                    }
-                } else {
-                    print("❌ Rejected - coverage out of range (\(String(format: "%.1f", coveragePct))%)")
+                // Update best candidate tracking
+                if cand.score > bestScore {
+                    bestMask = globalMask
+                    bestScore = cand.score
+                    bestCandidateIdx = originalIdx
+                    print("✅ New best mask: candidate \(originalIdx), score: \(String(format: "%.3f", cand.score))")
                 }
             }
             
             // After evaluating all candidates, use the accumulated global mask
             if globalMask.max() ?? 0.0 > 0.01 {  // Check if we have any meaningful pixels
                 print("Processing accumulated global mask with max value: \(globalMask.max() ?? 0.0)")
-                
+                // Apply sigmoid normalization to global mask
+                for i in 0..<HW {
+                    let rawVal = globalMask[i]
+                    globalMask[i] = 1.0 / (1.0 + exp(-rawVal))  // Sigmoid normalization
+                }
                 // Use the accumulated mask instead of single best mask
                 let finalMask = globalMask
                 
                 // Count meaningful pixels in global mask
                 var meaningfulPixels = 0
                 for i in 0..<HW {
-                    if globalMask[i] > 0.01 { meaningfulPixels += 1 }
+                    if globalMask[i] > 0.5 { meaningfulPixels += 1 }
                 }
                 let globalCoverage = Float(meaningfulPixels) / Float(HW) * 100.0
                 print("Global mask coverage: \(String(format: "%.1f", globalCoverage))%, meaningful pixels: \(meaningfulPixels)")
@@ -507,19 +526,41 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 
                 // Print final accumulated mask stats
                 print("Final Accumulated GlobalMask as \(self.protoW)x\(self.protoH) grid (showing every 8th pixel for readability):")
+                
                 let step = 8  // Sample every 8th pixel to make output readable
                 for y in stride(from: 0, to: self.protoH, by: step) {
                     var row = ""
                     for x in stride(from: 0, to: self.protoW, by: step) {
                         let pixelIdx = y * self.protoW + x
                         let val = cleanMask[pixelIdx]
-                        if val > 0.9 { row += "█" }       // Very high confidence
+                        if val > 0.5 { row += "█" }       // Very high confidence
 //                        else if val > 0.5 { row += "▓" }  // High confidence
 //                        else if val > 0.3 { row += "▒" }  // Medium confidence
 //                        else if val > 0.1 { row += "░" }  // Low confidence
                         else { row += "·" }               // Background
                     }
                     print(row)
+                }
+                
+                // Print GlobalMask VALUES in 20x20 grid format
+                print("🔢 GlobalMask VALUES - 20x20 grid:")
+                let valuesGridSize = 20
+                let valuesStepX = self.protoW / valuesGridSize
+                let valuesStepY = self.protoH / valuesGridSize
+                for row in 0..<valuesGridSize {
+                    var rowStr = "  "
+                    for col in 0..<valuesGridSize {
+                        let x = col * valuesStepX
+                        let y = row * valuesStepY
+                        let pixelIdx = y * self.protoW + x
+                        if pixelIdx < cleanMask.count {
+                            let val = cleanMask[pixelIdx]
+                            rowStr += String(format: "%.3f ", val)
+                        } else {
+                            rowStr += "---.- "
+                        }
+                    }
+                    print(rowStr)
                 }
                 
                 // Also print some statistics for final accumulated mask
@@ -533,7 +574,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     
                     // Create mask with tight cyan bbox
                     let maskWithBbox = self.addTightBboxToMask(cleanMask, width: self.protoW, height: self.protoH)
-                    self.saveDebugFloatMask(maskWithBbox, width: self.protoW, height: self.protoH, name: "mask_global_with_bbox", timestamp: "")
+                    let meanVal = cleanMask.reduce(0, +) / Float(cleanMask.count)
+                    var validPixelsCount = 0
+                    for val in cleanMask { if val > 0.5 { validPixelsCount += 1 } }
+                    let coverageVal = Float(validPixelsCount) / Float(cleanMask.count)
+                    let scoreVal = bestScore > 0 ? bestScore : (validCandidates.first?.1.score ?? 0.0)
+                    let timestamp = String(format: "s%.3f-m%.3f-c%.3f", scoreVal, meanVal, coverageVal)
+                    self.saveDebugFloatMask(maskWithBbox, width: self.protoW, height: self.protoH, name: "mask_global_with_bbox", timestamp: timestamp)
                 }
                 
                 // Convert to display image
@@ -543,14 +590,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 // Debug: Print displayMask pixel values in 20x20 grid (sampling every 8th pixel)
                 print("📊 DISPLAYMASK DEBUG - 20x20 grid (sampling every 8th pixel):")
                 print("  Source: \(self.protoW)x\(self.protoH) = \(displayMask.count) pixels")
-                let gridSize = 20
-                let stepX = self.protoW / gridSize
-                let stepY = self.protoH / gridSize
-                for row in 0..<gridSize {
+                let displayGridSize = 20
+                let displayStepX = self.protoW / displayGridSize
+                let displayStepY = self.protoH / displayGridSize
+                for row in 0..<displayGridSize {
                     var rowStr = "  "
-                    for col in 0..<gridSize {
-                        let x = col * stepX
-                        let y = row * stepY
+                    for col in 0..<displayGridSize {
+                        let x = col * displayStepX
+                        let y = row * displayStepY
                         let idx = y * self.protoW + x
                         if idx < displayMask.count {
                             let val = displayMask[idx]
@@ -586,14 +633,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     print("🖼️ ALPHACG DEBUG - 20x20 grid (sampling across image):")
                     print("  Source: \(alphaCG.width)x\(alphaCG.height) = \(dataLength) pixels")
                     
-                    let gridSize = 20
-                    let stepX = alphaCG.width / gridSize
-                    let stepY = alphaCG.height / gridSize
-                    for row in 0..<gridSize {
+                    let alphaCGGridSize = 20
+                    let alphaCGStepX = alphaCG.width / alphaCGGridSize
+                    let alphaCGStepY = alphaCG.height / alphaCGGridSize
+                    for row in 0..<alphaCGGridSize {
                         var rowStr = "  "
-                        for col in 0..<gridSize {
-                            let x = col * stepX
-                            let y = row * stepY
+                        for col in 0..<alphaCGGridSize {
+                            let x = col * alphaCGStepX
+                            let y = row * alphaCGStepY
                             let idx = y * alphaCG.width + x
                             if idx < dataLength {
                                 let pixelValue = data?[idx] ?? 0
@@ -633,15 +680,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     let imageWidth = alphaCGImage.width
                     let imageHeight = alphaCGImage.height
                     
-                    let gridSize = 20
-                    let stepX = max(1, imageWidth / gridSize)
-                    let stepY = max(1, imageHeight / gridSize)
+                    let masksGridSize = 20
+                    let masksStepX = max(1, imageWidth / masksGridSize)
+                    let masksStepY = max(1, imageHeight / masksGridSize)
                     
-                    for row in 0..<gridSize {
+                    for row in 0..<masksGridSize {
                         var rowStr = "  "
-                        for col in 0..<gridSize {
-                            let x = min(col * stepX, imageWidth - 1)
-                            let y = min(row * stepY, imageHeight - 1)
+                        for col in 0..<masksGridSize {
+                            let x = min(col * masksStepX, imageWidth - 1)
+                            let y = min(row * masksStepY, imageHeight - 1)
                             let idx = y * imageWidth + x
                             
                             if idx < dataLength {
@@ -701,7 +748,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             for x in 0..<width {
                 let idx = y * width + x
                 //kish
-                if maskFloat[idx] > 0.01 {  // 🎯 MINIMAL THRESHOLD - KEEP ALL OBJECT PIXELS
+                if maskFloat[idx] > 0.5 {  // 🎯 MINIMAL THRESHOLD - KEEP ALL OBJECT PIXELS
                     minX = min(minX, x)
                     maxX = max(maxX, x)
                     minY = min(minY, y)
@@ -790,7 +837,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         // Manual conversion instead of vImage (which seems to be failing)
         for i in 0..<srcCount {
-            let floatVal = max(0.0, min(1.0, tmpFloat[i]))  // Clamp to [0,1]
+            let floatVal = max(0.3, min(1.0, tmpFloat[i]))  // Clamp to [0,1]
             tmpU8A[i] = UInt8(floatVal * 255.0)             // Convert to [0,255]
         }
         
@@ -960,6 +1007,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     // Create minimal border overlay to show detection is active
+    // Applies 0.5 threshold: anything above 0.5 becomes opaque, otherwise transparent
     private func createTransparentOverlay(masksAlpha: [CGImage], canvasW: Int, canvasH: Int) -> UIImage? {
         guard masksAlpha.count > 0 else { return nil }
         let size = CGSize(width: CGFloat(canvasW), height: CGFloat(canvasH))
@@ -969,12 +1017,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // Start with fully transparent background
         ctx.clear(CGRect(x: 0, y: 0, width: size.width, height: size.height))
         
-        // Apply each mask to create opaque areas (showing real camera pixels)
+        // Apply each mask with 0.5 threshold to create opaque areas
         for (index, alphaImg) in masksAlpha.enumerated() {
+            // Apply threshold: pixels > 0.5 become opaque, others transparent
+            guard let thresholdMask = createThresholdMask(from: alphaImg, threshold: 0.5) else {
+                print("Failed to create threshold mask for index \(index)")
+                continue
+            }
+            
             ctx.saveGState()
             
-            // Use the alpha mask to clip the drawing area
-            ctx.clip(to: CGRect(x: 0, y: 0, width: size.width, height: size.height), mask: alphaImg)
+            // Use the thresholded mask to clip the drawing area
+            ctx.clip(to: CGRect(x: 0, y: 0, width: size.width, height: size.height), mask: thresholdMask)
             
             // Fill the masked area with fully opaque white (this will show the camera through)
             ctx.setFillColor(UIColor.white.cgColor)
@@ -982,7 +1036,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             ctx.restoreGState()
             
-            print("Applied mask \(index) for opaque cutout")
+            print("Applied thresholded mask \(index) for opaque cutout (threshold: 0.5)")
         }
         
         let out = UIGraphicsGetImageFromCurrentImageContext()
@@ -995,6 +1049,47 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         return out
+    }
+
+    // Helper method to create threshold mask: pixels > threshold become white (opaque), others black (transparent)
+    private func createThresholdMask(from sourceImage: CGImage, threshold: Float) -> CGImage? {
+        let width = sourceImage.width
+        let height = sourceImage.height
+        
+        guard let dataProvider = sourceImage.dataProvider,
+              let pixelData = dataProvider.data else { return nil }
+        
+        let data = CFDataGetBytePtr(pixelData)
+        let dataLength = CFDataGetLength(pixelData)
+        
+        let outputData = UnsafeMutablePointer<UInt8>.allocate(capacity: dataLength)
+        defer { outputData.deallocate() }
+        
+        let thresholdByte: UInt8 = UInt8(threshold * 255.0)
+        
+        var opaquePixels = 0
+        var transparentPixels = 0
+        
+        for i in 0..<dataLength {
+            let pixelValue = data?[i] ?? 0
+            if pixelValue > thresholdByte {
+                outputData[i] = 255  // Will be opaque (show overlay)
+                opaquePixels += 1
+            } else {
+                outputData[i] = 0    // Will be transparent (show camera)
+                transparentPixels += 1
+            }
+        }
+        
+        print("🎯 Threshold \(threshold) result: opaque_pixels(>\(threshold))=\(opaquePixels), transparent_pixels(≤\(threshold))=\(transparentPixels)")
+        
+        guard let provider = CGDataProvider(data: CFDataCreate(nil, outputData, dataLength)) else { return nil }
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+        
+        return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8, 
+                      bytesPerRow: width, space: colorSpace, bitmapInfo: bitmapInfo, 
+                      provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
     
     // Inverted threshold: pixels > 0.05 become black (transparent holes), pixels ≤ 0.05 become white (show overlay)
@@ -1011,7 +1106,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let outputData = UnsafeMutablePointer<UInt8>.allocate(capacity: dataLength)
         defer { outputData.deallocate() }
         
-        let thresholdByte: UInt8 = 13  // 0.05 * 255 = 12.55 ≈ 13
+        let thresholdByte: UInt8 = 128  // 0.05 * 255 = 12.55 ≈ 13
         
         var opaquePixels = 0
         var transparentPixels = 0
