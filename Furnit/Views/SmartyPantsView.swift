@@ -71,13 +71,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let maskImageView: UIImageView = {
         let iv = UIImageView()
-        iv.contentMode = .scaleAspectFill
+        iv.contentMode = .scaleAspectFit
         iv.backgroundColor = .clear
         iv.isOpaque = false
-        iv.clipsToBounds = true
+        iv.clipsToBounds = false
         iv.alpha = 1.0
+        iv.isUserInteractionEnabled = true
         return iv
     }()
+    
+    // MARK: Gesture state
+    private var currentScale: CGFloat = 1.0
 
     // MARK: Model & Queues
     private var mlModel: MLModel?
@@ -128,6 +132,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     private func commonInit() {
         backgroundColor = .clear
+        isUserInteractionEnabled = true
         previewLayer.session = captureSession
         previewLayer.videoGravity = .resizeAspectFill
         previewLayer.isHidden = true
@@ -136,19 +141,37 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         addSubview(maskImageView)
         maskImageView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            maskImageView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            maskImageView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            maskImageView.topAnchor.constraint(equalTo: topAnchor),
-            maskImageView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            maskImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            maskImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            maskImageView.widthAnchor.constraint(equalTo: widthAnchor),
+            maskImageView.heightAnchor.constraint(equalTo: heightAnchor)
         ])
+        
+        // Add pinch gesture to self (parent view) so it works even when image is small
+        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        self.addGestureRecognizer(pinchGesture)
+        
         setupCamera()
         print("✅ SmartyPantsContainerView initialized")
     }
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        maskImageView.frame = bounds
         previewLayer.frame = bounds
+    }
+    
+    @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        switch gesture.state {
+        case .changed:
+            let newScale = currentScale * gesture.scale
+            let clampedScale = min(max(newScale, 0.3), 3.0)
+            maskImageView.transform = CGAffineTransform(scaleX: clampedScale, y: clampedScale)
+            gesture.scale = 1.0
+        case .ended:
+            currentScale = min(max(currentScale * gesture.scale, 0.3), 3.0)
+        default:
+            break
+        }
     }
 
     // MARK: - Public
@@ -370,7 +393,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         generatePureFurnitureCutout(detections: maskFiltered, prototypes: prototypesArray, originalImage: pixelBuffer)
     }
 
-    // MARK: - Extract Detections (FROM DOC1 - exact NSNumber subscript pattern)
+    // MARK: - Extract Detections (Accelerate - buffer copy + pointer arithmetic)
     private func extractDetections(from detections: MLMultiArray) -> [DetectionSmarty] {
         var all: [DetectionSmarty] = []
         
@@ -378,18 +401,45 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let numFeatures = detections.shape[1].intValue
         print("📊 Detections tensor: \(numFeatures) features x \(numAnchors) anchors")
         
+        // Copy MLMultiArray to float buffer ONCE (Accelerate)
+        let totalCount = detections.count
+        let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
+        defer { detBuf.deallocate() }
+        
+        if detections.dataType == .float16 {
+            let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
+            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 2)
+            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
+            vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+            print("📊 Converted float16 → float32")
+        } else if detections.dataType == .float32 {
+            let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
+            memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
+            print("📊 Copied float32 buffer")
+        } else {
+            // Fallback for other types
+            for i in 0..<totalCount {
+                detBuf[i] = detections[i].floatValue
+            }
+            print("📊 Fallback copy for dataType: \(detections.dataType)")
+        }
+        
+        // Shape: [1, numFeatures, numAnchors] -> index = feature * numAnchors + anchor
         for anchor in 0..<numAnchors {
-            let x = detections[[0, 0, anchor] as [NSNumber]].floatValue
-            let y = detections[[0, 1, anchor] as [NSNumber]].floatValue
-            let w = detections[[0, 2, anchor] as [NSNumber]].floatValue
-            let h = detections[[0, 3, anchor] as [NSNumber]].floatValue
+            let x = detBuf[0 * numAnchors + anchor]
+            let y = detBuf[1 * numAnchors + anchor]
+            let w = detBuf[2 * numAnchors + anchor]
+            let h = detBuf[3 * numAnchors + anchor]
             
             for (classIdx, className) in furnitureClasses {
-                let conf = detections[[0, 4 + classIdx, anchor] as [NSNumber]].floatValue
+                let confIdx = (4 + classIdx) * numAnchors + anchor
+                let conf = detBuf[confIdx]
+                
                 if conf > confidenceThreshold {
                     var coeffs = [Float](repeating: 0, count: 32)
+                    let coeffStart = (4 + 4585) * numAnchors + anchor
                     for i in 0..<32 {
-                        coeffs[i] = detections[[0, 4 + 4585 + i, anchor] as [NSNumber]].floatValue
+                        coeffs[i] = detBuf[coeffStart + i * numAnchors]
                     }
                     all.append(DetectionSmarty(
                         x: x, y: y, width: w, height: h,
@@ -768,9 +818,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
 
-    // MARK: - Pixel Buffer to MLMultiArray (FROM DOC1)
+    // MARK: - Pixel Buffer to MLMultiArray (Accelerate - pointer arithmetic)
     private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
-        guard let array = try? MLMultiArray(shape: [1, 3, 640, 640], dataType: .float16) else {
+        guard let array = try? MLMultiArray(shape: [1, 3, 640, 640], dataType: .float32) else {
             print("❌ Failed to create MLMultiArray")
             return nil
         }
@@ -781,14 +831,21 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             return nil
         }
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let srcBuffer = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let dstPtr = array.dataPointer.assumingMemoryBound(to: Float.self)
+        
+        let spatial = 640 * 640
         
         for y in 0..<640 {
+            let rowOffset = y * bytesPerRow
+            let yOffset = y * 640
             for x in 0..<640 {
-                let idx = y * bytesPerRow + x * 4
-                array[[0, 0, y, x] as [NSNumber]] = NSNumber(value: Float(buffer[idx + 2]) / 255.0)
-                array[[0, 1, y, x] as [NSNumber]] = NSNumber(value: Float(buffer[idx + 1]) / 255.0)
-                array[[0, 2, y, x] as [NSNumber]] = NSNumber(value: Float(buffer[idx]) / 255.0)
+                let srcIdx = rowOffset + x * 4
+                let dstIdx = yOffset + x
+                // BGRA -> RGB channels-first
+                dstPtr[0 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 2]) / 255.0  // R
+                dstPtr[1 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 1]) / 255.0  // G
+                dstPtr[2 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 0]) / 255.0  // B
             }
         }
         return array
