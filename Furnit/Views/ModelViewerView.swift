@@ -3,6 +3,8 @@ import RealityKit
 import Combine
 import Photos
 import CoreML
+import AVFoundation
+import UIKit
 
 struct ModelViewerView: View {
     @State private var mlModel: MLModel? = nil
@@ -91,11 +93,11 @@ struct ModelViewerView: View {
 
                 // NEW: SmartyPants overlay
                 if showingSmartyPants {
-                    SmartyPantsUIView(
-                        capturedImage: $capturedImage,
-                        isShowingCamera: $showingSmartyPants,
-                        roomImage: roomSnapshot,
-                        mlModel: mlModel
+                    SmartyPantsViewSwiftUI(
+                        mlModel: mlModel,
+                        processInterval: 0.07,
+//                        scoreThreshold: 0.25,
+                        active: true
                     )
                     .zIndex(9000)
                 }
@@ -115,7 +117,10 @@ struct ModelViewerView: View {
         .onChange(of: showingSegmentForeground) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentFurniture) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSmartyPants) { _, _ in manageARSessionForOverlays() }
-        .onAppear { isARActive = true }
+        .onAppear { 
+            isARActive = true
+            loadModelOnce()
+        }
     }
 
     // MARK: - Overlays & Controls
@@ -329,25 +334,60 @@ struct ModelViewerView: View {
             isARActive = shouldRunAR
         }
     }
+    
+    private func loadModelOnce() {
+        guard mlModel == nil else { 
+            print("✅ ML Model already loaded")
+            return 
+        }
+        print("🔍 Looking for ML Model: yoloe-11s-seg-pf.mlpackage")
+        // Looking for the ML package model
+        
+        
+        if let url = Bundle.main.url(forResource: "yoloe-11l-seg-pf", withExtension: "mlmodelc") {
+            print("📦 Found model file at: \(url)")
+            do {
+                mlModel = try MLModel(contentsOf: url)
+                print("✅ Loaded MLModel from bundle successfully")
+            } catch {
+                print("❌ Failed to load model:", error)
+            }
+        } else {
+            print("❌ Model not found in bundle: yoloe-11s-seg-pf.mlpackage")
+            
+            // Let's also check what files ARE in the bundle
+            if let bundleContents = try? FileManager.default.contentsOfDirectory(atPath: Bundle.main.bundlePath) {
+                print("📁 Bundle contents:")
+                bundleContents.filter { $0.contains("mlmodel") || $0.contains("mlpackage") }.forEach { file in
+                    print("   - \(file)")
+                }
+            }
+        }
+    }
+    
+
 }
 
 struct SmartyPantsUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
-    @Binding var isShowingCamera: Bool
+    
     var roomImage: UIImage?
     var mlModel: MLModel?
-
-    func makeUIView(context: Context) -> SmartyPantsView {
-        let view = SmartyPantsView()
-        view.mlModel = mlModel
+    var processInterval: Double = 0.07
+    var scoreThreshold: Float = 0.25
+    var active: Bool = true
+    
+    func makeUIView(context: Context) -> SmartyPantsContainerView {
+        let view = SmartyPantsContainerView()
+        view.setModel(mlModel)
         return view
     }
 
-    func updateUIView(_ uiView: SmartyPantsView, context: Context) {
-        // update overlay or state; ensure you have a public setter for mask image if needed
-        if !isShowingCamera {
-            uiView.setOverlayImage(nil) // implement setOverlayImage in SmartyPantsView
-        }
+    func updateUIView(_ uiView: SmartyPantsContainerView, context: Context) {
+        uiView.setModel(mlModel)
+        uiView.processInterval = processInterval
+//        uiView.scoreThreshold = scoreThreshold
+        if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }
 
