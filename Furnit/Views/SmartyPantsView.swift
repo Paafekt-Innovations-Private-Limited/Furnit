@@ -160,7 +160,22 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         previewLayer.frame = bounds
     }
     
+    // Pass touches in top area through to SwiftUI (for Back button)
+    // Handle rest for pinch gesture
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        // Top 100 points - pass through for navigation
+        if point.y < 100 {
+            return false
+        }
+        // If no image, pass through
+        if maskImageView.image == nil {
+            return false
+        }
+        return true
+    }
+    
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        print("📌 Pinch gesture: state=\(gesture.state.rawValue), scale=\(gesture.scale)")
         switch gesture.state {
         case .changed:
             let newScale = currentScale * gesture.scale
@@ -169,6 +184,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             gesture.scale = 1.0
         case .ended:
             currentScale = min(max(currentScale * gesture.scale, 0.3), 3.0)
+            print("📌 Pinch ended, currentScale=\(currentScale)")
         default:
             break
         }
