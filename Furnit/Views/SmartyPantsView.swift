@@ -476,26 +476,32 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let sAvg = s.reduce(0, +) / Float(HW)
                 print("  s range: [\(String(format: "%.3f", sMin)), \(String(format: "%.3f", sMax))], avg: \(String(format: "%.3f", sAvg))")
                 
-                // Use pure raw BLAS values - let auto-normalization handle everything  
-                print("  Using pure raw BLAS values with SUM accumulation (anti-saturation)...")
+                // Apply sigmoid to individual mask BEFORE summing - this normalizes each contribution
+                print("  Applying sigmoid BEFORE summing to normalize each candidate contribution...")
+                
+                // Apply sigmoid to current candidate mask
+                var sigmoidS = [Float](repeating: 0, count: HW)
+                for i in 0..<HW {
+                    sigmoidS[i] = 1.0 / (1.0 + exp(-s[i]))  // Sigmoid: raw -> [0,1]
+                }
                 
                 for i in 0..<HW { 
-                    // SUM all raw values instead of taking max - prevents saturation!
-                    globalMask[i] += s[i]  // Accumulate ALL raw values
+                    // SUM normalized sigmoid values instead of raw values
+                    globalMask[i] += sigmoidS[i]  // Accumulate sigmoid-normalized values [0,1]
                 }
                 candidateCount += 1
                 
-                // 🔍 DEBUG: Check final clamped values
-                print("🔍 Clamped BLAS output for candidate \(originalIdx):")
+                // 🔍 DEBUG: Check sigmoid values
+                print("🔍 Sigmoid output for candidate \(originalIdx):")
                 for sampleIdx in sampleIndices {
                     if sampleIdx < HW {
-                        print("  clamped_s[\(sampleIdx)] = \(String(format: "%.3f", s[sampleIdx]))")
+                        print("  sigmoid_s[\(sampleIdx)] = \(String(format: "%.3f", sigmoidS[sampleIdx]))")
                     }
                 }
-                let clampedMin = s.min() ?? 0.0
-                let clampedMax = s.max() ?? 0.0
-                let clampedAvg = s.reduce(0, +) / Float(HW)
-                print("  clamped range: [\(String(format: "%.3f", clampedMin)), \(String(format: "%.3f", clampedMax))], avg: \(String(format: "%.3f", clampedAvg))")
+                let sigmoidMin = sigmoidS.min() ?? 0.0
+                let sigmoidMax = sigmoidS.max() ?? 0.0
+                let sigmoidAvg = sigmoidS.reduce(0, +) / Float(HW)
+                print("  sigmoid range: [\(String(format: "%.3f", sigmoidMin)), \(String(format: "%.3f", sigmoidMax))], avg: \(String(format: "%.3f", sigmoidAvg))")
 
                 // Update best candidate tracking
                 if cand.score > bestScore {
@@ -506,26 +512,24 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
             
-            // Optional: Apply averaging to prevent extreme values from multiple candidates
+            // Optional: Apply averaging to prevent extreme values from multiple candidates  
             if candidateCount > 1 {
-                print("📊 Applying SUM normalization: dividing by candidate count (\(candidateCount))")
+                print("📊 Applying SIGMOID SUM normalization: dividing by candidate count (\(candidateCount))")
                 for i in 0..<HW {
                     globalMask[i] = globalMask[i] / Float(candidateCount)
                 }
             }
             
-            // No thresholding - pass ALL summed values to auto-normalization  
-//            if globalMask.max() ?? 0.0 > 1.0 { // Basic sanity check - any detection at all?
-                print("Processing pure summed global mask with max value: \(globalMask.max() ?? 0.0)")
-                // NO sigmoid, NO manual thresholding - let min-max normalization handle everything
-                
-                // Count all non-zero pixels (pure sum approach)
-                var nonZeroPixels = 0
-                for i in 0..<HW {
-                    if globalMask[i] > 0.0 { nonZeroPixels += 1 }  // Count any detection
-                }
-                let globalCoverage = Float(nonZeroPixels) / Float(HW) * 100.0
-                print("Global summed mask coverage: \(String(format: "%.1f", globalCoverage))%, non-zero pixels: \(nonZeroPixels)")
+            // Since we used sigmoid before summing, values should now be reasonable [0,1] range
+            print("Processing summed sigmoid global mask with max value: \(globalMask.max() ?? 0.0)")
+            
+            // Count all significant pixels (sigmoid threshold)
+            var significantPixels = 0
+            for i in 0..<HW {
+                if globalMask[i] > 0.1 { significantPixels += 1 }  // Reasonable sigmoid threshold
+            }
+            let globalCoverage = Float(significantPixels) / Float(HW) * 100.0
+            print("Global sigmoid mask coverage: \(String(format: "%.1f", globalCoverage))%, significant pixels: \(significantPixels)")
                 
                 // Apply bbox masking to clean up the global mask - make everything outside bbox transparent
                 var cleanMask = globalMask  // Start with raw summed values
@@ -548,8 +552,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     print("📦 No final bboxes computed, skipping bbox masking")
                 }
                 
-                // Print final summed mask stats
-                print("Final SUMMED GlobalMask as \(self.protoW)x\(self.protoH) grid (showing every 8th pixel for readability):")
+                // Print final sigmoid mask stats
+                print("Final SIGMOID GlobalMask as \(self.protoW)x\(self.protoH) grid (showing every 8th pixel for readability):")
                 
                 let step = 8  // Sample every 8th pixel to make output readable
                 for y in stride(from: 0, to: self.protoH, by: step) {
@@ -557,18 +561,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     for x in stride(from: 0, to: self.protoW, by: step) {
                         let pixelIdx = y * self.protoW + x
                         let val = cleanMask[pixelIdx]
-                        // Show intensity based on summed values (adjusted thresholds for sum)
-                        if val > 100.0 { row += "█" }       // Very strong sum
-                        else if val > 70.0 { row += "▓" }   // Strong sum
-                        else if val > 40.0 { row += "▒" }   // Medium sum
-                        else if val > 10.0 { row += "░" }   // Weak sum
-                        else { row += "·" }                 // Background/zero
+                        // Show intensity based on sigmoid values (0.0-1.0+ range)
+                        if val > 0.8 { row += "█" }        // Very strong sigmoid
+                        else if val > 0.6 { row += "▓" }   // Strong sigmoid  
+                        else if val > 0.4 { row += "▒" }   // Medium sigmoid
+                        else if val > 0.2 { row += "░" }   // Weak sigmoid
+                        else { row += "·" }                // Background/zero
                     }
                     print(row)
                 }
                 
-                // Print GlobalMask SUMMED VALUES in 20x20 grid format
-                print("🔢 GlobalMask SUMMED VALUES - 20x20 grid:")
+                // Print GlobalMask SIGMOID VALUES in 20x20 grid format
+                print("🔢 GlobalMask SIGMOID VALUES - 20x20 grid:")
                 let valuesGridSize = 20
                 let valuesStepX = self.protoW / valuesGridSize
                 let valuesStepY = self.protoH / valuesGridSize
@@ -588,24 +592,24 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     print(rowStr)
                 }
                 
-                // Also print some statistics for final accumulated summed mask
+                // Also print some statistics for final accumulated sigmoid mask
                 let minVal = cleanMask.min() ?? 0.0
                 let maxVal = cleanMask.max() ?? 0.0
                 let avgVal = cleanMask.reduce(0, +) / Float(cleanMask.count)
-                print("Final SUMMED Mask Stats - min: \(String(format: "%.3f", minVal)), max: \(String(format: "%.3f", maxVal)), avg: \(String(format: "%.3f", avgVal)), candidates: \(candidateCount))")
+                print("Final SIGMOID Mask Stats - min: \(String(format: "%.3f", minVal)), max: \(String(format: "%.3f", maxVal)), avg: \(String(format: "%.3f", avgVal)), candidates: \(candidateCount))")
                 
                 if self.debugSaveImages {
-                    self.saveDebugFloatMask(cleanMask, width: self.protoW, height: self.protoH, name: "mask_global_summed", timestamp: "")
+                    self.saveDebugFloatMask(cleanMask, width: self.protoW, height: self.protoH, name: "mask_global_sigmoid", timestamp: "")
                     
                     // Create mask with tight cyan bbox
                     let maskWithBbox = self.addTightBboxToMask(cleanMask, width: self.protoW, height: self.protoH)
                     let meanVal = cleanMask.reduce(0, +) / Float(cleanMask.count)
                     var validPixelsCount = 0
-                    for val in cleanMask { if val > 0.2 { validPixelsCount += 1 } }
+                    for val in cleanMask { if val > 0.1 { validPixelsCount += 1 } }  // Use sigmoid threshold
                     let coverageVal = Float(validPixelsCount) / Float(cleanMask.count)
                     let scoreVal = bestScore > 0 ? bestScore : (validCandidates.first?.1.score ?? 0.0)
-                    let timestamp = String(format: "sum-s%.3f-m%.3f-c%.3f", scoreVal, meanVal, coverageVal)
-                    self.saveDebugFloatMask(maskWithBbox, width: self.protoW, height: self.protoH, name: "mask_global_summed_with_bbox", timestamp: timestamp)
+                    let timestamp = String(format: "sigmoid-s%.3f-m%.3f-c%.3f", scoreVal, meanVal, coverageVal)
+                    self.saveDebugFloatMask(maskWithBbox, width: self.protoW, height: self.protoH, name: "mask_global_sigmoid_with_bbox", timestamp: timestamp)
                 }
                 
                 // Convert to display image
@@ -1564,11 +1568,26 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let srcCount = srcW * srcH
         let tmpFloat = UnsafeMutablePointer<Float>.allocate(capacity: srcCount)
         defer { tmpFloat.deallocate() }
-        var srcF = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: maskFloat), height: vImagePixelCount(srcH), width: vImagePixelCount(srcW), rowBytes: srcW * MemoryLayout<Float>.size)
+        
+        // FIX: Vertically flip the mask data to correct coordinate system mismatch
+        print("🔄 DEBUG: Applying vertical flip to mask data to fix furniture orientation")
+        for y in 0..<srcH {
+            for x in 0..<srcW {
+                let originalIdx = y * srcW + x
+                let flippedY = srcH - 1 - y  // Flip vertically
+                let flippedIdx = flippedY * srcW + x
+                tmpFloat[flippedIdx] = maskFloat[originalIdx]
+            }
+        }
+        
+        var srcF = vImage_Buffer(data: UnsafeMutableRawPointer(tmpFloat), height: vImagePixelCount(srcH), width: vImagePixelCount(srcW), rowBytes: srcW * MemoryLayout<Float>.size)
         var tmpF = vImage_Buffer(data: UnsafeMutableRawPointer(tmpFloat), height: vImagePixelCount(srcH), width: vImagePixelCount(srcW), rowBytes: srcW * MemoryLayout<Float>.size)
         let kernel: [Float] = [1/9,1/9,1/9,1/9,1/9,1/9,1/9,1/9,1/9]
         let err = vImageConvolve_PlanarF(&srcF, &tmpF, nil, 0, 0, kernel, 3, 3, 0, vImage_Flags(kvImageEdgeExtend))
-        if err != kvImageNoError { tmpFloat.initialize(from: maskFloat, count: srcCount) }
+        if err != kvImageNoError { 
+            // If convolution fails, we already have the flipped data in tmpFloat
+            print("Convolution failed, using flipped data directly")
+        }
         
         // Debug: Check float values before conversion
         print("🔍 DEBUG: Checking float values before uint8 conversion (first 20 pixels):")
@@ -2046,7 +2065,73 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // Create PURE furniture cutout - furniture opaque, background transparent, NO overlays!
     private func createPureFurnitureCutout(cameraFrame: CGImage, mask: CGImage) -> UIImage? {
-        return createManualMaskComposite(cameraFrame: cameraFrame, mask: mask)
+        let size = CGSize(width: cameraFrame.width, height: cameraFrame.height)
+        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        guard let ctx = UIGraphicsGetCurrentContext() else { 
+            UIGraphicsEndImageContext()
+            return nil 
+        }
+        
+        // FIX: Flip the coordinate system to match camera orientation
+        ctx.translateBy(x: 0, y: size.height)
+        ctx.scaleBy(x: 1, y: -1)
+        
+        // Start with transparent background
+        ctx.clear(CGRect(origin: .zero, size: size))
+        
+        // FIX: Invert the mask before clipping since clip() inverts the behavior
+        guard let invertedMask = createInvertedMask(from: mask) else {
+            UIGraphicsEndImageContext()
+            return nil
+        }
+        
+        // Apply the inverted mask - now furniture areas will be preserved
+        ctx.saveGState()
+        ctx.clip(to: CGRect(origin: .zero, size: size), mask: invertedMask)
+        
+        // Draw camera frame - only furniture areas will show through
+        ctx.draw(cameraFrame, in: CGRect(origin: .zero, size: size))
+        
+        ctx.restoreGState()
+        
+        let result = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        if let image = result {
+            print("✅ Applied inverted mask to camera frame (furniture opaque, bg transparent): \(image.size)")
+        } else {
+            print("❌ Failed to apply inverted mask to camera frame")
+        }
+        
+        return result
+    }
+    
+    // Simple mask inversion: white->black, black->white
+    private func createInvertedMask(from mask: CGImage) -> CGImage? {
+        let width = mask.width
+        let height = mask.height
+        
+        guard let dataProvider = mask.dataProvider,
+              let pixelData = dataProvider.data else { return nil }
+        
+        let data = CFDataGetBytePtr(pixelData)
+        let dataLength = CFDataGetLength(pixelData)
+        
+        let outputData = UnsafeMutablePointer<UInt8>.allocate(capacity: dataLength)
+        defer { outputData.deallocate() }
+        
+        // Invert: 255 -> 0, 0 -> 255
+        for i in 0..<dataLength {
+            outputData[i] = 255 - (data?[i] ?? 0)
+        }
+        
+        guard let provider = CGDataProvider(data: CFDataCreate(nil, outputData, dataLength)) else { return nil }
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+        
+        return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8, 
+                      bytesPerRow: width, space: colorSpace, bitmapInfo: bitmapInfo, 
+                      provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
     }
     
     // Manual pixel-by-pixel mask application - NO CLIPPING
