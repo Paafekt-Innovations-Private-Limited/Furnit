@@ -60,7 +60,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var processInterval: TimeInterval = 0.05
     var confidenceThreshold: Float = 0.3
     var debugSaveImages: Bool = true
-    var maskCutoff: Float = 0.3
+    var maskCutoff: Float = 0.01
 
     // MARK: Camera
     private let captureSession = AVCaptureSession()
@@ -71,7 +71,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let maskImageView: UIImageView = {
         let iv = UIImageView()
-        iv.contentMode = .scaleAspectFit
+        iv.contentMode = .scaleAspectFit  // Back to original scaling
         iv.backgroundColor = .clear
         iv.isOpaque = false
         iv.clipsToBounds = true  // Enable clipping to improve gesture handling
@@ -173,44 +173,31 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch gesture: state=\(gesture.state.rawValue), scale=\(gesture.scale)") }
-        
-        // Ensure we have an image to scale
-        guard maskImageView.image != nil else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 No image to scale") }
-            return
-        }
+        guard maskImageView.image != nil else { return }
         
         switch gesture.state {
         case .began:
-            // Store the current transform as the base for this gesture
             if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch began, currentScale=\(currentScale)") }
+            
         case .changed:
             let newScale = currentScale * gesture.scale
             let clampedScale = min(max(newScale, 0.3), 3.0)
             
-            // Apply the transform with smooth scaling
-            let transform = CGAffineTransform(scaleX: clampedScale, y: clampedScale)
-            maskImageView.transform = transform
+            maskImageView.transform = CGAffineTransform(scaleX: clampedScale, y: clampedScale)
             
-            // Reset the gesture scale to prevent cumulative scaling
-            gesture.scale = 1.0
+            currentScale = clampedScale  // ✅ Update the running scale
+            gesture.scale = 1.0          // Reset gesture delta for next frame
             
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Scaling to: \(String(format: "%.2f", clampedScale))") }
         case .ended, .cancelled:
-            // Finalize the scale
-            let finalScale = currentScale * gesture.scale
-            currentScale = min(max(finalScale, 0.3), 3.0)
+            // Snap to nice bounds if close to 1.0
+            if currentScale > 0.9 && currentScale < 1.1 {
+                currentScale = 1.0
+                UIView.animate(withDuration: 0.2) {
+                    self.maskImageView.transform = .identity
+                }
+            }
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch ended, final scale=\(currentScale)") }
             
-            // Apply final transform
-            let finalTransform = CGAffineTransform(scaleX: currentScale, y: currentScale)
-            
-            // Animate to final position for smoother experience
-            UIView.animate(withDuration: 0.1, delay: 0, options: [.curveEaseOut], animations: {
-                self.maskImageView.transform = finalTransform
-            })
-            
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch ended, final scale=\(String(format: "%.2f", currentScale))") }
         default:
             break
         }
@@ -429,31 +416,345 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // MARK: Hierarchical BBox NMS (FROM DOC1)
-        let hierarchicalFiltered = applyHierarchicalNMS(detections: allDetections, iouThreshold: 0.9)
+        let hierarchicalFiltered = applyHierarchicalNMS(detections: allDetections, iouThreshold: 1.0)
         if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [H-NMS] Kept \(hierarchicalFiltered.count) detections after hierarchical NMS") }
         
-        // MARK: Mask IoU NMS with merging (FROM DOC1)
+//        // MARK: Mask IoU NMS with merging (FROM DOC1)
+//        let maskFiltered = applyMaskIoU(detections: hierarchicalFiltered, iouThreshold: 0.2, prototypes: prototypesArray)
+//        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [MASK-FILTERED] Total kept: \(maskFiltered.count) detections") }
+//
+//        if maskFiltered.isEmpty {
+//            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ [DETECTION] No valid detections found after mask filtering") }
+//            DispatchQueue.main.async {
+//                self.maskImageView.image = nil
+//                self.isProcessing = false
+//            }
+//            return
+//        }
+//        
+//        let best = maskFiltered.first!
+//        if SEGMENT_DEBUG_SAVE_IMAGES {
+//            print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
+//            print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
+//        }
+//
+//        // MARK: Generate Pure Furniture Cutout (FROM DOC1 pattern)
+//        if SEGMENT_DEBUG_SAVE_IMAGES { print("\n🎨 ========== GENERATING CUTOUT ==========") }
+//        generatePureFurnitureCutout(detections: maskFiltered, prototypes: prototypesArray, originalImage: pixelBuffer)
+
+        // In processFrame, replace these lines:
+        // let maskFiltered = applyMaskIoU(...)
+        // ...
+        // generatePureFurnitureCutout(detections: maskFiltered, ...)
+
+        // With:
         let maskFiltered = applyMaskIoU(detections: hierarchicalFiltered, iouThreshold: 0.2, prototypes: prototypesArray)
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [MASK-FILTERED] Total kept: \(maskFiltered.count) detections") }
 
         if maskFiltered.isEmpty {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ [DETECTION] No valid detections found after mask filtering") }
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ [DETECTION] No valid detections after mask filtering") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
             }
             return
         }
-        
+
         let best = maskFiltered.first!
         if SEGMENT_DEBUG_SAVE_IMAGES {
-            print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
-            print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
+            print("✅ [BEST] Primary: \(best.detection.className) @ \(Int(best.detection.confidence * 100))%")
         }
 
-        // MARK: Generate Pure Furniture Cutout (FROM DOC1 pattern)
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("\n🎨 ========== GENERATING CUTOUT ==========") }
-        generatePureFurnitureCutout(detections: maskFiltered, prototypes: prototypesArray, originalImage: pixelBuffer)
+        // Use new method with pre-computed masks
+        generatePureFurnitureCutoutWithMasks(detectionMasks: maskFiltered, originalImage: pixelBuffer)
+    }
+    
+    // MARK: - Generate Pure Furniture Cutout (with pre-computed masks)
+    private func generatePureFurnitureCutoutWithMasks(detectionMasks: [(detection: DetectionSmarty, mask: [Float])], originalImage: CVPixelBuffer) {
+        let Hp = 160
+        let Wp = 160
+        let spatial = Hp * Wp
+        let cutoff = self.maskCutoff
+        
+        print("🎨 Generating cutout with \(detectionMasks.count) pre-merged masks, cutoff=\(cutoff)")
+        
+        // Accumulate all masks with max blend
+        var globalMask = [Float](repeating: 0, count: spatial)
+        
+        for (idx, item) in detectionMasks.enumerated() {
+            for i in 0..<spatial {
+                globalMask[i] = max(globalMask[i], item.mask[i])
+            }
+            print("🎨 Accumulated mask[\(idx)] \(item.detection.className)")
+        }
+        
+        // Log merged mask pixel samples as visual grid
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            print("\n🔍 ========== MERGED MASK PIXELS (20x20 grid, 8th sample) ==========")
+            print("📊 Values (3 decimal places):")
+            for gy in 0..<20 {
+                var rowValues = ""
+                for gx in 0..<20 {
+                    let y = gy * 8 + 7  // 8th sample in each grid cell
+                    let x = gx * 8 + 7
+                    if y < Hp && x < Wp {
+                        let maskIdx = y * Wp + x
+                        let val = globalMask[maskIdx]
+                        rowValues += String(format: "%6.3f", val)
+                    } else {
+                        rowValues += "   ---"
+                    }
+                    if gx < 19 { rowValues += " " }
+                }
+                print(rowValues)
+            }
+            
+            print("\n📊 Above cutoff (\(cutoff)) visualization (* = above, . = below):")
+            for gy in 0..<20 {
+                var rowSymbols = ""
+                for gx in 0..<20 {
+                    let y = gy * 8 + 7
+                    let x = gx * 8 + 7
+                    if y < Hp && x < Wp {
+                        let maskIdx = y * Wp + x
+                        let val = globalMask[maskIdx]
+                        rowSymbols += val >= cutoff ? "*" : "."
+                    } else {
+                        rowSymbols += " "
+                    }
+                }
+                print(rowSymbols)
+            }
+        }
+        
+        // Log global mask stats
+        var minVal: Float = 0, maxVal: Float = 0
+        vDSP_minv(globalMask, 1, &minVal, vDSP_Length(spatial))
+        vDSP_maxv(globalMask, 1, &maxVal, vDSP_Length(spatial))
+        var sum: Float = 0
+        vDSP_sve(globalMask, 1, &sum, vDSP_Length(spatial))
+        let coverage = sum / Float(spatial) * 100
+        print("📊 Global mask: min=\(String(format: "%.3f", minVal)), max=\(String(format: "%.3f", maxVal)), coverage=\(String(format: "%.1f", coverage))%")
+        
+        // Count pixels above cutoff
+        var aboveCutoff = 0
+        for i in 0..<spatial {
+            if globalMask[i] >= cutoff { aboveCutoff += 1 }
+        }
+        print("📊 Pixels above cutoff \(cutoff): \(aboveCutoff) / \(spatial) (\(String(format: "%.1f", Float(aboveCutoff) / Float(spatial) * 100))%)")
+        
+        // Create pure cutout
+        autoreleasepool {
+            let ciImage = CIImage(cvPixelBuffer: originalImage)
+            let width = CVPixelBufferGetWidth(originalImage)
+            let height = CVPixelBufferGetHeight(originalImage)
+            print("📐 Original image: \(width)x\(height)")
+            
+            guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
+                print("❌ Failed to create CGImage")
+                DispatchQueue.main.async { self.isProcessing = false }
+                return
+            }
+            
+            guard let ctx = CGContext(
+                    data: nil,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: width * 4,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ) else {
+                print("❌ Failed to create CGContext")
+                DispatchQueue.main.async { self.isProcessing = false }
+                return
+            }
+            
+            guard let data = ctx.data else {
+                print("❌ CGContext has no data")
+                DispatchQueue.main.async { self.isProcessing = false }
+                return
+            }
+            
+            ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
+            
+            // Apply mask with bbox clipping (outside all bboxes = transparent)
+            var opaqueCount = 0
+            var transparentCount = 0
+            
+            for py in 0..<height {
+                for px in 0..<width {
+                    let idx = (py * width + px) * 4
+                    
+                    let mx = Float(px) * Float(Wp) / Float(width)
+                    let my = Float(py) * Float(Hp) / Float(height)
+                    
+                    let x0 = Int(mx)
+                    let y0 = Int(my)
+                    
+                    guard x0 >= 0 && x0 < Wp && y0 >= 0 && y0 < Hp else {
+                        pixels[idx + 3] = 0
+                        transparentCount += 1
+                        continue
+                    }
+                    
+                    // Check if pixel is inside any bounding box
+                    var isInsideBBox = false
+                    let detections = detectionMasks.map { $0.detection }
+                    for detection in detections {
+                        let originalWidth = CGFloat(width)  // 720
+                        let originalHeight = CGFloat(height)  // 1280
+                        let modelSize: CGFloat = 640.0
+                        
+                        let scaleX = originalWidth / modelSize   // 720/640 = 1.125
+                        let scaleY = originalHeight / modelSize  // 1280/640 = 2.0
+                        
+                        let centerX = CGFloat(detection.x) * scaleX
+                        let centerY = CGFloat(detection.y) * scaleY
+                        let boxWidth = CGFloat(detection.width) * scaleX
+                        let boxHeight = CGFloat(detection.height) * scaleY
+                        
+                        let left = centerX - boxWidth / 2
+                        let right = centerX + boxWidth / 2
+                        let top = centerY - boxHeight / 2
+                        let bottom = centerY + boxHeight / 2
+                        
+                        if CGFloat(px) >= left && CGFloat(px) <= right && 
+                           CGFloat(py) >= top && CGFloat(py) <= bottom {
+                            isInsideBBox = true
+                            break
+                        }
+                    }
+                    
+                    // Make pixels transparent if outside ALL bboxes
+                    if !isInsideBBox {
+                        pixels[idx + 3] = 0
+                        transparentCount += 1
+                    } else {
+                        // Inside at least one bbox - use mask to determine transparency
+                        let maskValue = globalMask[y0 * Wp + x0]
+                        if maskValue >= cutoff {
+                            pixels[idx + 3] = 255
+                            opaqueCount += 1
+                        } else {
+                            pixels[idx + 3] = 0
+                            transparentCount += 1
+                        }
+                    }
+                }
+            }
+            
+            print("📊 Output: \(opaqueCount) opaque, \(transparentCount) transparent pixels")
+            
+            // Draw bounding boxes
+            let detections = detectionMasks.map { $0.detection }
+            let colors: [CGColor] = [
+                CGColor(red: 0, green: 1, blue: 1, alpha: 1),
+                CGColor(red: 1, green: 0, blue: 1, alpha: 1),
+                CGColor(red: 0, green: 1, blue: 0, alpha: 1),
+                CGColor(red: 1, green: 1, blue: 0, alpha: 1),
+                CGColor(red: 1, green: 0.5, blue: 0, alpha: 1),
+                CGColor(red: 0.5, green: 0, blue: 1, alpha: 1),
+                CGColor(red: 1, green: 0, blue: 0, alpha: 1),
+                CGColor(red: 0, green: 0.5, blue: 1, alpha: 1)
+            ]
+            
+            for (index, detection) in detections.enumerated() {
+                let originalWidth = CGFloat(width)  // 720
+                let originalHeight = CGFloat(height)  // 1280
+                let modelSize: CGFloat = 640.0
+                
+                // Simple uniform scaling - keep the original approach but ensure proper centering
+                let scaleX = originalWidth / modelSize   // 720/640 = 1.125
+                let scaleY = originalHeight / modelSize  // 1280/640 = 2.0
+                
+                let centerX = CGFloat(detection.x) * scaleX
+                let centerY = CGFloat(detection.y) * scaleY
+                let boxWidth = CGFloat(detection.width) * scaleX
+                let boxHeight = CGFloat(detection.height) * scaleY
+                
+                let x = centerX - boxWidth / 2
+                let y = centerY - boxHeight / 2
+                
+                let color = colors[index % colors.count]
+                
+                ctx.setStrokeColor(color)
+                ctx.setLineWidth(3.0)
+                let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
+                ctx.stroke(rect)
+                
+                // Label
+                let confidence = Int(detection.confidence * 100)
+                let labelText = "\(detection.className) \(confidence)%"
+                
+                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: UIColor.white
+                ]
+                
+                let maxLabelWidth: CGFloat = min(boxWidth * 1.8, 220)
+                let attributedString = NSAttributedString(string: labelText, attributes: attributes)
+                let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
+                let textSize = CTFramesetterSuggestFrameSizeWithConstraints(
+                    framesetter,
+                    CFRange(location: 0, length: 0),
+                    nil,
+                    CGSize(width: maxLabelWidth, height: CGFloat.greatestFiniteMagnitude),
+                    nil
+                )
+                
+                let labelPadding: CGFloat = 6
+                let labelWidth = textSize.width + (labelPadding * 2)
+                let labelHeight = textSize.height + (labelPadding * 2)
+                
+                var labelX: CGFloat
+                var labelY: CGFloat
+                
+                if y - labelHeight - 5 >= 0 {
+                    labelX = max(0, min(x, originalWidth - labelWidth))
+                    labelY = y - labelHeight - 5
+                } else if y + boxHeight + labelHeight + 5 <= originalHeight {
+                    labelX = max(0, min(x, originalWidth - labelWidth))
+                    labelY = y + boxHeight + 5
+                } else {
+                    labelX = max(0, min(x + 5, originalWidth - labelWidth))
+                    labelY = max(0, y + 5)
+                }
+                
+                ctx.setFillColor(color)
+                let labelRect = CGRect(x: labelX, y: labelY, width: labelWidth, height: labelHeight)
+                ctx.fill(labelRect)
+                
+                let textX = labelX + labelPadding
+                let textY = labelY + labelPadding
+                let path = CGPath(rect: CGRect(x: textX, y: textY, width: labelWidth - 2 * labelPadding, height: labelHeight - 2 * labelPadding), transform: nil)
+                let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
+                
+                ctx.saveGState()
+                ctx.textMatrix = .identity
+                CTFrameDraw(frame, ctx)
+                ctx.restoreGState()
+                
+                print("📦 Drew bbox for \(detection.className) @ (\(Int(x)), \(Int(y)), \(Int(boxWidth))x\(Int(boxHeight)))")
+                print("   🔢 Original YOLO (640x640): center(\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))), size(\(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height)))")
+                print("   📐 Scale factors: X=\(String(format: "%.3f", scaleX)), Y=\(String(format: "%.3f", scaleY))")
+                print("   🎯 Final (scaled): center(\(String(format: "%.1f", centerX)), \(String(format: "%.1f", centerY))), size(\(String(format: "%.1f", boxWidth))x\(String(format: "%.1f", boxHeight)))")
+                print("   📍 Bbox coordinates: left=\(String(format: "%.1f", x)), top=\(String(format: "%.1f", y)), right=\(String(format: "%.1f", x + boxWidth)), bottom=\(String(format: "%.1f", y + boxHeight))")
+            }
+            
+            if let outImage = ctx.makeImage() {
+                print("✅ Created output CGImage")
+                DispatchQueue.main.async {
+                    self.maskImageView.image = UIImage(cgImage: outImage, scale: 1.0, orientation: .up)
+                    self.isProcessing = false
+                    print("✅ ==================== FRAME COMPLETE ====================\n")
+                }
+            } else {
+                print("❌ Failed to make output image")
+                DispatchQueue.main.async { self.isProcessing = false }
+            }
+        }
     }
 
     // MARK: - Extract Detections (Accelerate - buffer copy + pointer arithmetic)
@@ -555,7 +856,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             if !shouldSuppress {
                 kept.append(det)
-                print("✅ KEPT: \(det.className) @ \(Int(det.confidence * 100))%")
+                if SEGMENT_DEBUG_SAVE_IMAGES {
+                    print("✅ KEPT: \(det.className) @ \(Int(det.confidence * 100))%")
+                }
                 suppressed.insert(i)
             }
         }
@@ -577,148 +880,148 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return union > 0 ? intersection / union : 0
     }
 
-    // MARK: - Mask IoU NMS with Merging (FROM DOC1 - vDSP_mmul, vDSP_dotpr, vDSP_sve)
-    private func applyMaskIoU(detections: [DetectionSmarty], iouThreshold: Float, prototypes: MLMultiArray) -> [DetectionSmarty] {
-        guard !detections.isEmpty else { return [] }
-        
-        let sorted = detections.sorted { $0.confidence > $1.confidence }
-        
-        print("\n🔍 Mask-NMS (pure mask IoU, no class logic):")
-        
-        let shape = prototypes.shape.map { $0.intValue }  // [1, 32, 160, 160]
-        let C = shape[1]
-        let Hp = shape[2]
-        let Wp = shape[3]
-        let spatial = Hp * Wp
-        
-        print("Proto shape: C=\(C), H=\(Hp), W=\(Wp), spatial=\(spatial)")
-        
-        // Build proto matrix (FROM DOC1 pattern)
-        var protoMatrix = [Float](repeating: 0, count: C * spatial)
-        
-        if prototypes.dataType == .float32 {
-            print("Proto dataType: float32")
-            let srcBase = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
-            for c in 0..<C {
-                let srcChannelOffset = c * Hp * Wp
-                let dstChannelOffset = c * spatial
-                for y in 0..<Hp {
-                    let rowOffset = y * Wp
-                    for x in 0..<Wp {
-                        let idx = rowOffset + x
-                        let srcIndex = srcChannelOffset + idx
-                        let dstIndex = dstChannelOffset + idx
-                        protoMatrix[dstIndex] = srcBase[srcIndex]
-                    }
-                }
-            }
-        } else {
-            print("Proto dataType: \(prototypes.dataType) (using NSNumber subscripts)")
-            for c in 0..<C {
-                for y in 0..<Hp {
-                    for x in 0..<Wp {
-                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
-                        let dstIndex = c * spatial + (y * Wp + x)
-                        protoMatrix[dstIndex] = val
-                    }
-                }
-            }
-        }
-        
-        // Log prototype matrix samples
-        logPrototypeMatrix(prototypes, protoMatrix, C, Hp, Wp, spatial)
-        
-        // Generate masks using vDSP_mmul (FROM DOC1)
-        var masks: [[Float]] = []
-        masks.reserveCapacity(sorted.count)
-        
-        print("\n🔍 ========== MASK GENERATION (20x20 grid, 8th sample) ==========")
-        
-        for (idx, det) in sorted.enumerated() {
-            var mask = [Float](repeating: 0, count: spatial)
-            
-            // Log mask coefficients for this detection
-            print("📊 [MASK-COEFFS] Detection[\(idx)] \(det.className) coefficients: [\(det.maskCoeffs.prefix(8).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
-            
-            // FROM DOC1: vDSP_mmul for coeffs × protoMatrix
-            vDSP_mmul(
-                det.maskCoeffs, 1,
-                protoMatrix, 1,
-                &mask, 1,
-                1,
-                vDSP_Length(spatial),
-                vDSP_Length(C)
-            )
-            
-            // Log pre-sigmoid values
-            logMaskGeneration(idx, det, mask, Hp, Wp, isPreSigmoid: true)
-            
-            // Sigmoid
-            for i in 0..<spatial {
-                let v = mask[i]
-                mask[i] = 1.0 / (1.0 + exp(-v))
-            }
-            
-            // Log post-sigmoid values
-            logMaskGeneration(idx, det, mask, Hp, Wp, isPreSigmoid: false)
-            
-            // Log mask stats
-            var minVal: Float = 0, maxVal: Float = 0
-            vDSP_minv(mask, 1, &minVal, vDSP_Length(spatial))
-            vDSP_maxv(mask, 1, &maxVal, vDSP_Length(spatial))
-            var sum: Float = 0
-            vDSP_sve(mask, 1, &sum, vDSP_Length(spatial))
-            let coverage = sum / Float(spatial) * 100
-            print("📊 Mask[\(idx)] \(det.className): min=\(String(format: "%.3f", minVal)), max=\(String(format: "%.3f", maxVal)), coverage=\(String(format: "%.1f", coverage))%")
-            
-            masks.append(mask)
-        }
-        
-        // NMS with merging (FROM DOC1)
-        var kept: [DetectionSmarty] = []
-        var keptMasks: [[Float]] = []
-        
-        for (i, det) in sorted.enumerated() {
-            let candidateMask = masks[i]
-            
-            var mergedWithExisting = false
-            var mergeTargetIndex = -1
-            
-            for (existingIndex, existingMask) in keptMasks.enumerated() {
-                let iou = calculateMaskIoU(mask1: candidateMask, mask2: existingMask)
-                if iou >= iouThreshold {
-                    mergedWithExisting = true
-                    mergeTargetIndex = existingIndex
-                    print("🔄 MERGING (IoU \(Int(iou * 100))%) \(det.className) @ \(Int(det.confidence * 100))% with existing \(kept[mergeTargetIndex].className) @ \(Int(kept[mergeTargetIndex].confidence * 100))%")
-                    break
-                }
-            }
-            
-            if mergedWithExisting && mergeTargetIndex >= 0 {
-                // Merge masks (max blend)
-                var mergedMask = keptMasks[mergeTargetIndex]
-                for pixelIndex in 0..<candidateMask.count {
-                    mergedMask[pixelIndex] = max(mergedMask[pixelIndex], candidateMask[pixelIndex])
-                }
-                keptMasks[mergeTargetIndex] = mergedMask
-                
-                // Keep higher confidence detection info
-                if det.confidence > kept[mergeTargetIndex].confidence {
-                    print("   → Replacing detection info with higher confidence: \(kept[mergeTargetIndex].className) @ \(Int(kept[mergeTargetIndex].confidence * 100))% → \(det.className) @ \(Int(det.confidence * 100))%")
-                    kept[mergeTargetIndex] = det
-                } else {
-                    print("   → Keeping existing detection info: \(kept[mergeTargetIndex].className) @ \(Int(kept[mergeTargetIndex].confidence * 100))%")
-                }
-            } else {
-                kept.append(det)
-                keptMasks.append(candidateMask)
-                print("✅ KEEP \(det.className) @ \(Int(det.confidence * 100))%")
-            }
-        }
-        
-        print("Mask-NMS: \(sorted.count) → \(kept.count) unique masks (by IoU)")
-        return kept
-    }
+//    // MARK: - Mask IoU NMS with Merging (FROM DOC1 - vDSP_mmul, vDSP_dotpr, vDSP_sve)
+//    private func applyMaskIoU(detections: [DetectionSmarty], iouThreshold: Float, prototypes: MLMultiArray) -> [DetectionSmarty] {
+//        guard !detections.isEmpty else { return [] }
+//        
+//        let sorted = detections.sorted { $0.confidence > $1.confidence }
+//        
+//        print("\n🔍 Mask-NMS (pure mask IoU, no class logic):")
+//        
+//        let shape = prototypes.shape.map { $0.intValue }  // [1, 32, 160, 160]
+//        let C = shape[1]
+//        let Hp = shape[2]
+//        let Wp = shape[3]
+//        let spatial = Hp * Wp
+//        
+//        print("Proto shape: C=\(C), H=\(Hp), W=\(Wp), spatial=\(spatial)")
+//        
+//        // Build proto matrix (FROM DOC1 pattern)
+//        var protoMatrix = [Float](repeating: 0, count: C * spatial)
+//        
+//        if prototypes.dataType == .float32 {
+//            print("Proto dataType: float32")
+//            let srcBase = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
+//            for c in 0..<C {
+//                let srcChannelOffset = c * Hp * Wp
+//                let dstChannelOffset = c * spatial
+//                for y in 0..<Hp {
+//                    let rowOffset = y * Wp
+//                    for x in 0..<Wp {
+//                        let idx = rowOffset + x
+//                        let srcIndex = srcChannelOffset + idx
+//                        let dstIndex = dstChannelOffset + idx
+//                        protoMatrix[dstIndex] = srcBase[srcIndex]
+//                    }
+//                }
+//            }
+//        } else {
+//            print("Proto dataType: \(prototypes.dataType) (using NSNumber subscripts)")
+//            for c in 0..<C {
+//                for y in 0..<Hp {
+//                    for x in 0..<Wp {
+//                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
+//                        let dstIndex = c * spatial + (y * Wp + x)
+//                        protoMatrix[dstIndex] = val
+//                    }
+//                }
+//            }
+//        }
+//        
+//        // Log prototype matrix samples
+//        logPrototypeMatrix(prototypes, protoMatrix, C, Hp, Wp, spatial)
+//        
+//        // Generate masks using vDSP_mmul (FROM DOC1)
+//        var masks: [[Float]] = []
+//        masks.reserveCapacity(sorted.count)
+//        
+//        print("\n🔍 ========== MASK GENERATION (20x20 grid, 8th sample) ==========")
+//        
+//        for (idx, det) in sorted.enumerated() {
+//            var mask = [Float](repeating: 0, count: spatial)
+//            
+//            // Log mask coefficients for this detection
+//            print("📊 [MASK-COEFFS] Detection[\(idx)] \(det.className) coefficients: [\(det.maskCoeffs.prefix(8).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
+//            
+//            // FROM DOC1: vDSP_mmul for coeffs × protoMatrix
+//            vDSP_mmul(
+//                det.maskCoeffs, 1,
+//                protoMatrix, 1,
+//                &mask, 1,
+//                1,
+//                vDSP_Length(spatial),
+//                vDSP_Length(C)
+//            )
+//            
+//            // Log pre-sigmoid values
+//            logMaskGeneration(idx, det, mask, Hp, Wp, isPreSigmoid: true)
+//            
+//            // Sigmoid
+//            for i in 0..<spatial {
+//                let v = mask[i]
+//                mask[i] = 1.0 / (1.0 + exp(-v))
+//            }
+//            
+//            // Log post-sigmoid values
+//            logMaskGeneration(idx, det, mask, Hp, Wp, isPreSigmoid: false)
+//            
+//            // Log mask stats
+//            var minVal: Float = 0, maxVal: Float = 0
+//            vDSP_minv(mask, 1, &minVal, vDSP_Length(spatial))
+//            vDSP_maxv(mask, 1, &maxVal, vDSP_Length(spatial))
+//            var sum: Float = 0
+//            vDSP_sve(mask, 1, &sum, vDSP_Length(spatial))
+//            let coverage = sum / Float(spatial) * 100
+//            print("📊 Mask[\(idx)] \(det.className): min=\(String(format: "%.3f", minVal)), max=\(String(format: "%.3f", maxVal)), coverage=\(String(format: "%.1f", coverage))%")
+//            
+//            masks.append(mask)
+//        }
+//        
+//        // NMS with merging (FROM DOC1)
+//        var kept: [DetectionSmarty] = []
+//        var keptMasks: [[Float]] = []
+//        
+//        for (i, det) in sorted.enumerated() {
+//            let candidateMask = masks[i]
+//            
+//            var mergedWithExisting = false
+//            var mergeTargetIndex = -1
+//            
+//            for (existingIndex, existingMask) in keptMasks.enumerated() {
+//                let iou = calculateMaskIoU(mask1: candidateMask, mask2: existingMask)
+//                if iou >= iouThreshold {
+//                    mergedWithExisting = true
+//                    mergeTargetIndex = existingIndex
+//                    print("🔄 MERGING (IoU \(Int(iou * 100))%) \(det.className) @ \(Int(det.confidence * 100))% with existing \(kept[mergeTargetIndex].className) @ \(Int(kept[mergeTargetIndex].confidence * 100))%")
+//                    break
+//                }
+//            }
+//            
+//            if mergedWithExisting && mergeTargetIndex >= 0 {
+//                // Merge masks (max blend)
+//                var mergedMask = keptMasks[mergeTargetIndex]
+//                for pixelIndex in 0..<candidateMask.count {
+//                    mergedMask[pixelIndex] = max(mergedMask[pixelIndex], candidateMask[pixelIndex])
+//                }
+//                keptMasks[mergeTargetIndex] = mergedMask
+//                
+//                // Keep higher confidence detection info
+//                if det.confidence > kept[mergeTargetIndex].confidence {
+//                    print("   → Replacing detection info with higher confidence: \(kept[mergeTargetIndex].className) @ \(Int(kept[mergeTargetIndex].confidence * 100))% → \(det.className) @ \(Int(det.confidence * 100))%")
+//                    kept[mergeTargetIndex] = det
+//                } else {
+//                    print("   → Keeping existing detection info: \(kept[mergeTargetIndex].className) @ \(Int(kept[mergeTargetIndex].confidence * 100))%")
+//                }
+//            } else {
+//                kept.append(det)
+//                keptMasks.append(candidateMask)
+//                print("✅ KEEP \(det.className) @ \(Int(det.confidence * 100))%")
+//            }
+//        }
+//        
+//        print("Mask-NMS: \(sorted.count) → \(kept.count) unique masks (by IoU)")
+//        return kept
+//    }
 
     // MARK: - Mask IoU Calculation (FROM DOC1 - vDSP_dotpr, vDSP_sve)
     private func calculateMaskIoU(mask1: [Float], mask2: [Float], eps: Float = 1e-7) -> Float {
@@ -1172,6 +1475,42 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
 
+    // MARK: - Calculate stable bbox from mask
+    private func calculateBboxFromMask(_ mask: [Float], maskWidth: Int, maskHeight: Int, imageWidth: Int, imageHeight: Int, cutoff: Float) -> CGRect {
+        var minX = maskWidth, maxX = 0
+        var minY = maskHeight, maxY = 0
+        var hasPixels = false
+        
+        // Find bounding box of mask pixels above cutoff
+        for y in 0..<maskHeight {
+            for x in 0..<maskWidth {
+                let idx = y * maskWidth + x
+                if mask[idx] >= cutoff {
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                    hasPixels = true
+                }
+            }
+        }
+        
+        if !hasPixels {
+            return CGRect.zero
+        }
+        
+        // Convert mask coordinates to image coordinates
+        let scaleX = Float(imageWidth) / Float(maskWidth)
+        let scaleY = Float(imageHeight) / Float(maskHeight)
+        
+        let x = Float(minX) * scaleX
+        let y = Float(minY) * scaleY
+        let w = Float(maxX - minX) * scaleX
+        let h = Float(maxY - minY) * scaleY
+        
+        return CGRect(x: CGFloat(x), y: CGFloat(y), width: CGFloat(w), height: CGFloat(h))
+    }
+
     // MARK: - Resize Pixel Buffer
     private func resizePixelBuffer(_ pixelBuffer: CVPixelBuffer, width: Int, height: Int) -> CVPixelBuffer? {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
@@ -1185,5 +1524,216 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         CIContext().render(ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY)), to: dst)
         return dst
+    }
+    
+    // MARK: - BBox Containment Check
+    private func bboxContains(outer: DetectionSmarty, inner: DetectionSmarty, tolerance: Float = 20.0) -> Bool {
+        let outerLeft = outer.x - outer.width / 2
+        let outerRight = outer.x + outer.width / 2
+        let outerTop = outer.y - outer.height / 2
+        let outerBottom = outer.y + outer.height / 2
+        
+        let innerLeft = inner.x - inner.width / 2
+        let innerRight = inner.x + inner.width / 2
+        let innerTop = inner.y - inner.height / 2
+        let innerBottom = inner.y + inner.height / 2
+        
+        // Check if inner is mostly inside outer (with tolerance)
+        let contained = innerLeft >= outerLeft - tolerance &&
+                        innerRight <= outerRight + tolerance &&
+                        innerTop >= outerTop - tolerance &&
+                        innerBottom <= outerBottom + tolerance
+        
+        if contained && SEGMENT_DEBUG_SAVE_IMAGES {
+            print("📦 BBox containment: \(inner.className) inside \(outer.className)")
+        }
+        
+        return contained
+    }
+
+    // MARK: - BBox Overlap Ratio (how much of smaller is inside larger)
+    private func bboxOverlapRatio(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
+        let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
+        let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
+        let x2 = min(det1.x + det1.width/2, det2.x + det2.width/2)
+        let y2 = min(det1.y + det1.height/2, det2.y + det2.height/2)
+        
+        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
+        let area1 = det1.width * det1.height
+        let area2 = det2.width * det2.height
+        let smallerArea = min(area1, area2)
+        
+        return smallerArea > 0 ? intersection / smallerArea : 0
+    }
+
+    // MARK: - Mask Containment (what % of smaller mask is inside larger)
+    private func calculateMaskContainment(mask1: [Float], mask2: [Float], threshold: Float = 0.3) -> Float {
+        let n = min(mask1.count, mask2.count)
+        guard n > 0 else { return 0 }
+        
+        // Binarize and compute
+        var sum1: Float = 0
+        var sum2: Float = 0
+        var intersection: Float = 0
+        
+        for i in 0..<n {
+            let v1 = mask1[i] >= threshold ? 1.0 : 0.0
+            let v2 = mask2[i] >= threshold ? 1.0 : 0.0
+            sum1 += Float(v1)
+            sum2 += Float(v2)
+            intersection += Float(v1 * v2)
+        }
+        
+        let smallerArea = min(sum1, sum2)
+        return smallerArea > 0 ? intersection / smallerArea : 0
+    }
+
+    // MARK: - Mask IoU NMS with Containment Merging
+    private func applyMaskIoU(detections: [DetectionSmarty], iouThreshold: Float, prototypes: MLMultiArray) -> [(detection: DetectionSmarty, mask: [Float])] {
+        guard !detections.isEmpty else { return [] }
+        
+        let sorted = detections.sorted { $0.confidence > $1.confidence }
+        
+        print("\n🔍 Mask-NMS (with containment merging):")
+        
+        let shape = prototypes.shape.map { $0.intValue }
+        let C = shape[1]
+        let Hp = shape[2]
+        let Wp = shape[3]
+        let spatial = Hp * Wp
+        
+        print("Proto shape: C=\(C), H=\(Hp), W=\(Wp), spatial=\(spatial)")
+        
+        // Build proto matrix
+        var protoMatrix = [Float](repeating: 0, count: C * spatial)
+        
+        if prototypes.dataType == .float32 {
+            let srcBase = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
+            for c in 0..<C {
+                let offset = c * spatial
+                for i in 0..<spatial {
+                    protoMatrix[offset + i] = srcBase[offset + i]
+                }
+            }
+        } else {
+            for c in 0..<C {
+                for y in 0..<Hp {
+                    for x in 0..<Wp {
+                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
+                        protoMatrix[c * spatial + (y * Wp + x)] = val
+                    }
+                }
+            }
+        }
+        
+        // Generate all masks upfront
+        var allMasks: [(detection: DetectionSmarty, mask: [Float])] = []
+        allMasks.reserveCapacity(sorted.count)
+        
+        for det in sorted {
+            var mask = [Float](repeating: 0, count: spatial)
+            
+            vDSP_mmul(
+                det.maskCoeffs, 1,
+                protoMatrix, 1,
+                &mask, 1,
+                1,
+                vDSP_Length(spatial),
+                vDSP_Length(C)
+            )
+            
+            // Sigmoid
+            for i in 0..<spatial {
+                mask[i] = 1.0 / (1.0 + exp(-mask[i]))
+            }
+            
+            // Log mask stats
+            var minVal: Float = 0, maxVal: Float = 0
+            vDSP_minv(mask, 1, &minVal, vDSP_Length(spatial))
+            vDSP_maxv(mask, 1, &maxVal, vDSP_Length(spatial))
+            var sum: Float = 0
+            vDSP_sve(mask, 1, &sum, vDSP_Length(spatial))
+            let coverage = sum / Float(spatial) * 100
+            if SEGMENT_DEBUG_SAVE_IMAGES {
+                print("📊 Mask \(det.className): min=\(String(format: "%.3f", minVal)), max=\(String(format: "%.3f", maxVal)), coverage=\(String(format: "%.1f", coverage))%")
+            }
+            
+            allMasks.append((det, mask))
+        }
+        
+        // NMS with containment merging
+        var kept: [(detection: DetectionSmarty, mask: [Float])] = []
+        var processed = Set<Int>()
+        
+        for (i, item) in allMasks.enumerated() {
+            if processed.contains(i) { continue }
+            
+            var mergedMask = item.mask
+            var bestDetection = item.detection
+            processed.insert(i)
+            
+            // Try to merge with all remaining detections
+            for (j, other) in allMasks.enumerated() {
+                if processed.contains(j) { continue }
+                
+                let maskIoU = calculateMaskIoU(mask1: mergedMask, mask2: other.mask)
+                let bboxOverlap = bboxOverlapRatio(det1: bestDetection, det2: other.detection)
+                let maskContainment = calculateMaskContainment(mask1: mergedMask, mask2: other.mask, threshold: maskCutoff)
+                
+                // Check bbox containment both ways
+                let bbox1Contains2 = bboxContains(outer: bestDetection, inner: other.detection)
+                let bbox2Contains1 = bboxContains(outer: other.detection, inner: bestDetection)
+                
+                // Merge conditions:
+                // 1. High mask IoU (overlapping masks)
+                // 2. One bbox contains the other (nested furniture)
+                // 3. High bbox overlap AND high mask containment (partial overlap)
+                let shouldMerge = maskIoU >= iouThreshold ||
+                                  bbox1Contains2 ||
+                                  bbox2Contains1 ||
+                                  (bboxOverlap >= 0.7 && maskContainment >= 0.5)
+                
+                if shouldMerge {
+                    // Max-blend masks
+                    for k in 0..<mergedMask.count {
+                        mergedMask[k] = max(mergedMask[k], other.mask[k])
+                    }
+                    
+                    // Determine merge reason for logging
+                    var reason = ""
+                    if bbox1Contains2 { reason = "CONTAINED" }
+                    else if bbox2Contains1 { reason = "CONTAINER" }
+                    else if maskIoU >= iouThreshold { reason = "IoU \(Int(maskIoU * 100))%" }
+                    else { reason = "OVERLAP \(Int(bboxOverlap * 100))%" }
+                    
+                    // Keep higher confidence detection info, prefer larger bbox for same confidence
+                    if other.detection.confidence > bestDetection.confidence ||
+                       (other.detection.confidence == bestDetection.confidence &&
+                        other.detection.width * other.detection.height > bestDetection.width * bestDetection.height) {
+                        if SEGMENT_DEBUG_SAVE_IMAGES {
+                            print("🔄 MERGE (\(reason)): \(other.detection.className) @ \(Int(other.detection.confidence * 100))% → replacing \(bestDetection.className)")
+                        }
+                        bestDetection = other.detection
+                    } else {
+                        if SEGMENT_DEBUG_SAVE_IMAGES {
+                            print("🔄 MERGE (\(reason)): \(other.detection.className) @ \(Int(other.detection.confidence * 100))% → into \(bestDetection.className)")
+                        }
+                    }
+                    
+                    processed.insert(j)
+                }
+            }
+            
+            // Log merged mask stats
+            var finalSum: Float = 0
+            vDSP_sve(mergedMask, 1, &finalSum, vDSP_Length(spatial))
+            let finalCoverage = finalSum / Float(spatial) * 100
+            print("✅ KEEP: \(bestDetection.className) @ \(Int(bestDetection.confidence * 100))% (merged coverage: \(String(format: "%.1f", finalCoverage))%)")
+            
+            kept.append((bestDetection, mergedMask))
+        }
+        
+        print("Mask-NMS: \(sorted.count) → \(kept.count) unique furniture pieces")
+        return kept
     }
 }
