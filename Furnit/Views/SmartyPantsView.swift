@@ -152,7 +152,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         self.addGestureRecognizer(pinchGesture)
         
         setupCamera()
-        print("✅ SmartyPantsContainerView initialized")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ SmartyPantsContainerView initialized") }
     }
     
     override func layoutSubviews() {
@@ -175,7 +175,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-        print("📌 Pinch gesture: state=\(gesture.state.rawValue), scale=\(gesture.scale)")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch gesture: state=\(gesture.state.rawValue), scale=\(gesture.scale)") }
         switch gesture.state {
         case .changed:
             let newScale = currentScale * gesture.scale
@@ -184,7 +184,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             gesture.scale = 1.0
         case .ended:
             currentScale = min(max(currentScale * gesture.scale, 0.3), 3.0)
-            print("📌 Pinch ended, currentScale=\(currentScale)")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch ended, currentScale=\(currentScale)") }
         default:
             break
         }
@@ -195,62 +195,62 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         detectionQueue.sync {
             self.mlModel = model
             if model != nil {
-                print("✅ Model set successfully")
+                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Model set successfully") }
             } else {
-                print("⚠️ Model is nil")
+                if SEGMENT_DEBUG_SAVE_IMAGES { print("⚠️ Model is nil") }
             }
         }
     }
     
     func startIfNeeded() {
-        print("🎬 startIfNeeded called")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("🎬 startIfNeeded called") }
         requestCameraPermissionAndStart()
     }
     func stop() {
-        print("🛑 stop called")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("🛑 stop called") }
         stopCamera()
     }
 
     // MARK: - Camera Setup
     private func setupCamera() {
-        print("📷 Setting up camera...")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("📷 Setting up camera...") }
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .hd1280x720
         captureSession.inputs.forEach { captureSession.removeInput($0) }
         captureSession.outputs.forEach { captureSession.removeOutput($0) }
 
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            print("❌ No back camera found")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ No back camera found") }
             captureSession.commitConfiguration()
             return
         }
-        print("✅ Found back camera: \(device.localizedName)")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Found back camera: \(device.localizedName)") }
 
         do {
             let input = try AVCaptureDeviceInput(device: device)
             if captureSession.canAddInput(input) {
                 captureSession.addInput(input)
-                print("✅ Added camera input")
+                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Added camera input") }
             }
             videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
             videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
             videoOutput.alwaysDiscardsLateVideoFrames = true
             if captureSession.canAddOutput(videoOutput) {
                 captureSession.addOutput(videoOutput)
-                print("✅ Added video output")
+                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Added video output") }
             }
             if let conn = videoOutput.connection(with: .video) {
                 conn.videoRotationAngle = 90
-                print("✅ Set video rotation to 90°")
+                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Set video rotation to 90°") }
             }
             captureSession.commitConfiguration()
-            print("✅ Camera configuration committed")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera configuration committed") }
             DispatchQueue.global(qos: .userInitiated).async {
                 self.captureSession.startRunning()
-                print("✅ Camera session started")
+                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera session started") }
             }
         } catch {
-            print("❌ Camera setup error: \(error)")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Camera setup error: \(error)") }
             captureSession.commitConfiguration()
         }
     }
@@ -259,45 +259,45 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         DispatchQueue.global(qos: .userInitiated).async {
             if self.captureSession.isRunning {
                 self.captureSession.stopRunning()
-                print("🛑 Camera session stopped")
+                if SEGMENT_DEBUG_SAVE_IMAGES { print("🛑 Camera session stopped") }
             }
         }
     }
 
     private func requestCameraPermissionAndStart() {
-        print("🔐 Checking camera permission...")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("🔐 Checking camera permission...") }
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            print("✅ Camera authorized")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera authorized") }
             if !captureSession.isRunning {
                 DispatchQueue.global(qos: .userInitiated).async {
                     self.captureSession.startRunning()
-                    print("✅ Camera started after authorization check")
+                    if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera started after authorization check") }
                 }
             }
         case .notDetermined:
-            print("⏳ Requesting camera permission...")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("⏳ Requesting camera permission...") }
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 if granted {
-                    print("✅ Camera permission granted")
+                    if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera permission granted") }
                     DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() }
                 } else {
-                    print("❌ Camera permission denied")
+                    if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Camera permission denied") }
                 }
             }
         case .denied:
-            print("❌ Camera permission denied")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Camera permission denied") }
         case .restricted:
-            print("❌ Camera permission restricted")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Camera permission restricted") }
         @unknown default:
-            print("❌ Unknown camera permission status")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Unknown camera permission status") }
         }
     }
 
     // MARK: - Capture Delegate
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            print("❌ No pixel buffer in sample")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ No pixel buffer in sample") }
             return
         }
         detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer) }
@@ -306,7 +306,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: - Main Processing
     private func processFrame(_ pixelBuffer: CVPixelBuffer) {
         guard let model = mlModel else {
-            print("⚠️ processFrame: model is nil")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("⚠️ processFrame: model is nil") }
             return
         }
         let now = Date()
@@ -314,68 +314,72 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         lastProcessTime = now
         isProcessing = true
         
-        print("\n🔬 ========== RAW YOLO OUTPUT ==========")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("\n🔬 ========== RAW YOLO OUTPUT ==========") }
 
         guard let resized = resizePixelBuffer(pixelBuffer, width: 640, height: 640) else {
-            print("❌ Failed to resize pixel buffer")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Failed to resize pixel buffer") }
             isProcessing = false
             return
         }
-        print("✅ Resized pixel buffer to 640x640")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Resized pixel buffer to 640x640") }
         
         guard let inputArray = pixelBufferToMLMultiArray(resized) else {
-            print("❌ Failed to create MLMultiArray")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Failed to create MLMultiArray") }
             isProcessing = false
             return
         }
-        print("✅ Created MLMultiArray, shape: \(inputArray.shape)")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Created MLMultiArray, shape: \(inputArray.shape)") }
         
         guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
-            print("❌ Failed to create input provider")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Failed to create input provider") }
             isProcessing = false
             return
         }
         
         guard let output = try? model.prediction(from: inputProvider) else {
-            print("❌ Model prediction failed")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Model prediction failed") }
             isProcessing = false
             return
         }
-        print("✅ Model prediction succeeded")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Model prediction succeeded") }
         
         // Try var_1432 first, then var_2421 as fallback
         var detectionsArray: MLMultiArray?
         if let arr = output.featureValue(for: "var_1432")?.multiArrayValue {
             detectionsArray = arr
-            print("✅ Using output: var_1432")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Using output: var_1432") }
         } else if let arr = output.featureValue(for: "var_2421")?.multiArrayValue {
             detectionsArray = arr
-            print("✅ Using output: var_2421")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Using output: var_2421") }
         }
         
         guard let detArray = detectionsArray else {
-            print("❌ No detections array found (tried var_1432 and var_2421)")
-            print("   Available outputs: \(output.featureNames)")
+            if SEGMENT_DEBUG_SAVE_IMAGES {
+                print("❌ No detections array found (tried var_1432 and var_2421)")
+                print("   Available outputs: \(output.featureNames)")
+            }
             isProcessing = false
             return
         }
         
         guard let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
-            print("❌ No prototypes array found")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ No prototypes array found") }
             isProcessing = false
             return
         }
         
-        print("Detections shape: \(detArray.shape)")
-        print("Prototypes shape: \(prototypesArray.shape)")
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            print("Detections shape: \(detArray.shape)")
+            print("Prototypes shape: \(prototypesArray.shape)")
+        }
 
         // MARK: Extract Detections (FROM DOC1 - NSNumber subscripts)
-        print("\n🔍 ========== ALL DETECTIONS EXTRACTED ==========")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("\n🔍 ========== ALL DETECTIONS EXTRACTED ==========") }
         let allDetections = extractDetections(from: detArray)
-        print("📊 [DETECTION] Extracted \(allDetections.count) raw detections")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [DETECTION] Extracted \(allDetections.count) raw detections") }
         
         if allDetections.isEmpty {
-            print("❌ [DETECTION] No valid detections found")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ [DETECTION] No valid detections found") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -385,14 +389,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         // MARK: Hierarchical BBox NMS (FROM DOC1)
         let hierarchicalFiltered = applyHierarchicalNMS(detections: allDetections, iouThreshold: 0.9)
-        print("📊 [H-NMS] Kept \(hierarchicalFiltered.count) detections after hierarchical NMS")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [H-NMS] Kept \(hierarchicalFiltered.count) detections after hierarchical NMS") }
         
         // MARK: Mask IoU NMS with merging (FROM DOC1)
         let maskFiltered = applyMaskIoU(detections: hierarchicalFiltered, iouThreshold: 0.2, prototypes: prototypesArray)
-        print("📊 [MASK-FILTERED] Total kept: \(maskFiltered.count) detections")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [MASK-FILTERED] Total kept: \(maskFiltered.count) detections") }
 
         if maskFiltered.isEmpty {
-            print("❌ [DETECTION] No valid detections found after mask filtering")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ [DETECTION] No valid detections found after mask filtering") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -401,11 +405,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         
         let best = maskFiltered.first!
-        print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
-        print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
+        if SEGMENT_DEBUG_SAVE_IMAGES {
+            print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
+            print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
+        }
 
         // MARK: Generate Pure Furniture Cutout (FROM DOC1 pattern)
-        print("\n🎨 ========== GENERATING CUTOUT ==========")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("\n🎨 ========== GENERATING CUTOUT ==========") }
         generatePureFurnitureCutout(detections: maskFiltered, prototypes: prototypesArray, originalImage: pixelBuffer)
     }
 
@@ -415,7 +421,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let numAnchors = detections.shape[2].intValue
         let numFeatures = detections.shape[1].intValue
-        print("📊 Detections tensor: \(numFeatures) features x \(numAnchors) anchors")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 Detections tensor: \(numFeatures) features x \(numAnchors) anchors") }
         
         // Copy MLMultiArray to float buffer ONCE (Accelerate)
         let totalCount = detections.count
@@ -847,7 +853,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             print("📊 Output: \(opaqueCount) opaque, \(transparentCount) transparent pixels")
 
-            // NOW draw bright cyan bounding boxes AFTER transparency mask (so they stay visible)
+            // Draw bright cyan bounding boxes AFTER transparency mask (so they stay visible) - ALWAYS
             let colors: [CGColor] = [
                 CGColor(red: 0, green: 1, blue: 1, alpha: 1),      // Bright cyan
                 CGColor(red: 1, green: 0, blue: 1, alpha: 1),      // Magenta
@@ -864,23 +870,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 // Original image: 720x1280 (after 90° rotation)
                 // Model input: 640x640 (stretched from rotated camera)
                 // YOLO coordinates: in 640x640 space, but need to account for rotation
-                
                 let originalWidth = CGFloat(CVPixelBufferGetWidth(originalImage))  // 720
                 let originalHeight = CGFloat(CVPixelBufferGetHeight(originalImage)) // 1280
                 let modelSize: CGFloat = 640.0
                 
                 // Apply 90° rotation transformation to YOLO coordinates
-                // For 90° clockwise rotation: new_x = old_y, new_y = width - old_x
-                let rotatedX = CGFloat(detection.y)  // Y becomes X
-                let rotatedY = modelSize - CGFloat(detection.x)  // X becomes (width - Y)
-                let rotatedWidth = CGFloat(detection.height)  // Height becomes width
-                let rotatedHeight = CGFloat(detection.width)  // Width becomes height
+                let rotatedX = modelSize - CGFloat(detection.y)
+                let rotatedY = CGFloat(detection.x)
+                let rotatedWidth = CGFloat(detection.height)
+                let rotatedHeight = CGFloat(detection.width)
                 
-                // Now scale to original image dimensions
+                // Now apply stretch scaling to rotated coordinates
                 let stretchScaleX = originalWidth / modelSize   // 720/640 = 1.125
                 let stretchScaleY = originalHeight / modelSize  // 1280/640 = 2.0
                 
-                // Apply scaling
                 let centerX = rotatedX * stretchScaleX
                 let centerY = rotatedY * stretchScaleY
                 let boxWidth = rotatedWidth * stretchScaleX
@@ -903,7 +906,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let labelText = "\(detection.className) \(confidence)%"
                 
                 // Create attributed string for label
-                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 16, nil)
+                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 32, nil)  // Font size 32
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: font,
                     .foregroundColor: UIColor.white
@@ -929,30 +932,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let labelRect = CGRect(x: labelX, y: labelY, width: labelWidth, height: labelHeight)
                 ctx.fill(labelRect)
                 
-                // Draw text
+                // Draw text without coordinate flipping to fix upside-down issue
                 let textX = labelX + labelPadding
-                let textY = labelY + labelPadding
-                let textRect = CGRect(x: textX, y: textY, width: textSize.width, height: textSize.height)
+                let textY = labelY + labelPadding + textSize.height // Add text height to position correctly
                 
-                // Flip coordinates for text drawing
-                ctx.saveGState()
-                ctx.translateBy(x: 0, y: originalHeight)
-                ctx.scaleBy(x: 1, y: -1)
-                
-                // Adjust text position for flipped coordinates
-                let flippedTextRect = CGRect(
-                    x: textRect.origin.x,
-                    y: originalHeight - textRect.origin.y - textRect.height,
-                    width: textRect.width,
-                    height: textRect.height
-                )
-                
-                // Draw the text
+                // Draw the text directly without flipping coordinates
                 let line = CTLineCreateWithAttributedString(attributedString)
-                ctx.textPosition = CGPoint(x: flippedTextRect.origin.x, y: flippedTextRect.origin.y)
+                ctx.textPosition = CGPoint(x: textX, y: textY)
                 CTLineDraw(line, ctx)
-                
-                ctx.restoreGState()
                 
                 print("📦 Drew bbox for \(detection.className) @ (\(Int(x)), \(Int(y)), \(Int(boxWidth))x\(Int(boxHeight))) with color \(index % colors.count)")
                 print("   🔢 Original YOLO (640x640): center(\(detection.x), \(detection.y)), size(\(detection.width), \(detection.height))")
@@ -1009,13 +996,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         // Log pixel conversion samples
         logPixelToMLConversion(srcBuffer, dstPtr, spatial, bytesPerRow)
-        print("✅ [PIXEL→ML] Conversion complete\n")
+        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ [PIXEL→ML] Conversion complete\n") }
         
         return array
     }
 
     // MARK: - Debug Logging Methods
     private func logGridSamples20x20(_ title: String, gridSize: Int = 20, sampleOffset: Int = 7, logAction: (Int, Int, Int, Int) -> Void) {
+        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
         print("\n🔍 ========== \(title.uppercased()) (20x20 grid, 8th sample) ==========")
         for gy in 0..<gridSize {
             for gx in 0..<gridSize {
@@ -1027,6 +1015,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     private func logPixelToMLConversion(_ srcBuffer: UnsafePointer<UInt8>, _ dstPtr: UnsafePointer<Float>, _ spatial: Int, _ bytesPerRow: Int) {
+        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
         logGridSamples20x20("PIXEL BUFFER TO ML ARRAY") { gy, gx, x, y in
             guard y < 640 && x < 640 else { return }
             let srcIdx = y * bytesPerRow + x * 4
@@ -1039,6 +1028,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     private func logPrototypeMatrix(_ prototypes: MLMultiArray, _ protoMatrix: [Float], _ C: Int, _ Hp: Int, _ Wp: Int, _ spatial: Int) {
+        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
         logGridSamples20x20("PROTOTYPE MATRIX") { gy, gx, x, y in
             guard y < Hp && x < Wp else { return }
             for c in 0..<min(4, C) {  // Only log first 4 channels
@@ -1050,6 +1040,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     private func logMaskGeneration(_ idx: Int, _ det: DetectionSmarty, _ mask: [Float], _ Hp: Int, _ Wp: Int, isPreSigmoid: Bool = true) {
+        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
         let stage = isPreSigmoid ? "Pre-sigmoid" : "Post-sigmoid"
         print("📊 [MASK-GEN] Detection[\(idx)] \(det.className) - \(stage) samples:")
         logGridSamples20x20("") { gy, gx, x, y in
@@ -1062,6 +1053,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     private func logGlobalMaskAccumulation(_ idx: Int, _ det: DetectionSmarty, _ mask: [Float], _ globalMask: inout [Float], _ Hp: Int, _ Wp: Int) {
+        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
         print("📊 [GLOBAL-ACC] Detection[\(idx)] \(det.className) - Accumulation samples:")
         logGridSamples20x20("") { gy, gx, x, y in
             guard y < Hp && x < Wp else { return }
@@ -1075,6 +1067,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     private func logFinalPixelApplication(_ pixels: UnsafePointer<UInt8>, _ globalMask: [Float], _ cutoff: Float, _ width: Int, _ height: Int, _ Wp: Int, _ Hp: Int) {
+        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
         logGridSamples20x20("FINAL PIXEL APPLICATION") { gy, gx, gridX, gridY in
             let px = gx * (width / 20) + (width / 20) / 8
             let py = gy * (height / 20) + (height / 20) / 8
@@ -1106,7 +1099,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         var out: CVPixelBuffer?
         CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &out)
         guard let dst = out else {
-            print("❌ Failed to create output pixel buffer")
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Failed to create output pixel buffer") }
             return nil
         }
         CIContext().render(ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY)), to: dst)
