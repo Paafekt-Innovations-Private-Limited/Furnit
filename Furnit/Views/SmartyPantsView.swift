@@ -7,7 +7,7 @@ import Accelerate
 import AVFoundation
 import Photos
 
-private let SEGMENT_DEBUG_SAVE_IMAGES = true
+private let SEGMENT_DEBUG_SAVE_IMAGES = false
 
 // MARK: - SwiftUI Wrapper
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
@@ -893,51 +893,100 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
                 ctx.stroke(rect)
                 
-                // Draw label background and text
+                // Smart label positioning with text wrapping
                 let confidence = Int(detection.confidence * 100)
                 let labelText = "\(detection.className) \(confidence)%"
                 
-                // Create attributed string for label
-                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 32, nil)  // Font size 32
+                // Create attributed string for label with wrapping capability
+                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)  // Slightly smaller font
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: font,
                     .foregroundColor: UIColor.white
                 ]
+                
+                // Calculate optimal text wrapping based on bbox width
+                let maxLabelWidth: CGFloat = min(boxWidth * 1.8, 220) // Max width based on bbox or 220px
                 let attributedString = NSAttributedString(string: labelText, attributes: attributes)
                 
-                // Calculate text size
-                let textSize = attributedString.boundingRect(
-                    with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
-                    options: [.usesLineFragmentOrigin, .usesFontLeading],
-                    context: nil
-                ).size
+                // Use framesetter for better text measurement with wrapping
+                let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
+                let textSize = CTFramesetterSuggestFrameSizeWithConstraints(
+                    framesetter, 
+                    CFRange(location: 0, length: 0),
+                    nil,
+                    CGSize(width: maxLabelWidth, height: CGFloat.greatestFiniteMagnitude),
+                    nil
+                )
                 
-                // Position label above the bounding box
-                let labelPadding: CGFloat = 4
+                let labelPadding: CGFloat = 6
                 let labelWidth = textSize.width + (labelPadding * 2)
                 let labelHeight = textSize.height + (labelPadding * 2)
-                let labelX = max(0, min(x, originalWidth - labelWidth)) // Keep within bounds
-                let labelY = max(0, y - labelHeight - 2) // Above the box, with small gap
                 
-                // Draw colored background for label
-                ctx.setFillColor(color)
+                // Smart positioning algorithm: try positions in order of preference
+                var labelX: CGFloat
+                var labelY: CGFloat
+                var labelPosition: String
+                
+                // 1. Try above (preferred)
+                if y - labelHeight - 5 >= 0 {
+                    labelX = max(0, min(x, originalWidth - labelWidth))
+                    labelY = y - labelHeight - 5
+                    labelPosition = "above"
+                } 
+                // 2. Try below
+                else if y + boxHeight + labelHeight + 5 <= originalHeight {
+                    labelX = max(0, min(x, originalWidth - labelWidth))
+                    labelY = y + boxHeight + 5
+                    labelPosition = "below"
+                }
+                // 3. Try left side
+                else if x - labelWidth - 5 >= 0 {
+                    labelX = x - labelWidth - 5
+                    labelY = max(0, min(y, originalHeight - labelHeight))
+                    labelPosition = "left"
+                }
+                // 4. Try right side
+                else if x + boxWidth + labelWidth + 5 <= originalWidth {
+                    labelX = x + boxWidth + 5
+                    labelY = max(0, min(y, originalHeight - labelHeight))
+                    labelPosition = "right"
+                }
+                // 5. Fallback: overlay on top of bbox with increased opacity
+                else {
+                    labelX = max(0, min(x + 5, originalWidth - labelWidth))
+                    labelY = max(0, y + 5)
+                    labelPosition = "overlay"
+                }
+                
+                // Draw colored background for label with adaptive opacity
+                if labelPosition == "overlay" {
+                    // More opaque for overlay to ensure readability
+                    ctx.setFillColor(color.copy(alpha: 0.9)!)
+                } else {
+                    ctx.setFillColor(color)
+                }
                 let labelRect = CGRect(x: labelX, y: labelY, width: labelWidth, height: labelHeight)
                 ctx.fill(labelRect)
                 
-                // Draw text without coordinate flipping to fix upside-down issue
+                // Draw wrapped text using Core Text for better rendering
                 let textX = labelX + labelPadding
-                let textY = labelY + labelPadding + textSize.height // Add text height to position correctly
+                let textY = labelY + labelPadding
                 
-                // Draw the text directly without flipping coordinates
-                let line = CTLineCreateWithAttributedString(attributedString)
-                ctx.textPosition = CGPoint(x: textX, y: textY)
-                CTLineDraw(line, ctx)
+                // Create frame for text rendering with proper wrapping
+                let path = CGPath(rect: CGRect(x: textX, y: textY, width: labelWidth - 2 * labelPadding, height: labelHeight - 2 * labelPadding), transform: nil)
+                let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
+                
+                // Draw the frame
+                ctx.saveGState()
+                ctx.textMatrix = .identity
+                CTFrameDraw(frame, ctx)
+                ctx.restoreGState()
                 
                 print("📦 Drew bbox for \(detection.className) @ (\(Int(x)), \(Int(y)), \(Int(boxWidth))x\(Int(boxHeight))) with color \(index % colors.count)")
                 print("   🔢 Original YOLO (640x640): center(\(detection.x), \(detection.y)), size(\(detection.width), \(detection.height))")
                 print("   📐 Scale factors: X=\(String(format: "%.3f", scaleX)), Y=\(String(format: "%.3f", scaleY))")
                 print("   🎯 Final (scaled): center(\(Int(centerX)), \(Int(centerY))), size(\(Int(boxWidth))x\(Int(boxHeight)))")
-                print("   🏷️ Label: '\(labelText)' @ (\(Int(labelX)), \(Int(labelY)))")
+                print("   🏷️ Label: '\(labelText)' @ \(labelPosition) (\(Int(labelX)), \(Int(labelY)))")
             }
 
             if let outImage = ctx.makeImage() {
