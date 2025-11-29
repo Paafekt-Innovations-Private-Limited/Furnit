@@ -416,7 +416,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // MARK: Hierarchical BBox NMS (FROM DOC1)
-        let hierarchicalFiltered = applyHierarchicalNMS(detections: allDetections, iouThreshold: 1.0)
+        let hierarchicalFiltered = applyHierarchicalNMS(detections: allDetections, iouThreshold: 0.7)
         if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [H-NMS] Kept \(hierarchicalFiltered.count) detections after hierarchical NMS") }
         
 //        // MARK: Mask IoU NMS with merging (FROM DOC1)
@@ -678,16 +678,19 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 
                 let color = colors[index % colors.count]
                 
-                ctx.setStrokeColor(color)
-                ctx.setLineWidth(3.0)
-                let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
-                ctx.stroke(rect)
+                // Draw bounding box rectangle only if debug is enabled
+                if SEGMENT_DEBUG_SAVE_IMAGES {
+                    ctx.setStrokeColor(color)
+                    ctx.setLineWidth(3.0)
+                    let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
+                    ctx.stroke(rect)
+                }
                 
                 // Label
                 let confidence = Int(detection.confidence * 100)
                 let labelText = "\(detection.className) \(confidence)%"
                 
-                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)
+                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 34, nil)  // Increased from 28 to 34
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: font,
                     .foregroundColor: UIColor.white
