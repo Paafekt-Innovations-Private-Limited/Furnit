@@ -578,12 +578,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
         
+        // Log prototype matrix samples
+        logPrototypeMatrix(prototypes, protoMatrix, C, Hp, Wp, spatial)
+        
         // Generate masks using vDSP_mmul (FROM DOC1)
         var masks: [[Float]] = []
         masks.reserveCapacity(sorted.count)
         
+        print("\n🔍 ========== MASK GENERATION (20x20 grid, 8th sample) ==========")
+        
         for (idx, det) in sorted.enumerated() {
             var mask = [Float](repeating: 0, count: spatial)
+            
+            // Log mask coefficients for this detection
+            print("📊 [MASK-COEFFS] Detection[\(idx)] \(det.className) coefficients: [\(det.maskCoeffs.prefix(8).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
             
             // FROM DOC1: vDSP_mmul for coeffs × protoMatrix
             vDSP_mmul(
@@ -595,11 +603,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 vDSP_Length(C)
             )
             
+            // Log pre-sigmoid values
+            logMaskGeneration(idx, det, mask, Hp, Wp, isPreSigmoid: true)
+            
             // Sigmoid
             for i in 0..<spatial {
                 let v = mask[i]
                 mask[i] = 1.0 / (1.0 + exp(-v))
             }
+            
+            // Log post-sigmoid values
+            logMaskGeneration(idx, det, mask, Hp, Wp, isPreSigmoid: false)
             
             // Log mask stats
             var minVal: Float = 0, maxVal: Float = 0
@@ -714,8 +728,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // Accumulate all masks with max blend
         var globalMask = [Float](repeating: 0, count: spatial)
 
+        print("\n🔍 ========== GLOBAL MASK ACCUMULATION (20x20 grid, 8th sample) ==========")
+
         for (idx, det) in detections.enumerated() {
             var mask = [Float](repeating: 0, count: spatial)
+            
+            // Log mask coefficients for this detection
+            print("📊 [CUTOUT-COEFFS] Detection[\(idx)] \(det.className) coefficients: [\(det.maskCoeffs.prefix(8).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
             
             vDSP_mmul(
                 det.maskCoeffs, 1,
@@ -725,6 +744,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 vDSP_Length(spatial),
                 vDSP_Length(C)
             )
+
+            // Log accumulation process
+            logGlobalMaskAccumulation(idx, det, mask, &globalMask, Hp, Wp)
 
             // Sigmoid and max accumulation
             for i in 0..<spatial {
@@ -818,6 +840,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
             
+            // Log final pixel application samples
+            logFinalPixelApplication(pixels, globalMask, cutoff, width, height, Wp, Hp)
+            
             print("📊 Output: \(opaqueCount) opaque, \(transparentCount) transparent pixels")
 
             if let outImage = ctx.makeImage() {
@@ -864,7 +889,96 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 dstPtr[2 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 0]) / 255.0  // B
             }
         }
+        
+        // Log pixel conversion samples
+        logPixelToMLConversion(srcBuffer, dstPtr, spatial, bytesPerRow)
+        print("✅ [PIXEL→ML] Conversion complete\n")
+        
         return array
+    }
+
+    // MARK: - Debug Logging Methods
+    private func logGridSamples20x20(_ title: String, gridSize: Int = 20, sampleOffset: Int = 7, logAction: (Int, Int, Int, Int) -> Void) {
+        print("\n🔍 ========== \(title.uppercased()) (20x20 grid, 8th sample) ==========")
+        for gy in 0..<gridSize {
+            for gx in 0..<gridSize {
+                let y = gy * 8 + sampleOffset  // 8th sample in each grid cell
+                let x = gx * 8 + sampleOffset
+                logAction(gy, gx, x, y)
+            }
+        }
+    }
+    
+    private func logPixelToMLConversion(_ srcBuffer: UnsafePointer<UInt8>, _ dstPtr: UnsafePointer<Float>, _ spatial: Int, _ bytesPerRow: Int) {
+        logGridSamples20x20("PIXEL BUFFER TO ML ARRAY") { gy, gx, x, y in
+            guard y < 640 && x < 640 else { return }
+            let srcIdx = y * bytesPerRow + x * 4
+            let dstIdx = y * 640 + x
+            let rVal = Float(srcBuffer[srcIdx + 2]) / 255.0
+            let gVal = Float(srcBuffer[srcIdx + 1]) / 255.0
+            let bVal = Float(srcBuffer[srcIdx + 0]) / 255.0
+            print("📊 [PIXEL→ML] Grid[\(gy),\(gx)] Pixel(\(x),\(y)): BGRA(\(srcBuffer[srcIdx]),\(srcBuffer[srcIdx+1]),\(srcBuffer[srcIdx+2]),\(srcBuffer[srcIdx+3])) → RGB(\(String(format: "%.3f", rVal)),\(String(format: "%.3f", gVal)),\(String(format: "%.3f", bVal)))")
+        }
+    }
+    
+    private func logPrototypeMatrix(_ prototypes: MLMultiArray, _ protoMatrix: [Float], _ C: Int, _ Hp: Int, _ Wp: Int, _ spatial: Int) {
+        logGridSamples20x20("PROTOTYPE MATRIX") { gy, gx, x, y in
+            guard y < Hp && x < Wp else { return }
+            for c in 0..<min(4, C) {  // Only log first 4 channels
+                let dstIndex = c * spatial + (y * Wp + x)
+                let val = protoMatrix[dstIndex]
+                print("📊 [PROTO-MAT] Channel[\(c)] Grid[\(gy),\(gx)] Proto(\(x),\(y)): value=\(String(format: "%.3f", val))")
+            }
+        }
+    }
+    
+    private func logMaskGeneration(_ idx: Int, _ det: DetectionSmarty, _ mask: [Float], _ Hp: Int, _ Wp: Int, isPreSigmoid: Bool = true) {
+        let stage = isPreSigmoid ? "Pre-sigmoid" : "Post-sigmoid"
+        print("📊 [MASK-GEN] Detection[\(idx)] \(det.className) - \(stage) samples:")
+        logGridSamples20x20("") { gy, gx, x, y in
+            guard y < Hp && x < Wp else { return }
+            let maskIdx = y * Wp + x
+            let val = mask[maskIdx]
+            let suffix = isPreSigmoid ? "pre-sigmoid" : "post-sigmoid"
+            print("    Grid[\(gy),\(gx)] Mask(\(x),\(y)): \(suffix)=\(String(format: "%.3f", val))")
+        }
+    }
+    
+    private func logGlobalMaskAccumulation(_ idx: Int, _ det: DetectionSmarty, _ mask: [Float], _ globalMask: inout [Float], _ Hp: Int, _ Wp: Int) {
+        print("📊 [GLOBAL-ACC] Detection[\(idx)] \(det.className) - Accumulation samples:")
+        logGridSamples20x20("") { gy, gx, x, y in
+            guard y < Hp && x < Wp else { return }
+            let maskIdx = y * Wp + x
+            let preVal = mask[maskIdx]
+            let sigmoid = 1.0 / (1.0 + exp(-preVal))
+            let oldGlobal = globalMask[maskIdx]
+            let newGlobal = max(oldGlobal, sigmoid)
+            print("    Grid[\(gy),\(gx)] Mask(\(x),\(y)): pre=\(String(format: "%.3f", preVal)), sigmoid=\(String(format: "%.3f", sigmoid)), old_global=\(String(format: "%.3f", oldGlobal)), new_global=\(String(format: "%.3f", newGlobal))")
+        }
+    }
+    
+    private func logFinalPixelApplication(_ pixels: UnsafePointer<UInt8>, _ globalMask: [Float], _ cutoff: Float, _ width: Int, _ height: Int, _ Wp: Int, _ Hp: Int) {
+        logGridSamples20x20("FINAL PIXEL APPLICATION") { gy, gx, gridX, gridY in
+            let px = gx * (width / 20) + (width / 20) / 8
+            let py = gy * (height / 20) + (height / 20) / 8
+            guard px < width && py < height else { return }
+            
+            let idx = (py * width + px) * 4
+            let mx = Float(px) * Float(Wp) / Float(width)
+            let my = Float(py) * Float(Hp) / Float(height)
+            let x0 = Int(mx)
+            let y0 = Int(my)
+            
+            guard x0 >= 0 && x0 < Wp && y0 >= 0 && y0 < Hp else { return }
+            
+            let maskValue = globalMask[y0 * Wp + x0]
+            let originalR = pixels[idx]
+            let originalG = pixels[idx + 1]
+            let originalB = pixels[idx + 2]
+            let originalA = pixels[idx + 3]
+            let newAlpha = maskValue >= cutoff ? 255 : 0
+            print("📊 [FINAL-APP] Grid[\(gy),\(gx)] Pixel(\(px),\(py)): mask_coord(\(x0),\(y0)), mask_val=\(String(format: "%.3f", maskValue)), cutoff=\(cutoff), RGBA(\(originalR),\(originalG),\(originalB),\(originalA)) → alpha=\(newAlpha)")
+        }
     }
 
     // MARK: - Resize Pixel Buffer
