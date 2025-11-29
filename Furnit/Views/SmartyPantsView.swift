@@ -54,7 +54,7 @@ struct DetectionSmarty {
 }
 
 // MARK: - Main Container View
-final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate {
+final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
     
     // MARK: Config
     var processInterval: TimeInterval = 0.05
@@ -74,9 +74,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         iv.contentMode = .scaleAspectFit
         iv.backgroundColor = .clear
         iv.isOpaque = false
-        iv.clipsToBounds = false
+        iv.clipsToBounds = true  // Enable clipping to improve gesture handling
         iv.alpha = 1.0
-        iv.isUserInteractionEnabled = true
+        iv.isUserInteractionEnabled = false  // Disable on imageView, handle on parent
         return iv
     }()
     
@@ -147,8 +147,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             maskImageView.heightAnchor.constraint(equalTo: heightAnchor)
         ])
         
-        // Add pinch gesture to self (parent view) so it works even when image is small
+        // Add pinch gesture to self (parent view) for better touch handling
         let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        pinchGesture.delegate = self
         self.addGestureRecognizer(pinchGesture)
         
         setupCamera()
@@ -161,33 +162,73 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     // Pass touches in top area through to SwiftUI (for Back button)
-    // Handle rest for pinch gesture
+    // Allow pinch gesture everywhere else
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         // Top 100 points - pass through for navigation
         if point.y < 100 {
             return false
         }
-        // If no image, pass through
-        if maskImageView.image == nil {
-            return false
-        }
+        // Always allow touches for pinch gesture when we have content
         return true
     }
     
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
         if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch gesture: state=\(gesture.state.rawValue), scale=\(gesture.scale)") }
+        
+        // Ensure we have an image to scale
+        guard maskImageView.image != nil else {
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 No image to scale") }
+            return
+        }
+        
         switch gesture.state {
+        case .began:
+            // Store the current transform as the base for this gesture
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch began, currentScale=\(currentScale)") }
         case .changed:
             let newScale = currentScale * gesture.scale
             let clampedScale = min(max(newScale, 0.3), 3.0)
-            maskImageView.transform = CGAffineTransform(scaleX: clampedScale, y: clampedScale)
+            
+            // Apply the transform with smooth scaling
+            let transform = CGAffineTransform(scaleX: clampedScale, y: clampedScale)
+            maskImageView.transform = transform
+            
+            // Reset the gesture scale to prevent cumulative scaling
             gesture.scale = 1.0
-        case .ended:
-            currentScale = min(max(currentScale * gesture.scale, 0.3), 3.0)
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch ended, currentScale=\(currentScale)") }
+            
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Scaling to: \(String(format: "%.2f", clampedScale))") }
+        case .ended, .cancelled:
+            // Finalize the scale
+            let finalScale = currentScale * gesture.scale
+            currentScale = min(max(finalScale, 0.3), 3.0)
+            
+            // Apply final transform
+            let finalTransform = CGAffineTransform(scaleX: currentScale, y: currentScale)
+            
+            // Animate to final position for smoother experience
+            UIView.animate(withDuration: 0.1, delay: 0, options: [.curveEaseOut], animations: {
+                self.maskImageView.transform = finalTransform
+            })
+            
+            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch ended, final scale=\(String(format: "%.2f", currentScale))") }
         default:
             break
         }
+    }
+    
+    // MARK: - UIGestureRecognizerDelegate
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Allow pinch gesture everywhere except the top navigation area
+        let location = touch.location(in: self)
+        if location.y < 100 {
+            return false // Let SwiftUI handle navigation
+        }
+        return true
+    }
+    
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Allow pinch to work with other gestures
+        return gestureRecognizer is UIPinchGestureRecognizer
     }
 
     // MARK: - Public
