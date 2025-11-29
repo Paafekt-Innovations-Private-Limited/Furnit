@@ -779,6 +779,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let width = CVPixelBufferGetWidth(originalImage)
             let height = CVPixelBufferGetHeight(originalImage)
             print("📐 Original image: \(width)x\(height)")
+            print("📐 Camera preset: .hd1280x720, Rotation: 90°")
+            print("📐 Model input was: 640x640")
 
             guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
                 print("❌ Failed to create CGImage")
@@ -844,6 +846,112 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             logFinalPixelApplication(pixels, globalMask, cutoff, width, height, Wp, Hp)
             
             print("📊 Output: \(opaqueCount) opaque, \(transparentCount) transparent pixels")
+
+            // NOW draw bright cyan bounding boxes AFTER transparency mask (so they stay visible)
+            let colors: [CGColor] = [
+                CGColor(red: 0, green: 1, blue: 1, alpha: 1),      // Bright cyan
+                CGColor(red: 1, green: 0, blue: 1, alpha: 1),      // Magenta
+                CGColor(red: 0, green: 1, blue: 0, alpha: 1),      // Green
+                CGColor(red: 1, green: 1, blue: 0, alpha: 1),      // Yellow
+                CGColor(red: 1, green: 0.5, blue: 0, alpha: 1),   // Orange
+                CGColor(red: 0.5, green: 0, blue: 1, alpha: 1),   // Purple
+                CGColor(red: 1, green: 0, blue: 0, alpha: 1),      // Red
+                CGColor(red: 0, green: 0.5, blue: 1, alpha: 1)    // Light blue
+            ]
+            
+            for (index, detection) in detections.enumerated() {
+                // The issue: Original image is 720x1280 (with 90° rotation from camera)
+                // Model input was stretched to 640x640, distorting aspect ratio
+                // YOLO coordinates are in 640x640 space, need to map back to original aspect ratio
+                
+                // Calculate how the original image was stretched for model input (using float precision)
+                let originalWidth = CGFloat(CVPixelBufferGetWidth(originalImage))
+                let originalHeight = CGFloat(CVPixelBufferGetHeight(originalImage))
+                let modelSize: CGFloat = 640.0
+                
+                let stretchScaleX = originalWidth / modelSize   // How much X was stretched (720/640 = 1.125)
+                let stretchScaleY = originalHeight / modelSize  // How much Y was stretched (1280/640 = 2.0)
+                
+                // Apply inverse stretch to get back to original proportions
+                let centerX = CGFloat(detection.x) * stretchScaleX
+                let centerY = CGFloat(detection.y) * stretchScaleY
+                let boxWidth = CGFloat(detection.width) * stretchScaleX
+                let boxHeight = CGFloat(detection.height) * stretchScaleY
+                
+                let x = centerX - boxWidth / 2
+                let y = centerY - boxHeight / 2
+                
+                // Use different colors for each detection
+                let color = colors[index % colors.count]
+                
+                // Draw bounding box
+                ctx.setStrokeColor(color)
+                ctx.setLineWidth(3.0)
+                let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
+                ctx.stroke(rect)
+                
+                // Draw label background and text
+                let confidence = Int(detection.confidence * 100)
+                let labelText = "\(detection.className) \(confidence)%"
+                
+                // Create attributed string for label
+                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 16, nil)
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: UIColor.white
+                ]
+                let attributedString = NSAttributedString(string: labelText, attributes: attributes)
+                
+                // Calculate text size
+                let textSize = attributedString.boundingRect(
+                    with: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    context: nil
+                ).size
+                
+                // Position label above the bounding box
+                let labelPadding: CGFloat = 4
+                let labelWidth = textSize.width + (labelPadding * 2)
+                let labelHeight = textSize.height + (labelPadding * 2)
+                let labelX = max(0, min(x, originalWidth - labelWidth)) // Keep within bounds
+                let labelY = max(0, y - labelHeight - 2) // Above the box, with small gap
+                
+                // Draw colored background for label
+                ctx.setFillColor(color)
+                let labelRect = CGRect(x: labelX, y: labelY, width: labelWidth, height: labelHeight)
+                ctx.fill(labelRect)
+                
+                // Draw text
+                let textX = labelX + labelPadding
+                let textY = labelY + labelPadding
+                let textRect = CGRect(x: textX, y: textY, width: textSize.width, height: textSize.height)
+                
+                // Flip coordinates for text drawing
+                ctx.saveGState()
+                ctx.translateBy(x: 0, y: originalHeight)
+                ctx.scaleBy(x: 1, y: -1)
+                
+                // Adjust text position for flipped coordinates
+                let flippedTextRect = CGRect(
+                    x: textRect.origin.x,
+                    y: originalHeight - textRect.origin.y - textRect.height,
+                    width: textRect.width,
+                    height: textRect.height
+                )
+                
+                // Draw the text
+                let line = CTLineCreateWithAttributedString(attributedString)
+                ctx.textPosition = CGPoint(x: flippedTextRect.origin.x, y: flippedTextRect.origin.y)
+                CTLineDraw(line, ctx)
+                
+                ctx.restoreGState()
+                
+                print("📦 Drew bbox for \(detection.className) @ (\(Int(x)), \(Int(y)), \(Int(boxWidth))x\(Int(boxHeight))) with color \(index % colors.count)")
+                print("   🔢 Original YOLO (640x640): center(\(detection.x), \(detection.y)), size(\(detection.width), \(detection.height))")
+                print("   📐 Stretch scales: X=\(String(format: "%.3f", stretchScaleX)), Y=\(String(format: "%.3f", stretchScaleY))")
+                print("   🎯 Final (original space): center(\(Int(centerX)), \(Int(centerY))), size(\(Int(boxWidth))x\(Int(boxHeight)))")
+                print("   🏷️ Label: '\(labelText)' @ (\(Int(labelX)), \(Int(labelY)))")
+            }
 
             if let outImage = ctx.makeImage() {
                 print("✅ Created output CGImage")
