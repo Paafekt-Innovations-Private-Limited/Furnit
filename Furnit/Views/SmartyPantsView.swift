@@ -860,23 +860,31 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             ]
             
             for (index, detection) in detections.enumerated() {
-                // The issue: Original image is 720x1280 (with 90° rotation from camera)
-                // Model input was stretched to 640x640, distorting aspect ratio
-                // YOLO coordinates are in 640x640 space, need to map back to original aspect ratio
+                // IMPORTANT: Camera has 90° rotation, so coordinates need transformation
+                // Original image: 720x1280 (after 90° rotation)
+                // Model input: 640x640 (stretched from rotated camera)
+                // YOLO coordinates: in 640x640 space, but need to account for rotation
                 
-                // Calculate how the original image was stretched for model input (using float precision)
-                let originalWidth = CGFloat(CVPixelBufferGetWidth(originalImage))
-                let originalHeight = CGFloat(CVPixelBufferGetHeight(originalImage))
+                let originalWidth = CGFloat(CVPixelBufferGetWidth(originalImage))  // 720
+                let originalHeight = CGFloat(CVPixelBufferGetHeight(originalImage)) // 1280
                 let modelSize: CGFloat = 640.0
                 
-                let stretchScaleX = originalWidth / modelSize   // How much X was stretched (720/640 = 1.125)
-                let stretchScaleY = originalHeight / modelSize  // How much Y was stretched (1280/640 = 2.0)
+                // Apply 90° rotation transformation to YOLO coordinates
+                // For 90° clockwise rotation: new_x = old_y, new_y = width - old_x
+                let rotatedX = CGFloat(detection.y)  // Y becomes X
+                let rotatedY = modelSize - CGFloat(detection.x)  // X becomes (width - Y)
+                let rotatedWidth = CGFloat(detection.height)  // Height becomes width
+                let rotatedHeight = CGFloat(detection.width)  // Width becomes height
                 
-                // Apply inverse stretch to get back to original proportions
-                let centerX = CGFloat(detection.x) * stretchScaleX
-                let centerY = CGFloat(detection.y) * stretchScaleY
-                let boxWidth = CGFloat(detection.width) * stretchScaleX
-                let boxHeight = CGFloat(detection.height) * stretchScaleY
+                // Now scale to original image dimensions
+                let stretchScaleX = originalWidth / modelSize   // 720/640 = 1.125
+                let stretchScaleY = originalHeight / modelSize  // 1280/640 = 2.0
+                
+                // Apply scaling
+                let centerX = rotatedX * stretchScaleX
+                let centerY = rotatedY * stretchScaleY
+                let boxWidth = rotatedWidth * stretchScaleX
+                let boxHeight = rotatedHeight * stretchScaleY
                 
                 let x = centerX - boxWidth / 2
                 let y = centerY - boxHeight / 2
@@ -948,8 +956,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 
                 print("📦 Drew bbox for \(detection.className) @ (\(Int(x)), \(Int(y)), \(Int(boxWidth))x\(Int(boxHeight))) with color \(index % colors.count)")
                 print("   🔢 Original YOLO (640x640): center(\(detection.x), \(detection.y)), size(\(detection.width), \(detection.height))")
+                print("   🔄 After 90° rotation: center(\(rotatedX), \(rotatedY)), size(\(rotatedWidth), \(rotatedHeight))")
                 print("   📐 Stretch scales: X=\(String(format: "%.3f", stretchScaleX)), Y=\(String(format: "%.3f", stretchScaleY))")
-                print("   🎯 Final (original space): center(\(Int(centerX)), \(Int(centerY))), size(\(Int(boxWidth))x\(Int(boxHeight)))")
+                print("   🎯 Final (rotated+scaled): center(\(Int(centerX)), \(Int(centerY))), size(\(Int(boxWidth))x\(Int(boxHeight)))")
                 print("   🏷️ Label: '\(labelText)' @ (\(Int(labelX)), \(Int(labelY)))")
             }
 
