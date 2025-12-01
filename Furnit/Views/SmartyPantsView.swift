@@ -1,5 +1,6 @@
 // SmartyPantsView.swift
-// UIKit structure + Doc1 YOLO reading + Doc1 Accelerate + ALL DEBUG LOGS
+// Two-Stage Detection: Full frame -> Crop to primary bbox -> Re-detect -> UNION BOTH
+
 import SwiftUI
 import UIKit
 import CoreML
@@ -7,21 +8,25 @@ import Accelerate
 import AVFoundation
 import Photos
 
-private let SEGMENT_DEBUG_SAVE_IMAGES = false
+private let SEGMENT_DEBUG = true
 
 // MARK: - SwiftUI Wrapper
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.05
     var confidenceThreshold: Float = 0.3
+    var detectAllObjects: Bool = false  // true = detect everything, false = furniture only
+    var useBilinearUpscaling: Bool = true  // true = smooth edges (retina), false = fast/blocky
+    var maskThreshold: Float = 0.0  // try -2.0 to -6.0 if masks are fragmentary
     var active: Bool = false
-    var debugSaveImages: Bool = true
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
         let v = SmartyPantsContainerView()
         v.processInterval = processInterval
         v.confidenceThreshold = confidenceThreshold
-        v.debugSaveImages = debugSaveImages
+        v.detectAllObjects = detectAllObjects
+        v.useBilinearUpscaling = useBilinearUpscaling
+        v.maskThreshold = maskThreshold
         v.setModel(mlModel)
         if active { v.startIfNeeded() }
         return v
@@ -31,7 +36,9 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
         uiView.confidenceThreshold = confidenceThreshold
-        uiView.debugSaveImages = debugSaveImages
+        uiView.detectAllObjects = detectAllObjects
+        uiView.useBilinearUpscaling = useBilinearUpscaling
+        uiView.maskThreshold = maskThreshold
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 
@@ -50,7 +57,6 @@ struct DetectionSmarty {
     let classIdx: Int
     let className: String
     let maskCoeffs: [Float]
-    var tightBBox: CGRect? = nil
 }
 
 // MARK: - Main Container View
@@ -59,8 +65,16 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.05
     var confidenceThreshold: Float = 0.3
-    var debugSaveImages: Bool = true
-    var maskCutoff: Float = 0.01
+    
+    // Detection mode: true = detect ALL objects, false = furniture classes only
+    var detectAllObjects: Bool = false
+    
+    // Mask upscaling: true = bilinear (smooth edges), false = nearest-neighbor (faster)
+    var useBilinearUpscaling: Bool = true
+    
+    // Mask threshold: values above this are considered "object"
+    // Default 0.0, but try -2.0 or -3.0 if masks are fragmentary
+    var maskThreshold: Float = -5.0
 
     // MARK: Camera
     private let captureSession = AVCaptureSession()
@@ -71,12 +85,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let maskImageView: UIImageView = {
         let iv = UIImageView()
-        iv.contentMode = .scaleAspectFit  // Back to original scaling
+        iv.contentMode = .scaleAspectFit
         iv.backgroundColor = .clear
         iv.isOpaque = false
-        iv.clipsToBounds = true  // Enable clipping to improve gesture handling
+        iv.clipsToBounds = true
         iv.alpha = 1.0
-        iv.isUserInteractionEnabled = false  // Disable on imageView, handle on parent
+        iv.isUserInteractionEnabled = false
         return iv
     }()
     
@@ -90,33 +104,66 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private var isProcessing = false
     private let ciContext = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
 
-    // MARK: Furniture Classes (from Doc1)
+    // MARK: Furniture & Household Classes (LVIS indices)
+    // YOLOE-pf detects 4585 classes - these are the ones we care about
     private let furnitureClasses: [Int: String] = [
-        132: "armchair", 213: "baby seat", 276: "bar stool", 332: "bathroom cabinet",
-        334: "bathroom mirror", 352: "beach chair", 364: "bean bag chair", 375: "bed",
-        376: "bedcover", 377: "bed frame", 382: "bedside lamp", 402: "bench",
-        429: "billiard table", 517: "bookshelf", 567: "chest", 632: "bunk bed",
-        636: "bureau", 670: "cabinet", 679: "cake stand", 714: "canopy bed",
-        733: "car seat", 821: "chair", 823: "daybed", 834: "changing table",
-        977: "closet", 996: "coatrack", 1006: "cocktail table", 1060: "computer chair",
-        1061: "computer desk", 1137: "infant bed", 1141: "couch", 1143: "counter",
-        1144: "counter top", 1270: "day bed", 1301: "table", 1302: "table lamp",
-        1303: "desktop", 1325: "dinning table", 1364: "dog bed", 1396: "drawer",
-        1405: "dresser", 1476: "electric chair", 1503: "side table", 1602: "feeding chair",
-        1624: "file cabinet", 1721: "folding chair", 1733: "food stand", 1750: "footrest",
-        1801: "fruit stand", 1816: "futon", 1885: "glass table", 2141: "hospital bed",
-        2193: "ice shelf", 2219: "information desk", 2247: "island", 2318: "kitchen cabinet",
-        2319: "kitchen counter", 2322: "kitchen island", 2324: "kitchen table",
-        2499: "loveseat", 2599: "mattress", 2614: "medicine cabinet", 2654: "mirror",
-        2754: "music stool", 2802: "nightstand", 2834: "office chair", 2836: "office desk",
-        2939: "park bench", 3024: "church bench", 3045: "picnic table",
-        3061: "table tennis table", 3145: "poker table", 3423: "rocking chair",
-        3449: "round table", 3584: "seat", 3621: "shelf", 3678: "side cabinet",
-        3812: "spice rack", 3862: "stand", 3888: "step stool", 3909: "stool",
-        4004: "supermarket shelf", 4041: "swivel chair", 4055: "table top",
-        4056: "tablecloth", 4179: "toilet seat", 4213: "towel bar", 4294: "tv cabinet",
-        4331: "vanity", 4473: "wheelchair", 4506: "window seat", 4513: "wine cabinet",
-        4516: "wine rack", 4545: "workbench", 4564: "writing desk"
+        // Seating
+        132: "armchair", 276: "bar stool", 352: "beach chair", 364: "bean bag chair",
+        402: "bench", 821: "chair", 1060: "computer chair", 1602: "feeding chair",
+        1721: "folding chair", 2499: "loveseat", 2754: "music stool", 2834: "office chair",
+        2939: "park bench", 3024: "church bench", 3423: "rocking chair", 3584: "seat",
+        3888: "step stool", 3909: "stool", 4041: "swivel chair", 4473: "wheelchair",
+        4506: "window seat",
+        
+        // Beds & Bedding
+        375: "bed", 376: "bedcover", 377: "bed frame", 632: "bunk bed", 714: "canopy bed",
+        823: "daybed", 1137: "infant bed", 1270: "day bed", 1364: "dog bed",
+        2141: "hospital bed", 2599: "mattress", 3049: "pillow", 455: "blanket",
+        
+        // Sofas & Couches
+        1141: "couch", 1816: "futon", 4331: "vanity", 2936: "ottoman",
+        
+        // Tables
+        429: "billiard table", 1006: "cocktail table", 1061: "computer desk", 1301: "table",
+        1325: "dining table", 1503: "side table", 1885: "glass table", 2247: "island",
+        2319: "kitchen counter", 2322: "kitchen island",
+        2324: "kitchen table", 2802: "nightstand", 2836: "office desk", 3045: "picnic table",
+        3061: "table tennis table", 3145: "poker table", 3449: "round table",
+        4055: "table top", 4545: "workbench", 4564: "writing desk",
+        
+        // Storage
+        332: "bathroom cabinet", 517: "bookshelf", 567: "chest", 636: "bureau",
+        670: "cabinet", 977: "closet", 996: "coatrack", 1396: "drawer", 1405: "dresser",
+        1624: "file cabinet", 2318: "kitchen cabinet", 2614: "medicine cabinet",
+        3621: "shelf", 3678: "side cabinet", 3812: "spice rack", 4004: "supermarket shelf",
+        4294: "tv cabinet", 4513: "wine cabinet", 4516: "wine rack",
+        
+        // Lighting
+        382: "bedside lamp", 1302: "table lamp", 1619: "floor lamp", 2383: "lamp",
+        2384: "lampshade", 732: "candle", 898: "chandelier",
+        2449: "light bulb", 2450: "light fixture", 4210: "torch", 3862: "stand",
+        
+        // Mirrors & Decor
+        334: "bathroom mirror", 2654: "mirror", 1214: "curtain", 3485: "rug",
+        3046: "picture frame", 4056: "tablecloth", 4358: "vase", 3081: "plant",
+        1750: "footrest",
+        
+        // Electronics
+        4161: "television", 4162: "tv", 1058: "computer monitor", 1059: "computer",
+        3365: "remote control", 3802: "speaker",
+        
+        // Bathroom
+        4179: "toilet seat", 4178: "toilet", 4213: "towel bar", 4212: "towel",
+        386: "bathtub", 3635: "shower", 3636: "shower curtain",
+        
+        // Kitchen
+        3357: "refrigerator", 2914: "oven", 2637: "microwave", 3675: "sink",
+        1350: "dishwasher",
+        
+        // Misc
+        213: "baby seat", 733: "car seat", 834: "changing table", 679: "cake stand",
+        1143: "counter", 1144: "counter top", 1303: "desktop", 1733: "food stand",
+        1801: "fruit stand", 2193: "ice shelf", 2219: "information desk"
     ]
 
     // MARK: - Init
@@ -147,13 +194,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             maskImageView.heightAnchor.constraint(equalTo: heightAnchor)
         ])
         
-        // Add pinch gesture to self (parent view) for better touch handling
         let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         pinchGesture.delegate = self
         self.addGestureRecognizer(pinchGesture)
         
         setupCamera()
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ SmartyPantsContainerView initialized") }
+        if SEGMENT_DEBUG { print("✅ SmartyPantsContainerView initialized") }
     }
     
     override func layoutSubviews() {
@@ -161,14 +207,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         previewLayer.frame = bounds
     }
     
-    // Pass touches in top area through to SwiftUI (for Back button)
-    // Allow pinch gesture everywhere else
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        // Top 100 points - pass through for navigation
-        if point.y < 100 {
-            return false
-        }
-        // Always allow touches for pinch gesture when we have content
+        if point.y < 100 { return false }
         return true
     }
     
@@ -177,27 +217,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         switch gesture.state {
         case .began:
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch began, currentScale=\(currentScale)") }
-            
+            break
         case .changed:
             let newScale = currentScale * gesture.scale
             let clampedScale = min(max(newScale, 0.3), 3.0)
-            
             maskImageView.transform = CGAffineTransform(scaleX: clampedScale, y: clampedScale)
-            
-            currentScale = clampedScale  // ✅ Update the running scale
-            gesture.scale = 1.0          // Reset gesture delta for next frame
-            
+            currentScale = clampedScale
+            gesture.scale = 1.0
         case .ended, .cancelled:
-            // Snap to nice bounds if close to 1.0
             if currentScale > 0.9 && currentScale < 1.1 {
                 currentScale = 1.0
                 UIView.animate(withDuration: 0.2) {
                     self.maskImageView.transform = .identity
                 }
             }
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("📌 Pinch ended, final scale=\(currentScale)") }
-            
         default:
             break
         }
@@ -205,16 +238,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: - UIGestureRecognizerDelegate
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        // Allow pinch gesture everywhere except the top navigation area
         let location = touch.location(in: self)
-        if location.y < 100 {
-            return false // Let SwiftUI handle navigation
-        }
+        if location.y < 100 { return false }
         return true
     }
     
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        // Allow pinch to work with other gestures
         return gestureRecognizer is UIPinchGestureRecognizer
     }
 
@@ -222,63 +251,48 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     func setModel(_ model: MLModel?) {
         detectionQueue.sync {
             self.mlModel = model
-            if model != nil {
-                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Model set successfully") }
-            } else {
-                if SEGMENT_DEBUG_SAVE_IMAGES { print("⚠️ Model is nil") }
-            }
         }
     }
     
     func startIfNeeded() {
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("🎬 startIfNeeded called") }
         requestCameraPermissionAndStart()
     }
+    
     func stop() {
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("🛑 stop called") }
         stopCamera()
     }
 
     // MARK: - Camera Setup
     private func setupCamera() {
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("📷 Setting up camera...") }
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .hd1280x720
         captureSession.inputs.forEach { captureSession.removeInput($0) }
         captureSession.outputs.forEach { captureSession.removeOutput($0) }
 
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ No back camera found") }
             captureSession.commitConfiguration()
             return
         }
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Found back camera: \(device.localizedName)") }
 
         do {
             let input = try AVCaptureDeviceInput(device: device)
             if captureSession.canAddInput(input) {
                 captureSession.addInput(input)
-                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Added camera input") }
             }
             videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
             videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
             videoOutput.alwaysDiscardsLateVideoFrames = true
             if captureSession.canAddOutput(videoOutput) {
                 captureSession.addOutput(videoOutput)
-                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Added video output") }
             }
             if let conn = videoOutput.connection(with: .video) {
                 conn.videoRotationAngle = 90
-                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Set video rotation to 90°") }
             }
             captureSession.commitConfiguration()
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera configuration committed") }
             DispatchQueue.global(qos: .userInitiated).async {
                 self.captureSession.startRunning()
-                if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera session started") }
             }
         } catch {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Camera setup error: \(error)") }
             captureSession.commitConfiguration()
         }
     }
@@ -287,127 +301,211 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         DispatchQueue.global(qos: .userInitiated).async {
             if self.captureSession.isRunning {
                 self.captureSession.stopRunning()
-                if SEGMENT_DEBUG_SAVE_IMAGES { print("🛑 Camera session stopped") }
             }
         }
     }
 
     private func requestCameraPermissionAndStart() {
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("🔐 Checking camera permission...") }
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera authorized") }
             if !captureSession.isRunning {
                 DispatchQueue.global(qos: .userInitiated).async {
                     self.captureSession.startRunning()
-                    if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera started after authorization check") }
                 }
             }
         case .notDetermined:
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("⏳ Requesting camera permission...") }
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 if granted {
-                    if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Camera permission granted") }
                     DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() }
-                } else {
-                    if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Camera permission denied") }
                 }
             }
-        case .denied:
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Camera permission denied") }
-        case .restricted:
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Camera permission restricted") }
-        @unknown default:
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Unknown camera permission status") }
+        default:
+            break
         }
     }
 
     // MARK: - Capture Delegate
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ No pixel buffer in sample") }
-            return
-        }
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer) }
     }
 
-    // MARK: - Main Processing
-    private func processFrame(_ pixelBuffer: CVPixelBuffer) {
-        guard let model = mlModel else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("⚠️ processFrame: model is nil") }
-            return
+    // MARK: - Crop Pixel Buffer to BBox
+    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = 0.1) -> CVPixelBuffer? {
+        let fullW = Float(CVPixelBufferGetWidth(pixelBuffer))
+        let fullH = Float(CVPixelBufferGetHeight(pixelBuffer))
+        
+        // Convert model coords (640) to pixel coords
+        let scaleX = fullW / 640.0
+        let scaleY = fullH / 640.0
+        
+        let centerX = det.x * scaleX
+        let centerY = det.y * scaleY
+        let boxW = det.width * scaleX
+        let boxH = det.height * scaleY
+        
+        // Add padding (outside)
+        let padW = boxW * padding
+        let padH = boxH * padding
+        
+        var x1 = centerX - boxW / 2 - padW
+        var y1 = centerY - boxH / 2 - padH
+        var x2 = centerX + boxW / 2 + padW
+        var y2 = centerY + boxH / 2 + padH
+        
+        // Clamp to image bounds
+        x1 = max(0, x1)
+        y1 = max(0, y1)
+        x2 = min(fullW, x2)
+        y2 = min(fullH, y2)
+        
+        let cropW = Int(x2 - x1)
+        let cropH = Int(y2 - y1)
+        
+        guard cropW > 10 && cropH > 10 else { return nil }
+        
+        // Use CGContext for reliable cropping (CIContext has coordinate issues)
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        
+        guard let srcBase = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+        let srcBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let srcPtr = srcBase.assumingMemoryBound(to: UInt8.self)
+        
+        var out: CVPixelBuffer?
+        CVPixelBufferCreate(kCFAllocatorDefault, cropW, cropH, kCVPixelFormatType_32BGRA, nil, &out)
+        guard let dst = out else { return nil }
+        
+        CVPixelBufferLockBaseAddress(dst, [])
+        defer { CVPixelBufferUnlockBaseAddress(dst, []) }
+        
+        guard let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
+        let dstBytesPerRow = CVPixelBufferGetBytesPerRow(dst)
+        let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
+        
+        // Copy pixel data row by row
+        let x1Int = Int(x1)
+        let y1Int = Int(y1)
+        
+        for row in 0..<cropH {
+            let srcRow = y1Int + row
+            let srcOffset = srcRow * srcBytesPerRow + x1Int * 4
+            let dstOffset = row * dstBytesPerRow
+            memcpy(dstPtr + dstOffset, srcPtr + srcOffset, cropW * 4)
         }
+        
+        if SEGMENT_DEBUG {
+            print("✂️ Cropped: (\(x1Int),\(y1Int)) → (\(Int(x2)),\(Int(y2))) = \(cropW)x\(cropH)")
+        }
+        
+        return dst
+    }
+
+    // MARK: - Main Processing (Two-Stage with UNION)
+    private func processFrame(_ pixelBuffer: CVPixelBuffer) {
+        guard let model = mlModel else { return }
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval, !isProcessing else { return }
         lastProcessTime = now
         isProcessing = true
         
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("\n🔬 ========== RAW YOLO OUTPUT ==========") }
+        if SEGMENT_DEBUG { print("\n🔬 ========== STAGE 1: FULL FRAME ==========") }
 
-        guard let resized = resizePixelBuffer(pixelBuffer, width: 640, height: 640) else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Failed to resize pixel buffer") }
+        // STAGE 1: Full frame detection
+        guard let resized = letterbox(pixelBuffer, size: 640) else {
             isProcessing = false
             return
         }
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Resized pixel buffer to 640x640") }
         
         guard let inputArray = pixelBufferToMLMultiArray(resized) else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Failed to create MLMultiArray") }
             isProcessing = false
             return
         }
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Created MLMultiArray, shape: \(inputArray.shape)") }
         
         guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Failed to create input provider") }
             isProcessing = false
             return
         }
         
         guard let output = try? model.prediction(from: inputProvider) else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Model prediction failed") }
             isProcessing = false
             return
         }
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Model prediction succeeded") }
         
-        // Try var_1432 first, then var_2421 as fallback
+        // Log available output names (helps debug different models)
+        if SEGMENT_DEBUG {
+            let names = output.featureNames.joined(separator: ", ")
+            print("📤 Model outputs: \(names)")
+        }
+        
         var detectionsArray: MLMultiArray?
         if let arr = output.featureValue(for: "var_1432")?.multiArrayValue {
             detectionsArray = arr
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Using output: var_1432") }
         } else if let arr = output.featureValue(for: "var_2421")?.multiArrayValue {
             detectionsArray = arr
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ Using output: var_2421") }
+        } else {
+            // Try to find any MLMultiArray output that looks like detections
+            for name in output.featureNames {
+                if let arr = output.featureValue(for: name)?.multiArrayValue {
+                    let shape = arr.shape.map { $0.intValue }
+                    // Detection array has shape [1, features, predictions]
+                    if shape.count == 3 && shape[0] == 1 && shape[1] > 100 {
+                        detectionsArray = arr
+                        if SEGMENT_DEBUG { print("   → Using '\(name)' as detections: \(shape)") }
+                        break
+                    }
+                }
+            }
         }
         
         guard let detArray = detectionsArray else {
-            if SEGMENT_DEBUG_SAVE_IMAGES {
-                print("❌ No detections array found (tried var_1432 and var_2421)")
-                print("   Available outputs: \(output.featureNames)")
-            }
             isProcessing = false
             return
         }
         
         guard let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ No prototypes array found") }
             isProcessing = false
             return
         }
-        
-        if SEGMENT_DEBUG_SAVE_IMAGES {
-            print("Detections shape: \(detArray.shape)")
-            print("Prototypes shape: \(prototypesArray.shape)")
-        }
 
-        // MARK: Extract Detections (FROM DOC1 - NSNumber subscripts)
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("\n🔍 ========== ALL DETECTIONS EXTRACTED ==========") }
-        let allDetections = extractDetections(from: detArray)
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [DETECTION] Extracted \(allDetections.count) raw detections") }
+        let stage1Detections = extractDetections(from: detArray)
+        if SEGMENT_DEBUG { print("📊 Stage 1: \(stage1Detections.count) detections") }
         
-        if allDetections.isEmpty {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ [DETECTION] No valid detections found") }
+        if stage1Detections.isEmpty {
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.isProcessing = false
+            }
+            return
+        }
+        
+        // Get primary detection
+        let sorted = stage1Detections.sorted { $0.confidence > $1.confidence }
+        let primary = sorted.first!
+        
+        if SEGMENT_DEBUG {
+            print("🎯 Primary: \(primary.className) @ \(Int(primary.confidence * 100))%")
+            print("   BBox: center(\(Int(primary.x)), \(Int(primary.y))) size(\(Int(primary.width))x\(Int(primary.height)))")
+        }
+        
+        // STAGE 2: Disabled for now - focus on Stage 1 with YOLOE
+        // TODO: Re-enable when output name detection is fixed for YOLOE
+        let stage2Detections: [DetectionSmarty] = []
+        let stage2Prototypes: MLMultiArray? = nil
+        
+        if SEGMENT_DEBUG { print("\n⏭️ Stage 2: SKIPPED (testing Stage 1 only)") }
+        
+        // UNION Stage 1 + Stage 2 masks
+        let stage1Kept = keepOverlappingDetections(stage1Detections)
+        let stage2Kept = stage2Prototypes != nil ? keepOverlappingDetections(stage2Detections) : []
+        
+        if SEGMENT_DEBUG {
+            print("\n📊 UNION SUMMARY:")
+            print("   Stage 1: keeping \(stage1Kept.count) overlapping detections")
+            print("   Stage 2: keeping \(stage2Kept.count) overlapping detections")
+        }
+        
+        if stage1Kept.isEmpty && stage2Kept.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -415,139 +513,456 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             return
         }
 
-        // MARK: Hierarchical BBox NMS (FROM DOC1)
-        let hierarchicalFiltered = applyHierarchicalNMS(detections: allDetections, iouThreshold: 0.7)
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [H-NMS] Kept \(hierarchicalFiltered.count) detections after hierarchical NMS") }
-        
-//        // MARK: Mask IoU NMS with merging (FROM DOC1)
-//        let maskFiltered = applyMaskIoU(detections: hierarchicalFiltered, iouThreshold: 0.2, prototypes: prototypesArray)
-//        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 [MASK-FILTERED] Total kept: \(maskFiltered.count) detections") }
-//
-//        if maskFiltered.isEmpty {
-//            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ [DETECTION] No valid detections found after mask filtering") }
-//            DispatchQueue.main.async {
-//                self.maskImageView.image = nil
-//                self.isProcessing = false
-//            }
-//            return
-//        }
-//        
-//        let best = maskFiltered.first!
-//        if SEGMENT_DEBUG_SAVE_IMAGES {
-//            print("✅ [BEST] Primary: \(best.className) @ \(Int(best.confidence * 100))%")
-//            print("   Position: (\(Int(best.x)), \(Int(best.y))), Size: \(Int(best.width))x\(Int(best.height))")
-//        }
-//
-//        // MARK: Generate Pure Furniture Cutout (FROM DOC1 pattern)
-//        if SEGMENT_DEBUG_SAVE_IMAGES { print("\n🎨 ========== GENERATING CUTOUT ==========") }
-//        generatePureFurnitureCutout(detections: maskFiltered, prototypes: prototypesArray, originalImage: pixelBuffer)
-
-        // In processFrame, replace these lines:
-        // let maskFiltered = applyMaskIoU(...)
-        // ...
-        // generatePureFurnitureCutout(detections: maskFiltered, ...)
-
-        // With:
-        let maskFiltered = applyMaskIoU(detections: hierarchicalFiltered, iouThreshold: 0.2, prototypes: prototypesArray)
-
-        if maskFiltered.isEmpty {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ [DETECTION] No valid detections after mask filtering") }
-            DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.isProcessing = false
-            }
-            return
-        }
-
-        let best = maskFiltered.first!
-        if SEGMENT_DEBUG_SAVE_IMAGES {
-            print("✅ [BEST] Primary: \(best.detection.className) @ \(Int(best.detection.confidence * 100))%")
-        }
-
-        // Use new method with pre-computed masks
-        generatePureFurnitureCutoutWithMasks(detectionMasks: maskFiltered, originalImage: pixelBuffer)
+        // Generate combined cutout with BOTH stages
+        generateCutoutTwoStage(
+            stage1Detections: stage1Kept,
+            stage1Prototypes: prototypesArray,
+            stage2Detections: stage2Kept,
+            stage2Prototypes: stage2Prototypes,
+            primaryBBox: primary,
+            originalImage: pixelBuffer
+        )
     }
     
-    // MARK: - Generate Pure Furniture Cutout (with pre-computed masks)
-    private func generatePureFurnitureCutoutWithMasks(detectionMasks: [(detection: DetectionSmarty, mask: [Float])], originalImage: CVPixelBuffer) {
-        let Hp = 160
-        let Wp = 160
+    // MARK: - Letterbox
+    private func letterbox(_ src: CVPixelBuffer, size: Int = 640) -> CVPixelBuffer? {
+        // Simple resize to 640x640 (no padding, just stretch)
+        let ci = CIImage(cvPixelBuffer: src)
+        let w0 = CGFloat(CVPixelBufferGetWidth(src))
+        let h0 = CGFloat(CVPixelBufferGetHeight(src))
+        let scaleX = CGFloat(size) / w0
+        let scaleY = CGFloat(size) / h0
+        let scaled = ci.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+        
+        var out: CVPixelBuffer?
+        CVPixelBufferCreate(kCFAllocatorDefault, size, size, kCVPixelFormatType_32BGRA, nil, &out)
+        guard let dst = out else { return nil }
+        let ctx = CIContext()
+        ctx.render(scaled, to: dst, bounds: CGRect(x: 0, y: 0, width: size, height: size), colorSpace: CGColorSpaceCreateDeviceRGB())
+        return dst
+    }
+
+    // MARK: - Keep Overlapping Detections (NO NMS!)
+    private func keepOverlappingDetections(_ detections: [DetectionSmarty]) -> [DetectionSmarty] {
+        let sorted = detections.sorted { $0.confidence > $1.confidence }
+        guard let primary = sorted.first else { return [] }
+        
+        var kept: [DetectionSmarty] = []
+        
+        for det in sorted {
+            if bboxesOverlap(det, primary) {
+                kept.append(det)
+            }
+        }
+        
+        return kept
+    }
+    
+    // MARK: - BBox Overlap Check (any touch = true)
+    private func bboxesOverlap(_ a: DetectionSmarty, _ b: DetectionSmarty) -> Bool {
+        let aLeft = a.x - a.width / 2
+        let aRight = a.x + a.width / 2
+        let aTop = a.y - a.height / 2
+        let aBottom = a.y + a.height / 2
+        
+        let bLeft = b.x - b.width / 2
+        let bRight = b.x + b.width / 2
+        let bTop = b.y - b.height / 2
+        let bBottom = b.y + b.height / 2
+        
+        if aRight < bLeft || bRight < aLeft { return false }
+        if aBottom < bTop || bBottom < aTop { return false }
+        
+        return true
+    }
+    
+    // MARK: - Print 20x20 Binary Grid
+    private func print20x20BinaryGrid(_ title: String, mask: [UInt8], width: Int, height: Int) {
+        guard SEGMENT_DEBUG else { return }
+        
+        print("\n🔢 [\(title)] (20x20 binary, * = object, . = background):")
+        for gy in 0..<20 {
+            var rowSymbols = ""
+            for gx in 0..<20 {
+                let y = gy * 8 + 7
+                let x = gx * 8 + 7
+                if y < height && x < width {
+                    let idx = y * width + x
+                    rowSymbols += mask[idx] > 0 ? "*" : "."
+                } else {
+                    rowSymbols += " "
+                }
+            }
+            print("   \(rowSymbols)")
+        }
+    }
+    
+    // MARK: - Save Mask to File
+    private func saveMaskToFile(rawMask: [Float], width: Int, height: Int, detection: DetectionSmarty) {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        
+        // Normalize raw values to 0-255 for grayscale
+        var minVal: Float = 0, maxVal: Float = 0
+        vDSP_minv(rawMask, 1, &minVal, vDSP_Length(rawMask.count))
+        vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(rawMask.count))
+        let range = maxVal - minVal
+        
+        var grayPixels = [UInt8](repeating: 0, count: width * height)
+        for i in 0..<rawMask.count {
+            let normalized = range > 0 ? (rawMask[i] - minVal) / range : 0.5
+            grayPixels[i] = UInt8(max(0, min(255, normalized * 255)))
+        }
+        
+        // Create grayscale image
+        if let provider = CGDataProvider(data: Data(grayPixels) as CFData),
+           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
+                                  bytesPerRow: width, space: colorSpace,
+                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
+                                  provider: provider, decode: nil, shouldInterpolate: false,
+                                  intent: .defaultIntent) {
+            let grayImage = UIImage(cgImage: cgImage)
+            
+            // Save to Photos
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.creationRequestForAsset(from: grayImage)
+            }) { success, error in
+                if success {
+                    print("💾 Saved GRAYSCALE mask to Photos")
+                } else {
+                    print("❌ Failed to save grayscale: \(error?.localizedDescription ?? "unknown")")
+                }
+            }
+        }
+        
+        // Create binary mask (threshold applied)
+        let scale = Float(width) / 640.0
+        let mx1 = max(0, Int((detection.x - detection.width / 2) * scale))
+        let my1 = max(0, Int((detection.y - detection.height / 2) * scale))
+        let mx2 = min(width, Int((detection.x + detection.width / 2) * scale))
+        let my2 = min(height, Int((detection.y + detection.height / 2) * scale))
+        
+        var binaryPixels = [UInt8](repeating: 0, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                let idx = y * width + x
+                if x >= mx1 && x < mx2 && y >= my1 && y < my2 && rawMask[idx] > maskThreshold {
+                    binaryPixels[idx] = 255
+                }
+            }
+        }
+        
+        if let provider = CGDataProvider(data: Data(binaryPixels) as CFData),
+           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
+                                  bytesPerRow: width, space: colorSpace,
+                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
+                                  provider: provider, decode: nil, shouldInterpolate: false,
+                                  intent: .defaultIntent) {
+            let binaryImage = UIImage(cgImage: cgImage)
+            
+            // Save to Photos
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.creationRequestForAsset(from: binaryImage)
+            }) { success, error in
+                if success {
+                    print("💾 Saved BINARY mask to Photos (threshold: \(self.maskThreshold))")
+                } else {
+                    print("❌ Failed to save binary: \(error?.localizedDescription ?? "unknown")")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Generate Cutout (Two-Stage UNION)
+    private func generateCutoutTwoStage(
+        stage1Detections: [DetectionSmarty],
+        stage1Prototypes: MLMultiArray,
+        stage2Detections: [DetectionSmarty],
+        stage2Prototypes: MLMultiArray?,
+        primaryBBox: DetectionSmarty,
+        originalImage: CVPixelBuffer
+    ) {
+        let shape = stage1Prototypes.shape.map { $0.intValue }
+        let C = shape[1]
+        let Hp = shape[2]
+        let Wp = shape[3]
         let spatial = Hp * Wp
-        let cutoff = self.maskCutoff
         
-        print("🎨 Generating cutout with \(detectionMasks.count) pre-merged masks, cutoff=\(cutoff)")
-        
-        // Accumulate all masks with max blend
+        print("\n🎨 Generating TWO-STAGE UNION cutout")
+        print("   Stage 1: \(stage1Detections.count) detections")
+        print("   Stage 2: \(stage2Detections.count) detections")
+        print("📐 Prototype shape: C=\(C), H=\(Hp), W=\(Wp)")
+
+        // Build Stage 1 proto matrix
+        var protoMatrix1 = [Float](repeating: 0, count: C * spatial)
+        if stage1Prototypes.dataType == .float32 {
+            let srcBase = stage1Prototypes.dataPointer.assumingMemoryBound(to: Float.self)
+            memcpy(&protoMatrix1, srcBase, C * spatial * MemoryLayout<Float>.size)
+        } else {
+            for c in 0..<C {
+                for y in 0..<Hp {
+                    for x in 0..<Wp {
+                        let val = stage1Prototypes[[0, c, y, x] as [NSNumber]].floatValue
+                        protoMatrix1[c * spatial + (y * Wp + x)] = val
+                    }
+                }
+            }
+        }
+
+        // Global mask in FULL FRAME coordinates (160x160)
         var globalMask = [Float](repeating: 0, count: spatial)
         
-        for (idx, item) in detectionMasks.enumerated() {
-            for i in 0..<spatial {
-                globalMask[i] = max(globalMask[i], item.mask[i])
-            }
-            print("🎨 Accumulated mask[\(idx)] \(item.detection.className)")
-        }
+        // ========== STAGE 1 MASKS ==========
+        if SEGMENT_DEBUG { print("\n🔵 Processing Stage 1 masks (full frame)...") }
         
-        // Log merged mask pixel samples as visual grid
-        if SEGMENT_DEBUG_SAVE_IMAGES {
-            print("\n🔍 ========== MERGED MASK PIXELS (20x20 grid, 8th sample) ==========")
-            print("📊 Values (3 decimal places):")
-            for gy in 0..<20 {
-                var rowValues = ""
-                for gx in 0..<20 {
-                    let y = gy * 8 + 7  // 8th sample in each grid cell
-                    let x = gx * 8 + 7
-                    if y < Hp && x < Wp {
-                        let maskIdx = y * Wp + x
-                        let val = globalMask[maskIdx]
-                        rowValues += String(format: "%6.3f", val)
-                    } else {
-                        rowValues += "   ---"
-                    }
-                    if gx < 19 { rowValues += " " }
+        // For detailed analysis, save the PRIMARY detection's raw mask
+        var primaryRawMask: [Float]? = nil
+        var primaryDet: DetectionSmarty? = nil
+        
+        for (detIndex, det) in stage1Detections.enumerated() {
+            var rawMask = [Float](repeating: 0, count: spatial)
+            vDSP_mmul(det.maskCoeffs, 1, protoMatrix1, 1, &rawMask, 1, 1, vDSP_Length(spatial), vDSP_Length(C))
+            
+            // Save primary detection's raw mask for analysis
+            if detIndex == 0 {
+                primaryRawMask = rawMask
+                primaryDet = det
+                
+                // Log raw value statistics
+                var minVal: Float = 0, maxVal: Float = 0
+                vDSP_minv(rawMask, 1, &minVal, vDSP_Length(spatial))
+                vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(spatial))
+                var mean: Float = 0
+                vDSP_meanv(rawMask, 1, &mean, vDSP_Length(spatial))
+                
+                print("\n📊 PRIMARY MASK RAW VALUES (\(det.className) @ \(Int(det.confidence*100))%):")
+                print("   Range: min=\(minVal), max=\(maxVal), mean=\(mean)")
+                
+                // Count positives/negatives
+                var posCount = 0, negCount = 0, zeroCount = 0
+                for v in rawMask {
+                    if v > 0 { posCount += 1 }
+                    else if v < 0 { negCount += 1 }
+                    else { zeroCount += 1 }
                 }
-                print(rowValues)
+                print("   Distribution: \(posCount) positive, \(negCount) negative, \(zeroCount) zero")
+                
+                // Log coefficients with full precision
+                print("   Mask coefficients (32): [\(det.maskCoeffs.map { String(format: "%.6f", $0) }.joined(separator: ", "))]")
+                
+                // Sample raw values in bbox region
+                let scale = Float(Wp) / 640.0
+                let mx1 = max(0, Int((det.x - det.width / 2) * scale))
+                let my1 = max(0, Int((det.y - det.height / 2) * scale))
+                let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
+                let my2 = min(Hp, Int((det.y + det.height / 2) * scale))
+                
+                print("   BBox in mask coords: (\(mx1),\(my1)) → (\(mx2),\(my2))")
+                
+                // Sample values at 9 key positions (3x3 grid)
+                let centerX = (mx1 + mx2) / 2
+                let centerY = (my1 + my2) / 2
+                
+                print("   Sample raw values (9-point grid):")
+                print("     ┌───────────────────────────────────────────────┐")
+                print("     │ TL(\(mx1),\(my1)): \(String(format: "%+.3f", rawMask[my1 * Wp + mx1]))  TC(\(centerX),\(my1)): \(String(format: "%+.3f", rawMask[my1 * Wp + centerX]))  TR(\(mx2-1),\(my1)): \(String(format: "%+.3f", rawMask[my1 * Wp + mx2-1]))")
+                print("     │ ML(\(mx1),\(centerY)): \(String(format: "%+.3f", rawMask[centerY * Wp + mx1]))  CC(\(centerX),\(centerY)): \(String(format: "%+.3f", rawMask[centerY * Wp + centerX]))  MR(\(mx2-1),\(centerY)): \(String(format: "%+.3f", rawMask[centerY * Wp + mx2-1]))")
+                print("     │ BL(\(mx1),\(my2-1)): \(String(format: "%+.3f", rawMask[(my2-1) * Wp + mx1]))  BC(\(centerX),\(my2-1)): \(String(format: "%+.3f", rawMask[(my2-1) * Wp + centerX]))  BR(\(mx2-1),\(my2-1)): \(String(format: "%+.3f", rawMask[(my2-1) * Wp + mx2-1]))")
+                print("     └───────────────────────────────────────────────┘")
+                
+                // Print 10x10 raw mask grid with ACTUAL VALUES
+                print("\n   📊 RAW MASK VALUES (10x10 grid sampling bbox region):")
+                let bboxW = mx2 - mx1
+                let bboxH = my2 - my1
+                
+                // Header row with X coordinates
+                var header = "        "
+                for gridX in 0..<10 {
+                    let px = mx1 + (gridX * bboxW / 10)
+                    header += String(format: "  x%-3d ", px)
+                }
+                print(header)
+                
+                for gridY in 0..<10 {
+                    let py = my1 + (gridY * bboxH / 10)
+                    var rowStr = String(format: "   y%-3d ", py)
+                    for gridX in 0..<10 {
+                        let px = mx1 + (gridX * bboxW / 10)
+                        let val = rawMask[py * Wp + px]
+                        rowStr += String(format: "%+.2f ", val)
+                    }
+                    print(rowStr)
+                }
+                
+                // Count positive inside bbox
+                var posInBbox = 0, negInBbox = 0
+                var aboveThreshInBbox = 0
+                for py in my1..<my2 {
+                    for px in mx1..<mx2 {
+                        let v = rawMask[py * Wp + px]
+                        if v > 0 { posInBbox += 1 }
+                        else if v < 0 { negInBbox += 1 }
+                        if v > self.maskThreshold { aboveThreshInBbox += 1 }
+                    }
+                }
+                let bboxSize = (mx2 - mx1) * (my2 - my1)
+                print("   Inside bbox: \(posInBbox)/\(bboxSize) positive (\(String(format: "%.1f", Float(posInBbox)/Float(bboxSize)*100))%), \(negInBbox) negative")
+                print("   🎚️ At threshold \(self.maskThreshold): \(aboveThreshInBbox)/\(bboxSize) pixels (\(String(format: "%.1f", Float(aboveThreshInBbox)/Float(bboxSize)*100))%)")
             }
             
-            print("\n📊 Above cutoff (\(cutoff)) visualization (* = above, . = below):")
-            for gy in 0..<20 {
-                var rowSymbols = ""
-                for gx in 0..<20 {
-                    let y = gy * 8 + 7
-                    let x = gx * 8 + 7
-                    if y < Hp && x < Wp {
-                        let maskIdx = y * Wp + x
-                        let val = globalMask[maskIdx]
-                        rowSymbols += val >= cutoff ? "*" : "."
-                    } else {
-                        rowSymbols += " "
+            // Crop to bbox then threshold
+            let scale = Float(Wp) / 640.0
+            let mx1 = max(0, Int((det.x - det.width / 2) * scale))
+            let my1 = max(0, Int((det.y - det.height / 2) * scale))
+            let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
+            let my2 = min(Hp, Int((det.y + det.height / 2) * scale))
+            
+            var addedPixels = 0
+            for py in 0..<Hp {
+                for px in 0..<Wp {
+                    let idx = py * Wp + px
+                    if px >= mx1 && px < mx2 && py >= my1 && py < my2 {
+                        if rawMask[idx] > maskThreshold {  // Use configurable threshold
+                            globalMask[idx] = 1.0
+                            addedPixels += 1
+                        }
                     }
                 }
-                print(rowSymbols)
+            }
+            
+            if SEGMENT_DEBUG && detIndex < 5 {  // Only log first 5 detections
+                print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: bbox(\(mx1),\(my1))→(\(mx2),\(my2)), +\(addedPixels)px")
             }
         }
         
-        // Log global mask stats
-        var minVal: Float = 0, maxVal: Float = 0
-        vDSP_minv(globalMask, 1, &minVal, vDSP_Length(spatial))
-        vDSP_maxv(globalMask, 1, &maxVal, vDSP_Length(spatial))
-        var sum: Float = 0
-        vDSP_sve(globalMask, 1, &sum, vDSP_Length(spatial))
-        let coverage = sum / Float(spatial) * 100
-        print("📊 Global mask: min=\(String(format: "%.3f", minVal)), max=\(String(format: "%.3f", maxVal)), coverage=\(String(format: "%.1f", coverage))%")
-        
-        // Count pixels above cutoff
-        var aboveCutoff = 0
-        for i in 0..<spatial {
-            if globalMask[i] >= cutoff { aboveCutoff += 1 }
+        if stage1Detections.count > 5 {
+            print("   ... and \(stage1Detections.count - 5) more detections")
         }
-        print("📊 Pixels above cutoff \(cutoff): \(aboveCutoff) / \(spatial) (\(String(format: "%.1f", Float(aboveCutoff) / Float(spatial) * 100))%)")
         
-        // Create pure cutout
+        // Log threshold being used
+        if SEGMENT_DEBUG {
+            print("   ⚙️ Mask threshold: \(maskThreshold)")
+        }
+        
+        // Save primary mask to file for external analysis
+        if let rawMask = primaryRawMask, let det = primaryDet {
+            saveMaskToFile(rawMask: rawMask, width: Wp, height: Hp, detection: det)
+        }
+        
+        // Count after Stage 1
+        var stage1PixelCount = 0
+        for i in 0..<spatial { if globalMask[i] > 0 { stage1PixelCount += 1 } }
+        if SEGMENT_DEBUG {
+            print("   📊 After Stage 1: \(stage1PixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(stage1PixelCount)/Float(spatial)*100))%)")
+        }
+        
+        // ========== STAGE 2 MASKS (mapped back to full frame) ==========
+        if let proto2 = stage2Prototypes, !stage2Detections.isEmpty {
+            if SEGMENT_DEBUG { print("\n🟢 Processing Stage 2 masks (cropped → full frame)...") }
+            
+            // Build Stage 2 proto matrix
+            var protoMatrix2 = [Float](repeating: 0, count: C * spatial)
+            if proto2.dataType == .float32 {
+                let srcBase = proto2.dataPointer.assumingMemoryBound(to: Float.self)
+                memcpy(&protoMatrix2, srcBase, C * spatial * MemoryLayout<Float>.size)
+            } else {
+                for c in 0..<C {
+                    for y in 0..<Hp {
+                        for x in 0..<Wp {
+                            let val = proto2[[0, c, y, x] as [NSNumber]].floatValue
+                            protoMatrix2[c * spatial + (y * Wp + x)] = val
+                        }
+                    }
+                }
+            }
+            
+            // Calculate crop region in full frame (model coords 640x640)
+            let padding: Float = 0.1
+            let cropX1 = max(0, primaryBBox.x - primaryBBox.width / 2 * (1 + padding))
+            let cropY1 = max(0, primaryBBox.y - primaryBBox.height / 2 * (1 + padding))
+            let cropX2 = min(640, primaryBBox.x + primaryBBox.width / 2 * (1 + padding))
+            let cropY2 = min(640, primaryBBox.y + primaryBBox.height / 2 * (1 + padding))
+            let cropW = cropX2 - cropX1
+            let cropH = cropY2 - cropY1
+            
+            if SEGMENT_DEBUG {
+                print("   Crop region (model): (\(Int(cropX1)),\(Int(cropY1)))→(\(Int(cropX2)),\(Int(cropY2))) = \(Int(cropW))x\(Int(cropH))")
+            }
+            
+            for det in stage2Detections {
+                var rawMask = [Float](repeating: 0, count: spatial)
+                vDSP_mmul(det.maskCoeffs, 1, protoMatrix2, 1, &rawMask, 1, 1, vDSP_Length(spatial), vDSP_Length(C))
+                
+                // Stage 2 bbox in cropped 640x640 space
+                let scale = Float(Wp) / 640.0
+                let mx1_crop = max(0, Int((det.x - det.width / 2) * scale))
+                let my1_crop = max(0, Int((det.y - det.height / 2) * scale))
+                let mx2_crop = min(Wp, Int((det.x + det.width / 2) * scale))
+                let my2_crop = min(Hp, Int((det.y + det.height / 2) * scale))
+                
+                var addedPixels = 0
+                
+                // Map Stage 2 mask pixels to full frame mask
+                for py_crop in 0..<Hp {
+                    for px_crop in 0..<Wp {
+                        let cropIdx = py_crop * Wp + px_crop
+                        
+                        // Only process inside bbox
+                        if px_crop >= mx1_crop && px_crop < mx2_crop && py_crop >= my1_crop && py_crop < my2_crop {
+                            if rawMask[cropIdx] > 0 {
+                                // Map cropped mask coords to full frame mask coords
+                                let fracX = Float(px_crop) / Float(Wp)
+                                let fracY = Float(py_crop) / Float(Hp)
+                                
+                                // Position in full frame model coords (640x640)
+                                let fullX = cropX1 + fracX * cropW
+                                let fullY = cropY1 + fracY * cropH
+                                
+                                // Convert to mask coords (160x160)
+                                let mx_full = Int(fullX * scale)
+                                let my_full = Int(fullY * scale)
+                                
+                                if mx_full >= 0 && mx_full < Wp && my_full >= 0 && my_full < Hp {
+                                    let fullIdx = my_full * Wp + mx_full
+                                    if globalMask[fullIdx] == 0 {
+                                        addedPixels += 1
+                                    }
+                                    globalMask[fullIdx] = 1.0
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if SEGMENT_DEBUG {
+                    print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: bbox(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW")
+                }
+            }
+        }
+        
+        // Final count
+        var finalPixelCount = 0
+        for i in 0..<spatial { if globalMask[i] > 0 { finalPixelCount += 1 } }
+        let addedByStage2 = finalPixelCount - stage1PixelCount
+        print("\n📊 MERGED MASK: \(finalPixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(finalPixelCount)/Float(spatial)*100))%)")
+        print("   Stage 1 contributed: \(stage1PixelCount) pixels")
+        print("   Stage 2 added: \(addedByStage2) NEW pixels")
+        
+        // Convert to UInt8 binary
+        var binaryMask = [UInt8](repeating: 0, count: spatial)
+        for i in 0..<spatial {
+            if globalMask[i] > 0 {
+                binaryMask[i] = 255
+            }
+        }
+        
+        print20x20BinaryGrid("MERGED STAGE1+STAGE2", mask: binaryMask, width: Wp, height: Hp)
+
+        // Render to image
         autoreleasepool {
             let ciImage = CIImage(cvPixelBuffer: originalImage)
             let width = CVPixelBufferGetWidth(originalImage)
             let height = CVPixelBufferGetHeight(originalImage)
-            print("📐 Original image: \(width)x\(height)")
             
             guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
                 print("❌ Failed to create CGImage")
@@ -556,14 +971,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             
             guard let ctx = CGContext(
-                    data: nil,
-                    width: width,
-                    height: height,
-                    bitsPerComponent: 8,
-                    bytesPerRow: width * 4,
-                    space: CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                  ) else {
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else {
                 print("❌ Failed to create CGContext")
                 DispatchQueue.main.async { self.isProcessing = false }
                 return
@@ -574,180 +989,83 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 DispatchQueue.main.async { self.isProcessing = false }
                 return
             }
-            
+
             ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
+
+            // Simple direct mapping: image pixel → mask pixel
+            let scaleX = Float(Wp) / Float(width)
+            let scaleY = Float(Hp) / Float(height)
             
-            // Apply mask with bbox clipping (outside all bboxes = transparent)
+            if SEGMENT_DEBUG {
+                print("🖼️ Upscaling \(Wp)×\(Hp) → \(width)×\(height)")
+            }
+
             var opaqueCount = 0
-            var transparentCount = 0
             
-            for py in 0..<height {
-                for px in 0..<width {
-                    let idx = (py * width + px) * 4
-                    
-                    let mx = Float(px) * Float(Wp) / Float(width)
-                    let my = Float(py) * Float(Hp) / Float(height)
-                    
-                    let x0 = Int(mx)
-                    let y0 = Int(my)
-                    
-                    guard x0 >= 0 && x0 < Wp && y0 >= 0 && y0 < Hp else {
-                        pixels[idx + 3] = 0
-                        transparentCount += 1
-                        continue
-                    }
-                    
-                    // Check if pixel is inside any bounding box
-                    var isInsideBBox = false
-                    let detections = detectionMasks.map { $0.detection }
-                    for detection in detections {
-                        let originalWidth = CGFloat(width)  // 720
-                        let originalHeight = CGFloat(height)  // 1280
-                        let modelSize: CGFloat = 640.0
+            if self.useBilinearUpscaling {
+                for py in 0..<height {
+                    for px in 0..<width {
+                        let idx = (py * width + px) * 4
                         
-                        let scaleX = originalWidth / modelSize   // 720/640 = 1.125
-                        let scaleY = originalHeight / modelSize  // 1280/640 = 2.0
+                        let fx = Float(px) * scaleX
+                        let fy = Float(py) * scaleY
                         
-                        let centerX = CGFloat(detection.x) * scaleX
-                        let centerY = CGFloat(detection.y) * scaleY
-                        let boxWidth = CGFloat(detection.width) * scaleX
-                        let boxHeight = CGFloat(detection.height) * scaleY
+                        let x0 = Int(fx)
+                        let y0 = Int(fy)
+                        let x1 = min(x0 + 1, Wp - 1)
+                        let y1 = min(y0 + 1, Hp - 1)
                         
-                        let left = centerX - boxWidth / 2
-                        let right = centerX + boxWidth / 2
-                        let top = centerY - boxHeight / 2
-                        let bottom = centerY + boxHeight / 2
+                        let xFrac = fx - Float(x0)
+                        let yFrac = fy - Float(y0)
                         
-                        if CGFloat(px) >= left && CGFloat(px) <= right && 
-                           CGFloat(py) >= top && CGFloat(py) <= bottom {
-                            isInsideBBox = true
-                            break
+                        let v00 = globalMask[y0 * Wp + x0]
+                        let v10 = globalMask[y0 * Wp + x1]
+                        let v01 = globalMask[y1 * Wp + x0]
+                        let v11 = globalMask[y1 * Wp + x1]
+                        
+                        let top = v00 * (1 - xFrac) + v10 * xFrac
+                        let bottom = v01 * (1 - xFrac) + v11 * xFrac
+                        let value = top * (1 - yFrac) + bottom * yFrac
+                        
+                        let alpha: UInt8 = value > 0.5 ? 255 : 0
+                        pixels[idx + 3] = alpha
+                        if alpha == 0 {
+                            // Clear RGB to prevent bleed-through
+                            pixels[idx + 0] = 0
+                            pixels[idx + 1] = 0
+                            pixels[idx + 2] = 0
                         }
+                        if alpha > 0 { opaqueCount += 1 }
                     }
-                    
-                    // Make pixels transparent if outside ALL bboxes
-                    if !isInsideBBox {
-                        pixels[idx + 3] = 0
-                        transparentCount += 1
-                    } else {
-                        // Inside at least one bbox - use mask to determine transparency
-                        let maskValue = globalMask[y0 * Wp + x0]
-                        if maskValue >= cutoff {
-                            pixels[idx + 3] = 255
-                            opaqueCount += 1
-                        } else {
-                            pixels[idx + 3] = 0
-                            transparentCount += 1
+                }
+            } else {
+                for py in 0..<height {
+                    for px in 0..<width {
+                        let idx = (py * width + px) * 4
+                        let mx = Int(Float(px) * scaleX)
+                        let my = Int(Float(py) * scaleY)
+                        let maskIdx = my * Wp + mx
+                        let alpha: UInt8 = globalMask[maskIdx] > 0 ? 255 : 0
+                        pixels[idx + 3] = alpha
+                        if alpha == 0 {
+                            pixels[idx + 0] = 0
+                            pixels[idx + 1] = 0
+                            pixels[idx + 2] = 0
                         }
+                        if alpha > 0 { opaqueCount += 1 }
                     }
                 }
             }
             
-            print("📊 Output: \(opaqueCount) opaque, \(transparentCount) transparent pixels")
-            
-            // Draw bounding boxes
-            let detections = detectionMasks.map { $0.detection }
-            let colors: [CGColor] = [
-                CGColor(red: 0, green: 1, blue: 1, alpha: 1),
-                CGColor(red: 1, green: 0, blue: 1, alpha: 1),
-                CGColor(red: 0, green: 1, blue: 0, alpha: 1),
-                CGColor(red: 1, green: 1, blue: 0, alpha: 1),
-                CGColor(red: 1, green: 0.5, blue: 0, alpha: 1),
-                CGColor(red: 0.5, green: 0, blue: 1, alpha: 1),
-                CGColor(red: 1, green: 0, blue: 0, alpha: 1),
-                CGColor(red: 0, green: 0.5, blue: 1, alpha: 1)
-            ]
-            
-            for (index, detection) in detections.enumerated() {
-                let originalWidth = CGFloat(width)  // 720
-                let originalHeight = CGFloat(height)  // 1280
-                let modelSize: CGFloat = 640.0
-                
-                // Simple uniform scaling - keep the original approach but ensure proper centering
-                let scaleX = originalWidth / modelSize   // 720/640 = 1.125
-                let scaleY = originalHeight / modelSize  // 1280/640 = 2.0
-                
-                let centerX = CGFloat(detection.x) * scaleX
-                let centerY = CGFloat(detection.y) * scaleY
-                let boxWidth = CGFloat(detection.width) * scaleX
-                let boxHeight = CGFloat(detection.height) * scaleY
-                
-                let x = centerX - boxWidth / 2
-                let y = centerY - boxHeight / 2
-                
-                let color = colors[index % colors.count]
-                
-                // Draw bounding box rectangle only if debug is enabled
-                if SEGMENT_DEBUG_SAVE_IMAGES {
-                    ctx.setStrokeColor(color)
-                    ctx.setLineWidth(3.0)
-                    let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
-                    ctx.stroke(rect)
-                }
-                
-                // Label
-                let confidence = Int(detection.confidence * 100)
-                let labelText = "\(detection.className) \(confidence)%"
-                
-                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 34, nil)  // Increased from 28 to 34
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: font,
-                    .foregroundColor: UIColor.white
-                ]
-                
-                let maxLabelWidth: CGFloat = min(boxWidth * 1.8, 220)
-                let attributedString = NSAttributedString(string: labelText, attributes: attributes)
-                let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
-                let textSize = CTFramesetterSuggestFrameSizeWithConstraints(
-                    framesetter,
-                    CFRange(location: 0, length: 0),
-                    nil,
-                    CGSize(width: maxLabelWidth, height: CGFloat.greatestFiniteMagnitude),
-                    nil
-                )
-                
-                let labelPadding: CGFloat = 6
-                let labelWidth = textSize.width + (labelPadding * 2)
-                let labelHeight = textSize.height + (labelPadding * 2)
-                
-                var labelX: CGFloat
-                var labelY: CGFloat
-                
-                if y - labelHeight - 5 >= 0 {
-                    labelX = max(0, min(x, originalWidth - labelWidth))
-                    labelY = y - labelHeight - 5
-                } else if y + boxHeight + labelHeight + 5 <= originalHeight {
-                    labelX = max(0, min(x, originalWidth - labelWidth))
-                    labelY = y + boxHeight + 5
-                } else {
-                    labelX = max(0, min(x + 5, originalWidth - labelWidth))
-                    labelY = max(0, y + 5)
-                }
-                
-                ctx.setFillColor(color)
-                let labelRect = CGRect(x: labelX, y: labelY, width: labelWidth, height: labelHeight)
-                ctx.fill(labelRect)
-                
-                let textX = labelX + labelPadding
-                let textY = labelY + labelPadding
-                let path = CGPath(rect: CGRect(x: textX, y: textY, width: labelWidth - 2 * labelPadding, height: labelHeight - 2 * labelPadding), transform: nil)
-                let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
-                
-                ctx.saveGState()
-                ctx.textMatrix = .identity
-                CTFrameDraw(frame, ctx)
-                ctx.restoreGState()
-                
-                print("📦 Drew bbox for \(detection.className) @ (\(Int(x)), \(Int(y)), \(Int(boxWidth))x\(Int(boxHeight)))")
-                print("   🔢 Original YOLO (640x640): center(\(String(format: "%.1f", detection.x)), \(String(format: "%.1f", detection.y))), size(\(String(format: "%.1f", detection.width))x\(String(format: "%.1f", detection.height)))")
-                print("   📐 Scale factors: X=\(String(format: "%.3f", scaleX)), Y=\(String(format: "%.3f", scaleY))")
-                print("   🎯 Final (scaled): center(\(String(format: "%.1f", centerX)), \(String(format: "%.1f", centerY))), size(\(String(format: "%.1f", boxWidth))x\(String(format: "%.1f", boxHeight)))")
-                print("   📍 Bbox coordinates: left=\(String(format: "%.1f", x)), top=\(String(format: "%.1f", y)), right=\(String(format: "%.1f", x + boxWidth)), bottom=\(String(format: "%.1f", y + boxHeight))")
+            print("📊 Output: \(opaqueCount)/\(width * height) opaque (\(String(format: "%.1f", Float(opaqueCount)/Float(width*height)*100))%)")
+
+            // Draw bounding box for primary
+            if !stage1Detections.isEmpty {
+                drawBoundingBox(ctx: ctx, detection: stage1Detections[0], imageWidth: width, imageHeight: height)
             }
-            
+
             if let outImage = ctx.makeImage() {
-                print("✅ Created output CGImage")
                 DispatchQueue.main.async {
                     self.maskImageView.image = UIImage(cgImage: outImage, scale: 1.0, orientation: .up)
                     self.isProcessing = false
@@ -759,16 +1077,104 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
     }
+    
+    // MARK: - Draw Bounding Box
+    private func drawBoundingBox(ctx: CGContext, detection: DetectionSmarty, imageWidth: Int, imageHeight: Int) {
+        let originalWidth = CGFloat(imageWidth)
+        let originalHeight = CGFloat(imageHeight)
+        let modelSize: CGFloat = 640.0
+        let scaleX = originalWidth / modelSize
+        let scaleY = originalHeight / modelSize
+        
+        let centerX = CGFloat(detection.x) * scaleX
+        let centerY = CGFloat(detection.y) * scaleY
+        let boxWidth = CGFloat(detection.width) * scaleX
+        let boxHeight = CGFloat(detection.height) * scaleY
+        
+        let x = centerX - boxWidth / 2
+        let y = centerY - boxHeight / 2
+        
+        ctx.setStrokeColor(CGColor(red: 0, green: 1, blue: 1, alpha: 1))
+        ctx.setLineWidth(3.0)
+        let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
+        ctx.stroke(rect)
+        
+        let confidence = Int(detection.confidence * 100)
+        let labelText = "\(detection.className) \(confidence)%"
+        
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: UIColor.white
+        ]
+        
+        let attributedString = NSAttributedString(string: labelText, attributes: attributes)
+        let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
+        let textSize = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRange(location: 0, length: 0),
+            nil,
+            CGSize(width: 220, height: CGFloat.greatestFiniteMagnitude),
+            nil
+        )
+        
+        let labelPadding: CGFloat = 6
+        let labelWidth = textSize.width + (labelPadding * 2)
+        let labelHeight = textSize.height + (labelPadding * 2)
+        
+        var labelX: CGFloat
+        var labelY: CGFloat
+        
+        if y - labelHeight - 5 >= 0 {
+            labelX = max(0, min(x, originalWidth - labelWidth))
+            labelY = y - labelHeight - 5
+        } else if y + boxHeight + labelHeight + 5 <= originalHeight {
+            labelX = max(0, min(x, originalWidth - labelWidth))
+            labelY = y + boxHeight + 5
+        } else {
+            labelX = max(0, min(x + 5, originalWidth - labelWidth))
+            labelY = max(0, y + 5)
+        }
+        
+        ctx.setFillColor(CGColor(red: 0, green: 1, blue: 1, alpha: 1))
+        let labelRect = CGRect(x: labelX, y: labelY, width: labelWidth, height: labelHeight)
+        ctx.fill(labelRect)
+        
+        let textX = labelX + labelPadding
+        let textY = labelY + labelPadding
+        let path = CGPath(rect: CGRect(x: textX, y: textY, width: labelWidth - 2 * labelPadding, height: labelHeight - 2 * labelPadding), transform: nil)
+        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
+        
+        ctx.saveGState()
+        ctx.textMatrix = .identity
+        CTFrameDraw(frame, ctx)
+        ctx.restoreGState()
+    }
 
-    // MARK: - Extract Detections (Accelerate - buffer copy + pointer arithmetic)
+    // MARK: - Extract Detections
     private func extractDetections(from detections: MLMultiArray) -> [DetectionSmarty] {
         var all: [DetectionSmarty] = []
         
-        let numAnchors = detections.shape[2].intValue
+        // Get tensor dimensions
         let numFeatures = detections.shape[1].intValue
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("📊 Detections tensor: \(numFeatures) features x \(numAnchors) anchors") }
+        let numAnchors = detections.shape[2].intValue
         
-        // Copy MLMultiArray to float buffer ONCE (Accelerate)
+        // Auto-detect model type from feature count
+        // YOLO11-seg: 116 features = 4 bbox + 80 classes + 32 coeffs
+        // YOLOE-pf:  4621 features = 4 bbox + 4585 classes + 32 coeffs
+        let numClasses = numFeatures - 4 - 32
+        
+        if SEGMENT_DEBUG {
+            print("🔍 Tensor shape: [1, \(numFeatures), \(numAnchors)]")
+            print("   → \(numClasses) classes, \(numAnchors) predictions")
+            print("   → Mode: \(detectAllObjects ? "ALL OBJECTS" : "FURNITURE ONLY")")
+            if numClasses == 4585 {
+                print("   → Model: YOLOE (LVIS open-vocabulary)")
+            } else if numClasses == 80 {
+                print("   → Model: YOLO11-seg (COCO)")
+            }
+        }
+        
         let totalCount = detections.count
         let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
         defer { detBuf.deallocate() }
@@ -778,445 +1184,100 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 2)
             var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
             vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-            print("📊 Converted float16 → float32")
         } else if detections.dataType == .float32 {
             let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
             memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
-            print("📊 Copied float32 buffer")
         } else {
-            // Fallback for other types
             for i in 0..<totalCount {
                 detBuf[i] = detections[i].floatValue
             }
-            print("📊 Fallback copy for dataType: \(detections.dataType)")
         }
         
-        // Shape: [1, numFeatures, numAnchors] -> index = feature * numAnchors + anchor
+        // Coefficient start: after bbox (4) + classes (numClasses)
+        let coeffOffset = 4 + numClasses  // Feature index where mask coeffs start
+        
         for anchor in 0..<numAnchors {
             let x = detBuf[0 * numAnchors + anchor]
             let y = detBuf[1 * numAnchors + anchor]
             let w = detBuf[2 * numAnchors + anchor]
             let h = detBuf[3 * numAnchors + anchor]
             
-            for (classIdx, className) in furnitureClasses {
-                let confIdx = (4 + classIdx) * numAnchors + anchor
-                let conf = detBuf[confIdx]
+            if detectAllObjects {
+                // Find the class with highest confidence for this anchor
+                var bestConf: Float = 0
+                var bestClassIdx = -1
                 
-                if conf > confidenceThreshold {
+                for classIdx in 0..<numClasses {
+                    let confIdx = (4 + classIdx) * numAnchors + anchor
+                    let conf = detBuf[confIdx]
+                    if conf > bestConf {
+                        bestConf = conf
+                        bestClassIdx = classIdx
+                    }
+                }
+                
+                if bestConf > confidenceThreshold && bestClassIdx >= 0 {
+                    // Use furniture name if known, otherwise use class index
+                    let className = furnitureClasses[bestClassIdx] ?? "object_\(bestClassIdx)"
+                    
                     var coeffs = [Float](repeating: 0, count: 32)
-                    let coeffStart = (4 + 4585) * numAnchors + anchor
+                    let coeffStart = coeffOffset * numAnchors + anchor
                     for i in 0..<32 {
                         coeffs[i] = detBuf[coeffStart + i * numAnchors]
                     }
                     all.append(DetectionSmarty(
                         x: x, y: y, width: w, height: h,
-                        confidence: conf, classIdx: classIdx, className: className,
+                        confidence: bestConf, classIdx: bestClassIdx, className: className,
                         maskCoeffs: coeffs
                     ))
+                }
+            } else {
+                // Check only furniture classes (LVIS indices)
+                for (classIdx, className) in furnitureClasses {
+                    // Skip if class index is out of bounds for this model
+                    guard classIdx < numClasses else { continue }
+                    
+                    let confIdx = (4 + classIdx) * numAnchors + anchor
+                    let conf = detBuf[confIdx]
+                    
+                    if conf > confidenceThreshold {
+                        var coeffs = [Float](repeating: 0, count: 32)
+                        let coeffStart = coeffOffset * numAnchors + anchor
+                        for i in 0..<32 {
+                            coeffs[i] = detBuf[coeffStart + i * numAnchors]
+                        }
+                        all.append(DetectionSmarty(
+                            x: x, y: y, width: w, height: h,
+                            confidence: conf, classIdx: classIdx, className: className,
+                            maskCoeffs: coeffs
+                        ))
+                    }
                 }
             }
         }
         
-        // Log detection summary
+        // Log summary
         let grouped = Dictionary(grouping: all) { $0.className }
-        print("\n📊 DETECTION SUMMARY:")
-        print("Total detections: \(all.count)")
-        print("Unique classes detected:")
-        for (className, dets) in grouped.sorted(by: { $0.value.count > $1.value.count }) {
+        print("\n📊 DETECTION SUMMARY: \(all.count) total")
+        for (className, dets) in grouped.sorted(by: { $0.value.count > $1.value.count }).prefix(20) {
             let confidences = dets.map { Int($0.confidence * 100) }
-            print("  - \(className): \(dets.count) detection(s), conf: \(confidences)%")
+            print("  - \(className): \(dets.count)x, conf: \(confidences)%")
         }
-        print("================================================\n")
+        if grouped.count > 20 {
+            print("  ... and \(grouped.count - 20) more classes")
+        }
         
         return all
     }
 
-    // MARK: - Hierarchical BBox NMS (FROM DOC1)
-    private func applyHierarchicalNMS(detections: [DetectionSmarty], iouThreshold: Float) -> [DetectionSmarty] {
-        guard !detections.isEmpty else { return [] }
-        
-        var kept: [DetectionSmarty] = []
-        var suppressed = Set<Int>()
-        let sorted = detections.sorted { $0.confidence > $1.confidence }
-        
-        print("\n🔍 Hierarchical NMS Processing:")
-        print("Input: \(sorted.count) detections")
-        
-        for (i, det) in sorted.enumerated() {
-            if suppressed.contains(i) { continue }
-            
-            var shouldSuppress = false
-            for existing in kept {
-                let iou = calculateBBoxIoU(det1: det, det2: existing)
-                if iou > iouThreshold {
-                    shouldSuppress = true
-                    if SEGMENT_DEBUG_SAVE_IMAGES {
-                        print("❌ Suppressed duplicate: \(det.className) @ \(Int(det.confidence * 100))%")
-                    }
-                    break
-                }
-            }
-            
-            if !shouldSuppress {
-                kept.append(det)
-                if SEGMENT_DEBUG_SAVE_IMAGES {
-                    print("✅ KEPT: \(det.className) @ \(Int(det.confidence * 100))%")
-                }
-                suppressed.insert(i)
-            }
-        }
-        
-        print("Hierarchical NMS: \(sorted.count) → \(kept.count) detections")
-        return kept
-    }
-
-    private func calculateBBoxIoU(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
-        let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
-        let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
-        let x2 = min(det1.x + det1.width/2, det2.x + det2.width/2)
-        let y2 = min(det1.y + det1.height/2, det2.y + det2.height/2)
-        
-        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
-        let area1 = det1.width * det1.height
-        let area2 = det2.width * det2.height
-        let union = area1 + area2 - intersection
-        return union > 0 ? intersection / union : 0
-    }
-
-    // MARK: - Mask IoU Calculation (FROM DOC1 - vDSP_dotpr, vDSP_sve) tejal
-    private func calculateMaskIoU(mask1: [Float], mask2: [Float], eps: Float = 1e-7) -> Float {
-        let n = min(mask1.count, mask2.count)
-        guard n > 0 else { return 0 }
-        
-        var intersection: Float = 0
-        vDSP_dotpr(mask1, 1, mask2, 1, &intersection, vDSP_Length(n))
-        
-        var sum1: Float = 0
-        var sum2: Float = 0
-        vDSP_sve(mask1, 1, &sum1, vDSP_Length(n))
-        vDSP_sve(mask2, 1, &sum2, vDSP_Length(n))
-        
-        let union = sum1 + sum2 - intersection
-        return intersection / (union + eps)
-    }
-
-    // MARK: - Generate Pure Furniture Cutout
-    private func generatePureFurnitureCutout(detections: [DetectionSmarty], prototypes: MLMultiArray, originalImage: CVPixelBuffer) {
-        let shape = prototypes.shape.map { $0.intValue }
-        let C = shape[1]
-        let Hp = shape[2]
-        let Wp = shape[3]
-        let spatial = Hp * Wp
-        let cutoff = self.maskCutoff
-        
-        print("🎨 Generating cutout with \(detections.count) detections, cutoff=\(cutoff)")
-
-        // Build proto matrix
-        var protoMatrix = [Float](repeating: 0, count: C * spatial)
-        
-        if prototypes.dataType == .float32 {
-            let srcBase = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
-            for c in 0..<C {
-                for y in 0..<Hp {
-                    for x in 0..<Wp {
-                        let idx = y * Wp + x
-                        protoMatrix[c * spatial + idx] = srcBase[c * spatial + idx]
-                    }
-                }
-            }
-        } else {
-            for c in 0..<C {
-                for y in 0..<Hp {
-                    for x in 0..<Wp {
-                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
-                        protoMatrix[c * spatial + (y * Wp + x)] = val
-                    }
-                }
-            }
-        }
-
-        // Accumulate all masks with max blend
-        var globalMask = [Float](repeating: 0, count: spatial)
-
-        print("\n🔍 ========== GLOBAL MASK ACCUMULATION (20x20 grid, 8th sample) ==========")
-
-        for (idx, det) in detections.enumerated() {
-            var mask = [Float](repeating: 0, count: spatial)
-            
-            // Log mask coefficients for this detection
-            print("📊 [CUTOUT-COEFFS] Detection[\(idx)] \(det.className) coefficients: [\(det.maskCoeffs.prefix(8).map { String(format: "%.3f", $0) }.joined(separator: ", "))...]")
-            
-            vDSP_mmul(
-                det.maskCoeffs, 1,
-                protoMatrix, 1,
-                &mask, 1,
-                1,
-                vDSP_Length(spatial),
-                vDSP_Length(C)
-            )
-
-            // Log accumulation process
-            logGlobalMaskAccumulation(idx, det, mask, &globalMask, Hp, Wp)
-
-            // Sigmoid and max accumulation
-            for i in 0..<spatial {
-                let sigmoid = 1.0 / (1.0 + exp(-mask[i]))
-                globalMask[i] = max(globalMask[i], sigmoid)
-            }
-            
-            print("🎨 Accumulated mask[\(idx)] \(det.className)")
-        }
-        
-        // Log global mask stats
-        var minVal: Float = 0, maxVal: Float = 0
-        vDSP_minv(globalMask, 1, &minVal, vDSP_Length(spatial))
-        vDSP_maxv(globalMask, 1, &maxVal, vDSP_Length(spatial))
-        var sum: Float = 0
-        vDSP_sve(globalMask, 1, &sum, vDSP_Length(spatial))
-        let coverage = sum / Float(spatial) * 100
-        print("📊 Global mask: min=\(String(format: "%.3f", minVal)), max=\(String(format: "%.3f", maxVal)), coverage=\(String(format: "%.1f", coverage))%")
-        
-        // Count pixels above cutoff
-        var aboveCutoff = 0
-        for i in 0..<spatial {
-            if globalMask[i] >= cutoff { aboveCutoff += 1 }
-        }
-        print("📊 Pixels above cutoff \(cutoff): \(aboveCutoff) / \(spatial) (\(String(format: "%.1f", Float(aboveCutoff) / Float(spatial) * 100))%)")
-
-        // Create pure cutout
-        autoreleasepool {
-            let ciImage = CIImage(cvPixelBuffer: originalImage)
-            let width = CVPixelBufferGetWidth(originalImage)
-            let height = CVPixelBufferGetHeight(originalImage)
-            print("📐 Original image: \(width)x\(height)")
-            print("📐 Camera preset: .hd1280x720, Rotation: 90°")
-            print("📐 Model input was: 640x640")
-
-            guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
-                print("❌ Failed to create CGImage")
-                DispatchQueue.main.async { self.isProcessing = false }
-                return
-            }
-            
-            guard let ctx = CGContext(
-                    data: nil,
-                    width: width,
-                    height: height,
-                    bitsPerComponent: 8,
-                    bytesPerRow: width * 4,
-                    space: CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                  ) else {
-                print("❌ Failed to create CGContext")
-                DispatchQueue.main.async { self.isProcessing = false }
-                return
-            }
-            
-            guard let data = ctx.data else {
-                print("❌ CGContext has no data")
-                DispatchQueue.main.async { self.isProcessing = false }
-                return
-            }
-
-            ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-            let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
-
-            // Apply mask (FROM DOC1 pattern)
-            var opaqueCount = 0
-            var transparentCount = 0
-            
-            for py in 0..<height {
-                for px in 0..<width {
-                    let idx = (py * width + px) * 4
-
-                    let mx = Float(px) * Float(Wp) / Float(width)
-                    let my = Float(py) * Float(Hp) / Float(height)
-
-                    let x0 = Int(mx)
-                    let y0 = Int(my)
-
-                    guard x0 >= 0 && x0 < Wp && y0 >= 0 && y0 < Hp else {
-                        pixels[idx + 3] = 0
-                        transparentCount += 1
-                        continue
-                    }
-
-                    let maskValue = globalMask[y0 * Wp + x0]
-                    if maskValue >= cutoff {
-                        pixels[idx + 3] = 255
-                        opaqueCount += 1
-                    } else {
-                        pixels[idx + 3] = 0
-                        transparentCount += 1
-                    }
-                }
-            }
-            
-            // Log final pixel application samples
-            logFinalPixelApplication(pixels, globalMask, cutoff, width, height, Wp, Hp)
-            
-            print("📊 Output: \(opaqueCount) opaque, \(transparentCount) transparent pixels")
-
-            // Draw bright cyan bounding boxes AFTER transparency mask (so they stay visible) - ALWAYS
-            let colors: [CGColor] = [
-                CGColor(red: 0, green: 1, blue: 1, alpha: 1),      // Bright cyan
-                CGColor(red: 1, green: 0, blue: 1, alpha: 1),      // Magenta
-                CGColor(red: 0, green: 1, blue: 0, alpha: 1),      // Green
-                CGColor(red: 1, green: 1, blue: 0, alpha: 1),      // Yellow
-                CGColor(red: 1, green: 0.5, blue: 0, alpha: 1),   // Orange
-                CGColor(red: 0.5, green: 0, blue: 1, alpha: 1),   // Purple
-                CGColor(red: 1, green: 0, blue: 0, alpha: 1),      // Red
-                CGColor(red: 0, green: 0.5, blue: 1, alpha: 1)    // Light blue
-            ]
-            
-            for (index, detection) in detections.enumerated() {
-                // Simple direct scaling - no rotation transformation
-                let originalWidth = CGFloat(CVPixelBufferGetWidth(originalImage))  // 720
-                let originalHeight = CGFloat(CVPixelBufferGetHeight(originalImage)) // 1280
-                let modelSize: CGFloat = 640.0
-                
-                // Direct scaling from YOLO 640x640 to camera image dimensions
-                let scaleX = originalWidth / modelSize   // 720/640 = 1.125
-                let scaleY = originalHeight / modelSize  // 1280/640 = 2.0
-                
-                // Apply scaling directly to YOLO coordinates
-                let centerX = CGFloat(detection.x) * scaleX
-                let centerY = CGFloat(detection.y) * scaleY
-                let boxWidth = CGFloat(detection.width) * scaleX
-                let boxHeight = CGFloat(detection.height) * scaleY
-                
-                let x = centerX - boxWidth / 2
-                let y = centerY - boxHeight / 2
-                
-                // Use different colors for each detection
-                let color = colors[index % colors.count]
-                
-                // Draw bounding box
-                ctx.setStrokeColor(color)
-                ctx.setLineWidth(3.0)
-                let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
-                ctx.stroke(rect)
-                
-                // Smart label positioning with text wrapping
-                let confidence = Int(detection.confidence * 100)
-                let labelText = "\(detection.className) \(confidence)%"
-                
-                // Create attributed string for label with wrapping capability
-                let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)  // Slightly smaller font
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: font,
-                    .foregroundColor: UIColor.white
-                ]
-                
-                // Calculate optimal text wrapping based on bbox width
-                let maxLabelWidth: CGFloat = min(boxWidth * 1.8, 220) // Max width based on bbox or 220px
-                let attributedString = NSAttributedString(string: labelText, attributes: attributes)
-                
-                // Use framesetter for better text measurement with wrapping
-                let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
-                let textSize = CTFramesetterSuggestFrameSizeWithConstraints(
-                    framesetter, 
-                    CFRange(location: 0, length: 0),
-                    nil,
-                    CGSize(width: maxLabelWidth, height: CGFloat.greatestFiniteMagnitude),
-                    nil
-                )
-                
-                let labelPadding: CGFloat = 6
-                let labelWidth = textSize.width + (labelPadding * 2)
-                let labelHeight = textSize.height + (labelPadding * 2)
-                
-                // Smart positioning algorithm: try positions in order of preference
-                var labelX: CGFloat
-                var labelY: CGFloat
-                var labelPosition: String
-                
-                // 1. Try above (preferred)
-                if y - labelHeight - 5 >= 0 {
-                    labelX = max(0, min(x, originalWidth - labelWidth))
-                    labelY = y - labelHeight - 5
-                    labelPosition = "above"
-                } 
-                // 2. Try below
-                else if y + boxHeight + labelHeight + 5 <= originalHeight {
-                    labelX = max(0, min(x, originalWidth - labelWidth))
-                    labelY = y + boxHeight + 5
-                    labelPosition = "below"
-                }
-                // 3. Try left side
-                else if x - labelWidth - 5 >= 0 {
-                    labelX = x - labelWidth - 5
-                    labelY = max(0, min(y, originalHeight - labelHeight))
-                    labelPosition = "left"
-                }
-                // 4. Try right side
-                else if x + boxWidth + labelWidth + 5 <= originalWidth {
-                    labelX = x + boxWidth + 5
-                    labelY = max(0, min(y, originalHeight - labelHeight))
-                    labelPosition = "right"
-                }
-                // 5. Fallback: overlay on top of bbox with increased opacity
-                else {
-                    labelX = max(0, min(x + 5, originalWidth - labelWidth))
-                    labelY = max(0, y + 5)
-                    labelPosition = "overlay"
-                }
-                
-                // Draw colored background for label with adaptive opacity
-                if labelPosition == "overlay" {
-                    // More opaque for overlay to ensure readability
-                    ctx.setFillColor(color.copy(alpha: 0.9)!)
-                } else {
-                    ctx.setFillColor(color)
-                }
-                let labelRect = CGRect(x: labelX, y: labelY, width: labelWidth, height: labelHeight)
-                ctx.fill(labelRect)
-                
-                // Draw wrapped text using Core Text for better rendering
-                let textX = labelX + labelPadding
-                let textY = labelY + labelPadding
-                
-                // Create frame for text rendering with proper wrapping
-                let path = CGPath(rect: CGRect(x: textX, y: textY, width: labelWidth - 2 * labelPadding, height: labelHeight - 2 * labelPadding), transform: nil)
-                let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
-                
-                // Draw the frame
-                ctx.saveGState()
-                ctx.textMatrix = .identity
-                CTFrameDraw(frame, ctx)
-                ctx.restoreGState()
-                
-                print("📦 Drew bbox for \(detection.className) @ (\(Int(x)), \(Int(y)), \(Int(boxWidth))x\(Int(boxHeight))) with color \(index % colors.count)")
-                print("   🔢 Original YOLO (640x640): center(\(detection.x), \(detection.y)), size(\(detection.width), \(detection.height))")
-                print("   📐 Scale factors: X=\(String(format: "%.3f", scaleX)), Y=\(String(format: "%.3f", scaleY))")
-                print("   🎯 Final (scaled): center(\(Int(centerX)), \(Int(centerY))), size(\(Int(boxWidth))x\(Int(boxHeight)))")
-                print("   🏷️ Label: '\(labelText)' @ \(labelPosition) (\(Int(labelX)), \(Int(labelY)))")
-            }
-
-            if let outImage = ctx.makeImage() {
-                print("✅ Created output CGImage")
-                DispatchQueue.main.async {
-                    self.maskImageView.image = UIImage(cgImage: outImage, scale: 1.0, orientation: .up)
-                    self.isProcessing = false
-                    print("✅ ==================== FRAME COMPLETE ====================\n")
-                }
-            } else {
-                print("❌ Failed to make output image")
-                DispatchQueue.main.async { self.isProcessing = false }
-            }
-        }
-    }
-
-    // MARK: - Pixel Buffer to MLMultiArray (Accelerate - pointer arithmetic)
+    // MARK: - Pixel Buffer to MLMultiArray
     private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
         guard let array = try? MLMultiArray(shape: [1, 3, 640, 640], dataType: .float32) else {
-            print("❌ Failed to create MLMultiArray")
             return nil
         }
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
-            print("❌ No base address in pixel buffer")
             return nil
         }
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
@@ -1231,369 +1292,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             for x in 0..<640 {
                 let srcIdx = rowOffset + x * 4
                 let dstIdx = yOffset + x
-                // BGRA -> RGB channels-first
-                dstPtr[0 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 2]) / 255.0  // R
-                dstPtr[1 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 1]) / 255.0  // G
-                dstPtr[2 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 0]) / 255.0  // B
+                dstPtr[0 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 2]) / 255.0
+                dstPtr[1 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 1]) / 255.0
+                dstPtr[2 * spatial + dstIdx] = Float(srcBuffer[srcIdx + 0]) / 255.0
             }
         }
-        
-        // Log pixel conversion samples
-        logPixelToMLConversion(srcBuffer, dstPtr, spatial, bytesPerRow)
-        if SEGMENT_DEBUG_SAVE_IMAGES { print("✅ [PIXEL→ML] Conversion complete\n") }
         
         return array
-    }
-
-    // MARK: - Debug Logging Methods
-    private func logGridSamples20x20(_ title: String, gridSize: Int = 20, sampleOffset: Int = 7, logAction: (Int, Int, Int, Int) -> Void) {
-        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
-        print("\n🔍 ========== \(title.uppercased()) (20x20 grid, 8th sample) ==========")
-        for gy in 0..<gridSize {
-            for gx in 0..<gridSize {
-                let y = gy * 8 + sampleOffset  // 8th sample in each grid cell
-                let x = gx * 8 + sampleOffset
-                logAction(gy, gx, x, y)
-            }
-        }
-    }
-    
-    private func logPixelToMLConversion(_ srcBuffer: UnsafePointer<UInt8>, _ dstPtr: UnsafePointer<Float>, _ spatial: Int, _ bytesPerRow: Int) {
-        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
-        logGridSamples20x20("PIXEL BUFFER TO ML ARRAY") { gy, gx, x, y in
-            guard y < 640 && x < 640 else { return }
-            let srcIdx = y * bytesPerRow + x * 4
-            let dstIdx = y * 640 + x
-            let rVal = Float(srcBuffer[srcIdx + 2]) / 255.0
-            let gVal = Float(srcBuffer[srcIdx + 1]) / 255.0
-            let bVal = Float(srcBuffer[srcIdx + 0]) / 255.0
-            print("📊 [PIXEL→ML] Grid[\(gy),\(gx)] Pixel(\(x),\(y)): BGRA(\(srcBuffer[srcIdx]),\(srcBuffer[srcIdx+1]),\(srcBuffer[srcIdx+2]),\(srcBuffer[srcIdx+3])) → RGB(\(String(format: "%.3f", rVal)),\(String(format: "%.3f", gVal)),\(String(format: "%.3f", bVal)))")
-        }
-    }
-    
-    private func logPrototypeMatrix(_ prototypes: MLMultiArray, _ protoMatrix: [Float], _ C: Int, _ Hp: Int, _ Wp: Int, _ spatial: Int) {
-        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
-        logGridSamples20x20("PROTOTYPE MATRIX") { gy, gx, x, y in
-            guard y < Hp && x < Wp else { return }
-            for c in 0..<min(4, C) {  // Only log first 4 channels
-                let dstIndex = c * spatial + (y * Wp + x)
-                let val = protoMatrix[dstIndex]
-                print("📊 [PROTO-MAT] Channel[\(c)] Grid[\(gy),\(gx)] Proto(\(x),\(y)): value=\(String(format: "%.3f", val))")
-            }
-        }
-    }
-    
-    private func logMaskGeneration(_ idx: Int, _ det: DetectionSmarty, _ mask: [Float], _ Hp: Int, _ Wp: Int, isPreSigmoid: Bool = true) {
-        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
-        let stage = isPreSigmoid ? "Pre-sigmoid" : "Post-sigmoid"
-        print("📊 [MASK-GEN] Detection[\(idx)] \(det.className) - \(stage) samples:")
-        logGridSamples20x20("") { gy, gx, x, y in
-            guard y < Hp && x < Wp else { return }
-            let maskIdx = y * Wp + x
-            let val = mask[maskIdx]
-            let suffix = isPreSigmoid ? "pre-sigmoid" : "post-sigmoid"
-            print("    Grid[\(gy),\(gx)] Mask(\(x),\(y)): \(suffix)=\(String(format: "%.3f", val))")
-        }
-    }
-    
-    private func logGlobalMaskAccumulation(_ idx: Int, _ det: DetectionSmarty, _ mask: [Float], _ globalMask: inout [Float], _ Hp: Int, _ Wp: Int) {
-        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
-        print("📊 [GLOBAL-ACC] Detection[\(idx)] \(det.className) - Accumulation samples:")
-        logGridSamples20x20("") { gy, gx, x, y in
-            guard y < Hp && x < Wp else { return }
-            let maskIdx = y * Wp + x
-            let preVal = mask[maskIdx]
-            let sigmoid = 1.0 / (1.0 + exp(-preVal))
-            let oldGlobal = globalMask[maskIdx]
-            let newGlobal = max(oldGlobal, sigmoid)
-            print("    Grid[\(gy),\(gx)] Mask(\(x),\(y)): pre=\(String(format: "%.3f", preVal)), sigmoid=\(String(format: "%.3f", sigmoid)), old_global=\(String(format: "%.3f", oldGlobal)), new_global=\(String(format: "%.3f", newGlobal))")
-        }
-    }
-    
-    private func logFinalPixelApplication(_ pixels: UnsafePointer<UInt8>, _ globalMask: [Float], _ cutoff: Float, _ width: Int, _ height: Int, _ Wp: Int, _ Hp: Int) {
-        guard SEGMENT_DEBUG_SAVE_IMAGES else { return }
-        logGridSamples20x20("FINAL PIXEL APPLICATION") { gy, gx, gridX, gridY in
-            let px = gx * (width / 20) + (width / 20) / 8
-            let py = gy * (height / 20) + (height / 20) / 8
-            guard px < width && py < height else { return }
-            
-            let idx = (py * width + px) * 4
-            let mx = Float(px) * Float(Wp) / Float(width)
-            let my = Float(py) * Float(Hp) / Float(height)
-            let x0 = Int(mx)
-            let y0 = Int(my)
-            
-            guard x0 >= 0 && x0 < Wp && y0 >= 0 && y0 < Hp else { return }
-            
-            let maskValue = globalMask[y0 * Wp + x0]
-            let originalR = pixels[idx]
-            let originalG = pixels[idx + 1]
-            let originalB = pixels[idx + 2]
-            let originalA = pixels[idx + 3]
-            let newAlpha = maskValue >= cutoff ? 255 : 0
-            print("📊 [FINAL-APP] Grid[\(gy),\(gx)] Pixel(\(px),\(py)): mask_coord(\(x0),\(y0)), mask_val=\(String(format: "%.3f", maskValue)), cutoff=\(cutoff), RGBA(\(originalR),\(originalG),\(originalB),\(originalA)) → alpha=\(newAlpha)")
-        }
-    }
-
-    // MARK: - Calculate stable bbox from mask
-    private func calculateBboxFromMask(_ mask: [Float], maskWidth: Int, maskHeight: Int, imageWidth: Int, imageHeight: Int, cutoff: Float) -> CGRect {
-        var minX = maskWidth, maxX = 0
-        var minY = maskHeight, maxY = 0
-        var hasPixels = false
-        
-        // Find bounding box of mask pixels above cutoff
-        for y in 0..<maskHeight {
-            for x in 0..<maskWidth {
-                let idx = y * maskWidth + x
-                if mask[idx] >= cutoff {
-                    minX = min(minX, x)
-                    maxX = max(maxX, x)
-                    minY = min(minY, y)
-                    maxY = max(maxY, y)
-                    hasPixels = true
-                }
-            }
-        }
-        
-        if !hasPixels {
-            return CGRect.zero
-        }
-        
-        // Convert mask coordinates to image coordinates
-        let scaleX = Float(imageWidth) / Float(maskWidth)
-        let scaleY = Float(imageHeight) / Float(maskHeight)
-        
-        let x = Float(minX) * scaleX
-        let y = Float(minY) * scaleY
-        let w = Float(maxX - minX) * scaleX
-        let h = Float(maxY - minY) * scaleY
-        
-        return CGRect(x: CGFloat(x), y: CGFloat(y), width: CGFloat(w), height: CGFloat(h))
-    }
-
-    // MARK: - Resize Pixel Buffer
-    private func resizePixelBuffer(_ pixelBuffer: CVPixelBuffer, width: Int, height: Int) -> CVPixelBuffer? {
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let scaleX = CGFloat(width) / CGFloat(CVPixelBufferGetWidth(pixelBuffer))
-        let scaleY = CGFloat(height) / CGFloat(CVPixelBufferGetHeight(pixelBuffer))
-        var out: CVPixelBuffer?
-        CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &out)
-        guard let dst = out else {
-            if SEGMENT_DEBUG_SAVE_IMAGES { print("❌ Failed to create output pixel buffer") }
-            return nil
-        }
-        CIContext().render(ciImage.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY)), to: dst)
-        return dst
-    }
-    
-    // MARK: - BBox Containment Check
-    private func bboxContains(outer: DetectionSmarty, inner: DetectionSmarty, tolerance: Float = 20.0) -> Bool {
-        let outerLeft = outer.x - outer.width / 2
-        let outerRight = outer.x + outer.width / 2
-        let outerTop = outer.y - outer.height / 2
-        let outerBottom = outer.y + outer.height / 2
-        
-        let innerLeft = inner.x - inner.width / 2
-        let innerRight = inner.x + inner.width / 2
-        let innerTop = inner.y - inner.height / 2
-        let innerBottom = inner.y + inner.height / 2
-        
-        // Check if inner is mostly inside outer (with tolerance)
-        let contained = innerLeft >= outerLeft - tolerance &&
-                        innerRight <= outerRight + tolerance &&
-                        innerTop >= outerTop - tolerance &&
-                        innerBottom <= outerBottom + tolerance
-        
-        if contained && SEGMENT_DEBUG_SAVE_IMAGES {
-            print("📦 BBox containment: \(inner.className) inside \(outer.className)")
-        }
-        
-        return contained
-    }
-
-    // MARK: - BBox Overlap Ratio (how much of smaller is inside larger)
-    private func bboxOverlapRatio(det1: DetectionSmarty, det2: DetectionSmarty) -> Float {
-        let x1 = max(det1.x - det1.width/2, det2.x - det2.width/2)
-        let y1 = max(det1.y - det1.height/2, det2.y - det2.height/2)
-        let x2 = min(det1.x + det1.width/2, det2.x + det2.width/2)
-        let y2 = min(det1.y + det1.height/2, det2.y + det2.height/2)
-        
-        let intersection = max(0, x2 - x1) * max(0, y2 - y1)
-        let area1 = det1.width * det1.height
-        let area2 = det2.width * det2.height
-        let smallerArea = min(area1, area2)
-        
-        return smallerArea > 0 ? intersection / smallerArea : 0
-    }
-
-    // MARK: - Mask Containment (what % of smaller mask is inside larger)
-    private func calculateMaskContainment(mask1: [Float], mask2: [Float], threshold: Float = 0.3) -> Float {
-        let n = min(mask1.count, mask2.count)
-        guard n > 0 else { return 0 }
-        
-        // Binarize and compute
-        var sum1: Float = 0
-        var sum2: Float = 0
-        var intersection: Float = 0
-        
-        for i in 0..<n {
-            let v1 = mask1[i] >= threshold ? 1.0 : 0.0
-            let v2 = mask2[i] >= threshold ? 1.0 : 0.0
-            sum1 += Float(v1)
-            sum2 += Float(v2)
-            intersection += Float(v1 * v2)
-        }
-        
-        let smallerArea = min(sum1, sum2)
-        return smallerArea > 0 ? intersection / smallerArea : 0
-    }
-
-    // MARK: - Mask IoU NMS with Containment Merging
-    private func applyMaskIoU(detections: [DetectionSmarty], iouThreshold: Float, prototypes: MLMultiArray) -> [(detection: DetectionSmarty, mask: [Float])] {
-        guard !detections.isEmpty else { return [] }
-        
-        let sorted = detections.sorted { $0.confidence > $1.confidence }
-        
-        print("\n🔍 Mask-NMS (with containment merging):")
-        
-        let shape = prototypes.shape.map { $0.intValue }
-        let C = shape[1]
-        let Hp = shape[2]
-        let Wp = shape[3]
-        let spatial = Hp * Wp
-        
-        print("Proto shape: C=\(C), H=\(Hp), W=\(Wp), spatial=\(spatial)")
-        
-        // Build proto matrix
-        var protoMatrix = [Float](repeating: 0, count: C * spatial)
-        
-        if prototypes.dataType == .float32 {
-            let srcBase = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
-            for c in 0..<C {
-                let offset = c * spatial
-                for i in 0..<spatial {
-                    protoMatrix[offset + i] = srcBase[offset + i]
-                }
-            }
-        } else {
-            for c in 0..<C {
-                for y in 0..<Hp {
-                    for x in 0..<Wp {
-                        let val = prototypes[[0, c, y, x] as [NSNumber]].floatValue
-                        protoMatrix[c * spatial + (y * Wp + x)] = val
-                    }
-                }
-            }
-        }
-        
-        // Generate all masks upfront
-        var allMasks: [(detection: DetectionSmarty, mask: [Float])] = []
-        allMasks.reserveCapacity(sorted.count)
-        
-        for det in sorted {
-            var mask = [Float](repeating: 0, count: spatial)
-            
-            vDSP_mmul(
-                det.maskCoeffs, 1,
-                protoMatrix, 1,
-                &mask, 1,
-                1,
-                vDSP_Length(spatial),
-                vDSP_Length(C)
-            )
-            
-            // Sigmoid
-            for i in 0..<spatial {
-                mask[i] = 1.0 / (1.0 + exp(-mask[i]))
-            }
-            
-            // Log mask stats
-            var minVal: Float = 0, maxVal: Float = 0
-            vDSP_minv(mask, 1, &minVal, vDSP_Length(spatial))
-            vDSP_maxv(mask, 1, &maxVal, vDSP_Length(spatial))
-            var sum: Float = 0
-            vDSP_sve(mask, 1, &sum, vDSP_Length(spatial))
-            let coverage = sum / Float(spatial) * 100
-            if SEGMENT_DEBUG_SAVE_IMAGES {
-                print("📊 Mask \(det.className): min=\(String(format: "%.3f", minVal)), max=\(String(format: "%.3f", maxVal)), coverage=\(String(format: "%.1f", coverage))%")
-            }
-            
-            allMasks.append((det, mask))
-        }
-        
-        // NMS with containment merging
-        var kept: [(detection: DetectionSmarty, mask: [Float])] = []
-        var processed = Set<Int>()
-        
-        for (i, item) in allMasks.enumerated() {
-            if processed.contains(i) { continue }
-            
-            var mergedMask = item.mask
-            var bestDetection = item.detection
-            processed.insert(i)
-            
-            // Try to merge with all remaining detections
-            for (j, other) in allMasks.enumerated() {
-                if processed.contains(j) { continue }
-                
-                let maskIoU = calculateMaskIoU(mask1: mergedMask, mask2: other.mask)
-                let bboxOverlap = bboxOverlapRatio(det1: bestDetection, det2: other.detection)
-                let maskContainment = calculateMaskContainment(mask1: mergedMask, mask2: other.mask, threshold: maskCutoff)
-                
-                // Check bbox containment both ways
-                let bbox1Contains2 = bboxContains(outer: bestDetection, inner: other.detection)
-                let bbox2Contains1 = bboxContains(outer: other.detection, inner: bestDetection)
-                
-                // Merge conditions:
-                // 1. High mask IoU (overlapping masks)
-                // 2. One bbox contains the other (nested furniture)
-                // 3. High bbox overlap AND high mask containment (partial overlap)
-                let shouldMerge = maskIoU >= iouThreshold ||
-                                  bbox1Contains2 ||
-                                  bbox2Contains1 ||
-                                  (bboxOverlap >= 0.7 && maskContainment >= 0.5)
-                
-                if shouldMerge {
-                    // Max-blend masks
-                    for k in 0..<mergedMask.count {
-                        mergedMask[k] = max(mergedMask[k], other.mask[k])
-                    }
-                    
-                    // Determine merge reason for logging
-                    var reason = ""
-                    if bbox1Contains2 { reason = "CONTAINED" }
-                    else if bbox2Contains1 { reason = "CONTAINER" }
-                    else if maskIoU >= iouThreshold { reason = "IoU \(Int(maskIoU * 100))%" }
-                    else { reason = "OVERLAP \(Int(bboxOverlap * 100))%" }
-                    
-                    // Keep higher confidence detection info, prefer larger bbox for same confidence
-                    if other.detection.confidence > bestDetection.confidence ||
-                       (other.detection.confidence == bestDetection.confidence &&
-                        other.detection.width * other.detection.height > bestDetection.width * bestDetection.height) {
-                        if SEGMENT_DEBUG_SAVE_IMAGES {
-                            print("🔄 MERGE (\(reason)): \(other.detection.className) @ \(Int(other.detection.confidence * 100))% → replacing \(bestDetection.className)")
-                        }
-                        bestDetection = other.detection
-                    } else {
-                        if SEGMENT_DEBUG_SAVE_IMAGES {
-                            print("🔄 MERGE (\(reason)): \(other.detection.className) @ \(Int(other.detection.confidence * 100))% → into \(bestDetection.className)")
-                        }
-                    }
-                    
-                    processed.insert(j)
-                }
-            }
-            
-            // Log merged mask stats
-            var finalSum: Float = 0
-            vDSP_sve(mergedMask, 1, &finalSum, vDSP_Length(spatial))
-            let finalCoverage = finalSum / Float(spatial) * 100
-            print("✅ KEEP: \(bestDetection.className) @ \(Int(bestDetection.confidence * 100))% (merged coverage: \(String(format: "%.1f", finalCoverage))%)")
-            
-            kept.append((bestDetection, mergedMask))
-        }
-        
-        print("Mask-NMS: \(sorted.count) → \(kept.count) unique furniture pieces")
-        return kept
     }
 }
