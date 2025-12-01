@@ -1679,19 +1679,138 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         ctx.restoreGState()
     }
 
-    // MARK: - Extract Detections
+//    // MARK: - Extract Detections
+//    private func extractDetections(from detections: MLMultiArray) -> [DetectionSmarty] {
+//        var all: [DetectionSmarty] = []
+//        
+//        // Get tensor dimensions
+//        let numFeatures = detections.shape[1].intValue
+//        let numAnchors = detections.shape[2].intValue
+//        
+//        // Auto-detect model type from feature count
+//        // YOLO11-seg: 116 features = 4 bbox + 80 classes + 32 coeffs
+//        // YOLOE-pf:  4621 features = 4 bbox + 4585 classes + 32 coeffs
+//        let numClasses = numFeatures - 4 - 32
+//        
+//        if self.debugMode {
+//            print("🔍 Tensor shape: [1, \(numFeatures), \(numAnchors)]")
+//            print("   → \(numClasses) classes, \(numAnchors) predictions")
+//            print("   → Mode: \(detectAllObjects ? "ALL OBJECTS" : "FURNITURE ONLY")")
+//            if numClasses == 4585 {
+//                print("   → Model: YOLOE (LVIS open-vocabulary)")
+//            } else if numClasses == 80 {
+//                print("   → Model: YOLO11-seg (COCO)")
+//            }
+//        }
+//        
+//        let totalCount = detections.count
+//        let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
+//        defer { detBuf.deallocate() }
+//        
+//        if detections.dataType == .float16 {
+//            let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
+//            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 2)
+//            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
+//            vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+//        } else if detections.dataType == .float32 {
+//            let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
+//            memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
+//        } else {
+//            for i in 0..<totalCount {
+//                detBuf[i] = detections[i].floatValue
+//            }
+//        }
+//        
+//        // Coefficient start: after bbox (4) + classes (numClasses)
+//        let coeffOffset = 4 + numClasses  // Feature index where mask coeffs start
+//        
+//        for anchor in 0..<numAnchors {
+//            let x = detBuf[0 * numAnchors + anchor]
+//            let y = detBuf[1 * numAnchors + anchor]
+//            let w = detBuf[2 * numAnchors + anchor]
+//            let h = detBuf[3 * numAnchors + anchor]
+//            
+//            if detectAllObjects {
+//                // Find the class with highest confidence for this anchor
+//                var bestConf: Float = 0
+//                var bestClassIdx = -1
+//                
+//                for classIdx in 0..<numClasses {
+//                    let confIdx = (4 + classIdx) * numAnchors + anchor
+//                    let conf = detBuf[confIdx]
+//                    if conf > bestConf {
+//                        bestConf = conf
+//                        bestClassIdx = classIdx
+//                    }
+//                }
+//                
+//                if bestConf > confidenceThreshold && bestClassIdx >= 0 {
+//                    // Use furniture name if known, otherwise use class index
+//                    let className = furnitureClasses[bestClassIdx] ?? "object_\(bestClassIdx)"
+//                    
+//                    var coeffs = [Float](repeating: 0, count: 32)
+//                    let coeffStart = coeffOffset * numAnchors + anchor
+//                    for i in 0..<32 {
+//                        coeffs[i] = detBuf[coeffStart + i * numAnchors]
+//                    }
+//                    all.append(DetectionSmarty(
+//                        x: x, y: y, width: w, height: h,
+//                        confidence: bestConf, classIdx: bestClassIdx, className: className,
+//                        maskCoeffs: coeffs
+//                    ))
+//                }
+//            } else {
+//                // Check only furniture classes (LVIS indices)
+//                for (classIdx, className) in furnitureClasses {
+//                    // Skip if class index is out of bounds for this model
+//                    guard classIdx < numClasses else { continue }
+//                    
+//                    let confIdx = (4 + classIdx) * numAnchors + anchor
+//                    let conf = detBuf[confIdx]
+//                    
+//                    if conf > confidenceThreshold {
+//                        var coeffs = [Float](repeating: 0, count: 32)
+//                        let coeffStart = coeffOffset * numAnchors + anchor
+//                        for i in 0..<32 {
+//                            coeffs[i] = detBuf[coeffStart + i * numAnchors]
+//                        }
+//                        all.append(DetectionSmarty(
+//                            x: x, y: y, width: w, height: h,
+//                            confidence: conf, classIdx: classIdx, className: className,
+//                            maskCoeffs: coeffs
+//                        ))
+//                    }
+//                }
+//            }
+//        }
+//        
+//        // Log summary (only in debug mode)
+//        if self.debugMode {
+//            let grouped = Dictionary(grouping: all) { $0.className }
+//            print("\n📊 DETECTION SUMMARY: \(all.count) total")
+//            for (className, dets) in grouped.sorted(by: { $0.value.count > $1.value.count }).prefix(20) {
+//                let confidences = dets.map { Int($0.confidence * 100) }
+//                print("  - \(className): \(dets.count)x, conf: \(confidences)%")
+//            }
+//            if grouped.count > 20 {
+//                print("  ... and \(grouped.count - 20) more classes")
+//            }
+//        }
+//        
+//        return all
+//    }
+    
+    // MARK: - Extract Detections (Accelerate-optimized, behavior identical)
     private func extractDetections(from detections: MLMultiArray) -> [DetectionSmarty] {
         var all: [DetectionSmarty] = []
-        
+
         // Get tensor dimensions
         let numFeatures = detections.shape[1].intValue
         let numAnchors = detections.shape[2].intValue
-        
+
         // Auto-detect model type from feature count
-        // YOLO11-seg: 116 features = 4 bbox + 80 classes + 32 coeffs
-        // YOLOE-pf:  4621 features = 4 bbox + 4585 classes + 32 coeffs
         let numClasses = numFeatures - 4 - 32
-        
+
         if self.debugMode {
             print("🔍 Tensor shape: [1, \(numFeatures), \(numAnchors)]")
             print("   → \(numClasses) classes, \(numAnchors) predictions")
@@ -1702,77 +1821,96 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 print("   → Model: YOLO11-seg (COCO)")
             }
         }
-        
+
         let totalCount = detections.count
+        // Allocate contiguous Float buffer once
         let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
         defer { detBuf.deallocate() }
-        
+
+        // Bulk-copy / convert MLMultiArray into detBuf (float32)
         if detections.dataType == .float16 {
+            // float16 -> float32 using vImage (preserves numeric conversion)
             let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
-            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 2)
-            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
+            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src),
+                                       height: 1, width: vImagePixelCount(totalCount),
+                                       rowBytes: totalCount * MemoryLayout<UInt16>.size)
+            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf),
+                                       height: 1, width: vImagePixelCount(totalCount),
+                                       rowBytes: totalCount * MemoryLayout<Float>.size)
             vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
         } else if detections.dataType == .float32 {
             let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
             memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
         } else {
+            // fallback: NSNumber access (slow path kept for correctness)
             for i in 0..<totalCount {
                 detBuf[i] = detections[i].floatValue
             }
         }
-        
+
         // Coefficient start: after bbox (4) + classes (numClasses)
         let coeffOffset = 4 + numClasses  // Feature index where mask coeffs start
-        
-        for anchor in 0..<numAnchors {
-            let x = detBuf[0 * numAnchors + anchor]
-            let y = detBuf[1 * numAnchors + anchor]
-            let w = detBuf[2 * numAnchors + anchor]
-            let h = detBuf[3 * numAnchors + anchor]
-            
-            if detectAllObjects {
-                // Find the class with highest confidence for this anchor
+
+        // For speed, compute feature-stride = numAnchors
+        let stride = numAnchors
+
+        if detectAllObjects {
+            // For each anchor, find best class and read coeffs
+            for anchor in 0..<numAnchors {
+                let x = detBuf[0 * stride + anchor]
+                let y = detBuf[1 * stride + anchor]
+                let w = detBuf[2 * stride + anchor]
+                let h = detBuf[3 * stride + anchor]
+
                 var bestConf: Float = 0
                 var bestClassIdx = -1
-                
+
+                // Find best class with simple loop (keeps identical semantics)
+                var baseConfIdx = (4) * stride + anchor
                 for classIdx in 0..<numClasses {
-                    let confIdx = (4 + classIdx) * numAnchors + anchor
-                    let conf = detBuf[confIdx]
+                    let conf = detBuf[baseConfIdx + classIdx * stride]
                     if conf > bestConf {
                         bestConf = conf
                         bestClassIdx = classIdx
                     }
                 }
-                
+
                 if bestConf > confidenceThreshold && bestClassIdx >= 0 {
-                    // Use furniture name if known, otherwise use class index
-                    let className = furnitureClasses[bestClassIdx] ?? "object_\(bestClassIdx)"
-                    
+                    // copy 32 coeffs via strided reads into a Swift array
                     var coeffs = [Float](repeating: 0, count: 32)
-                    let coeffStart = coeffOffset * numAnchors + anchor
-                    for i in 0..<32 {
-                        coeffs[i] = detBuf[coeffStart + i * numAnchors]
+                    let coeffStart = coeffOffset * stride + anchor
+                    // coeffs are stored as: for k in 0..<32 -> detBuf[coeffStart + k * stride]
+                    for k in 0..<32 {
+                        coeffs[k] = detBuf[coeffStart + k * stride]
                     }
+
+                    let className = furnitureClasses[bestClassIdx] ?? "object_\(bestClassIdx)"
                     all.append(DetectionSmarty(
                         x: x, y: y, width: w, height: h,
                         confidence: bestConf, classIdx: bestClassIdx, className: className,
                         maskCoeffs: coeffs
                     ))
                 }
-            } else {
-                // Check only furniture classes (LVIS indices)
-                for (classIdx, className) in furnitureClasses {
-                    // Skip if class index is out of bounds for this model
-                    guard classIdx < numClasses else { continue }
-                    
-                    let confIdx = (4 + classIdx) * numAnchors + anchor
+            }
+        } else {
+            // Only check furniture classes
+            // Build a list of valid class indices (filter out-of-bounds)
+            let furnitureList = furnitureClasses.filter { $0.key < numClasses }
+
+            for anchor in 0..<numAnchors {
+                let x = detBuf[0 * stride + anchor]
+                let y = detBuf[1 * stride + anchor]
+                let w = detBuf[2 * stride + anchor]
+                let h = detBuf[3 * stride + anchor]
+
+                for (classIdx, className) in furnitureList {
+                    let confIdx = (4 + classIdx) * stride + anchor
                     let conf = detBuf[confIdx]
-                    
                     if conf > confidenceThreshold {
                         var coeffs = [Float](repeating: 0, count: 32)
-                        let coeffStart = coeffOffset * numAnchors + anchor
-                        for i in 0..<32 {
-                            coeffs[i] = detBuf[coeffStart + i * numAnchors]
+                        let coeffStart = coeffOffset * stride + anchor
+                        for k in 0..<32 {
+                            coeffs[k] = detBuf[coeffStart + k * stride]
                         }
                         all.append(DetectionSmarty(
                             x: x, y: y, width: w, height: h,
@@ -1783,7 +1921,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
         }
-        
+
         // Log summary (only in debug mode)
         if self.debugMode {
             let grouped = Dictionary(grouping: all) { $0.className }
@@ -1796,9 +1934,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 print("  ... and \(grouped.count - 20) more classes")
             }
         }
-        
+
         return all
     }
+
 
     // MARK: - Pixel Buffer to MLMultiArray (Accelerate) — fixed indices (vDSP_Length)
     private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
