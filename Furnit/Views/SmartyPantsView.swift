@@ -779,20 +779,45 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
     
-    // MARK: - Save Mask to File
+    // MARK: - Save Mask to File (with Accelerate normalization)
     private func saveMaskToFile(rawMask: [Float], width: Int, height: Int, detection: DetectionSmarty) {
         let timestamp = Int(Date().timeIntervalSince1970)
         let colorSpace = CGColorSpaceCreateDeviceGray()
         
-        var minVal: Float = 0, maxVal: Float = 0
+        var minVal: Float = 0
+        var maxVal: Float = 0
         vDSP_minv(rawMask, 1, &minVal, vDSP_Length(rawMask.count))
         vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(rawMask.count))
         let range = maxVal - minVal
         
-        var grayPixels = [UInt8](repeating: 0, count: width * height)
-        for i in 0..<rawMask.count {
-            let normalized = range > 0 ? (rawMask[i] - minVal) / range : 0.5
-            grayPixels[i] = UInt8(max(0, min(255, normalized * 255)))
+        let count = rawMask.count
+        var normalized = [Float](repeating: 0, count: count)
+        
+        if range > 0 {
+            var negMin = -minVal
+            rawMask.withUnsafeBufferPointer { src in
+                normalized.withUnsafeMutableBufferPointer { dst in
+                    vDSP_vsadd(src.baseAddress!, 1, &negMin, dst.baseAddress!, 1, vDSP_Length(count))
+                }
+            }
+            var invRange: Float = 1.0 / range
+            vDSP_vsmul(normalized, 1, &invRange, &normalized, 1, vDSP_Length(count))
+        } else {
+            normalized = [Float](repeating: 0.5, count: count)
+        }
+        
+        var scale255: Float = 255.0
+        vDSP_vsmul(normalized, 1, &scale255, &normalized, 1, vDSP_Length(count))
+        
+        var clipLow: Float = 0
+        var clipHigh: Float = 255
+        vDSP_vclip(normalized, 1, &clipLow, &clipHigh, &normalized, 1, vDSP_Length(count))
+        
+        var grayPixels = [UInt8](repeating: 0, count: count)
+        normalized.withUnsafeBufferPointer { src in
+            grayPixels.withUnsafeMutableBufferPointer { dst in
+                vDSP_vfixu8(src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(count))
+            }
         }
         
         if let provider = CGDataProvider(data: Data(grayPixels) as CFData),
@@ -986,7 +1011,60 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return out
     }
 
+    // MARK: - Accelerate helpers for prototypes & binary mask
+    private func makePrototypeBuffer(from array: MLMultiArray, C: Int, Hp: Int, Wp: Int) -> [Float] {
+        let count = C * Hp * Wp
+        var out = [Float](repeating: 0, count: count)
+        
+        switch array.dataType {
+        case .float32:
+            array.dataPointer.withMemoryRebound(to: Float.self, capacity: count) { src in
+                out.withUnsafeMutableBufferPointer { dst in
+                    dst.baseAddress!.assign(from: src, count: count)
+                }
+            }
+        case .float16:
+            let src = array.dataPointer.bindMemory(to: UInt16.self, capacity: count)
+            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src),
+                                       height: 1,
+                                       width: vImagePixelCount(count),
+                                       rowBytes: count * MemoryLayout<UInt16>.size)
+            out.withUnsafeMutableBufferPointer { dst in
+                var dstBuf = vImage_Buffer(data: dst.baseAddress,
+                                           height: 1,
+                                           width: vImagePixelCount(count),
+                                           rowBytes: count * MemoryLayout<Float>.size)
+                vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+            }
+        default:
+            for i in 0..<count {
+                out[i] = array[i].floatValue
+            }
+        }
+        
+        return out
+    }
     
+    private func makeBinaryMaskFromGlobalMask(_ globalMask: [Float], count: Int) -> [UInt8] {
+        var scaled = [Float](repeating: 0, count: count)
+        var scale255: Float = 255.0
+        
+        globalMask.withUnsafeBufferPointer { src in
+            scaled.withUnsafeMutableBufferPointer { dst in
+                vDSP_vsmul(src.baseAddress!, 1, &scale255, dst.baseAddress!, 1, vDSP_Length(count))
+            }
+        }
+        
+        var binary = [UInt8](repeating: 0, count: count)
+        scaled.withUnsafeBufferPointer { src in
+            binary.withUnsafeMutableBufferPointer { dst in
+                vDSP_vfixu8(src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(count))
+            }
+        }
+        return binary
+    }
+    
+    // MARK: - TWO-STAGE CUTOUT (with Accelerate prototype build & binary mask)
     private func generateCutoutTwoStage(
         stage1Detections: [DetectionSmarty],
         stage1Prototypes: MLMultiArray,
@@ -1010,24 +1088,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("📐 Prototype shape: C=\(C), H=\(Hp), W=\(Wp)")
         }
 
+        // Stage 1 prototype buffer (Accelerate)
         let protoStage1Start = Date()
-        var protoMatrix1 = [Float](repeating: 0, count: C * spatial)
-        if stage1Prototypes.dataType == .float32 {
-            let srcBase = stage1Prototypes.dataPointer.assumingMemoryBound(to: Float.self)
-            memcpy(&protoMatrix1, srcBase, C * spatial * MemoryLayout<Float>.size)
-        } else {
-            for c in 0..<C {
-                for y in 0..<Hp {
-                    for x in 0..<Wp {
-                        let val = stage1Prototypes[[0, c, y, x] as [NSNumber]].floatValue
-                        protoMatrix1[c * spatial + (y * Wp + x)] = val
-                    }
-                }
-            }
-        }
+        let protoMatrix1 = makePrototypeBuffer(from: stage1Prototypes, C: C, Hp: Hp, Wp: Wp)
         let protoStage1End = Date()
         if self.debugMode {
-            print(String(format: "⏱ Stage1 prototype matrix build: %.2f ms",
+            print(String(format: "⏱ Stage1 prototype buffer build (Accelerate): %.2f ms",
                          protoStage1End.timeIntervalSince(protoStage1Start) * 1000.0))
         }
 
@@ -1043,7 +1109,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         for (detIndex, det) in stage1Detections.enumerated() {
             var rawMask = [Float](repeating: 0, count: spatial)
             let mmulStart = Date()
-            vDSP_mmul(det.maskCoeffs, 1, protoMatrix1, 1, &rawMask, 1, 1, vDSP_Length(spatial), vDSP_Length(C))
+            vDSP_mmul(det.maskCoeffs, 1,
+                      protoMatrix1, 1,
+                      &rawMask, 1,
+                      1, vDSP_Length(spatial), vDSP_Length(C))
             let mmulEnd = Date()
             if self.debugMode {
                 print(String(format: "   ⏱ vDSP_mmul Stage1 det[%d]: %.2f ms", detIndex,
@@ -1130,23 +1199,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let s2ProtoStart = Date()
             if self.debugMode { print("\n🟢 Processing Stage 2 masks (cropped → full frame)...") }
 
-            var protoMatrix2 = [Float](repeating: 0, count: C * spatial)
-            if proto2.dataType == .float32 {
-                let srcBase = proto2.dataPointer.assumingMemoryBound(to: Float.self)
-                memcpy(&protoMatrix2, srcBase, C * spatial * MemoryLayout<Float>.size)
-            } else {
-                for c in 0..<C {
-                    for y in 0..<Hp {
-                        for x in 0..<Wp {
-                            let val = proto2[[0, c, y, x] as [NSNumber]].floatValue
-                            protoMatrix2[c * spatial + (y * Wp + x)] = val
-                        }
-                    }
-                }
-            }
+            let protoMatrix2 = makePrototypeBuffer(from: proto2, C: C, Hp: Hp, Wp: Wp)
             let s2ProtoEnd = Date()
             if self.debugMode {
-                print(String(format: "⏱ Stage2 prototype matrix build: %.2f ms",
+                print(String(format: "⏱ Stage2 prototype buffer build (Accelerate): %.2f ms",
                              s2ProtoEnd.timeIntervalSince(s2ProtoStart) * 1000.0))
             }
 
@@ -1168,7 +1224,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             for det in stage2Detections {
                 var rawMask = [Float](repeating: 0, count: spatial)
                 let mmulStart = Date()
-                vDSP_mmul(det.maskCoeffs, 1, protoMatrix2, 1, &rawMask, 1, 1, vDSP_Length(spatial), vDSP_Length(C))
+                vDSP_mmul(det.maskCoeffs, 1,
+                          protoMatrix2, 1,
+                          &rawMask, 1,
+                          1, vDSP_Length(spatial), vDSP_Length(C))
                 let mmulEnd = Date()
                 if self.debugMode {
                     print(String(format: "   ⏱ vDSP_mmul Stage2: %.2f ms",
@@ -1231,8 +1290,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("   Stage 2 added: \(addedByStage2) NEW pixels")
         }
 
-        var binaryMask = [UInt8](repeating: 0, count: spatial)
-        for i in 0..<spatial { if globalMask[i] > 0 { binaryMask[i] = 255 } }
+        // Accelerate: convert globalMask float (0/1) to 0/255 UInt8
+        let binaryMask = makeBinaryMaskFromGlobalMask(globalMask, count: spatial)
 
         if self.debugMode { print20x20BinaryGrid("MERGED STAGE1+STAGE2", mask: binaryMask, width: Wp, height: Hp) }
 
