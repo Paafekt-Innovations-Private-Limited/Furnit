@@ -13,7 +13,8 @@ import Photos
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.05
-    var confidenceThreshold: Float = 0.3
+    var confidenceThreshold: Float = 0.5
+    
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
@@ -66,16 +67,16 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.05
-    var confidenceThreshold: Float = 0.3
+    var confidenceThreshold: Float = 0.5
     var debugMode: Bool = true  // Enable debug prints and image saves
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
     
-    // Mask upscaling: true = bilinear (smooth edges via vImage), false = nearest-neighbor style (current mapping)
+    // Mask upscaling: true = bilinear (smooth edges), false = nearest-neighbor (faster)
     var useBilinearUpscaling: Bool = true
     
-    // Mask threshold: values above this are considered "object" when building the coarse (0/1) prototype mask
+    // Mask threshold: values above this are considered "object"
     var maskThreshold: Float = 0.0
     
     private let bboxFont: CTFont = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)
@@ -615,7 +616,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let nmsStart = Date()
         let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.7)
         let stage1Kept = keepOverlappingDetections(uniqueDetections)
-        let stage2Kept = stage2Prototypes != nil
+        let stage2KeptStage2 = stage2Prototypes != nil
             ? keepOverlappingDetections(applyNMS(stage2Detections, iouThreshold: 0.7))
             : []
         let nmsEnd = Date()
@@ -626,10 +627,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         if self.debugMode {
             print("\n📊 UNION SUMMARY:")
             print("   Stage 1: keeping \(stage1Kept.count) overlapping detections")
-            print("   Stage 2: keeping \(stage2Kept.count) overlapping detections")
+            print("   Stage 2: keeping \(stage2KeptStage2.count) overlapping detections (Stage2 coords)")
         }
 
-        if stage1Kept.isEmpty && stage2Kept.isEmpty {
+        if stage1Kept.isEmpty && stage2KeptStage2.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -641,7 +642,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         generateCutoutTwoStage(
             stage1Detections: stage1Kept,
             stage1Prototypes: prototypesArray,
-            stage2Detections: stage2Kept,
+            stage2Detections: stage2KeptStage2,
             stage2Prototypes: stage2Prototypes,
             primaryBBox: primary,
             originalImage: pixelBuffer
@@ -1064,37 +1065,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return binary
     }
     
-    // MARK: - vImage mask upscaling helper
-    /// Upscale a planar Float mask (Hp×Wp) to image resolution (height×width) using vImage.
-    private func upscaleMask_vImage(mask: [Float], inWidth: Int, inHeight: Int, outWidth: Int, outHeight: Int) -> [Float] {
-        precondition(mask.count == inWidth * inHeight)
-        
-        var srcBuffer = vImage_Buffer()
-        mask.withUnsafeBytes { srcPtr in
-            srcBuffer.data = UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!)
-            srcBuffer.height = vImagePixelCount(inHeight)
-            srcBuffer.width = vImagePixelCount(inWidth)
-            srcBuffer.rowBytes = inWidth * MemoryLayout<Float>.size
-        }
-        
-        var dstData = [Float](repeating: 0, count: outWidth * outHeight)
-        var dstBuffer = vImage_Buffer()
-        dstData.withUnsafeMutableBytes { dstPtr in
-            dstBuffer.data = dstPtr.baseAddress
-            dstBuffer.height = vImagePixelCount(outHeight)
-            dstBuffer.width = vImagePixelCount(outWidth)
-            dstBuffer.rowBytes = outWidth * MemoryLayout<Float>.size
-        }
-        
-        let flags: vImage_Flags = vImage_Flags(kvImageHighQualityResampling)
-        let err = vImageScale_PlanarF(&srcBuffer, &dstBuffer, nil, flags)
-        if err != kvImageNoError {
-            print("⚠️ vImageScale_PlanarF mask failed with error: \(err)")
-        }
-        
-        return dstData
-    }
-    
     // MARK: - TWO-STAGE CUTOUT (with Accelerate prototype build & binary mask)
     private func generateCutoutTwoStage(
         stage1Detections: [DetectionSmarty],
@@ -1115,9 +1085,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         if self.debugMode {
             print("\n🎨 Generating TWO-STAGE UNION cutout")
             print("   Stage 1: \(stage1Detections.count) detections")
-            print("   Stage 2: \(stage2Detections.count) detections")
+            print("   Stage 2: \(stage2Detections.count) detections (Stage2 coords)")
             print("📐 Prototype shape: C=\(C), H=\(Hp), W=\(Wp)")
         }
+
+        // Will hold Stage2 detections remapped into Stage1 (full-frame) coordinate system
+        var mappedStage2Detections: [DetectionSmarty] = []
 
         // Stage 1 prototype buffer (Accelerate)
         let protoStage1Start = Date()
@@ -1209,7 +1182,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
 
             if self.debugMode && detIndex < 5 {
-                print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: bbox(\(mx1),\(my1))→(\(mx2),\(my2)), +\(addedPixels)px")
+                print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px")
             }
         }
         let s1MaskEnd = Date()
@@ -1237,6 +1210,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                              s2ProtoEnd.timeIntervalSince(s2ProtoStart) * 1000.0))
             }
 
+            // Reconstruct crop region in Stage1 model coords (0..640)
             let padding: Float = 0.1
             let cropX1 = max(0, primaryBBox.x - primaryBBox.width / 2 * (1 + padding))
             let cropY1 = max(0, primaryBBox.y - primaryBBox.height / 2 * (1 + padding))
@@ -1246,12 +1220,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let cropH = cropY2 - cropY1
 
             if self.debugMode {
-                print("   Crop region (model): (\(Int(cropX1)),\(Int(cropY1)))→(\(Int(cropX2)),\(Int(cropY2))) = \(Int(cropW))x\(Int(cropH))")
+                print("   Crop region (model/Stage1): (\(Int(cropX1)),\(Int(cropY1)))→(\(Int(cropX2)),\(Int(cropY2))) = \(Int(cropW))x\(Int(cropH))")
             }
 
-            let scale = Float(Wp) / 640.0
+            // Mapping factors: Stage2 model (0..640) → Stage1 model region (cropX1..cropX1+cropW)
+            let s2ToS1ScaleX = cropW / 640.0
+            let s2ToS1ScaleY = cropH / 640.0
 
+            // Build masks and at the same time prepare mapped Stage2 detections for bbox gating
+            let scaleMask = Float(Wp) / 640.0
             let s2MaskStart = Date()
+
+            mappedStage2Detections.removeAll(keepingCapacity: true)
+            mappedStage2Detections.reserveCapacity(stage2Detections.count)
+
             for det in stage2Detections {
                 var rawMask = [Float](repeating: 0, count: spatial)
                 let mmulStart = Date()
@@ -1265,10 +1247,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                  mmulEnd.timeIntervalSince(mmulStart) * 1000.0))
                 }
 
-                let mx1_crop = max(0, Int((det.x - det.width / 2) * scale))
-                let my1_crop = max(0, Int((det.y - det.height / 2) * scale))
-                let mx2_crop = min(Wp, Int((det.x + det.width / 2) * scale))
-                let my2_crop = min(Hp, Int((det.y + det.height / 2) * scale))
+                // Stage2 bbox in mask coords (local to Stage2)
+                let mx1_crop = max(0, Int((det.x - det.width / 2) * scaleMask))
+                let my1_crop = max(0, Int((det.y - det.height / 2) * scaleMask))
+                let mx2_crop = min(Wp, Int((det.x + det.width / 2) * scaleMask))
+                let my2_crop = min(Hp, Int((det.y + det.height / 2) * scaleMask))
 
                 var addedPixels = 0
 
@@ -1280,12 +1263,21 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                 for px_crop in mx1_crop..<mx2_crop {
                                     let cropIdx = base + px_crop
                                     if rPtr[cropIdx] > maskThreshold {
+                                        // Normalize inside Stage2 mask [0,1]
                                         let fracX = Float(px_crop) / Float(Wp)
                                         let fracY = Float(py_crop) / Float(Hp)
-                                        let fullX = cropX1 + fracX * cropW
-                                        let fullY = cropY1 + fracY * cropH
-                                        let mx_full = Int(fullX * scale)
-                                        let my_full = Int(fullY * scale)
+
+                                        // Stage2 model coords (0..640)
+                                        let xModel2 = fracX * 640.0
+                                        let yModel2 = fracY * 640.0
+
+                                        // Stage1 model coords using crop region
+                                        let fullX = cropX1 + xModel2 * s2ToS1ScaleX / 1.0
+                                        let fullY = cropY1 + yModel2 * s2ToS1ScaleY / 1.0
+
+                                        let mx_full = Int(fullX * scaleMask)
+                                        let my_full = Int(fullY * scaleMask)
+
                                         if mx_full >= 0 && mx_full < Wp && my_full >= 0 && my_full < Hp {
                                             let fullIdx = my_full * Wp + mx_full
                                             if gPtr[fullIdx] == 0 {
@@ -1301,7 +1293,31 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
 
                 if self.debugMode {
-                    print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: bbox(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW")
+                    print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: localMask(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW")
+                }
+
+                // Map Stage2 bbox → Stage1 bbox for later gating
+                let newX = cropX1 + det.x * s2ToS1ScaleX
+                let newY = cropY1 + det.y * s2ToS1ScaleY
+                let newW = det.width * s2ToS1ScaleX
+                let newH = det.height * s2ToS1ScaleY
+
+                let mapped = DetectionSmarty(
+                    x: newX,
+                    y: newY,
+                    width: newW,
+                    height: newH,
+                    confidence: det.confidence,
+                    classIdx: det.classIdx,
+                    className: det.className,
+                    maskCoeffs: det.maskCoeffs
+                )
+                mappedStage2Detections.append(mapped)
+
+                if self.debugMode {
+                    print("   ↔️ Stage2 bbox map '\(det.className)':")
+                    print("      S2: center(\(Int(det.x)),\(Int(det.y))) size(\(Int(det.width))x\(Int(det.height)))")
+                    print("      S1: center(\(Int(newX)),\(Int(newY))) size(\(Int(newW))x\(Int(newH)))")
                 }
             }
             let s2MaskEnd = Date()
@@ -1321,12 +1337,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("   Stage 2 added: \(addedByStage2) NEW pixels")
         }
 
-        // Accelerate: convert globalMask float (0/1) to 0/255 UInt8 (for debug grid)
+        // Accelerate: convert globalMask float (0/1) to 0/255 UInt8
         let binaryMask = makeBinaryMaskFromGlobalMask(globalMask, count: spatial)
 
         if self.debugMode { print20x20BinaryGrid("MERGED STAGE1+STAGE2", mask: binaryMask, width: Wp, height: Hp) }
 
-        // Tight bbox in mask-space
         var minX = Wp
         var maxX = -1
         var minY = Hp
@@ -1354,41 +1369,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let ciImage = CIImage(cvPixelBuffer: originalImage)
             let width = CVPixelBufferGetWidth(originalImage)
             let height = CVPixelBufferGetHeight(originalImage)
-
-            // Precompute mask bbox in image coords (to clamp detection unions)
-            var bboxX0Img = 0
-            var bboxX1Img = width
-            var bboxY0Img = 0
-            var bboxY1Img = height
-            let hasMaskBBox = (maxX >= 0 && maxY >= 0)
-            if hasMaskBBox {
-                let scaleImgX = Float(width) / Float(Wp)
-                let scaleImgY = Float(height) / Float(Hp)
-                let x0f = Float(minX) * scaleImgX
-                let x1f = Float(maxX + 1) * scaleImgX
-                let y0f = Float(minY) * scaleImgY
-                let y1f = Float(maxY + 1) * scaleImgY
-                bboxX0Img = max(0, min(Int(floor(x0f)), width))
-                bboxX1Img = max(0, min(Int(ceil(x1f)), width))
-                bboxY0Img = max(0, min(Int(floor(y0f)), height))
-                bboxY1Img = max(0, min(Int(ceil(y1f)), height))
-            }
-
-            // Optional: bilinear upscaling of mask via vImage
-            var upscaledMask: [Float]? = nil
-            if self.useBilinearUpscaling {
-                let upStart = Date()
-                upscaledMask = upscaleMask_vImage(mask: globalMask,
-                                                  inWidth: Wp,
-                                                  inHeight: Hp,
-                                                  outWidth: width,
-                                                  outHeight: height)
-                if self.debugMode {
-                    let dt = Date().timeIntervalSince(upStart) * 1000.0
-                    print(String(format: "⏱ vImage mask upscaling %dx%d → %dx%d: %.2f ms",
-                                 Wp, Hp, width, height, dt))
-                }
-            }
 
             guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
                 if self.debugMode { print("❌ Failed to create CGImage") }
@@ -1420,13 +1400,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
 
+            let scaleX = Float(Wp) / Float(width)
+            let scaleY = Float(Hp) / Float(height)
+
             if self.debugMode {
-                print("🖼️ Upscaling \(Wp)×\(Hp) → \(width)×\(height) using \(self.useBilinearUpscaling ? "vImage bilinear" : "nearest-neighbor mapping")")
+                print("🖼️ Upscaling \(Wp)×\(Hp) → \(width)×\(height)")
             }
 
             var opaqueCount = 0
 
-            let keptDetections: [DetectionSmarty] = (stage1Detections + stage2Detections)
+            var xMap = [Int](repeating: 0, count: width)
+            for px in 0..<width { xMap[px] = min(max(Int(Float(px) * scaleX), 0), Wp - 1) }
+
+            // IMPORTANT: Use Stage1 + Stage2-MAPPED detections for row gating
+            let keptDetections: [DetectionSmarty] = stage1Detections + mappedStage2Detections
 
             if keptDetections.isEmpty {
                 memset(data, 0, width * height * 4)
@@ -1436,7 +1423,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 var imageRects = [(x0: Int, y0: Int, x1: Int, y1: Int)]()
                 imageRects.reserveCapacity(keptDetections.count)
 
-                // Build detection rects in image space, then clamp to mask bbox
                 for det in keptDetections {
                     let left = det.x - det.width / 2.0
                     let right = det.x + det.width / 2.0
@@ -1456,19 +1442,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     iy0 = max(0, min(iy0, height))
                     iy1 = max(0, min(iy1, height))
 
-                    // Clamp per detection rect to the mask tight bbox in image coords
-                    if hasMaskBBox {
-                        ix0 = max(ix0, bboxX0Img)
-                        ix1 = min(ix1, bboxX1Img)
-                        iy0 = max(iy0, bboxY0Img)
-                        iy1 = min(iy1, bboxY1Img)
-                    }
-
                     if ix0 < ix1 && iy0 < iy1 {
                         imageRects.append((x0: ix0, y0: iy0, x1: ix1, y1: iy1))
                     }
                 }
 
+                // Merge intervals per row
                 var rowIntervals = Array(repeating: [(start:Int,end:Int)](), count: height)
                 for r in imageRects {
                     for y in r.y0..<r.y1 {
@@ -1476,7 +1455,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
                 }
 
-                // Merge intervals per row
                 for y in 0..<height {
                     if rowIntervals[y].isEmpty { continue }
                     var intervals = rowIntervals[y]
@@ -1491,22 +1469,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     rowIntervals[y] = merged
                 }
 
-                // Precompute mapping for nearest-neighbor path
-                var xMap: [Int] = []
-                var scaleX: Float = 1.0
-                var scaleY: Float = 1.0
-                if !self.useBilinearUpscaling {
-                    scaleX = Float(Wp) / Float(width)
-                    scaleY = Float(Hp) / Float(height)
-                    xMap = [Int](repeating: 0, count: width)
-                    for px in 0..<width {
-                        xMap[px] = min(max(Int(Float(px) * scaleX), 0), Wp - 1)
-                    }
-                }
-
-                // Per-row rendering
                 for py in 0..<height {
+                    let my = min(max(Int(Float(py) * scaleY), 0), Hp - 1)
+                    let maskRowOffset = my * Wp
                     let rowBase = pixels.advanced(by: py * width * 4)
+
                     let intervals = rowIntervals[py]
                     if intervals.isEmpty {
                         memset(rowBase, 0, width * 4)
@@ -1527,42 +1494,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         }
 
                         let runEnd = min(nextInterval.end, width)
-
-                        if let upMask = upscaledMask, self.useBilinearUpscaling {
-                            // Bilinear path: read directly from upscaled mask
-                            var pxIdx = x
-                            while pxIdx < runEnd {
-                                let maskIdx = py * width + pxIdx
-                                let maskVal = upMask[maskIdx]
-                                let pixelPtr = rowBase.advanced(by: pxIdx * 4)
-                                // Threshold at ~0.5 to avoid wispy edges
-                                if maskVal > 0.5 {
-                                    pixelPtr[3] = 255
-                                    opaqueCount += 1
-                                } else {
-                                    pixelPtr[0] = 0; pixelPtr[1] = 0; pixelPtr[2] = 0; pixelPtr[3] = 0
-                                }
-                                pxIdx += 1
+                        var pxIdx = x
+                        while pxIdx < runEnd {
+                            let maskIdx = maskRowOffset + xMap[pxIdx]
+                            let pixelPtr = rowBase.advanced(by: pxIdx * 4)
+                            if globalMask[maskIdx] > 0 {
+                                pixelPtr[3] = 255
+                                opaqueCount += 1
+                            } else {
+                                pixelPtr[0] = 0; pixelPtr[1] = 0; pixelPtr[2] = 0; pixelPtr[3] = 0
                             }
-                        } else {
-                            // Nearest-neighbor-style path (old behavior)
-                            let my = min(max(Int(Float(py) * scaleY), 0), Hp - 1)
-                            let maskRowOffset = my * Wp
-
-                            var pxIdx = x
-                            while pxIdx < runEnd {
-                                let maskIdx = maskRowOffset + xMap[pxIdx]
-                                let pixelPtr = rowBase.advanced(by: pxIdx * 4)
-                                if globalMask[maskIdx] > 0 {
-                                    pixelPtr[3] = 255
-                                    opaqueCount += 1
-                                } else {
-                                    pixelPtr[0] = 0; pixelPtr[1] = 0; pixelPtr[2] = 0; pixelPtr[3] = 0
-                                }
-                                pxIdx += 1
-                            }
+                            pxIdx += 1
                         }
-
                         x = runEnd
                         intervalIndex += 1
                     }
@@ -1573,7 +1516,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
 
-            // Draw tight mask bbox (cyan) for debug
+            // Draw tight bbox of merged mask for debugging
             if maxX >= 0 && maxY >= 0 {
                 let scaleImgX = Float(width) / Float(Wp)
                 let scaleImgY = Float(height) / Float(Hp)
@@ -1587,7 +1530,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 ctx.setLineWidth(3.0)
                 ctx.stroke(tightRect)
             } else {
-                // Fallback: draw primary detection bbox if mask bbox is empty
                 if !stage1Detections.isEmpty {
                     let det = stage1Detections[0]
                     let modelSize: CGFloat = 640.0
