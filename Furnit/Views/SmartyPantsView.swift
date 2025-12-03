@@ -12,13 +12,13 @@ import Photos
 // MARK: - SwiftUI Wrapper
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
-    var processInterval: TimeInterval = 0.05
+    var processInterval: TimeInterval = 0.2
     var confidenceThreshold: Float = 0.5
     
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = false
+    var debugMode: Bool = true
     var active: Bool = false
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -69,7 +69,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.05
     var confidenceThreshold: Float = 0.5
-    var debugMode: Bool = false  // Enable debug prints and image saves
+    var debugMode: Bool = true  // Enable debug prints and image saves
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
@@ -881,23 +881,23 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let rawDetections = extractDetections(from: detArray)
         let nmsStart = Date()
-        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.7)
+//        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.7)
 //        let stage1Kept = keepOverlappingDetections(uniqueDetections)
-        let stage2KeptStage2 = stage2Prototypes != nil
-        ? applyNMS(uniqueDetections, iouThreshold: 0.7)
-            : []
+//        let stage2KeptStage2 = stage2Prototypes != nil
+//        ? applyNMS(uniqueDetections, iouThreshold: 0.7)
+//            : []
         let nmsEnd = Date()
         if self.debugMode {
             print(String(format: "⏱ NMS + keepOverlapping: %.2f ms", nmsEnd.timeIntervalSince(nmsStart) * 1000.0))
         }
 
-        if self.debugMode {
-            print("\n📊 UNION SUMMARY:")
-            print("   Stage 1: keeping \(uniqueDetections.count) overlapping detections")
-            print("   Stage 2: keeping \(stage2KeptStage2.count) overlapping detections (Stage2 coords)")
-        }
+//        if self.debugMode {
+//            print("\n📊 UNION SUMMARY:")
+//            print("   Stage 1: keeping \(uniqueDetections.count) overlapping detections")
+//            print("   Stage 2: keeping \(stage2KeptStage2.count) overlapping detections (Stage2 coords)")
+//        }
 
-        if uniqueDetections.isEmpty && stage2KeptStage2.isEmpty {
+        if rawDetections.isEmpty && stage2Detections.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -909,9 +909,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         let cutoutStart = Date()
         generateCutoutTwoStage(
-            stage1Detections: uniqueDetections,
+            stage1Detections: rawDetections,
             stage1Prototypes: prototypesArray,
-            stage2Detections: stage2KeptStage2,
+            stage2Detections: stage2Detections,
             stage2Prototypes: stage2Prototypes,
             primaryBBox: primary,
             originalImage: pixelBuffer
