@@ -714,10 +714,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let rawDetections = extractDetections(from: detArray)
         let nmsStart = Date()
-        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.8)
-        let stage1Kept = keepOverlappingDetections(uniqueDetections)
+        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.2)
+//        let stage1Kept = keepOverlappingDetections(uniqueDetections)
         let stage2KeptStage2 = stage2Prototypes != nil
-            ? keepOverlappingDetections(applyNMS(stage2Detections, iouThreshold: 0.8))
+        ? applyNMS(uniqueDetections, iouThreshold: 0.2)
             : []
         let nmsEnd = Date()
         if self.debugMode {
@@ -726,11 +726,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         if self.debugMode {
             print("\n📊 UNION SUMMARY:")
-            print("   Stage 1: keeping \(stage1Kept.count) overlapping detections")
+            print("   Stage 1: keeping \(uniqueDetections.count) overlapping detections")
             print("   Stage 2: keeping \(stage2KeptStage2.count) overlapping detections (Stage2 coords)")
         }
 
-        if stage1Kept.isEmpty && stage2KeptStage2.isEmpty {
+        if uniqueDetections.isEmpty && stage2KeptStage2.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -742,7 +742,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         let cutoutStart = Date()
         generateCutoutTwoStage(
-            stage1Detections: stage1Kept,
+            stage1Detections: uniqueDetections,
             stage1Prototypes: prototypesArray,
             stage2Detections: stage2KeptStage2,
             stage2Prototypes: stage2Prototypes,
@@ -1581,18 +1581,21 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
 
-            // ✅ LABELS: always visible, bbox only in debugMode
-            if self.debugMode {
-                self.drawBoundingBox(ctx: ctx,
-                                     detection: primaryBBox,
-                                     imageWidth: width,
-                                     imageHeight: height)
-            } else {
-                self.drawDetectionLabelOnly(ctx: ctx,
-                                            detection: primaryBBox,
-                                            imageWidth: width,
-                                            imageHeight: height)
-            }
+            // ✅ LABELS: draw for ALL kept detections (Stage1 + Stage2) using label-only,
+            // and in debugMode also draw bbox for primary
+            let allLabelDetections = stage1Detections + mappedStage2Detections
+
+            // ✅ Labels (always), boxes only in debugMode
+            self.drawLabelsAndBoxes(
+                ctx: ctx,
+                stage1: stage1Detections,
+                stage2: mappedStage2Detections,
+                imageWidth: width,
+                imageHeight: height,
+                drawBoxes: self.debugMode
+            )
+
+
 
             let renderEnd = Date()
             if self.debugMode {
@@ -1604,21 +1607,200 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
 
             if let outCG = ctx.makeImage() {
-                let ui = UIImage(cgImage: outCG)
+
+                let finalCG = self.renderLabelsOnFinalImage(
+                    baseCGImage: outCG,
+                    width: width,
+                    height: height,
+                    stage1: stage1Detections,
+                    stage2: mappedStage2Detections
+                )
+
                 DispatchQueue.main.async {
                     self.finishFirstDetectionIfNeeded()
-                    self.maskImageView.image = ui
-                    self.isProcessing = false
-                }
-            } else {
-                if self.debugMode { print("❌ Failed to make output image") }
-                DispatchQueue.main.async {
+                    self.maskImageView.image = UIImage(cgImage: finalCG)
                     self.isProcessing = false
                 }
             }
         }
     }
 
+    // ======================================================
+    // SAFE LABEL + BOX DRAWING (NO CoreText, NO CTLineDraw)
+    // ======================================================
+    // ======================================================
+    // SAFE LABEL + BOX DRAWING  (CYAN, BIG FONT, FIXED FLIP)
+    // ======================================================
+    private func drawLabelsAndBoxes(
+        ctx: CGContext,
+        stage1: [DetectionSmarty],
+        stage2: [DetectionSmarty],
+        imageWidth: Int,
+        imageHeight: Int,
+        drawBoxes: Bool
+    ) {
+        let all = stage1 + stage2
+        guard !all.isEmpty else { return }
+
+        let W = CGFloat(imageWidth)
+        let H = CGFloat(imageHeight)
+        let modelSize: CGFloat = 640
+        let sx = W / modelSize
+        let sy = H / modelSize
+
+        // Fix UIKit upside-down drawing in CGContexts
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: H)
+        ctx.scaleBy(x: 1, y: -1)
+
+        UIGraphicsPushContext(ctx)
+
+        let font = UIFont.boldSystemFont(ofSize: 38)
+
+        for det in all {
+
+            let cx = CGFloat(det.x)
+            let cy = CGFloat(det.y)
+            let w  = CGFloat(det.width)
+            let h  = CGFloat(det.height)
+
+            let left = (cx - w / 2) * sx
+            let top  = (cy - h / 2) * sy
+            let rect = CGRect(x: left, y: top, width: w * sx, height: h * sy)
+
+            // ---- Cyan Box (optional) ----
+            if drawBoxes {
+                UIColor.cyan.setStroke()
+                let b = UIBezierPath(rect: rect)
+                b.lineWidth = 4
+                b.stroke()
+            }
+
+            // ---- Label text ----
+            let textString = "\(det.className) \(Int(det.confidence * 100))%"
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: UIColor.cyan,                                  // CYAN TEXT
+                .backgroundColor: UIColor.black.withAlphaComponent(0.6),        // DARK BACK
+                .shadow: {
+                    let sh = NSShadow()
+                    sh.shadowBlurRadius = 6
+                    sh.shadowOffset = CGSize(width: 2, height: -2)
+                    sh.shadowColor = UIColor.black.withAlphaComponent(0.8)
+                    return sh
+                }()
+            ]
+
+            let text = NSAttributedString(string: textString, attributes: attributes)
+            let size = text.size()
+
+            var tx = max(0, min(left, W - size.width - 4))
+            var ty = top - size.height - 6
+
+            if ty < 0 { ty = top + 6 }
+
+            let drawRect = CGRect(x: tx, y: ty, width: size.width, height: size.height)
+
+            text.draw(in: drawRect)
+        }
+
+        UIGraphicsPopContext()
+        ctx.restoreGState()
+    }
+
+
+    // ======================================================
+    // FINAL LABEL RENDERING — SAFE, CRASH-PROOF
+    // Draws both Stage 1 + Stage 2 labels on final CGImage
+    // ======================================================
+    private func renderLabelsOnFinalImage(
+        baseCGImage: CGImage,
+        width: Int,
+        height: Int,
+        stage1: [DetectionSmarty],
+        stage2: [DetectionSmarty]
+    ) -> CGImage {
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+
+        guard let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            print("❌ renderLabelsOnFinalImage: failed to create CGContext")
+            return baseCGImage
+        }
+
+        // Draw the already-rendered cutout mask
+        ctx.draw(baseCGImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        // DRAW LABELS (safe UIKit text drawing)
+//        for det in stage1 {
+//            drawLabelSafe(ctx: ctx, det: det, width: width, height: height)
+//        }
+//        for det in stage2 {
+//            drawLabelSafe(ctx: ctx, det: det, width: width, height: height)
+//        }
+
+        // Return the final composited CGImage
+        return ctx.makeImage() ?? baseCGImage
+    }
+
+    // ======================================================
+    // SAFE LABEL DRAWING
+    // ZERO CTM CRASHES — uses UIKit text drawing, not CoreText
+    // ======================================================
+//    private func drawLabelSafe(
+//        ctx: CGContext,
+//        det: DetectionSmarty,
+//        width: Int,
+//        height: Int
+//    ) {
+//        // Convert model coords → image coords
+//        let sx = CGFloat(width) / 640.0
+//        let sy = CGFloat(height) / 640.0
+//
+//        let cx = CGFloat(det.x)
+//        let cy = CGFloat(det.y)
+//        let w  = CGFloat(det.width)
+//        let h  = CGFloat(det.height)
+//
+//        let rectX = (cx - w/2) * sx
+//        let rectY = (cy - h/2) * sy
+//
+//        // Text label
+//        let text = "\(det.className) \(Int(det.confidence * 100))%"
+//        let font = UIFont.boldSystemFont(ofSize: 26)
+//
+//        let attrs: [NSAttributedString.Key: Any] = [
+//            .font: font,
+//            .foregroundColor: UIColor.white,
+//            .backgroundColor: UIColor.black.withAlphaComponent(0.65)
+//        ]
+//
+//        let str = NSAttributedString(string: text, attributes: attrs)
+//        let size = str.size()
+//
+//        // place label above bbox
+//        let labelRect = CGRect(
+//            x: max(0, min(rectX, CGFloat(width) - size.width - 4)),
+//            y: max(0, rectY - size.height - 6),
+//            width: size.width,
+//            height: size.height
+//        )
+//
+//        // Draw text using UIKit-friendly function
+//        ctx.saveGState()
+//        UIGraphicsPushContext(ctx)
+//        str.draw(in: labelRect)
+//        UIGraphicsPopContext()
+//        ctx.restoreGState()
+//    }
 
     private func renderFinalMaskAndLabels(
         mergedMaskUpscaled: CGImage,
