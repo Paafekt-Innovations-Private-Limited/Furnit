@@ -1096,98 +1096,98 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     // MARK: - Save Mask to File (with Accelerate normalization)
-    private func saveMaskToFile(rawMask: [Float], width: Int, height: Int, detection: DetectionSmarty) {
-        let timestamp = Int(Date().timeIntervalSince1970)
-        let colorSpace = CGColorSpaceCreateDeviceGray()
-        
-        var minVal: Float = 0
-        var maxVal: Float = 0
-        vDSP_minv(rawMask, 1, &minVal, vDSP_Length(rawMask.count))
-        vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(rawMask.count))
-        let range = maxVal - minVal
-        
-        let count = rawMask.count
-        var normalized = [Float](repeating: 0, count: count)
-        
-        if range > 0 {
-            var negMin = -minVal
-            rawMask.withUnsafeBufferPointer { src in
-                normalized.withUnsafeMutableBufferPointer { dst in
-                    vDSP_vsadd(src.baseAddress!, 1, &negMin, dst.baseAddress!, 1, vDSP_Length(count))
-                }
-            }
-            var invRange: Float = 1.0 / range
-            vDSP_vsmul(normalized, 1, &invRange, &normalized, 1, vDSP_Length(count))
-        } else {
-            normalized = [Float](repeating: 0.5, count: count)
-        }
-        
-        var scale255: Float = 255.0
-        vDSP_vsmul(normalized, 1, &scale255, &normalized, 1, vDSP_Length(count))
-        
-        var clipLow: Float = 0
-        var clipHigh: Float = 255
-        vDSP_vclip(normalized, 1, &clipLow, &clipHigh, &normalized, 1, vDSP_Length(count))
-        
-        var grayPixels = [UInt8](repeating: 0, count: count)
-        normalized.withUnsafeBufferPointer { src in
-            grayPixels.withUnsafeMutableBufferPointer { dst in
-                vDSP_vfixu8(src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(count))
-            }
-        }
-        
-        if let provider = CGDataProvider(data: Data(grayPixels) as CFData),
-           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
-                                  bytesPerRow: width, space: colorSpace,
-                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
-                                  provider: provider, decode: nil, shouldInterpolate: false,
-                                  intent: .defaultIntent) {
-            let grayImage = UIImage(cgImage: cgImage)
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAsset(from: grayImage)
-            }) { success, error in
-                if success {
-                    print("💾 Saved GRAYSCALE mask to Photos @ \(timestamp)")
-                } else {
-                    print("❌ Failed to save grayscale: \(error?.localizedDescription ?? "unknown")")
-                }
-            }
-        }
-        
-        let scale = Float(width) / 640.0
-        let mx1 = max(0, Int((detection.x - detection.width / 2) * scale))
-        let my1 = max(0, Int((detection.y - detection.height / 2) * scale))
-        let mx2 = min(width, Int((detection.x + detection.width / 2) * scale))
-        let my2 = min(height, Int((detection.y + detection.height / 2) * scale))
-        
-        var binaryPixels = [UInt8](repeating: 0, count: width * height)
-        for y in 0..<height {
-            for x in 0..<width {
-                let idx = y * width + x
-                if x >= mx1 && x < mx2 && y >= my1 && y < my2 && rawMask[idx] > maskThreshold {
-                    binaryPixels[idx] = 255
-                }
-            }
-        }
-        
-        if let provider = CGDataProvider(data: Data(binaryPixels) as CFData),
-           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
-                                  bytesPerRow: width, space: colorSpace,
-                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
-                                  provider: provider, decode: nil, shouldInterpolate: false,
-                                  intent: .defaultIntent) {
-            let binaryImage = UIImage(cgImage: cgImage)
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAsset(from: binaryImage)
-            }) { success, error in
-                if success {
-                    print("💾 Saved BINARY mask to Photos (threshold: \(self.maskThreshold)) @ \(timestamp)")
-                } else {
-                    print("❌ Failed to save binary: \(error?.localizedDescription ?? "unknown")")
-                }
-            }
-        }
-    }
+//    private func saveMaskToFile(rawMask: [Float], width: Int, height: Int, detection: DetectionSmarty) {
+//        let timestamp = Int(Date().timeIntervalSince1970)
+//        let colorSpace = CGColorSpaceCreateDeviceGray()
+//        
+//        var minVal: Float = 0
+//        var maxVal: Float = 0
+//        vDSP_minv(rawMask, 1, &minVal, vDSP_Length(rawMask.count))
+//        vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(rawMask.count))
+//        let range = maxVal - minVal
+//        
+//        let count = rawMask.count
+//        var normalized = [Float](repeating: 0, count: count)
+//        
+//        if range > 0 {
+//            var negMin = -minVal
+//            rawMask.withUnsafeBufferPointer { src in
+//                normalized.withUnsafeMutableBufferPointer { dst in
+//                    vDSP_vsadd(src.baseAddress!, 1, &negMin, dst.baseAddress!, 1, vDSP_Length(count))
+//                }
+//            }
+//            var invRange: Float = 1.0 / range
+//            vDSP_vsmul(normalized, 1, &invRange, &normalized, 1, vDSP_Length(count))
+//        } else {
+//            normalized = [Float](repeating: 0.5, count: count)
+//        }
+//        
+//        var scale255: Float = 255.0
+//        vDSP_vsmul(normalized, 1, &scale255, &normalized, 1, vDSP_Length(count))
+//        
+//        var clipLow: Float = 0
+//        var clipHigh: Float = 255
+//        vDSP_vclip(normalized, 1, &clipLow, &clipHigh, &normalized, 1, vDSP_Length(count))
+//        
+//        var grayPixels = [UInt8](repeating: 0, count: count)
+//        normalized.withUnsafeBufferPointer { src in
+//            grayPixels.withUnsafeMutableBufferPointer { dst in
+//                vDSP_vfixu8(src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(count))
+//            }
+//        }
+//        
+//        if let provider = CGDataProvider(data: Data(grayPixels) as CFData),
+//           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
+//                                  bytesPerRow: width, space: colorSpace,
+//                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
+//                                  provider: provider, decode: nil, shouldInterpolate: false,
+//                                  intent: .defaultIntent) {
+//            let grayImage = UIImage(cgImage: cgImage)
+//            PHPhotoLibrary.shared().performChanges({
+//                PHAssetChangeRequest.creationRequestForAsset(from: grayImage)
+//            }) { success, error in
+//                if success {
+//                    print("💾 Saved GRAYSCALE mask to Photos @ \(timestamp)")
+//                } else {
+//                    print("❌ Failed to save grayscale: \(error?.localizedDescription ?? "unknown")")
+//                }
+//            }
+//        }
+//        
+//        let scale = Float(width) / 640.0
+//        let mx1 = max(0, Int((detection.x - detection.width / 2) * scale))
+//        let my1 = max(0, Int((detection.y - detection.height / 2) * scale))
+//        let mx2 = min(width, Int((detection.x + detection.width / 2) * scale))
+//        let my2 = min(height, Int((detection.y + detection.height / 2) * scale))
+//        
+//        var binaryPixels = [UInt8](repeating: 0, count: width * height)
+//        for y in 0..<height {
+//            for x in 0..<width {
+//                let idx = y * width + x
+//                if x >= mx1 && x < mx2 && y >= my1 && y < my2 && rawMask[idx] > maskThreshold {
+//                    binaryPixels[idx] = 255
+//                }
+//            }
+//        }
+//        
+//        if let provider = CGDataProvider(data: Data(binaryPixels) as CFData),
+//           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
+//                                  bytesPerRow: width, space: colorSpace,
+//                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
+//                                  provider: provider, decode: nil, shouldInterpolate: false,
+//                                  intent: .defaultIntent) {
+//            let binaryImage = UIImage(cgImage: cgImage)
+//            PHPhotoLibrary.shared().performChanges({
+//                PHAssetChangeRequest.creationRequestForAsset(from: binaryImage)
+//            }) { success, error in
+//                if success {
+//                    print("💾 Saved BINARY mask to Photos (threshold: \(self.maskThreshold)) @ \(timestamp)")
+//                } else {
+//                    print("❌ Failed to save binary: \(error?.localizedDescription ?? "unknown")")
+//                }
+//            }
+//        }
+//    }
     
     func clearOutsideUsingIntCorners(x0: Int, y0: Int, x1: Int, y1: Int, in image: CGImage) -> CGImage? {
         let t0 = Date()
@@ -1559,9 +1559,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print(String(format: "⏱ Stage1 mask build+apply: %.2f ms", s1MaskEnd.timeIntervalSince(s1MaskStart) * 1000.0))
         }
 
-        if self.debugMode, let rawMask = primaryRawMask, let det = primaryDet {
-            saveMaskToFile(rawMask: rawMask, width: Wp, height: Hp, detection: det)
-        }
+//        if self.debugMode, let rawMask = primaryRawMask, let det = primaryDet {
+//            saveMaskToFile(rawMask: rawMask, width: Wp, height: Hp, detection: det)
+//        }
 
         // Stage 2
         if let proto2 = stage2Prototypes, !stage2Detections.isEmpty {
