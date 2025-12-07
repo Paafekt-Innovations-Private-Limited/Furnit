@@ -17,7 +17,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = false
+    var debugMode: Bool = true
     var active: Bool = false
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -87,7 +87,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: - Track Mask Memory
     private var trackMaskMemory: [Int: [Float]] = [:]
-    private var trackBestConfidence: [Int: Float] = [:]
     private var trackPreviousCenter: [Int: (x: Float, y: Float)] = [:]
     private let maskMemoryDecayPerFrame: Float = 0.70  // Faster decay to reduce ghosting
     private let trackJumpThreshold: Float = 3.0        // Reset memory if track jumps > 3 pixels
@@ -96,7 +95,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.5
-    var debugMode: Bool = false  // Enable debug prints and image saves
+    var debugMode: Bool = true  // Enable debug prints and image saves
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
@@ -1142,6 +1141,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 aged.missed += 1
                 if aged.missed <= trackMaxMissedFrames {
                     newTracks.append(aged)
+                } else if debugMode {
+                    print("❌ Dropped track ID \(aged.id) (\(aged.detection.className)) after \(aged.missed) missed frames")
                 }
             }
         }
@@ -1157,6 +1158,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 bestMask: nil,
                 bestMaskConfidence: det.confidence
             )
+            if debugMode {
+                print("🆕 Created new track ID \(nextTrackID) for \(det.className) @ \(Int(det.confidence*100))%")
+            }
             nextTrackID += 1
             newTracks.append(t)
         }
@@ -1166,7 +1170,25 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         if debugMode {
             let active = tracks.count
             let withMiss = tracks.filter { $0.missed > 0 }.count
+            let trackIDs = tracks.map { $0.id }.sorted()
+            let trackAges = tracks.map { "\($0.id):\($0.age)" }.joined(separator: ", ")
             print("📍 Tracking: \(active) active tracks (\(withMiss) with misses)")
+            print("   Track IDs: \(trackIDs)")
+            print("   Track ages: [\(trackAges)]")
+            
+            // Show which tracks were updated vs new
+            let updatedTrackIDs = tracks.compactMap { track in
+                oldTracks.first { $0.id == track.id } != nil ? track.id : nil
+            }.sorted()
+            let newTrackIDs = tracks.compactMap { track in
+                oldTracks.first { $0.id == track.id } == nil ? track.id : nil
+            }.sorted()
+            if !updatedTrackIDs.isEmpty {
+                print("   Updated: \(updatedTrackIDs)")
+            }
+            if !newTrackIDs.isEmpty {
+                print("   New: \(newTrackIDs)")
+            }
         }
     }
 
@@ -1570,7 +1592,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return binary
     }
     
-    // MARK: - TWO-STAGE CUTOUT (per-frame mask + best-mask-per-track fill)
+    // MARK: - TWO-STAGE CUTOUT (with Accelerate prototype build & binary mask)
     private func generateCutoutTwoStage(
         stage1Detections: [DetectionSmarty],
         stage1Prototypes: MLMultiArray,
@@ -1588,24 +1610,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let spatial = Hp * Wp
 
         if self.debugMode {
-            print("\n🎨 Generating TWO-STAGE UNION cutout (with per-track best mask fill)")
+            print("\n🎨 Generating TWO-STAGE UNION cutout")
             print("   Stage 1: \(stage1Detections.count) detections")
             print("   Stage 2: \(stage2Detections.count) detections (Stage2 coords)")
             print("📐 Prototype shape: C=\(C), H=\(Hp), W=\(Wp)")
         }
 
-        // Clean up best-conf + mask memory for tracks that no longer exist
-        let activeTrackIDs = Set(tracks.map { $0.id })
-        for key in trackBestConfidence.keys where !activeTrackIDs.contains(key) {
-            trackBestConfidence.removeValue(forKey: key)
-        }
-        for key in trackMaskMemory.keys where !activeTrackIDs.contains(key) {
-            trackMaskMemory.removeValue(forKey: key)
-        }
-
         var mappedStage2Detections: [DetectionSmarty] = []
 
-        // ===== Stage 1: build prototype matrix (Accelerate) =====
+        // Stage 1 prototype buffer
         let protoStage1Start = Date()
         let protoMatrix1 = makePrototypeBuffer(from: stage1Prototypes, C: C, Hp: Hp, Wp: Wp)
         let protoStage1End = Date()
@@ -1614,31 +1627,26 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                          protoStage1End.timeIntervalSince(protoStage1Start) * 1000.0))
         }
 
-        // Global mask (this frame only) in proto-res space (Hp x Wp), Float 0/1
+        // Global mask in proto-res space (Hp x Wp), Float 0/1
         var globalMask = [Float](repeating: 0, count: spatial)
+        
+        // Build detection to track mapping for mask memory restoration
+        var detectionToTrackMap: [Int: Track] = [:]
+        for track in tracks {
+            // Find detection that matches this track
+            for (detIndex, det) in stage1Detections.enumerated() {
+                if bboxIoU(track.detection, det) > trackIoUThreshold {
+                    detectionToTrackMap[detIndex] = track
+                    break
+                }
+            }
+        }
 
         if self.debugMode { print("\n🔵 Processing Stage 1 masks (full frame)...") }
 
         var primaryRawMask: [Float]? = nil
         var primaryDet: DetectionSmarty? = nil
         var stage1PixelCount = 0
-
-        // For "best mask per track" this frame (before committing to memory)
-        var bestMaskCandidatesThisFrame: [Int: [Float]] = [:]
-
-        // Helper: find track id for a given detection (Stage1 coords)
-        func trackID(for det: DetectionSmarty) -> Int? {
-            var bestID: Int? = nil
-            var bestIoU: Float = 0
-            for t in tracks {
-                let iou = bboxIoU(t.detection, det)
-                if iou > bestIoU && iou >= trackIoUThreshold {
-                    bestIoU = iou
-                    bestID = t.id
-                }
-            }
-            return bestID
-        }
 
         let s1MaskStart = Date()
         for (detIndex, det) in stage1Detections.enumerated() {
@@ -1701,7 +1709,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
                 print("   Distribution: \(posCount) positive, \(negCount) negative, \(zeroCount) zero")
 
-//                print("   Mask coefficients (32): [\(det.maskCoeffs.map { String(format: \"%.6f\", $0) }.joined(separator: \", \"))]")
+                print("   Mask coefficients (32): [\(det.maskCoeffs.map { String(format: "%.6f", $0) }.joined(separator: ", "))]")
 
                 let scale = Float(Wp) / 640.0
                 let mx1 = max(0, Int((det.x - det.width / 2) * scale))
@@ -1712,7 +1720,50 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 print("   BBox in mask coords: (\(mx1),\(my1)) → (\(mx2),\(my2))")
             }
             
-            // ==== A. Build this-frame union mask (no history) ====
+            // Check if this detection has a corresponding track
+            var restoredPixels = 0
+            if let track = detectionToTrackMap[detIndex],
+               let previousMask = trackMaskMemory[track.id] {
+                
+                // Apply memory decay to previous mask
+                var decayedMask = [Float](repeating: 0, count: spatial)
+                previousMask.withUnsafeBufferPointer { srcPtr in
+                    decayedMask.withUnsafeMutableBufferPointer { dstPtr in
+                        guard let src = srcPtr.baseAddress, let dst = dstPtr.baseAddress else { return }
+                        for i in 0..<spatial {
+                            dst[i] = src[i] * maskMemoryDecayPerFrame
+                        }
+                    }
+                }
+                
+                // Get shrunk memory region for current detection
+                let scaleMask = Float(Wp) / 640.0
+                if let memoryRegion = getShrunkMemoryRegion(for: det, scaleMask: scaleMask, Wp: Wp, Hp: Hp) {
+                    let clampedX2 = min(memoryRegion.x2, Wp)
+                    let clampedY2 = min(memoryRegion.y2, Hp)
+                    
+                    if memoryRegion.x1 < clampedX2 && memoryRegion.y1 < clampedY2 {
+                        for py in memoryRegion.y1..<clampedY2 {
+                            let rowStart = py * Wp + memoryRegion.x1
+                            let rowLen = clampedX2 - memoryRegion.x1
+                            for i in 0..<rowLen {
+                                let idx = rowStart + i
+                                if idx < decayedMask.count && idx < rawMask.count {
+                                    if decayedMask[idx] > maskThreshold {
+                                        rawMask[idx] = max(rawMask[idx], decayedMask[idx])
+                                        restoredPixels += 1
+                                    }
+                                }
+                            }
+                        }
+                        if self.debugMode && restoredPixels > 0 {
+                            print("   🔄 Restored \(restoredPixels) mask pixels from track \(track.id) memory (shrunk region)")
+                        }
+                    }
+                }
+            }
+
+            // Apply threshold & accumulate into globalMask (Stage 1)
             let scale = Float(Wp) / 640.0
             let mx1 = max(0, Int((det.x - det.width / 2) * scale))
             let my1 = max(0, Int((det.y - det.height / 2) * scale))
@@ -1737,21 +1788,51 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
                 }
             }
-
-            // ==== B. Propose "best mask" for matching track (this frame) ====
-            if let trackID = trackID(for: det) {
-                let previousBest = trackBestConfidence[trackID] ?? 0
-                if det.confidence >= previousBest {
-                    trackBestConfidence[trackID] = det.confidence
-                    bestMaskCandidatesThisFrame[trackID] = rawMask
+            
+            // Store/update current mask for track memory (if this detection has a track)
+            if let track = detectionToTrackMap[detIndex] {
+                // Merge current rawMask with existing memory within shrunk region
+                let scaleMask = Float(Wp) / 640.0
+                if let memoryRegion = getShrunkMemoryRegion(for: det, scaleMask: scaleMask, Wp: Wp, Hp: Hp) {
+                    var newMaskMemory = trackMaskMemory[track.id] ?? [Float](repeating: 0, count: spatial)
+                    
+                    // Ensure the array is the correct size
+                    if newMaskMemory.count != spatial {
+                        newMaskMemory = [Float](repeating: 0, count: spatial)
+                    }
+                    
+                    let clampedX2 = min(memoryRegion.x2, Wp)
+                    let clampedY2 = min(memoryRegion.y2, Hp)
+                    
+                    if memoryRegion.x1 < clampedX2 && memoryRegion.y1 < clampedY2 {
+                        for py in memoryRegion.y1..<clampedY2 {
+                            let rowStart = py * Wp + memoryRegion.x1
+                            let rowLen = clampedX2 - memoryRegion.x1
+                            for i in 0..<rowLen {
+                                let idx = rowStart + i
+                                if idx < newMaskMemory.count && idx < rawMask.count {
+                                    // Merge: take the stronger signal
+                                    newMaskMemory[idx] = max(newMaskMemory[idx], rawMask[idx])
+                                }
+                            }
+                        }
+                    }
+                    
+                    trackMaskMemory[track.id] = newMaskMemory
                     if self.debugMode {
-                        print("   💾 Stage1: proposed BEST mask for track \(trackID) @ \(Int(det.confidence*100))%")
+                        print("   💾 Updated mask memory for track \(track.id) (shrunk merge)")
+                    }
+                } else {
+                    // Fallback: store raw mask if region calculation fails
+                    trackMaskMemory[track.id] = rawMask
+                    if self.debugMode {
+                        print("   💾 Stored raw mask memory for track \(track.id) (fallback)")
                     }
                 }
             }
 
             if self.debugMode && detIndex < 5 {
-                print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px")
+                print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px" + (restoredPixels > 0 ? " (restored \(restoredPixels))" : ""))
             }
         }
         let s1MaskEnd = Date()
@@ -1760,11 +1841,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         for i in 0..<spatial { if globalMask[i] > 0 { stage1PixelCount += 1 } }
         if self.debugMode {
             print("   ⚙️ Mask threshold: \(maskThreshold)")
-//            print("   📊 After Stage 1: \(stage1PixelCount)/\(spatial) pixels (\(String(format: \"%.1f\", Float(stage1PixelCount)/Float(spatial)*100))%)")
+            print("   📊 After Stage 1: \(stage1PixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(stage1PixelCount)/Float(spatial)*100))%)")
             print(String(format: "⏱ Stage1 mask build+apply: %.2f ms", s1MaskEnd.timeIntervalSince(s1MaskStart) * 1000.0))
         }
 
-        // ===== Stage 2 (cropped → mapped back to full-frame proto space) =====
+        // Stage 2 (cropped → mapped back to full-frame proto space)
         if let proto2 = stage2Prototypes, !stage2Detections.isEmpty {
             let s2ProtoStart = Date()
             if self.debugMode { print("\n🟢 Processing Stage 2 masks (cropped → full frame)...") }
@@ -1797,6 +1878,33 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
             mappedStage2Detections.removeAll(keepingCapacity: true)
             mappedStage2Detections.reserveCapacity(stage2Detections.count)
+            
+            // Build detection to track mapping for Stage 2
+            var stage2DetectionToTrackMap: [Int: Track] = [:]
+            for track in tracks {
+                // Find stage2 detection that matches this track in the crop space
+                for (detIndex, det) in stage2Detections.enumerated() {
+                    // We need to map the track detection to crop space for comparison
+                    let trackInCropX = (track.detection.x - cropX1) / s2ToS1ScaleX
+                    let trackInCropY = (track.detection.y - cropY1) / s2ToS1ScaleY
+                    let trackInCropW = track.detection.width / s2ToS1ScaleX
+                    let trackInCropH = track.detection.height / s2ToS1ScaleY
+                    
+                    let trackInCrop = DetectionSmarty(
+                        x: trackInCropX, y: trackInCropY,
+                        width: trackInCropW, height: trackInCropH,
+                        confidence: track.detection.confidence,
+                        classIdx: track.detection.classIdx,
+                        className: track.detection.className,
+                        maskCoeffs: track.detection.maskCoeffs
+                    )
+                    
+                    if bboxIoU(trackInCrop, det) > trackIoUThreshold {
+                        stage2DetectionToTrackMap[detIndex] = track
+                        break
+                    }
+                }
+            }
 
             for (detIndex, det) in stage2Detections.enumerated() {
                 var rawMask = [Float](repeating: 0, count: spatial)
@@ -1830,11 +1938,67 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                           1, vDSP_Length(spatial), vDSP_Length(C))
                 let mmulEnd = Date()
                 if self.debugMode {
-                    print(String(format: "   ⏱ vDSP_mmul Stage2 det[%d]: %.2f ms",
-                                 detIndex, mmulEnd.timeIntervalSince(mmulStart) * 1000.0))
+                    print(String(format: "   ⏱ vDSP_mmul Stage2: %.2f ms",
+                                 mmulEnd.timeIntervalSince(mmulStart) * 1000.0))
+                }
+                
+                // Check for mask memory restoration for Stage 2
+                var restoredPixels = 0
+                if let track = stage2DetectionToTrackMap[detIndex],
+                   let previousMask = trackMaskMemory[track.id] {
+                    
+                    // Apply memory decay to previous mask
+                    var decayedMask = [Float](repeating: 0, count: spatial)
+                    previousMask.withUnsafeBufferPointer { srcPtr in
+                        decayedMask.withUnsafeMutableBufferPointer { dstPtr in
+                            guard let src = srcPtr.baseAddress, let dst = dstPtr.baseAddress else { return }
+                            for i in 0..<spatial {
+                                dst[i] = src[i] * maskMemoryDecayPerFrame
+                            }
+                        }
+                    }
+                    
+                    // Map track bbox to crop space for intersection
+                    let trackInCropX = (track.detection.x - cropX1) / s2ToS1ScaleX
+                    let trackInCropY = (track.detection.y - cropY1) / s2ToS1ScaleY
+                    let trackInCropW = track.detection.width / s2ToS1ScaleX
+                    let trackInCropH = track.detection.height / s2ToS1ScaleY
+                    
+                    let trackInCrop = DetectionSmarty(
+                        x: trackInCropX, y: trackInCropY,
+                        width: trackInCropW, height: trackInCropH,
+                        confidence: track.detection.confidence,
+                        classIdx: track.detection.classIdx,
+                        className: track.detection.className,
+                        maskCoeffs: track.detection.maskCoeffs
+                    )
+                    
+                    // Get shrunk memory region
+                    if let memoryRegion = getShrunkMemoryRegion(for: det, scaleMask: scaleMask, Wp: Wp, Hp: Hp) {
+                        let clampedX2 = min(memoryRegion.x2, Wp)
+                        let clampedY2 = min(memoryRegion.y2, Hp)
+                        
+                        if memoryRegion.x1 < clampedX2 && memoryRegion.y1 < clampedY2 {
+                            for py in memoryRegion.y1..<clampedY2 {
+                                let rowStart = py * Wp + memoryRegion.x1
+                                let rowLen = clampedX2 - memoryRegion.x1
+                                for i in 0..<rowLen {
+                                    let idx = rowStart + i
+                                    if idx < decayedMask.count && idx < rawMask.count {
+                                        if decayedMask[idx] > maskThreshold {
+                                            rawMask[idx] = max(rawMask[idx], decayedMask[idx])
+                                            restoredPixels += 1
+                                        }
+                                    }
+                                }
+                            }
+                            if self.debugMode && restoredPixels > 0 {
+                                print("   🔄 S2 Restored \(restoredPixels) mask pixels from track \(track.id) memory (shrunk)")
+                            }
+                        }
+                    }
                 }
 
-                // Map crop mask back into full-frame proto coords and OR into this-frame globalMask
                 let mx1_crop = max(0, Int((det.x - det.width / 2) * scaleMask))
                 let my1_crop = max(0, Int((det.y - det.height / 2) * scaleMask))
                 let mx2_crop = min(Wp, Int((det.x + det.width / 2) * scaleMask))
@@ -1842,6 +2006,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
                 var addedPixels = 0
 
+                // Map crop mask back into full-frame proto coords and OR into globalMask
                 rawMask.withUnsafeBufferPointer { rPtr in
                     globalMask.withUnsafeMutableBufferPointer { gPtr in
                         if mx2_crop > mx1_crop && my2_crop > my1_crop {
@@ -1875,7 +2040,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         }
                     }
                 }
-
+                
                 // Map Stage2 bbox → Stage1 coords for labels/tracking
                 let newX = cropX1 + det.x * s2ToS1ScaleX
                 let newY = cropY1 + det.y * s2ToS1ScaleY
@@ -1893,21 +2058,75 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     maskCoeffs: det.maskCoeffs
                 )
                 mappedStage2Detections.append(mapped)
-
-                // Propose best mask for matching track based on mapped bbox
-                if let trackID = trackID(for: mapped) {
-                    let previousBest = trackBestConfidence[trackID] ?? 0
-                    if det.confidence >= previousBest {
-                        trackBestConfidence[trackID] = det.confidence
-                        bestMaskCandidatesThisFrame[trackID] = rawMask
+                
+                // Store mask memory for Stage 2 detections that have tracks
+                if let track = stage2DetectionToTrackMap[detIndex] {
+                    // Map Stage2 detection back to Stage1 coordinates for memory storage
+                    let mappedDetection = DetectionSmarty(
+                        x: cropX1 + det.x * s2ToS1ScaleX,
+                        y: cropY1 + det.y * s2ToS1ScaleY,
+                        width: det.width * s2ToS1ScaleX,
+                        height: det.height * s2ToS1ScaleY,
+                        confidence: det.confidence,
+                        classIdx: det.classIdx,
+                        className: det.className,
+                        maskCoeffs: det.maskCoeffs
+                    )
+                    
+                    let fullScaleMask = Float(Wp) / 640.0
+                    if let memoryRegion = getShrunkMemoryRegion(for: mappedDetection, scaleMask: fullScaleMask, Wp: Wp, Hp: Hp) {
+                        var newMaskMemory = trackMaskMemory[track.id] ?? [Float](repeating: 0, count: spatial)
+                        
+                        // Ensure the array is the correct size
+                        if newMaskMemory.count != spatial {
+                            newMaskMemory = [Float](repeating: 0, count: spatial)
+                        }
+                        
+                        let clampedX2 = min(memoryRegion.x2, Wp)
+                        let clampedY2 = min(memoryRegion.y2, Hp)
+                        
+                        if memoryRegion.x1 < clampedX2 && memoryRegion.y1 < clampedY2 {
+                            // Map Stage2 mask to full space within shrunk region
+                            for py in memoryRegion.y1..<clampedY2 {
+                                let rowStart = py * Wp + memoryRegion.x1
+                                let rowLen = clampedX2 - memoryRegion.x1
+                                for i in 0..<rowLen {
+                                    let fullIdx = rowStart + i
+                                    
+                                    // Map from full space back to crop space to get rawMask value
+                                    let fullX = Float(memoryRegion.x1 + i) / fullScaleMask
+                                    let fullY = Float(py) / fullScaleMask
+                                    let cropX = (fullX - cropX1) / s2ToS1ScaleX
+                                    let cropY = (fullY - cropY1) / s2ToS1ScaleY
+                                    
+                                    if cropX >= 0 && cropX < 640 && cropY >= 0 && cropY < 640 {
+                                        let cropMaskX = Int(cropX * scaleMask)
+                                        let cropMaskY = Int(cropY * scaleMask)
+                                        
+                                        if cropMaskX >= 0 && cropMaskX < Wp && cropMaskY >= 0 && cropMaskY < Hp {
+                                            let cropIdx = cropMaskY * Wp + cropMaskX
+                                            if cropIdx < rawMask.count && fullIdx < newMaskMemory.count {
+                                                newMaskMemory[fullIdx] = max(newMaskMemory[fullIdx], rawMask[cropIdx])
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        trackMaskMemory[track.id] = newMaskMemory
                         if self.debugMode {
-                            print("   💾 Stage2: proposed BEST mask for track \(trackID) @ \(Int(det.confidence*100))%")
+                            print("   💾 S2 Updated mask memory for track \(track.id) (shrunk merge)")
+                        }
+                    } else {
+                        if self.debugMode {
+                            print("   ⚠️ S2 Failed to get shrunk memory region for track \(track.id)")
                         }
                     }
                 }
 
                 if self.debugMode {
-                    print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: localMask(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW")
+                    print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: localMask(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW" + (restoredPixels > 0 ? " (restored \(restoredPixels))" : ""))
                 }
             }
             let s2MaskEnd = Date()
@@ -1917,68 +2136,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
 
-        // ===== Commit best masks this frame to persistent per-track memory =====
-        for (trackID, mask) in bestMaskCandidatesThisFrame {
-            if mask.count == spatial {
-                trackMaskMemory[trackID] = mask
-            }
-        }
-
-        // ===== Use best per-track masks ONLY inside track bbox to fill holes =====
         var finalPixelCount = 0
-
-        // First count current-frame union from globalMask
         for i in 0..<spatial { if globalMask[i] > 0 { finalPixelCount += 1 } }
-
-        // Then fill holes with best masks for each active track
-        if !tracks.isEmpty && !trackMaskMemory.isEmpty {
-            if self.debugMode {
-                print("\n🧩 Filling holes using best per-track masks (restricted to bbox)")
-            }
-            let scaleMask = Float(Wp) / 640.0
-            for t in tracks {
-                guard let bestMask = trackMaskMemory[t.id], bestMask.count == spatial else { continue }
-
-                // Track bbox in proto coords
-                let mx1 = max(0, Int((t.detection.x - t.detection.width / 2) * scaleMask))
-                let my1 = max(0, Int((t.detection.y - t.detection.height / 2) * scaleMask))
-                let mx2 = min(Wp, Int((t.detection.x + t.detection.width / 2) * scaleMask))
-                let my2 = min(Hp, Int((t.detection.y + t.detection.height / 2) * scaleMask))
-
-                guard mx2 > mx1 && my2 > my1 else { continue }
-
-                var added = 0
-                bestMask.withUnsafeBufferPointer { bPtr in
-                    globalMask.withUnsafeMutableBufferPointer { gPtr in
-                        for py in my1..<my2 {
-                            let rowStart = py * Wp + mx1
-                            let rowLen = mx2 - mx1
-                            for i in 0..<rowLen {
-                                let idx = rowStart + i
-                                if bPtr[idx] > maskThreshold && gPtr[idx] == 0 {
-                                    gPtr[idx] = 1.0
-                                    added += 1
-                                }
-                            }
-                        }
-                    }
-                }
-                if self.debugMode && added > 0 {
-                    print("   🔄 Track \(t.id) (\(t.detection.className)) filled \(added) pixels from best mask")
-                }
-            }
-
-            // Re-count final pixels after hole-filling
-            finalPixelCount = 0
-            for i in 0..<spatial { if globalMask[i] > 0 { finalPixelCount += 1 } }
-        }
-
         let addedByStage2 = finalPixelCount - stage1PixelCount
 
         if self.debugMode {
-//            print("\n📊 MERGED MASK: \(finalPixelCount)/\(spatial) pixels (\(String(format: \"%.1f\", Float(finalPixelCount)/Float(spatial)*100))%)")
+            print("\n📊 MERGED MASK: \(finalPixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(finalPixelCount)/Float(spatial)*100))%)")
             print("   Stage 1 contributed: \(stage1PixelCount) pixels")
-            print("   Stage 2 + best-mask fill added: \(addedByStage2) NEW pixels")
+            print("   Stage 2 added: \(addedByStage2) NEW pixels")
         }
 
         // === UPSCALE TO ORIGINAL IMAGE WITH vImage, APPLY ALPHA WITH rowIntervals ===
@@ -2076,7 +2241,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
             // 2) Threshold scaledMask -> alphaBytes (0 or 255)
             var alphaBytes = [UInt8](repeating: 0, count: width * height)
-            let threshold: Float = 0.5  // globalMask is already 0/1; 0.5 approximates NN behavior
+            let threshold: Float = 0.5  // since globalMask is already 0/1, 0.5 approximates NN behavior
             scaledMask.withUnsafeBufferPointer { maskPtr in
                 alphaBytes.withUnsafeMutableBufferPointer { alphaPtr in
                     guard let mBase = maskPtr.baseAddress,
@@ -2197,11 +2362,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
 
-//            if self.debugMode {
-//                print("📊 Output: \(opaqueCount)/\(width * height) opaque (\(String(format: \"%.1f\", Float(opaqueCount)/Float(width*height)*100))%)")
-//            }
+            if self.debugMode {
+                print("📊 Output: \(opaqueCount)/\(width * height) opaque (\(String(format: "%.1f", Float(opaqueCount)/Float(width*height)*100))%)")
+            }
 
-            // ✅ LABELS + TRACKING
+            // ✅ LABELS + TRACKING (unchanged)
             let allLabelDetections = stage1Detections + mappedStage2Detections
 
             self.frameIndex += 1
@@ -2245,7 +2410,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
     }
-
 
 
 
