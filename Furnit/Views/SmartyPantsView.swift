@@ -1820,7 +1820,7 @@ final class SmartyPantsContainerView: UIView,
             print("   Stage 2 added: \(addedByStage2) NEW pixels")
         }
         
-        // === UPSCALE TO ORIGINAL IMAGE WITH vImage, APPLY ALPHA WITH rowIntervals ===
+        // === UPSCALE TO ORIGINAL IMAGE WITH vImage, APPLY ALPHA DIRECTLY ===
         autoreleasepool {
             let renderStart = Date()
             let ciImage = CIImage(cvPixelBuffer: originalImage)
@@ -1924,112 +1924,32 @@ final class SmartyPantsContainerView: UIView,
                 }
             }
             
-            // 3) Build union of detection rects in output image coords
-            let modelSize: Float = 640.0
-            var imageRects = [(x0: Int, y0: Int, x1: Int, y1: Int)]()
-            imageRects.reserveCapacity(stage1Detections.count + mappedStage2Detections.count)
-            
-            let keptDetections = stage1Detections + mappedStage2Detections
-            
-            for det in keptDetections {
-                let left = det.x - det.width / 2.0
-                let right = det.x + det.width / 2.0
-                let top = det.y - det.height / 2.0
-                let bottom = det.y + det.height / 2.0
-                
-                let sx = Float(width) / modelSize
-                let sy = Float(height) / modelSize
-                
-                var ix0 = Int(floor(left * sx))
-                var ix1 = Int(ceil(right * sx))
-                var iy0 = Int(floor(top * sy))
-                var iy1 = Int(ceil(bottom * sy))
-                
-                ix0 = max(0, min(ix0, width))
-                ix1 = max(0, min(ix1, width))
-                iy0 = max(0, min(iy0, height))
-                iy1 = max(0, min(iy1, height))
-                
-                if ix0 < ix1 && iy0 < iy1 {
-                    imageRects.append((x0: ix0, y0: iy0, x1: ix1, y1: iy1))
-                }
-            }
-            
-            var rowIntervals = Array(repeating: [(start:Int,end:Int)](), count: height)
-            for r in imageRects {
-                for y in r.y0..<r.y1 {
-                    rowIntervals[y].append((start: r.x0, end: r.x1))
-                }
-            }
-            
-            for y in 0..<height {
-                if rowIntervals[y].isEmpty { continue }
-                var intervals = rowIntervals[y]
-                intervals.sort { $0.start < $1.start }
-                var merged: [(Int,Int)] = []
-                var cur = intervals[0]
-                for i in 1..<intervals.count {
-                    let it = intervals[i]
-                    if it.start <= cur.end {
-                        cur.end = max(cur.end, it.end)
-                    } else {
-                        merged.append(cur)
-                        cur = it
-                    }
-                }
-                merged.append(cur)
-                rowIntervals[y] = merged
-            }
-            
-            // 4) Apply alphaBytes only within merged intervals, clear outside
+            // 3) Apply alphaBytes directly - no bbox constraints
             var opaqueCount = 0
             for y in 0..<height {
                 let rowBase = pixels.advanced(by: y * width * 4)
-                let intervals = rowIntervals[y]
-                
-                if intervals.isEmpty {
-                    memset(rowBase, 0, width * 4)
-                    continue
-                }
-                
-                var x = 0
-                var intervalIndex = 0
-                
-                while x < width {
-                    let nextInterval = intervalIndex < intervals.count ? intervals[intervalIndex] : (start: width, end: width)
+                for x in 0..<width {
+                    let idx = y * width + x
+                    let a = alphaBytes[idx]
+                    let pixelPtr = rowBase.advanced(by: x * 4)
                     
-                    if x < nextInterval.start {
-                        let len = min(nextInterval.start, width) - x
-                        memset(rowBase.advanced(by: x * 4), 0, len * 4)
-                        x += len
-                        continue
+                    if a > 0 {
+                        pixelPtr[3] = 255
+                        opaqueCount += 1
+                    } else {
+                        pixelPtr[0] = 0
+                        pixelPtr[1] = 0
+                        pixelPtr[2] = 0
+                        pixelPtr[3] = 0
                     }
-                    
-                    let runEnd = min(nextInterval.end, width)
-                    var pxIdx = x
-                    while pxIdx < runEnd {
-                        let idx = y * width + pxIdx
-                        let a = alphaBytes[idx]
-                        let pixelPtr = rowBase.advanced(by: pxIdx * 4)
-                        
-                        if a > 0 {
-                            pixelPtr[3] = 255
-                            opaqueCount += 1
-                        } else {
-                            pixelPtr[0] = 0
-                            pixelPtr[1] = 0
-                            pixelPtr[2] = 0
-                            pixelPtr[3] = 0
-                        }
-                        pxIdx += 1
-                    }
-                    
-                    x = runEnd
-                    intervalIndex += 1
                 }
             }
             
-            // 4b) GREEN EDGE OVERLAY (mask boundary) - with proper edge handling
+            if self.debugMode {
+                print("📊 Output: \(opaqueCount)/\(width * height) opaque (\(String(format: "%.1f", Float(opaqueCount)/Float(width*height)*100))%)")
+            }
+            
+            // 4) GREEN EDGE OVERLAY - true mask boundary
             alphaBytes.withUnsafeBufferPointer { aPtr in
                 guard let aBase = aPtr.baseAddress else { return }
                 
@@ -2039,7 +1959,6 @@ final class SmartyPantsContainerView: UIView,
                         let idx = y * width + x
                         if aBase[idx] == 0 { continue }
                         
-                        // Treat image boundaries as "off" (transparent)
                         let up    = (y > 0)          ? aBase[idx - width] : 0
                         let down  = (y < height - 1) ? aBase[idx + width] : 0
                         let left  = (x > 0)          ? aBase[idx - 1]     : 0
@@ -2050,7 +1969,6 @@ final class SmartyPantsContainerView: UIView,
                             p[0] = 0    // R
                             p[1] = 255  // G
                             p[2] = 0    // B
-                            // alpha already 255
                         }
                     }
                 }
