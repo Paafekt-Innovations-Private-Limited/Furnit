@@ -2029,28 +2029,28 @@ final class SmartyPantsContainerView: UIView,
                 }
             }
             
-            // 4b) GREEN EDGE OVERLAY (mask boundary)
+            // 4b) GREEN EDGE OVERLAY (mask boundary) - with proper edge handling
             alphaBytes.withUnsafeBufferPointer { aPtr in
                 guard let aBase = aPtr.baseAddress else { return }
-                // avoid borders to keep neighbor checks in-bounds
-                for y in 1..<(height-1) {
+                
+                for y in 0..<height {
                     let rowBase = pixels.advanced(by: y * width * 4)
-                    for x in 1..<(width-1) {
+                    for x in 0..<width {
                         let idx = y * width + x
                         if aBase[idx] == 0 { continue }
                         
-                        let up    = aBase[idx - width]
-                        let down  = aBase[idx + width]
-                        let left  = aBase[idx - 1]
-                        let right = aBase[idx + 1]
+                        // Treat image boundaries as "off" (transparent)
+                        let up    = (y > 0)          ? aBase[idx - width] : 0
+                        let down  = (y < height - 1) ? aBase[idx + width] : 0
+                        let left  = (x > 0)          ? aBase[idx - 1]     : 0
+                        let right = (x < width - 1)  ? aBase[idx + 1]     : 0
                         
                         if up == 0 || down == 0 || left == 0 || right == 0 {
                             let p = rowBase.advanced(by: x * 4)
-                            // RGBA = (0,255,0,255) strong GREEN outline
                             p[0] = 0    // R
                             p[1] = 255  // G
                             p[2] = 0    // B
-                            // alpha already 255 from above
+                            // alpha already 255
                         }
                     }
                 }
