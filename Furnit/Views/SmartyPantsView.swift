@@ -12,7 +12,7 @@ import Photos
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.5
+    var confidenceThreshold: Float = 0.4
     
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
@@ -94,7 +94,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.5
+    var confidenceThreshold: Float = 0.4
     var debugMode: Bool = true  // Enable debug prints and image saves
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
@@ -288,8 +288,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let g = Float(px[1]) * (1.0 / 255.0)
                 let r = Float(px[2]) * (1.0 / 255.0)
                 // Rec. 709 luma
-                let y709: Float = 0.2126 * r + 0.7152 * g + 0.0722 * b
-                sum += y709
+                let y709 = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                sum += Float(y709)
                 count += 1
                 x += step
             }
@@ -670,7 +670,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
 
     // MARK: - Crop Pixel Buffer to BBox (vImage copy)
-    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = -0.05) -> CVPixelBuffer? {
+    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = -0.3) -> CVPixelBuffer? {
         let cropStart = Date()
         
         let fullWf = Float(CVPixelBufferGetWidth(pixelBuffer))
@@ -917,8 +917,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         
         let rawDetections = extractDetections(from: detArray)
-        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.7)
-        let stage2KeptStage2 = applyNMS(uniqueDetections, iouThreshold: 0.7)
+//        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.7)
+//        let stage2KeptStage2 = applyNMS(uniqueDetections, iouThreshold: 0.7)
         
         // 🔁 SIMPLE TRACKING MOVED:
         // Tracking now happens in generateCutoutTwoStage using final Stage1+Stage2 detections
@@ -937,9 +937,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         let cutoutStart = Date()
         generateCutoutTwoStage(
-            stage1Detections: uniqueDetections,
+            stage1Detections: rawDetections,
             stage1Prototypes: prototypesArray,
-            stage2Detections: stage2KeptStage2,
+            stage2Detections: stage2Detections,
             stage2Prototypes: stage2Prototypes,
             primaryBBox: primary,
             originalImage: pixelBuffer
@@ -1141,8 +1141,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 aged.missed += 1
                 if aged.missed <= trackMaxMissedFrames {
                     newTracks.append(aged)
-                } else if debugMode {
-                    print("❌ Dropped track ID \(aged.id) (\(aged.detection.className)) after \(aged.missed) missed frames")
                 }
             }
         }
@@ -1158,9 +1156,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 bestMask: nil,
                 bestMaskConfidence: det.confidence
             )
-            if debugMode {
-                print("🆕 Created new track ID \(nextTrackID) for \(det.className) @ \(Int(det.confidence*100))%")
-            }
             nextTrackID += 1
             newTracks.append(t)
         }
@@ -1170,25 +1165,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         if debugMode {
             let active = tracks.count
             let withMiss = tracks.filter { $0.missed > 0 }.count
-            let trackIDs = tracks.map { $0.id }.sorted()
-            let trackAges = tracks.map { "\($0.id):\($0.age)" }.joined(separator: ", ")
             print("📍 Tracking: \(active) active tracks (\(withMiss) with misses)")
-            print("   Track IDs: \(trackIDs)")
-            print("   Track ages: [\(trackAges)]")
-            
-            // Show which tracks were updated vs new
-            let updatedTrackIDs = tracks.compactMap { track in
-                oldTracks.first { $0.id == track.id } != nil ? track.id : nil
-            }.sorted()
-            let newTrackIDs = tracks.compactMap { track in
-                oldTracks.first { $0.id == track.id } == nil ? track.id : nil
-            }.sorted()
-            if !updatedTrackIDs.isEmpty {
-                print("   Updated: \(updatedTrackIDs)")
-            }
-            if !newTrackIDs.isEmpty {
-                print("   New: \(newTrackIDs)")
-            }
         }
     }
 
@@ -1789,83 +1766,47 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
             
-            // Store/update current mask for track memory
+            // Store/update current mask for track memory (if this detection has a track)
             if let track = detectionToTrackMap[detIndex] {
-                
-                // Existing EMA state (in [0, 1]) or fresh zeros
-                var newMaskMemory = trackMaskMemory[track.id] ?? [Float](repeating: 0, count: spatial)
-                if newMaskMemory.count != spatial {
-                    newMaskMemory = [Float](repeating: 0, count: spatial)
-                }
-                
-                // Global EMA decay: mem_t = decay * mem_{t-1} + (1 - decay) * x_t
-                var decay = self.maskMemoryDecayPerFrame  // e.g. 0.7
-                let emaAdd: Float = 1.0 - decay           // e.g. 0.3
-                
-                // Apply EMA update within the shrunk bbox where the current mask is ON
-                if let memoryRegion = getShrunkMemoryRegion(for: det, scaleMask: scale, Wp: Wp, Hp: Hp) {
-                    let mx0i = max(0, min(Wp, memoryRegion.x1))
-                    let mx1i = max(0, min(Wp, memoryRegion.x2))
-                    let my0i = max(0, min(Hp, memoryRegion.y1))
-                    let my1i = max(0, min(Hp, memoryRegion.y2))
-                
-                    if mx1i > mx0i && my1i > my0i {
-                        let rowLen = mx1i - mx0i
-                        
-                        // Apply EMA: new_value = decay * old_value + (1 - decay) * current_value
-                        for y in my0i..<my1i {
-                            var memIdx = y * Wp + mx0i
-                            var rawIdx = y * Wp + mx0i
-                            
-                            for _ in 0..<rowLen {
-                                if memIdx < newMaskMemory.count && rawIdx < rawMask.count {
-                                    let oldValue = newMaskMemory[memIdx]
-                                    let currentValue = rawMask[rawIdx] > self.maskThreshold ? 1.0 as Float : 0.0 as Float
-                                    
-                                    // Correct EMA formula: new = decay * old + (1 - decay) * current
-                                    newMaskMemory[memIdx] = decay * oldValue + emaAdd * currentValue
-                                    
-                                    // Clamp to [0, 1] range
-                                    newMaskMemory[memIdx] = min(1.0 as Float, max(0.0 as Float, newMaskMemory[memIdx]))
+                // Merge current rawMask with existing memory within shrunk region
+                let scaleMask = Float(Wp) / 640.0
+                if let memoryRegion = getShrunkMemoryRegion(for: det, scaleMask: scaleMask, Wp: Wp, Hp: Hp) {
+                    var newMaskMemory = trackMaskMemory[track.id] ?? [Float](repeating: 0, count: spatial)
+                    
+                    // Ensure the array is the correct size
+                    if newMaskMemory.count != spatial {
+                        newMaskMemory = [Float](repeating: 0, count: spatial)
+                    }
+                    
+                    let clampedX2 = min(memoryRegion.x2, Wp)
+                    let clampedY2 = min(memoryRegion.y2, Hp)
+                    
+                    if memoryRegion.x1 < clampedX2 && memoryRegion.y1 < clampedY2 {
+                        for py in memoryRegion.y1..<clampedY2 {
+                            let rowStart = py * Wp + memoryRegion.x1
+                            let rowLen = clampedX2 - memoryRegion.x1
+                            for i in 0..<rowLen {
+                                let idx = rowStart + i
+                                if idx < newMaskMemory.count && idx < rawMask.count {
+                                    // Merge: take the stronger signal
+                                    newMaskMemory[idx] = max(newMaskMemory[idx], rawMask[idx])
                                 }
-                                
-                                memIdx += 1
-                                rawIdx += 1
                             }
                         }
                     }
-                }
-                
-                // Decay pixels outside the shrunk region (global decay for temporal forgetting)
-                if let memoryRegion = getShrunkMemoryRegion(for: det, scaleMask: scale, Wp: Wp, Hp: Hp) {
-                    // Decay everything outside the active detection region
-                    for i in 0..<newMaskMemory.count {
-                        let y = i / Wp
-                        let x = i % Wp
-                        
-                        // If pixel is outside the shrunk memory region, apply decay only
-                        if x < memoryRegion.x1 || x >= memoryRegion.x2 || 
-                           y < memoryRegion.y1 || y >= memoryRegion.y2 {
-                            newMaskMemory[i] *= decay
-                        }
+                    
+                    trackMaskMemory[track.id] = newMaskMemory
+                    if self.debugMode {
+                        print("   💾 Updated mask memory for track \(track.id) (shrunk merge)")
                     }
                 } else {
-                    // If no valid region, decay everything
-                    for i in 0..<newMaskMemory.count {
-                        newMaskMemory[i] *= decay
+                    // Fallback: store raw mask if region calculation fails
+                    trackMaskMemory[track.id] = rawMask
+                    if self.debugMode {
+                        print("   💾 Stored raw mask memory for track \(track.id) (fallback)")
                     }
                 }
-                
-                trackMaskMemory[track.id] = newMaskMemory
-                
-                if self.debugMode {
-                    print(String(format: "   💾 Updated mask memory for track %d (EMA, shrunk merge)",
-                                 track.id))
-                }
-            } else if self.debugMode {
-                print("   🧠 No track associated for Stage1 det -- skipping mask memory")
             }
-
 
             if self.debugMode && detIndex < 5 {
                 print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px" + (restoredPixels > 0 ? " (restored \(restoredPixels))" : ""))
