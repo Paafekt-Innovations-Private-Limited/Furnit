@@ -1,12 +1,9 @@
-// Two-Stage Detection: Full frame -> Crop to primary bbox -> Re-detect -> UNION BOTH
-// With timing logs at crucial stages + real progress bar until first detection
-
 import SwiftUI
 import UIKit
-import CoreML
-import Accelerate
 import AVFoundation
-import Photos
+import CoreML
+import CoreImage
+import Accelerate
 
 // MARK: - SwiftUI Wrapper
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
@@ -49,44 +46,45 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     }
 }
 
-// MARK: - Detection Struct
+// MARK: - Detection + Track Models
+
 struct DetectionSmarty {
-    let x: Float
-    let y: Float
-    let width: Float
-    let height: Float
-    let confidence: Float
-    let classIdx: Int
-    let className: String
-    let maskCoeffs: [Float]
+    var x: Float
+    var y: Float
+    var width: Float
+    var height: Float
+    var confidence: Float
+    var classIdx: Int
+    var className: String
+    var maskCoeffs: [Float]
 }
 
+struct Track {
+    var id: Int
+    var detection: DetectionSmarty
+    var lastSeenFrameIndex: Int
+    var age: Int
+    var missed: Int
+}
 
-// MARK: - Main Container View
-final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
+// MARK: - Container View
+
+final class SmartyPantsContainerView: UIView,
+                                      UIGestureRecognizerDelegate,
+                                      AVCaptureVideoDataOutputSampleBufferDelegate {
     
-    // MARK: - Tracking
-    private struct Track {
-        let id: Int
-        var detection: DetectionSmarty
-        var lastSeenFrameIndex: Int
-        var age: Int
-        var missed: Int
-    }
-    
-    private var tracks: [Track] = []
-    private var nextTrackID: Int = 0
-    private var frameIndex: Int = 0
-    private let trackIoUThreshold: Float = 0.45
-    private let trackMaxMissedFrames: Int = 5
-    
-    // MARK: Config
+    // MARK: - Public knobs (set from SwiftUI wrapper)
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.5
-    var debugMode: Bool = false  // Enable debug prints and image saves
-    
-    // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
+    var useBilinearUpscaling: Bool = true
+    var maskThreshold: Float = 0.0
+    var debugMode: Bool = false
+    var active: Bool = false
+    
+    // MARK: - CoreML
+    private var mlModel: MLModel?
+    private let ciContext = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
     
     // MARK: Brightness gate (prevent processing when phone is lying down / frame is dark)
     private var lumaThreshold: Float = 0.08          // 0.0 .. 1.0
@@ -94,74 +92,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private var requiredBrightStreak: Int = 3         // require a few bright frames before resuming
     private var isDarkGateActive: Bool = false
     
-    // Mask upscaling: true = bilinear (smooth edges), false = nearest-neighbor (faster)
-    var useBilinearUpscaling: Bool = true
-    
-    // Mask threshold: values above this are considered "object"
-    var maskThreshold: Float = 0.0
-    
-    private let bboxFont: CTFont = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)
-    private lazy var bboxAttributes: [NSAttributedString.Key: Any] = [
-        .font: bboxFont,
-        .foregroundColor: UIColor.white
-    ]
-
-    // MARK: Camera
-    private let captureSession = AVCaptureSession()
-    private let videoOutput = AVCaptureVideoDataOutput()
-    private let sampleQueue = DispatchQueue(label: "com.furnit.smarty.sample", qos: .userInitiated)
-
-    // MARK: UI
-    private let previewLayer = AVCaptureVideoPreviewLayer()
-    private let maskImageView: UIImageView = {
-        let iv = UIImageView()
-        iv.contentMode = .scaleAspectFit
-        iv.backgroundColor = .clear
-        iv.isOpaque = false
-        iv.clipsToBounds = true
-        iv.alpha = 1.0
-        iv.isUserInteractionEnabled = false
-        return iv
-    }()
-    
-    // Real progress bar until first detection
-    private let progressView: UIProgressView = {
-        let pv = UIProgressView(progressViewStyle: .default)
-        pv.translatesAutoresizingMaskIntoConstraints = false
-        pv.tintColor = .systemGreen
-        pv.trackTintColor = UIColor(white: 1.0, alpha: 0.3)
-        pv.isHidden = true
-        pv.progress = 0.0
-        return pv
-    }()
-    
-    private let progressLabel: UILabel = {
-        let l = UILabel()
-        l.translatesAutoresizingMaskIntoConstraints = false
-        l.textColor = .white
-        l.font = .systemFont(ofSize: 14, weight: .medium)
-        l.textAlignment = .center
-        l.numberOfLines = 1
-        l.isHidden = true
-        l.text = "Preparing…"
-        l.backgroundColor = UIColor.black.withAlphaComponent(0.4)
-        l.layer.cornerRadius = 10
-        l.clipsToBounds = true
-        return l
-    }()
-    
-    private var hasFirstDetection = false
-    
-    // MARK: Gesture state
-    private var currentScale: CGFloat = 1.0
-
-    // MARK: Model & Queues
-    private var mlModel: MLModel?
-    private let detectionQueue = DispatchQueue(label: "com.furnit.smarty.detection", qos: .userInitiated)
-    private var lastProcessTime = Date.distantPast
-    private var isProcessing = false
-    private let ciContext = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
-
     // MARK: Furniture & Household Classes (LVIS indices)
     private let furnitureClasses: [Int: String] = [
         // Seating
@@ -226,8 +156,167 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         1099: "cot", 1183: "cradle", 3088: "playpen"
     ]
     
+    // MARK: - Camera
+    private let captureSession = AVCaptureSession()
+    private let videoOutput = AVCaptureVideoDataOutput()
+    private let sampleQueue = DispatchQueue(label: "com.furnit.smarty.sample", qos: .userInitiated)
+    private let previewLayer = AVCaptureVideoPreviewLayer()
+    
+    // MARK: - Detection / processing
+    private let detectionQueue = DispatchQueue(label: "com.furnit.smarty.detection", qos: .userInitiated)
+    private var lastProcessTime: Date = .distantPast
+    private var isProcessing: Bool = false
+    
+    // MARK: - Tracking
+    private var tracks: [Track] = []
+    private var nextTrackID: Int = 1
+    private var frameIndex: Int = 0
+    private let trackIoUThreshold: Float = 0.45
+    private let trackMaxMissedFrames: Int = 5
+    
+    // MARK: - Mask memory (track-aware)
+    private var maskMemory: [Float]? = nil
+    private var maskMemoryAge: Int = 0
+    private let maskMemoryMaxAge: Int = 10
+    private let maskMemoryDecayPerFrame: Float = 0.9
+    private let maskMemoryMinStrength: Float = 0.25
+    
+    // MARK: - App state
     private var isAppActive: Bool = true
+    
+    // MARK: - UI
+    private let maskImageView: UIImageView = {
+        let iv = UIImageView()
+        iv.contentMode = .scaleAspectFit
+        iv.backgroundColor = .clear
+        iv.isOpaque = false
+        iv.clipsToBounds = true
+        iv.alpha = 1.0
+        iv.isUserInteractionEnabled = false
+        return iv
+    }()
+    
+    // Real progress bar until first detection
+    private let progressView: UIProgressView = {
+        let pv = UIProgressView(progressViewStyle: .default)
+        pv.translatesAutoresizingMaskIntoConstraints = false
+        pv.tintColor = .systemGreen
+        pv.trackTintColor = UIColor(white: 1.0, alpha: 0.3)
+        pv.isHidden = true
+        pv.progress = 0.0
+        return pv
+    }()
+    
+    private let progressLabel: UILabel = {
+        let l = UILabel()
+        l.translatesAutoresizingMaskIntoConstraints = false
+        l.textColor = .white
+        l.font = .systemFont(ofSize: 14, weight: .medium)
+        l.textAlignment = .center
+        l.numberOfLines = 1
+        l.isHidden = true
+        l.text = "Preparing…"
+        l.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        l.layer.cornerRadius = 10
+        l.clipsToBounds = true
+        return l
+    }()
+    
+    private var hasFirstDetection = false
+    
+    // MARK: Gesture state
+    private var currentScale: CGFloat = 1.0
+    
+    // simple bbox label style
+    private let bboxFont: CTFont = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)
+    private lazy var bboxAttributes: [NSAttributedString.Key: Any] = [
+        .font: bboxFont,
+        .foregroundColor: UIColor.white
+    ]
+    
+    // MARK: - Init
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        commonInit()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+    
+    private func commonInit() {
+        backgroundColor = .clear
+        isUserInteractionEnabled = true
+        
+        // Camera preview (hidden, used only for capture)
+        previewLayer.session = captureSession
+        previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.isHidden = true
+        layer.addSublayer(previewLayer)
+        
+        maskImageView.isUserInteractionEnabled = true
+        addSubview(maskImageView)
+        maskImageView.translatesAutoresizingMaskIntoConstraints = true
+        maskImageView.frame = bounds
+        maskImageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        
+        addSubview(progressView)
+        addSubview(progressLabel)
+        NSLayoutConstraint.activate([
+            progressView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 40),
+            progressView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -40),
+            progressView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 12),
 
+            progressLabel.centerXAnchor.constraint(equalTo: progressView.centerXAnchor),
+            progressLabel.bottomAnchor.constraint(equalTo: progressView.topAnchor, constant: -6),
+            progressLabel.heightAnchor.constraint(equalToConstant: 24),
+            progressLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
+        ])
+        
+        // Gestures
+        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+        pinchGesture.delegate = self
+        addGestureRecognizer(pinchGesture)
+
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGesture.delegate = self
+        maskImageView.addGestureRecognizer(panGesture)
+        
+        // 🔔 Observe app going to background / foreground
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+        
+        setupCamera()
+        installAppStateObservers()
+        if self.debugMode { print("✅ SmartyPantsContainerView initialized") }
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        if Thread.isMainThread {
+            self.maskImageView.image = nil
+            self.layer.removeAllAnimations()
+        } else {
+            DispatchQueue.main.sync {
+                self.maskImageView.image = nil
+                self.layer.removeAllAnimations()
+            }
+        }
+        videoOutput.setSampleBufferDelegate(nil, queue: nil)
+        stopCamera()
+    }
+    
     private func installAppStateObservers() {
         NotificationCenter.default.addObserver(
             self,
@@ -243,207 +332,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         )
     }
     
-    func startIfNeeded() {
-        hasFirstDetection = false
-        isDarkGateActive = false
-        brightStreak = 0
-        setProgress(0.05, text: "Starting camera…")
-        requestCameraPermissionAndStart()
-    }
-
-    // MARK: - Brightness (average luma) estimation
-    private func averageLuma(of pixelBuffer: CVPixelBuffer, sampleStride: Int = 8) -> Float {
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return 0 }
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-
-        let ptr = base.assumingMemoryBound(to: UInt8.self)
-        var sum: Float = 0
-        var count: Int = 0
-
-        // Sample every Nth pixel to reduce cost
-        let step = max(1, sampleStride)
-        var y = 0
-        while y < height {
-            let row = ptr.advanced(by: y * bytesPerRow)
-            var x = 0
-            while x < width {
-                let px = row.advanced(by: x * 4)
-                let b = Float(px[0]) * (1.0 / 255.0)
-                let g = Float(px[1]) * (1.0 / 255.0)
-                let r = Float(px[2]) * (1.0 / 255.0)
-                // Rec. 709 luma
-                let y709 = 0.2126 * r + 0.7152 * g + 0.0722 * b
-                sum += Float(y709)
-                count += 1
-                x += step
-            }
-            y += step
-        }
-        if count == 0 { return 0 }
-        return sum / Float(count)
-    }
-
-    // MARK: - Capture Delegate
-    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        detectionQueue.async { [weak self] in
-            guard let self = self else { return }
-
-            // 🔦 Brightness validation: if the frame is too dark, pause detection until bright again
-            let luma = self.averageLuma(of: pixelBuffer)
-            if luma.isFinite && luma < self.lumaThreshold {
-                // Enter/maintain dark gate state
-                self.isDarkGateActive = true
-                self.brightStreak = 0
-                self.showDarkGate(message: "Lift phone and point at the scene…")
-                // Clear any previous output to make state obvious
-                DispatchQueue.main.async {
-                    self.maskImageView.image = nil
-                }
-                return
-            } else {
-                // Count consecutive bright frames before resuming
-                self.brightStreak += 1
-                if self.isDarkGateActive && self.brightStreak < self.requiredBrightStreak {
-                    // Still waiting for stability
-                    self.showDarkGate(message: "Hold steady…")
-                    return
-                }
-                if self.isDarkGateActive {
-                    // We have enough bright frames; exit gate
-                    self.isDarkGateActive = false
-                    self.hideDarkGateIfNeeded()
-                }
-            }
-
-            self.processFrame(pixelBuffer)
-        }
-    }
-
-
-    private func showDarkGate(message: String) {
-        DispatchQueue.main.async {
-            self.progressView.isHidden = true
-            self.progressLabel.isHidden = false
-            self.progressLabel.text = "  \(message)  "
-            self.progressLabel.alpha = 1.0
-        }
-    }
-
-    private func hideDarkGateIfNeeded() {
-        guard isDarkGateActive else { return }
-        DispatchQueue.main.async {
-            UIView.animate(withDuration: 0.2) {
-                self.progressLabel.alpha = 0
-            } completion: { _ in
-                self.progressLabel.isHidden = true
-                self.progressLabel.alpha = 1
-                self.progressView.alpha = 1
-            }
-        }
-    }
-
     @objc private func appDidBecomeActive() {
         isAppActive = true
     }
 
     @objc private func appWillResignActive() {
         isAppActive = false
-        // Also stop any “in-flight” processing quickly.
+        // Also stop any "in-flight" processing quickly.
         detectionQueue.async { [weak self] in
             self?.isProcessing = false
         }
     }
-
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        commonInit()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        commonInit()
-    }
-
-    private func commonInit() {
-        backgroundColor = .clear
-        isUserInteractionEnabled = true
-
-        // Camera preview (hidden, used only for capture)
-        previewLayer.session = captureSession
-        previewLayer.videoGravity = .resizeAspectFill
-        previewLayer.isHidden = true
-        layer.addSublayer(previewLayer)
-
-        maskImageView.isUserInteractionEnabled = true
-        addSubview(maskImageView)
-        maskImageView.translatesAutoresizingMaskIntoConstraints = true
-        maskImageView.frame = bounds
-        maskImageView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-
-        addSubview(progressView)
-        addSubview(progressLabel)
-        NSLayoutConstraint.activate([
-            progressView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 40),
-            progressView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -40),
-            progressView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 12),
-
-            progressLabel.centerXAnchor.constraint(equalTo: progressView.centerXAnchor),
-            progressLabel.bottomAnchor.constraint(equalTo: progressView.topAnchor, constant: -6),
-            progressLabel.heightAnchor.constraint(equalToConstant: 24),
-            progressLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
-        ])
-
-        // Gestures (unchanged)
-        let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
-        pinchGesture.delegate = self
-        addGestureRecognizer(pinchGesture)
-
-        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        panGesture.delegate = self
-        maskImageView.addGestureRecognizer(panGesture)
-
-        // 🔔 Observe app going to background / foreground
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleAppDidEnterBackground),
-            name: UIApplication.didEnterBackgroundNotification,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleAppDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
-
-        setupCamera()
-        installAppStateObservers()   // ← add this
-        if self.debugMode { print("✅ SmartyPantsContainerView initialized") }
-        
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-        if Thread.isMainThread {
-            self.maskImageView.image = nil
-            self.layer.removeAllAnimations()
-        } else {
-            DispatchQueue.main.sync {
-                self.maskImageView.image = nil
-                self.layer.removeAllAnimations()
-            }
-        }
-        videoOutput.setSampleBufferDelegate(nil, queue: nil)
-        stopCamera()
-    }
-
-
+    
     @objc private func handleAppDidEnterBackground() {
         if debugMode { print("📵 App entered background – stopping camera & delegate") }
         // Stop delivering frames
@@ -457,33 +357,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
         requestCameraPermissionAndStart()
     }
-
-    private func setProgress(_ value: Float, text: String) {
-        guard !hasFirstDetection else { return }
-        DispatchQueue.main.async {
-            self.progressView.isHidden = false
-            self.progressLabel.isHidden = false
-            self.progressView.progress = value
-            self.progressLabel.text = "  \(text)  "
-        }
-    }
-    
-    private func finishFirstDetectionIfNeeded() {
-        guard !hasFirstDetection else { return }
-        hasFirstDetection = true
-        DispatchQueue.main.async {
-            UIView.animate(withDuration: 0.25, animations: {
-                self.progressView.alpha = 0
-                self.progressLabel.alpha = 0
-            }, completion: { _ in
-                self.progressView.isHidden = true
-                self.progressLabel.isHidden = true
-                self.progressView.alpha = 1
-                self.progressLabel.alpha = 1
-                self.progressView.progress = 0
-            })
-        }
-    }
     
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -495,6 +368,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return true
     }
     
+    // MARK: - Gesture Handlers
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
         guard maskImageView.image != nil else { return }
         
@@ -532,44 +406,114 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 y: maskImageView.center.y + translation.y
             )
             gesture.setTranslation(.zero, in: self)
-            
-//        case .ended, .cancelled:
-//            // proper clamping using REAL frame (after transforms!)
-//            let frame = maskImageView.frame
-//
-//            var newCenter = maskImageView.center
-//
-//            let maxLeft = frame.width / 2
-//            let maxRight = bounds.width - frame.width / 2
-//            let maxTop = frame.height / 2
-//            let maxBottom = bounds.height - frame.height / 2
-//
-//            // Slight padding so user can push "off-screen" a bit
-//            let pad: CGFloat = 150
-//
-//            newCenter.x = min(max(newCenter.x, maxLeft - pad), maxRight + pad)
-//            newCenter.y = min(max(newCenter.y, maxTop - pad), maxBottom + pad)
-//
-//            UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
-//                self.maskImageView.center = newCenter
-//            }
-            
         default:
             break
         }
     }
-
-
+    
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         return true
     }
-
     
     // MARK: - UIGestureRecognizerDelegate
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         let location = touch.location(in: self)
         if location.y < 100 { return false }
         return true
+    }
+    
+    // MARK: - Progress + first-detection hooks
+    func startIfNeeded() {
+        hasFirstDetection = false
+        isDarkGateActive = false
+        brightStreak = 0
+        setProgress(0.05, text: "Starting camera…")
+        requestCameraPermissionAndStart()
+    }
+    
+    private func setProgress(_ value: Float, text: String) {
+        guard !hasFirstDetection else { return }
+        DispatchQueue.main.async {
+            self.progressView.isHidden = false
+            self.progressLabel.isHidden = false
+            self.progressView.progress = value
+            self.progressLabel.text = "  \(text)  "
+        }
+    }
+    
+    private func finishFirstDetectionIfNeeded() {
+        guard !hasFirstDetection else { return }
+        hasFirstDetection = true
+        DispatchQueue.main.async {
+            UIView.animate(withDuration: 0.25, animations: {
+                self.progressView.alpha = 0
+                self.progressLabel.alpha = 0
+            }, completion: { _ in
+                self.progressView.isHidden = true
+                self.progressLabel.isHidden = true
+                self.progressView.alpha = 1
+                self.progressLabel.alpha = 1
+                self.progressView.progress = 0
+            })
+        }
+    }
+    
+    // MARK: - Brightness (average luma) estimation
+    private func averageLuma(of pixelBuffer: CVPixelBuffer, sampleStride: Int = 8) -> Float {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return 0 }
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+
+        let ptr = base.assumingMemoryBound(to: UInt8.self)
+        var sum: Float = 0
+        var count: Int = 0
+
+        // Sample every Nth pixel to reduce cost
+        let step = max(1, sampleStride)
+        var y = 0
+        while y < height {
+            let row = ptr.advanced(by: y * bytesPerRow)
+            var x = 0
+            while x < width {
+                let px = row.advanced(by: x * 4)
+                let b = Float(px[0]) * (1.0 / 255.0)
+                let g = Float(px[1]) * (1.0 / 255.0)
+                let r = Float(px[2]) * (1.0 / 255.0)
+                // Rec. 709 luma
+                let y709 = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                sum += Float(y709)
+                count += 1
+                x += step
+            }
+            y += step
+        }
+        if count == 0 { return 0 }
+        return sum / Float(count)
+    }
+    
+    private func showDarkGate(message: String) {
+        DispatchQueue.main.async {
+            self.progressView.isHidden = true
+            self.progressLabel.isHidden = false
+            self.progressLabel.text = "  \(message)  "
+            self.progressLabel.alpha = 1.0
+        }
+    }
+
+    private func hideDarkGateIfNeeded() {
+        guard isDarkGateActive else { return }
+        DispatchQueue.main.async {
+            UIView.animate(withDuration: 0.2) {
+                self.progressLabel.alpha = 0
+            } completion: { _ in
+                self.progressLabel.isHidden = true
+                self.progressLabel.alpha = 1
+                self.progressView.alpha = 1
+            }
+        }
     }
     
     // MARK: - Public
@@ -582,19 +526,21 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     func stop() {
         stopCamera()
     }
-
+    
     // MARK: - Camera Setup
     private func setupCamera() {
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .hd1280x720
         captureSession.inputs.forEach { captureSession.removeInput($0) }
         captureSession.outputs.forEach { captureSession.removeOutput($0) }
-
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+        
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera,
+                                                   for: .video,
+                                                   position: .back) else {
             captureSession.commitConfiguration()
             return
         }
-
+        
         do {
             let input = try AVCaptureDeviceInput(device: device)
             if captureSession.canAddInput(input) {
@@ -617,7 +563,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             captureSession.commitConfiguration()
         }
     }
-
+    
     private func stopCamera() {
         DispatchQueue.global(qos: .userInitiated).async {
             if self.captureSession.isRunning {
@@ -625,7 +571,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
     }
-
+    
     private func requestCameraPermissionAndStart() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
@@ -644,14 +590,44 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             break
         }
     }
-
-    // MARK: - Capture Delegate
-//    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-//        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-//        detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer) }
-//    }
     
+    // MARK: - Capture Delegate
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        detectionQueue.async { [weak self] in
+            guard let self = self else { return }
 
+            // 🔦 Brightness validation: if the frame is too dark, pause detection until bright again
+            let luma = self.averageLuma(of: pixelBuffer)
+            if luma.isFinite && luma < self.lumaThreshold {
+                // Enter/maintain dark gate state
+                self.isDarkGateActive = true
+                self.brightStreak = 0
+                self.showDarkGate(message: "Lift phone and point at the scene…")
+                // Clear any previous output to make state obvious
+                DispatchQueue.main.async {
+                    self.maskImageView.image = nil
+                }
+                return
+            } else {
+                // Count consecutive bright frames before resuming
+                self.brightStreak += 1
+                if self.isDarkGateActive && self.brightStreak < self.requiredBrightStreak {
+                    // Still waiting for stability
+                    self.showDarkGate(message: "Hold steady…")
+                    return
+                }
+                if self.isDarkGateActive {
+                    // We have enough bright frames; exit gate
+                    self.isDarkGateActive = false
+                    self.hideDarkGateIfNeeded()
+                }
+            }
+
+            self.processFrame(pixelBuffer)
+        }
+    }
+    
     // MARK: - Crop Pixel Buffer to BBox (vImage copy)
     private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = -0.05) -> CVPixelBuffer? {
         let cropStart = Date()
@@ -747,13 +723,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         guard now.timeIntervalSince(lastProcessTime) >= processInterval, !isProcessing else { return }
         lastProcessTime = now
         isProcessing = true
-
+        
         if self.debugMode {
             print("\n🕒 ===== NEW FRAME @ \(now.timeIntervalSince1970) =====")
             print("🔬 ========== STAGE 1: FULL FRAME ==========")
         }
         setProgress(0.2, text: "Preprocessing frame…")
-
+        
         // STAGE 1: Preprocess
         let stage1PreStart = Date()
         guard let resized = letterbox(pixelBuffer, size: 640) else {
@@ -768,9 +744,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         if self.debugMode {
             print(String(format: "⏱ Stage1 preprocess (letterbox+toMultiArray): %.2f ms", stage1PreEnd.timeIntervalSince(stage1PreStart) * 1000.0))
         }
-
+        
         setProgress(0.35, text: "Running detection…")
-
+        
         // STAGE 1: Inference
         let stage1InfStart = Date()
         guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
@@ -785,12 +761,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         if self.debugMode {
             print(String(format: "⏱ Stage1 model.prediction: %.2f ms", stage1InfEnd.timeIntervalSince(stage1InfStart) * 1000.0))
         }
-
+        
         if self.debugMode {
             let names = output.featureNames.joined(separator: ", ")
             print("📤 Model outputs: \(names)")
         }
-
+        
         var detectionsArray: MLMultiArray?
         if let arr = output.featureValue(for: "var_1432")?.multiArrayValue {
             detectionsArray = arr
@@ -808,17 +784,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
         }
-
+        
         guard let detArray = detectionsArray else {
             isProcessing = false
             return
         }
-
+        
         guard let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
             isProcessing = false
             return
         }
-
+        
         let decodeStart = Date()
         let stage1DetectionsFull = extractDetections(from: detArray)
         let decodeEnd = Date()
@@ -826,7 +802,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("📊 Stage 1: \(stage1DetectionsFull.count) detections")
             print(String(format: "⏱ Stage1 detection decode: %.2f ms", decodeEnd.timeIntervalSince(decodeStart) * 1000.0))
         }
-
+        
         let sorted = stage1DetectionsFull.sorted { $0.confidence > $1.confidence }
         
         guard let primary = sorted.first else {
@@ -836,26 +812,26 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             return
         }
-
+        
         if self.debugMode {
             print("🎯 Primary: \(primary.className) @ \(Int(primary.confidence * 100))%")
             print("   BBox: center(\(Int(primary.x)), \(Int(primary.y))) size(\(Int(primary.width))x\(Int(primary.height)))")
         }
-
+        
         setProgress(0.55, text: "Refining crop…")
-
+        
         // STAGE 2
         if self.debugMode { print("\n🔬 ========== STAGE 2: CROPPED ==========") }
-
+        
         var stage2Detections: [DetectionSmarty] = []
         var stage2Prototypes: MLMultiArray? = nil
-
+        
         let stage2Start = Date()
         if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.1),
            let resizedCrop = letterbox(croppedBuffer, size: 640),
            let cropInputArray = pixelBufferToMLMultiArray(resizedCrop),
            let cropInputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": cropInputArray]) {
-
+            
             let stage2InfStart = Date()
             if let cropOutput = try? model.prediction(from: cropInputProvider) {
                 let stage2InfEnd = Date()
@@ -877,7 +853,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         }
                     }
                 }
-
+                
                 if let detArray = cropDetArray,
                    let protoArray = cropOutput.featureValue(for: "p")?.multiArrayValue {
                     let s2DecodeStart = Date()
@@ -900,13 +876,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         
         let rawDetections = extractDetections(from: detArray)
-        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 1.0)
-        let stage2KeptStage2 = applyNMS(uniqueDetections, iouThreshold: 1.0)
-        
-        // 🔁 SIMPLE TRACKING MOVED:
-        // Tracking now happens in generateCutoutTwoStage using final Stage1+Stage2 detections
-        // frameIndex += 1
-        // updateTracks(with: uniqueDetections, frameIndex: frameIndex)
+        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.9)
+        let stage2KeptStage2 = applyNMS(uniqueDetections, iouThreshold: 0.9)
         
         if rawDetections.isEmpty {
             DispatchQueue.main.async {
@@ -915,9 +886,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             return
         }
-
+        
         setProgress(0.8, text: "Building mask…")
-
+        
         let cutoutStart = Date()
         generateCutoutTwoStage(
             stage1Detections: uniqueDetections,
@@ -933,7 +904,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print(String(format: "🕒 Frame total (processFrame): %.2f ms", cutoutEnd.timeIntervalSince(frameStart) * 1000.0))
         }
     }
-
+    
     private func applyNMS(_ detections: [DetectionSmarty], iouThreshold: Float) -> [DetectionSmarty] {
         // Guard against empty or invalid input
         guard !detections.isEmpty else { return [] }
@@ -961,7 +932,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let sorted = validDetections.sorted { $0.confidence > $1.confidence }
         var kept: [DetectionSmarty] = []
         kept.reserveCapacity(sorted.count)
-
+        
         for det in sorted {
             var dominated = false
             for k in kept {
@@ -975,7 +946,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         return kept
     }
-
+    
     private func bboxIoU(_ a: DetectionSmarty, _ b: DetectionSmarty) -> Float {
         // Guard against invalid inputs
         guard a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0 else { return 0 }
@@ -986,12 +957,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let aRight = a.x + a.width * 0.5
         let aTop = a.y - a.height * 0.5
         let aBottom = a.y + a.height * 0.5
-
+        
         let bLeft = b.x - b.width * 0.5
         let bRight = b.x + b.width * 0.5
         let bTop = b.y - b.height * 0.5
         let bBottom = b.y + b.height * 0.5
-
+        
         let ix1 = max(aLeft, bLeft)
         let ix2 = min(aRight, bRight)
         let iy1 = max(aTop, bTop)
@@ -1051,7 +1022,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         // Handle existing tracks (matched vs unmatched)
         for (idx, old) in oldTracks.enumerated() {
-            if var updated = trackUpdated[idx] {
+            if let updated = trackUpdated[idx] {
                 newTracks.append(updated)
             } else {
                 var aged = old
@@ -1083,27 +1054,26 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("📍 Tracking: \(active) active tracks (\(withMiss) with misses)")
         }
     }
-
     
     private func letterbox(_ src: CVPixelBuffer, size: Int = 640) -> CVPixelBuffer? {
         let t0 = Date()
         
         CVPixelBufferLockBaseAddress(src, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
-
+        
         let srcW = CVPixelBufferGetWidth(src)
         let srcH = CVPixelBufferGetHeight(src)
-
+        
         var dstOpt: CVPixelBuffer?
         let status = CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &dstOpt)
         guard status == kCVReturnSuccess, let dst = dstOpt else { return nil }
-
+        
         CVPixelBufferLockBaseAddress(dst, [])
         defer { CVPixelBufferUnlockBaseAddress(dst, []) }
-
+        
         guard let srcBase = CVPixelBufferGetBaseAddress(src),
               let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
-
+        
         var srcBuffer = vImage_Buffer(data: srcBase,
                                       height: vImagePixelCount(srcH),
                                       width: vImagePixelCount(srcW),
@@ -1112,39 +1082,39 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                       height: vImagePixelCount(size),
                                       width: vImagePixelCount(size),
                                       rowBytes: CVPixelBufferGetBytesPerRow(dst))
-
+        
         let err = vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(0))
         guard err == kvImageNoError else { return nil }
-
+        
         if self.debugMode {
             let dt = Date().timeIntervalSince(t0) * 1000.0
             print(String(format: "⏱ letterbox %dx%d → %dx%d: %.2f ms",
                          srcW, srcH, size, size, dt))
         }
-
+        
         return dst
     }
-
+    
     private func keepOverlappingDetections(_ detections: [DetectionSmarty]) -> [DetectionSmarty] {
         guard detections.count > 0 else { return [] }
         if detections.count == 1 { return detections }
-
+        
         let sorted = detections.sorted { $0.confidence > $1.confidence }
         let primary = sorted[0]
         let pLeft = primary.x - primary.width / 2
         let pRight = primary.x + primary.width / 2
         let pTop = primary.y - primary.height / 2
         let pBottom = primary.y + primary.height / 2
-
+        
         var kept: [DetectionSmarty] = []
         kept.reserveCapacity(sorted.count)
-
+        
         for det in sorted {
             let aLeft = det.x - det.width / 2
             let aRight = det.x + det.width / 2
             let aTop = det.y - det.height / 2
             let aBottom = det.y + det.height / 2
-
+            
             if aRight < pLeft || pRight < aLeft { continue }
             if aBottom < pTop || pBottom < aTop { continue }
             kept.append(det)
@@ -1173,117 +1143,23 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
     
-    // MARK: - Save Mask to File (with Accelerate normalization)
-//    private func saveMaskToFile(rawMask: [Float], width: Int, height: Int, detection: DetectionSmarty) {
-//        let timestamp = Int(Date().timeIntervalSince1970)
-//        let colorSpace = CGColorSpaceCreateDeviceGray()
-//
-//        var minVal: Float = 0
-//        var maxVal: Float = 0
-//        vDSP_minv(rawMask, 1, &minVal, vDSP_Length(rawMask.count))
-//        vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(rawMask.count))
-//        let range = maxVal - minVal
-//
-//        let count = rawMask.count
-//        var normalized = [Float](repeating: 0, count: count)
-//
-//        if range > 0 {
-//            var negMin = -minVal
-//            rawMask.withUnsafeBufferPointer { src in
-//                normalized.withUnsafeMutableBufferPointer { dst in
-//                    vDSP_vsadd(src.baseAddress!, 1, &negMin, dst.baseAddress!, 1, vDSP_Length(count))
-//                }
-//            }
-//            var invRange: Float = 1.0 / range
-//            vDSP_vsmul(normalized, 1, &invRange, &normalized, 1, vDSP_Length(count))
-//        } else {
-//            normalized = [Float](repeating: 0.5, count: count)
-//        }
-//
-//        var scale255: Float = 255.0
-//        vDSP_vsmul(normalized, 1, &scale255, &normalized, 1, vDSP_Length(count))
-//
-//        var clipLow: Float = 0
-//        var clipHigh: Float = 255
-//        vDSP_vclip(normalized, 1, &clipLow, &clipHigh, &normalized, 1, vDSP_Length(count))
-//
-//        var grayPixels = [UInt8](repeating: 0, count: count)
-//        normalized.withUnsafeBufferPointer { src in
-//            grayPixels.withUnsafeMutableBufferPointer { dst in
-//                vDSP_vfixu8(src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(count))
-//            }
-//        }
-//
-//        if let provider = CGDataProvider(data: Data(grayPixels) as CFData),
-//           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
-//                                  bytesPerRow: width, space: colorSpace,
-//                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
-//                                  provider: provider, decode: nil, shouldInterpolate: false,
-//                                  intent: .defaultIntent) {
-//            let grayImage = UIImage(cgImage: cgImage)
-//            PHPhotoLibrary.shared().performChanges({
-//                PHAssetChangeRequest.creationRequestForAsset(from: grayImage)
-//            }) { success, error in
-//                if success {
-//                    print("💾 Saved GRAYSCALE mask to Photos @ \(timestamp)")
-//                } else {
-//                    print("❌ Failed to save grayscale: \(error?.localizedDescription ?? "unknown")")
-//                }
-//            }
-//        }
-//
-//        let scale = Float(width) / 640.0
-//        let mx1 = max(0, Int((detection.x - detection.width / 2) * scale))
-//        let my1 = max(0, Int((detection.y - detection.height / 2) * scale))
-//        let mx2 = min(width, Int((detection.x + detection.width / 2) * scale))
-//        let my2 = min(height, Int((detection.y + detection.height / 2) * scale))
-//
-//        var binaryPixels = [UInt8](repeating: 0, count: width * height)
-//        for y in 0..<height {
-//            for x in 0..<width {
-//                let idx = y * width + x
-//                if x >= mx1 && x < mx2 && y >= my1 && y < my2 && rawMask[idx] > maskThreshold {
-//                    binaryPixels[idx] = 255
-//                }
-//            }
-//        }
-//
-//        if let provider = CGDataProvider(data: Data(binaryPixels) as CFData),
-//           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
-//                                  bytesPerRow: width, space: colorSpace,
-//                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
-//                                  provider: provider, decode: nil, shouldInterpolate: false,
-//                                  intent: .defaultIntent) {
-//            let binaryImage = UIImage(cgImage: cgImage)
-//            PHPhotoLibrary.shared().performChanges({
-//                PHAssetChangeRequest.creationRequestForAsset(from: binaryImage)
-//            }) { success, error in
-//                if success {
-//                    print("💾 Saved BINARY mask to Photos (threshold: \(self.maskThreshold)) @ \(timestamp)")
-//                } else {
-//                    print("❌ Failed to save binary: \(error?.localizedDescription ?? "unknown")")
-//                }
-//            }
-//        }
-//    }
-    
     func clearOutsideUsingIntCorners(x0: Int, y0: Int, x1: Int, y1: Int, in image: CGImage) -> CGImage? {
         let t0 = Date()
         
         let width = image.width
         let height = image.height
         let imageRect = CGRect(x: 0, y: 0, width: width, height: height)
-
+        
         let minX0 = min(x0, x1)
         let maxX0 = max(x0, x1)
         let minY0 = min(y0, y1)
         let maxY0 = max(y0, y1)
-
+        
         var bbox = CGRect(x: CGFloat(minX0),
                           y: CGFloat(minY0),
                           width: CGFloat(maxX0 - minX0),
                           height: CGFloat(maxY0 - minY0))
-
+        
         if bbox.isNull || bbox.width <= 0 || bbox.height <= 0 {
             let bytesPerPixel = 4
             let bytesPerRow = bytesPerPixel * width
@@ -1310,9 +1186,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             return out
         }
-
+        
         bbox = bbox.intersection(imageRect)
-
+        
         if bbox.isNull || bbox.width <= 0 || bbox.height <= 0 {
             let bytesPerPixel = 4
             let bytesPerRow = bytesPerPixel * width
@@ -1339,19 +1215,19 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             return out
         }
-
+        
         let bytesPerPixel = 4
         let bytesPerRow = bytesPerPixel * width
         let dataSize = bytesPerRow * height
         guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-
+        
         let rawData = UnsafeMutablePointer<UInt8>.allocate(capacity: dataSize)
         rawData.initialize(repeating: 0, count: dataSize)
         defer {
             rawData.deinitialize(count: dataSize)
             rawData.deallocate()
         }
-
+        
         guard let ctx = CGContext(data: rawData,
                                   width: width,
                                   height: height,
@@ -1360,29 +1236,29 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                   space: colorSpace,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { return nil }
-
+        
         ctx.translateBy(x: 0, y: CGFloat(height))
         ctx.scaleBy(x: 1.0, y: -1.0)
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-
+        
         let startX = 0
         let endX = width
         let startY = 0
         let endY = height
-
+        
         var kx0 = Int(floor(bbox.minX))
         var ky0 = Int(floor(bbox.minY))
         var kx1 = Int(ceil(bbox.maxX))
         var ky1 = Int(ceil(bbox.maxY))
-
+        
         kx0 = max(startX, min(kx0, endX))
         kx1 = max(startX, min(kx1, endX))
         ky0 = max(startY, min(ky0, endY))
         ky1 = max(startY, min(ky1, endY))
-
+        
         if kx0 > kx1 { swap(&kx0, &kx1) }
         if ky0 > ky1 { swap(&ky0, &ky1) }
-
+        
         for y in startY..<endY {
             let rowBase = rawData + y * bytesPerRow
             for x in startX..<endX {
@@ -1396,7 +1272,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
         }
-
+        
         let out = ctx.makeImage()
         if self.debugMode {
             let dt = Date().timeIntervalSince(t0) * 1000.0
@@ -1404,7 +1280,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         return out
     }
-
+    
     private func makePrototypeBuffer(from array: MLMultiArray, C: Int, Hp: Int, Wp: Int) -> [Float] {
         let count = C * Hp * Wp
         var out = [Float](repeating: 0, count: count)
@@ -1462,7 +1338,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         return out
     }
-
     
     private func makeBinaryMaskFromGlobalMask(_ globalMask: [Float], count: Int) -> [UInt8] {
         var scaled = [Float](repeating: 0, count: count)
@@ -1483,7 +1358,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return binary
     }
     
-    // MARK: - TWO-STAGE CUTOUT (with Accelerate prototype build & binary mask)
+    // MARK: - TWO-STAGE CUTOUT (with Accelerate prototype build, binary mask, + TRACK-AWARE MASK MEMORY)
     private func generateCutoutTwoStage(
         stage1Detections: [DetectionSmarty],
         stage1Prototypes: MLMultiArray,
@@ -1499,16 +1374,34 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let Hp = shape[2]
         let Wp = shape[3]
         let spatial = Hp * Wp
-
+        
+        // 🔁 Snapshot previous tracks (before we update them at the end of this frame)
+        let previousTracks = self.tracks
+        let hadPreviousTracks = !previousTracks.isEmpty
+        
+        // Age / clear mask memory when there are no tracks for a while
+        if !hadPreviousTracks {
+            maskMemoryAge += 1
+            if maskMemoryAge > maskMemoryMaxAge {
+                maskMemory = nil
+                maskMemoryAge = 0
+                if self.debugMode {
+                    print("💾 Mask memory cleared (no active tracks for \(maskMemoryMaxAge) frames)")
+                }
+            }
+        } else {
+            maskMemoryAge = 0
+        }
+        
         if self.debugMode {
             print("\n🎨 Generating TWO-STAGE UNION cutout")
             print("   Stage 1: \(stage1Detections.count) detections")
             print("   Stage 2: \(stage2Detections.count) detections (Stage2 coords)")
             print("📐 Prototype shape: C=\(C), H=\(Hp), W=\(Wp)")
         }
-
+        
         var mappedStage2Detections: [DetectionSmarty] = []
-
+        
         // Stage 1 prototype buffer
         let protoStage1Start = Date()
         let protoMatrix1 = makePrototypeBuffer(from: stage1Prototypes, C: C, Hp: Hp, Wp: Wp)
@@ -1517,22 +1410,21 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print(String(format: "⏱ Stage1 prototype buffer build (Accelerate): %.2f ms",
                          protoStage1End.timeIntervalSince(protoStage1Start) * 1000.0))
         }
-
+        
         // Global mask in proto-res space (Hp x Wp), Float 0/1
         var globalMask = [Float](repeating: 0, count: spatial)
-
+        
         if self.debugMode { print("\n🔵 Processing Stage 1 masks (full frame)...") }
-
+        
         var primaryRawMask: [Float]? = nil
         var primaryDet: DetectionSmarty? = nil
         var stage1PixelCount = 0
-
+        
         let s1MaskStart = Date()
         for (detIndex, det) in stage1Detections.enumerated() {
             var rawMask = [Float](repeating: 0, count: spatial)
             let mmulStart = Date()
             
-            // Validate mask coefficients before matrix multiplication
             guard det.maskCoeffs.count == C else {
                 if self.debugMode {
                     print("⚠️ Stage1 det[\(detIndex)]: Invalid mask coeffs count: \(det.maskCoeffs.count), expected: \(C)")
@@ -1565,21 +1457,21 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 print(String(format: "   ⏱ vDSP_mmul Stage1 det[%d]: %.2f ms",
                              detIndex, mmulEnd.timeIntervalSince(mmulStart) * 1000.0))
             }
-
+            
             // Debug on primary
             if detIndex == 0 {
                 primaryRawMask = rawMask
                 primaryDet = det
-
+                
                 var minVal: Float = 0, maxVal: Float = 0
                 vDSP_minv(rawMask, 1, &minVal, vDSP_Length(spatial))
                 vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(spatial))
                 var mean: Float = 0
                 vDSP_meanv(rawMask, 1, &mean, vDSP_Length(spatial))
-
+                
                 print("\n📊 PRIMARY MASK RAW VALUES (\(det.className) @ \(Int(det.confidence*100))%):")
                 print("   Range: min=\(minVal), max=\(maxVal), mean=\(mean)")
-
+                
                 var posCount = 0, negCount = 0, zeroCount = 0
                 for v in rawMask {
                     if v > 0 { posCount += 1 }
@@ -1587,25 +1479,23 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     else { zeroCount += 1 }
                 }
                 print("   Distribution: \(posCount) positive, \(negCount) negative, \(zeroCount) zero")
-
-                print("   Mask coefficients (32): [\(det.maskCoeffs.map { String(format: "%.6f", $0) }.joined(separator: ", "))]")
-
+                
                 let scale = Float(Wp) / 640.0
                 let mx1 = max(0, Int((det.x - det.width / 2) * scale))
                 let my1 = max(0, Int((det.y - det.height / 2) * scale))
                 let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
                 let my2 = min(Hp, Int((det.y + det.height / 2) * scale))
-
+                
                 print("   BBox in mask coords: (\(mx1),\(my1)) → (\(mx2),\(my2))")
             }
-
+            
             // Apply threshold & accumulate into globalMask (Stage 1)
             let scale = Float(Wp) / 640.0
             let mx1 = max(0, Int((det.x - det.width / 2) * scale))
             let my1 = max(0, Int((det.y - det.height / 2) * scale))
             let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
             let my2 = min(Hp, Int((det.y + det.height / 2) * scale))
-
+            
             var addedPixels = 0
             rawMask.withUnsafeBufferPointer { rPtr in
                 globalMask.withUnsafeMutableBufferPointer { gPtr in
@@ -1615,7 +1505,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                             let rowLen = mx2 - mx1
                             for i in 0..<rowLen {
                                 let idx = rowStart + i
-                                if rPtr[idx] > maskThreshold && gPtr[idx] == 0 {
+                                if rPtr[idx] > 0 && gPtr[idx] == 0 {
                                     gPtr[idx] = 1.0
                                     addedPixels += 1
                                 }
@@ -1624,34 +1514,31 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
                 }
             }
-
+            
             if self.debugMode && detIndex < 5 {
                 print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px")
             }
         }
         let s1MaskEnd = Date()
-
-        // Count Stage1 contribution
+        
         for i in 0..<spatial { if globalMask[i] > 0 { stage1PixelCount += 1 } }
         if self.debugMode {
             print("   ⚙️ Mask threshold: \(maskThreshold)")
-            print("   📊 After Stage 1: \(stage1PixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(stage1PixelCount)/Float(spatial)*100))%)")
             print(String(format: "⏱ Stage1 mask build+apply: %.2f ms", s1MaskEnd.timeIntervalSince(s1MaskStart) * 1000.0))
         }
-
+        
         // Stage 2 (cropped → mapped back to full-frame proto space)
         if let proto2 = stage2Prototypes, !stage2Detections.isEmpty {
             let s2ProtoStart = Date()
             if self.debugMode { print("\n🟢 Processing Stage 2 masks (cropped → full frame)...") }
-
+            
             let protoMatrix2 = makePrototypeBuffer(from: proto2, C: C, Hp: Hp, Wp: Wp)
             let s2ProtoEnd = Date()
             if self.debugMode {
                 print(String(format: "⏱ Stage2 prototype buffer build (Accelerate): %.2f ms",
                              s2ProtoEnd.timeIntervalSince(s2ProtoStart) * 1000.0))
             }
-
-            // Reconstruct crop region in Stage1 model coords (0..640)
+            
             let padding: Float = 0.1
             let cropX1 = max(0, primaryBBox.x - primaryBBox.width / 2 * (1 + padding))
             let cropY1 = max(0, primaryBBox.y - primaryBBox.height / 2 * (1 + padding))
@@ -1659,20 +1546,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let cropY2 = min(640, primaryBBox.y + primaryBBox.height / 2 * (1 + padding))
             let cropW = cropX2 - cropX1
             let cropH = cropY2 - cropY1
-
+            
             if self.debugMode {
                 print("   Crop region (model/Stage1): (\(Int(cropX1)),\(Int(cropY1)))→(\(Int(cropX2)),\(Int(cropY2))) = \(Int(cropW))x\(Int(cropH))")
             }
-
+            
             let s2ToS1ScaleX = cropW / 640.0
             let s2ToS1ScaleY = cropH / 640.0
-
+            
             let scaleMask = Float(Wp) / 640.0
             let s2MaskStart = Date()
-
+            
             mappedStage2Detections.removeAll(keepingCapacity: true)
             mappedStage2Detections.reserveCapacity(stage2Detections.count)
-
+            
             for det in stage2Detections {
                 var rawMask = [Float](repeating: 0, count: spatial)
                 let mmulStart = Date()
@@ -1708,15 +1595,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     print(String(format: "   ⏱ vDSP_mmul Stage2: %.2f ms",
                                  mmulEnd.timeIntervalSince(mmulStart) * 1000.0))
                 }
-
+                
                 let mx1_crop = max(0, Int((det.x - det.width / 2) * scaleMask))
                 let my1_crop = max(0, Int((det.y - det.height / 2) * scaleMask))
                 let mx2_crop = min(Wp, Int((det.x + det.width / 2) * scaleMask))
                 let my2_crop = min(Hp, Int((det.y + det.height / 2) * scaleMask))
-
+                
                 var addedPixels = 0
-
-                // Map crop mask back into full-frame proto coords and OR into globalMask
+                
                 rawMask.withUnsafeBufferPointer { rPtr in
                     globalMask.withUnsafeMutableBufferPointer { gPtr in
                         if mx2_crop > mx1_crop && my2_crop > my1_crop {
@@ -1724,19 +1610,19 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                 let base = py_crop * Wp
                                 for px_crop in mx1_crop..<mx2_crop {
                                     let cropIdx = base + px_crop
-                                    if rPtr[cropIdx] > maskThreshold {
+                                    if rPtr[cropIdx] > 0 {
                                         let fracX = Float(px_crop) / Float(Wp)
                                         let fracY = Float(py_crop) / Float(Hp)
-
+                                        
                                         let xModel2 = fracX * 640.0
                                         let yModel2 = fracY * 640.0
-
+                                        
                                         let fullX = cropX1 + xModel2 * s2ToS1ScaleX
                                         let fullY = cropY1 + yModel2 * s2ToS1ScaleY
-
+                                        
                                         let mx_full = Int(fullX * scaleMask)
                                         let my_full = Int(fullY * scaleMask)
-
+                                        
                                         if mx_full >= 0 && mx_full < Wp && my_full >= 0 && my_full < Hp {
                                             let fullIdx = my_full * Wp + mx_full
                                             if gPtr[fullIdx] == 0 {
@@ -1750,17 +1636,16 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         }
                     }
                 }
-
+                
                 if self.debugMode {
                     print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: localMask(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW")
                 }
-
-                // Map Stage2 bbox → Stage1 coords for labels/tracking
+                
                 let newX = cropX1 + det.x * s2ToS1ScaleX
                 let newY = cropY1 + det.y * s2ToS1ScaleY
                 let newW = det.width * s2ToS1ScaleX
                 let newH = det.height * s2ToS1ScaleY
-
+                
                 let mapped = DetectionSmarty(
                     x: newX,
                     y: newY,
@@ -1779,30 +1664,175 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                              s2MaskEnd.timeIntervalSince(s2MaskStart) * 1000.0))
             }
         }
-
+        
+        // ============================
+        //  🔧 EDGE SOLIDIFY (PROTO)
+        // ============================
+        if let primaryDet = primaryDet {
+            let scaleMask = Float(Wp) / 640.0
+            let bx0 = max(0, Int((primaryDet.x - primaryDet.width / 2) * scaleMask))
+            let by0 = max(0, Int((primaryDet.y - primaryDet.height / 2) * scaleMask))
+            let bx1 = min(Wp, Int((primaryDet.x + primaryDet.width / 2) * scaleMask))
+            let by1 = min(Hp, Int((primaryDet.y + primaryDet.height / 2) * scaleMask))
+            
+            if bx0 < bx1 && by0 < by1 {
+                if self.debugMode {
+                    print("🪛 Edge solidify in proto box: (\(bx0),\(by0))–(\(bx1),\(by1))")
+                }
+                
+                // 1) small dilate passes inside primary proto bbox
+                let passes = 2
+                for _ in 0..<passes {
+                    var newMask = globalMask
+                    for y in by0..<by1 {
+                        let rowBase = y * Wp
+                        for x in bx0..<bx1 {
+                            let idx = rowBase + x
+                            if globalMask[idx] > 0 {
+                                newMask[idx] = 1.0
+                                continue
+                            }
+                            var on = false
+                            let yStart = max(by0, y - 1)
+                            let yEnd = min(by1 - 1, y + 1)
+                            let xStart = max(bx0, x - 1)
+                            let xEnd = min(bx1 - 1, x + 1)
+                            outer: for ny in yStart...yEnd {
+                                let nBase = ny * Wp
+                                for nx in xStart...xEnd {
+                                    if globalMask[nBase + nx] > 0 {
+                                        on = true
+                                        break outer
+                                    }
+                                }
+                            }
+                            if on {
+                                newMask[idx] = 1.0
+                            }
+                        }
+                    }
+                    globalMask = newMask
+                }
+                
+                // 2) row-fill inside same proto bbox (first->last "on" per row)
+                for y in by0..<by1 {
+                    let rowBase = y * Wp
+                    var first = -1
+                    var last = -1
+                    for x in bx0..<bx1 {
+                        if globalMask[rowBase + x] > 0 {
+                            if first < 0 { first = x }
+                            last = x
+                        }
+                    }
+                    if first >= 0 && last >= first {
+                        for x in first...last {
+                            globalMask[rowBase + x] = 1.0
+                        }
+                    }
+                }
+            }
+        }
+        
+        // ============================
+        //  🧠 TRACK-AWARE MASK MEMORY
+        // ============================
+        var allowedMemoryMask: [UInt8]? = nil
+        if hadPreviousTracks {
+            var local = [UInt8](repeating: 0, count: spatial)
+            let scaleProto = Float(Wp) / 640.0
+            
+            for t in previousTracks {
+                if t.missed > trackMaxMissedFrames { continue }
+                let det = t.detection
+                
+                var mx0 = Int((det.x - det.width * 0.5) * scaleProto)
+                var my0 = Int((det.y - det.height * 0.5) * scaleProto)
+                var mx1 = Int((det.x + det.width * 0.5) * scaleProto)
+                var my1 = Int((det.y + det.height * 0.5) * scaleProto)
+                
+                mx0 = max(0, min(mx0, Wp))
+                mx1 = max(0, min(mx1, Wp))
+                my0 = max(0, min(my0, Hp))
+                my1 = max(0, min(my1, Hp))
+                
+                if mx0 >= mx1 || my0 >= my1 { continue }
+                
+                for y in my0..<my1 {
+                    let base = y * Wp
+                    for x in mx0..<mx1 {
+                        local[base + x] = 1
+                    }
+                }
+            }
+            
+            if local.contains(where: { $0 != 0 }) {
+                allowedMemoryMask = local
+            }
+        }
+        
+        // Blend previous frame's mask memory into current globalMask
+        if var mem = maskMemory, mem.count == spatial, let allow = allowedMemoryMask {
+            var decay = maskMemoryDecayPerFrame
+            vDSP_vsmul(mem, 1, &decay, &mem, 1, vDSP_Length(spatial))
+            
+            for i in 0..<spatial {
+                if allow[i] == 0 {
+                    mem[i] = 0    // don't keep memory outside tracked regions
+                    continue
+                }
+                if globalMask[i] == 0 && mem[i] >= maskMemoryMinStrength {
+                    globalMask[i] = 1.0
+                }
+            }
+            
+            maskMemory = mem
+            if self.debugMode {
+                print("💾 Applied track-gated mask memory to fill temporal holes")
+            }
+        } else {
+            if maskMemory != nil && maskMemory?.count != spatial {
+                if self.debugMode {
+                    print("⚠️ Mask memory size mismatch – resetting")
+                }
+                maskMemory = nil
+            }
+        }
+        
+        // Update mask memory with current frame's mask (saturating OR)
+        if maskMemory == nil {
+            maskMemory = globalMask
+        } else if var mem = maskMemory, mem.count == spatial {
+            for i in 0..<spatial {
+                if globalMask[i] > 0 {
+                    mem[i] = 1.0
+                }
+            }
+            maskMemory = mem
+        }
+        
         var finalPixelCount = 0
         for i in 0..<spatial { if globalMask[i] > 0 { finalPixelCount += 1 } }
         let addedByStage2 = finalPixelCount - stage1PixelCount
-
+        
         if self.debugMode {
-            print("\n📊 MERGED MASK: \(finalPixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(finalPixelCount)/Float(spatial)*100))%)")
             print("   Stage 1 contributed: \(stage1PixelCount) pixels")
             print("   Stage 2 added: \(addedByStage2) NEW pixels")
         }
-
+        
         // === UPSCALE TO ORIGINAL IMAGE WITH vImage, APPLY ALPHA WITH rowIntervals ===
         autoreleasepool {
             let renderStart = Date()
             let ciImage = CIImage(cvPixelBuffer: originalImage)
             let width = CVPixelBufferGetWidth(originalImage)
             let height = CVPixelBufferGetHeight(originalImage)
-
+            
             guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
                 if self.debugMode { print("❌ Failed to create CGImage") }
                 DispatchQueue.main.async { self.isProcessing = false }
                 return
             }
-
+            
             guard let ctx = CGContext(
                 data: nil,
                 width: width,
@@ -1816,31 +1846,28 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 DispatchQueue.main.async { self.isProcessing = false }
                 return
             }
-
-            // Draw original frame
+            
             ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
+            
             guard let data = ctx.data else {
                 if self.debugMode { print("❌ CGContext has no data") }
                 DispatchQueue.main.async { self.isProcessing = false }
                 return
             }
-
+            
             let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
-
+            
             if self.debugMode {
                 print("🖼️ Upscaling union mask \(Wp)×\(Hp) → \(width)×\(height) with vImageScale_PlanarF")
             }
-
-            // If no detections at all, clear full frame and exit early
+            
             if stage1Detections.isEmpty && mappedStage2Detections.isEmpty {
                 memset(data, 0, width * height * 4)
                 if self.debugMode { print("📊 Output: 0/\(width * height) opaque (0.0%)") }
-
-                // Labels/tracking still updated (no tracks)
+                
                 self.frameIndex += 1
                 self.updateTracks(with: [], frameIndex: self.frameIndex)
-
+                
                 if let outCG = ctx.makeImage() {
                     let finalCG = self.renderLabelsOnFinalImage(
                         baseCGImage: outCG,
@@ -1857,7 +1884,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
                 return
             }
-
+            
             // 1) Upsample globalMask (Hp×Wp, Float 0/1) → scaledMask (height×width, Float)
             var scaledMask = [Float](repeating: 0, count: width * height)
             globalMask.withUnsafeBufferPointer { srcPtr in
@@ -1882,10 +1909,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
                 }
             }
-
+            
             // 2) Threshold scaledMask -> alphaBytes (0 or 255)
             var alphaBytes = [UInt8](repeating: 0, count: width * height)
-            let threshold: Float = 0.5  // since globalMask is already 0/1, 0.5 approximates NN behavior
+            let threshold: Float = 0.5
             scaledMask.withUnsafeBufferPointer { maskPtr in
                 alphaBytes.withUnsafeMutableBufferPointer { alphaPtr in
                     guard let mBase = maskPtr.baseAddress,
@@ -1896,46 +1923,45 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
                 }
             }
-
-            // 3) Build union of detection rects in output image coords (same as before)
+            
+            // 3) Build union of detection rects in output image coords
             let modelSize: Float = 640.0
             var imageRects = [(x0: Int, y0: Int, x1: Int, y1: Int)]()
             imageRects.reserveCapacity(stage1Detections.count + mappedStage2Detections.count)
-
+            
             let keptDetections = stage1Detections + mappedStage2Detections
-
+            
             for det in keptDetections {
                 let left = det.x - det.width / 2.0
                 let right = det.x + det.width / 2.0
                 let top = det.y - det.height / 2.0
                 let bottom = det.y + det.height / 2.0
-
+                
                 let sx = Float(width) / modelSize
                 let sy = Float(height) / modelSize
-
+                
                 var ix0 = Int(floor(left * sx))
                 var ix1 = Int(ceil(right * sx))
                 var iy0 = Int(floor(top * sy))
                 var iy1 = Int(ceil(bottom * sy))
-
+                
                 ix0 = max(0, min(ix0, width))
                 ix1 = max(0, min(ix1, width))
                 iy0 = max(0, min(iy0, height))
                 iy1 = max(0, min(iy1, height))
-
+                
                 if ix0 < ix1 && iy0 < iy1 {
                     imageRects.append((x0: ix0, y0: iy0, x1: ix1, y1: iy1))
                 }
             }
-
-            // Row-wise interval merge (unchanged)
+            
             var rowIntervals = Array(repeating: [(start:Int,end:Int)](), count: height)
             for r in imageRects {
                 for y in r.y0..<r.y1 {
                     rowIntervals[y].append((start: r.x0, end: r.x1))
                 }
             }
-
+            
             for y in 0..<height {
                 if rowIntervals[y].isEmpty { continue }
                 var intervals = rowIntervals[y]
@@ -1954,41 +1980,38 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 merged.append(cur)
                 rowIntervals[y] = merged
             }
-
+            
             // 4) Apply alphaBytes only within merged intervals, clear outside
             var opaqueCount = 0
             for y in 0..<height {
                 let rowBase = pixels.advanced(by: y * width * 4)
                 let intervals = rowIntervals[y]
-
-                // If no detection covers this row, zero the entire row
+                
                 if intervals.isEmpty {
                     memset(rowBase, 0, width * 4)
                     continue
                 }
-
+                
                 var x = 0
                 var intervalIndex = 0
-
+                
                 while x < width {
                     let nextInterval = intervalIndex < intervals.count ? intervals[intervalIndex] : (start: width, end: width)
-
-                    // Transparent gap before next interval
+                    
                     if x < nextInterval.start {
                         let len = min(nextInterval.start, width) - x
                         memset(rowBase.advanced(by: x * 4), 0, len * 4)
                         x += len
                         continue
                     }
-
-                    // Inside interval: use alphaBytes
+                    
                     let runEnd = min(nextInterval.end, width)
                     var pxIdx = x
                     while pxIdx < runEnd {
                         let idx = y * width + pxIdx
                         let a = alphaBytes[idx]
                         let pixelPtr = rowBase.advanced(by: pxIdx * 4)
-
+                        
                         if a > 0 {
                             pixelPtr[3] = 255
                             opaqueCount += 1
@@ -2000,25 +2023,48 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         }
                         pxIdx += 1
                     }
-
+                    
                     x = runEnd
                     intervalIndex += 1
                 }
             }
-
-            if self.debugMode {
-                print("📊 Output: \(opaqueCount)/\(width * height) opaque (\(String(format: "%.1f", Float(opaqueCount)/Float(width*height)*100))%)")
+            
+            // 4b) GREEN EDGE OVERLAY (mask boundary)
+            alphaBytes.withUnsafeBufferPointer { aPtr in
+                guard let aBase = aPtr.baseAddress else { return }
+                // avoid borders to keep neighbor checks in-bounds
+                for y in 1..<(height-1) {
+                    let rowBase = pixels.advanced(by: y * width * 4)
+                    for x in 1..<(width-1) {
+                        let idx = y * width + x
+                        if aBase[idx] == 0 { continue }
+                        
+                        let up    = aBase[idx - width]
+                        let down  = aBase[idx + width]
+                        let left  = aBase[idx - 1]
+                        let right = aBase[idx + 1]
+                        
+                        if up == 0 || down == 0 || left == 0 || right == 0 {
+                            let p = rowBase.advanced(by: x * 4)
+                            // RGBA = (0,255,0,255) strong GREEN outline
+                            p[0] = 0    // R
+                            p[1] = 255  // G
+                            p[2] = 0    // B
+                            // alpha already 255 from above
+                        }
+                    }
+                }
             }
-
-            // ✅ LABELS + TRACKING (unchanged)
+            
+            // ✅ LABELS + TRACKING
             let allLabelDetections = stage1Detections + mappedStage2Detections
-
+            
             self.frameIndex += 1
             self.updateTracks(with: allLabelDetections, frameIndex: self.frameIndex)
             if self.debugMode {
                 print("📍 Tracking updated with \(allLabelDetections.count) final detections")
             }
-
+            
             self.drawLabelsAndBoxes(
                 ctx: ctx,
                 stage1: stage1Detections,
@@ -2027,7 +2073,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 imageHeight: height,
                 drawBoxes: self.debugMode
             )
-
+            
             let renderEnd = Date()
             if self.debugMode {
                 print(String(format: "⏱ Rendering + upscaling + cutout: %.2f ms",
@@ -2036,7 +2082,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                              renderEnd.timeIntervalSince(funcStart) * 1000.0))
                 print("✅ ==================== FRAME COMPLETE ====================\n")
             }
-
+            
             if let outCG = ctx.makeImage() {
                 let finalCG = self.renderLabelsOnFinalImage(
                     baseCGImage: outCG,
@@ -2045,7 +2091,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     stage1: stage1Detections,
                     stage2: mappedStage2Detections
                 )
-
+                
                 DispatchQueue.main.async {
                     self.finishFirstDetectionIfNeeded()
                     self.maskImageView.image = UIImage(cgImage: finalCG)
@@ -2054,15 +2100,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
     }
-
-
-
-    // ======================================================
-    // SAFE LABEL + BOX DRAWING (NO CoreText, NO CTLineDraw)
-    // ======================================================
-    // ======================================================
-    // SAFE LABEL + BOX DRAWING  (CYAN, BIG FONT, FIXED FLIP)
-    // ======================================================
+    
     private func drawLabelsAndBoxes(
         ctx: CGContext,
         stage1: [DetectionSmarty],
@@ -2073,33 +2111,33 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     ) {
         let all = stage1 + stage2
         guard !all.isEmpty else { return }
-
+        
         let W = CGFloat(imageWidth)
         let H = CGFloat(imageHeight)
         let modelSize: CGFloat = 640
         let sx = W / modelSize
         let sy = H / modelSize
-
+        
         // Fix UIKit upside-down drawing in CGContexts
         ctx.saveGState()
         ctx.translateBy(x: 0, y: H)
         ctx.scaleBy(x: 1, y: -1)
-
+        
         UIGraphicsPushContext(ctx)
-
+        
         let font = UIFont.boldSystemFont(ofSize: 38)
-
+        
         for det in all {
-
+            
             let cx = CGFloat(det.x)
             let cy = CGFloat(det.y)
             let w  = CGFloat(det.width)
             let h  = CGFloat(det.height)
-
+            
             let left = (cx - w / 2) * sx
             let top  = (cy - h / 2) * sy
             let rect = CGRect(x: left, y: top, width: w * sx, height: h * sy)
-
+            
             // ---- Cyan Box (optional) ----
             if drawBoxes {
                 UIColor.cyan.setStroke()
@@ -2107,7 +2145,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 b.lineWidth = 4
                 b.stroke()
             }
-
+            
             // ---- Label text ----
             let textString = "\(det.className) \(Int(det.confidence * 100))%"
             let attributes: [NSAttributedString.Key: Any] = [
@@ -2122,29 +2160,24 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     return sh
                 }()
             ]
-
+            
             let text = NSAttributedString(string: textString, attributes: attributes)
             let size = text.size()
-
+            
             var tx = max(0, min(left, W - size.width - 4))
             var ty = top - size.height - 6
-
+            
             if ty < 0 { ty = top + 6 }
-
+            
             let drawRect = CGRect(x: tx, y: ty, width: size.width, height: size.height)
-
+            
             text.draw(in: drawRect)
         }
-
+        
         UIGraphicsPopContext()
         ctx.restoreGState()
     }
-
-
-    // ======================================================
-    // FINAL LABEL RENDERING — SAFE, CRASH-PROOF
-    // Draws both Stage 1 + Stage 2 labels on final CGImage
-    // ======================================================
+    
     private func renderLabelsOnFinalImage(
         baseCGImage: CGImage,
         width: Int,
@@ -2152,9 +2185,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         stage1: [DetectionSmarty],
         stage2: [DetectionSmarty]
     ) -> CGImage {
-
+        
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-
+        
         guard let ctx = CGContext(
             data: nil,
             width: width,
@@ -2167,14 +2200,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("❌ renderLabelsOnFinalImage: failed to create CGContext")
             return baseCGImage
         }
-
+        
         // Draw the already-rendered cutout mask
         ctx.draw(baseCGImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
+        
         // Return the final composited CGImage
         return ctx.makeImage() ?? baseCGImage
     }
-
+    
     private func renderFinalMaskAndLabels(
         mergedMaskUpscaled: CGImage,
         outputWidth: Int,
@@ -2184,7 +2217,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         tightBBoxRect: CGRect
     ) {
         let startTime = Date()
-
+        
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let ctx = CGContext(
             data: nil,
@@ -2198,30 +2231,30 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("❌ CGContext failed")
             return
         }
-
+        
         // ---------------------------------------
         // 1️⃣ Draw the cutout mask (already upscaled)
         // ---------------------------------------
         ctx.draw(mergedMaskUpscaled, in: CGRect(x: 0, y: 0,
                                                 width: outputWidth,
                                                 height: outputHeight))
-
+        
         // ---------------------------------------
         // 2️⃣ Clip to the tight bounding box for cutout,
         //    but labels must be drawn OUTSIDE clip.
         // ---------------------------------------
         ctx.saveGState()
         ctx.clip(to: tightBBoxRect)
-
+        
         // (Your cutout drawing happens here if required)
-
+        
         ctx.restoreGState()   // Important: remove clipping before labels.
-
+        
         // ---------------------------------------
         // 3️⃣ Labels must be drawn AFTER clipping is removed
         // ---------------------------------------
         ctx.resetClip()   // ← ***THE CRITICAL FIX***
-
+        
         // Draw labels for Stage 1 detections
         for det in stage1Detections {
             drawDetectionLabelOnly(
@@ -2231,7 +2264,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 imageHeight: outputHeight
             )
         }
-
+        
         // Draw labels for Stage 2 detections
         for det in stage2DetectionsMapped {
             drawDetectionLabelOnly(
@@ -2241,13 +2274,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 imageHeight: outputHeight
             )
         }
-
+        
         let endTime = Date()
         if self.debugMode {
             print(String(format: "⏱ renderFinalMaskAndLabels: %.2f ms",
                          (endTime.timeIntervalSince(startTime) * 1000)))
         }
-
+        
         // ---------------------------------------
         // 4️⃣ Export final image
         // ---------------------------------------
@@ -2257,7 +2290,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
     }
-
+    
     private func drawDetectionLabelOnly(
         ctx: CGContext,
         detection: DetectionSmarty,
@@ -2271,36 +2304,36 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let cy = CGFloat(detection.y)
         let w  = CGFloat(detection.width)
         let h  = CGFloat(detection.height)
-
+        
         // YOLOE outputs are scaled to 640×640 model input
         let sx = CGFloat(imageWidth) / 640.0
         let sy = CGFloat(imageHeight) / 640.0
-
+        
         // ---------------------------------------
         // Compute top-left of bbox in output image
         // ---------------------------------------
         var rectX = (cx - w/2.0) * sx
         var rectY = (cy - h/2.0) * sy
-
+        
         // Clamp inside final image
         rectX = max(0, min(rectX, CGFloat(imageWidth - 1)))
         rectY = max(0, min(rectY, CGFloat(imageHeight - 1)))
-
+        
         // ---------------------------------------
         // Prepare label text
         // ---------------------------------------
         let label = "\(detection.className) \(Int(detection.confidence * 100))%"
         let font = UIFont.boldSystemFont(ofSize: 26)
-
+        
         let attrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: UIColor.white,
             .backgroundColor: UIColor.black.withAlphaComponent(0.65)
         ]
-
+        
         let text = NSAttributedString(string: label, attributes: attrs)
         let textSize = text.size()
-
+        
         // Draw label slightly above bbox
         let textRect = CGRect(
             x: rectX,
@@ -2308,48 +2341,46 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             width: textSize.width,
             height: textSize.height
         )
-
+        
         ctx.saveGState()
         text.draw(in: textRect)
         ctx.restoreGState()
     }
-
-
-
+    
     private func drawBoundingBox(ctx: CGContext, detection: DetectionSmarty, imageWidth: Int, imageHeight: Int) {
         let originalWidth = CGFloat(imageWidth)
         let originalHeight = CGFloat(imageHeight)
         let modelSize: CGFloat = 640.0
         let scaleX = originalWidth / modelSize
         let scaleY = originalHeight / modelSize
-
+        
         let centerX = CGFloat(detection.x) * scaleX
         let centerY = CGFloat(detection.y) * scaleY
         let boxWidth = CGFloat(detection.width) * scaleX
         let boxHeight = CGFloat(detection.height) * scaleY
-
+        
         let x = centerX - boxWidth / 2
         let y = centerY - boxHeight / 2
-
+        
         // cyan box
         ctx.setStrokeColor(CGColor(red: 0, green: 1, blue: 1, alpha: 1))
         ctx.setLineWidth(3.0)
         let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
         ctx.stroke(rect)
-
+        
         // label text
         let confidence = Int(detection.confidence * 100)
         let labelText = "\(detection.className) \(confidence)%"
         let attributed = NSAttributedString(string: labelText, attributes: bboxAttributes)
         let textSize = attributed.size()
-
+        
         let labelPadding: CGFloat = 6
         let labelWidth = textSize.width + (labelPadding * 2)
         let labelHeight = textSize.height + (labelPadding * 2)
-
+        
         var labelX: CGFloat
         var labelY: CGFloat
-
+        
         if y - labelHeight - 5 >= 0 {
             labelX = max(0, min(x, originalWidth - labelWidth))
             labelY = y - labelHeight - 5
@@ -2360,22 +2391,22 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             labelX = max(0, min(x + 5, originalWidth - labelWidth))
             labelY = max(0, y + 5)
         }
-
+        
         ctx.setFillColor(CGColor(red: 0, green: 1, blue: 1, alpha: 1))
         let labelRect = CGRect(x: labelX, y: labelY, width: labelWidth, height: labelHeight)
         ctx.fill(labelRect)
-
+        
         let textX = labelX + labelPadding
         let textY = labelY + labelPadding
-
+        
         let line = CTLineCreateWithAttributedString(attributed)
-
+        
         ctx.saveGState()
         ctx.textMatrix = .identity
-
+        
         let ctm = ctx.ctm
         let isFlipped = ctm.d < 0 || ctm.ty != 0
-
+        
         if isFlipped {
             ctx.translateBy(x: 0, y: CGFloat(imageHeight))
             ctx.scaleBy(x: 1.0, y: -1.0)
@@ -2385,21 +2416,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         } else {
             ctx.textPosition = CGPoint(x: textX, y: textY)
         }
-
+        
         CTLineDraw(line, ctx)
         ctx.restoreGState()
     }
-
-
+    
     // MARK: - Extract Detections (with timing)
     private func extractDetections(from detections: MLMultiArray) -> [DetectionSmarty] {
         let t0 = Date()
         var all: [DetectionSmarty] = []
-
+        
         let numFeatures = detections.shape[1].intValue
         let numAnchors = detections.shape[2].intValue
         let numClasses = numFeatures - 4 - 32
-
+        
         // Validate tensor dimensions
         guard numFeatures >= 36 && numAnchors > 0 && numClasses > 0 else {
             if self.debugMode {
@@ -2407,7 +2437,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             return []
         }
-
+        
         if self.debugMode {
             print("🔍 Tensor shape: [1, \(numFeatures), \(numAnchors)]")
             print("   → \(numClasses) classes, \(numAnchors) predictions")
@@ -2418,7 +2448,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 print("   → Model: YOLO11-seg (COCO)")
             }
         }
-
+        
         let totalCount = detections.count
         
         // Validate total count matches expected dimensions
@@ -2429,10 +2459,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             return []
         }
-
+        
         let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
         defer { detBuf.deallocate() }
-
+        
         let copyStart = Date()
         if detections.dataType == .float16 {
             let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
@@ -2459,10 +2489,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print(String(format: "⏱ extractDetections copy/convert: %.2f ms",
                          copyEnd.timeIntervalSince(copyStart) * 1000.0))
         }
-
+        
         let coeffOffset = 4 + numClasses
         let stride = numAnchors
-
+        
         let decodeStart = Date()
         if detectAllObjects {
             for anchor in 0..<numAnchors {
@@ -2484,10 +2514,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 guard x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 else {
                     continue
                 }
-
+                
                 var bestConf: Float = 0
                 var bestClassIdx = -1
-
+                
                 let baseConfIdx = 4 * stride + anchor
                 for classIdx in 0..<numClasses {
                     let confIndex = baseConfIdx + classIdx * stride
@@ -2502,7 +2532,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         bestClassIdx = classIdx
                     }
                 }
-
+                
                 if bestConf > confidenceThreshold && bestClassIdx >= 0 {
                     var coeffs = [Float](repeating: 0, count: 32)
                     let coeffStart = coeffOffset * stride + anchor
@@ -2532,7 +2562,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         } else {
             let furnitureList = furnitureClasses.filter { $0.key < numClasses }
-
+            
             for anchor in 0..<numAnchors {
                 // Bounds checking for coordinate access
                 guard anchor < stride,
@@ -2552,7 +2582,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 guard x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 else {
                     continue
                 }
-
+                
                 for (classIdx, className) in furnitureList {
                     let confIdx = (4 + classIdx) * stride + anchor
                     guard confIdx < totalCount else {
@@ -2590,11 +2620,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
         let decodeEnd = Date()
-
+        
         if self.debugMode {
             print(String(format: "⏱ extractDetections decode loop: %.2f ms",
                          decodeEnd.timeIntervalSince(decodeStart) * 1000.0))
-
+            
             let grouped = Dictionary(grouping: all) { $0.className }
             print("\n📊 DETECTION SUMMARY: \(all.count) total")
             for (className, dets) in grouped.sorted(by: { $0.value.count > $1.value.count }).prefix(20) {
@@ -2608,11 +2638,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print(String(format: "⏱ extractDetections total: %.2f ms",
                          tEnd.timeIntervalSince(t0) * 1000.0))
         }
-
+        
         return all
     }
-
-
+    
     // MARK: - Pixel Buffer to MLMultiArray (Accelerate) — with timing
     private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
         let t0 = Date()
@@ -2620,19 +2649,19 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
-
+        
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
         let width = 640
         let height = 640
         let pixelCount = width * height
         let src = baseAddress.assumingMemoryBound(to: UInt8.self)
-
+        
         let floatSize = MemoryLayout<Float32>.size
         let planeStrideBytes = pixelCount * floatSize
         let rPtr = array.dataPointer.advanced(by: 0 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
         let gPtr = array.dataPointer.advanced(by: 1 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
         let bPtr = array.dataPointer.advanced(by: 2 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
-
+        
         var indicesR = [vDSP_Length](repeating: 0, count: width)
         var indicesG = [vDSP_Length](repeating: 0, count: width)
         var indicesB = [vDSP_Length](repeating: 0, count: width)
@@ -2641,23 +2670,23 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             indicesG[i] = vDSP_Length(1 + i * 4)
             indicesB[i] = vDSP_Length(0 + i * 4)
         }
-
+        
         var rowUInt8 = [UInt8](repeating: 0, count: width * 4)
         var rowFloat = [Float](repeating: 0, count: width * 4)
-
+        
         var scaleF: Float = 1.0 / 255.0
-
+        
         for y in 0..<height {
             let rowStart = src.advanced(by: y * bytesPerRow)
             memcpy(&rowUInt8, rowStart, width * 4)
-
+            
             rowUInt8.withUnsafeBufferPointer { u8Ptr in
                 rowFloat.withUnsafeMutableBufferPointer { fPtr in
                     vDSP_vfltu8(u8Ptr.baseAddress!, 1, fPtr.baseAddress!, 1, vDSP_Length(width * 4))
                     vDSP_vsmul(fPtr.baseAddress!, 1, &scaleF, fPtr.baseAddress!, 1, vDSP_Length(width * 4))
                 }
             }
-
+            
             rowFloat.withUnsafeBufferPointer { rf in
                 let baseF = rf.baseAddress!
                 vDSP_vgathr(baseF, indicesR, 1, rPtr.advanced(by: y * width), 1, vDSP_Length(width))
@@ -2665,12 +2694,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 vDSP_vgathr(baseF, indicesB, 1, bPtr.advanced(by: y * width), 1, vDSP_Length(width))
             }
         }
-
+        
         if self.debugMode {
             let dt = Date().timeIntervalSince(t0) * 1000.0
             print(String(format: "⏱ pixelBufferToMLMultiArray: %.2f ms", dt))
         }
-
+        
         return array
     }
     
@@ -2680,17 +2709,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let width = image.width
         let height = image.height
         guard width > 0 && height > 0 else { return nil }
-
+        
         var minX = min(x0, x1)
         var maxX = max(x0, x1)
         var minY = min(y0, y1)
         var maxY = max(y0, y1)
-
+        
         minX = max(0, min(minX, width))
         maxX = max(0, min(maxX, width))
         minY = max(0, min(minY, height))
         maxY = max(0, min(maxY, height))
-
+        
         if minX >= maxX || minY >= maxY {
             let out = makeTransparentImage(width: width, height: height)
             if self.debugMode {
@@ -2699,15 +2728,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             return out
         }
-
+        
         let bytesPerPixel = 4
         let bytesPerRow = width * bytesPerPixel
         let bufSize = bytesPerRow * height
         guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-
+        
         guard let destData = malloc(bufSize) else { return nil }
         defer { free(destData) }
-
+        
         guard let ctx = CGContext(data: destData,
                                   width: width,
                                   height: height,
@@ -2718,18 +2747,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         else {
             return nil
         }
-
+        
         ctx.translateBy(x: 0, y: CGFloat(height))
         ctx.scaleBy(x: 1.0, y: -1.0)
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-
+        
         var srcBuffer = vImage_Buffer(data: destData, height: vImagePixelCount(height),
                                       width: vImagePixelCount(width), rowBytes: bytesPerRow)
-
+        
         guard let zeroRow = malloc(bytesPerRow) else { return nil }
         memset(zeroRow, 0, bytesPerRow)
         defer { free(zeroRow) }
-
+        
         if minY > 0 {
             let dstPtr = destData
             for r in 0..<minY {
@@ -2737,7 +2766,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 memcpy(rowBase, zeroRow, bytesPerRow)
             }
         }
-
+        
         if maxY < height {
             let dstPtr = destData.advanced(by: maxY * bytesPerRow)
             for r in 0..<(height - maxY) {
@@ -2745,7 +2774,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 memcpy(rowBase, zeroRow, bytesPerRow)
             }
         }
-
+        
         if minX > 0 || maxX < width {
             let leftBytes = minX * bytesPerPixel
             let rightBytes = (width - maxX) * bytesPerPixel
@@ -2760,7 +2789,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
         }
-
+        
         guard let outCtx = CGContext(data: destData,
                                      width: width,
                                      height: height,
@@ -2771,7 +2800,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         else {
             return nil
         }
-
+        
         let outImage = outCtx.makeImage()
         if self.debugMode {
             let dt = Date().timeIntervalSince(t0) * 1000.0
@@ -2779,7 +2808,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         return outImage
     }
-
+    
     private func makeTransparentImage(width: Int, height: Int) -> CGImage? {
         guard width > 0 && height > 0 else { return nil }
         let bytesPerPixel = 4
@@ -2788,7 +2817,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
         guard let data = calloc(1, bufSize) else { return nil }
         defer { free(data) }
-
+        
         guard let ctx = CGContext(data: data,
                                   width: width,
                                   height: height,
@@ -2797,14 +2826,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                   space: colorSpace,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { return nil }
-
+        
         return ctx.makeImage()
     }
-
+    
     public func cutoutClearOutsideAcceleratedUIImage(x0: Int, y0: Int, x1: Int, y1: Int, in image: UIImage) -> UIImage? {
         guard let cg = image.cgImage else { return nil }
         guard let outCG = cutoutClearOutsideAccelerated(x0: x0, y0: y0, x1: x1, y1: y1, in: cg) else { return nil }
         return UIImage(cgImage: outCG, scale: image.scale, orientation: image.imageOrientation)
     }
-
 }
