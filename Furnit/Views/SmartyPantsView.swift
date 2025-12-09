@@ -14,12 +14,12 @@ import Photos
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.5
+    var confidenceThreshold: Float = 0.2
     
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = false
+    var debugMode: Bool = true
     var active: Bool = false
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -69,8 +69,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.5
-    var debugMode: Bool = false  // Enable debug prints and image saves
+    var confidenceThreshold: Float = 0.2
+    var debugMode: Bool = true  // Enable debug prints and image saves
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
@@ -81,11 +81,16 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private var requiredBrightStreak: Int = 3         // require a few bright frames before resuming
     private var isDarkGateActive: Bool = false
     
+    private let sessionQueue = DispatchQueue(label: "com.furnit.smarty.session")
+    
     // Mask upscaling: true = bilinear (smooth edges), false = nearest-neighbor (faster)
     var useBilinearUpscaling: Bool = true
     
     // Mask threshold: values above this are considered "object"
     var maskThreshold: Float = 0.0
+    
+    // Add class property
+    private var accumulatedPerimeter: [Float]? = nil
     
     private let bboxFont: CTFont = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)
     private lazy var bboxAttributes: [NSAttributedString.Key: Any] = [
@@ -149,71 +154,78 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private var isProcessing = false
     private let ciContext = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
 
-    // MARK: Furniture & Household Classes (LVIS indices)
-    private let furnitureClasses: [Int: String] = [
-        // Seating
-        132: "armchair", 276: "bar stool", 352: "beach chair", 364: "bean bag chair",
-        402: "bench", 821: "chair", 1060: "computer chair", 1602: "feeding chair",
-        1721: "folding chair", 2499: "loveseat", 2754: "music stool", 2834: "office chair",
-        2939: "park bench", 3024: "church bench", 3423: "rocking chair", 3584: "seat",
-        3888: "step stool", 3909: "stool", 4041: "swivel chair", 4473: "wheelchair",
-        4506: "window seat",
-        
-        // Beds & Bedding
-        375: "bed", 376: "bedcover", 377: "bed frame", 378: "bedsheet", 379: "bed sheet",
-        632: "bunk bed", 714: "canopy bed", 823: "daybed", 1137: "infant bed",
-        1270: "day bed", 1364: "dog bed", 2141: "hospital bed", 2599: "mattress",
-        3049: "pillow", 455: "blanket", 1047: "comforter", 1425: "duvet",
-        3625: "sheet", 3626: "sheets", 431: "bedspread", 2450: "linen",
-        
-        // Sofas & Couches
-        1141: "couch", 1816: "futon", 4331: "vanity", 2936: "ottoman", 3728: "sofa",
-        
-        // Tables
-        429: "billiard table", 1006: "cocktail table", 1061: "computer desk", 1301: "table",
-        1325: "dining table", 1503: "side table", 1885: "glass table", 2247: "island",
-        2319: "kitchen counter", 2322: "kitchen island",
-        2324: "kitchen table", 2802: "nightstand", 2836: "office desk", 3045: "picnic table",
-        3061: "table tennis table", 3145: "poker table", 3449: "round table",
-        4055: "table top", 4545: "workbench", 4564: "writing desk", 1007: "coffee table",
-        
-        // Storage
-        332: "bathroom cabinet", 517: "bookshelf", 567: "chest", 636: "bureau",
-        670: "cabinet", 977: "closet", 996: "coatrack", 1396: "drawer", 1405: "dresser",
-        1624: "file cabinet", 2318: "kitchen cabinet", 2614: "medicine cabinet",
-        3621: "shelf", 3678: "side cabinet", 3812: "spice rack", 4004: "supermarket shelf",
-        4294: "tv cabinet", 4513: "wine cabinet", 4516: "wine rack", 4433: "wardrobe",
-        
-        // Lighting
-        382: "bedside lamp", 1302: "table lamp", 1619: "floor lamp", 2383: "lamp",
-        2384: "lampshade", 732: "candle", 898: "chandelier",
-        2449: "light bulb", 2451: "light fixture", 4210: "torch", 3862: "stand",
-        
-        // Mirrors & Decor
-        334: "bathroom mirror", 2654: "mirror", 1214: "curtain", 3485: "rug",
-        3046: "picture frame", 4056: "tablecloth", 4358: "vase", 3081: "plant",
-        1750: "footrest", 749: "carpet", 1402: "drape", 1403: "drapery",
-        
-        // Electronics
-        4161: "television", 4162: "tv", 1058: "computer monitor", 1059: "computer",
-        3365: "remote control", 3802: "speaker",
-        
-        // Bathroom
-        4179: "toilet seat", 4178: "toilet", 4213: "towel bar", 4212: "towel",
-        386: "bathtub", 3635: "shower", 3636: "shower curtain", 387: "bath mat",
-        
-        // Kitchen
-        3357: "refrigerator", 2914: "oven", 2637: "microwave", 3675: "sink",
-        1350: "dishwasher", 3915: "stovetop", 1780: "freezer",
-        
-        // Misc
-        213: "baby seat", 733: "car seat", 834: "changing table", 679: "cake stand",
-        1143: "counter", 1144: "counter top", 1303: "desktop", 1733: "food stand",
-        1801: "fruit stand", 2193: "ice shelf", 2219: "information desk",
-        1099: "cot", 1183: "cradle", 3088: "playpen"
-    ]
+//    // MARK: Furniture & Household Classes (LVIS indices)
+//    private let furnitureClasses: [Int: String] = [
+//        // Seating
+//        132: "armchair", 276: "bar stool", 352: "beach chair", 364: "bean bag chair",
+//        402: "bench", 821: "chair", 1060: "computer chair", 1602: "feeding chair",
+//        1721: "folding chair", 2499: "loveseat", 2754: "music stool", 2834: "office chair",
+//        2939: "park bench", 3024: "church bench", 3423: "rocking chair", 3584: "seat",
+//        3888: "step stool", 3909: "stool", 4041: "swivel chair", 4473: "wheelchair",
+//        4506: "window seat",
+//        
+//        // Beds & Bedding
+//        375: "bed", 376: "bedcover", 377: "bed frame", 378: "bedsheet", 379: "bed sheet",
+//        632: "bunk bed", 714: "canopy bed", 823: "daybed", 1137: "infant bed",
+//        1270: "day bed", 1364: "dog bed", 2141: "hospital bed", 2599: "mattress",
+//        3049: "pillow", 455: "blanket", 1047: "comforter", 1425: "duvet",
+//        3625: "sheet", 3626: "sheets", 431: "bedspread", 2450: "linen",
+//        
+//        // Sofas & Couches
+//        1141: "couch", 1816: "futon", 4331: "vanity", 2936: "ottoman", 3728: "sofa",
+//        
+//        // Tables
+//        429: "billiard table", 1006: "cocktail table", 1061: "computer desk", 1301: "table",
+//        1325: "dining table", 1503: "side table", 1885: "glass table", 2247: "island",
+//        2319: "kitchen counter", 2322: "kitchen island",
+//        2324: "kitchen table", 2802: "nightstand", 2836: "office desk", 3045: "picnic table",
+//        3061: "table tennis table", 3145: "poker table", 3449: "round table",
+//        4055: "table top", 4545: "workbench", 4564: "writing desk", 1007: "coffee table",
+//        
+//        // Storage
+//        332: "bathroom cabinet", 517: "bookshelf", 567: "chest", 636: "bureau",
+//        670: "cabinet", 977: "closet", 996: "coatrack", 1396: "drawer", 1405: "dresser",
+//        1624: "file cabinet", 2318: "kitchen cabinet", 2614: "medicine cabinet",
+//        3621: "shelf", 3678: "side cabinet", 3812: "spice rack", 4004: "supermarket shelf",
+//        4294: "tv cabinet", 4513: "wine cabinet", 4516: "wine rack", 4433: "wardrobe",
+//        
+//        // Lighting
+//        382: "bedside lamp", 1302: "table lamp", 1619: "floor lamp", 2383: "lamp",
+//        2384: "lampshade", 732: "candle", 898: "chandelier",
+//        2449: "light bulb", 2451: "light fixture", 4210: "torch", 3862: "stand",
+//        
+//        // Mirrors & Decor
+//        334: "bathroom mirror", 2654: "mirror", 1214: "curtain", 3485: "rug",
+//        3046: "picture frame", 4056: "tablecloth", 4358: "vase", 3081: "plant",
+//        1750: "footrest", 749: "carpet", 1402: "drape", 1403: "drapery",
+//        
+//        // Electronics
+//        4161: "television", 4162: "tv", 1058: "computer monitor", 1059: "computer",
+//        3365: "remote control", 3802: "speaker",
+//        
+//        // Bathroom
+//        4179: "toilet seat", 4178: "toilet", 4213: "towel bar", 4212: "towel",
+//        386: "bathtub", 3635: "shower", 3636: "shower curtain", 387: "bath mat",
+//        
+//        // Kitchen
+//        3357: "refrigerator", 2914: "oven", 2637: "microwave", 3675: "sink",
+//        1350: "dishwasher", 3915: "stovetop", 1780: "freezer",
+//        
+//        // Misc
+//        213: "baby seat", 733: "car seat", 834: "changing table", 679: "cake stand",
+//        1143: "counter", 1144: "counter top", 1303: "desktop", 1733: "food stand",
+//        1801: "fruit stand", 2193: "ice shelf", 2219: "information desk",
+//        1099: "cot", 1183: "cradle", 3088: "playpen"
+//    ]
     
     private var isAppActive: Bool = true
+
+    // MARK: - Perimeter Lock Properties
+    private var bestPerimeterMask: [UInt8]? = nil
+    private var bestPerimeterArea: Int = 0
+    private var maskMemoryAge: Int = 0
+    private var maskMemoryMaxAge: Int = 3
+    private var frameIndex: Int = 0
 
     private func installAppStateObservers() {
         NotificationCenter.default.addObserver(
@@ -416,6 +428,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+
+        // Clear UI safely
         if Thread.isMainThread {
             self.maskImageView.image = nil
             self.layer.removeAllAnimations()
@@ -425,8 +439,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 self.layer.removeAllAnimations()
             }
         }
-        videoOutput.setSampleBufferDelegate(nil, queue: nil)
-        stopCamera()
+
+        // Perform ordered shutdown (blocks until everything is stopped)
+        shutdownPipelinesSynchronously()
     }
 
 
@@ -550,44 +565,62 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
     // MARK: - Camera Setup
     private func setupCamera() {
-        captureSession.beginConfiguration()
-        captureSession.sessionPreset = .hd1280x720
-        captureSession.inputs.forEach { captureSession.removeInput($0) }
-        captureSession.outputs.forEach { captureSession.removeOutput($0) }
+        sessionQueue.sync {
+            captureSession.beginConfiguration()
+            captureSession.sessionPreset = .hd1280x720
+            captureSession.inputs.forEach { captureSession.removeInput($0) }
+            captureSession.outputs.forEach { captureSession.removeOutput($0) }
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            captureSession.commitConfiguration()
-            return
+            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+                captureSession.commitConfiguration()
+                return
+            }
+
+            do {
+                let input = try AVCaptureDeviceInput(device: device)
+                if captureSession.canAddInput(input) { captureSession.addInput(input) }
+
+                videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
+                videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+                videoOutput.alwaysDiscardsLateVideoFrames = true
+                if captureSession.canAddOutput(videoOutput) { captureSession.addOutput(videoOutput) }
+                if let conn = videoOutput.connection(with: .video) {
+                    conn.videoRotationAngle = 90
+                }
+                captureSession.commitConfiguration()
+                captureSession.startRunning()
+            } catch {
+                captureSession.commitConfiguration()
+            }
         }
+    }
+    
+    private func shutdownPipelinesSynchronously() {
+        // 1) Stop frame delivery first (no more callbacks)
+        videoOutput.setSampleBufferDelegate(nil, queue: nil)
 
-        do {
-            let input = try AVCaptureDeviceInput(device: device)
-            if captureSession.canAddInput(input) {
-                captureSession.addInput(input)
-            }
-            videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
-            videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
-            videoOutput.alwaysDiscardsLateVideoFrames = true
-            if captureSession.canAddOutput(videoOutput) {
-                captureSession.addOutput(videoOutput)
-            }
-            if let conn = videoOutput.connection(with: .video) {
-                conn.videoRotationAngle = 90
-            }
-            captureSession.commitConfiguration()
-            DispatchQueue.global(qos: .userInitiated).async {
-                self.captureSession.startRunning()
-            }
-        } catch {
-            captureSession.commitConfiguration()
+        // 2) Stop the camera synchronously
+        stopCamera()
+
+        // 3) Quiesce detection queue:
+        //    - prevent new work
+        //    - wait for in-flight work to finish
+        detectionQueue.sync {
+            self.isProcessing = false
+            self.mlModel = nil
         }
     }
 
     private func stopCamera() {
-        DispatchQueue.global(qos: .userInitiated).async {
+        sessionQueue.sync {
             if self.captureSession.isRunning {
                 self.captureSession.stopRunning()
             }
+            // Remove I/O to break retain cycles and ensure no more callbacks
+            self.captureSession.beginConfiguration()
+            self.captureSession.inputs.forEach { self.captureSession.removeInput($0) }
+            self.captureSession.outputs.forEach { self.captureSession.removeOutput($0) }
+            self.captureSession.commitConfiguration()
         }
     }
 
@@ -611,7 +644,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     // MARK: - Crop Pixel Buffer to BBox (vImage copy)
-    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = 0.1) -> CVPixelBuffer? {
+    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = -0.15) -> CVPixelBuffer? {
         let cropStart = Date()
         
         let fullWf = Float(CVPixelBufferGetWidth(pixelBuffer))
@@ -809,42 +842,53 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         var stage2Prototypes: MLMultiArray? = nil
 
         let stage2Start = Date()
-        if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.1),
+        if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0),
            let resizedCrop = letterbox(croppedBuffer, size: 640),
            let cropInputArray = pixelBufferToMLMultiArray(resizedCrop),
+           
            let cropInputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": cropInputArray]) {
-
-            let stage2InfStart = Date()
-            if let cropOutput = try? model.prediction(from: cropInputProvider) {
-                let stage2InfEnd = Date()
-                if self.debugMode {
-                    print(String(format: "⏱ Stage2 model.prediction: %.2f ms", stage2InfEnd.timeIntervalSince(stage2InfStart) * 1000.0))
-                }
-                
-                var cropDetArray: MLMultiArray?
-                if let arr = cropOutput.featureValue(for: "var_2421")?.multiArrayValue {
-                    cropDetArray = arr
-                } else {
-                    for name in cropOutput.featureNames {
-                        if let arr = cropOutput.featureValue(for: name)?.multiArrayValue {
-                            let shape = arr.shape.map { $0.intValue }
-                            if shape.count == 3 && shape[0] == 1 && shape[1] > 100 {
-                                cropDetArray = arr
-                                break
+            guard cropInputArray.count == 1 * 3 * 640 * 640 else {
+                if self.debugMode { print("⚠️ Stage2: bad input count:", cropInputArray.count) }
+                self.isProcessing = false
+                return
+            }
+            let options = MLPredictionOptions()
+            // Flip this to true to see if the crash disappears on CPU:
+            options.usesCPUOnly = false  // set true to test
+            
+            autoreleasepool{
+                let stage2InfStart = Date()
+                if let cropOutput = try? model.prediction(from: cropInputProvider, options: options) {
+                    let stage2InfEnd = Date()
+                    if self.debugMode {
+                        print(String(format: "⏱ Stage2 model.prediction: %.2f ms", stage2InfEnd.timeIntervalSince(stage2InfStart) * 1000.0))
+                    }
+                    
+                    var cropDetArray: MLMultiArray?
+                    if let arr = cropOutput.featureValue(for: "var_2421")?.multiArrayValue {
+                        cropDetArray = arr
+                    } else {
+                        for name in cropOutput.featureNames {
+                            if let arr = cropOutput.featureValue(for: name)?.multiArrayValue {
+                                let shape = arr.shape.map { $0.intValue }
+                                if shape.count == 3 && shape[0] == 1 && shape[1] > 100 {
+                                    cropDetArray = arr
+                                    break
+                                }
                             }
                         }
                     }
-                }
-
-                if let detArray = cropDetArray,
-                   let protoArray = cropOutput.featureValue(for: "p")?.multiArrayValue {
-                    let s2DecodeStart = Date()
-                    stage2Detections = extractDetections(from: detArray)
-                    let s2DecodeEnd = Date()
-                    stage2Prototypes = protoArray
-                    if self.debugMode {
-                        print("📊 Stage 2: \(stage2Detections.count) detections")
-                        print(String(format: "⏱ Stage2 detection decode: %.2f ms", s2DecodeEnd.timeIntervalSince(s2DecodeStart) * 1000.0))
+                    
+                    if let detArray = cropDetArray,
+                       let protoArray = cropOutput.featureValue(for: "p")?.multiArrayValue {
+                        let s2DecodeStart = Date()
+                        stage2Detections = extractDetections(from: detArray)
+                        let s2DecodeEnd = Date()
+                        stage2Prototypes = protoArray
+                        if self.debugMode {
+                            print("📊 Stage 2: \(stage2Detections.count) detections")
+                            print(String(format: "⏱ Stage2 detection decode: %.2f ms", s2DecodeEnd.timeIntervalSince(s2DecodeStart) * 1000.0))
+                        }
                     }
                 }
             }
@@ -858,8 +902,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         
         let rawDetections = extractDetections(from: detArray)
-        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.7)
-        let stage2KeptStage2 = applyNMS(uniqueDetections, iouThreshold: 0.7)
+        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.6)
+        let stage2KeptStage2 = applyNMS(uniqueDetections, iouThreshold: 0.6)
         if rawDetections.isEmpty && stage2Detections.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
@@ -886,6 +930,127 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
 
+    private func buildGlobalMaskWithOverlapFilter(
+        globalMask: inout [Float],
+        allDetections: [DetectionSmarty],
+        protoMatrix: [Float],
+        primaryBBox: DetectionSmarty,
+        C: Int, Wp: Int, Hp: Int,
+        minOverlap: Float = 0.5
+    ) {
+        let spatial = Wp * Hp
+        let scale = Float(Wp) / 640.0
+        
+        // Bbox bounds
+        let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
+        let bboxY1 = max(0, Int((primaryBBox.y - primaryBBox.height / 2) * scale))
+        let bboxX2 = min(Wp, Int((primaryBBox.x + primaryBBox.width / 2) * scale))
+        let bboxY2 = min(Hp, Int((primaryBBox.y + primaryBBox.height / 2) * scale))
+        
+        // Compute all masks
+        var detMasks = [[Float]]()
+        var detAreas = [Int]()
+        
+        for det in allDetections {
+            var rawMask = [Float](repeating: 0, count: spatial)
+            guard det.maskCoeffs.count == C else {
+                detMasks.append(rawMask)
+                detAreas.append(0)
+                continue
+            }
+            guard !det.maskCoeffs.contains(where: { !$0.isFinite }) else {
+                detMasks.append(rawMask)
+                detAreas.append(0)
+                continue
+            }
+            
+            det.maskCoeffs.withUnsafeBufferPointer { coeffPtr in
+                protoMatrix.withUnsafeBufferPointer { protoPtr in
+                    guard let coeffBase = coeffPtr.baseAddress,
+                          let protoBase = protoPtr.baseAddress else { return }
+                    vDSP_mmul(coeffBase, 1, protoBase, 1, &rawMask, 1,
+                              1, vDSP_Length(spatial), vDSP_Length(C))
+                }
+            }
+            
+            var area = 0
+            for y in 0..<Hp {
+                for x in 0..<Wp {
+                    let idx = y * Wp + x
+                    if rawMask[idx] > maskThreshold &&
+                       x >= bboxX1 && x < bboxX2 &&
+                       y >= bboxY1 && y < bboxY2 {
+                        rawMask[idx] = 1.0
+                        area += 1
+                    } else {
+                        rawMask[idx] = 0.0
+                    }
+                }
+            }
+            detMasks.append(rawMask)
+            detAreas.append(area)
+        }
+        
+        // START WITH LARGEST AREA, NOT HIGHEST CONFIDENCE
+        guard let primaryIdx = detAreas.indices.max(by: { detAreas[$0] < detAreas[$1] }) else { return }
+        guard detAreas[primaryIdx] > 0 else {
+            if self.debugMode { print("⚠️ No valid masks with area > 0") }
+            return
+        }
+        
+        for i in 0..<spatial {
+            globalMask[i] = detMasks[primaryIdx][i]
+        }
+        
+        var used = [Bool](repeating: false, count: allDetections.count)
+        used[primaryIdx] = true
+        
+        if self.debugMode {
+            print("🔷 Primary (largest): \(allDetections[primaryIdx].className) @ \(Int(allDetections[primaryIdx].confidence * 100))%, area=\(detAreas[primaryIdx])px")
+        }
+        
+        // Iteratively add masks with >= 50% overlap
+        var changed = true
+        while changed {
+            changed = false
+            
+            for (idx, detMask) in detMasks.enumerated() {
+                if used[idx] || detAreas[idx] == 0 { continue }
+                
+                var overlapCount = 0
+                for i in 0..<spatial {
+                    if detMask[i] > 0 && globalMask[i] > 0 {
+                        overlapCount += 1
+                    }
+                }
+                
+                let overlapRatio = Float(overlapCount) / Float(detAreas[idx])
+                
+                if overlapRatio >= minOverlap {
+                    var added = 0
+                    for i in 0..<spatial {
+                        if detMask[i] > 0 && globalMask[i] == 0 {
+                            globalMask[i] = 1.0
+                            added += 1
+                        }
+                    }
+                    used[idx] = true
+                    changed = true
+                    
+                    if self.debugMode {
+                        print("🔗 Merged \(allDetections[idx].className) @ \(Int(allDetections[idx].confidence * 100))%: overlap=\(Int(overlapRatio * 100))%, +\(added)px")
+                    }
+                }
+            }
+        }
+        
+        if self.debugMode {
+            let mergedCount = used.filter { $0 }.count
+            var totalArea = 0
+            for i in 0..<spatial { if globalMask[i] > 0 { totalArea += 1 } }
+            print("🔷 buildGlobalMask: \(mergedCount)/\(allDetections.count) merged, total=\(totalArea)px")
+        }
+    }
     private func applyNMS(_ detections: [DetectionSmarty], iouThreshold: Float) -> [DetectionSmarty] {
         // Guard against empty or invalid input
         guard !detections.isEmpty else { return [] }
@@ -1003,6 +1168,119 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         return dst
+    }
+    
+    // MARK: - Draw Perimeter Outline (debug)
+    private func drawPerimeterOutline(on pixels: UnsafeMutablePointer<UInt8>,
+                                       mask: [Float],
+                                       maskWidth: Int,
+                                       maskHeight: Int,
+                                       imageWidth: Int,
+                                       imageHeight: Int) {
+        let scaleX = Float(imageWidth) / Float(maskWidth)
+        let scaleY = Float(imageHeight) / Float(maskHeight)
+        
+        // Find edge pixels in mask (pixels where mask=1 and at least one neighbor=0)
+        for my in 0..<maskHeight {
+            for mx in 0..<maskWidth {
+                let idx = my * maskWidth + mx
+                if mask[idx] > 0 {
+                    // Check if edge (any 4-neighbor is 0 or out of bounds)
+                    var isEdge = false
+                    if mx == 0 || mx == maskWidth - 1 || my == 0 || my == maskHeight - 1 {
+                        isEdge = true
+                    } else {
+                        if mask[idx - 1] == 0 || mask[idx + 1] == 0 ||
+                           mask[idx - maskWidth] == 0 || mask[idx + maskWidth] == 0 {
+                            isEdge = true
+                        }
+                    }
+                    
+                    if isEdge {
+                        // Map to image coordinates and draw thick line (3x3)
+                        let imgX = Int(Float(mx) * scaleX)
+                        let imgY = Int(Float(my) * scaleY)
+                        
+                        // Draw 3x3 block for visibility
+                        for dy in -1...1 {
+                            for dx in -1...1 {
+                                let px = imgX + dx
+                                let py = imgY + dy
+                                if px >= 0 && px < imageWidth && py >= 0 && py < imageHeight {
+                                    let pixelIdx = (py * imageWidth + px) * 4
+                                    // Cyan color: R=0, G=255, B=255, A=255
+                                    // BGRA format: [B, G, R, A]
+                                    pixels[pixelIdx + 0] = 255   // B
+                                    pixels[pixelIdx + 1] = 255   // G
+                                    pixels[pixelIdx + 2] = 0     // R
+                                    pixels[pixelIdx + 3] = 255   // A
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Morphological Operations
+
+    /// Dilate mask by 1 pixel (expand edges)
+    private func dilateMask(_ mask: inout [UInt8], width: Int, height: Int) {
+        var result = [UInt8](repeating: 0, count: width * height)
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                if mask[y * width + x] == 1 {
+                    // Set this pixel and all 8 neighbors
+                    for dy in -1...1 {
+                        for dx in -1...1 {
+                            let nx = x + dx
+                            let ny = y + dy
+                            if nx >= 0 && nx < width && ny >= 0 && ny < height {
+                                result[ny * width + nx] = 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        mask = result
+    }
+
+    /// Erode mask by 1 pixel (shrink edges)
+    private func erodeMask(_ mask: inout [UInt8], width: Int, height: Int) {
+        var result = [UInt8](repeating: 0, count: width * height)
+        
+        for y in 1..<(height-1) {
+            for x in 1..<(width-1) {
+                let idx = y * width + x
+                if mask[idx] == 1 {
+                    // Keep only if all 8 neighbors are also 1
+                    var keep = true
+                    outer: for dy in -1...1 {
+                        for dx in -1...1 {
+                            if mask[(y + dy) * width + (x + dx)] == 0 {
+                                keep = false
+                                break outer
+                            }
+                        }
+                    }
+                    if keep { result[idx] = 1 }
+                }
+            }
+        }
+        mask = result
+    }
+
+    /// Morphological closing - bridges small gaps between touching edges
+    private func closeMask(_ mask: inout [UInt8], width: Int, height: Int, radius: Int = 2) {
+        for _ in 0..<radius {
+            dilateMask(&mask, width: width, height: height)
+        }
+        for _ in 0..<radius {
+            erodeMask(&mask, width: width, height: height)
+        }
     }
 
     private func keepOverlappingDetections(_ detections: [DetectionSmarty]) -> [DetectionSmarty] {
@@ -1269,71 +1547,446 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return binary
     }
     
+    // MARK: - Perimeter Lock Helper Functions
+    
+    private func overlapFraction(previous: [UInt8], candidate: [UInt8]) -> Float {
+        guard previous.count == candidate.count else { return 0.0 }
+        
+        var intersection = 0
+        var union = 0
+        
+        for i in 0..<previous.count {
+            if previous[i] != 0 || candidate[i] != 0 {
+                union += 1
+                if previous[i] != 0 && candidate[i] != 0 {
+                    intersection += 1
+                }
+            }
+        }
+        
+        return union > 0 ? Float(intersection) / Float(union) : 0.0
+    }
+    
+    private func area(of mask: [UInt8]) -> Int {
+        return mask.reduce(0) { count, value in
+            count + (value != 0 ? 1 : 0)
+        }
+    }
+    
+    private func printPerimeterDebugGrid(_ label: String, mask: [UInt8], width: Int, height: Int) {
+        guard debugMode else { return }
+        print("🔴 [\(label)] Grid (\(width)x\(height)):")
+        for y in 0..<min(height, 10) {
+            var row = "🔴 "
+            for x in 0..<min(width, 20) {
+                let idx = y * width + x
+                row += mask[idx] != 0 ? "█" : "·"
+            }
+            if width > 20 { row += "..." }
+            print(row)
+        }
+        if height > 10 { print("🔴 ...") }
+    }
+    
+    private func buildGlobalMaskWithOverlap(
+        globalMask: inout [Float],
+        allDetections: [DetectionSmarty],
+        protoMatrix: [Float],
+        primaryBBox: DetectionSmarty,
+        C: Int, Wp: Int, Hp: Int,
+        minOverlap: Float = 0.5
+    ) {
+        let spatial = Wp * Hp
+        let scale = Float(Wp) / 640.0
+        
+        // Primary bbox in mask coords
+        let pX1 = Int((primaryBBox.x - primaryBBox.width / 2) * scale)
+        let pY1 = Int((primaryBBox.y - primaryBBox.height / 2) * scale)
+        let pX2 = Int((primaryBBox.x + primaryBBox.width / 2) * scale)
+        let pY2 = Int((primaryBBox.y + primaryBBox.height / 2) * scale)
+        let primaryBBoxArea = (pX2 - pX1) * (pY2 - pY1)
+        
+        // Compute all masks and areas
+        var detMasks = [[Float]]()
+        var detAreas = [Int]()
+        var detBBoxOverlaps = [Float]()  // Overlap with primaryBBox
+        
+        for det in allDetections {
+            var rawMask = [Float](repeating: 0, count: spatial)
+            guard det.maskCoeffs.count == C else {
+                detMasks.append(rawMask)
+                detAreas.append(0)
+                detBBoxOverlaps.append(0)
+                continue
+            }
+            guard !det.maskCoeffs.contains(where: { !$0.isFinite }) else {
+                detMasks.append(rawMask)
+                detAreas.append(0)
+                detBBoxOverlaps.append(0)
+                continue
+            }
+            
+            det.maskCoeffs.withUnsafeBufferPointer { coeffPtr in
+                protoMatrix.withUnsafeBufferPointer { protoPtr in
+                    guard let coeffBase = coeffPtr.baseAddress,
+                          let protoBase = protoPtr.baseAddress else { return }
+                    vDSP_mmul(coeffBase, 1, protoBase, 1, &rawMask, 1,
+                              1, vDSP_Length(spatial), vDSP_Length(C))
+                }
+            }
+            
+            // Threshold and count area + overlap with primaryBBox
+            var area = 0
+            var overlapWithPrimary = 0
+            for y in 0..<Hp {
+                for x in 0..<Wp {
+                    let idx = y * Wp + x
+                    if rawMask[idx] > maskThreshold {
+                        rawMask[idx] = 1.0
+                        area += 1
+                        // Check if inside primaryBBox
+                        if x >= pX1 && x < pX2 && y >= pY1 && y < pY2 {
+                            overlapWithPrimary += 1
+                        }
+                    } else {
+                        rawMask[idx] = 0.0
+                    }
+                }
+            }
+            
+            detMasks.append(rawMask)
+            detAreas.append(area)
+            let bboxOverlapRatio = area > 0 ? Float(overlapWithPrimary) / Float(area) : 0
+            detBBoxOverlaps.append(bboxOverlapRatio)
+        }
+        
+        // Find primary: largest area AMONG those that overlap >= 50% with primaryBBox
+        var primaryIdx: Int? = nil
+        var maxArea = 0
+        for i in 0..<allDetections.count {
+            if detBBoxOverlaps[i] >= 0.5 && detAreas[i] > maxArea {
+                maxArea = detAreas[i]
+                primaryIdx = i
+            }
+        }
+        
+        // Fallback: if none overlap 50%, take largest that overlaps at all
+        if primaryIdx == nil {
+            for i in 0..<allDetections.count {
+                if detBBoxOverlaps[i] > 0 && detAreas[i] > maxArea {
+                    maxArea = detAreas[i]
+                    primaryIdx = i
+                }
+            }
+        }
+        
+        guard let pIdx = primaryIdx, detAreas[pIdx] > 0 else {
+            if self.debugMode { print("⚠️ No valid masks within primaryBBox") }
+            return
+        }
+        
+        for i in 0..<spatial {
+            globalMask[i] = detMasks[pIdx][i]
+        }
+        
+        var used = [Bool](repeating: false, count: allDetections.count)
+        used[pIdx] = true
+        
+        if self.debugMode {
+            print("🔷 Primary (in bbox): \(allDetections[pIdx].className) @ \(Int(allDetections[pIdx].confidence * 100))%, area=\(detAreas[pIdx])px, bboxOverlap=\(Int(detBBoxOverlaps[pIdx] * 100))%")
+        }
+        
+        // Iteratively merge masks with >= 50% overlap with globalMask
+        var changed = true
+        while changed {
+            changed = false
+            
+            for (idx, detMask) in detMasks.enumerated() {
+                if used[idx] || detAreas[idx] == 0 { continue }
+                
+                var overlapCount = 0
+                for i in 0..<spatial {
+                    if detMask[i] > 0 && globalMask[i] > 0 {
+                        overlapCount += 1
+                    }
+                }
+                
+                let overlapRatio = Float(overlapCount) / Float(detAreas[idx])
+                
+                if overlapRatio >= minOverlap {
+                    var added = 0
+                    for i in 0..<spatial {
+                        if detMask[i] > 0 && globalMask[i] == 0 {
+                            globalMask[i] = 1.0
+                            added += 1
+                        }
+                    }
+                    used[idx] = true
+                    changed = true
+                    
+                    if self.debugMode {
+                        print("🔗 Merged \(allDetections[idx].className) @ \(Int(allDetections[idx].confidence * 100))%: overlap=\(Int(overlapRatio * 100))%, +\(added)px")
+                    }
+                } else if self.debugMode && overlapRatio > 0 {
+                    print("⏭️ Skipped \(allDetections[idx].className) @ \(Int(allDetections[idx].confidence * 100))%: overlap=\(Int(overlapRatio * 100))% < 50%")
+                }
+            }
+        }
+        
+        if self.debugMode {
+            let mergedCount = used.filter { $0 }.count
+            var totalArea = 0
+            for i in 0..<spatial { if globalMask[i] > 0 { totalArea += 1 } }
+            print("🔷 buildGlobalMask: \(mergedCount)/\(allDetections.count) merged, total=\(totalArea)px")
+        }
+    }
+    
+    private func buildGlobalMaskUnionAll(
+        globalMask: inout [Float],
+        allDetections: [DetectionSmarty],
+        protoMatrix: [Float],
+        primaryBBox: DetectionSmarty,
+        C: Int, Wp: Int, Hp: Int
+    ) {
+        let spatial = Wp * Hp
+        let scale = Float(Wp) / 640.0
+        
+        // Bbox bounds
+        let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
+        let bboxY1 = max(0, Int((primaryBBox.y - primaryBBox.height / 2) * scale))
+        let bboxX2 = min(Wp, Int((primaryBBox.x + primaryBBox.width / 2) * scale))
+        let bboxY2 = min(Hp, Int((primaryBBox.y + primaryBBox.height / 2) * scale))
+        
+        var totalAdded = 0
+        
+        for det in allDetections {
+            var rawMask = [Float](repeating: 0, count: spatial)
+            guard det.maskCoeffs.count == C else { continue }
+            guard !det.maskCoeffs.contains(where: { !$0.isFinite }) else { continue }
+            
+            det.maskCoeffs.withUnsafeBufferPointer { coeffPtr in
+                protoMatrix.withUnsafeBufferPointer { protoPtr in
+                    guard let coeffBase = coeffPtr.baseAddress,
+                          let protoBase = protoPtr.baseAddress else { return }
+                    vDSP_mmul(coeffBase, 1, protoBase, 1, &rawMask, 1,
+                              1, vDSP_Length(spatial), vDSP_Length(C))
+                }
+            }
+            
+            // Union into globalMask (within bbox)
+            var added = 0
+            for y in bboxY1..<bboxY2 {
+                for x in bboxX1..<bboxX2 {
+                    let idx = y * Wp + x
+                    if rawMask[idx] > maskThreshold && globalMask[idx] == 0 {
+                        globalMask[idx] = 1.0
+                        added += 1
+                    }
+                }
+            }
+            totalAdded += added
+        }
+        
+        if self.debugMode {
+            var totalArea = 0
+            for i in 0..<spatial { if globalMask[i] > 0 { totalArea += 1 } }
+            print("🔷 buildGlobalMaskUnionAll: \(allDetections.count) detections → \(totalArea)px")
+        }
+    }
+
+    private func postProcessMaskWithMemory(_ mask: inout [Float], width: Int, height: Int) {
+        let count = width * height
+        
+        // Init or reset if size changed
+        if accumulatedPerimeter == nil || accumulatedPerimeter!.count != count {
+            accumulatedPerimeter = [Float](repeating: 0, count: count)
+        }
+        
+        // Union current frame into accumulated
+        for i in 0..<count {
+            if mask[i] > 0 {
+                accumulatedPerimeter![i] = 1.0
+            }
+        }
+        
+        // Create outer ring from accumulated
+        var ring = accumulatedPerimeter!
+        
+        // Horizontal fill
+        for y in 0..<height {
+            var minX = -1, maxX = -1
+            for x in 0..<width {
+                if ring[y * width + x] > 0 {
+                    if minX < 0 { minX = x }
+                    maxX = x
+                }
+            }
+            if minX >= 0 {
+                for x in minX...maxX { ring[y * width + x] = 1.0 }
+            }
+        }
+        
+        // Vertical fill
+        for x in 0..<width {
+            var minY = -1, maxY = -1
+            for y in 0..<height {
+                if ring[y * width + x] > 0 {
+                    if minY < 0 { minY = y }
+                    maxY = y
+                }
+            }
+            if minY >= 0 {
+                for y in minY...maxY { ring[y * width + x] = 1.0 }
+            }
+        }
+        
+        mask = ring
+    }
+
+    // Call this when user resets or object changes significantly
+    func resetAccumulatedPerimeter() {
+        accumulatedPerimeter = nil
+    }
+    
     // MARK: - Mask Post-Processing
     
-    /// Seals perimeter, fills holes, keeps largest connected region
+    // MARK: - Outer Ring Post-Processing
+
     private func postProcessMask(_ mask: inout [Float], width: Int, height: Int) {
         let t0 = Date()
         let count = width * height
         guard count > 0 else { return }
         
-        // Step 1: Convert to binary (1 = object, 0 = background)
-        var binary = [UInt8](repeating: 0, count: count)
-        for i in 0..<count {
-            binary[i] = mask[i] > 0 ? 1 : 0
+        // Step 1: Mark exterior by flood fill from edges (4-connectivity)
+        var exterior = [Bool](repeating: false, count: count)
+        
+        // Simple queue-based flood from all edge background pixels
+        var queue = [Int]()
+        queue.reserveCapacity(count / 4)
+        
+        // Seed top & bottom edges
+        for x in 0..<width {
+            if mask[x] == 0 { queue.append(x) }
+            let bottomIdx = (height - 1) * width + x
+            if mask[bottomIdx] == 0 { queue.append(bottomIdx) }
         }
-        
-        // Step 2: Find connected components and their areas
-        var labels = [Int](repeating: 0, count: count)
-        var labelAreas = [Int: Int]() // label -> area
-        var currentLabel = 0
-        
+        // Seed left & right edges
         for y in 0..<height {
-            for x in 0..<width {
-                let idx = y * width + x
-                if binary[idx] == 1 && labels[idx] == 0 {
-                    currentLabel += 1
-                    let area = floodFillLabel(&labels, binary: binary, width: width, height: height, startX: x, startY: y, label: currentLabel)
-                    labelAreas[currentLabel] = area
-                }
-            }
+            let leftIdx = y * width
+            let rightIdx = y * width + width - 1
+            if mask[leftIdx] == 0 { queue.append(leftIdx) }
+            if mask[rightIdx] == 0 { queue.append(rightIdx) }
         }
         
-        if labelAreas.isEmpty {
-            if self.debugMode { print("⚠️ postProcessMask: No components found") }
-            return
+        // Flood fill exterior
+        var head = 0
+        while head < queue.count {
+            let idx = queue[head]
+            head += 1
+            
+            if exterior[idx] { continue }
+            if mask[idx] > 0 { continue }
+            
+            exterior[idx] = true
+            
+            let x = idx % width
+            let y = idx / width
+            
+            if x > 0 && !exterior[idx - 1] && mask[idx - 1] == 0 { queue.append(idx - 1) }
+            if x < width - 1 && !exterior[idx + 1] && mask[idx + 1] == 0 { queue.append(idx + 1) }
+            if y > 0 && !exterior[idx - width] && mask[idx - width] == 0 { queue.append(idx - width) }
+            if y < height - 1 && !exterior[idx + width] && mask[idx + width] == 0 { queue.append(idx + width) }
         }
         
-        // Step 3: Find largest component
-        let largestLabel = labelAreas.max(by: { $0.value < $1.value })!.key
-        let largestArea = labelAreas[largestLabel]!
-        
-        if self.debugMode {
-            print("🔷 postProcessMask: \(labelAreas.count) components, largest=#\(largestLabel) area=\(largestArea)px")
-        }
-        
-        // Step 4: Create mask with only largest component
-        var componentMask = [UInt8](repeating: 0, count: count)
+        // Step 2: Everything NOT exterior = fill it (object + holes inside)
         for i in 0..<count {
-            if labels[i] == largestLabel {
-                componentMask[i] = 1
-            }
-        }
-        
-        // Step 5: Fill holes inside the largest component (flood fill background from edges, invert)
-        fillHoles(&componentMask, width: width, height: height)
-        
-        // Step 6: Write back to mask
-        for i in 0..<count {
-            mask[i] = componentMask[i] > 0 ? 1.0 : 0.0
+            mask[i] = exterior[i] ? 0.0 : 1.0
         }
         
         if self.debugMode {
             var finalCount = 0
             for i in 0..<count { if mask[i] > 0 { finalCount += 1 } }
             let dt = Date().timeIntervalSince(t0) * 1000.0
-            print("🔷 postProcessMask: Final sealed area = \(finalCount)px (\(String(format: "%.1f", Float(finalCount)/Float(count)*100))%)")
+            print("🔷 postProcessMask: filled interior = \(finalCount)px (\(String(format: "%.1f", Float(finalCount)/Float(count)*100))%)")
             print(String(format: "⏱ postProcessMask: %.2f ms", dt))
+        }
+    }
+
+    // Fast flood fill using pre-allocated stack
+    private func floodFillLabelFast(_ labels: inout [Int], binary: [UInt8], width: Int, height: Int, startX: Int, startY: Int, label: Int) -> Int {
+        var stack = ContiguousArray<Int32>(repeating: 0, count: 8192)
+        var stackTop = 0
+        stack[stackTop] = Int32(startX)
+        stack[stackTop + 1] = Int32(startY)
+        stackTop += 2
+        
+        var area = 0
+        
+        while stackTop > 0 {
+            stackTop -= 2
+            let x = Int(stack[stackTop])
+            let y = Int(stack[stackTop + 1])
+            let idx = y * width + x
+            
+            if x < 0 || x >= width || y < 0 || y >= height { continue }
+            if binary[idx] == 0 || labels[idx] != 0 { continue }
+            
+            labels[idx] = label
+            area += 1
+            
+            // 8-connectivity
+            if stackTop + 16 < stack.count {
+                if x > 0 { stack[stackTop] = Int32(x-1); stack[stackTop+1] = Int32(y); stackTop += 2 }
+                if x < width-1 { stack[stackTop] = Int32(x+1); stack[stackTop+1] = Int32(y); stackTop += 2 }
+                if y > 0 { stack[stackTop] = Int32(x); stack[stackTop+1] = Int32(y-1); stackTop += 2 }
+                if y < height-1 { stack[stackTop] = Int32(x); stack[stackTop+1] = Int32(y+1); stackTop += 2 }
+                if x > 0 && y > 0 { stack[stackTop] = Int32(x-1); stack[stackTop+1] = Int32(y-1); stackTop += 2 }
+                if x < width-1 && y > 0 { stack[stackTop] = Int32(x+1); stack[stackTop+1] = Int32(y-1); stackTop += 2 }
+                if x > 0 && y < height-1 { stack[stackTop] = Int32(x-1); stack[stackTop+1] = Int32(y+1); stackTop += 2 }
+                if x < width-1 && y < height-1 { stack[stackTop] = Int32(x+1); stack[stackTop+1] = Int32(y+1); stackTop += 2 }
+            }
+        }
+        return area
+    }
+
+    private func fillHolesFast(_ mask: inout [UInt8], width: Int, height: Int) {
+        let count = width * height
+        var visited = [Bool](repeating: false, count: count)
+        var stack = ContiguousArray<Int32>(repeating: 0, count: 4096)
+        var stackTop = 0
+        
+        // Seed from edges
+        for x in 0..<width {
+            if mask[x] == 0 { stack[stackTop] = Int32(x); stack[stackTop+1] = 0; stackTop += 2 }
+            if mask[(height-1)*width + x] == 0 { stack[stackTop] = Int32(x); stack[stackTop+1] = Int32(height-1); stackTop += 2 }
+        }
+        for y in 0..<height {
+            if mask[y*width] == 0 { stack[stackTop] = 0; stack[stackTop+1] = Int32(y); stackTop += 2 }
+            if mask[y*width + width-1] == 0 { stack[stackTop] = Int32(width-1); stack[stackTop+1] = Int32(y); stackTop += 2 }
+        }
+        
+        while stackTop > 0 {
+            stackTop -= 2
+            let x = Int(stack[stackTop])
+            let y = Int(stack[stackTop + 1])
+            let idx = y * width + x
+            
+            if x < 0 || x >= width || y < 0 || y >= height { continue }
+            if mask[idx] != 0 || visited[idx] { continue }
+            
+            visited[idx] = true
+            
+            if stackTop + 8 < stack.count {
+                if x > 0 { stack[stackTop] = Int32(x-1); stack[stackTop+1] = Int32(y); stackTop += 2 }
+                if x < width-1 { stack[stackTop] = Int32(x+1); stack[stackTop+1] = Int32(y); stackTop += 2 }
+                if y > 0 { stack[stackTop] = Int32(x); stack[stackTop+1] = Int32(y-1); stackTop += 2 }
+                if y < height-1 { stack[stackTop] = Int32(x); stack[stackTop+1] = Int32(y+1); stackTop += 2 }
+            }
+        }
+        
+        // Fill holes (not reachable from edge)
+        for i in 0..<count {
+            if !visited[i] { mask[i] = 1 }
         }
     }
 
@@ -1421,7 +2074,102 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
     
-    // MARK: - TWO-STAGE CUTOUT (with Accelerate prototype build & binary mask)
+    private func fillMaskInterior(_ mask: inout [Float], width: Int, height: Int) {
+        let count = width * height
+        guard count > 0 else { return }
+        
+        // Step 1: Dilate mask to close small gaps (1-2 pixel gaps)
+        var dilated = [Float](repeating: 0, count: count)
+        for y in 0..<height {
+            for x in 0..<width {
+                if mask[y * width + x] > 0 {
+                    // Set 3x3 neighborhood
+                    for dy in -1...1 {
+                        for dx in -1...1 {
+                            let nx = x + dx
+                            let ny = y + dy
+                            if nx >= 0 && nx < width && ny >= 0 && ny < height {
+                                dilated[ny * width + nx] = 1.0
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Step 2: Flood fill exterior on dilated mask
+        var exterior = [Bool](repeating: false, count: count)
+        var queue = [Int](repeating: 0, count: count)
+        var head = 0
+        var tail = 0
+        
+        for x in 0..<width {
+            let topIdx = x
+            let botIdx = (height - 1) * width + x
+            if dilated[topIdx] == 0 && !exterior[topIdx] {
+                exterior[topIdx] = true
+                queue[tail] = topIdx; tail += 1
+            }
+            if dilated[botIdx] == 0 && !exterior[botIdx] {
+                exterior[botIdx] = true
+                queue[tail] = botIdx; tail += 1
+            }
+        }
+        for y in 0..<height {
+            let leftIdx = y * width
+            let rightIdx = y * width + width - 1
+            if dilated[leftIdx] == 0 && !exterior[leftIdx] {
+                exterior[leftIdx] = true
+                queue[tail] = leftIdx; tail += 1
+            }
+            if dilated[rightIdx] == 0 && !exterior[rightIdx] {
+                exterior[rightIdx] = true
+                queue[tail] = rightIdx; tail += 1
+            }
+        }
+        
+        while head < tail {
+            let idx = queue[head]
+            head += 1
+            let x = idx % width
+            let y = idx / width
+            
+            if x > 0 {
+                let n = idx - 1
+                if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 }
+            }
+            if x < width - 1 {
+                let n = idx + 1
+                if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 }
+            }
+            if y > 0 {
+                let n = idx - width
+                if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 }
+            }
+            if y < height - 1 {
+                let n = idx + width
+                if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 }
+            }
+        }
+        
+        // Step 3: Fill - but use original mask edges, not dilated
+        // Interior = not exterior
+        for i in 0..<count {
+            if !exterior[i] {
+                mask[i] = 1.0
+            }
+            // Keep original mask pixels even if in exterior zone
+            // (this prevents shrinking the original detection)
+        }
+        
+        if self.debugMode {
+            var finalCount = 0
+            for i in 0..<count { if mask[i] > 0 { finalCount += 1 } }
+            print("🕳️ fillMaskInterior: final=\(finalCount)px")
+        }
+    }
+    
+    // MARK: - TWO-STAGE CUTOUT (CLEAN - NO GHOST)
     private func generateCutoutTwoStage(
         stage1Detections: [DetectionSmarty],
         stage1Prototypes: MLMultiArray,
@@ -1458,136 +2206,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         var globalMask = [Float](repeating: 0, count: spatial)
 
-        if self.debugMode { print("\n📥 Processing Stage 1 masks (full frame)...") }
-
-        var primaryRawMask: [Float]? = nil
-        var primaryDet: DetectionSmarty? = nil
-        var stage1PixelCount = 0
-
-        let s1MaskStart = Date()
-        for (detIndex, det) in stage1Detections.enumerated() {
-            var rawMask = [Float](repeating: 0, count: spatial)
-            let mmulStart = Date()
-            
-            // Validate mask coefficients before matrix multiplication
-            guard det.maskCoeffs.count == C else {
-                if self.debugMode {
-                    print("⚠️ Stage1 det[\(detIndex)]: Invalid mask coeffs count: \(det.maskCoeffs.count), expected: \(C)")
-                }
-                continue
-            }
-            
-            // Validate all coefficients are finite
-            let hasInvalidCoeffs = det.maskCoeffs.contains { !$0.isFinite }
-            guard !hasInvalidCoeffs else {
-                if self.debugMode {
-                    print("⚠️ Stage1 det[\(detIndex)]: Non-finite mask coefficients detected")
-                }
-                continue
-            }
-            
-            // Validate prototype matrix dimensions
-            guard protoMatrix1.count == C * spatial else {
-                if self.debugMode {
-                    print("⚠️ Stage1 det[\(detIndex)]: Prototype matrix size mismatch: \(protoMatrix1.count), expected: \(C * spatial)")
-                }
-                continue
-            }
-            
-            // Safe matrix multiplication
-            vDSP_mmul(det.maskCoeffs, 1,
-                      protoMatrix1, 1,
-                      &rawMask, 1,
-                      1, vDSP_Length(spatial), vDSP_Length(C))
-            let mmulEnd = Date()
-            if self.debugMode {
-                print(String(format: "   ⏱ vDSP_mmul Stage1 det[%d]: %.2f ms", detIndex,
-                             mmulEnd.timeIntervalSince(mmulStart) * 1000.0))
-            }
-
-            if detIndex == 0 {
-                primaryRawMask = rawMask
-                primaryDet = det
-
-                var minVal: Float = 0, maxVal: Float = 0
-                vDSP_minv(rawMask, 1, &minVal, vDSP_Length(spatial))
-                vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(spatial))
-                var mean: Float = 0
-                vDSP_meanv(rawMask, 1, &mean, vDSP_Length(spatial))
-
-                print("\n📊 PRIMARY MASK RAW VALUES (\(det.className) @ \(Int(det.confidence*100))%):")
-                print("   Range: min=\(minVal), max=\(maxVal), mean=\(mean)")
-
-                var posCount = 0, negCount = 0, zeroCount = 0
-                for v in rawMask {
-                    if v > 0 { posCount += 1 }
-                    else if v < 0 { negCount += 1 }
-                    else { zeroCount += 1 }
-                }
-                print("   Distribution: \(posCount) positive, \(negCount) negative, \(zeroCount) zero")
-
-                print("   Mask coefficients (32): [\(det.maskCoeffs.map { String(format: "%.6f", $0) }.joined(separator: ", "))]")
-
-                let scale = Float(Wp) / 640.0
-                let mx1 = max(0, Int((det.x - det.width / 2) * scale))
-                let my1 = max(0, Int((det.y - det.height / 2) * scale))
-                let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
-                let my2 = min(Hp, Int((det.y + det.height / 2) * scale))
-
-                print("   BBox in mask coords: (\(mx1),\(my1)) → (\(mx2),\(my2))")
-            }
-
-            let scale = Float(Wp) / 640.0
-            let mx1 = max(0, Int((det.x - det.width / 2) * scale))
-            let my1 = max(0, Int((det.y - det.height / 2) * scale))
-            let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
-            let my2 = min(Hp, Int((det.y + det.height / 2) * scale))
-
-            var addedPixels = 0
-            rawMask.withUnsafeBufferPointer { rPtr in
-                globalMask.withUnsafeMutableBufferPointer { gPtr in
-                    if mx2 > mx1 && my2 > my1 {
-                        for py in my1..<my2 {
-                            let rowStart = py * Wp + mx1
-                            let rowLen = mx2 - mx1
-                            for i in 0..<rowLen {
-                                let idx = rowStart + i
-                                if rPtr[idx] > maskThreshold && gPtr[idx] == 0 {
-                                    gPtr[idx] = 1.0
-                                    addedPixels += 1
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if self.debugMode && detIndex < 5 {
-                print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px")
-            }
-        }
-        let s1MaskEnd = Date()
-
-        for i in 0..<spatial { if globalMask[i] > 0 { stage1PixelCount += 1 } }
-        if self.debugMode {
-            print("   🎚️ Mask threshold: \(maskThreshold)")
-            print("   📊 After Stage 1: \(stage1PixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(stage1PixelCount)/Float(spatial)*100))%)")
-            print(String(format: "⏱ Stage1 mask build+apply: %.2f ms", s1MaskEnd.timeIntervalSince(s1MaskStart) * 1000.0))
-        }
-
-        // Stage 2
+        // Map Stage 2 detections to Stage 1 coords
         if let proto2 = stage2Prototypes, !stage2Detections.isEmpty {
-            let s2ProtoStart = Date()
-            if self.debugMode { print("\n🔬 Processing Stage 2 masks (cropped → full frame)...") }
-
-            let protoMatrix2 = makePrototypeBuffer(from: proto2, C: C, Hp: Hp, Wp: Wp)
-            let s2ProtoEnd = Date()
-            if self.debugMode {
-                print(String(format: "⏱ Stage2 prototype buffer build (Accelerate): %.2f ms",
-                             s2ProtoEnd.timeIntervalSince(s2ProtoStart) * 1000.0))
-            }
-
-            // Reconstruct crop region in Stage1 model coords (0..640)
             let padding: Float = 0.1
             let cropX1 = max(0, primaryBBox.x - primaryBBox.width / 2 * (1 + padding))
             let cropY1 = max(0, primaryBBox.y - primaryBBox.height / 2 * (1 + padding))
@@ -1595,144 +2215,71 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let cropY2 = min(640, primaryBBox.y + primaryBBox.height / 2 * (1 + padding))
             let cropW = cropX2 - cropX1
             let cropH = cropY2 - cropY1
-
-            if self.debugMode {
-                print("   Crop region (model/Stage1): (\(Int(cropX1)),\(Int(cropY1)))→(\(Int(cropX2)),\(Int(cropY2))) = \(Int(cropW))x\(Int(cropH))")
-            }
-
             let s2ToS1ScaleX = cropW / 640.0
             let s2ToS1ScaleY = cropH / 640.0
 
-            let scaleMask = Float(Wp) / 640.0
-            let s2MaskStart = Date()
-
-            mappedStage2Detections.removeAll(keepingCapacity: true)
-            mappedStage2Detections.reserveCapacity(stage2Detections.count)
-
             for det in stage2Detections {
-                var rawMask = [Float](repeating: 0, count: spatial)
-                let mmulStart = Date()
-                
-                // Validate mask coefficients before matrix multiplication
-                guard det.maskCoeffs.count == C else {
-                    if self.debugMode {
-                        print("⚠️ Stage2 det: Invalid mask coeffs count: \(det.maskCoeffs.count), expected: \(C)")
-                    }
-                    continue
-                }
-                
-                // Validate all coefficients are finite
-                let hasInvalidCoeffs = det.maskCoeffs.contains { !$0.isFinite }
-                guard !hasInvalidCoeffs else {
-                    if self.debugMode {
-                        print("⚠️ Stage2 det: Non-finite mask coefficients detected")
-                    }
-                    continue
-                }
-                
-                // Validate prototype matrix dimensions
-                guard protoMatrix2.count == C * spatial else {
-                    if self.debugMode {
-                        print("⚠️ Stage2 det: Prototype matrix size mismatch: \(protoMatrix2.count), expected: \(C * spatial)")
-                    }
-                    continue
-                }
-                
-                // Safe matrix multiplication
-                vDSP_mmul(det.maskCoeffs, 1,
-                          protoMatrix2, 1,
-                          &rawMask, 1,
-                          1, vDSP_Length(spatial), vDSP_Length(C))
-                let mmulEnd = Date()
-                if self.debugMode {
-                    print(String(format: "   ⏱ vDSP_mmul Stage2: %.2f ms",
-                                 mmulEnd.timeIntervalSince(mmulStart) * 1000.0))
-                }
-
-                let mx1_crop = max(0, Int((det.x - det.width / 2) * scaleMask))
-                let my1_crop = max(0, Int((det.y - det.height / 2) * scaleMask))
-                let mx2_crop = min(Wp, Int((det.x + det.width / 2) * scaleMask))
-                let my2_crop = min(Hp, Int((det.y + det.height / 2) * scaleMask))
-
-                var addedPixels = 0
-
-                rawMask.withUnsafeBufferPointer { rPtr in
-                    globalMask.withUnsafeMutableBufferPointer { gPtr in
-                        if mx2_crop > mx1_crop && my2_crop > my1_crop {
-                            for py_crop in my1_crop..<my2_crop {
-                                let base = py_crop * Wp
-                                for px_crop in mx1_crop..<mx2_crop {
-                                    let cropIdx = base + px_crop
-                                    if rPtr[cropIdx] > maskThreshold {
-                                        let fracX = Float(px_crop) / Float(Wp)
-                                        let fracY = Float(py_crop) / Float(Hp)
-
-                                        let xModel2 = fracX * 640.0
-                                        let yModel2 = fracY * 640.0
-
-                                        let fullX = cropX1 + xModel2 * s2ToS1ScaleX
-                                        let fullY = cropY1 + yModel2 * s2ToS1ScaleY
-
-                                        let mx_full = Int(fullX * scaleMask)
-                                        let my_full = Int(fullY * scaleMask)
-
-                                        if mx_full >= 0 && mx_full < Wp && my_full >= 0 && my_full < Hp {
-                                            let fullIdx = my_full * Wp + mx_full
-                                            if gPtr[fullIdx] == 0 {
-                                                addedPixels += 1
-                                            }
-                                            gPtr[fullIdx] = 1.0
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if self.debugMode {
-                    print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: localMask(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW")
-                }
-
-                // Map Stage2 bbox → Stage1 bbox for drawing/summary (not for mask)
                 let newX = cropX1 + det.x * s2ToS1ScaleX
                 let newY = cropY1 + det.y * s2ToS1ScaleY
                 let newW = det.width * s2ToS1ScaleX
                 let newH = det.height * s2ToS1ScaleY
 
                 let mapped = DetectionSmarty(
-                    x: newX,
-                    y: newY,
-                    width: newW,
-                    height: newH,
-                    confidence: det.confidence,
-                    classIdx: det.classIdx,
-                    className: det.className,
-                    maskCoeffs: det.maskCoeffs
+                    x: newX, y: newY, width: newW, height: newH,
+                    confidence: det.confidence, classIdx: det.classIdx,
+                    className: det.className, maskCoeffs: det.maskCoeffs
                 )
                 mappedStage2Detections.append(mapped)
             }
-            let s2MaskEnd = Date()
-            if self.debugMode {
-                print(String(format: "⏱ Stage2 mask build+apply: %.2f ms",
-                             s2MaskEnd.timeIntervalSince(s2MaskStart) * 1000.0))
+        }
+
+        // Combine all detections
+        let allDetections = stage1Detections + mappedStage2Detections
+
+        // Build globalMask with 50% overlap filter
+        let buildStart = Date()
+        // Find this call and add primaryBBox:
+        buildGlobalMaskWithOverlap(
+            globalMask: &globalMask,
+            allDetections: allDetections,
+            protoMatrix: protoMatrix1,
+            primaryBBox: primaryBBox,  // ← Add this
+            C: C, Wp: Wp, Hp: Hp,
+            minOverlap: 0.5
+        )
+        let buildEnd = Date()
+        
+        if self.debugMode {
+            var rawCount = 0
+            for i in 0..<spatial { if globalMask[i] > 0 { rawCount += 1 } }
+            print(String(format: "⏱ buildGlobalMaskWithOverlapFilter: %.2f ms", buildEnd.timeIntervalSince(buildStart) * 1000.0))
+            print("📊 After overlap filter: \(rawCount)/\(spatial) pixels (\(String(format: "%.1f", Float(rawCount)/Float(spatial)*100))%)")
+        }
+
+        if self.debugMode {
+            let maskCopy = globalMask  // Copy to avoid race
+            DispatchQueue.main.async {
+                self.saveMaskToPhotos(maskCopy, width: Wp, height: Hp, label: "globalMask_raw")
             }
         }
 
-        // Post-process: seal perimeter, fill holes, keep largest connected region
-        postProcessMask(&globalMask, width: Wp, height: Hp)
-
+        // Fill inside perimeter
+        let ppStart = Date()
+        fillInsidePerimeter(&globalMask, width: Wp, height: Hp)
+        let ppEnd = Date()
+        
         var finalPixelCount = 0
         for i in 0..<spatial { if globalMask[i] > 0 { finalPixelCount += 1 } }
-        let addedByStage2 = finalPixelCount - stage1PixelCount
 
         if self.debugMode {
-            print("\n📊 MERGED MASK: \(finalPixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(finalPixelCount)/Float(spatial)*100))%)")
-            print("   Stage 1 contributed: \(stage1PixelCount) pixels")
-            print("   Stage 2 added: \(addedByStage2) NEW pixels")
+            saveMaskToPhotos(globalMask, width: Wp, height: Hp, label: "globalMask_filled")
+            print(String(format: "⏱ fillInsidePerimeter: %.2f ms", ppEnd.timeIntervalSince(ppStart) * 1000.0))
+            print("📊 FINAL MASK: \(finalPixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(finalPixelCount)/Float(spatial)*100))%)")
         }
 
-        // === UPSCALE TO ORIGINAL IMAGE, APPLY AS ALPHA ===
+        // =============================================
+        // RENDER TO IMAGE
+        // =============================================
         autoreleasepool {
             let renderStart = Date()
             let ciImage = CIImage(cvPixelBuffer: originalImage)
@@ -1772,122 +2319,41 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let scaleX = Float(Wp) / Float(width)
             let scaleY = Float(Hp) / Float(height)
 
+            // Apply mask as alpha
+            for py in 0..<height {
+                let my = min(max(Int(Float(py) * scaleY), 0), Hp - 1)
+                let maskRowOffset = my * Wp
+                let rowBase = pixels.advanced(by: py * width * 4)
+
+                for px in 0..<width {
+                    let mx = min(max(Int(Float(px) * scaleX), 0), Wp - 1)
+                    let maskIdx = maskRowOffset + mx
+                    let pixelPtr = rowBase.advanced(by: px * 4)
+                    
+                    if globalMask[maskIdx] > 0 {
+                        pixelPtr[3] = 255  // opaque
+                    } else {
+                        pixelPtr[0] = 0
+                        pixelPtr[1] = 0
+                        pixelPtr[2] = 0
+                        pixelPtr[3] = 0  // transparent
+                    }
+                }
+            }
+            
+            // Draw perimeter outline in debug mode
             if self.debugMode {
-                print("🖼️ Upscaling \(Wp)×\(Hp) → \(width)×\(height)")
+                drawPerimeterOutline(
+                    on: pixels,
+                    mask: globalMask,
+                    maskWidth: Wp,
+                    maskHeight: Hp,
+                    imageWidth: width,
+                    imageHeight: height
+                )
             }
 
-            var opaqueCount = 0
-            var xMap = [Int](repeating: 0, count: width)
-            for px in 0..<width {
-                xMap[px] = min(max(Int(Float(px) * scaleX), 0), Wp - 1)
-            }
-
-            if stage1Detections.isEmpty && mappedStage2Detections.isEmpty {
-                memset(data, 0, width * height * 4)
-                if self.debugMode { print("📊 Output: 0/\(width * height) opaque (0.0%)") }
-            } else {
-                let modelSize: Float = 640.0
-                var imageRects = [(x0: Int, y0: Int, x1: Int, y1: Int)]()
-                imageRects.reserveCapacity(stage1Detections.count + mappedStage2Detections.count)
-
-                let keptDetections = stage1Detections + mappedStage2Detections
-
-                for det in keptDetections {
-                    let left = det.x - det.width / 2.0
-                    let right = det.x + det.width / 2.0
-                    let top = det.y - det.height / 2.0
-                    let bottom = det.y + det.height / 2.0
-
-                    let sx = Float(width) / modelSize
-                    let sy = Float(height) / modelSize
-
-                    var ix0 = Int(floor(left * sx))
-                    var ix1 = Int(ceil(right * sx))
-                    var iy0 = Int(floor(top * sy))
-                    var iy1 = Int(ceil(bottom * sy))
-
-                    ix0 = max(0, min(ix0, width))
-                    ix1 = max(0, min(ix1, width))
-                    iy0 = max(0, min(iy0, height))
-                    iy1 = max(0, min(iy1, height))
-
-                    if ix0 < ix1 && iy0 < iy1 {
-                        imageRects.append((x0: ix0, y0: iy0, x1: ix1, y1: iy1))
-                    }
-                }
-
-                var rowIntervals = Array(repeating: [(start:Int,end:Int)](), count: height)
-                for r in imageRects {
-                    for y in r.y0..<r.y1 {
-                        rowIntervals[y].append((start: r.x0, end: r.x1))
-                    }
-                }
-
-                for y in 0..<height {
-                    if rowIntervals[y].isEmpty { continue }
-                    var intervals = rowIntervals[y]
-                    intervals.sort { $0.start < $1.start }
-                    var merged: [(Int,Int)] = []
-                    var cur = intervals[0]
-                    for i in 1..<intervals.count {
-                        let it = intervals[i]
-                        if it.start <= cur.end { cur.end = max(cur.end, it.end) } else { merged.append(cur); cur = it }
-                    }
-                    merged.append(cur)
-                    rowIntervals[y] = merged
-                }
-
-                for py in 0..<height {
-                    let my = min(max(Int(Float(py) * scaleY), 0), Hp - 1)
-                    let maskRowOffset = my * Wp
-                    let rowBase = pixels.advanced(by: py * width * 4)
-
-                    let intervals = rowIntervals[py]
-                    if intervals.isEmpty {
-                        memset(rowBase, 0, width * 4)
-                        continue
-                    }
-
-                    var x = 0
-                    var intervalIndex = 0
-
-                    while x < width {
-                        let nextInterval = intervalIndex < intervals.count ? intervals[intervalIndex] : (start: width, end: width)
-                        if x < nextInterval.start {
-                            let len = min(nextInterval.start, width) - x
-                            memset(rowBase.advanced(by: x * 4), 0, len * 4)
-                            x += len
-                            continue
-                        }
-
-                        let runEnd = min(nextInterval.end, width)
-                        var pxIdx = x
-                        while pxIdx < runEnd {
-                            let maskIdx = maskRowOffset + xMap[pxIdx]
-                            let pixelPtr = rowBase.advanced(by: pxIdx * 4)
-                            if globalMask[maskIdx] > 0 {
-                                pixelPtr[3] = 255
-                                opaqueCount += 1
-                            } else {
-                                pixelPtr[0] = 0; pixelPtr[1] = 0; pixelPtr[2] = 0; pixelPtr[3] = 0
-                            }
-                            pxIdx += 1
-                        }
-                        x = runEnd
-                        intervalIndex += 1
-                    }
-                }
-
-                if self.debugMode {
-                    print("📊 Output: \(opaqueCount)/\(width * height) opaque (\(String(format: "%.1f", Float(opaqueCount)/Float(width*height)*100))%)")
-                }
-            }
-
-            // Labels: draw for ALL kept detections (Stage1 + Stage2) using label-only,
-            // and in debugMode also draw bbox for primary
-            let allLabelDetections = stage1Detections + mappedStage2Detections
-
-            // Labels (always), boxes only in debugMode
+            // Draw labels
             self.drawLabelsAndBoxes(
                 ctx: ctx,
                 stage1: stage1Detections,
@@ -1897,35 +2363,977 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 drawBoxes: self.debugMode
             )
 
-
-
             let renderEnd = Date()
             if self.debugMode {
-                print(String(format: "⏱ Rendering + upscaling + cutout: %.2f ms",
-                             renderEnd.timeIntervalSince(renderStart) * 1000.0))
-                print(String(format: "⏱ generateCutoutTwoStage total: %.2f ms",
-                             renderEnd.timeIntervalSince(funcStart) * 1000.0))
+                print(String(format: "⏱ Rendering: %.2f ms", renderEnd.timeIntervalSince(renderStart) * 1000.0))
+                print(String(format: "⏱ generateCutoutTwoStage total: %.2f ms", renderEnd.timeIntervalSince(funcStart) * 1000.0))
                 print("✅ ==================== FRAME COMPLETE ====================\n")
             }
 
             if let outCG = ctx.makeImage() {
-
-                let finalCG = self.renderLabelsOnFinalImage(
-                    baseCGImage: outCG,
-                    width: width,
-                    height: height,
-                    stage1: stage1Detections,
-                    stage2: mappedStage2Detections
-                )
-
                 DispatchQueue.main.async {
                     self.finishFirstDetectionIfNeeded()
-                    self.maskImageView.image = UIImage(cgImage: finalCG)
+                    self.maskImageView.image = UIImage(cgImage: outCG)
                     self.isProcessing = false
                 }
+            } else {
+                DispatchQueue.main.async { self.isProcessing = false }
             }
         }
     }
+
+//    // MARK: - Build Global Mask with 50% Overlap Filter
+//    private func buildGlobalMaskWithOverlapFilter(
+//        globalMask: inout [Float],
+//        allDetections: [DetectionSmarty],
+//        protoMatrix: [Float],
+//        primaryBBox: DetectionSmarty,
+//        C: Int, Wp: Int, Hp: Int,
+//        minOverlap: Float = 0.5
+//    ) {
+//        let spatial = Wp * Hp
+//        let scale = Float(Wp) / 640.0
+//        
+//        // Bbox bounds
+//        let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
+//        let bboxY1 = max(0, Int((primaryBBox.y - primaryBBox.height / 2) * scale))
+//        let bboxX2 = min(Wp, Int((primaryBBox.x + primaryBBox.width / 2) * scale))
+//        let bboxY2 = min(Hp, Int((primaryBBox.y + primaryBBox.height / 2) * scale))
+//        
+//        // Compute all masks
+//        var detMasks = [[Float]]()
+//        var detAreas = [Int]()
+//        
+//        for det in allDetections {
+//            var rawMask = [Float](repeating: 0, count: spatial)
+//            guard det.maskCoeffs.count == C else {
+//                detMasks.append(rawMask)
+//                detAreas.append(0)
+//                continue
+//            }
+//            guard !det.maskCoeffs.contains(where: { !$0.isFinite }) else {
+//                detMasks.append(rawMask)
+//                detAreas.append(0)
+//                continue
+//            }
+//            
+//            det.maskCoeffs.withUnsafeBufferPointer { coeffPtr in
+//                protoMatrix.withUnsafeBufferPointer { protoPtr in
+//                    guard let coeffBase = coeffPtr.baseAddress,
+//                          let protoBase = protoPtr.baseAddress else { return }
+//                    vDSP_mmul(coeffBase, 1, protoBase, 1, &rawMask, 1,
+//                              1, vDSP_Length(spatial), vDSP_Length(C))
+//                }
+//            }
+//            
+//            var area = 0
+//            for y in 0..<Hp {
+//                for x in 0..<Wp {
+//                    let idx = y * Wp + x
+//                    if rawMask[idx] > maskThreshold &&
+//                       x >= bboxX1 && x < bboxX2 &&
+//                       y >= bboxY1 && y < bboxY2 {
+//                        rawMask[idx] = 1.0
+//                        area += 1
+//                    } else {
+//                        rawMask[idx] = 0.0
+//                    }
+//                }
+//            }
+//            detMasks.append(rawMask)
+//            detAreas.append(area)
+//        }
+//        
+//        // Start with highest confidence detection
+//        guard let primaryIdx = allDetections.indices.max(by: { allDetections[$0].confidence < allDetections[$1].confidence }) else { return }
+//        
+//        for i in 0..<spatial {
+//            globalMask[i] = detMasks[primaryIdx][i]
+//        }
+//        
+//        var used = [Bool](repeating: false, count: allDetections.count)
+//        used[primaryIdx] = true
+//        
+//        if self.debugMode {
+//            print("🔷 Primary: \(allDetections[primaryIdx].className) @ \(Int(allDetections[primaryIdx].confidence * 100))%, area=\(detAreas[primaryIdx])px")
+//        }
+//        
+//        // Iteratively add masks with >= 50% overlap
+//        var changed = true
+//        while changed {
+//            changed = false
+//            
+//            for (idx, detMask) in detMasks.enumerated() {
+//                if used[idx] || detAreas[idx] == 0 { continue }
+//                
+//                // Calculate overlap with globalMask
+//                var overlapCount = 0
+//                for i in 0..<spatial {
+//                    if detMask[i] > 0 && globalMask[i] > 0 {
+//                        overlapCount += 1
+//                    }
+//                }
+//                
+//                let overlapRatio = Float(overlapCount) / Float(detAreas[idx])
+//                
+//                if overlapRatio >= minOverlap {
+//                    // Merge
+//                    var added = 0
+//                    for i in 0..<spatial {
+//                        if detMask[i] > 0 && globalMask[i] == 0 {
+//                            globalMask[i] = 1.0
+//                            added += 1
+//                        }
+//                    }
+//                    used[idx] = true
+//                    changed = true
+//                    
+//                    if self.debugMode {
+//                        print("🔗 Merged \(allDetections[idx].className) @ \(Int(allDetections[idx].confidence * 100))%: overlap=\(Int(overlapRatio * 100))%, +\(added)px")
+//                    }
+//                }
+//            }
+//        }
+//        
+//        if self.debugMode {
+//            let mergedCount = used.filter { $0 }.count
+//            var totalArea = 0
+//            for i in 0..<spatial { if globalMask[i] > 0 { totalArea += 1 } }
+//            print("🔷 buildGlobalMask: \(mergedCount)/\(allDetections.count) merged, total=\(totalArea)px")
+//        }
+//    }
+
+    // MARK: - Fill Inside Perimeter
+    private func fillInsidePerimeter(_ mask: inout [Float], width: Int, height: Int) {
+        let count = width * height
+        
+        // Step 1: Dilate to seal perimeter gaps
+        var sealed = [Float](repeating: 0, count: count)
+        let radius = 3
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                if mask[y * width + x] > 0 {
+                    for dy in -radius...radius {
+                        for dx in -radius...radius {
+                            let nx = x + dx, ny = y + dy
+                            if nx >= 0 && nx < width && ny >= 0 && ny < height {
+                                sealed[ny * width + nx] = 1.0
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Step 2: Flood fill from edges to mark EXTERIOR
+        var exterior = [Bool](repeating: false, count: count)
+        var queue = [Int]()
+        queue.reserveCapacity(count / 4)
+        
+        for x in 0..<width {
+            if sealed[x] == 0 { queue.append(x); exterior[x] = true }
+            let b = (height - 1) * width + x
+            if sealed[b] == 0 && !exterior[b] { queue.append(b); exterior[b] = true }
+        }
+        for y in 0..<height {
+            let l = y * width
+            let r = y * width + width - 1
+            if sealed[l] == 0 && !exterior[l] { queue.append(l); exterior[l] = true }
+            if sealed[r] == 0 && !exterior[r] { queue.append(r); exterior[r] = true }
+        }
+        
+        var head = 0
+        while head < queue.count {
+            let idx = queue[head]; head += 1
+            let x = idx % width, y = idx / width
+            
+            let neighbors = [idx - 1, idx + 1, idx - width, idx + width]
+            let valid = [x > 0, x < width - 1, y > 0, y < height - 1]
+            
+            for i in 0..<4 {
+                if valid[i] {
+                    let n = neighbors[i]
+                    if sealed[n] == 0 && !exterior[n] {
+                        exterior[n] = true
+                        queue.append(n)
+                    }
+                }
+            }
+        }
+        
+        // Step 3: NOT exterior = interior = fill with 1
+        var filled = 0
+        for i in 0..<count {
+            if !exterior[i] {
+                if mask[i] == 0 { filled += 1 }
+                mask[i] = 1.0
+            }
+        }
+        
+        if self.debugMode {
+            print("🔷 fillInsidePerimeter: \(filled)px holes filled")
+        }
+    }
+
+    // MARK: - Debug: Save Mask to Photos
+    private func saveMaskToPhotos(_ mask: [Float], width: Int, height: Int, label: String = "mask") {
+        let count = width * height
+        
+        var pixels = [UInt8](repeating: 0, count: count * 4)
+        
+        for i in 0..<count {
+            let val: UInt8 = mask[i] > 0 ? 255 : 0
+            pixels[i * 4 + 0] = val  // R
+            pixels[i * 4 + 1] = val  // G
+            pixels[i * 4 + 2] = val  // B
+            pixels[i * 4 + 3] = 255  // A
+        }
+        
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else {
+            print("❌ Failed to create data provider")
+            return
+        }
+        
+        guard let cgImage = CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        ) else {
+            print("❌ Failed to create CGImage")
+            return
+        }
+        
+        let uiImage = UIImage(cgImage: cgImage)
+        UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
+        print("📸 Saved \(label) (\(width)x\(height)) to Photos")
+    }
+
+    // MARK: - Draw Perimeter Outline (debug)
+//    private func drawPerimeterOutline(on pixels: UnsafeMutablePointer<UInt8>,
+//                                       mask: [Float],
+//                                       maskWidth: Int,
+//                                       maskHeight: Int,
+//                                       imageWidth: Int,
+//                                       imageHeight: Int) {
+//        let scaleX = Float(imageWidth) / Float(maskWidth)
+//        let scaleY = Float(imageHeight) / Float(maskHeight)
+//        
+//        for my in 0..<maskHeight {
+//            for mx in 0..<maskWidth {
+//                let idx = my * maskWidth + mx
+//                if mask[idx] > 0 {
+//                    var isEdge = false
+//                    if mx == 0 || mx == maskWidth - 1 || my == 0 || my == maskHeight - 1 {
+//                        isEdge = true
+//                    } else {
+//                        if mask[idx - 1] == 0 || mask[idx + 1] == 0 ||
+//                           mask[idx - maskWidth] == 0 || mask[idx + maskWidth] == 0 {
+//                            isEdge = true
+//                        }
+//                    }
+//                    
+//                    if isEdge {
+//                        let imgX = Int(Float(mx) * scaleX)
+//                        let imgY = Int(Float(my) * scaleY)
+//                        
+//                        for dy in -1...1 {
+//                            for dx in -1...1 {
+//                                let px = imgX + dx
+//                                let py = imgY + dy
+//                                if px >= 0 && px < imageWidth && py >= 0 && py < imageHeight {
+//                                    let pixelIdx = (py * imageWidth + px) * 4
+//                                    pixels[pixelIdx + 0] = 0     // R
+//                                    pixels[pixelIdx + 1] = 255   // G
+//                                    pixels[pixelIdx + 2] = 255   // B
+//                                    pixels[pixelIdx + 3] = 255   // A
+//                                }
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//    }
+    
+    private func fillGlobalMaskInterior(_ mask: inout [Float], width: Int, height: Int) {
+        let count = width * height
+        
+        // Find bounds of current globalMask
+        var minX = width, maxX = 0, minY = height, maxY = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                if mask[y * width + x] > 0 {
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                }
+            }
+        }
+        
+        guard minX < maxX && minY < maxY else {
+            if self.debugMode { print("⚠️ Empty mask") }
+            return
+        }
+        
+        if self.debugMode {
+            var beforeCount = 0
+            for i in 0..<count { if mask[i] > 0 { beforeCount += 1 } }
+            print("🔷 globalMask bounds: (\(minX),\(minY)) → (\(maxX),\(maxY)), area=\(beforeCount)px")
+        }
+        
+        // Dilate to seal perimeter gaps
+//        let radius = 4
+//        var dilated = [Float](repeating: 0, count: count)
+//        
+//        for y in minY...maxY {
+//            for x in minX...maxX {
+//                if mask[y * width + x] > 0 {
+//                    for dy in -radius...radius {
+//                        for dx in -radius...radius {
+//                            let nx = x + dx
+//                            let ny = y + dy
+//                            if nx >= 0 && nx < width && ny >= 0 && ny < height {
+//                                dilated[ny * width + nx] = 1.0
+//                            }
+//                        }
+//                    }
+//                }
+//            }
+//        }
+        
+        // Flood fill exterior on dilated
+        var exterior = [Bool](repeating: false, count: count)
+        var queue = [Int](repeating: 0, count: count)
+        var head = 0, tail = 0
+        
+//        // Seed edges
+//        for x in 0..<width {
+//            if dilated[x] == 0 { exterior[x] = true; queue[tail] = x; tail += 1 }
+//            let bot = (height - 1) * width + x
+//            if dilated[bot] == 0 && !exterior[bot] { exterior[bot] = true; queue[tail] = bot; tail += 1 }
+//        }
+//        for y in 0..<height {
+//            let left = y * width
+//            let right = y * width + width - 1
+//            if dilated[left] == 0 && !exterior[left] { exterior[left] = true; queue[tail] = left; tail += 1 }
+//            if dilated[right] == 0 && !exterior[right] { exterior[right] = true; queue[tail] = right; tail += 1 }
+//        }
+        
+//        while head < tail {
+//            let idx = queue[head]; head += 1
+//            let x = idx % width, y = idx / width
+//            
+//            if x > 0 { let n = idx - 1; if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 } }
+//            if x < width - 1 { let n = idx + 1; if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 } }
+//            if y > 0 { let n = idx - width; if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 } }
+//            if y < height - 1 { let n = idx + width; if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 } }
+//        }
+        
+        // Fill: anything inside bounds AND not exterior = fill it
+//        var filledCount = 0
+//        for y in minY...maxY {
+//            for x in minX...maxX {
+//                let idx = y * width + x
+//                if !exterior[idx] && mask[idx] == 0 {
+//                    mask[idx] = 1.0
+//                    filledCount += 1
+//                }
+//            }
+//        }
+        
+//        if self.debugMode {
+//            var finalCount = 0
+//            for i in 0..<count { if mask[i] > 0 { finalCount += 1 } }
+//            print("🔷 fillGlobalMaskInterior: filled \(filledCount) holes → \(finalCount)px total")
+//        }
+    }
+    
+    private func useLargestMaskAndFill(
+        globalMask: inout [Float],
+        allDetections: [DetectionSmarty],
+        protoMatrix: [Float],
+        primaryBBox: DetectionSmarty,
+        C: Int, Wp: Int, Hp: Int
+    ) {
+        let spatial = Wp * Hp
+        let scale = Float(Wp) / 640.0
+        
+        // Primary bbox bounds
+        let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
+        let bboxY1 = max(0, Int((primaryBBox.y - primaryBBox.height / 2) * scale))
+        let bboxX2 = min(Wp, Int((primaryBBox.x + primaryBBox.width / 2) * scale))
+        let bboxY2 = min(Hp, Int((primaryBBox.y + primaryBBox.height / 2) * scale))
+        
+        var largestMask: [Float]? = nil
+        var largestArea = 0
+        var largestName = ""
+        var largestConf = 0
+        
+        // Find mask with biggest area
+        for det in allDetections {
+            guard det.maskCoeffs.count == C else { continue }
+            guard !det.maskCoeffs.contains(where: { !$0.isFinite }) else { continue }
+            
+            var rawMask = [Float](repeating: 0, count: spatial)
+            vDSP_mmul(det.maskCoeffs, 1,
+                      protoMatrix, 1,
+                      &rawMask, 1,
+                      1, vDSP_Length(spatial), vDSP_Length(C))
+            
+            // Threshold and clip to bbox, count area
+            var area = 0
+            for y in bboxY1..<bboxY2 {
+                for x in bboxX1..<bboxX2 {
+                    let idx = y * Wp + x
+                    if rawMask[idx] > maskThreshold {
+                        rawMask[idx] = 1.0
+                        area += 1
+                    } else {
+                        rawMask[idx] = 0.0
+                    }
+                }
+            }
+            
+            // Zero outside bbox
+            for y in 0..<Hp {
+                for x in 0..<Wp {
+                    if x < bboxX1 || x >= bboxX2 || y < bboxY1 || y >= bboxY2 {
+                        rawMask[y * Wp + x] = 0.0
+                    }
+                }
+            }
+            
+            if area > largestArea {
+                largestArea = area
+                largestMask = rawMask
+                largestName = det.className
+                largestConf = Int(det.confidence * 100)
+            }
+        }
+        
+        guard let bestMask = largestMask else {
+            if self.debugMode { print("⚠️ No valid mask found") }
+            return
+        }
+        
+        if self.debugMode {
+            print("🏆 Largest mask: \(largestName) @ \(largestConf)% → \(largestArea)px")
+        }
+        
+        // Copy largest mask to globalMask
+        for i in 0..<spatial {
+            globalMask[i] = bestMask[i]
+        }
+        
+        // Fill interior using flood from edges
+        fillMaskInterior(&globalMask, width: Wp, height: Hp)
+        
+        if self.debugMode {
+            var finalCount = 0
+            for i in 0..<spatial { if globalMask[i] > 0 { finalCount += 1 } }
+            print("🔷 After fill: \(finalCount)px")
+        }
+    }
+    
+    private func sealAndFillInterior(_ mask: inout [Float], width: Int, height: Int) {
+        let count = width * height
+        
+        // Step 1: Dilate to close gaps
+        let dilateRadius = 3
+        var dilated = [Float](repeating: 0, count: count)
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                if mask[y * width + x] > 0 {
+                    for dy in -dilateRadius...dilateRadius {
+                        for dx in -dilateRadius...dilateRadius {
+                            let nx = x + dx
+                            let ny = y + dy
+                            if nx >= 0 && nx < width && ny >= 0 && ny < height {
+                                dilated[ny * width + nx] = 1.0
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Step 2: Flood fill exterior on dilated mask
+        var exterior = [Bool](repeating: false, count: count)
+        var queue = [Int](repeating: 0, count: count)
+        var head = 0, tail = 0
+        
+        for x in 0..<width {
+            if dilated[x] == 0 { exterior[x] = true; queue[tail] = x; tail += 1 }
+            let bot = (height - 1) * width + x
+            if dilated[bot] == 0 && !exterior[bot] { exterior[bot] = true; queue[tail] = bot; tail += 1 }
+        }
+        for y in 0..<height {
+            let left = y * width
+            let right = y * width + width - 1
+            if dilated[left] == 0 && !exterior[left] { exterior[left] = true; queue[tail] = left; tail += 1 }
+            if dilated[right] == 0 && !exterior[right] { exterior[right] = true; queue[tail] = right; tail += 1 }
+        }
+        
+        while head < tail {
+            let idx = queue[head]; head += 1
+            let x = idx % width
+            let y = idx / width
+            
+            if x > 0 { let n = idx - 1; if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 } }
+            if x < width - 1 { let n = idx + 1; if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 } }
+            if y > 0 { let n = idx - width; if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 } }
+            if y < height - 1 { let n = idx + width; if dilated[n] == 0 && !exterior[n] { exterior[n] = true; queue[tail] = n; tail += 1 } }
+        }
+        
+        // Step 3: Interior = not exterior. BUT only fill within original mask's convex bounds
+        // Find bounds of original mask
+        var minX = width, maxX = 0, minY = height, maxY = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                if mask[y * width + x] > 0 {
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                }
+            }
+        }
+        
+        // Step 4: Fill interior pixels that are within original mask bounds
+        var filledCount = 0
+        for y in minY...maxY {
+            for x in minX...maxX {
+                let idx = y * width + x
+                if !exterior[idx] && mask[idx] == 0 {
+                    mask[idx] = 1.0
+                    filledCount += 1
+                }
+            }
+        }
+        
+        if self.debugMode {
+            var finalCount = 0
+            for i in 0..<count { if mask[i] > 0 { finalCount += 1 } }
+            print("🔷 sealAndFillInterior: filled \(filledCount) holes, final=\(finalCount)px")
+        }
+    }
+    
+    private func fillEntireInterior(_ mask: inout [Float], width: Int, height: Int) {
+        // Step 1: Horizontal fill - each row, fill from leftmost to rightmost
+        for y in 0..<height {
+            var minX = -1
+            var maxX = -1
+            for x in 0..<width {
+                if mask[y * width + x] > 0 {
+                    if minX < 0 { minX = x }
+                    maxX = x
+                }
+            }
+            if minX >= 0 && maxX > minX {
+                for x in minX...maxX {
+                    mask[y * width + x] = 1.0
+                }
+            }
+        }
+        
+        // Step 2: Vertical fill - each column, fill from topmost to bottommost
+        for x in 0..<width {
+            var minY = -1
+            var maxY = -1
+            for y in 0..<height {
+                if mask[y * width + x] > 0 {
+                    if minY < 0 { minY = y }
+                    maxY = y
+                }
+            }
+            if minY >= 0 && maxY > minY {
+                for y in minY...maxY {
+                    mask[y * width + x] = 1.0
+                }
+            }
+        }
+        
+        if self.debugMode {
+            var finalCount = 0
+            for i in 0..<(width * height) { if mask[i] > 0 { finalCount += 1 } }
+            print("🔷 fillEntireInterior: \(finalCount)px")
+        }
+    }
+    
+    // Close 1px gaps in perimeter before flood fill
+    private func closePerimeterGaps(_ mask: inout [Float], width: Int, height: Int) {
+        let count = width * height
+        var closed = [Float](repeating: 0, count: count)
+        
+        // Copy original
+        for i in 0..<count { closed[i] = mask[i] }
+        
+        // For each empty pixel, if it has mask neighbors on opposite sides, fill it
+        for y in 1..<(height-1) {
+            for x in 1..<(width-1) {
+                let idx = y * width + x
+                if mask[idx] == 0 {
+                    let left = mask[idx - 1] > 0
+                    let right = mask[idx + 1] > 0
+                    let up = mask[idx - width] > 0
+                    let down = mask[idx + width] > 0
+                    
+                    // Horizontal gap (left AND right are filled)
+                    // Vertical gap (up AND down are filled)
+                    // Diagonal consideration
+                    if (left && right) || (up && down) {
+                        closed[idx] = 1.0
+                    }
+                }
+            }
+        }
+        
+        mask = closed
+        
+        if self.debugMode {
+            var closedCount = 0
+            for i in 0..<count { if mask[i] > 0 { closedCount += 1 } }
+            print("🔒 closePerimeterGaps: \(closedCount)px")
+        }
+    }
+    
+    private func buildConnectedMask(
+        globalMask: inout [Float],
+        allDetections: [DetectionSmarty],
+        protoMatrix: [Float],
+        primaryBBox: DetectionSmarty,
+        C: Int, Wp: Int, Hp: Int
+    ) {
+        let spatial = Wp * Hp
+        let scale = Float(Wp) / 640.0
+        
+        // Primary bbox bounds in mask coords
+        let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
+        let bboxY1 = max(0, Int((primaryBBox.y - primaryBBox.height / 2) * scale))
+        let bboxX2 = min(Wp, Int((primaryBBox.x + primaryBBox.width / 2) * scale))
+        let bboxY2 = min(Hp, Int((primaryBBox.y + primaryBBox.height / 2) * scale))
+        
+        if self.debugMode {
+            print("🔲 Primary BBox in mask coords: (\(bboxX1),\(bboxY1)) → (\(bboxX2),\(bboxY2))")
+        }
+        
+        // =====================================================
+        // 1) Precompute a bbox mask (Float) for proto space
+        //    1.0 inside primary bbox, 0.0 outside.
+        //    This lets us use vDSP_vmul to clip each det mask
+        //    to the bbox in one shot.
+        // =====================================================
+        var bboxMask = [Float](repeating: 0.0, count: spatial)
+        if bboxX2 > bboxX1 && bboxY2 > bboxY1 {
+            for y in bboxY1..<bboxY2 {
+                let rowBase = y * Wp
+                for x in bboxX1..<bboxX2 {
+                    bboxMask[rowBase + x] = 1.0
+                }
+            }
+        }
+        
+        // =====================================================
+        // 2) Pre-compute all detection masks in proto space,
+        //    clipped to primary bbox, binary 0/1
+        // =====================================================
+        var detMasks = [[Float]]()
+        detMasks.reserveCapacity(allDetections.count)
+        
+        for det in allDetections {
+            var rawMask = [Float](repeating: 0.0, count: spatial)
+            
+            // Guard on coeff shape and finiteness (same semantics)
+            guard det.maskCoeffs.count == C else {
+                detMasks.append(rawMask)
+                continue
+            }
+            let hasInvalid = det.maskCoeffs.contains { !$0.isFinite }
+            guard !hasInvalid else {
+                detMasks.append(rawMask)
+                continue
+            }
+            
+            // (1 × C) * (C × spatial) → (1 × spatial)
+            det.maskCoeffs.withUnsafeBufferPointer { coeffPtr in
+                protoMatrix.withUnsafeBufferPointer { protoPtr in
+                    guard let coeffBase = coeffPtr.baseAddress,
+                          let protoBase = protoPtr.baseAddress else { return }
+                    vDSP_mmul(coeffBase, 1,
+                              protoBase, 1,
+                              &rawMask, 1,
+                              1, vDSP_Length(spatial), vDSP_Length(C))
+                }
+            }
+            
+            // Clip to bbox via element-wise multiply
+            // (everything outside bbox becomes 0)
+            vDSP_vmul(rawMask, 1,
+                      bboxMask, 1,
+                      &rawMask, 1,
+                      vDSP_Length(spatial))
+            
+            // Threshold to STRICT 0/1 (same as your loop logic)
+            // rawMask[idx] = 1 if > maskThreshold (and inside bbox), else 0
+            for i in 0..<spatial {
+                rawMask[i] = (rawMask[i] > maskThreshold) ? 1.0 : 0.0
+            }
+            
+            detMasks.append(rawMask)
+        }
+        
+        // =====================================================
+        // 3) Start with primary (highest confidence) detection
+        //    globalMask = detMasks[primaryIdx]
+        // =====================================================
+        var used = [Bool](repeating: false, count: allDetections.count)
+        
+        if let primaryIdx = allDetections.indices.max(by: { allDetections[$0].confidence < allDetections[$1].confidence }) {
+            if detMasks.indices.contains(primaryIdx) {
+                // Copy detMasks[primaryIdx] → globalMask
+                for i in 0..<spatial {
+                    globalMask[i] = detMasks[primaryIdx][i]
+                }
+            } else {
+                // Safety: zero if something is off
+                globalMask = [Float](repeating: 0.0, count: spatial)
+            }
+            used[primaryIdx] = true
+            
+            if self.debugMode {
+                var cnt = 0
+                for v in globalMask where v > 0 { cnt += 1 }
+                let det = allDetections[primaryIdx]
+                print("🔷 Started with \(det.className) @ \(Int(det.confidence * 100))%: \(cnt)px")
+            }
+        } else {
+            // No detections at all
+            globalMask = [Float](repeating: 0.0, count: spatial)
+            if self.debugMode {
+                print("🔷 buildConnectedMask: no primary detection found")
+            }
+            return
+        }
+        
+        // =====================================================
+        // 4) Iteratively absorb touching detections
+        //    TOUCHING definition is unchanged:
+        //    detMask pixel inside bbox has any 8-neighbor in globalMask
+        // =====================================================
+        var changed = true
+        var iteration = 0
+        
+        while changed {
+            changed = false
+            iteration += 1
+            
+            for (detIdx, detMask) in detMasks.enumerated() {
+                if used[detIdx] { continue }
+                
+                // Touch check (unchanged logic)
+                var touches = false
+                outer: for y in bboxY1..<bboxY2 {
+                    let rowBase = y * Wp
+                    for x in bboxX1..<bboxX2 {
+                        let idx = rowBase + x
+                        if detMask[idx] > 0 {
+                            // Check 8-neighbors in globalMask
+                            for dy in -1...1 {
+                                for dx in -1...1 {
+                                    if dx == 0 && dy == 0 { continue }
+                                    let nx = x + dx
+                                    let ny = y + dy
+                                    if nx >= 0, nx < Wp, ny >= 0, ny < Hp {
+                                        if globalMask[ny * Wp + nx] > 0 {
+                                            touches = true
+                                            break outer
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if touches {
+                    // =================================================
+                    // Absorb detection into globalMask:
+                    //   newGlobal = max(globalMask, detMask)
+                    //   added = pixels which changed 0 → 1
+                    // =================================================
+                    var newGlobal = [Float](repeating: 0.0, count: spatial)
+                    vDSP_vmax(globalMask, 1,
+                              detMask, 1,
+                              &newGlobal, 1,
+                              vDSP_Length(spatial))
+                    
+                    var added = 0
+                    for i in 0..<spatial {
+                        if newGlobal[i] > 0, globalMask[i] == 0 {
+                            added += 1
+                        }
+                    }
+                    
+                    globalMask = newGlobal
+                    used[detIdx] = true
+                    changed = true
+                    
+                    if self.debugMode {
+                        let det = allDetections[detIdx]
+                        print("🔗 Iter \(iteration): absorbed \(det.className) @ \(Int(det.confidence * 100))%: +\(added)px")
+                    }
+                }
+            }
+        }
+        
+        // =====================================================
+        // 5) Final debug stats (unchanged semantics)
+        // =====================================================
+        if self.debugMode {
+            var finalCount = 0
+            for v in globalMask where v > 0 { finalCount += 1 }
+            let absorbedCount = used.filter { $0 }.count
+            print("🔷 buildConnectedMask: \(absorbedCount)/\(allDetections.count) detections absorbed, \(finalCount)px total")
+        }
+    }
+
+//    // MARK: - Debug: Save Mask to Photos
+//    private func saveMaskToPhotos(_ mask: [Float], width: Int, height: Int, label: String = "mask") {
+//        let count = width * height
+//        
+//        // Create grayscale image from mask
+//        var pixels = [UInt8](repeating: 0, count: count * 4)
+//        
+//        for i in 0..<count {
+//            let val: UInt8 = mask[i] > 0 ? 255 : 0
+//            pixels[i * 4 + 0] = val  // R
+//            pixels[i * 4 + 1] = val  // G
+//            pixels[i * 4 + 2] = val  // B
+//            pixels[i * 4 + 3] = 255  // A
+//        }
+//        
+//        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else {
+//            print("❌ Failed to create data provider")
+//            return
+//        }
+//        
+//        guard let cgImage = CGImage(
+//            width: width,
+//            height: height,
+//            bitsPerComponent: 8,
+//            bitsPerPixel: 32,
+//            bytesPerRow: width * 4,
+//            space: CGColorSpaceCreateDeviceRGB(),
+//            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+//            provider: provider,
+//            decode: nil,
+//            shouldInterpolate: false,
+//            intent: .defaultIntent
+//        ) else {
+//            print("❌ Failed to create CGImage")
+//            return
+//        }
+//        
+//        let uiImage = UIImage(cgImage: cgImage)
+//        
+//        UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
+//        print("📸 Saved \(label) (\(width)x\(height)) to Photos")
+//    }
+
+    // MARK: - Fill Mask Interior (flood from edges, invert)
+//    private func fillMaskInterior(_ mask: inout [Float], width: Int, height: Int) {
+//        let count = width * height
+//        guard count > 0 else { return }
+//        
+//        // exterior[i] = true means pixel is outside (reachable from edge)
+//        var exterior = [Bool](repeating: false, count: count)
+//        
+//        // Queue for BFS (using array index, not append/remove)
+//        var queue = [Int](repeating: 0, count: count)
+//        var head = 0
+//        var tail = 0
+//        
+//        // Seed: all edge pixels that are background
+//        for x in 0..<width {
+//            let topIdx = x
+//            let botIdx = (height - 1) * width + x
+//            if mask[topIdx] == 0 && !exterior[topIdx] {
+//                exterior[topIdx] = true
+//                queue[tail] = topIdx; tail += 1
+//            }
+//            if mask[botIdx] == 0 && !exterior[botIdx] {
+//                exterior[botIdx] = true
+//                queue[tail] = botIdx; tail += 1
+//            }
+//        }
+//        for y in 0..<height {
+//            let leftIdx = y * width
+//            let rightIdx = y * width + width - 1
+//            if mask[leftIdx] == 0 && !exterior[leftIdx] {
+//                exterior[leftIdx] = true
+//                queue[tail] = leftIdx; tail += 1
+//            }
+//            if mask[rightIdx] == 0 && !exterior[rightIdx] {
+//                exterior[rightIdx] = true
+//                queue[tail] = rightIdx; tail += 1
+//            }
+//        }
+//        
+//        // BFS flood fill
+//        while head < tail {
+//            let idx = queue[head]
+//            head += 1
+//            
+//            let x = idx % width
+//            let y = idx / width
+//            
+//            // 4-connectivity neighbors
+//            if x > 0 {
+//                let n = idx - 1
+//                if mask[n] == 0 && !exterior[n] {
+//                    exterior[n] = true
+//                    queue[tail] = n; tail += 1
+//                }
+//            }
+//            if x < width - 1 {
+//                let n = idx + 1
+//                if mask[n] == 0 && !exterior[n] {
+//                    exterior[n] = true
+//                    queue[tail] = n; tail += 1
+//                }
+//            }
+//            if y > 0 {
+//                let n = idx - width
+//                if mask[n] == 0 && !exterior[n] {
+//                    exterior[n] = true
+//                    queue[tail] = n; tail += 1
+//                }
+//            }
+//            if y < height - 1 {
+//                let n = idx + width
+//                if mask[n] == 0 && !exterior[n] {
+//                    exterior[n] = true
+//                    queue[tail] = n; tail += 1
+//                }
+//            }
+//        }
+//        
+//        // Invert: not exterior = interior = fill
+//        for i in 0..<count {
+//            mask[i] = exterior[i] ? 0.0 : 1.0
+//        }
+//    }
 
     // ======================================================
     // SAFE LABEL + BOX DRAWING (CYAN, BIG FONT, FIXED FLIP)
@@ -2005,6 +3413,162 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         UIGraphicsPopContext()
         ctx.restoreGState()
+    }
+
+    // ======================================================
+    // PERIMETER LINES DRAWING - Shows live perimeter tracking
+    // ======================================================
+    private func drawPerimeterLines(
+        ctx: CGContext,
+        imageWidth: Int,
+        imageHeight: Int,
+        maskWidth: Int,
+        maskHeight: Int
+    ) {
+        guard let perimeterMask = bestPerimeterMask else { 
+            if debugMode { print("🔴 [PERIMETER DRAW] No perimeter mask to draw") }
+            return 
+        }
+
+        if debugMode { 
+            print("🔴 [PERIMETER DRAW] Drawing perimeter with area: \(bestPerimeterArea)px") 
+            print("🔴 [PERIMETER DRAW] Mask dimensions: \(maskWidth)x\(maskHeight) → Image: \(imageWidth)x\(imageHeight)")
+        }
+
+        ctx.saveGState()
+        
+        // Fix UIKit upside-down drawing in CGContexts - SAME AS LABELS
+        let W = CGFloat(imageWidth)
+        let H = CGFloat(imageHeight)
+        ctx.translateBy(x: 0, y: H)
+        ctx.scaleBy(x: 1, y: -1)
+        
+        // Set perimeter line style - bright magenta/pink for visibility
+        ctx.setStrokeColor(CGColor(red: 1.0, green: 0.2, blue: 0.8, alpha: 0.8))
+        ctx.setLineWidth(2.0)
+        ctx.setLineDash(phase: 0, lengths: [8, 4]) // Dashed line for distinction
+        
+        let scaleX = CGFloat(imageWidth) / CGFloat(maskWidth)
+        let scaleY = CGFloat(imageHeight) / CGFloat(maskHeight)
+        
+        // Draw perimeter contour by connecting edge pixels
+        var perimeterPoints: [(Int, Int)] = []
+        
+        // Find all perimeter pixels
+        for y in 0..<maskHeight {
+            for x in 0..<maskWidth {
+                let idx = y * maskWidth + x
+                if perimeterMask[idx] > 0 {
+                    // Check if this is an edge pixel (has at least one background neighbor)
+                    var isEdge = false
+                    
+                    // Check 8-connected neighbors
+                    for dy in -1...1 {
+                        for dx in -1...1 {
+                            if dx == 0 && dy == 0 { continue }
+                            let nx = x + dx
+                            let ny = y + dy
+                            
+                            if nx < 0 || nx >= maskWidth || ny < 0 || ny >= maskHeight {
+                                isEdge = true
+                                break
+                            }
+                            
+                            let nidx = ny * maskWidth + nx
+                            if perimeterMask[nidx] == 0 {
+                                isEdge = true
+                                break
+                            }
+                        }
+                        if isEdge { break }
+                    }
+                    
+                    if isEdge {
+                        perimeterPoints.append((x, y))
+                    }
+                }
+            }
+        }
+        
+        if debugMode { 
+            print("🔴 [PERIMETER DRAW] Found \(perimeterPoints.count) edge pixels") 
+        }
+        
+        // Draw perimeter points as connected lines
+        if perimeterPoints.count > 1 {
+            // Sort points to create a more coherent outline (simple row-major order)
+            perimeterPoints.sort { 
+                if $0.1 == $1.1 { return $0.0 < $1.0 }
+                return $0.1 < $1.1 
+            }
+            
+            // Draw connected segments
+            var currentPath: [(CGFloat, CGFloat)] = []
+            
+            for (i, point) in perimeterPoints.enumerated() {
+                let imageX = CGFloat(point.0) * scaleX
+                let imageY = CGFloat(point.1) * scaleY
+                
+                if i == 0 {
+                    currentPath.append((imageX, imageY))
+                    ctx.move(to: CGPoint(x: imageX, y: imageY))
+                } else {
+                    let prevPoint = perimeterPoints[i-1]
+                    let prevImageX = CGFloat(prevPoint.0) * scaleX
+                    let prevImageY = CGFloat(prevPoint.1) * scaleY
+                    
+                    // If points are close, connect them
+                    let distance = sqrt(pow(imageX - prevImageX, 2) + pow(imageY - prevImageY, 2))
+                    if distance < 50 { // Threshold for connecting points
+                        ctx.addLine(to: CGPoint(x: imageX, y: imageY))
+                        currentPath.append((imageX, imageY))
+                    } else {
+                        // Start new path segment
+                        if currentPath.count > 1 {
+                            ctx.strokePath()
+                        }
+                        ctx.move(to: CGPoint(x: imageX, y: imageY))
+                        currentPath = [(imageX, imageY)]
+                    }
+                }
+            }
+            
+            // Stroke the final path
+            if currentPath.count > 1 {
+                ctx.strokePath()
+            }
+            
+            if debugMode { 
+                print("🔴 [PERIMETER DRAW] Drew perimeter outline with \(currentPath.count) connected points") 
+            }
+        }
+        
+        // Also draw some key perimeter points as small circles for better visibility
+        ctx.setLineDash(phase: 0, lengths: []) // Remove dash for circles
+        ctx.setFillColor(CGColor(red: 1.0, green: 0.0, blue: 0.5, alpha: 0.6))
+        
+        let circleRadius: CGFloat = 3.0
+        let stepSize = max(1, perimeterPoints.count / 20) // Draw max 20 circles
+        
+        for i in stride(from: 0, to: perimeterPoints.count, by: stepSize) {
+            let point = perimeterPoints[i]
+            let imageX = CGFloat(point.0) * scaleX
+            let imageY = CGFloat(point.1) * scaleY
+            
+            let circle = CGRect(
+                x: imageX - circleRadius, 
+                y: imageY - circleRadius,
+                width: circleRadius * 2, 
+                height: circleRadius * 2
+            )
+            ctx.fillEllipse(in: circle)
+        }
+        
+        ctx.restoreGState()
+        
+        if debugMode { 
+            print("🔴 [PERIMETER DRAW] Completed perimeter visualization") 
+        }
     }
 
 
@@ -2258,50 +3822,45 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
 
-    // MARK: - Extract Detections (with timing)
     private func extractDetections(from detections: MLMultiArray) -> [DetectionSmarty] {
         let t0 = Date()
         var all: [DetectionSmarty] = []
 
+        // Shape: [1, features, anchors]
+        guard detections.shape.count == 3 else {
+            if self.debugMode { print("⚠️ extractDetections: Unexpected tensor rank: \(detections.shape)") }
+            return []
+        }
+
         let numFeatures = detections.shape[1].intValue
-        let numAnchors = detections.shape[2].intValue
-        let numClasses = numFeatures - 4 - 32
+        let numAnchors  = detections.shape[2].intValue
+        let numClasses  = numFeatures - 4 - 32
 
         // Validate tensor dimensions
-        guard numFeatures >= 36 && numAnchors > 0 && numClasses > 0 else {
+        guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
             if self.debugMode {
-                print("⚠️ extractDetections: Invalid tensor dimensions - features:\(numFeatures), anchors:\(numAnchors), classes:\(numClasses)")
+                print("⚠️ extractDetections: Invalid tensor dims — features:\(numFeatures) anchors:\(numAnchors) classes:\(numClasses)")
             }
             return []
         }
 
-        if self.debugMode {
-            print("📝 Tensor shape: [1, \(numFeatures), \(numAnchors)]")
-            print("   → \(numClasses) classes, \(numAnchors) predictions")
-            print("   → Mode: \(detectAllObjects ? "ALL OBJECTS" : "FURNITURE ONLY")")
-            if numClasses == 4585 {
-                print("   → Model: YOLOE (LVIS open-vocabulary)")
-            } else if numClasses == 80 {
-                print("   → Model: YOLO11-seg (COCO)")
-            }
-        }
-
-        let totalCount = detections.count
-        
-        // Validate total count matches expected dimensions
         let expectedCount = numFeatures * numAnchors
+        let totalCount = detections.count
         guard totalCount >= expectedCount else {
-            if self.debugMode {
-                print("⚠️ extractDetections: Array size mismatch - expected:\(expectedCount), got:\(totalCount)")
-            }
+            if self.debugMode { print("⚠️ extractDetections: count mismatch expected=\(expectedCount) got=\(totalCount)") }
             return []
         }
 
+        // Copy/convert to Float buffer safely
         let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
         defer { detBuf.deallocate() }
 
         let copyStart = Date()
-        if detections.dataType == .float16 {
+        switch detections.dataType {
+        case .float32:
+            let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
+            memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
+        case .float16:
             let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
             var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src),
                                        height: 1, width: vImagePixelCount(totalCount),
@@ -2310,174 +3869,98 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                        height: 1, width: vImagePixelCount(totalCount),
                                        rowBytes: totalCount * MemoryLayout<Float>.size)
             let result = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-            if result != kvImageNoError && self.debugMode {
-                print("⚠️ extractDetections: vImage conversion failed: \(result)")
-            }
-        } else if detections.dataType == .float32 {
-            let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
-            memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
-        } else {
-            for i in 0..<totalCount {
-                detBuf[i] = detections[i].floatValue
-            }
+            if result != kvImageNoError && self.debugMode { print("⚠️ extractDetections: vImage 16F→F failed: \(result)") }
+        default:
+            // Fallback: element access
+            for i in 0..<totalCount { detBuf[i] = detections[i].floatValue }
         }
         let copyEnd = Date()
         if self.debugMode {
-            print(String(format: "⏱ extractDetections copy/convert: %.2f ms",
-                         copyEnd.timeIntervalSince(copyStart) * 1000.0))
+            print(String(format: "⏱ extractDetections copy/convert: %.2f ms", copyEnd.timeIntervalSince(copyStart) * 1000.0))
         }
 
-        let coeffOffset = 4 + numClasses
         let stride = numAnchors
+        let coeffOffset = 4 + numClasses
+
+        if self.debugMode {
+            print("📝 Tensor shape: [1, \(numFeatures), \(numAnchors)]")
+            print("   → \(numClasses) classes, \(numAnchors) predictions")
+            print("   → Mode: CLASS-AGNOSTIC")
+        }
 
         let decodeStart = Date()
-        if detectAllObjects {
-            for anchor in 0..<numAnchors {
-                // Bounds checking for coordinate access
-                guard anchor < stride,
-                      1 * stride + anchor < totalCount,
-                      2 * stride + anchor < totalCount,
-                      3 * stride + anchor < totalCount else {
-                    if self.debugMode { print("⚠️ Coordinate bounds check failed for anchor \(anchor)") }
-                    continue
-                }
-                
-                let x = detBuf[0 * stride + anchor]
-                let y = detBuf[1 * stride + anchor]
-                let w = detBuf[2 * stride + anchor]
-                let h = detBuf[3 * stride + anchor]
-                
-                // Validate coordinate values
-                guard x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 else {
-                    continue
-                }
+        for anchor in 0..<numAnchors {
+            // Bounds check for bbox
+            guard anchor < stride,
+                  1 * stride + anchor < totalCount,
+                  2 * stride + anchor < totalCount,
+                  3 * stride + anchor < totalCount else {
+                if self.debugMode { print("⚠️ bbox OOB for anchor \(anchor)") }
+                continue
+            }
 
-                var bestConf: Float = 0
-                var bestClassIdx = -1
+            let x = detBuf[0 * stride + anchor]
+            let y = detBuf[1 * stride + anchor]
+            let w = detBuf[2 * stride + anchor]
+            let h = detBuf[3 * stride + anchor]
+            guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
 
-                let baseConfIdx = 4 * stride + anchor
-                for classIdx in 0..<numClasses {
-                    let confIndex = baseConfIdx + classIdx * stride
-                    guard confIndex < totalCount else {
-                        if self.debugMode { print("⚠️ Confidence bounds check failed for class \(classIdx), anchor \(anchor)") }
-                        break
-                    }
-                    
-                    let conf = detBuf[confIndex]
-                    if conf > bestConf && conf.isFinite {
-                        bestConf = conf
-                        bestClassIdx = classIdx
-                    }
+            // Class-agnostic: take max over class scores
+            var bestConf: Float = 0
+            let baseConfIdx = 4 * stride + anchor
+            for classIdx in 0..<numClasses {
+                let confIndex = baseConfIdx + classIdx * stride
+                guard confIndex < totalCount else {
+                    if self.debugMode { print("⚠️ conf OOB class=\(classIdx) anchor=\(anchor)") }
+                    break
                 }
+                let conf = detBuf[confIndex]
+                if conf.isFinite, conf > bestConf { bestConf = conf }
+            }
+            guard bestConf > confidenceThreshold else { continue }
 
-                if bestConf > confidenceThreshold && bestClassIdx >= 0 {
-                    var coeffs = [Float](repeating: 0, count: 32)
-                    let coeffStart = coeffOffset * stride + anchor
-                    
-                    // Bounds checking for mask coefficients
-                    var validCoeffs = true
-                    for k in 0..<32 {
-                        let coeffIndex = coeffStart + k * stride
-                        if coeffIndex < totalCount {
-                            coeffs[k] = detBuf[coeffIndex]
-                        } else {
-                            if self.debugMode { print("⚠️ Coefficient bounds check failed for k=\(k), anchor=\(anchor)") }
-                            validCoeffs = false
-                            break
-                        }
-                    }
-                    
-                    if validCoeffs {
-                        let className = furnitureClasses[bestClassIdx] ?? "object_\(bestClassIdx)"
-                        all.append(DetectionSmarty(
-                            x: x, y: y, width: w, height: h,
-                            confidence: bestConf, classIdx: bestClassIdx, className: className,
-                            maskCoeffs: coeffs
-                        ))
-                    }
+            // Mask coefficients (32)
+            var coeffs = [Float](repeating: 0, count: 32)
+            let coeffStartIdx = coeffOffset * stride + anchor
+            var coeffsOK = true
+            for k in 0..<32 {
+                let idx = coeffStartIdx + k * stride
+                if idx < totalCount {
+                    coeffs[k] = detBuf[idx]
+                } else {
+                    if self.debugMode { print("⚠️ coeff OOB k=\(k) anchor=\(anchor)") }
+                    coeffsOK = false
+                    break
                 }
             }
-        } else {
-            let furnitureList = furnitureClasses.filter { $0.key < numClasses }
+            if !coeffsOK { continue }
 
-            for anchor in 0..<numAnchors {
-                // Bounds checking for coordinate access
-                guard anchor < stride,
-                      1 * stride + anchor < totalCount,
-                      2 * stride + anchor < totalCount,
-                      3 * stride + anchor < totalCount else {
-                    if self.debugMode { print("⚠️ Coordinate bounds check failed for anchor \(anchor)") }
-                    continue
-                }
-                
-                let x = detBuf[0 * stride + anchor]
-                let y = detBuf[1 * stride + anchor]
-                let w = detBuf[2 * stride + anchor]
-                let h = detBuf[3 * stride + anchor]
-                
-                // Validate coordinate values
-                guard x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 else {
-                    continue
-                }
-
-                for (classIdx, className) in furnitureList {
-                    let confIdx = (4 + classIdx) * stride + anchor
-                    guard confIdx < totalCount else {
-                        if self.debugMode { print("⚠️ Furniture confidence bounds check failed for class \(classIdx), anchor \(anchor)") }
-                        continue
-                    }
-                    
-                    let conf = detBuf[confIdx]
-                    if conf > confidenceThreshold && conf.isFinite {
-                        var coeffs = [Float](repeating: 0, count: 32)
-                        let coeffStart = coeffOffset * stride + anchor
-                        
-                        // Bounds checking for mask coefficients
-                        var validCoeffs = true
-                        for k in 0..<32 {
-                            let coeffIndex = coeffStart + k * stride
-                            if coeffIndex < totalCount {
-                                coeffs[k] = detBuf[coeffIndex]
-                            } else {
-                                if self.debugMode { print("⚠️ Coefficient bounds check failed for k=\(k), anchor=\(anchor)") }
-                                validCoeffs = false
-                                break
-                            }
-                        }
-                        
-                        if validCoeffs {
-                            all.append(DetectionSmarty(
-                                x: x, y: y, width: w, height: h,
-                                confidence: conf, classIdx: classIdx, className: className,
-                                maskCoeffs: coeffs
-                            ))
-                        }
-                    }
-                }
-            }
+            all.append(DetectionSmarty(
+                x: x, y: y, width: w, height: h,
+                confidence: bestConf,
+                classIdx: -1,
+                className: "object",
+                maskCoeffs: coeffs
+            ))
         }
         let decodeEnd = Date()
 
         if self.debugMode {
-            print(String(format: "⏱ extractDetections decode loop: %.2f ms",
-                         decodeEnd.timeIntervalSince(decodeStart) * 1000.0))
-
-            let grouped = Dictionary(grouping: all) { $0.className }
+            print(String(format: "⏱ extractDetections decode loop: %.2f ms", decodeEnd.timeIntervalSince(decodeStart) * 1000.0))
             print("\n📊 DETECTION SUMMARY: \(all.count) total")
+            let grouped = Dictionary(grouping: all) { $0.className }
             for (className, dets) in grouped.sorted(by: { $0.value.count > $1.value.count }).prefix(20) {
                 let confidences = dets.map { Int($0.confidence * 100) }
                 print("  - \(className): \(dets.count)x, conf: \(confidences)%")
             }
-            if grouped.count > 20 {
-                print("  ... and \(grouped.count - 20) more classes")
-            }
+            if grouped.count > 20 { print("  ... and \(grouped.count - 20) more classes") }
             let tEnd = Date()
-            print(String(format: "⏱ extractDetections total: %.2f ms",
-                         tEnd.timeIntervalSince(t0) * 1000.0))
+            print(String(format: "⏱ extractDetections total: %.2f ms", tEnd.timeIntervalSince(t0) * 1000.0))
         }
 
         return all
     }
+
 
 
     // MARK: - Pixel Buffer to MLMultiArray (Accelerate) — with timing
@@ -2511,13 +3994,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         var rowUInt8 = [UInt8](repeating: 0, count: width * 4)
         var rowFloat = [Float](repeating: 0, count: width * 4)
-
         var scaleF: Float = 1.0 / 255.0
 
         for y in 0..<height {
             let rowStart = src.advanced(by: y * bytesPerRow)
-            memcpy(&rowUInt8, rowStart, width * 4)
 
+            // Safe copy into Swift array storage
+            rowUInt8.withUnsafeMutableBytes { dstBytes in
+                memcpy(dstBytes.baseAddress!, rowStart, width * 4)
+            }
+
+            // Convert to Float and scale
             rowUInt8.withUnsafeBufferPointer { u8Ptr in
                 rowFloat.withUnsafeMutableBufferPointer { fPtr in
                     vDSP_vfltu8(u8Ptr.baseAddress!, 1, fPtr.baseAddress!, 1, vDSP_Length(width * 4))
@@ -2525,6 +4012,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
 
+            // Gather R/G/B into channel planes
             rowFloat.withUnsafeBufferPointer { rf in
                 let baseF = rf.baseAddress!
                 vDSP_vgathr(baseF, indicesR, 1, rPtr.advanced(by: y * width), 1, vDSP_Length(width))
