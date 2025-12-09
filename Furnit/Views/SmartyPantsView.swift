@@ -63,6 +63,8 @@ struct DetectionSmarty {
     let maskCoeffs: [Float]
 }
 
+private let kModelInputSize = 960
+private let kModelInputSizeFloat = Float(960)
 
 // MARK: - Main Container View
 final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
@@ -74,7 +76,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
-    
+
     // MARK: Brightness gate (prevent processing when phone is lying down / frame is dark)
     private var lumaThreshold: Float = 0.08          // 0.0 .. 1.0
     private var brightStreak: Int = 0
@@ -644,14 +646,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     // MARK: - Crop Pixel Buffer to BBox (vImage copy)
-    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = 0.3) -> CVPixelBuffer? {
+    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = 0.0) -> CVPixelBuffer? {
         let cropStart = Date()
         
         let fullWf = Float(CVPixelBufferGetWidth(pixelBuffer))
         let fullHf = Float(CVPixelBufferGetHeight(pixelBuffer))
         
-        let scaleX = fullWf / 640.0
-        let scaleY = fullHf / 640.0
+        let scaleX = fullWf / Float(kModelInputSize)
+        let scaleY = fullHf / Float(kModelInputSize)
         
         let centerX = det.x * scaleX
         let centerY = det.y * scaleY
@@ -747,7 +749,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         // STAGE 1: Preprocess
         let stage1PreStart = Date()
-        guard let resized = letterbox(pixelBuffer, size: 640) else {
+        guard let resized = letterbox(pixelBuffer, size: kModelInputSize) else {
             isProcessing = false
             return
         }
@@ -870,12 +872,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         var stage2Prototypes: MLMultiArray? = nil
 
         let stage2Start = Date()
-        if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.3),
-           let resizedCrop = letterbox(croppedBuffer, size: 640),
+        if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.0),
+           let resizedCrop = letterbox(croppedBuffer, size: kModelInputSize),
            let cropInputArray = pixelBufferToMLMultiArray(resizedCrop),
            
            let cropInputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": cropInputArray]) {
-            guard cropInputArray.count == 1 * 3 * 640 * 640 else {
+            let expectedCount = 1 * 3 * kModelInputSize * kModelInputSize
+            guard cropInputArray.count == expectedCount else {
                 if self.debugMode { print("⚠️ Stage2: bad input count:", cropInputArray.count) }
                 self.isProcessing = false
                 return
@@ -1003,7 +1006,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         minOverlap: Float = 0.5
     ) {
         let spatial = Wp * Hp
-        let scale = Float(Wp) / 640.0
+        let scale = Float(Wp) / kModelInputSizeFloat
         
         // Bbox bounds
         let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
@@ -1194,7 +1197,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     
-    private func letterbox(_ src: CVPixelBuffer, size: Int = 640) -> CVPixelBuffer? {
+    private func letterbox(_ src: CVPixelBuffer, size: Int = kModelInputSize) -> CVPixelBuffer? {
         let t0 = Date()
         
         CVPixelBufferLockBaseAddress(src, .readOnly)
@@ -1661,7 +1664,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         minOverlap: Float = 0.5
     ) {
         let spatial = Wp * Hp
-        let scale = Float(Wp) / 640.0
+        let scale = Float(Wp) / kModelInputSizeFloat
         
         // Primary bbox in mask coords
         let pX1 = Int((primaryBBox.x - primaryBBox.width / 2) * scale)
@@ -1813,7 +1816,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         C: Int, Wp: Int, Hp: Int
     ) {
         let spatial = Wp * Hp
-        let scale = Float(Wp) / 640.0
+        let scale = Float(Wp) / Float(kModelInputSize)
         
         // Bbox bounds
         let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
@@ -2275,12 +2278,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let padding: Float = 0.1
             let cropX1 = max(0, primaryBBox.x - primaryBBox.width / 2 * (1 + padding))
             let cropY1 = max(0, primaryBBox.y - primaryBBox.height / 2 * (1 + padding))
-            let cropX2 = min(640, primaryBBox.x + primaryBBox.width / 2 * (1 + padding))
-            let cropY2 = min(640, primaryBBox.y + primaryBBox.height / 2 * (1 + padding))
+            let cropX2 = min(kModelInputSizeFloat, primaryBBox.x + primaryBBox.width / 2 * (1 + padding))
+            let cropY2 = min(kModelInputSizeFloat, primaryBBox.y + primaryBBox.height / 2 * (1 + padding))
             let cropW = cropX2 - cropX1
             let cropH = cropY2 - cropY1
-            let s2ToS1ScaleX = cropW / 640.0
-            let s2ToS1ScaleY = cropH / 640.0
+            let s2ToS1ScaleX = cropW / kModelInputSizeFloat
+            let s2ToS1ScaleY = cropH / kModelInputSizeFloat
 
             for det in stage2Detections {
                 let newX = cropX1 + det.x * s2ToS1ScaleX
@@ -2456,8 +2459,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //        minOverlap: Float = 0.5
 //    ) {
 //        let spatial = Wp * Hp
-//        let scale = Float(Wp) / 640.0
-//        
+//        let scale = Float(Wp) / Float(kModelInputSize)
+//
 //        // Bbox bounds
 //        let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
 //        let bboxY1 = max(0, Int((primaryBBox.y - primaryBBox.height / 2) * scale))
@@ -2830,7 +2833,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         C: Int, Wp: Int, Hp: Int
     ) {
         let spatial = Wp * Hp
-        let scale = Float(Wp) / 640.0
+        let scale = Float(Wp) / kModelInputSizeFloat
         
         // Primary bbox bounds
         let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
@@ -3080,8 +3083,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         C: Int, Wp: Int, Hp: Int
     ) {
         let spatial = Wp * Hp
-        let scale = Float(Wp) / 640.0
-        
+        let scale = Float(Wp) / kModelInputSizeFloat
+
         // Primary bbox bounds in mask coords
         let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
         let bboxY1 = max(0, Int((primaryBBox.y - primaryBBox.height / 2) * scale))
@@ -3415,7 +3418,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         let W = CGFloat(imageWidth)
         let H = CGFloat(imageHeight)
-        let modelSize: CGFloat = 640
+        let modelSize: CGFloat = CGFloat(kModelInputSize)
+
         let sx = W / modelSize
         let sy = H / modelSize
 
@@ -3767,9 +3771,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let w  = CGFloat(detection.width)
         let h  = CGFloat(detection.height)
 
-        // YOLOE outputs are scaled to 640×640 model input
-        let sx = CGFloat(imageWidth) / 640.0
-        let sy = CGFloat(imageHeight) / 640.0
+        // YOLOE outputs are scaled to 960×960 model input
+        let sx = CGFloat(imageWidth) / CGFloat(kModelInputSize)
+        let sy = CGFloat(imageHeight) / CGFloat(kModelInputSize)
 
         // ---------------------------------------
         // Compute top-left of bbox in output image
@@ -3814,7 +3818,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private func drawBoundingBox(ctx: CGContext, detection: DetectionSmarty, imageWidth: Int, imageHeight: Int) {
         let originalWidth = CGFloat(imageWidth)
         let originalHeight = CGFloat(imageHeight)
-        let modelSize: CGFloat = 640.0
+        let modelSize: CGFloat = CGFloat(kModelInputSize)
+
         let scaleX = originalWidth / modelSize
         let scaleY = originalHeight / modelSize
 
@@ -4030,14 +4035,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: - Pixel Buffer to MLMultiArray (Accelerate) — with timing
     private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
         let t0 = Date()
-        guard let array = try? MLMultiArray(shape: [1, 3, 640, 640], dataType: .float32) else { return nil }
+        let modelSizeNum = NSNumber(value: kModelInputSize)
+        guard let array = try? MLMultiArray(
+                shape: [1, 3, modelSizeNum, modelSizeNum],
+                dataType: .float32
+            ) else { return nil }
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
 
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let width = 640
-        let height = 640
+        let width = kModelInputSize
+        let height = kModelInputSize
         let pixelCount = width * height
         let src = baseAddress.assumingMemoryBound(to: UInt8.self)
 
