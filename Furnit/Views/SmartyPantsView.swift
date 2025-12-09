@@ -644,7 +644,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     // MARK: - Crop Pixel Buffer to BBox (vImage copy)
-    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = -0.15) -> CVPixelBuffer? {
+    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = 0.3) -> CVPixelBuffer? {
         let cropStart = Date()
         
         let fullWf = Float(CVPixelBufferGetWidth(pixelBuffer))
@@ -817,10 +817,23 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("📊 Stage 1: \(stage1DetectionsFull.count) detections")
             print(String(format: "⏱ Stage1 detection decode: %.2f ms", decodeEnd.timeIntervalSince(decodeStart) * 1000.0))
         }
-
-        let sorted = stage1DetectionsFull.sorted { $0.confidence > $1.confidence }
         
-        guard let primary = sorted.first else {
+        // Replace primary selection logic:
+
+        var bestScore: Float = 0
+        var primaryBBox: DetectionSmarty? = nil
+
+        for det in stage1DetectionsFull {
+            let bboxArea = det.width * det.height
+            let score = det.confidence * bboxArea
+            
+            if score > bestScore {
+                bestScore = score
+                primaryBBox = det
+            }
+        }
+
+        guard let primary = primaryBBox else {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -828,10 +841,25 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             return
         }
 
-        if self.debugMode {
-            print("🎯 Primary: \(primary.className) @ \(Int(primary.confidence * 100))%")
-            print("   BBox: center(\(Int(primary.x)), \(Int(primary.y))) size(\(Int(primary.width))x\(Int(primary.height)))")
-        }
+//        if debugMode {
+//            let area = primary.width * primary.height
+//            print("🎯 Primary: \(primary.label) @ \(Int(primary.confidence * 100))%, bbox area=\(Int(area)), score=\(Int(bestScore))")
+//        }
+
+//        let sorted = stage1DetectionsFull.sorted { $0.confidence > $1.confidence }
+        
+//        guard let primary = sorted.first else {
+//            DispatchQueue.main.async {
+//                self.maskImageView.image = nil
+//                self.isProcessing = false
+//            }
+//            return
+//        }
+
+//        if self.debugMode {
+//            print("🎯 Primary: \(primary.className) @ \(Int(primary.confidence * 100))%")
+//            print("   BBox: center(\(Int(primary.x)), \(Int(primary.y))) size(\(Int(primary.width))x\(Int(primary.height)))")
+//        }
 
         setProgress(0.55, text: "Refining crop…")
 
@@ -842,7 +870,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         var stage2Prototypes: MLMultiArray? = nil
 
         let stage2Start = Date()
-        if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0),
+        if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.3),
            let resizedCrop = letterbox(croppedBuffer, size: 640),
            let cropInputArray = pixelBufferToMLMultiArray(resizedCrop),
            
@@ -930,6 +958,42 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
 
+    private func buildStitchedMask(
+        globalMask: inout [Float],
+        allDetections: [DetectionSmarty],
+        protoMatrix: [Float],
+        primaryBBox: DetectionSmarty,
+        C: Int, Wp: Int, Hp: Int
+    ) {
+        let spatial = Wp * Hp
+        
+        // ONLY use primary detection's mask
+        guard primaryBBox.maskCoeffs.count == C else { return }
+        guard !primaryBBox.maskCoeffs.contains(where: { !$0.isFinite }) else { return }
+        
+        var rawMask = [Float](repeating: 0, count: spatial)
+        primaryBBox.maskCoeffs.withUnsafeBufferPointer { coeffPtr in
+            protoMatrix.withUnsafeBufferPointer { protoPtr in
+                guard let coeffBase = coeffPtr.baseAddress,
+                      let protoBase = protoPtr.baseAddress else { return }
+                vDSP_mmul(coeffBase, 1, protoBase, 1, &rawMask, 1,
+                          1, vDSP_Length(spatial), vDSP_Length(C))
+            }
+        }
+        
+        for i in 0..<spatial {
+            if rawMask[i] > maskThreshold {
+                globalMask[i] = 1.0
+            }
+        }
+        
+        if self.debugMode {
+            var area = 0
+            for i in 0..<spatial { if globalMask[i] > 0 { area += 1 } }
+            print("🔷 Primary-only mask: \(area)px (\(String(format: "%.1f", Float(area)/Float(spatial)*100))%)")
+        }
+    }
+    
     private func buildGlobalMaskWithOverlapFilter(
         globalMask: inout [Float],
         allDetections: [DetectionSmarty],
@@ -2239,14 +2303,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // Build globalMask with 50% overlap filter
         let buildStart = Date()
         // Find this call and add primaryBBox:
-        buildGlobalMaskWithOverlap(
+        buildStitchedMask(
             globalMask: &globalMask,
             allDetections: allDetections,
             protoMatrix: protoMatrix1,
-            primaryBBox: primaryBBox,  // ← Add this
-            C: C, Wp: Wp, Hp: Hp,
-            minOverlap: 0.5
+            primaryBBox: primaryBBox,
+            C: C, Wp: Wp, Hp: Hp
         )
+
         let buildEnd = Date()
         
         if self.debugMode {
