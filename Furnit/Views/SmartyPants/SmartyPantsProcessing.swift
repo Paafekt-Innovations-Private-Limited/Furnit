@@ -25,7 +25,7 @@ extension SmartyPantsContainerView {
 
         // STAGE 1: Preprocess
         let stage1PreStart = Date()
-        guard let resized = letterbox(pixelBuffer, size: kModelInputSize) else {
+        guard let resized = resizePixelBufferToSquare(pixelBuffer, size: kModelInputSize) else {
             isProcessing = false
             return
         }
@@ -124,7 +124,7 @@ extension SmartyPantsContainerView {
 
         let stage2Start = Date()
         if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.0),
-           let resizedCrop = letterbox(croppedBuffer, size: kModelInputSize),
+           let resizedCrop = resizePixelBufferToSquare(croppedBuffer, size: kModelInputSize),
            let cropInputArray = pixelBufferToMLMultiArray(resizedCrop),
            let cropInputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": cropInputArray]) {
             

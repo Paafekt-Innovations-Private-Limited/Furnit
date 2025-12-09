@@ -240,7 +240,7 @@ extension SmartyPantsContainerView {
     }
 
     // MARK: - Letterbox
-    func letterbox(_ src: CVPixelBuffer, size: Int = kModelInputSize) -> CVPixelBuffer? {
+    func resizePixelBufferToSquare(_ src: CVPixelBuffer, size: Int = kModelInputSize) -> CVPixelBuffer? {
         let t0 = Date()
         
         CVPixelBufferLockBaseAddress(src, .readOnly)
