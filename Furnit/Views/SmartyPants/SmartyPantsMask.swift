@@ -140,7 +140,6 @@ extension SmartyPantsContainerView {
         }
         
         // Iteratively add masks with >= minOverlap
-        // Micro-optimization: we only compute overlap when needed, no code change required here
         var changed = true
         while changed {
             changed = false
@@ -291,4 +290,3 @@ extension SmartyPantsContainerView {
         return binary
     }
 }
-

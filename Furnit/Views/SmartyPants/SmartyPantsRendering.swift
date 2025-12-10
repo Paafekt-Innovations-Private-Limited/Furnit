@@ -4,6 +4,7 @@
 import UIKit
 import CoreGraphics
 import Photos
+import Accelerate
 
 extension SmartyPantsContainerView {
     
@@ -143,14 +144,42 @@ extension SmartyPantsContainerView {
     func saveMaskToPhotos(_ mask: [Float], width: Int, height: Int, label: String = "mask") {
         let saveStart = Date()
         let count = width * height
-        var pixels = [UInt8](repeating: 0, count: count * 4)
         
+        // We assume mask is binary (0.0 or 1.0). Keep semantics:
+        //  - 0.0  → 0
+        //  - 1.0  → 255
+        // This matches the original "mask[i] > 0 ? 255 : 0" for binary masks.
+        
+        // 1) Scale mask floats by 255 into an intermediate float buffer.
+        var scaled = [Float](repeating: 0, count: count)
+        var scale: Float = 255.0
+        mask.withUnsafeBufferPointer { src in
+            scaled.withUnsafeMutableBufferPointer { dst in
+                if let s = src.baseAddress, let d = dst.baseAddress {
+                    vDSP_vsmul(s, 1, &scale, d, 1, vDSP_Length(count))
+                }
+            }
+        }
+        
+        // 2) Convert scaled floats → UInt8 (0 or 255 when input is 0/1).
+        var gray = [UInt8](repeating: 0, count: count)
+        scaled.withUnsafeBufferPointer { src in
+            gray.withUnsafeMutableBufferPointer { dst in
+                if let s = src.baseAddress, let d = dst.baseAddress {
+                    vDSP_vfixu8(s, 1, d, 1, vDSP_Length(count))
+                }
+            }
+        }
+        
+        // 3) Expand planar gray into RGBA buffer.
+        var pixels = [UInt8](repeating: 0, count: count * 4)
         for i in 0..<count {
-            let val: UInt8 = mask[i] > 0 ? 255 : 0
-            pixels[i * 4 + 0] = val  // R
-            pixels[i * 4 + 1] = val  // G
-            pixels[i * 4 + 2] = val  // B
-            pixels[i * 4 + 3] = 255  // A
+            let v = gray[i]
+            let base = i * 4
+            pixels[base + 0] = v  // R
+            pixels[base + 1] = v  // G
+            pixels[base + 2] = v  // B
+            pixels[base + 3] = 255
         }
         
         guard let provider = CGDataProvider(data: Data(pixels) as CFData) else {
