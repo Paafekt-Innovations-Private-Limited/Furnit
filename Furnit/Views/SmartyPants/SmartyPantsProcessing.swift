@@ -4,6 +4,7 @@
 import CoreML
 import CoreImage
 import UIKit
+import Accelerate
 
 extension SmartyPantsContainerView {
     
@@ -231,7 +232,8 @@ extension SmartyPantsContainerView {
         let sH = strides[2]
         let sW = strides[3]
 
-        // We assume N == 1, so base offset for N is 0
+        _ = sN // N == 1, kept for clarity
+
         switch prototypes.dataType {
         case .float32:
             let base = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
@@ -243,7 +245,6 @@ extension SmartyPantsContainerView {
                     let srcRow = srcCBase + y * sH
                     var dstIdx = dstRow
                     var srcIdx = srcRow
-                    // Unroll inner loop by 1 (straight copy using stride)
                     for _ in 0..<Wp {
                         out[dstIdx] = base[srcIdx]
                         dstIdx += 1
@@ -252,7 +253,6 @@ extension SmartyPantsContainerView {
                 }
             }
         case .float16:
-            // Swift Float16 available; convert per element
             let base = prototypes.dataPointer.assumingMemoryBound(to: Float16.self)
             for c in 0..<C {
                 let dstCBase = c * spatial
@@ -270,7 +270,6 @@ extension SmartyPantsContainerView {
                 }
             }
         default:
-            // Fallback: do nothing (returns zeros). Extend if other types are possible.
             break
         }
 
@@ -355,15 +354,27 @@ extension SmartyPantsContainerView {
 
         if debugMode {
             let buildEnd = Date()
-            var rawCount = 0
-            for i in 0..<spatial { if globalMask[i] > 0 { rawCount += 1 } }
-            print(String(format: "⏱ buildGlobalMaskWithOverlapFilter: %.2f ms", buildEnd.timeIntervalSince(buildStart) * 1000.0))
+            var sum: Float = 0
+            globalMask.withUnsafeBufferPointer { ptr in
+                if let base = ptr.baseAddress {
+                    vDSP_sve(base, 1, &sum, vDSP_Length(spatial))
+                }
+            }
+            let rawCount = Int(sum.rounded())
+            print(String(format: "⏱ buildGlobalMaskWithOverlapFilter: %.2f ms",
+                         buildEnd.timeIntervalSince(buildStart) * 1000.0))
             print("📊 After overlap filter: \(rawCount)/\(spatial) pixels (\(String(format: "%.1f", Float(rawCount)/Float(spatial)*100))%)")
         }
         
-        // Update perimeter tracking
-        var maskArea = 0
-        for i in 0..<spatial { if globalMask[i] > 0 { maskArea += 1 } }
+        // Update perimeter tracking (area of current mask)
+        var areaSum: Float = 0
+        globalMask.withUnsafeBufferPointer { ptr in
+            if let base = ptr.baseAddress {
+                vDSP_sve(base, 1, &areaSum, vDSP_Length(spatial))
+            }
+        }
+        let maskArea = Int(areaSum.rounded())
+        
         if maskArea > bestPerimeterArea {
             bestPerimeterMask = globalMask
             bestPerimeterArea = maskArea
@@ -380,8 +391,13 @@ extension SmartyPantsContainerView {
         let ppStart = Date()
         fillInsidePerimeter(&globalMask, width: Wp, height: Hp)
         
-        var finalPixelCount = 0
-        for i in 0..<spatial { if globalMask[i] > 0 { finalPixelCount += 1 } }
+        var finalSum: Float = 0
+        globalMask.withUnsafeBufferPointer { ptr in
+            if let base = ptr.baseAddress {
+                vDSP_sve(base, 1, &finalSum, vDSP_Length(spatial))
+            }
+        }
+        let finalPixelCount = Int(finalSum.rounded())
 
         if debugMode {
             let ppEnd = Date()
@@ -474,5 +490,3 @@ extension SmartyPantsContainerView {
         }
     }
 }
-
-

@@ -11,7 +11,7 @@ extension SmartyPantsContainerView {
         let t0 = Date()
         let modelSizeNum = NSNumber(value: kModelInputSize)
         guard let array = try? MLMultiArray(shape: [1, 3, modelSizeNum, modelSizeNum], dataType: .float32) else { return nil }
-        
+
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
@@ -20,51 +20,69 @@ extension SmartyPantsContainerView {
         let width = kModelInputSize
         let height = kModelInputSize
         let pixelCount = width * height
-        let src = baseAddress.assumingMemoryBound(to: UInt8.self)
 
+        // Prepare destination plane pointers in MLMultiArray (Float32)
         let floatSize = MemoryLayout<Float32>.size
         let planeStrideBytes = pixelCount * floatSize
         let rPtr = array.dataPointer.advanced(by: 0 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
         let gPtr = array.dataPointer.advanced(by: 1 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
         let bPtr = array.dataPointer.advanced(by: 2 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
 
-        var indicesR = [vDSP_Length](repeating: 0, count: width)
-        var indicesG = [vDSP_Length](repeating: 0, count: width)
-        var indicesB = [vDSP_Length](repeating: 0, count: width)
-        for i in 0..<width {
-            indicesR[i] = vDSP_Length(2 + i * 4)
-            indicesG[i] = vDSP_Length(1 + i * 4)
-            indicesB[i] = vDSP_Length(0 + i * 4)
-        }
+        // vImage source buffer (BGRA8888)
+        var srcBuf = vImage_Buffer(data: baseAddress,
+                                   height: vImagePixelCount(height),
+                                   width: vImagePixelCount(width),
+                                   rowBytes: bytesPerRow)
 
-        var rowUInt8 = [UInt8](repeating: 0, count: width * 4)
-        var rowFloat = [Float](repeating: 0, count: width * 4)
-        var scaleF: Float = 1.0 / 255.0
+        // Convert BGRA8888 -> ARGB8888, then split into planar 8-bit A,R,G,B
+        var argbData = [UInt8](repeating: 0, count: pixelCount * 4)
+        var argbBuf = vImage_Buffer(data: &argbData, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width * 4)
 
-        for y in 0..<height {
-            let rowStart = src.advanced(by: y * bytesPerRow)
-            rowUInt8.withUnsafeMutableBytes { dstBytes in
-                memcpy(dstBytes.baseAddress!, rowStart, width * 4)
-            }
+        // Permute BGRA (B,G,R,A) to ARGB (A,R,G,B)
+        var permute: [UInt8] = [3, 2, 1, 0]
+        vImagePermuteChannels_ARGB8888(&srcBuf, &argbBuf, &permute, vImage_Flags(kvImageNoFlags))
 
-            rowUInt8.withUnsafeBufferPointer { u8Ptr in
-                rowFloat.withUnsafeMutableBufferPointer { fPtr in
-                    vDSP_vfltu8(u8Ptr.baseAddress!, 1, fPtr.baseAddress!, 1, vDSP_Length(width * 4))
-                    vDSP_vsmul(fPtr.baseAddress!, 1, &scaleF, fPtr.baseAddress!, 1, vDSP_Length(width * 4))
+        // Temporary planar 8-bit buffers for B, G, R, A
+        var b8 = [UInt8](repeating: 0, count: pixelCount)
+        var g8 = [UInt8](repeating: 0, count: pixelCount)
+        var r8 = [UInt8](repeating: 0, count: pixelCount)
+        var a8 = [UInt8](repeating: 0, count: pixelCount)
+
+        b8.withUnsafeMutableBytes { bBytes in
+            g8.withUnsafeMutableBytes { gBytes in
+                r8.withUnsafeMutableBytes { rBytes in
+                    a8.withUnsafeMutableBytes { aBytes in
+                        var aBuf = vImage_Buffer(data: aBytes.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                        var rBuf = vImage_Buffer(data: rBytes.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                        var gBuf = vImage_Buffer(data: gBytes.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                        var bBuf = vImage_Buffer(data: bBytes.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+
+                        vImageConvert_ARGB8888toPlanar8(&argbBuf, &aBuf, &rBuf, &gBuf, &bBuf, vImage_Flags(kvImageNoFlags))
+                    }
                 }
             }
+        }
 
-            rowFloat.withUnsafeBufferPointer { rf in
-                let baseF = rf.baseAddress!
-                vDSP_vgathr(baseF, indicesR, 1, rPtr.advanced(by: y * width), 1, vDSP_Length(width))
-                vDSP_vgathr(baseF, indicesG, 1, gPtr.advanced(by: y * width), 1, vDSP_Length(width))
-                vDSP_vgathr(baseF, indicesB, 1, bPtr.advanced(by: y * width), 1, vDSP_Length(width))
-            }
+        let convertStart = Date()
+        // Convert Planar8 -> PlanarF directly into MLMultiArray planes and normalize to [0,1]
+        var scaleF: Float = 1.0 / 255.0
+        b8.withUnsafeBufferPointer { bU8 in
+            vDSP_vfltu8(bU8.baseAddress!, 1, bPtr, 1, vDSP_Length(pixelCount))
+            vDSP_vsmul(bPtr, 1, &scaleF, bPtr, 1, vDSP_Length(pixelCount))
+        }
+        g8.withUnsafeBufferPointer { gU8 in
+            vDSP_vfltu8(gU8.baseAddress!, 1, gPtr, 1, vDSP_Length(pixelCount))
+            vDSP_vsmul(gPtr, 1, &scaleF, gPtr, 1, vDSP_Length(pixelCount))
+        }
+        r8.withUnsafeBufferPointer { rU8 in
+            vDSP_vfltu8(rU8.baseAddress!, 1, rPtr, 1, vDSP_Length(pixelCount))
+            vDSP_vsmul(rPtr, 1, &scaleF, rPtr, 1, vDSP_Length(pixelCount))
         }
 
         if debugMode {
             let dt = Date().timeIntervalSince(t0) * 1000.0
-            print(String(format: "⏱ pixelBufferToMLMultiArray: %.2f ms", dt))
+            let conv = Date().timeIntervalSince(convertStart) * 1000.0
+            print(String(format: "⏱ pixelBufferToMLMultiArray: total %.2f ms (convert %.2f ms)", dt, conv))
         }
 
         return array
@@ -76,24 +94,89 @@ extension SmartyPantsContainerView {
         let spatial = Hp * Wp
         let count = C * spatial
         var out = [Float](repeating: 0, count: count)
-        
-        // Use subscript access to handle MLMultiArray strides correctly
-        // Layout: out[c * spatial + (y * Wp + x)] = array[0, c, y, x]
+
+        // Fast path if data is Float32 and contiguous in [1, C, H, W] layout
+        let strides = array.strides.map { $0.intValue }
+        let isContiguous = array.dataType == .float32 &&
+                           strides.count >= 4 &&
+                           strides[3] == 1 &&            // W stride
+                           strides[2] == Wp &&           // H stride
+                           strides[1] == Hp * Wp         // C stride
+        if isContiguous {
+            let baseF = array.dataPointer.assumingMemoryBound(to: Float.self)
+            for c in 0..<C {
+                let src = baseF.advanced(by: c * spatial)
+                out.withUnsafeMutableBufferPointer { dst in
+                    let d = dst.baseAddress!.advanced(by: c * spatial)
+                    memcpy(d, src, spatial * MemoryLayout<Float>.size)
+                }
+            }
+            if debugMode {
+                let dt = Date().timeIntervalSince(t0) * 1000.0
+                print(String(format: "⏱ makePrototypeBuffer (contiguous memcpy): %.2f ms", dt))
+            }
+            return out
+        }
+
+        // General path: honor MLMultiArray strides. If not Float32, convert entire buffer once.
+        let totalCount = array.count
+        var tempFloatBuf: UnsafeMutablePointer<Float>? = nil
+        defer { tempFloatBuf?.deallocate() }
+
+        let readPtrF: UnsafePointer<Float>
+        if array.dataType == .float32 {
+            let base = array.dataPointer.assumingMemoryBound(to: Float.self)
+            readPtrF = UnsafePointer<Float>(base)
+        } else if array.dataType == .float16 {
+            // Convert entire buffer to Float once
+            let tmp = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
+            tempFloatBuf = tmp
+            let src = array.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
+            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<UInt16>.size)
+            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(tmp), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<Float>.size)
+            vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+            readPtrF = UnsafePointer<Float>(tmp)
+        } else {
+            // Fallback: use subscript (slow but correct) — should rarely happen
+            for c in 0..<C {
+                for y in 0..<Hp {
+                    for x in 0..<Wp {
+                        let srcIdx = [0, c, y, x] as [NSNumber]
+                        let dstIdx = c * spatial + y * Wp + x
+                        out[dstIdx] = array[srcIdx].floatValue
+                    }
+                }
+            }
+            if debugMode {
+                let dt = Date().timeIntervalSince(t0) * 1000.0
+                print(String(format: "⏱ makePrototypeBuffer (fallback subscript): %.2f ms", dt))
+            }
+            return out
+        }
+
+        // Compute offsets using strides in elements
+        let s0 = strides.count > 0 ? strides[0] : 0
+        let s1 = strides.count > 1 ? strides[1] : 0
+        let s2 = strides.count > 2 ? strides[2] : 0
+        let s3 = strides.count > 3 ? strides[3] : 0
+        precondition(s3 > 0 && s2 > 0 && s1 > 0, "Invalid MLMultiArray strides")
+
         for c in 0..<C {
             for y in 0..<Hp {
+                let dstRowBase = c * spatial + y * Wp
+                let srcBaseOffset = 0 * s0 + c * s1 + y * s2
                 for x in 0..<Wp {
-                    let srcIdx = [0, c, y, x] as [NSNumber]
-                    let dstIdx = c * spatial + y * Wp + x
-                    out[dstIdx] = array[srcIdx].floatValue
+                    let srcOffset = srcBaseOffset + x * s3
+                    out[dstRowBase + x] = readPtrF[srcOffset]
                 }
             }
         }
-        
+
         if debugMode {
             let dt = Date().timeIntervalSince(t0) * 1000.0
-            print(String(format: "⏱ makePrototypeBuffer (subscript): %.2f ms", dt))
+            print(String(format: "⏱ makePrototypeBuffer (stride read): %.2f ms", dt))
         }
-        
+
         return out
     }
 
@@ -163,6 +246,7 @@ extension SmartyPantsContainerView {
         }
 
         let decodeStart = Date()
+        var decodedCount = 0
         for anchor in 0..<numAnchors {
             guard anchor < stride,
                   1 * stride + anchor < totalCount,
@@ -198,6 +282,7 @@ extension SmartyPantsContainerView {
                 }
             }
 
+            decodedCount += 1
             all.append(DetectionSmarty(
                 x: x, y: y, width: w, height: h,
                 confidence: bestConf, classIdx: -1,
@@ -207,7 +292,7 @@ extension SmartyPantsContainerView {
         
         if debugMode {
             let decodeEnd = Date()
-            print(String(format: "⏱ extractDetections decode loop: %.2f ms", decodeEnd.timeIntervalSince(decodeStart) * 1000.0))
+            print(String(format: "⏱ extractDetections decode loop: %.2f ms, decoded: %d", decodeEnd.timeIntervalSince(decodeStart) * 1000.0, decodedCount))
             print("\n📊 DETECTION SUMMARY: \(all.count) total")
             let grouped = Dictionary(grouping: all) { $0.className }
             for (className, dets) in grouped.sorted(by: { $0.value.count > $1.value.count }).prefix(20) {
