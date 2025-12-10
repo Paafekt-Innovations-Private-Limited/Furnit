@@ -190,22 +190,80 @@ extension SmartyPantsContainerView {
         }
     }
 
-    // MARK: - Fill Inside Perimeter
+    // MARK: - Fill Inside Perimeter (with vImage dilation)
     func fillInsidePerimeter(_ mask: inout [Float], width: Int, height: Int) {
         let count = width * height
         
-        // Step 1: Dilate to seal perimeter gaps
+        // ========= Step 1: Dilate to seal perimeter gaps (vImage) =========
         var sealed = [Float](repeating: 0, count: count)
         let radius = 3
+        let kernelSide = radius * 2 + 1      // 7×7 kernel
+        let kernelCount = kernelSide * kernelSide
+        var kernel = [UInt8](repeating: 1, count: kernelCount)
         
-        for y in 0..<height {
-            for x in 0..<width {
-                if mask[y * width + x] > 0 {
-                    for dy in -radius...radius {
-                        for dx in -radius...radius {
-                            let nx = x + dx, ny = y + dy
-                            if nx >= 0 && nx < width && ny >= 0 && ny < height {
-                                sealed[ny * width + nx] = 1.0
+        // Convert Float mask (0/1) → Planar8 (0/255)
+        var srcPlanar = [UInt8](repeating: 0, count: count)
+        for i in 0..<count {
+            srcPlanar[i] = mask[i] > 0 ? 255 : 0
+        }
+        var dstPlanar = [UInt8](repeating: 0, count: count)
+        
+        var srcBuf = vImage_Buffer(
+            data: &srcPlanar,
+            height: vImagePixelCount(height),
+            width: vImagePixelCount(width),
+            rowBytes: width
+        )
+        var dstBuf = vImage_Buffer(
+            data: &dstPlanar,
+            height: vImagePixelCount(height),
+            width: vImagePixelCount(width),
+            rowBytes: width
+        )
+        
+        let dilateStart = Date()
+        let err = vImageDilate_Planar8(
+            &srcBuf,
+            &dstBuf,
+            0, 0,
+            &kernel,
+            vImagePixelCount(kernelSide),   // FIXED
+            vImagePixelCount(kernelSide),   // FIXED
+            vImage_Flags(kvImageNoFlags)
+        )
+
+        let dilateEnd = Date()
+        
+        if err == kvImageNoError {
+            // Convert back to Float 0/1
+            var sealedCount = 0
+            for i in 0..<count {
+                if dstPlanar[i] > 0 {
+                    sealed[i] = 1.0
+                    sealedCount += 1
+                } else {
+                    sealed[i] = 0.0
+                }
+            }
+            if debugMode {
+                print(String(format: "⏱ fillInsidePerimeter dilation (vImage): %.2f ms, sealed=%d",
+                             dilateEnd.timeIntervalSince(dilateStart) * 1000.0,
+                             sealedCount))
+            }
+        } else {
+            // Fallback to original CPU dilation if vImage fails for some reason
+            if debugMode {
+                print("⚠️ vImageDilate_Planar8 failed with error \(err), falling back to CPU dilation")
+            }
+            for y in 0..<height {
+                for x in 0..<width {
+                    if mask[y * width + x] > 0 {
+                        for dy in -radius...radius {
+                            for dx in -radius...radius {
+                                let nx = x + dx, ny = y + dy
+                                if nx >= 0 && nx < width && ny >= 0 && ny < height {
+                                    sealed[ny * width + nx] = 1.0
+                                }
                             }
                         }
                     }
@@ -213,7 +271,7 @@ extension SmartyPantsContainerView {
             }
         }
         
-        // Step 2: Flood fill from edges to mark EXTERIOR
+        // ========= Step 2: Flood fill from edges to mark EXTERIOR =========
         var exterior = [Bool](repeating: false, count: count)
         var queue = [Int]()
         queue.reserveCapacity(count / 4)
@@ -254,7 +312,7 @@ extension SmartyPantsContainerView {
             print(String(format: "⏱ fillInsidePerimeter flood: %.2f ms", floodEnd.timeIntervalSince(floodStart) * 1000.0))
         }
         
-        // Step 3: NOT exterior = interior = fill with 1
+        // ========= Step 3: NOT exterior = interior = fill with 1 =========
         var filled = 0
         for i in 0..<count {
             if !exterior[i] {

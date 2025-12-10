@@ -107,8 +107,10 @@ extension SmartyPantsContainerView {
         }
     }
 
-    // MARK: - Brightness Estimation
+    // MARK: - Brightness Estimation (Accelerate-backed mean)
     func averageLuma(of pixelBuffer: CVPixelBuffer, sampleStride: Int = 8) -> Float {
+        let t0 = debugMode ? Date() : nil
+        
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return 0 }
@@ -117,27 +119,53 @@ extension SmartyPantsContainerView {
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
 
         let ptr = base.assumingMemoryBound(to: UInt8.self)
-        var sum: Float = 0
-        var count: Int = 0
-
+        
         let step = max(1, sampleStride)
+        // Upper bound on number of samples (height/step rounded up × width/step rounded up)
+        let maxSamplesY = (height + step - 1) / step
+        let maxSamplesX = (width  + step - 1) / step
+        let maxSamples  = maxSamplesX * maxSamplesY
+        
+        var lumas = [Float]()
+        lumas.reserveCapacity(maxSamples)
+        
+        let inv255: Float = 1.0 / 255.0
+        let wR: Float = 0.2126
+        let wG: Float = 0.7152
+        let wB: Float = 0.0722
+        
         var y = 0
         while y < height {
             let row = ptr.advanced(by: y * bytesPerRow)
             var x = 0
             while x < width {
                 let px = row.advanced(by: x * 4)
-                let b = Float(px[0]) * (1.0 / 255.0)
-                let g = Float(px[1]) * (1.0 / 255.0)
-                let r = Float(px[2]) * (1.0 / 255.0)
-                let y709 = 0.2126 * r + 0.7152 * g + 0.0722 * b
-                sum += y709
-                count += 1
+                let b = Float(px[0]) * inv255
+                let g = Float(px[1]) * inv255
+                let r = Float(px[2]) * inv255
+                // Same Rec.709 formula as before
+                let y709 = wR * r + wG * g + wB * b
+                lumas.append(y709)
                 x += step
             }
             y += step
         }
-        return count == 0 ? 0 : sum / Float(count)
+        
+        guard !lumas.isEmpty else { return 0 }
+        
+        var mean: Float = 0
+        lumas.withUnsafeBufferPointer { buf in
+            if let base = buf.baseAddress {
+                vDSP_meanv(base, 1, &mean, vDSP_Length(lumas.count))
+            }
+        }
+        
+        if let t0 = t0, debugMode {
+            let dt = Date().timeIntervalSince(t0) * 1000.0
+            print(String(format: "⏱ averageLuma: %.2f ms (samples: %d)", dt, lumas.count))
+        }
+        
+        return mean
     }
 
     // MARK: - Dark Gate UI
