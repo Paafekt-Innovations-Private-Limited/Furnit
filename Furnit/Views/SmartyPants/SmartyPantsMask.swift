@@ -35,9 +35,15 @@ extension SmartyPantsContainerView {
         }
         
         if debugMode {
-            var area = 0
-            for i in 0..<spatial { if globalMask[i] > 0 { area += 1 } }
-            print("🔷 Primary-only mask: \(area)px (\(String(format: "%.1f", Float(area)/Float(spatial)*100))%)")
+            var sum: Float = 0
+            globalMask.withUnsafeBufferPointer { ptr in
+                if let base = ptr.baseAddress {
+                    vDSP_sve(base, 1, &sum, vDSP_Length(spatial))
+                }
+            }
+            let area = Int(sum.rounded())
+            let percent = Float(area) / Float(spatial) * 100.0
+            print("🔷 Primary-only mask: \(area)px (\(String(format: "%.1f", percent))%)")
         }
     }
     
@@ -85,8 +91,9 @@ extension SmartyPantsContainerView {
             
             var area = 0
             for y in 0..<Hp {
+                let rowOffset = y * Wp
                 for x in 0..<Wp {
-                    let idx = y * Wp + x
+                    let idx = rowOffset + x
                     if rawMask[idx] > maskThreshold &&
                        x >= bboxX1 && x < bboxX2 &&
                        y >= bboxY1 && y < bboxY2 {
@@ -124,10 +131,16 @@ extension SmartyPantsContainerView {
             for (idx, detMask) in detMasks.enumerated() {
                 if used[idx] || detAreas[idx] == 0 { continue }
                 
-                var overlapCount = 0
-                for i in 0..<spatial {
-                    if detMask[i] > 0 && globalMask[i] > 0 { overlapCount += 1 }
+                // Overlap count via dot product on 0/1 masks
+                var overlapFloat: Float = 0
+                detMask.withUnsafeBufferPointer { detPtr in
+                    globalMask.withUnsafeBufferPointer { globPtr in
+                        if let d = detPtr.baseAddress, let g = globPtr.baseAddress {
+                            vDSP_dotpr(d, 1, g, 1, &overlapFloat, vDSP_Length(spatial))
+                        }
+                    }
                 }
+                let overlapCount = Int(overlapFloat.rounded())
                 
                 let overlapRatio = Float(overlapCount) / Float(detAreas[idx])
                 
@@ -151,8 +164,13 @@ extension SmartyPantsContainerView {
         
         if debugMode {
             let mergedCount = used.filter { $0 }.count
-            var totalArea = 0
-            for i in 0..<spatial { if globalMask[i] > 0 { totalArea += 1 } }
+            var sum: Float = 0
+            globalMask.withUnsafeBufferPointer { ptr in
+                if let base = ptr.baseAddress {
+                    vDSP_sve(base, 1, &sum, vDSP_Length(spatial))
+                }
+            }
+            let totalArea = Int(sum.rounded())
             print("🔷 buildGlobalMask: \(mergedCount)/\(allDetections.count) merged, total=\(totalArea)px")
         }
     }
@@ -235,14 +253,18 @@ extension SmartyPantsContainerView {
         
         globalMask.withUnsafeBufferPointer { src in
             scaled.withUnsafeMutableBufferPointer { dst in
-                vDSP_vsmul(src.baseAddress!, 1, &scale255, dst.baseAddress!, 1, vDSP_Length(count))
+                if let s = src.baseAddress, let d = dst.baseAddress {
+                    vDSP_vsmul(s, 1, &scale255, d, 1, vDSP_Length(count))
+                }
             }
         }
         
         var binary = [UInt8](repeating: 0, count: count)
         scaled.withUnsafeBufferPointer { src in
             binary.withUnsafeMutableBufferPointer { dst in
-                vDSP_vfixu8(src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(count))
+                if let s = src.baseAddress, let d = dst.baseAddress {
+                    vDSP_vfixu8(s, 1, d, 1, vDSP_Length(count))
+                }
             }
         }
         return binary

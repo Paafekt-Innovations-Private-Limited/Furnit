@@ -215,6 +215,68 @@ extension SmartyPantsContainerView {
         }
     }
 
+    // MARK: - Fast prototype buffer builder (stride-aware, no subscripts)
+    /// Flattens MLMultiArray prototypes [1, C, Hp, Wp] into [Float] shaped as C x (Hp*Wp)
+    /// Layout matches existing vDSP usage: out[c * (Hp*Wp) + (y*Wp + x)]
+    func makePrototypeBufferFast(from prototypes: MLMultiArray, C: Int, Hp: Int, Wp: Int) -> [Float] {
+        let spatial = Hp * Wp
+        var out = [Float](repeating: 0, count: C * spatial)
+
+        // Expect shape [1, C, Hp, Wp]
+        let strides = prototypes.strides.map { $0.intValue }
+        guard strides.count == 4 else { return out }
+
+        let sN = strides[0]
+        let sC = strides[1]
+        let sH = strides[2]
+        let sW = strides[3]
+
+        // We assume N == 1, so base offset for N is 0
+        switch prototypes.dataType {
+        case .float32:
+            let base = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
+            for c in 0..<C {
+                let dstCBase = c * spatial
+                let srcCBase = c * sC
+                for y in 0..<Hp {
+                    let dstRow = dstCBase + y * Wp
+                    let srcRow = srcCBase + y * sH
+                    var dstIdx = dstRow
+                    var srcIdx = srcRow
+                    // Unroll inner loop by 1 (straight copy using stride)
+                    for _ in 0..<Wp {
+                        out[dstIdx] = base[srcIdx]
+                        dstIdx += 1
+                        srcIdx += sW
+                    }
+                }
+            }
+        case .float16:
+            // Swift Float16 available; convert per element
+            let base = prototypes.dataPointer.assumingMemoryBound(to: Float16.self)
+            for c in 0..<C {
+                let dstCBase = c * spatial
+                let srcCBase = c * sC
+                for y in 0..<Hp {
+                    let dstRow = dstCBase + y * Wp
+                    let srcRow = srcCBase + y * sH
+                    var dstIdx = dstRow
+                    var srcIdx = srcRow
+                    for _ in 0..<Wp {
+                        out[dstIdx] = Float(base[srcIdx])
+                        dstIdx += 1
+                        srcIdx += sW
+                    }
+                }
+            }
+        default:
+            // Fallback: do nothing (returns zeros). Extend if other types are possible.
+            break
+        }
+
+        return out
+    }
+
     // MARK: - Generate Cutout Two Stage
     func generateCutoutTwoStage(
         stage1Detections: [DetectionSmarty],
@@ -243,7 +305,7 @@ extension SmartyPantsContainerView {
 
         // Stage 1 prototype buffer
         let protoStage1Start = Date()
-        let protoMatrix1 = makePrototypeBuffer(from: stage1Prototypes, C: C, Hp: Hp, Wp: Wp)
+        let protoMatrix1 = makePrototypeBufferFast(from: stage1Prototypes, C: C, Hp: Hp, Wp: Wp)
         if debugMode {
             let protoStage1End = Date()
             print(String(format: "⏱ Stage1 prototype buffer build (Accelerate): %.2f ms",
@@ -412,3 +474,5 @@ extension SmartyPantsContainerView {
         }
     }
 }
+
+

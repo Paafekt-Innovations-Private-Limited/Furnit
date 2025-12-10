@@ -159,6 +159,7 @@ extension SmartyPantsContainerView {
             print("📝 Tensor shape: [1, \(numFeatures), \(numAnchors)]")
             print("   → \(numClasses) classes, \(numAnchors) predictions")
             print("   → Mode: CLASS-AGNOSTIC")
+            print("   → Using vDSP-optimized max and gather for decode")
         }
 
         let decodeStart = Date()
@@ -174,31 +175,28 @@ extension SmartyPantsContainerView {
             let h = detBuf[3 * stride + anchor]
             guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
 
-            // Class-agnostic: take max over class scores
-            var bestConf: Float = 0
+            // Class-agnostic: take max over class scores (vDSP-optimized)
             let baseConfIdx = 4 * stride + anchor
-            for classIdx in 0..<numClasses {
-                let confIndex = baseConfIdx + classIdx * stride
-                guard confIndex < totalCount else { break }
-                let conf = detBuf[confIndex]
-                if conf.isFinite, conf > bestConf { bestConf = conf }
-            }
+            var maxVal: Float = 0
+            // vDSP_maxv supports strided access; compute max across `numClasses` values starting at baseConfIdx with stride `stride`.
+            vDSP_maxv(detBuf.advanced(by: baseConfIdx), vDSP_Stride(stride), &maxVal, vDSP_Length(numClasses))
+            // Preserve previous behavior where negative class scores were effectively ignored by starting from 0
+            let bestConf = max(0, maxVal)
             guard bestConf > confidenceThreshold else { continue }
 
-            // Mask coefficients (32)
+            // Mask coefficients (32) via vDSP gather
             var coeffs = [Float](repeating: 0, count: 32)
             let coeffStartIdx = coeffOffset * stride + anchor
-            var coeffsOK = true
-            for k in 0..<32 {
-                let idx = coeffStartIdx + k * stride
-                if idx < totalCount {
-                    coeffs[k] = detBuf[idx]
-                } else {
-                    coeffsOK = false
-                    break
+            // Ensure bounds for the last gathered index
+            let lastCoeffIdx = coeffStartIdx + (32 - 1) * stride
+            guard lastCoeffIdx < totalCount else { continue }
+            var indices = [vDSP_Length](repeating: 0, count: 32)
+            for k in 0..<32 { indices[k] = vDSP_Length(coeffStartIdx + k * stride) }
+            coeffs.withUnsafeMutableBufferPointer { dst in
+                indices.withUnsafeBufferPointer { idxs in
+                    vDSP_vgathr(detBuf, idxs.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(32))
                 }
             }
-            if !coeffsOK { continue }
 
             all.append(DetectionSmarty(
                 x: x, y: y, width: w, height: h,
@@ -279,3 +277,4 @@ extension SmartyPantsContainerView {
         return iou.isFinite ? iou : 0
     }
 }
+
