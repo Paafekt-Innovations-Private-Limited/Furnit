@@ -219,12 +219,10 @@ extension SmartyPantsContainerView {
         }
     }
 
-    // MARK: - Fast prototype buffer builder (stride-aware, no subscripts)
-    /// Flattens MLMultiArray prototypes [1, C, Hp, Wp] into [Float] shaped as C x (Hp*Wp)
-    /// Layout matches existing vDSP usage: out[c * (Hp*Wp) + (y*Wp + x)]
     func makePrototypeBufferFast(from prototypes: MLMultiArray, C: Int, Hp: Int, Wp: Int) -> [Float] {
         let spatial = Hp * Wp
-        var out = [Float](repeating: 0, count: C * spatial)
+        let total = C * spatial
+        var out = [Float](repeating: 0, count: total)
 
         // Expect shape [1, C, Hp, Wp]
         let strides = prototypes.strides.map { $0.intValue }
@@ -235,8 +233,45 @@ extension SmartyPantsContainerView {
         let sH = strides[2]
         let sW = strides[3]
 
-        _ = sN // N == 1, kept for clarity
+        // Fast path: contiguous [1, C, Hp, Wp] layout
+        if sN == C * spatial && sC == spatial && sH == Wp && sW == 1 {
+            switch prototypes.dataType {
+            case .float32:
+                // Direct bulk copy
+                let src = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
+                out.withUnsafeMutableBufferPointer { dst in
+                    if let dstBase = dst.baseAddress {
+                        dstBase.assign(from: src, count: total)
+                    }
+                }
+                if debugMode {
+                    print("📦 [PROTO] Fast contiguous copy (.float32)")
+                }
+                return out
 
+            case .float16:
+                // Single linear pass: Float16 -> Float
+                let src = prototypes.dataPointer.assumingMemoryBound(to: Float16.self)
+                out.withUnsafeMutableBufferPointer { dst in
+                    if let dstBase = dst.baseAddress {
+                        var i = 0
+                        while i < total {
+                            dstBase[i] = Float(src[i])
+                            i += 1
+                        }
+                    }
+                }
+                if debugMode {
+                    print("📦 [PROTO] Fast contiguous convert (.float16)")
+                }
+                return out
+
+            default:
+                break
+            }
+        }
+
+        // Fallback: general-stride access (same logic as before)
         switch prototypes.dataType {
         case .float32:
             let base = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
@@ -255,6 +290,7 @@ extension SmartyPantsContainerView {
                     }
                 }
             }
+
         case .float16:
             let base = prototypes.dataPointer.assumingMemoryBound(to: Float16.self)
             for c in 0..<C {
@@ -272,12 +308,15 @@ extension SmartyPantsContainerView {
                     }
                 }
             }
+
         default:
+            // Fallback: do nothing (returns zeros). Extend if other types are possible.
             break
         }
 
         return out
     }
+
 
     // MARK: - Generate Cutout Two Stage
     func generateCutoutTwoStage(
