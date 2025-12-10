@@ -18,6 +18,7 @@ extension SmartyPantsContainerView {
     ) {
         let all = stage1 + stage2
         guard !all.isEmpty else { return }
+        let drawStart = Date()
 
         let W = CGFloat(imageWidth)
         let H = CGFloat(imageHeight)
@@ -78,6 +79,10 @@ extension SmartyPantsContainerView {
 
         UIGraphicsPopContext()
         ctx.restoreGState()
+        if debugMode {
+            let drawEnd = Date()
+            print(String(format: "⏱ drawLabelsAndBoxes: %.2f ms (items: %d)", drawEnd.timeIntervalSince(drawStart) * 1000.0, all.count))
+        }
     }
 
     // MARK: - Draw Perimeter Outline (Debug)
@@ -89,6 +94,7 @@ extension SmartyPantsContainerView {
         imageWidth: Int,
         imageHeight: Int
     ) {
+        let perStart = Date()
         let scaleX = Float(imageWidth) / Float(maskWidth)
         let scaleY = Float(imageHeight) / Float(maskHeight)
         
@@ -127,10 +133,15 @@ extension SmartyPantsContainerView {
                 }
             }
         }
+        if debugMode {
+            let perEnd = Date()
+            print(String(format: "⏱ drawPerimeterOutline: %.2f ms", perEnd.timeIntervalSince(perStart) * 1000.0))
+        }
     }
 
     // MARK: - Save Mask to Photos (Debug)
     func saveMaskToPhotos(_ mask: [Float], width: Int, height: Int, label: String = "mask") {
+        let saveStart = Date()
         let count = width * height
         var pixels = [UInt8](repeating: 0, count: count * 4)
         
@@ -161,6 +172,10 @@ extension SmartyPantsContainerView {
         let uiImage = UIImage(cgImage: cgImage)
         UIImageWriteToSavedPhotosAlbum(uiImage, nil, nil, nil)
         print("📸 Saved \(label) (\(width)x\(height)) to Photos")
+        if debugMode {
+            let saveEnd = Date()
+            print(String(format: "⏱ saveMaskToPhotos: %.2f ms", saveEnd.timeIntervalSince(saveStart) * 1000.0))
+        }
     }
 
     // MARK: - Clear Outside BBox
@@ -247,6 +262,7 @@ extension SmartyPantsContainerView {
     }
 
     func cutoutClearOutsideAccelerated(x0: Int, y0: Int, x1: Int, y1: Int, in image: CGImage) -> CGImage? {
+        let t0 = Date()
         let width = image.width
         let height = image.height
         guard width > 0 && height > 0 else { return nil }
@@ -306,7 +322,12 @@ extension SmartyPantsContainerView {
                                      bitsPerComponent: 8, bytesPerRow: bytesPerRow,
                                      space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
 
-        return outCtx.makeImage()
+        let outImage = outCtx.makeImage()
+        if debugMode {
+            let dt = Date().timeIntervalSince(t0) * 1000.0
+            print(String(format: "⏱ cutoutClearOutsideAccelerated: %.2f ms", dt))
+        }
+        return outImage
     }
 
     func cutoutClearOutsideAcceleratedUIImage(x0: Int, y0: Int, x1: Int, y1: Int, in image: UIImage) -> UIImage? {

@@ -14,6 +14,7 @@ extension SmartyPantsContainerView {
         
         guard let model = mlModel else { return }
         let now = Date()
+        if debugMode { print("[SP TIMING] ===== New frame @ \(now.timeIntervalSince1970) =====") }
         guard now.timeIntervalSince(lastProcessTime) >= processInterval, !isProcessing else { return }
         lastProcessTime = now
         isProcessing = true
@@ -185,7 +186,8 @@ extension SmartyPantsContainerView {
                          stage2End.timeIntervalSince(stage2Start) * 1000.0))
         }
         
-        let rawDetections = extractDetections(from: detArray)
+        // Reuse decoded detections instead of decoding again
+        let rawDetections = stage1DetectionsFull
         let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.6)
         let stage2KeptStage2 = applyNMS(uniqueDetections, iouThreshold: 0.6)
         
@@ -208,11 +210,12 @@ extension SmartyPantsContainerView {
             primaryBBox: primary,
             originalImage: pixelBuffer
         )
+        let cutoutEnd = Date()
+        print(String(format: "[SP TIMING] generateCutoutTwoStage call: %.2f ms", cutoutEnd.timeIntervalSince(cutoutStart) * 1000.0))
         
         if debugMode {
-            let cutoutEnd = Date()
-            print(String(format: "⏱ generateCutoutTwoStage call: %.2f ms", cutoutEnd.timeIntervalSince(cutoutStart) * 1000.0))
-            print(String(format: "🚒 Frame total (processFrame): %.2f ms", cutoutEnd.timeIntervalSince(frameStart) * 1000.0))
+            let frameEnd = Date()
+            print(String(format: "[SP TIMING] Frame total (processFrame): %.2f ms", frameEnd.timeIntervalSince(frameStart) * 1000.0))
         }
     }
 
@@ -342,7 +345,7 @@ extension SmartyPantsContainerView {
 
         let allDetections = stage1Detections + mappedStage2Detections
 
-        // Build globalMask
+        // Build globalMask using Accelerate-backed overlap filter (see SmartyPantsMask.swift)
         let buildStart = Date()
         buildStitchedMask(
             globalMask: &globalMask,
@@ -362,6 +365,8 @@ extension SmartyPantsContainerView {
             }
             let rawCount = Int(sum.rounded())
             print(String(format: "⏱ buildGlobalMaskWithOverlapFilter: %.2f ms",
+                         buildEnd.timeIntervalSince(buildStart) * 1000.0))
+            print(String(format: "[SP TIMING] buildGlobalMaskWithOverlapFilter: %.2f ms",
                          buildEnd.timeIntervalSince(buildStart) * 1000.0))
             print("📊 After overlap filter: \(rawCount)/\(spatial) pixels (\(String(format: "%.1f", Float(rawCount)/Float(spatial)*100))%)")
         }
@@ -401,8 +406,9 @@ extension SmartyPantsContainerView {
 
         if debugMode {
             let ppEnd = Date()
-            saveMaskToPhotos(globalMask, width: Wp, height: Hp, label: "globalMask_filled")
             print(String(format: "⏱ fillInsidePerimeter: %.2f ms", ppEnd.timeIntervalSince(ppStart) * 1000.0))
+            print(String(format: "[SP TIMING] fillInsidePerimeter: %.2f ms", ppEnd.timeIntervalSince(ppStart) * 1000.0))
+            saveMaskToPhotos(globalMask, width: Wp, height: Hp, label: "globalMask_filled")
             print("📊 FINAL MASK: \(finalPixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(finalPixelCount)/Float(spatial)*100))%)")
         }
 

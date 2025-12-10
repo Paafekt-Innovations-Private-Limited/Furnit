@@ -39,6 +39,7 @@ extension SmartyPantsContainerView {
         var argbBuf = vImage_Buffer(data: &argbData, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width * 4)
 
         // Permute BGRA (B,G,R,A) to ARGB (A,R,G,B)
+        let permuteStart = Date()
         var permute: [UInt8] = [3, 2, 1, 0]
         vImagePermuteChannels_ARGB8888(&srcBuf, &argbBuf, &permute, vImage_Flags(kvImageNoFlags))
 
@@ -61,6 +62,10 @@ extension SmartyPantsContainerView {
                     }
                 }
             }
+        }
+        if debugMode {
+            let permuteEnd = Date()
+            print(String(format: "⏱ pixelBufferToMLMultiArray permute/split: %.2f ms", permuteEnd.timeIntervalSince(permuteStart) * 1000.0))
         }
 
         let convertStart = Date()
@@ -104,12 +109,9 @@ extension SmartyPantsContainerView {
                            strides[1] == Hp * Wp         // C stride
         if isContiguous {
             let baseF = array.dataPointer.assumingMemoryBound(to: Float.self)
-            for c in 0..<C {
-                let src = baseF.advanced(by: c * spatial)
-                out.withUnsafeMutableBufferPointer { dst in
-                    let d = dst.baseAddress!.advanced(by: c * spatial)
-                    memcpy(d, src, spatial * MemoryLayout<Float>.size)
-                }
+            // Single memcpy of entire contiguous buffer
+            out.withUnsafeMutableBufferPointer { dst in
+                memcpy(dst.baseAddress!, baseF, count * MemoryLayout<Float>.size)
             }
             if debugMode {
                 let dt = Date().timeIntervalSince(t0) * 1000.0
@@ -161,6 +163,7 @@ extension SmartyPantsContainerView {
         let s3 = strides.count > 3 ? strides[3] : 0
         precondition(s3 > 0 && s2 > 0 && s1 > 0, "Invalid MLMultiArray strides")
 
+        let strideStart = Date()
         for c in 0..<C {
             for y in 0..<Hp {
                 let dstRowBase = c * spatial + y * Wp
@@ -171,10 +174,9 @@ extension SmartyPantsContainerView {
                 }
             }
         }
-
         if debugMode {
-            let dt = Date().timeIntervalSince(t0) * 1000.0
-            print(String(format: "⏱ makePrototypeBuffer (stride read): %.2f ms", dt))
+            let strideEnd = Date()
+            print(String(format: "⏱ makePrototypeBuffer stride copy: %.2f ms", strideEnd.timeIntervalSince(strideStart) * 1000.0))
         }
 
         return out
@@ -229,7 +231,6 @@ extension SmartyPantsContainerView {
         default:
             for i in 0..<totalCount { detBuf[i] = detections[i].floatValue }
         }
-        
         if debugMode {
             let copyEnd = Date()
             print(String(format: "⏱ extractDetections copy/convert: %.2f ms", copyEnd.timeIntervalSince(copyStart) * 1000.0))
@@ -268,7 +269,7 @@ extension SmartyPantsContainerView {
             let bestConf = max(0, maxVal)
             guard bestConf > confidenceThreshold else { continue }
 
-            // Mask coefficients (32) via vDSP gather
+            // Mask coefficients (32) via vDSP gather (optimized)
             var coeffs = [Float](repeating: 0, count: 32)
             let coeffStartIdx = coeffOffset * stride + anchor
             // Ensure bounds for the last gathered index
@@ -289,7 +290,7 @@ extension SmartyPantsContainerView {
                 className: "object", maskCoeffs: coeffs
             ))
         }
-        
+
         if debugMode {
             let decodeEnd = Date()
             print(String(format: "⏱ extractDetections decode loop: %.2f ms, decoded: %d", decodeEnd.timeIntervalSince(decodeStart) * 1000.0, decodedCount))

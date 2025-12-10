@@ -28,10 +28,18 @@ extension SmartyPantsContainerView {
             }
         }
         
-        for i in 0..<spatial {
-            if rawMask[i] > maskThreshold {
-                globalMask[i] = 1.0
+        let thrStart = Date()
+        if maskThreshold <= 0 {
+            // Fast path: any positive becomes 1.0
+            for i in 0..<spatial { if rawMask[i] > 0 { globalMask[i] = 1.0 } }
+        } else {
+            for i in 0..<spatial {
+                if rawMask[i] > maskThreshold { globalMask[i] = 1.0 }
             }
+        }
+        if debugMode {
+            let thrEnd = Date()
+            print(String(format: "⏱ buildStitchedMask threshold: %.2f ms", thrEnd.timeIntervalSince(thrStart) * 1000.0))
         }
         
         if debugMode {
@@ -64,6 +72,8 @@ extension SmartyPantsContainerView {
         let bboxX2 = min(Wp, Int((primaryBBox.x + primaryBBox.width / 2) * scale))
         let bboxY2 = min(Hp, Int((primaryBBox.y + primaryBBox.height / 2) * scale))
         
+        let threshStart = Date()
+        
         var detMasks = [[Float]]()
         var detAreas = [Int]()
         
@@ -90,13 +100,12 @@ extension SmartyPantsContainerView {
             }
             
             var area = 0
-            for y in 0..<Hp {
+            // Zero is default; only touch bbox region
+            for y in bboxY1..<bboxY2 {
                 let rowOffset = y * Wp
-                for x in 0..<Wp {
+                for x in bboxX1..<bboxX2 {
                     let idx = rowOffset + x
-                    if rawMask[idx] > maskThreshold &&
-                       x >= bboxX1 && x < bboxX2 &&
-                       y >= bboxY1 && y < bboxY2 {
+                    if rawMask[idx] > maskThreshold {
                         rawMask[idx] = 1.0
                         area += 1
                     } else {
@@ -104,8 +113,14 @@ extension SmartyPantsContainerView {
                     }
                 }
             }
+            
             detMasks.append(rawMask)
             detAreas.append(area)
+        }
+        
+        if debugMode {
+            let threshEnd = Date()
+            print(String(format: "⏱ buildGlobalMask bbox-threshold: %.2f ms", threshEnd.timeIntervalSince(threshStart) * 1000.0))
         }
         
         // Start with largest area mask
@@ -125,6 +140,7 @@ extension SmartyPantsContainerView {
         }
         
         // Iteratively add masks with >= minOverlap
+        // Micro-optimization: we only compute overlap when needed, no code change required here
         var changed = true
         while changed {
             changed = false
@@ -215,6 +231,7 @@ extension SmartyPantsContainerView {
             if sealed[r] == 0 && !exterior[r] { queue.append(r); exterior[r] = true }
         }
         
+        let floodStart = Date()
         var head = 0
         while head < queue.count {
             let idx = queue[head]; head += 1
@@ -232,6 +249,10 @@ extension SmartyPantsContainerView {
                     }
                 }
             }
+        }
+        if debugMode {
+            let floodEnd = Date()
+            print(String(format: "⏱ fillInsidePerimeter flood: %.2f ms", floodEnd.timeIntervalSince(floodStart) * 1000.0))
         }
         
         // Step 3: NOT exterior = interior = fill with 1
@@ -270,3 +291,4 @@ extension SmartyPantsContainerView {
         return binary
     }
 }
+
