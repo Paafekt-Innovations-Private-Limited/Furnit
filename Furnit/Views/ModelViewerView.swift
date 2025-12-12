@@ -336,28 +336,66 @@ struct ModelViewerView: View {
     }
     
     private func loadModelOnce() {
-        guard mlModel == nil else { 
+        guard mlModel == nil else {
             print("✅ ML Model already loaded")
-            return 
+            return
         }
-        print("🔍 Looking for ML Model: yoloe-11s-seg-pf.mlpackage")
-        // Looking for the ML package model
-        
-        
-        if let url = Bundle.main.url(forResource: "yoloe-11l-seg-pf", withExtension: "mlmodelc") {
-            print("📦 Found model file at: \(url)")
-            do {
-                mlModel = try MLModel(contentsOf: url)
-                print("✅ Loaded MLModel from bundle successfully")
-            } catch {
-                print("❌ Failed to load model:", error)
+
+        // Prefer .mlpackage (often smaller on memory footprint when loaded),
+        // and try both 'l' and 's' variants. Adjust names as needed for your bundle.
+        let candidateNames = [
+            // ("yoloe-11l-seg-pf", "mlpackage"),
+            ("yoloe-11l-seg-pf", "mlmodelc"),
+            // ("yoloe-11s-seg-pf", "mlpackage"),
+            // ("yoloe-11s-seg-pf", "mlmodelc")
+        ]
+
+        print("🔍 Looking for ML Model (preferring .mlpackage):", candidateNames.map { "\($0.0).\($0.1)" }.joined(separator: ", "))
+
+        var loaded: MLModel? = nil
+
+        for (name, ext) in candidateNames {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+                print("📦 Found model file at: \(url.lastPathComponent)")
+                do {
+                    let config = MLModelConfiguration()
+                    // Use CPU-only to avoid ANE "No memory object bound to port" crashes
+                    config.computeUnits = .cpuOnly
+                    let model = try MLModel(contentsOf: url, configuration: config)
+                    loaded = model
+                    print("✅ Loaded MLModel '\(name).\(ext)' with computeUnits=\(config.computeUnits)")
+
+                    // Log input constraint to verify shape & dtype (Float16 vs Float32)
+                    let inputs = model.modelDescription.inputDescriptionsByName
+                    if let img = inputs["image"] {
+                        if let mac = img.multiArrayConstraint {
+                            let shp = mac.shape.map { $0.intValue }
+                            print("📥 Model 'image' MultiArray constraint: shape=\(shp) dataType=\(mac.dataType)")
+                            if mac.dataType == .float32 {
+                                print("⚠️ Model expects Float32 input — higher memory usage. Consider exporting an FP16 model to reduce memory.")
+                            }
+                        } else if let ic = img.imageConstraint {
+                            print("📥 Model 'image' Image constraint: \(ic.pixelsWide)x\(ic.pixelsHigh) pixelFormat=\(ic.pixelFormatType)")
+                        } else {
+                            print("ℹ️ No detailed constraint for 'image' input")
+                        }
+                    }
+
+                    break
+                } catch {
+                    print("❌ Failed to load \(name).\(ext):", error)
+                    continue
+                }
             }
+        }
+
+        if let model = loaded {
+            self.mlModel = model
         } else {
-            print("❌ Model not found in bundle: yoloe-11s-seg-pf.mlpackage")
-            
-            // Let's also check what files ARE in the bundle
+            print("❌ No matching model found in bundle (tried candidates above)")
+            // List bundle contents to help debug
             if let bundleContents = try? FileManager.default.contentsOfDirectory(atPath: Bundle.main.bundlePath) {
-                print("📁 Bundle contents:")
+                print("📁 Bundle contents (mlmodel/mlpackage only):")
                 bundleContents.filter { $0.contains("mlmodel") || $0.contains("mlpackage") }.forEach { file in
                     print("   - \(file)")
                 }

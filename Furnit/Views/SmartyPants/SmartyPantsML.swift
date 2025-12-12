@@ -192,9 +192,41 @@ extension SmartyPantsContainerView {
             return []
         }
 
-        let numFeatures = detections.shape[1].intValue
-        let numAnchors  = detections.shape[2].intValue
-        let numClasses  = numFeatures - 4 - 32
+        let dim1 = detections.shape[1].intValue
+        let dim2 = detections.shape[2].intValue
+
+        // Try to infer layout
+        // Layout A: [1, features, anchors]
+        let candA_features = dim1
+        let candA_classes  = candA_features - 4 - 32
+        // Layout B: [1, anchors, features]
+        let candB_features = dim2
+        let candB_classes  = candB_features - 4 - 32
+
+        enum Layout { case featAnch, anchFeat }
+        let layout: Layout
+        if candA_classes > 0 && candA_classes < 2000 { // plausible number of classes
+            layout = .featAnch
+        } else if candB_classes > 0 {
+            layout = .anchFeat
+        } else {
+            if debugMode { print("⚠️ extractDetections: Unable to infer layout from dims [1, \(dim1), \(dim2)]") }
+            return []
+        }
+
+        let numFeatures: Int
+        let numAnchors: Int
+        let numClasses: Int
+        switch layout {
+        case .featAnch:
+            numFeatures = candA_features
+            numAnchors  = dim2
+            numClasses  = candA_classes
+        case .anchFeat:
+            numFeatures = candB_features
+            numAnchors  = dim1
+            numClasses  = candB_classes
+        }
 
         guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
             if debugMode {
@@ -236,59 +268,97 @@ extension SmartyPantsContainerView {
             print(String(format: "⏱ extractDetections copy/convert: %.2f ms", copyEnd.timeIntervalSince(copyStart) * 1000.0))
         }
 
-        let stride = numAnchors
         let coeffOffset = 4 + numClasses
 
         if debugMode {
-            print("📝 Tensor shape: [1, \(numFeatures), \(numAnchors)]")
+            switch layout {
+            case .featAnch:
+                print("📝 Tensor shape: [1, \(numFeatures), \(numAnchors)] (features, anchors)")
+            case .anchFeat:
+                print("📝 Tensor shape: [1, \(numAnchors), \(numFeatures)] (anchors, features)")
+            }
             print("   → \(numClasses) classes, \(numAnchors) predictions")
             print("   → Mode: CLASS-AGNOSTIC")
-            print("   → Using vDSP-optimized max and gather for decode")
         }
 
         let decodeStart = Date()
         var decodedCount = 0
-        for anchor in 0..<numAnchors {
-            guard anchor < stride,
-                  1 * stride + anchor < totalCount,
-                  2 * stride + anchor < totalCount,
-                  3 * stride + anchor < totalCount else { continue }
 
-            let x = detBuf[0 * stride + anchor]
-            let y = detBuf[1 * stride + anchor]
-            let w = detBuf[2 * stride + anchor]
-            let h = detBuf[3 * stride + anchor]
-            guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
+        switch layout {
+        case .featAnch:
+            // Original indexing where anchors are the stride
+            let stride = numAnchors
+            for anchor in 0..<numAnchors {
+                guard anchor < stride,
+                      1 * stride + anchor < totalCount,
+                      2 * stride + anchor < totalCount,
+                      3 * stride + anchor < totalCount else { continue }
 
-            // Class-agnostic: take max over class scores (vDSP-optimized)
-            let baseConfIdx = 4 * stride + anchor
-            var maxVal: Float = 0
-            // vDSP_maxv supports strided access; compute max across `numClasses` values starting at baseConfIdx with stride `stride`.
-            vDSP_maxv(detBuf.advanced(by: baseConfIdx), vDSP_Stride(stride), &maxVal, vDSP_Length(numClasses))
-            // Preserve previous behavior where negative class scores were effectively ignored by starting from 0
-            let bestConf = max(0, maxVal)
-            guard bestConf > confidenceThreshold else { continue }
+                let x = detBuf[0 * stride + anchor]
+                let y = detBuf[1 * stride + anchor]
+                let w = detBuf[2 * stride + anchor]
+                let h = detBuf[3 * stride + anchor]
+                guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
 
-            // Mask coefficients (32) via vDSP gather (optimized)
-            var coeffs = [Float](repeating: 0, count: 32)
-            let coeffStartIdx = coeffOffset * stride + anchor
-            // Ensure bounds for the last gathered index
-            let lastCoeffIdx = coeffStartIdx + (32 - 1) * stride
-            guard lastCoeffIdx < totalCount else { continue }
-            var indices = [vDSP_Length](repeating: 0, count: 32)
-            for k in 0..<32 { indices[k] = vDSP_Length(coeffStartIdx + k * stride) }
-            coeffs.withUnsafeMutableBufferPointer { dst in
-                indices.withUnsafeBufferPointer { idxs in
-                    vDSP_vgathr(detBuf, idxs.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(32))
+                let baseConfIdx = 4 * stride + anchor
+                var maxVal: Float = 0
+                vDSP_maxv(detBuf.advanced(by: baseConfIdx), vDSP_Stride(stride), &maxVal, vDSP_Length(numClasses))
+                let bestConf = max(0, maxVal)
+                guard bestConf > confidenceThreshold else { continue }
+
+                var coeffs = [Float](repeating: 0, count: 32)
+                let coeffStartIdx = coeffOffset * stride + anchor
+                let lastCoeffIdx = coeffStartIdx + (32 - 1) * stride
+                guard lastCoeffIdx < totalCount else { continue }
+                var indices = [vDSP_Length](repeating: 0, count: 32)
+                for k in 0..<32 { indices[k] = vDSP_Length(coeffStartIdx + k * stride) }
+                coeffs.withUnsafeMutableBufferPointer { dst in
+                    indices.withUnsafeBufferPointer { idxs in
+                        vDSP_vgathr(detBuf, idxs.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(32))
+                    }
                 }
+
+                decodedCount += 1
+                all.append(DetectionSmarty(
+                    x: x, y: y, width: w, height: h,
+                    confidence: bestConf, classIdx: -1,
+                    className: "object", maskCoeffs: coeffs
+                ))
             }
 
-            decodedCount += 1
-            all.append(DetectionSmarty(
-                x: x, y: y, width: w, height: h,
-                confidence: bestConf, classIdx: -1,
-                className: "object", maskCoeffs: coeffs
-            ))
+        case .anchFeat:
+            // New indexing where features are contiguous per-anchor
+            for anchor in 0..<numAnchors {
+                let base = anchor * numFeatures
+                guard base + 3 < totalCount else { continue }
+
+                let x = detBuf[base + 0]
+                let y = detBuf[base + 1]
+                let w = detBuf[base + 2]
+                let h = detBuf[base + 3]
+                guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
+
+                // Class scores are contiguous starting at base + 4
+                var maxVal: Float = 0
+                vDSP_maxv(detBuf.advanced(by: base + 4), 1, &maxVal, vDSP_Length(numClasses))
+                let bestConf = max(0, maxVal)
+                guard bestConf > confidenceThreshold else { continue }
+
+                // Coefficients are contiguous after class scores
+                var coeffs = [Float](repeating: 0, count: 32)
+                let coeffBase = base + coeffOffset
+                guard coeffBase + 31 < totalCount else { continue }
+                coeffs.withUnsafeMutableBufferPointer { dst in
+                    memcpy(dst.baseAddress!, detBuf.advanced(by: coeffBase), 32 * MemoryLayout<Float>.size)
+                }
+
+                decodedCount += 1
+                all.append(DetectionSmarty(
+                    x: x, y: y, width: w, height: h,
+                    confidence: bestConf, classIdx: -1,
+                    className: "object", maskCoeffs: coeffs
+                ))
+            }
         }
 
         if debugMode {

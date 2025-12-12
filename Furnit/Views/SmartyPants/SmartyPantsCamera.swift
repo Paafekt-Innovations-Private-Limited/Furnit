@@ -267,7 +267,7 @@ extension SmartyPantsContainerView {
         return dst
     }
 
-    // MARK: - Letterbox
+    // MARK: - resizePixelBufferToSquare
     func resizePixelBufferToSquare(_ src: CVPixelBuffer, size: Int = kModelInputSize) -> CVPixelBuffer? {
         let t0 = Date()
         
@@ -297,7 +297,7 @@ extension SmartyPantsContainerView {
 
         if debugMode {
             let dt = Date().timeIntervalSince(t0) * 1000.0
-            print(String(format: "⏱ letterbox %dx%d → %dx%d: %.2f ms", srcW, srcH, size, size, dt))
+            print(String(format: "⏱ resizePixelBufferToSquare %dx%d → %dx%d: %.2f ms", srcW, srcH, size, size, dt))
         }
 
         return dst

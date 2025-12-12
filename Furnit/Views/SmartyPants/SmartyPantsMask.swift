@@ -14,47 +14,57 @@ extension SmartyPantsContainerView {
         C: Int, Wp: Int, Hp: Int
     ) {
         let spatial = Wp * Hp
-        
+
+        // Same guards as before – don’t build nonsense masks
         guard primaryBBox.maskCoeffs.count == C else { return }
         guard !primaryBBox.maskCoeffs.contains(where: { !$0.isFinite }) else { return }
-        
+
         var rawMask = [Float](repeating: 0, count: spatial)
+
         primaryBBox.maskCoeffs.withUnsafeBufferPointer { coeffPtr in
             protoMatrix.withUnsafeBufferPointer { protoPtr in
-                guard let coeffBase = coeffPtr.baseAddress,
-                      let protoBase = protoPtr.baseAddress else { return }
-                vDSP_mmul(coeffBase, 1, protoBase, 1, &rawMask, 1,
-                          1, vDSP_Length(spatial), vDSP_Length(C))
-            }
-        }
-        
-        let thrStart = Date()
-        if maskThreshold <= 0 {
-            // Fast path: any positive becomes 1.0
-            for i in 0..<spatial { if rawMask[i] > 0 { globalMask[i] = 1.0 } }
-        } else {
-            for i in 0..<spatial {
-                if rawMask[i] > maskThreshold { globalMask[i] = 1.0 }
-            }
-        }
-        if debugMode {
-            let thrEnd = Date()
-            print(String(format: "⏱ buildStitchedMask threshold: %.2f ms", thrEnd.timeIntervalSince(thrStart) * 1000.0))
-        }
-        
-        if debugMode {
-            var sum: Float = 0
-            globalMask.withUnsafeBufferPointer { ptr in
-                if let base = ptr.baseAddress {
-                    vDSP_sve(base, 1, &sum, vDSP_Length(spatial))
+                rawMask.withUnsafeMutableBufferPointer { rawPtr in
+                    guard
+                        let A = coeffPtr.baseAddress,      // 1×C
+                        let B = protoPtr.baseAddress,      // C×spatial
+                        let Cptr = rawPtr.baseAddress      // 1×spatial
+                    else { return }
+
+                    // BLAS: (1×C) * (C×spatial) = (1×spatial)
+                    cblas_sgemm(
+                        CblasRowMajor,
+                        CblasNoTrans,
+                        CblasNoTrans,
+                        1,                      // M = 1 row
+                        Int32(spatial),         // N = spatial
+                        Int32(C),               // K = C
+                        1.0,                    // alpha
+                        A, Int32(C),            // A: lda = C
+                        B, Int32(spatial),      // B: ldb = spatial
+                        0.0,                    // beta
+                        Cptr, Int32(spatial)    // C: ldc = spatial
+                    )
                 }
             }
-            let area = Int(sum.rounded())
-            let percent = Float(area) / Float(spatial) * 100.0
-            print("🔷 Primary-only mask: \(area)px (\(String(format: "%.1f", percent))%)")
+        }
+
+        // Threshold into globalMask exactly as before
+        for i in 0..<spatial {
+            if rawMask[i] > maskThreshold {
+                globalMask[i] = 1.0
+            }
+        }
+
+        if debugMode {
+            var area = 0
+            for i in 0..<spatial {
+                if globalMask[i] > 0 { area += 1 }
+            }
+            let percentage = String(format: "%.1f", Float(area) / Float(spatial) * 100)
+            print("🔷 Primary-only mask: \(area)px (\(percentage)%)")
         }
     }
-    
+
     // MARK: - Build Global Mask with Overlap Filter
     func buildGlobalMaskWithOverlapFilter(
         globalMask: inout [Float],
@@ -66,87 +76,123 @@ extension SmartyPantsContainerView {
     ) {
         let spatial = Wp * Hp
         let scale = Float(Wp) / kModelInputSizeFloat
-        
+
+        // BBox in mask space (same as before)
         let bboxX1 = max(0, Int((primaryBBox.x - primaryBBox.width / 2) * scale))
         let bboxY1 = max(0, Int((primaryBBox.y - primaryBBox.height / 2) * scale))
         let bboxX2 = min(Wp, Int((primaryBBox.x + primaryBBox.width / 2) * scale))
         let bboxY2 = min(Hp, Int((primaryBBox.y + primaryBBox.height / 2) * scale))
-        
-        let threshStart = Date()
-        
-        var detMasks = [[Float]]()
-        var detAreas = [Int]()
-        
-        for det in allDetections {
-            var rawMask = [Float](repeating: 0, count: spatial)
-            guard det.maskCoeffs.count == C else {
-                detMasks.append(rawMask)
-                detAreas.append(0)
+
+        let numDet = allDetections.count
+        guard numDet > 0 else { return }
+
+        // ===== 1) Build coefficient matrix [numDet × C] =====
+        var coeffMatrix = [Float](repeating: 0, count: numDet * C)
+
+        for (i, det) in allDetections.enumerated() {
+            let rowOffset = i * C
+            let coeffs = det.maskCoeffs
+
+            // Keep old guards: invalid coeffs → effectively zero mask
+            if coeffs.count != C || coeffs.contains(where: { !$0.isFinite }) {
                 continue
             }
-            guard !det.maskCoeffs.contains(where: { !$0.isFinite }) else {
-                detMasks.append(rawMask)
-                detAreas.append(0)
-                continue
+
+            for c in 0..<C {
+                coeffMatrix[rowOffset + c] = coeffs[c]
             }
-            
-            det.maskCoeffs.withUnsafeBufferPointer { coeffPtr in
-                protoMatrix.withUnsafeBufferPointer { protoPtr in
-                    guard let coeffBase = coeffPtr.baseAddress,
-                          let protoBase = protoPtr.baseAddress else { return }
-                    vDSP_mmul(coeffBase, 1, protoBase, 1, &rawMask, 1,
-                              1, vDSP_Length(spatial), vDSP_Length(C))
+        }
+
+        // ===== 2) BLAS: A[numDet×C] × B[C×spatial] = masksFlat[numDet×spatial] =====
+        var masksFlat = [Float](repeating: 0, count: numDet * spatial)
+
+        coeffMatrix.withUnsafeBufferPointer { aPtr in
+            protoMatrix.withUnsafeBufferPointer { bPtr in
+                masksFlat.withUnsafeMutableBufferPointer { cPtr in
+                    guard
+                        let A = aPtr.baseAddress,
+                        let B = bPtr.baseAddress,
+                        let Cptr = cPtr.baseAddress
+                    else { return }
+
+                    cblas_sgemm(
+                        CblasRowMajor,
+                        CblasNoTrans,
+                        CblasNoTrans,
+                        Int32(numDet),          // M
+                        Int32(spatial),         // N
+                        Int32(C),               // K
+                        1.0,                    // alpha
+                        A, Int32(C),            // lda = C
+                        B, Int32(spatial),      // ldb = spatial
+                        0.0,                    // beta
+                        Cptr, Int32(spatial)    // ldc = spatial
+                    )
                 }
             }
-            
+        }
+
+        // ===== 3) Threshold each detection’s mask inside bbox only (same semantics) =====
+        var detMasks: [[Float]] = []
+        var detAreas: [Int] = []
+        detMasks.reserveCapacity(numDet)
+        detAreas.reserveCapacity(numDet)
+
+        for detIndex in 0..<numDet {
+            var rawMask = [Float](repeating: 0, count: spatial)
             var area = 0
-            // Zero is default; only touch bbox region
+            let rowBase = detIndex * spatial
+
+            // Zero everywhere except bbox; apply maskThreshold just like before
             for y in bboxY1..<bboxY2 {
                 let rowOffset = y * Wp
                 for x in bboxX1..<bboxX2 {
-                    let idx = rowOffset + x
-                    if rawMask[idx] > maskThreshold {
-                        rawMask[idx] = 1.0
+                    let pos = rowOffset + x
+                    let val = masksFlat[rowBase + pos]
+
+                    if val > maskThreshold {
+                        rawMask[pos] = 1.0
                         area += 1
                     } else {
-                        rawMask[idx] = 0.0
+                        rawMask[pos] = 0.0
                     }
                 }
             }
-            
+
             detMasks.append(rawMask)
             detAreas.append(area)
         }
-        
-        if debugMode {
-            let threshEnd = Date()
-            print(String(format: "⏱ buildGlobalMask bbox-threshold: %.2f ms", threshEnd.timeIntervalSince(threshStart) * 1000.0))
-        }
-        
-        // Start with largest area mask
+
+        // ===== 4) Original union logic: start from largest area and merge =====
         guard let primaryIdx = detAreas.indices.max(by: { detAreas[$0] < detAreas[$1] }) else { return }
         guard detAreas[primaryIdx] > 0 else {
             if debugMode { print("⚠️ No valid masks with area > 0") }
             return
         }
-        
-        for i in 0..<spatial { globalMask[i] = detMasks[primaryIdx][i] }
-        
-        var used = [Bool](repeating: false, count: allDetections.count)
+
+        // Initialize globalMask from largest mask
+        for i in 0..<spatial {
+            globalMask[i] = detMasks[primaryIdx][i]
+        }
+
+        var used = [Bool](repeating: false, count: numDet)
         used[primaryIdx] = true
-        
+
         if debugMode {
             print("🔷 Primary (largest): \(allDetections[primaryIdx].className) @ \(Int(allDetections[primaryIdx].confidence * 100))%, area=\(detAreas[primaryIdx])px")
         }
-        
-        // Iteratively add masks with >= minOverlap
+
+        // Iteratively merge detections with sufficient overlap
         var changed = true
         while changed {
             changed = false
-            for (idx, detMask) in detMasks.enumerated() {
-                if used[idx] || detAreas[idx] == 0 { continue }
-                
-                // Overlap count via dot product on 0/1 masks
+
+            for detIndex in 0..<numDet {
+                if used[detIndex] || detAreas[detIndex] == 0 { continue }
+
+                let detMask = detMasks[detIndex]
+
+                // intersection = dot(detMask, globalMask) (because both are 0/1)
                 var overlapFloat: Float = 0
                 detMask.withUnsafeBufferPointer { detPtr in
                     globalMask.withUnsafeBufferPointer { globPtr in
@@ -155,10 +201,10 @@ extension SmartyPantsContainerView {
                         }
                     }
                 }
+
                 let overlapCount = Int(overlapFloat.rounded())
-                
-                let overlapRatio = Float(overlapCount) / Float(detAreas[idx])
-                
+                let overlapRatio = Float(overlapCount) / Float(detAreas[detIndex])
+
                 if overlapRatio >= minOverlap {
                     var added = 0
                     for i in 0..<spatial {
@@ -167,16 +213,17 @@ extension SmartyPantsContainerView {
                             added += 1
                         }
                     }
-                    used[idx] = true
+
+                    used[detIndex] = true
                     changed = true
-                    
+
                     if debugMode {
-                        print("🔗 Merged \(allDetections[idx].className) @ \(Int(allDetections[idx].confidence * 100))%: overlap=\(Int(overlapRatio * 100))%, +\(added)px")
+                        print("🔗 Merged \(allDetections[detIndex].className) @ \(Int(allDetections[detIndex].confidence * 100))%: overlap=\(Int(overlapRatio * 100))%, +\(added)px")
                     }
                 }
             }
         }
-        
+
         if debugMode {
             let mergedCount = used.filter { $0 }.count
             var sum: Float = 0
@@ -186,9 +233,11 @@ extension SmartyPantsContainerView {
                 }
             }
             let totalArea = Int(sum.rounded())
-            print("🔷 buildGlobalMask: \(mergedCount)/\(allDetections.count) merged, total=\(totalArea)px")
+            print("🔷 buildGlobalMaskWithOverlapFilter: \(mergedCount)/\(allDetections.count) merged, total=\(totalArea)px")
         }
     }
+
+
 
     // MARK: - Fill Inside Perimeter (with vImage dilation)
     func fillInsidePerimeter(_ mask: inout [Float], width: Int, height: Int) {

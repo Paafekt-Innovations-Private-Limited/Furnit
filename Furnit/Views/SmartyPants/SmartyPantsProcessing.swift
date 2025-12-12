@@ -31,24 +31,75 @@ extension SmartyPantsContainerView {
             isProcessing = false
             return
         }
+        if debugMode {
+            let rw = CVPixelBufferGetWidth(resized)
+            let rh = CVPixelBufferGetHeight(resized)
+            let rbpr = CVPixelBufferGetBytesPerRow(resized)
+            print(String(format: "📐 Resized buffer: %dx%d (bytesPerRow=%d)", rw, rh, rbpr))
+            print("📐 kModelInputSize: \(kModelInputSize)")
+        }
         guard let inputArray = pixelBufferToMLMultiArray(resized) else {
             isProcessing = false
             return
         }
+        
+        // Ensure model gets Float32 as per Netron graph (Float32 [1,3,960,960])
+        var inputArrayF32: MLMultiArray = inputArray
+        if inputArray.dataType != .float32 {
+            if let converted = upcastToFloat32(inputArray) {
+                if debugMode { print("🔁 Upcasted input MLMultiArray from \(inputArray.dataType) to Float32") }
+                inputArrayF32 = converted
+            } else {
+                if debugMode { print("⚠️ Failed to upcast input to Float32; proceeding with \(inputArray.dataType)") }
+            }
+        }
+        
+        if debugMode {
+            let shape = inputArrayF32.shape.map { $0.intValue }
+            let strides = inputArrayF32.strides.map { $0.intValue }
+            print("🧮 MLMultiArray shape: \(shape) strides: \(strides) type: \(inputArrayF32.dataType)")
+            print("🧮 MLMultiArray count: \(inputArrayF32.count), expected: \(1 * 3 * kModelInputSize * kModelInputSize)")
+            if inputArrayF32.count != 1 * 3 * kModelInputSize * kModelInputSize {
+                print("⚠️ Input array element count mismatch — aborting frame early")
+            }
+        }
         if debugMode {
             let stage1PreEnd = Date()
-            print(String(format: "⏱ Stage1 preprocess (letterbox+toMultiArray): %.2f ms", stage1PreEnd.timeIntervalSince(stage1PreStart) * 1000.0))
+            print(String(format: "⏱ Stage1 preprocess (resizePixelBufferToSquare+toMultiArray): %.2f ms", stage1PreEnd.timeIntervalSince(stage1PreStart) * 1000.0))
         }
 
         setProgress(0.35, text: "Running detection…")
 
         // STAGE 1: Inference
         let stage1InfStart = Date()
-        guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
+        let inputProvider: MLDictionaryFeatureProvider
+        do {
+            if debugMode {
+                // Print model input constraints if available
+                let inputs = model.modelDescription.inputDescriptionsByName
+                if let imgDesc = inputs["image"], let cons = imgDesc.multiArrayConstraint {
+                    let expShape = cons.shape.map { $0.intValue }
+                    print("📥 Model expects 'image' shape: \(expShape) dataType: \(cons.dataType)")
+                } else if let imgDesc = inputs["image"], let imgCons = imgDesc.imageConstraint {
+                    print("📥 Model expects 'image' imageConstraint: \(imgCons.pixelsWide)x\(imgCons.pixelsHigh) \(imgCons.pixelFormatType)")
+                } else {
+                    print("📥 Could not find detailed constraints for 'image' input")
+                }
+            }
+            inputProvider = try MLDictionaryFeatureProvider(dictionary: ["image": inputArrayF32])
+        } catch {
+            if debugMode { print("❌ MLDictionaryFeatureProvider error: \(error)") }
             isProcessing = false
             return
         }
-        guard let output = try? model.prediction(from: inputProvider) else {
+        let output: MLFeatureProvider
+        do {
+            // Use CPU-only to avoid ANE "No memory object bound to port" crashes
+            let options = MLPredictionOptions()
+            options.usesCPUOnly = true
+            output = try model.prediction(from: inputProvider, options: options)
+        } catch {
+            if debugMode { print("❌ model.prediction error: \(error)") }
             isProcessing = false
             return
         }
@@ -57,10 +108,19 @@ extension SmartyPantsContainerView {
             print(String(format: "⏱ Stage1 model.prediction: %.2f ms", stage1InfEnd.timeIntervalSince(stage1InfStart) * 1000.0))
             let names = output.featureNames.joined(separator: ", ")
             print("📤 Model outputs: \(names)")
+            for name in output.featureNames {
+                if let arr = output.featureValue(for: name)?.multiArrayValue {
+                    let shp = arr.shape.map { $0.intValue }
+                    print("   • Output tensor '\(name)' shape: \(shp) type: \(arr.dataType)")
+                }
+            }
         }
 
         var detectionsArray: MLMultiArray?
-        if let arr = output.featureValue(for: "var_1432")?.multiArrayValue {
+        if let arr = output.featureValue(for: "var_2497")?.multiArrayValue {
+            detectionsArray = arr
+            if debugMode { print("   → Using 'var_2497' as detections: \((arr.shape.map { $0.intValue }))") }
+        } else if let arr = output.featureValue(for: "var_1432")?.multiArrayValue {
             detectionsArray = arr
         } else if let arr = output.featureValue(for: "var_2421")?.multiArrayValue {
             detectionsArray = arr
@@ -68,10 +128,13 @@ extension SmartyPantsContainerView {
             for name in output.featureNames {
                 if let arr = output.featureValue(for: name)?.multiArrayValue {
                     let shape = arr.shape.map { $0.intValue }
-                    if shape.count == 3 && shape[0] == 1 && shape[1] > 100 {
-                        detectionsArray = arr
-                        if debugMode { print("   → Using '\(name)' as detections: \(shape)") }
-                        break
+                    if shape.count == 3 && shape[0] == 1 {
+                        // Accept either [1, features, anchors] or [1, anchors, features]
+                        if shape[1] > 100 || shape[2] > 100 {
+                            detectionsArray = arr
+                            if debugMode { print("   → Using '\(name)' as detections: \(shape)") }
+                            break
+                        }
                     }
                 }
             }
@@ -85,6 +148,10 @@ extension SmartyPantsContainerView {
         guard let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
             isProcessing = false
             return
+        }
+        if debugMode {
+            let pShape = prototypesArray.shape.map { $0.intValue }
+            print("🧪 Prototypes 'p' shape: \(pShape) type: \(prototypesArray.dataType)")
         }
 
         let decodeStart = Date()
@@ -126,55 +193,80 @@ extension SmartyPantsContainerView {
 
         let stage2Start = Date()
         if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.0),
-           let resizedCrop = resizePixelBufferToSquare(croppedBuffer, size: kModelInputSize),
-           let cropInputArray = pixelBufferToMLMultiArray(resizedCrop),
-           let cropInputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": cropInputArray]) {
+           let resizedCrop = resizePixelBufferToSquare(croppedBuffer, size: kModelInputSize) {
             
-            let expectedCount = 1 * 3 * kModelInputSize * kModelInputSize
-            guard cropInputArray.count == expectedCount else {
-                if debugMode { print("⚠️ Stage2: bad input count:", cropInputArray.count) }
-                self.isProcessing = false
-                return
+            if debugMode {
+                let cw = CVPixelBufferGetWidth(resizedCrop)
+                let ch = CVPixelBufferGetHeight(resizedCrop)
+                print("📐 Stage2 resized crop: \(cw)x\(ch)")
             }
             
-            let options = MLPredictionOptions()
-            options.usesCPUOnly = false
-            
-            autoreleasepool {
-                let stage2InfStart = Date()
-                if let cropOutput = try? model.prediction(from: cropInputProvider, options: options) {
-                    if debugMode {
-                        let stage2InfEnd = Date()
-                        print(String(format: "⏱ Stage2 model.prediction: %.2f ms", stage2InfEnd.timeIntervalSince(stage2InfStart) * 1000.0))
+            if let cropInputArray = pixelBufferToMLMultiArray(resizedCrop) {
+                var cropInputArrayF32: MLMultiArray = cropInputArray
+                if cropInputArray.dataType != .float32 {
+                    if let converted = upcastToFloat32(cropInputArray) {
+                        if debugMode { print("🔁 Upcasted Stage2 input MLMultiArray from \(cropInputArray.dataType) to Float32") }
+                        cropInputArrayF32 = converted
+                    } else {
+                        if debugMode { print("⚠️ Failed to upcast Stage2 input to Float32; proceeding with \(cropInputArray.dataType)") }
+                    }
+                }
+                
+                if let cropInputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": cropInputArrayF32]) {
+                    
+                    let expectedCount = 1 * 3 * kModelInputSize * kModelInputSize
+                    guard cropInputArrayF32.count == expectedCount else {
+                        if debugMode { print("⚠️ Stage2: bad input count:", cropInputArrayF32.count) }
+                        self.isProcessing = false
+                        return
                     }
                     
-                    var cropDetArray: MLMultiArray?
-                    if let arr = cropOutput.featureValue(for: "var_2421")?.multiArrayValue {
-                        cropDetArray = arr
-                    } else {
-                        for name in cropOutput.featureNames {
-                            if let arr = cropOutput.featureValue(for: name)?.multiArrayValue {
-                                let shape = arr.shape.map { $0.intValue }
-                                if shape.count == 3 && shape[0] == 1 && shape[1] > 100 {
-                                    cropDetArray = arr
-                                    break
+                    let options = MLPredictionOptions()
+                    options.usesCPUOnly = true
+                    
+                    autoreleasepool {
+                        let stage2InfStart = Date()
+                        if let cropOutput = try? model.prediction(from: cropInputProvider, options: options) {
+                            if debugMode {
+                                let stage2InfEnd = Date()
+                                print(String(format: "⏱ Stage2 model.prediction: %.2f ms", stage2InfEnd.timeIntervalSince(stage2InfStart) * 1000.0))
+                            }
+                            
+                            var cropDetArray: MLMultiArray?
+                            if let arr = cropOutput.featureValue(for: "var_2497")?.multiArrayValue {
+                                cropDetArray = arr
+                            } else if let arr = cropOutput.featureValue(for: "var_2421")?.multiArrayValue {
+                                cropDetArray = arr
+                            } else {
+                                for name in cropOutput.featureNames {
+                                    if let arr = cropOutput.featureValue(for: name)?.multiArrayValue {
+                                        let shape = arr.shape.map { $0.intValue }
+                                        if shape.count == 3 && shape[0] == 1 {
+                                            if shape[1] > 100 || shape[2] > 100 {
+                                                cropDetArray = arr
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if let detArray = cropDetArray,
+                               let protoArray = cropOutput.featureValue(for: "p")?.multiArrayValue {
+                                let s2DecodeStart = Date()
+                                stage2Detections = extractDetections(from: detArray)
+                                stage2Prototypes = protoArray
+                                if debugMode {
+                                    let s2DecodeEnd = Date()
+                                    print("📊 Stage 2: \(stage2Detections.count) detections")
+                                    print(String(format: "⏱ Stage2 detection decode: %.2f ms", s2DecodeEnd.timeIntervalSince(s2DecodeStart) * 1000.0))
                                 }
                             }
                         }
                     }
-                    
-                    if let detArray = cropDetArray,
-                       let protoArray = cropOutput.featureValue(for: "p")?.multiArrayValue {
-                        let s2DecodeStart = Date()
-                        stage2Detections = extractDetections(from: detArray)
-                        stage2Prototypes = protoArray
-                        if debugMode {
-                            let s2DecodeEnd = Date()
-                            print("📊 Stage 2: \(stage2Detections.count) detections")
-                            print(String(format: "⏱ Stage2 detection decode: %.2f ms", s2DecodeEnd.timeIntervalSince(s2DecodeStart) * 1000.0))
-                        }
-                    }
                 }
+            } else {
+                if debugMode { print("⚠️ Stage 2: Failed to create MLMultiArray from resized crop") }
             }
         } else {
             if debugMode { print("⚠️ Stage 2: Failed to crop/process") }
@@ -234,18 +326,19 @@ extension SmartyPantsContainerView {
         let sW = strides[3]
 
         // Fast path: contiguous [1, C, Hp, Wp] layout
+        // N: C*Hp*Wp, C: Hp*Wp, H: Wp, W: 1
         if sN == C * spatial && sC == spatial && sH == Wp && sW == 1 {
             switch prototypes.dataType {
             case .float32:
-                // Direct bulk copy
+                // Direct bulk copy via BLAS
                 let src = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
                 out.withUnsafeMutableBufferPointer { dst in
                     if let dstBase = dst.baseAddress {
-                        dstBase.assign(from: src, count: total)
+                        cblas_scopy(Int32(total), src, 1, dstBase, 1)
                     }
                 }
                 if debugMode {
-                    print("📦 [PROTO] Fast contiguous copy (.float32)")
+                    print("📦 [PROTO] BLAS scopy (.float32 contiguous)")
                 }
                 return out
 
@@ -267,55 +360,84 @@ extension SmartyPantsContainerView {
                 return out
 
             default:
-                break
+                if debugMode {
+                    print("⚠️ [PROTO] Unsupported MLMultiArray dataType in contiguous path: \(prototypes.dataType)")
+                }
+                return out
             }
         }
 
-        // Fallback: general-stride access (same logic as before)
+        // Fallback: general stride-aware path
         switch prototypes.dataType {
         case .float32:
             let base = prototypes.dataPointer.assumingMemoryBound(to: Float.self)
-            for c in 0..<C {
-                let dstCBase = c * spatial
-                let srcCBase = c * sC
-                for y in 0..<Hp {
-                    let dstRow = dstCBase + y * Wp
-                    let srcRow = srcCBase + y * sH
-                    var dstIdx = dstRow
-                    var srcIdx = srcRow
-                    for _ in 0..<Wp {
-                        out[dstIdx] = base[srcIdx]
-                        dstIdx += 1
-                        srcIdx += sW
+
+            out.withUnsafeMutableBufferPointer { dst in
+                guard let dstBase = dst.baseAddress else { return }
+
+                for c in 0..<C {
+                    let dstCBase = c * spatial
+                    let srcCBase = c * sC
+
+                    for y in 0..<Hp {
+                        let dstRow = dstCBase + y * Wp
+                        let srcRow = srcCBase + y * sH
+
+                        // Use BLAS to copy one row with stride sW
+                        cblas_scopy(
+                            Int32(Wp),
+                            base + srcRow,
+                            Int32(sW),
+                            dstBase + dstRow,
+                            1
+                        )
                     }
                 }
+            }
+
+            if debugMode {
+                print("📦 [PROTO] BLAS scopy (.float32 strided)")
             }
 
         case .float16:
             let base = prototypes.dataPointer.assumingMemoryBound(to: Float16.self)
-            for c in 0..<C {
-                let dstCBase = c * spatial
-                let srcCBase = c * sC
-                for y in 0..<Hp {
-                    let dstRow = dstCBase + y * Wp
-                    let srcRow = srcCBase + y * sH
-                    var dstIdx = dstRow
-                    var srcIdx = srcRow
-                    for _ in 0..<Wp {
-                        out[dstIdx] = Float(base[srcIdx])
-                        dstIdx += 1
-                        srcIdx += sW
+
+            out.withUnsafeMutableBufferPointer { dst in
+                guard let dstBase = dst.baseAddress else { return }
+
+                for c in 0..<C {
+                    let dstCBase = c * spatial
+                    let srcCBase = c * sC
+
+                    for y in 0..<Hp {
+                        let dstRow = dstCBase + y * Wp
+                        let srcRow = srcCBase + y * sH
+
+                        var dstIdx = dstRow
+                        var srcIdx = srcRow
+                        for _ in 0..<Wp {
+                            dstBase[dstIdx] = Float(base[srcIdx])
+                            dstIdx += 1
+                            srcIdx += sW
+                        }
                     }
                 }
             }
 
+            if debugMode {
+                print("📦 [PROTO] fallback convert (.float16 strided)")
+            }
+
         default:
-            // Fallback: do nothing (returns zeros). Extend if other types are possible.
-            break
+            if debugMode {
+                print("⚠️ [PROTO] Unsupported MLMultiArray dataType in strided path: \(prototypes.dataType)")
+            }
         }
 
         return out
     }
+
+
 
 
     // MARK: - Generate Cutout Two Stage
@@ -533,5 +655,26 @@ extension SmartyPantsContainerView {
                 DispatchQueue.main.async { self.isProcessing = false }
             }
         }
+    }
+    
+    // Helper: Upcast MLMultiArray to Float32 for models that require Float32 input
+    private func upcastToFloat32(_ array: MLMultiArray) -> MLMultiArray? {
+        if array.dataType == .float32 { return array }
+        guard let out = try? MLMultiArray(shape: array.shape, dataType: .float32) else { return nil }
+        let total = array.count
+        if array.dataType == .float16 {
+            let src = array.dataPointer.bindMemory(to: UInt16.self, capacity: total)
+            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src),
+                                       height: 1, width: vImagePixelCount(total),
+                                       rowBytes: total * MemoryLayout<UInt16>.size)
+            var dstBuf = vImage_Buffer(data: out.dataPointer,
+                                       height: 1, width: vImagePixelCount(total),
+                                       rowBytes: total * MemoryLayout<Float>.size)
+            vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+            return out
+        }
+        // Fallback: generic element-wise copy
+        for i in 0..<total { out[i] = array[i] }
+        return out
     }
 }
