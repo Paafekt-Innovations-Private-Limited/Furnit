@@ -18,8 +18,9 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = false
+    var debugMode: Bool = true
     var active: Bool = false
+    var edgeFillMode: EdgeFillMode = .scanline
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
         let v = SmartyPantsContainerView()
@@ -29,6 +30,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         v.useBilinearUpscaling = useBilinearUpscaling
         v.maskThreshold = maskThreshold
         v.debugMode = debugMode
+        v.edgeFillMode = edgeFillMode
         v.setModel(mlModel)
         if active { v.startIfNeeded() }
         return v
@@ -42,6 +44,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         uiView.useBilinearUpscaling = useBilinearUpscaling
         uiView.maskThreshold = maskThreshold
         uiView.debugMode = debugMode
+        uiView.edgeFillMode = edgeFillMode
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 
@@ -49,7 +52,11 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         uiView.stop()
     }
 }
-
+// MARK: - Edge Fill Mode for debug overlay
+enum EdgeFillMode {
+    case scanline
+    case concaveHull // approximate concave hull built from edge points
+}
 // MARK: - Detection Struct
 struct DetectionSmarty {
     let x: Float
@@ -69,7 +76,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.5
-    var debugMode: Bool = false  // Enable debug prints and image saves
+    var debugMode: Bool = true  // Enable debug prints and image saves
+    var edgeFillMode: EdgeFillMode = .scanline
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
@@ -85,6 +93,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // Mask threshold: values above this are considered "object"
     var maskThreshold: Float = 0.0
+    
+    // Optional fast morphological closing (3x3) to strengthen edges and close small gaps
+    private var enableMaskClosing: Bool = true
     
     private let bboxFont: CTFont = CTFontCreateWithName("Helvetica-Bold" as CFString, 28, nil)
     private lazy var bboxAttributes: [NSAttributedString.Key: Any] = [
@@ -1204,6 +1215,49 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
     
+    // MARK: - Morphological Closing (Dilate then Erode) on binary mask at prototype resolution
+    private func applyMorphologicalClosing(to mask: inout [Float], width: Int, height: Int) {
+        let count = width * height
+        guard count > 0, mask.count == count else { return }
+
+        // Convert Float (0/1) -> Planar8 (0/255)
+        var src8 = [UInt8](repeating: 0, count: count)
+        for i in 0..<count { src8[i] = mask[i] > 0 ? 255 : 0 }
+
+        var tmp8 = [UInt8](repeating: 0, count: count)
+        var dst8 = [UInt8](repeating: 0, count: count)
+
+        src8.withUnsafeMutableBytes { srcPtr in
+            tmp8.withUnsafeMutableBytes { tmpPtr in
+                dst8.withUnsafeMutableBytes { dstPtr in
+                    var srcBuf = vImage_Buffer(data: srcPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                    var tmpBuf = vImage_Buffer(data: tmpPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                    var dstBuf = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+
+                    // 3x3 all-ones kernel
+                    var kernel: [UInt8] = [
+                        1, 1, 1,
+                        1, 1, 1,
+                        1, 1, 1
+                    ]
+
+                    // Dilation -> tmp
+                    kernel.withUnsafeMutableBufferPointer { kPtr in
+                        vImageDilate_Planar8(&srcBuf, &tmpBuf, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+                    }
+                    // Erosion -> dst
+                    kernel.withUnsafeMutableBufferPointer { kPtr in
+                        vImageErode_Planar8(&tmpBuf, &dstBuf, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+                    }
+                }
+            }
+        }
+
+        // Convert back Planar8 -> Float (0/1)
+        for i in 0..<count { mask[i] = dst8[i] > 0 ? 1.0 : 0.0 }
+    }
+
+    
     func clearOutsideUsingIntCorners(x0: Int, y0: Int, x1: Int, y1: Int, in image: CGImage) -> CGImage? {
         let t0 = Date()
         
@@ -1718,6 +1772,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
 
+        // Optional morphological closing to strengthen edges and close small gaps (performance-friendly 3x3)
+        if enableMaskClosing {
+            let closeStart = Date()
+            applyMorphologicalClosing(to: &globalMask, width: Wp, height: Hp)
+            if self.debugMode {
+                let dt = Date().timeIntervalSince(closeStart) * 1000.0
+                print(String(format: "⏱ Morphological closing (3x3): %.2f ms", dt))
+            }
+        }
         var finalPixelCount = 0
         for i in 0..<spatial { if globalMask[i] > 0 { finalPixelCount += 1 } }
         let addedByStage2 = finalPixelCount - stage1PixelCount
@@ -1878,6 +1941,137 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 if self.debugMode {
                     print("📊 Output: \(opaqueCount)/\(width * height) opaque (\(String(format: "%.1f", Float(opaqueCount)/Float(width*height)*100))%)")
                 }
+            }
+            
+            // --- Debug outline of final mask circumference ---
+            if self.debugMode {
+                let edgeStart = Date()
+                let edges = computeMaskEdges(mask: globalMask, width: Wp, height: Hp)
+                switch edgeFillMode {
+                case .scanline:
+                    if !edges.isEmpty {
+                        let sxOutline = Float(width) / Float(Wp)
+                        let syOutline = Float(height) / Float(Hp)
+
+                        // Collect edge x-positions per full-res row (fy)
+                        var rowXs = Array(repeating: [Int](), count: height)
+                        for (ex, ey) in edges {
+                            let fx = Int(Float(ex) * sxOutline)
+                            let fy = Int(Float(ey) * syOutline)
+                            guard fx >= 0, fx < width, fy >= 0, fy < height else { continue }
+                            rowXs[fy].append(fx)
+                        }
+
+                        // Draw edge dots for visibility (only where alpha != 0)
+                        let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
+                        for (ex, ey) in edges {
+                            let fx = Int(Float(ex) * sxOutline)
+                            let fy = Int(Float(ey) * syOutline)
+                            let y0 = max(0, fy - 1), y1 = min(height - 1, fy + 1)
+                            let x0 = max(0, fx - 1), x1 = min(width - 1, fx + 1)
+                            for yy in y0...y1 {
+                                let row = pixels.advanced(by: yy * width * 4)
+                                for xx in x0...x1 {
+                                    let p = row.advanced(by: xx * 4)
+                                    if p[3] != 0 {
+                                        p[0] = b; p[1] = g; p[2] = r; p[3] = a
+                                    }
+                                }
+                            }
+                        }
+
+                        // Fill interior between edge crossings on each scanline (even-odd rule)
+                        for fy in 0..<height {
+                            var xs = rowXs[fy]
+                            if xs.count < 2 { continue }
+                            xs.sort()
+                            let row = pixels.advanced(by: fy * width * 4)
+                            var i = 0
+                            while i + 1 < xs.count {
+                                let start = max(0, min(xs[i], width - 1))
+                                let end   = max(0, min(xs[i + 1], width - 1))
+                                if end > start {
+                                    var xx = start
+                                    while xx < end {
+                                        let p = row.advanced(by: xx * 4)
+                                        if p[3] != 0 {
+                                            p[3] = 255
+                                        }
+                                        xx += 1
+                                    }
+                                }
+                                i += 2
+                            }
+                        }
+                    }
+                case .concaveHull:
+                    if !edges.isEmpty {
+                        // Approximate concave hull: angle-sort edge points around centroid to form a polygon
+                        var sumX: Float = 0, sumY: Float = 0
+                        for (ex, ey) in edges { sumX += Float(ex); sumY += Float(ey) }
+                        let cX = sumX / Float(edges.count)
+                        let cY = sumY / Float(edges.count)
+
+                        let sortedEdges = edges.sorted { (p1, p2) -> Bool in
+                            let a1 = atan2(Float(p1.y) - cY, Float(p1.x) - cX)
+                            let a2 = atan2(Float(p2.y) - cY, Float(p2.x) - cX)
+                            return a1 < a2
+                        }
+
+                        let sxOutline = CGFloat(width) / CGFloat(Wp)
+                        let syOutline = CGFloat(height) / CGFloat(Hp)
+                        let path = CGMutablePath()
+                        if let first = sortedEdges.first {
+                            let start = CGPoint(x: CGFloat(first.x) * sxOutline, y: CGFloat(first.y) * syOutline)
+                            path.move(to: start)
+                            for i in 1..<sortedEdges.count {
+                                let pt = sortedEdges[i]
+                                let p = CGPoint(x: CGFloat(pt.x) * sxOutline, y: CGFloat(pt.y) * syOutline)
+                                path.addLine(to: p)
+                            }
+                            path.closeSubpath()
+                        }
+
+                        let bounds = path.boundingBoxOfPath.integral
+                        let minX = max(0, Int(bounds.minX))
+                        let maxX = min(width - 1, Int(bounds.maxX))
+                        let minY = max(0, Int(bounds.minY))
+                        let maxY = min(height - 1, Int(bounds.maxY))
+
+                        for fy in minY...maxY {
+                            let row = pixels.advanced(by: fy * width * 4)
+                            for xx in minX...maxX {
+                                let pt = CGPoint(x: xx, y: fy)
+                                if path.contains(pt, using: .evenOdd) {
+                                    let p = row.advanced(by: xx * 4)
+                                    if p[3] != 0 {
+                                        p[3] = 255
+                                    }
+                                }
+                            }
+                        }
+
+                        // Optional: draw outline in magenta for visibility (only where alpha != 0)
+                        let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
+                        for (ex, ey) in edges {
+                            let fx = Int(CGFloat(ex) * sxOutline)
+                            let fy = Int(CGFloat(ey) * syOutline)
+                            let y0 = max(0, fy - 1), y1 = min(height - 1, fy + 1)
+                            let x0 = max(0, fx - 1), x1 = min(width - 1, fx + 1)
+                            for yy in y0...y1 {
+                                let row = pixels.advanced(by: yy * width * 4)
+                                for xx in x0...x1 {
+                                    let p = row.advanced(by: xx * 4)
+                                    if p[3] != 0 {
+                                        p[0] = b; p[1] = g; p[2] = r; p[3] = a
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                let edgeDt = Date().timeIntervalSince(edgeStart) * 1000.0
+                print(String(format: "⏱ Edge overlay: %.2f ms (%d pts)", edgeDt, edges.count))
             }
 
             // ✅ LABELS: draw for ALL kept detections (Stage1 + Stage2) using label-only,
@@ -2542,6 +2736,30 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return array
     }
     
+    // MARK: - Compute edge pixels (circumference) of a binary mask (4-neighborhood)
+      private func computeMaskEdges(mask: [Float], width: Int, height: Int) -> [(x: Int, y: Int)] {
+          let w = width, h = height
+          guard mask.count == w * h, w > 0, h > 0 else { return [] }
+          var edges: [(Int, Int)] = []
+          edges.reserveCapacity(w * h / 8)
+          for y in 0..<h {
+              let rowOff = y * w
+              for x in 0..<w {
+                  let idx = rowOff + x
+                  if mask[idx] <= 0 { continue }
+                  // 4-neighborhood: if any neighbor is background or out of bounds, it's an edge
+                  let leftEmpty   = (x == 0)        || mask[idx - 1] <= 0
+                  let rightEmpty  = (x == w - 1)    || mask[idx + 1] <= 0
+                  let topEmpty    = (y == 0)        || mask[idx - w] <= 0
+                  let bottomEmpty = (y == h - 1)    || mask[idx + w] <= 0
+                  if leftEmpty || rightEmpty || topEmpty || bottomEmpty {
+                      edges.append((x, y))
+                  }
+              }
+          }
+          return edges
+      }
+    
     public func cutoutClearOutsideAccelerated(x0: Int, y0: Int, x1: Int, y1: Int, in image: CGImage) -> CGImage? {
         let t0 = Date()
         
@@ -2676,3 +2894,4 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
 }
+
