@@ -18,7 +18,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = true
+    var debugMode: Bool = false
     var active: Bool = false
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -69,7 +69,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.5
-    var debugMode: Bool = true  // Enable debug prints and image saves
+    var debugMode: Bool = false  // Enable debug prints and image saves
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
@@ -741,7 +741,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         // STAGE 1: Preprocess
         let stage1PreStart = Date()
-        guard let resized = letterbox(pixelBuffer, size: 960) else {
+        guard let resized = resizePixelBufferToSquare(pixelBuffer, size: 960) else {
             isProcessing = false
             return
         }
@@ -847,7 +847,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let stage2Start = Date()
         // Kishore
         if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.0),
-           let resizedCrop = letterbox(croppedBuffer, size: 960),
+           let resizedCrop = resizePixelBufferToSquare(croppedBuffer, size: 960),
            let cropInputArray = pixelBufferToMLMultiArray(resizedCrop),
            let cropInputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": cropInputArray]) {
 
@@ -1022,7 +1022,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     
-    private func letterbox(_ src: CVPixelBuffer, size: Int = 960) -> CVPixelBuffer? {
+    private func resizePixelBufferToSquare(_ src: CVPixelBuffer, size: Int = 960) -> CVPixelBuffer? {
         let t0 = Date()
         
         CVPixelBufferLockBaseAddress(src, .readOnly)
