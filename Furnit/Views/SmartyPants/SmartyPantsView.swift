@@ -20,7 +20,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var maskThreshold: Float = 0.0
     var debugMode: Bool = true
     var active: Bool = false
-    var edgeFillMode: EdgeFillMode = .scanline
+    var edgeFillMode: EdgeFillMode = .concaveHull
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
         let v = SmartyPantsContainerView()
@@ -148,6 +148,9 @@ struct Triangle2D {
 
 final class AlphaShape {
 
+    /// Maximum points for Delaunay (O(n²) complexity)
+    private static let maxPointsForDelaunay = 300
+
     /// Compute alpha shape from points using Delaunay triangulation
     /// - Parameters:
     ///   - points: Array of (x, y) tuples
@@ -158,8 +161,16 @@ final class AlphaShape {
             return []
         }
 
+        // Downsample points if too many (Delaunay is O(n²))
+        let sampledPoints: [(x: Int, y: Int)]
+        if points.count > maxPointsForDelaunay {
+            sampledPoints = downsamplePoints(points, targetCount: maxPointsForDelaunay)
+        } else {
+            sampledPoints = points
+        }
+
         // Convert to Point2D
-        let pts = points.map { Point2D(x: Float($0.x), y: Float($0.y)) }
+        let pts = sampledPoints.map { Point2D(x: Float($0.x), y: Float($0.y)) }
 
         // Remove duplicates
         let uniquePts = Array(Set(pts))
@@ -379,6 +390,46 @@ final class AlphaShape {
     private static func cross(_ o: (x: Int, y: Int), _ a: (x: Int, y: Int), _ b: (x: Int, y: Int)) -> Int {
         return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
     }
+
+    /// Grid-based downsampling to reduce point count
+    /// Keeps one representative point per grid cell
+    private static func downsamplePoints(_ points: [(x: Int, y: Int)], targetCount: Int) -> [(x: Int, y: Int)] {
+        guard points.count > targetCount else { return points }
+
+        // Find bounding box
+        var minX = Int.max, maxX = Int.min
+        var minY = Int.max, maxY = Int.min
+        for p in points {
+            minX = min(minX, p.x)
+            maxX = max(maxX, p.x)
+            minY = min(minY, p.y)
+            maxY = max(maxY, p.y)
+        }
+
+        let width = maxX - minX + 1
+        let height = maxY - minY + 1
+
+        // Calculate grid cell size to achieve target count
+        // gridCells ≈ targetCount, so cellSize = sqrt(area / targetCount)
+        let area = Float(width * height)
+        let cellSize = max(1, Int(sqrtf(area / Float(targetCount))))
+
+        // Grid-based sampling: keep one point per cell
+        var grid: [Int: (x: Int, y: Int)] = [:]  // cellKey -> point
+
+        for p in points {
+            let cellX = (p.x - minX) / cellSize
+            let cellY = (p.y - minY) / cellSize
+            let key = cellY * 10000 + cellX  // Unique cell key
+
+            // Keep first point in each cell (or could average)
+            if grid[key] == nil {
+                grid[key] = p
+            }
+        }
+
+        return Array(grid.values)
+    }
 }
 // MARK: - Detection Struct
 struct DetectionSmarty {
@@ -497,22 +548,18 @@ final class SimpleTracker {
 
     /// Update tracker with new detections, returns detections with assigned track IDs
     func update(detections: [DetectionSmarty]) -> [DetectionSmarty] {
-        // Step 1: Predict existing tracks forward
-        for i in 0..<tracks.count {
-            // Prediction is applied in iou() and markMissed()
-        }
-
-        // Step 2: Build cost matrix (negative IoU for Hungarian, but we'll use greedy)
+        // Step 1: Build cost matrix using track IDs (not indices)
         var matchedDetIdx = Set<Int>()
-        var matchedTrackIdx = Set<Int>()
-        var matches: [(trackIdx: Int, detIdx: Int, iou: Float)] = []
+        var matchedTrackIds = Set<Int>()
+        var detToTrackId: [Int: Int] = [:]  // detIdx -> trackId
 
-        // Calculate all IoU pairs
+        // Calculate all IoU pairs and store with track ID
+        var matches: [(trackId: Int, trackIdx: Int, detIdx: Int, iou: Float)] = []
         for (ti, track) in tracks.enumerated() {
             for (di, det) in detections.enumerated() {
                 let iouVal = track.iou(with: det)
                 if iouVal >= iouThreshold {
-                    matches.append((ti, di, iouVal))
+                    matches.append((track.id, ti, di, iouVal))
                 }
             }
         }
@@ -521,24 +568,25 @@ final class SimpleTracker {
         matches.sort { $0.iou > $1.iou }
 
         for match in matches {
-            if matchedTrackIdx.contains(match.trackIdx) || matchedDetIdx.contains(match.detIdx) {
+            if matchedTrackIds.contains(match.trackId) || matchedDetIdx.contains(match.detIdx) {
                 continue
             }
-            matchedTrackIdx.insert(match.trackIdx)
+            matchedTrackIds.insert(match.trackId)
             matchedDetIdx.insert(match.detIdx)
+            detToTrackId[match.detIdx] = match.trackId
 
-            // Update track with detection
+            // Update track with detection (use index here, before any removal)
             tracks[match.trackIdx].update(with: detections[match.detIdx])
         }
 
-        // Step 3: Mark unmatched tracks as missed
+        // Step 2: Mark unmatched tracks as missed
         for i in 0..<tracks.count {
-            if !matchedTrackIdx.contains(i) {
+            if !matchedTrackIds.contains(tracks[i].id) {
                 tracks[i].markMissed()
             }
         }
 
-        // Step 4: Create new tracks for unmatched detections
+        // Step 3: Create new tracks for unmatched detections
         for (di, det) in detections.enumerated() {
             if !matchedDetIdx.contains(di) {
                 let newTrack = Track(
@@ -557,35 +605,26 @@ final class SimpleTracker {
                     vy: 0
                 )
                 tracks.append(newTrack)
+                detToTrackId[di] = nextId  // Map new detection to new track
                 nextId += 1
             }
         }
 
-        // Step 5: Remove dead tracks
+        // Step 4: Remove dead tracks
         tracks.removeAll { $0.timeSinceUpdate > maxAge }
 
-        // Step 6: Build output - detections with track IDs assigned
+        // Step 5: Build output - detections with track IDs assigned
+        // Use track IDs (not indices) to find tracks safely
         var result: [DetectionSmarty] = []
 
         for (di, det) in detections.enumerated() {
             var detWithId = det
 
-            // Find which track this detection was matched to
-            if let matchedTrackIdx = matches.first(where: { $0.detIdx == di && matchedDetIdx.contains(di) })?.trackIdx {
-                let track = tracks[matchedTrackIdx]
+            if let trackId = detToTrackId[di],
+               let track = tracks.first(where: { $0.id == trackId }) {
                 // Only assign ID if track is confirmed (enough hits)
                 if track.hitStreak >= minHits || track.age >= minHits {
                     detWithId.trackId = track.id
-                }
-            } else {
-                // New detection - find its new track
-                if let newTrack = tracks.first(where: {
-                    abs($0.x - det.x) < 1 && abs($0.y - det.y) < 1 && $0.age == 1
-                }) {
-                    // New tracks need minHits before showing ID
-                    if newTrack.hitStreak >= minHits {
-                        detWithId.trackId = newTrack.id
-                    }
                 }
             }
 
@@ -614,7 +653,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.5
     var debugMode: Bool = true  // Enable debug prints and image saves
-    var edgeFillMode: EdgeFillMode = .scanline
+    var edgeFillMode: EdgeFillMode = .concaveHull
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
