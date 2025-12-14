@@ -544,7 +544,70 @@ final class SimpleTracker {
     let maxAge: Int = 30               // Max frames to keep unmatched track
     let minHits: Int = 3               // Min hits before track is confirmed
 
+    // Temporal mask smoothing
+    private var maskHistory: [Int: [[Float]]] = [:]  // trackId -> recent masks
+    let maskHistorySize: Int = 5                      // Number of frames to keep
+    let temporalSmoothingAlpha: Float = 0.6           // Weight for current frame (0.6 = 60% current, 40% history)
+
     init() {}
+
+    /// Store mask for a track (for temporal smoothing)
+    func storeMask(_ mask: [Float], forTrackId trackId: Int) {
+        if maskHistory[trackId] == nil {
+            maskHistory[trackId] = []
+        }
+        maskHistory[trackId]?.append(mask)
+        // Keep only recent masks
+        if let count = maskHistory[trackId]?.count, count > maskHistorySize {
+            maskHistory[trackId]?.removeFirst()
+        }
+    }
+
+    /// Get temporally stable mask for a track using VOTING approach
+    /// A pixel is included only if detected in at least `minVotes` of recent frames
+    /// This prevents gradual accumulation while providing frame-to-frame stability
+    let minVotesForPixel: Int = 2  // Pixel must appear in at least 2 of last N frames
+
+    func getSmoothedMask(_ currentMask: [Float], forTrackId trackId: Int) -> [Float] {
+        guard let history = maskHistory[trackId], !history.isEmpty else {
+            return currentMask
+        }
+
+        let count = currentMask.count
+        var voteCounts = [Int](repeating: 0, count: count)
+
+        // Count votes from historical masks
+        for histMask in history {
+            for i in 0..<min(count, histMask.count) {
+                if histMask[i] > 0 {
+                    voteCounts[i] += 1
+                }
+            }
+        }
+
+        // Count vote from current frame
+        for i in 0..<count {
+            if currentMask[i] > 0 {
+                voteCounts[i] += 1
+            }
+        }
+
+        // Pixel is ON only if it has enough votes
+        var resultMask = [Float](repeating: 0, count: count)
+        for i in 0..<count {
+            if voteCounts[i] >= minVotesForPixel {
+                resultMask[i] = 1.0
+            }
+        }
+
+        return resultMask
+    }
+
+    /// Clean up mask history for removed tracks
+    private func cleanupMaskHistory() {
+        let activeTrackIds = Set(tracks.map { $0.id })
+        maskHistory = maskHistory.filter { activeTrackIds.contains($0.key) }
+    }
 
     /// Update tracker with new detections, returns detections with assigned track IDs
     func update(detections: [DetectionSmarty]) -> [DetectionSmarty] {
@@ -612,6 +675,7 @@ final class SimpleTracker {
 
         // Step 4: Remove dead tracks
         tracks.removeAll { $0.timeSinceUpdate > maxAge }
+        cleanupMaskHistory()  // Remove mask history for deleted tracks
 
         // Step 5: Build output - detections with track IDs assigned
         // Use track IDs (not indices) to find tracks safely
@@ -642,6 +706,7 @@ final class SimpleTracker {
     /// Reset tracker state
     func reset() {
         tracks.removeAll()
+        maskHistory.removeAll()
         nextId = 1
     }
 }
@@ -1827,45 +1892,195 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     // MARK: - Morphological Closing (Dilate then Erode) on binary mask at prototype resolution
-    private func applyMorphologicalClosing(to mask: inout [Float], width: Int, height: Int) {
+    // MARK: - Fill Convex Hull of Mask
+    /// Computes convex hull of mask pixels and fills the entire hull area
+    /// This guarantees no gaps within each detection's boundary
+    private func fillConvexHullOfMask(
+        mask: [Float],
+        into globalMask: inout [Float],
+        width: Int,
+        height: Int,
+        bboxX1: Int, bboxY1: Int, bboxX2: Int, bboxY2: Int,
+        threshold: Float
+    ) -> Int {
+        // Collect mask pixels above threshold within bbox
+        var points = [(x: Int, y: Int)]()
+        for py in bboxY1..<bboxY2 {
+            let rowStart = py * width
+            for px in bboxX1..<bboxX2 {
+                let idx = rowStart + px
+                if mask[idx] > threshold {
+                    points.append((px, py))
+                }
+            }
+        }
+
+        guard points.count >= 3 else {
+            // Not enough points for hull, just copy mask directly
+            var added = 0
+            for py in bboxY1..<bboxY2 {
+                let rowStart = py * width
+                for px in bboxX1..<bboxX2 {
+                    let idx = rowStart + px
+                    if mask[idx] > threshold && globalMask[idx] == 0 {
+                        globalMask[idx] = 1.0
+                        added += 1
+                    }
+                }
+            }
+            return added
+        }
+
+        // Compute convex hull using Graham scan
+        let hull = convexHull(points: points)
+        guard hull.count >= 3 else {
+            return 0
+        }
+
+        // Fill the convex hull polygon using scanline
+        var added = 0
+        let minY = hull.min(by: { $0.y < $1.y })!.y
+        let maxY = hull.max(by: { $0.y < $1.y })!.y
+
+        for y in minY...maxY {
+            // Find all x-intersections with hull edges at this y
+            var xIntersections = [Int]()
+
+            for i in 0..<hull.count {
+                let p1 = hull[i]
+                let p2 = hull[(i + 1) % hull.count]
+
+                // Check if edge crosses this scanline
+                if (p1.y <= y && p2.y > y) || (p2.y <= y && p1.y > y) {
+                    // Calculate x intersection
+                    let t = Float(y - p1.y) / Float(p2.y - p1.y)
+                    let x = Int(Float(p1.x) + t * Float(p2.x - p1.x))
+                    xIntersections.append(x)
+                }
+            }
+
+            xIntersections.sort()
+
+            // Fill between pairs of intersections
+            var i = 0
+            while i + 1 < xIntersections.count {
+                let x1 = max(bboxX1, xIntersections[i])
+                let x2 = min(bboxX2 - 1, xIntersections[i + 1])
+                if x2 >= x1 && y >= 0 && y < height {
+                    let rowStart = y * width
+                    for x in x1...x2 {
+                        if x >= 0 && x < width {
+                            let idx = rowStart + x
+                            if globalMask[idx] == 0 {
+                                globalMask[idx] = 1.0
+                                added += 1
+                            }
+                        }
+                    }
+                }
+                i += 2
+            }
+        }
+
+        return added
+    }
+
+    /// Graham scan convex hull algorithm
+    private func convexHull(points: [(x: Int, y: Int)]) -> [(x: Int, y: Int)] {
+        guard points.count >= 3 else { return points }
+
+        // Find lowest point (and leftmost if tie)
+        var sorted = points
+        let start = sorted.min { a, b in
+            if a.y != b.y { return a.y < b.y }
+            return a.x < b.x
+        }!
+
+        // Sort by polar angle with respect to start point
+        sorted.sort { a, b in
+            let ax = a.x - start.x, ay = a.y - start.y
+            let bx = b.x - start.x, by = b.y - start.y
+            let cross = ax * by - ay * bx
+            if cross != 0 { return cross > 0 }
+            // Collinear - sort by distance
+            return ax * ax + ay * ay < bx * bx + by * by
+        }
+
+        // Build hull
+        var hull = [(x: Int, y: Int)]()
+        for p in sorted {
+            while hull.count >= 2 {
+                let o = hull[hull.count - 2]
+                let a = hull[hull.count - 1]
+                let cross = (a.x - o.x) * (p.y - o.y) - (a.y - o.y) * (p.x - o.x)
+                if cross <= 0 {
+                    hull.removeLast()
+                } else {
+                    break
+                }
+            }
+            hull.append(p)
+        }
+
+        return hull
+    }
+
+    private func applyMorphologicalClosing(to mask: inout [Float], width: Int, height: Int, kernelSize: Int = 9, iterations: Int = 2) {
         let count = width * height
         guard count > 0, mask.count == count else { return }
 
         // Convert Float (0/1) -> Planar8 (0/255)
-        var src8 = [UInt8](repeating: 0, count: count)
-        for i in 0..<count { src8[i] = mask[i] > 0 ? 255 : 0 }
+        var buf1 = [UInt8](repeating: 0, count: count)
+        for i in 0..<count { buf1[i] = mask[i] > 0 ? 255 : 0 }
 
-        var tmp8 = [UInt8](repeating: 0, count: count)
-        var dst8 = [UInt8](repeating: 0, count: count)
+        var buf2 = [UInt8](repeating: 0, count: count)
+        var tmpBuf = [UInt8](repeating: 0, count: count)
 
-        src8.withUnsafeMutableBytes { srcPtr in
-            tmp8.withUnsafeMutableBytes { tmpPtr in
-                dst8.withUnsafeMutableBytes { dstPtr in
-                    var srcBuf = vImage_Buffer(data: srcPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-                    var tmpBuf = vImage_Buffer(data: tmpPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-                    var dstBuf = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+        // Create kernel (all ones)
+        let kSize = kernelSize
+        var kernel = [UInt8](repeating: 1, count: kSize * kSize)
 
-                    // 3x3 all-ones kernel
-                    var kernel: [UInt8] = [
-                        1, 1, 1,
-                        1, 1, 1,
-                        1, 1, 1
-                    ]
+        for iter in 0..<iterations {
+            let isEven = (iter % 2 == 0)
 
-                    // Dilation -> tmp
-                    kernel.withUnsafeMutableBufferPointer { kPtr in
-                        vImageDilate_Planar8(&srcBuf, &tmpBuf, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+            if isEven {
+                buf1.withUnsafeMutableBytes { srcPtr in
+                    tmpBuf.withUnsafeMutableBytes { tmpPtr in
+                        buf2.withUnsafeMutableBytes { dstPtr in
+                            var srcVBuf = vImage_Buffer(data: srcPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                            var tmpVBuf = vImage_Buffer(data: tmpPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                            var dstVBuf = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+
+                            kernel.withUnsafeMutableBufferPointer { kPtr in
+                                vImageDilate_Planar8(&srcVBuf, &tmpVBuf, 0, 0, kPtr.baseAddress!, vImagePixelCount(kSize), vImagePixelCount(kSize), vImage_Flags(kvImageNoFlags))
+                                vImageErode_Planar8(&tmpVBuf, &dstVBuf, 0, 0, kPtr.baseAddress!, vImagePixelCount(kSize), vImagePixelCount(kSize), vImage_Flags(kvImageNoFlags))
+                            }
+                        }
                     }
-                    // Erosion -> dst
-                    kernel.withUnsafeMutableBufferPointer { kPtr in
-                        vImageErode_Planar8(&tmpBuf, &dstBuf, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+                }
+            } else {
+                buf2.withUnsafeMutableBytes { srcPtr in
+                    tmpBuf.withUnsafeMutableBytes { tmpPtr in
+                        buf1.withUnsafeMutableBytes { dstPtr in
+                            var srcVBuf = vImage_Buffer(data: srcPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                            var tmpVBuf = vImage_Buffer(data: tmpPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                            var dstVBuf = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+
+                            kernel.withUnsafeMutableBufferPointer { kPtr in
+                                vImageDilate_Planar8(&srcVBuf, &tmpVBuf, 0, 0, kPtr.baseAddress!, vImagePixelCount(kSize), vImagePixelCount(kSize), vImage_Flags(kvImageNoFlags))
+                                vImageErode_Planar8(&tmpVBuf, &dstVBuf, 0, 0, kPtr.baseAddress!, vImagePixelCount(kSize), vImagePixelCount(kSize), vImage_Flags(kvImageNoFlags))
+                            }
+                        }
                     }
                 }
             }
         }
 
+        // Result is in buf2 if iterations is even, buf1 if odd
+        let resultBuf = (iterations % 2 == 0) ? buf1 : buf2
+
         // Convert back Planar8 -> Float (0/1)
-        for i in 0..<count { mask[i] = dst8[i] > 0 ? 1.0 : 0.0 }
+        for i in 0..<count { mask[i] = resultBuf[i] > 0 ? 1.0 : 0.0 }
     }
 
     
@@ -2207,27 +2422,29 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
             let my2 = min(Hp, Int((det.y + det.height / 2) * scale))
 
-            var addedPixels = 0
-            rawMask.withUnsafeBufferPointer { rPtr in
-                globalMask.withUnsafeMutableBufferPointer { gPtr in
-                    if mx2 > mx1 && my2 > my1 {
-                        for py in my1..<my2 {
-                            let rowStart = py * Wp + mx1
-                            let rowLen = mx2 - mx1
-                            for i in 0..<rowLen {
-                                let idx = rowStart + i
-                                if rPtr[idx] > maskThreshold && gPtr[idx] == 0 {
-                                    gPtr[idx] = 1.0
-                                    addedPixels += 1
-                                }
-                            }
-                        }
-                    }
-                }
+            // Apply temporal smoothing for tracked objects
+            var maskToApply = rawMask
+            if let trackId = det.trackId {
+                // Get temporally smoothed mask
+                maskToApply = tracker.getSmoothedMask(rawMask, forTrackId: trackId)
+                // Store current mask for future smoothing
+                tracker.storeMask(rawMask, forTrackId: trackId)
             }
 
+            // Fill convex hull of mask pixels to eliminate gaps
+            var addedPixels = 0
+            addedPixels = fillConvexHullOfMask(
+                mask: maskToApply,
+                into: &globalMask,
+                width: Wp,
+                height: Hp,
+                bboxX1: mx1, bboxY1: my1, bboxX2: mx2, bboxY2: my2,
+                threshold: maskThreshold
+            )
+
             if self.debugMode && detIndex < 5 {
-                print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px")
+                let smoothingInfo = det.trackId != nil ? " (smoothed)" : ""
+                print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px (hull)\(smoothingInfo)")
             }
         }
         let s1MaskEnd = Date()
@@ -2324,9 +2541,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let mx2_crop = min(Wp, Int((det.x + det.width / 2) * scale))
                 let my2_crop = min(Hp, Int((det.y + det.height / 2) * scale))
 
+                // Apply temporal smoothing for tracked objects (Stage 2)
+                var maskToApply = rawMask
+                if let trackId = det.trackId {
+                    // Get temporally smoothed mask
+                    maskToApply = tracker.getSmoothedMask(rawMask, forTrackId: trackId)
+                    // Store current mask for future smoothing
+                    tracker.storeMask(rawMask, forTrackId: trackId)
+                }
+
                 var addedPixels = 0
 
-                rawMask.withUnsafeBufferPointer { rPtr in
+                maskToApply.withUnsafeBufferPointer { rPtr in
                     globalMask.withUnsafeMutableBufferPointer { gPtr in
                         if mx2_crop > mx1_crop && my2_crop > my1_crop {
                             for py_crop in my1_crop..<my2_crop {
@@ -2355,7 +2581,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
 
                 if self.debugMode {
-                    print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: bbox(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW")
+                    let smoothingInfo = det.trackId != nil ? " (smoothed)" : ""
+                    print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: bbox(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW\(smoothingInfo)")
                 }
 
                 // Map Stage2 bbox → Stage1 bbox for drawing/summary (not for mask)
@@ -2364,7 +2591,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let newW = det.width * s2ToS1ScaleX
                 let newH = det.height * s2ToS1ScaleY
 
-                let mapped = DetectionSmarty(
+                var mapped = DetectionSmarty(
                     x: newX,
                     y: newY,
                     width: newW,
@@ -2374,6 +2601,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     className: det.className,
                     maskCoeffs: det.maskCoeffs
                 )
+                mapped.trackId = det.trackId  // Preserve track ID
                 mappedStage2Detections.append(mapped)
             }
             let s2MaskEnd = Date()
@@ -2383,13 +2611,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
 
-        // Optional morphological closing to strengthen edges and close small gaps (performance-friendly 3x3)
+        // Morphological closing to strengthen edges and close gaps (15x15 kernel, 2 iterations)
         if enableMaskClosing {
             let closeStart = Date()
-            applyMorphologicalClosing(to: &globalMask, width: Wp, height: Hp)
+            applyMorphologicalClosing(to: &globalMask, width: Wp, height: Hp, kernelSize: 15, iterations: 2)
             if self.debugMode {
                 let dt = Date().timeIntervalSince(closeStart) * 1000.0
-                print(String(format: "⏱ Morphological closing (3x3): %.2f ms", dt))
+                print(String(format: "⏱ Morphological closing (15x15 x2): %.2f ms", dt))
             }
         }
         var finalPixelCount = 0
@@ -2525,9 +2753,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     while x < width {
                         let nextInterval = intervalIndex < intervals.count ? intervals[intervalIndex] : (start: width, end: width)
                         if x < nextInterval.start {
-                            let len = min(nextInterval.start, width) - x
-                            memset(rowBase.advanced(by: x * 4), 0, len * 4)
-                            x += len
+                            // Only clear alpha, keep RGB for potential hole filling later
+                            let clearEnd = min(nextInterval.start, width)
+                            for cx in x..<clearEnd {
+                                rowBase.advanced(by: cx * 4 + 3).pointee = 0  // Clear alpha only
+                            }
+                            x = clearEnd
                             continue
                         }
 
@@ -2540,7 +2771,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                 pixelPtr[3] = 255
                                 opaqueCount += 1
                             } else {
-                                pixelPtr[0] = 0; pixelPtr[1] = 0; pixelPtr[2] = 0; pixelPtr[3] = 0
+                                // Only clear alpha, keep RGB for potential hole filling later
+                                pixelPtr[3] = 0
                             }
                             pxIdx += 1
                         }
@@ -2616,146 +2848,130 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
                 case .concaveHull:
                     if !edges.isEmpty {
-                        // TRUE CONCAVE HULL using Delaunay-based Alpha Shape
-                        // Alpha parameter: higher = more concave detail, lower = smoother
-                        let alphaParam: Float = 0.02  // Tune this for your use case
+                        // MORPHOLOGICAL HOLE FILL: preserves original boundary, only fills interior holes
+                        // Instead of alpha shape (which simplifies boundary), we use flood-fill from outside
+                        // to identify which transparent pixels are truly exterior vs interior holes
 
-                        // Compute alpha shape boundary edges
-                        let alphaEdges = AlphaShape.compute(points: edges, alpha: alphaParam)
+                        let sxOutline = Float(width) / Float(Wp)
+                        let syOutline = Float(height) / Float(Hp)
 
-                        let sxOutline = CGFloat(width) / CGFloat(Wp)
-                        let syOutline = CGFloat(height) / CGFloat(Hp)
-
-                        // Build CGPath from alpha shape edges
-                        let path = CGMutablePath()
-                        if !alphaEdges.isEmpty {
-                            // Group edges into connected polygons
-                            var remainingEdges = alphaEdges
-                            while !remainingEdges.isEmpty {
-                                let firstEdge = remainingEdges.removeFirst()
-                                let startPt = CGPoint(
-                                    x: CGFloat(firstEdge.start.x) * sxOutline,
-                                    y: CGFloat(firstEdge.start.y) * syOutline
-                                )
-                                path.move(to: startPt)
-
-                                var currentEnd = firstEdge.end
-                                path.addLine(to: CGPoint(
-                                    x: CGFloat(currentEnd.x) * sxOutline,
-                                    y: CGFloat(currentEnd.y) * syOutline
-                                ))
-
-                                // Follow chain of edges
-                                var foundNext = true
-                                while foundNext {
-                                    foundNext = false
-                                    for (i, edge) in remainingEdges.enumerated() {
-                                        if edge.start.x == currentEnd.x && edge.start.y == currentEnd.y {
-                                            currentEnd = edge.end
-                                            path.addLine(to: CGPoint(
-                                                x: CGFloat(currentEnd.x) * sxOutline,
-                                                y: CGFloat(currentEnd.y) * syOutline
-                                            ))
-                                            remainingEdges.remove(at: i)
-                                            foundNext = true
-                                            break
-                                        } else if edge.end.x == currentEnd.x && edge.end.y == currentEnd.y {
-                                            currentEnd = edge.start
-                                            path.addLine(to: CGPoint(
-                                                x: CGFloat(currentEnd.x) * sxOutline,
-                                                y: CGFloat(currentEnd.y) * syOutline
-                                            ))
-                                            remainingEdges.remove(at: i)
-                                            foundNext = true
-                                            break
-                                        }
-                                    }
-                                }
-                                path.closeSubpath()
+                        // Find bounding box of the mask in full-res coordinates
+                        var minX = width, maxX = 0, minY = height, maxY = 0
+                        for (ex, ey) in edges {
+                            let fx = Int(Float(ex) * sxOutline)
+                            let fy = Int(Float(ey) * syOutline)
+                            if fx >= 0 && fx < width && fy >= 0 && fy < height {
+                                minX = min(minX, fx)
+                                maxX = max(maxX, fx)
+                                minY = min(minY, fy)
+                                maxY = max(maxY, fy)
                             }
                         }
 
-                        let bounds = path.boundingBoxOfPath.integral
-                        let minX = max(0, Int(bounds.minX))
-                        let maxX = min(width - 1, Int(bounds.maxX))
-                        let minY = max(0, Int(bounds.minY))
-                        let maxY = min(height - 1, Int(bounds.maxY))
+                        // Add padding for flood fill boundary
+                        let pad = 2
+                        minX = max(0, minX - pad)
+                        maxX = min(width - 1, maxX + pad)
+                        minY = max(0, minY - pad)
+                        maxY = min(height - 1, maxY + pad)
 
-                        // Rasterize path with CGContext
                         let boxW = maxX - minX + 1
                         let boxH = maxY - minY + 1
 
-                        if boxW > 0 && boxH > 0,
-                           let maskContext = CGContext(
-                               data: nil,
-                               width: boxW,
-                               height: boxH,
-                               bitsPerComponent: 8,
-                               bytesPerRow: boxW,
-                               space: CGColorSpaceCreateDeviceGray(),
-                               bitmapInfo: CGImageAlphaInfo.none.rawValue
-                           ) {
-                            maskContext.translateBy(x: CGFloat(-minX), y: CGFloat(-minY))
-                            maskContext.setFillColor(gray: 1.0, alpha: 1.0)
-                            maskContext.addPath(path)
-                            maskContext.fillPath(using: .evenOdd)
+                        if boxW > 4 && boxH > 4 {
+                            // Create a mask of opaque pixels (from current alpha)
+                            // 0 = transparent (unknown), 1 = opaque (definitely mask), 2 = exterior (flood-filled)
+                            var fillMask = [UInt8](repeating: 0, count: boxW * boxH)
 
-                            if let maskData = maskContext.data?.assumingMemoryBound(to: UInt8.self) {
-                                for ly in 0..<boxH {
-                                    let fy = minY + ly
-                                    let srcRow = pixels.advanced(by: fy * width * 4)
-                                    let maskRow = maskData.advanced(by: ly * boxW)
-
-                                    for lx in 0..<boxW {
-                                        if maskRow[lx] > 0 {  // Inside alpha shape
-                                            let xx = minX + lx
-                                            let p = srcRow.advanced(by: xx * 4)
-                                            // Fill ALL pixels inside alpha shape (fills holes)
-                                            p[3] = 255
-                                        }
+                            // Mark opaque pixels
+                            for ly in 0..<boxH {
+                                let fy = minY + ly
+                                let srcRow = pixels.advanced(by: fy * width * 4)
+                                for lx in 0..<boxW {
+                                    let fx = minX + lx
+                                    if srcRow[fx * 4 + 3] > 0 {
+                                        fillMask[ly * boxW + lx] = 1  // Opaque
                                     }
                                 }
                             }
-                        }
 
-                        // Draw alpha shape outline in magenta
-                        let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
-                        for edge in alphaEdges {
-                            // Draw line between edge start and end using Bresenham
-                            let x0 = Int(CGFloat(edge.start.x) * sxOutline)
-                            let y0 = Int(CGFloat(edge.start.y) * syOutline)
-                            let x1 = Int(CGFloat(edge.end.x) * sxOutline)
-                            let y1 = Int(CGFloat(edge.end.y) * syOutline)
+                            // Flood fill from edges to mark exterior pixels
+                            // Start from all border pixels that are transparent
+                            var queue = [(x: Int, y: Int)]()
+                            queue.reserveCapacity(2 * (boxW + boxH))
 
-                            // Simple line drawing
-                            let dx = abs(x1 - x0)
-                            let dy = abs(y1 - y0)
-                            let sx = x0 < x1 ? 1 : -1
-                            let sy = y0 < y1 ? 1 : -1
-                            var err = dx - dy
-                            var cx = x0, cy = y0
+                            // Add border pixels to queue
+                            for lx in 0..<boxW {
+                                if fillMask[lx] == 0 { queue.append((lx, 0)); fillMask[lx] = 2 }
+                                let bottomIdx = (boxH - 1) * boxW + lx
+                                if fillMask[bottomIdx] == 0 { queue.append((lx, boxH - 1)); fillMask[bottomIdx] = 2 }
+                            }
+                            for ly in 1..<(boxH - 1) {
+                                let leftIdx = ly * boxW
+                                if fillMask[leftIdx] == 0 { queue.append((0, ly)); fillMask[leftIdx] = 2 }
+                                let rightIdx = ly * boxW + boxW - 1
+                                if fillMask[rightIdx] == 0 { queue.append((boxW - 1, ly)); fillMask[rightIdx] = 2 }
+                            }
 
-                            while true {
-                                // Draw 3x3 dot at (cx, cy)
-                                for yy in max(0, cy - 1)...min(height - 1, cy + 1) {
-                                    let row = pixels.advanced(by: yy * width * 4)
-                                    for xx in max(0, cx - 1)...min(width - 1, cx + 1) {
-                                        let p = row.advanced(by: xx * 4)
-                                        if p[3] != 0 {
-                                            p[0] = b; p[1] = g; p[2] = r; p[3] = a
-                                        }
+                            // BFS flood fill
+                            var qIdx = 0
+                            while qIdx < queue.count {
+                                let (cx, cy) = queue[qIdx]
+                                qIdx += 1
+
+                                // Check 4-connected neighbors
+                                let neighbors = [(cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)]
+                                for (nx, ny) in neighbors {
+                                    guard nx >= 0 && nx < boxW && ny >= 0 && ny < boxH else { continue }
+                                    let nIdx = ny * boxW + nx
+                                    if fillMask[nIdx] == 0 {  // Transparent and not yet visited
+                                        fillMask[nIdx] = 2  // Mark as exterior
+                                        queue.append((nx, ny))
                                     }
                                 }
+                            }
 
-                                if cx == x1 && cy == y1 { break }
-                                let e2 = 2 * err
-                                if e2 > -dy { err -= dy; cx += sx }
-                                if e2 < dx { err += dx; cy += sy }
+                            // Now fill interior holes: pixels that are still 0 (not opaque, not exterior)
+                            var holesFilled = 0
+                            for ly in 0..<boxH {
+                                let fy = minY + ly
+                                let srcRow = pixels.advanced(by: fy * width * 4)
+                                for lx in 0..<boxW {
+                                    let idx = ly * boxW + lx
+                                    if fillMask[idx] == 0 {  // Interior hole!
+                                        let fx = minX + lx
+                                        srcRow[fx * 4 + 3] = 255  // Fill with original image content
+                                        holesFilled += 1
+                                    }
+                                }
+                            }
+
+                            if self.debugMode {
+                                print("🕳️ Hole fill: filled \(holesFilled) interior hole pixels")
+                            }
+                        }
+
+                        // Draw original edge outline in magenta (not alpha shape)
+                        let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
+                        for (ex, ey) in edges {
+                            let fx = Int(Float(ex) * sxOutline)
+                            let fy = Int(Float(ey) * syOutline)
+                            guard fx >= 1 && fx < width - 1 && fy >= 1 && fy < height - 1 else { continue }
+
+                            // Draw 3x3 dot
+                            for yy in (fy - 1)...(fy + 1) {
+                                let row = pixels.advanced(by: yy * width * 4)
+                                for xx in (fx - 1)...(fx + 1) {
+                                    let p = row.advanced(by: xx * 4)
+                                    if p[3] != 0 {
+                                        p[0] = b; p[1] = g; p[2] = r; p[3] = a
+                                    }
+                                }
                             }
                         }
 
                         if self.debugMode {
-                            print("🔺 Alpha shape: \(alphaEdges.count) boundary edges from \(edges.count) points")
+                            print("🔺 Edge outline: \(edges.count) boundary points (original mask edges preserved)")
                         }
                     }
                 }
@@ -3286,6 +3502,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         } else {
             let furnitureList = furnitureClasses.filter { $0.key < numClasses }
 
+            // Debug: track best furniture confidence found
+            var bestFurnitureConf: Float = 0
+            var bestFurnitureClass = ""
+            var bestFurnitureAnchor = -1
+
             for anchor in 0..<numAnchors {
                 // Bounds checking for coordinate access
                 guard anchor < stride,
@@ -3295,12 +3516,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     if self.debugMode { print("⚠️ Coordinate bounds check failed for anchor \(anchor)") }
                     continue
                 }
-                
+
                 let x = detBuf[0 * stride + anchor]
                 let y = detBuf[1 * stride + anchor]
                 let w = detBuf[2 * stride + anchor]
                 let h = detBuf[3 * stride + anchor]
-                
+
                 // Validate coordinate values
                 guard x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 else {
                     continue
@@ -3312,12 +3533,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         if self.debugMode { print("⚠️ Furniture confidence bounds check failed for class \(classIdx), anchor \(anchor)") }
                         continue
                     }
-                    
+
                     let conf = detBuf[confIdx]
+
+                    // Track best furniture confidence for debug
+                    if conf > bestFurnitureConf && conf.isFinite {
+                        bestFurnitureConf = conf
+                        bestFurnitureClass = className
+                        bestFurnitureAnchor = anchor
+                    }
+
                     if conf > confidenceThreshold && conf.isFinite {
                         var coeffs = [Float](repeating: 0, count: 32)
                         let coeffStart = coeffOffset * stride + anchor
-                        
+
                         // Bounds checking for mask coefficients
                         var validCoeffs = true
                         for k in 0..<32 {
@@ -3330,7 +3559,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                 break
                             }
                         }
-                        
+
                         if validCoeffs {
                             all.append(DetectionSmarty(
                                 x: x, y: y, width: w, height: h,
@@ -3340,6 +3569,29 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         }
                     }
                 }
+            }
+
+            // Debug: show best furniture confidence found even if below threshold
+            if self.debugMode && all.isEmpty {
+                print("🔍 FURNITURE DEBUG: Best conf=\(String(format: "%.3f", bestFurnitureConf)) for '\(bestFurnitureClass)' at anchor \(bestFurnitureAnchor)")
+                print("   Threshold was: \(confidenceThreshold), furniture classes checked: \(furnitureList.count)")
+
+                // Also find best confidence across ALL classes for comparison
+                var bestOverallConf: Float = 0
+                var bestOverallClass = -1
+                for anchor in 0..<min(100, numAnchors) {  // Check first 100 anchors
+                    for classIdx in 0..<numClasses {
+                        let confIdx = (4 + classIdx) * stride + anchor
+                        if confIdx < totalCount {
+                            let conf = detBuf[confIdx]
+                            if conf > bestOverallConf && conf.isFinite {
+                                bestOverallConf = conf
+                                bestOverallClass = classIdx
+                            }
+                        }
+                    }
+                }
+                print("   Best OVERALL conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass)")
             }
         }
         let decodeEnd = Date()
