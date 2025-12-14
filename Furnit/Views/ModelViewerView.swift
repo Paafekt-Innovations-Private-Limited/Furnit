@@ -37,7 +37,7 @@ struct ModelViewerView: View {
     @State private var showFurnitureHint = true
 
     // Edge fill mode for SmartyPants segmentation
-    @State private var selectedEdgeFillMode: EdgeFillMode = .clothBased
+    @State private var selectedEdgeFillMode: EdgeFillMode = .chairType
 
     init(model: USDZModel) {
         self.model = model
@@ -128,7 +128,7 @@ struct ModelViewerView: View {
         .onChange(of: showingSegmentForeground) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentFurniture) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSmartyPants) { _, _ in manageARSessionForOverlays() }
-        .onAppear { 
+        .onAppear {
             isARActive = true
             loadModelOnce()
         }
@@ -458,4 +458,3 @@ struct SmartyPantsUIView: UIViewRepresentable {
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }
-
