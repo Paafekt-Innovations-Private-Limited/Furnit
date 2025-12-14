@@ -55,7 +55,330 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
 // MARK: - Edge Fill Mode for debug overlay
 enum EdgeFillMode {
     case scanline
-    case concaveHull // approximate concave hull built from edge points
+    case concaveHull // Delaunay-based alpha shape (true concave hull)
+}
+
+// MARK: - Alpha Shape (Concave Hull) using Delaunay Triangulation
+struct Point2D: Hashable {
+    let x: Float
+    let y: Float
+
+    static func == (lhs: Point2D, rhs: Point2D) -> Bool {
+        return abs(lhs.x - rhs.x) < 1e-6 && abs(lhs.y - rhs.y) < 1e-6
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(Int(x * 1000))
+        hasher.combine(Int(y * 1000))
+    }
+}
+
+struct Edge2D: Hashable {
+    let p1: Point2D
+    let p2: Point2D
+
+    // Normalized edge (order-independent for hashing)
+    var normalized: Edge2D {
+        if p1.x < p2.x || (p1.x == p2.x && p1.y < p2.y) {
+            return Edge2D(p1: p1, p2: p2)
+        } else {
+            return Edge2D(p1: p2, p2: p1)
+        }
+    }
+
+    static func == (lhs: Edge2D, rhs: Edge2D) -> Bool {
+        let l = lhs.normalized
+        let r = rhs.normalized
+        return l.p1 == r.p1 && l.p2 == r.p2
+    }
+
+    func hash(into hasher: inout Hasher) {
+        let n = normalized
+        hasher.combine(n.p1)
+        hasher.combine(n.p2)
+    }
+}
+
+struct Triangle2D {
+    let p1: Point2D
+    let p2: Point2D
+    let p3: Point2D
+
+    var edges: [Edge2D] {
+        return [
+            Edge2D(p1: p1, p2: p2),
+            Edge2D(p1: p2, p2: p3),
+            Edge2D(p1: p3, p2: p1)
+        ]
+    }
+
+    // Circumcenter and circumradius
+    func circumcircle() -> (center: Point2D, radius: Float) {
+        let ax = p1.x, ay = p1.y
+        let bx = p2.x, by = p2.y
+        let cx = p3.x, cy = p3.y
+
+        let d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+        guard abs(d) > 1e-10 else {
+            // Degenerate triangle
+            return (Point2D(x: ax, y: ay), Float.infinity)
+        }
+
+        let ax2 = ax * ax + ay * ay
+        let bx2 = bx * bx + by * by
+        let cx2 = cx * cx + cy * cy
+
+        let ux = (ax2 * (by - cy) + bx2 * (cy - ay) + cx2 * (ay - by)) / d
+        let uy = (ax2 * (cx - bx) + bx2 * (ax - cx) + cx2 * (bx - ax)) / d
+
+        let center = Point2D(x: ux, y: uy)
+        let radius = sqrtf((ax - ux) * (ax - ux) + (ay - uy) * (ay - uy))
+
+        return (center, radius)
+    }
+
+    // Check if point is inside circumcircle
+    func circumcircleContains(_ p: Point2D) -> Bool {
+        let (center, radius) = circumcircle()
+        let dx = p.x - center.x
+        let dy = p.y - center.y
+        return sqrtf(dx * dx + dy * dy) <= radius
+    }
+}
+
+final class AlphaShape {
+
+    /// Compute alpha shape from points using Delaunay triangulation
+    /// - Parameters:
+    ///   - points: Array of (x, y) tuples
+    ///   - alpha: Alpha parameter (higher = more concave, 0 = convex hull)
+    /// - Returns: Array of boundary edges forming the concave hull
+    static func compute(points: [(x: Int, y: Int)], alpha: Float = 0.5) -> [(start: (x: Int, y: Int), end: (x: Int, y: Int))] {
+        guard points.count >= 3 else {
+            return []
+        }
+
+        // Convert to Point2D
+        let pts = points.map { Point2D(x: Float($0.x), y: Float($0.y)) }
+
+        // Remove duplicates
+        let uniquePts = Array(Set(pts))
+        guard uniquePts.count >= 3 else {
+            return []
+        }
+
+        // Step 1: Delaunay triangulation using Bowyer-Watson
+        let triangles = delaunayTriangulation(points: uniquePts)
+
+        guard !triangles.isEmpty else {
+            return []
+        }
+
+        // Step 2: Calculate circumradius for each triangle and filter by alpha
+        let alphaThreshold = 1.0 / max(alpha, 1e-6)
+        var keptTriangles: [Triangle2D] = []
+
+        for tri in triangles {
+            let (_, radius) = tri.circumcircle()
+            if radius < alphaThreshold {
+                keptTriangles.append(tri)
+            }
+        }
+
+        guard !keptTriangles.isEmpty else {
+            // Fall back to convex hull if no triangles kept
+            return convexHullEdges(points: points)
+        }
+
+        // Step 3: Find boundary edges (edges that appear in exactly one triangle)
+        var edgeCount: [Edge2D: Int] = [:]
+        for tri in keptTriangles {
+            for edge in tri.edges {
+                let normalized = edge.normalized
+                edgeCount[normalized, default: 0] += 1
+            }
+        }
+
+        // Boundary edges appear exactly once
+        let boundaryEdges = edgeCount.filter { $0.value == 1 }.map { $0.key }
+
+        guard !boundaryEdges.isEmpty else {
+            return []
+        }
+
+        // Step 4: Order edges to form polygon(s)
+        let orderedEdges = orderEdges(boundaryEdges)
+
+        // Convert back to integer tuples
+        return orderedEdges.map { edge in
+            (start: (x: Int(edge.p1.x), y: Int(edge.p1.y)),
+             end: (x: Int(edge.p2.x), y: Int(edge.p2.y)))
+        }
+    }
+
+    /// Bowyer-Watson algorithm for Delaunay triangulation
+    private static func delaunayTriangulation(points: [Point2D]) -> [Triangle2D] {
+        guard points.count >= 3 else { return [] }
+
+        // Find bounding box
+        var minX = Float.infinity, maxX = -Float.infinity
+        var minY = Float.infinity, maxY = -Float.infinity
+        for p in points {
+            minX = min(minX, p.x)
+            maxX = max(maxX, p.x)
+            minY = min(minY, p.y)
+            maxY = max(maxY, p.y)
+        }
+
+        let dx = maxX - minX
+        let dy = maxY - minY
+        let deltaMax = max(dx, dy) * 2
+
+        // Create super-triangle that contains all points
+        let superP1 = Point2D(x: minX - deltaMax, y: minY - deltaMax)
+        let superP2 = Point2D(x: minX + deltaMax * 2, y: minY - deltaMax)
+        let superP3 = Point2D(x: minX + dx / 2, y: maxY + deltaMax)
+        let superTriangle = Triangle2D(p1: superP1, p2: superP2, p3: superP3)
+
+        var triangles: [Triangle2D] = [superTriangle]
+
+        // Add points one at a time
+        for point in points {
+            var badTriangles: [Triangle2D] = []
+
+            // Find all triangles whose circumcircle contains the point
+            for tri in triangles {
+                if tri.circumcircleContains(point) {
+                    badTriangles.append(tri)
+                }
+            }
+
+            // Find boundary of polygonal hole
+            var polygon: [Edge2D] = []
+            for tri in badTriangles {
+                for edge in tri.edges {
+                    // Edge is on boundary if it's not shared by another bad triangle
+                    let isShared = badTriangles.contains { other in
+                        if other.p1 == tri.p1 && other.p2 == tri.p2 && other.p3 == tri.p3 {
+                            return false // Same triangle
+                        }
+                        return other.edges.contains { $0 == edge }
+                    }
+                    if !isShared {
+                        polygon.append(edge)
+                    }
+                }
+            }
+
+            // Remove bad triangles
+            triangles.removeAll { tri in
+                badTriangles.contains { bad in
+                    bad.p1 == tri.p1 && bad.p2 == tri.p2 && bad.p3 == tri.p3
+                }
+            }
+
+            // Re-triangulate the hole
+            for edge in polygon {
+                let newTri = Triangle2D(p1: edge.p1, p2: edge.p2, p3: point)
+                triangles.append(newTri)
+            }
+        }
+
+        // Remove triangles that share vertices with super-triangle
+        triangles.removeAll { tri in
+            let superVertices = [superP1, superP2, superP3]
+            return superVertices.contains { sv in
+                tri.p1 == sv || tri.p2 == sv || tri.p3 == sv
+            }
+        }
+
+        return triangles
+    }
+
+    /// Order edges to form a continuous polygon
+    private static func orderEdges(_ edges: [Edge2D]) -> [Edge2D] {
+        guard !edges.isEmpty else { return [] }
+
+        var remaining = edges
+        var ordered: [Edge2D] = []
+
+        // Start with first edge
+        var current = remaining.removeFirst()
+        ordered.append(current)
+        var currentEnd = current.p2
+
+        while !remaining.isEmpty {
+            // Find edge that connects to current end
+            var found = false
+            for (i, edge) in remaining.enumerated() {
+                if edge.p1 == currentEnd {
+                    ordered.append(edge)
+                    currentEnd = edge.p2
+                    remaining.remove(at: i)
+                    found = true
+                    break
+                } else if edge.p2 == currentEnd {
+                    // Reverse the edge
+                    let reversed = Edge2D(p1: edge.p2, p2: edge.p1)
+                    ordered.append(reversed)
+                    currentEnd = reversed.p2
+                    remaining.remove(at: i)
+                    found = true
+                    break
+                }
+            }
+
+            if !found {
+                // Disconnected polygon - start new chain
+                if !remaining.isEmpty {
+                    current = remaining.removeFirst()
+                    ordered.append(current)
+                    currentEnd = current.p2
+                }
+            }
+        }
+
+        return ordered
+    }
+
+    /// Compute convex hull edges as fallback
+    private static func convexHullEdges(points: [(x: Int, y: Int)]) -> [(start: (x: Int, y: Int), end: (x: Int, y: Int))] {
+        guard points.count >= 3 else { return [] }
+
+        // Graham scan for convex hull
+        let sorted = points.sorted { a, b in
+            if a.y != b.y { return a.y < b.y }
+            return a.x < b.x
+        }
+
+        let start = sorted[0]
+        let rest = sorted.dropFirst().sorted { a, b in
+            let angle1 = atan2(Float(a.y - start.y), Float(a.x - start.x))
+            let angle2 = atan2(Float(b.y - start.y), Float(b.x - start.x))
+            return angle1 < angle2
+        }
+
+        var hull = [start]
+        for p in rest {
+            while hull.count > 1 && cross(hull[hull.count - 2], hull[hull.count - 1], p) <= 0 {
+                hull.removeLast()
+            }
+            hull.append(p)
+        }
+
+        // Create edges from hull
+        var edges: [(start: (x: Int, y: Int), end: (x: Int, y: Int))] = []
+        for i in 0..<hull.count {
+            let next = (i + 1) % hull.count
+            edges.append((start: hull[i], end: hull[next]))
+        }
+
+        return edges
+    }
+
+    private static func cross(_ o: (x: Int, y: Int), _ a: (x: Int, y: Int), _ b: (x: Int, y: Int)) -> Int {
+        return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+    }
 }
 // MARK: - Detection Struct
 struct DetectionSmarty {
@@ -2255,48 +2578,63 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
                 case .concaveHull:
                     if !edges.isEmpty {
-                        // OPTIMIZED: Vectorized centroid calculation using vDSP
-                        let edgeCount = edges.count
-                        var xCoords = [Float](repeating: 0, count: edgeCount)
-                        var yCoords = [Float](repeating: 0, count: edgeCount)
-                        for (i, (ex, ey)) in edges.enumerated() {
-                            xCoords[i] = Float(ex)
-                            yCoords[i] = Float(ey)
-                        }
+                        // TRUE CONCAVE HULL using Delaunay-based Alpha Shape
+                        // Alpha parameter: higher = more concave detail, lower = smoother
+                        let alphaParam: Float = 0.02  // Tune this for your use case
 
-                        var sumX: Float = 0, sumY: Float = 0
-                        vDSP_sve(xCoords, 1, &sumX, vDSP_Length(edgeCount))
-                        vDSP_sve(yCoords, 1, &sumY, vDSP_Length(edgeCount))
-                        let cX = sumX / Float(edgeCount)
-                        let cY = sumY / Float(edgeCount)
-
-                        // OPTIMIZED: Precompute all angles using vectorized atan2
-                        var dx = [Float](repeating: 0, count: edgeCount)
-                        var dy = [Float](repeating: 0, count: edgeCount)
-                        var negCX = -cX, negCY = -cY
-                        vDSP_vsadd(xCoords, 1, &negCX, &dx, 1, vDSP_Length(edgeCount))
-                        vDSP_vsadd(yCoords, 1, &negCY, &dy, 1, vDSP_Length(edgeCount))
-
-                        var angles = [Float](repeating: 0, count: edgeCount)
-                        var count = Int32(edgeCount)
-                        vvatan2f(&angles, dy, dx, &count)
-
-                        // Sort by precomputed angles (avoids repeated atan2 calls)
-                        let indexed = edges.enumerated().map { ($0.offset, $0.element) }
-                        let sortedEdges = indexed.sorted { angles[$0.0] < angles[$1.0] }.map { $0.1 }
+                        // Compute alpha shape boundary edges
+                        let alphaEdges = AlphaShape.compute(points: edges, alpha: alphaParam)
 
                         let sxOutline = CGFloat(width) / CGFloat(Wp)
                         let syOutline = CGFloat(height) / CGFloat(Hp)
+
+                        // Build CGPath from alpha shape edges
                         let path = CGMutablePath()
-                        if let first = sortedEdges.first {
-                            let start = CGPoint(x: CGFloat(first.x) * sxOutline, y: CGFloat(first.y) * syOutline)
-                            path.move(to: start)
-                            for i in 1..<sortedEdges.count {
-                                let pt = sortedEdges[i]
-                                let p = CGPoint(x: CGFloat(pt.x) * sxOutline, y: CGFloat(pt.y) * syOutline)
-                                path.addLine(to: p)
+                        if !alphaEdges.isEmpty {
+                            // Group edges into connected polygons
+                            var remainingEdges = alphaEdges
+                            while !remainingEdges.isEmpty {
+                                let firstEdge = remainingEdges.removeFirst()
+                                let startPt = CGPoint(
+                                    x: CGFloat(firstEdge.start.x) * sxOutline,
+                                    y: CGFloat(firstEdge.start.y) * syOutline
+                                )
+                                path.move(to: startPt)
+
+                                var currentEnd = firstEdge.end
+                                path.addLine(to: CGPoint(
+                                    x: CGFloat(currentEnd.x) * sxOutline,
+                                    y: CGFloat(currentEnd.y) * syOutline
+                                ))
+
+                                // Follow chain of edges
+                                var foundNext = true
+                                while foundNext {
+                                    foundNext = false
+                                    for (i, edge) in remainingEdges.enumerated() {
+                                        if edge.start.x == currentEnd.x && edge.start.y == currentEnd.y {
+                                            currentEnd = edge.end
+                                            path.addLine(to: CGPoint(
+                                                x: CGFloat(currentEnd.x) * sxOutline,
+                                                y: CGFloat(currentEnd.y) * syOutline
+                                            ))
+                                            remainingEdges.remove(at: i)
+                                            foundNext = true
+                                            break
+                                        } else if edge.end.x == currentEnd.x && edge.end.y == currentEnd.y {
+                                            currentEnd = edge.start
+                                            path.addLine(to: CGPoint(
+                                                x: CGFloat(currentEnd.x) * sxOutline,
+                                                y: CGFloat(currentEnd.y) * syOutline
+                                            ))
+                                            remainingEdges.remove(at: i)
+                                            foundNext = true
+                                            break
+                                        }
+                                    }
+                                }
+                                path.closeSubpath()
                             }
-                            path.closeSubpath()
                         }
 
                         let bounds = path.boundingBoxOfPath.integral
@@ -2305,7 +2643,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         let minY = max(0, Int(bounds.minY))
                         let maxY = min(height - 1, Int(bounds.maxY))
 
-                        // OPTIMIZED: Rasterize path once with CGContext instead of per-pixel path.contains()
+                        // Rasterize path with CGContext
                         let boxW = maxX - minX + 1
                         let boxH = maxY - minY + 1
 
@@ -2319,13 +2657,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                space: CGColorSpaceCreateDeviceGray(),
                                bitmapInfo: CGImageAlphaInfo.none.rawValue
                            ) {
-                            // Translate path to local coordinates and fill
                             maskContext.translateBy(x: CGFloat(-minX), y: CGFloat(-minY))
                             maskContext.setFillColor(gray: 1.0, alpha: 1.0)
                             maskContext.addPath(path)
                             maskContext.fillPath(using: .evenOdd)
 
-                            // Read the rasterized mask buffer
                             if let maskData = maskContext.data?.assumingMemoryBound(to: UInt8.self) {
                                 for ly in 0..<boxH {
                                     let fy = minY + ly
@@ -2333,7 +2669,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                     let maskRow = maskData.advanced(by: ly * boxW)
 
                                     for lx in 0..<boxW {
-                                        if maskRow[lx] > 0 {  // Inside polygon
+                                        if maskRow[lx] > 0 {  // Inside alpha shape
                                             let xx = minX + lx
                                             let p = srcRow.advanced(by: xx * 4)
                                             if p[3] != 0 {
@@ -2345,22 +2681,44 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                             }
                         }
 
-                        // Optional: draw outline in magenta for visibility (only where alpha != 0)
+                        // Draw alpha shape outline in magenta
                         let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
-                        for (ex, ey) in edges {
-                            let fx = Int(CGFloat(ex) * sxOutline)
-                            let fy = Int(CGFloat(ey) * syOutline)
-                            let y0 = max(0, fy - 1), y1 = min(height - 1, fy + 1)
-                            let x0 = max(0, fx - 1), x1 = min(width - 1, fx + 1)
-                            for yy in y0...y1 {
-                                let row = pixels.advanced(by: yy * width * 4)
-                                for xx in x0...x1 {
-                                    let p = row.advanced(by: xx * 4)
-                                    if p[3] != 0 {
-                                        p[0] = b; p[1] = g; p[2] = r; p[3] = a
+                        for edge in alphaEdges {
+                            // Draw line between edge start and end using Bresenham
+                            let x0 = Int(CGFloat(edge.start.x) * sxOutline)
+                            let y0 = Int(CGFloat(edge.start.y) * syOutline)
+                            let x1 = Int(CGFloat(edge.end.x) * sxOutline)
+                            let y1 = Int(CGFloat(edge.end.y) * syOutline)
+
+                            // Simple line drawing
+                            let dx = abs(x1 - x0)
+                            let dy = abs(y1 - y0)
+                            let sx = x0 < x1 ? 1 : -1
+                            let sy = y0 < y1 ? 1 : -1
+                            var err = dx - dy
+                            var cx = x0, cy = y0
+
+                            while true {
+                                // Draw 3x3 dot at (cx, cy)
+                                for yy in max(0, cy - 1)...min(height - 1, cy + 1) {
+                                    let row = pixels.advanced(by: yy * width * 4)
+                                    for xx in max(0, cx - 1)...min(width - 1, cx + 1) {
+                                        let p = row.advanced(by: xx * 4)
+                                        if p[3] != 0 {
+                                            p[0] = b; p[1] = g; p[2] = r; p[3] = a
+                                        }
                                     }
                                 }
+
+                                if cx == x1 && cy == y1 { break }
+                                let e2 = 2 * err
+                                if e2 > -dy { err -= dy; cx += sx }
+                                if e2 < dx { err += dx; cy += sy }
                             }
+                        }
+
+                        if self.debugMode {
+                            print("🔺 Alpha shape: \(alphaEdges.count) boundary edges from \(edges.count) points")
                         }
                     }
                 }
