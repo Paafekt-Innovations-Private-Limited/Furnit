@@ -909,26 +909,39 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let rawDetections = extractDetections(from: detArray, confThreshold: 0.6)
         let nmsStart = Date()
-        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.99)
+//        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.99)
 //        let stage1Kept = keepOverlappingDetections(uniqueDetections)
-        let stage2Kept = stage2Prototypes != nil
-            ? applyNMS(stage2Detections, iouThreshold: 0.99)
-            : []
+//        let stage2Kept = stage2Prototypes != nil
+//            ? applyNMS(stage2Detections, iouThreshold: 0.99)
+//            : []
+//        let stage2Kept = stage2Prototypes != nil ? applyNMS(stage2Detections, iouThreshold: 0.99) : []
 //        let stage2Kept = stage2Prototypes != nil
 //            ? keepOverlappingDetections(applyNMS(stage2Detections, iouThreshold: 0.99))
 //            : []
-        let nmsEnd = Date()
-        if self.debugMode {
-            print(String(format: "⏱ NMS + keepOverlapping: %.2f ms", nmsEnd.timeIntervalSince(nmsStart) * 1000.0))
-        }
+//        let nmsEnd = Date()
+//        if self.debugMode {
+//            print(String(format: "⏱ NMS + keepOverlapping: %.2f ms", nmsEnd.timeIntervalSince(nmsStart) * 1000.0))
+//        }
 
+//        if self.debugMode {
+//            print("\n📊 UNION SUMMARY:")
+//            print("   Stage 1: keeping \(uniqueDetections.count) overlapping detections")
+//            print("   Stage 2: keeping \(stage2Kept.count) overlapping detections")
+//        }
         if self.debugMode {
             print("\n📊 UNION SUMMARY:")
-            print("   Stage 1: keeping \(uniqueDetections.count) overlapping detections")
-            print("   Stage 2: keeping \(stage2Kept.count) overlapping detections")
+            print("   Stage 1: keeping \(rawDetections.count) overlapping detections")
+            print("   Stage 2: keeping \(stage2Detections.count) overlapping detections")
         }
 
-        if uniqueDetections.isEmpty && stage2Kept.isEmpty {
+//        if uniqueDetections.isEmpty && stage2Kept.isEmpty {
+//            DispatchQueue.main.async {
+//                self.maskImageView.image = nil
+//                self.isProcessing = false
+//            }
+//            return
+//        }
+        if rawDetections.isEmpty && stage2Detections.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -940,9 +953,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         let cutoutStart = Date()
         generateCutoutTwoStage(
-            stage1Detections: uniqueDetections,
+            stage1Detections: rawDetections,
             stage1Prototypes: prototypesArray,
-            stage2Detections: stage2Kept,
+            stage2Detections: stage2Detections,
             stage2Prototypes: stage2Prototypes,
             primaryBBox: primary,
             originalImage: pixelBuffer
@@ -2006,17 +2019,35 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
                 case .concaveHull:
                     if !edges.isEmpty {
-                        // Approximate concave hull: angle-sort edge points around centroid to form a polygon
-                        var sumX: Float = 0, sumY: Float = 0
-                        for (ex, ey) in edges { sumX += Float(ex); sumY += Float(ey) }
-                        let cX = sumX / Float(edges.count)
-                        let cY = sumY / Float(edges.count)
-
-                        let sortedEdges = edges.sorted { (p1, p2) -> Bool in
-                            let a1 = atan2(Float(p1.y) - cY, Float(p1.x) - cX)
-                            let a2 = atan2(Float(p2.y) - cY, Float(p2.x) - cX)
-                            return a1 < a2
+                        // OPTIMIZED: Vectorized centroid calculation using vDSP
+                        let edgeCount = edges.count
+                        var xCoords = [Float](repeating: 0, count: edgeCount)
+                        var yCoords = [Float](repeating: 0, count: edgeCount)
+                        for (i, (ex, ey)) in edges.enumerated() {
+                            xCoords[i] = Float(ex)
+                            yCoords[i] = Float(ey)
                         }
+
+                        var sumX: Float = 0, sumY: Float = 0
+                        vDSP_sve(xCoords, 1, &sumX, vDSP_Length(edgeCount))
+                        vDSP_sve(yCoords, 1, &sumY, vDSP_Length(edgeCount))
+                        let cX = sumX / Float(edgeCount)
+                        let cY = sumY / Float(edgeCount)
+
+                        // OPTIMIZED: Precompute all angles using vectorized atan2
+                        var dx = [Float](repeating: 0, count: edgeCount)
+                        var dy = [Float](repeating: 0, count: edgeCount)
+                        var negCX = -cX, negCY = -cY
+                        vDSP_vsadd(xCoords, 1, &negCX, &dx, 1, vDSP_Length(edgeCount))
+                        vDSP_vsadd(yCoords, 1, &negCY, &dy, 1, vDSP_Length(edgeCount))
+
+                        var angles = [Float](repeating: 0, count: edgeCount)
+                        var count = Int32(edgeCount)
+                        vvatan2f(&angles, dy, dx, &count)
+
+                        // Sort by precomputed angles (avoids repeated atan2 calls)
+                        let indexed = edges.enumerated().map { ($0.offset, $0.element) }
+                        let sortedEdges = indexed.sorted { angles[$0.0] < angles[$1.0] }.map { $0.1 }
 
                         let sxOutline = CGFloat(width) / CGFloat(Wp)
                         let syOutline = CGFloat(height) / CGFloat(Hp)
@@ -2038,14 +2069,41 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         let minY = max(0, Int(bounds.minY))
                         let maxY = min(height - 1, Int(bounds.maxY))
 
-                        for fy in minY...maxY {
-                            let row = pixels.advanced(by: fy * width * 4)
-                            for xx in minX...maxX {
-                                let pt = CGPoint(x: xx, y: fy)
-                                if path.contains(pt, using: .evenOdd) {
-                                    let p = row.advanced(by: xx * 4)
-                                    if p[3] != 0 {
-                                        p[3] = 255
+                        // OPTIMIZED: Rasterize path once with CGContext instead of per-pixel path.contains()
+                        let boxW = maxX - minX + 1
+                        let boxH = maxY - minY + 1
+
+                        if boxW > 0 && boxH > 0,
+                           let maskContext = CGContext(
+                               data: nil,
+                               width: boxW,
+                               height: boxH,
+                               bitsPerComponent: 8,
+                               bytesPerRow: boxW,
+                               space: CGColorSpaceCreateDeviceGray(),
+                               bitmapInfo: CGImageAlphaInfo.none.rawValue
+                           ) {
+                            // Translate path to local coordinates and fill
+                            maskContext.translateBy(x: CGFloat(-minX), y: CGFloat(-minY))
+                            maskContext.setFillColor(gray: 1.0, alpha: 1.0)
+                            maskContext.addPath(path)
+                            maskContext.fillPath(using: .evenOdd)
+
+                            // Read the rasterized mask buffer
+                            if let maskData = maskContext.data?.assumingMemoryBound(to: UInt8.self) {
+                                for ly in 0..<boxH {
+                                    let fy = minY + ly
+                                    let srcRow = pixels.advanced(by: fy * width * 4)
+                                    let maskRow = maskData.advanced(by: ly * boxW)
+
+                                    for lx in 0..<boxW {
+                                        if maskRow[lx] > 0 {  // Inside polygon
+                                            let xx = minX + lx
+                                            let p = srcRow.advanced(by: xx * 4)
+                                            if p[3] != 0 {
+                                                p[3] = 255
+                                            }
+                                        }
                                     }
                                 }
                             }
