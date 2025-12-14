@@ -2033,6 +2033,202 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return binary
     }
     
+    func rasterizePolygonFill(polygon: [(Int,Int)],
+                              outMask: inout [UInt8],
+                              width: Int,
+                              height: Int)
+    {
+        if polygon.count < 3 { return }
+
+        // Compute bounding box
+        var minY = height, maxY = 0
+        for (x,y) in polygon {
+            if y < minY { minY = y }
+            if y > maxY { maxY = y }
+        }
+        minY = max(minY,0)
+        maxY = min(maxY,height-1)
+
+        // Scanline fill
+        for fy in minY...maxY {
+            var xs: [Int] = []
+            xs.reserveCapacity(16)
+
+            for i in 0..<polygon.count {
+                let (x0,y0) = polygon[i]
+                let (x1,y1) = polygon[(i+1)%polygon.count]
+                if y0 == y1 { continue }
+                let ymin = min(y0,y1)
+                let ymax = max(y0,y1)
+                if fy >= ymin && fy < ymax {
+                    let dy = y1 - y0
+                    let dx = x1 - x0
+                    let t = Float(fy - y0) / Float(dy)
+                    let xf = Float(x0) + t * Float(dx)
+                    xs.append(Int(xf))
+                }
+            }
+
+            if xs.count < 2 { continue }
+            xs.sort()
+            var i = 0
+            while i + 1 < xs.count {
+                let xStart = max(0, min(xs[i], width-1))
+                let xEnd   = max(0, min(xs[i+1], width-1))
+                if xEnd > xStart {
+                    for x in xStart..<xEnd {
+                        outMask[fy*width + x] = 1
+                    }
+                }
+                i += 2
+            }
+        }
+    }
+
+    
+    func constructPolygonFromEdges(_ edges: [(start:(x:Int,y:Int),end:(x:Int,y:Int))])
+        -> [(Int,Int)] {
+
+        // Build adjacency
+        var next: [String:(x:Int,y:Int)] = [:]
+        func key(_ p:(x:Int,y:Int)) -> String { "\(p.x)_\(p.y)" }
+        for e in edges {
+            next[key(e.start)] = e.end
+        }
+
+        // Build chain
+        var polygon: [(Int,Int)] = []
+        guard let first = edges.first else { return [] }
+        var cur = first.start
+        polygon.append(cur)
+
+        var safety = 0
+        while let n = next[key(cur)], safety < 10000 {
+            if n.x == polygon.first!.0 && n.y == polygon.first!.1 { break }
+            polygon.append((n.x,n.y))
+            cur = n
+            safety += 1
+        }
+
+        return polygon
+    }
+
+    
+    // MARK: cv2.findContours(RETR_EXTERNAL) Equivalent
+    func findContoursExternal(binary: [UInt8], w: Int, h: Int) -> [[(x: Int, y: Int)]] {
+        var visited = Array(repeating: false, count: w * h)
+        var contours: [[(Int,Int)]] = []
+
+        let dirs = [(1,0),(-1,0),(0,1),(0,-1)]
+
+        func dfs(_ sx: Int, _ sy: Int) -> [(Int,Int)] {
+            var stack = [(sx, sy)]
+            var out: [(x: Int, y: Int)] = []
+            while let (x,y) = stack.popLast() {
+                let idx = y*w + x
+                if visited[idx] { continue }
+                visited[idx] = true
+                if binary[idx] == 0 { continue }
+                out.append((x,y))
+                for (dx,dy) in dirs {
+                    let nx=x+dx, ny=y+dy
+                    if nx>=0 && nx<w && ny>=0 && ny<h {
+                        if binary[ny*w+nx] > 0 && !visited[ny*w+nx] {
+                            stack.append((nx,ny))
+                        }
+                    }
+                }
+            }
+            return out
+        }
+
+        for y in 0..<h {
+            for x in 0..<w {
+                let idx = y*w + x
+                if binary[idx] > 0 && !visited[idx] {
+                    let c = dfs(x,y)
+                    if !c.isEmpty { contours.append(c) }
+                }
+            }
+        }
+
+        return contours
+    }
+
+    
+    //
+    // MARK: - Python-Exact Concave Hull + Raster Fill
+    //
+    func buildConcaveHullMaskPythonExact(unionMask: UnsafeMutablePointer<UInt8>,
+                                         width: Int,
+                                         height: Int,
+                                         alpha: Float = 2.5) -> [UInt8] {
+
+        // ---------------------------------------------------------------
+        // 1. Convert unionMask → UInt8 2D array for contour detection
+        // ---------------------------------------------------------------
+        var bin: [UInt8] = Array(repeating: 0, count: width * height)
+        for i in 0..<(width * height) {
+            bin[i] = unionMask[i] > 0 ? 1 : 0
+        }
+
+        // ---------------------------------------------------------------
+        // 2. Extract contours EXACTLY like Python cv2.findContours(..., RETR_EXTERNAL)
+        // ---------------------------------------------------------------
+        let contours = findContoursExternal(binary: bin, w: width, h: height)
+        if contours.isEmpty {
+            return bin  // nothing to fill
+        }
+
+        // ---------------------------------------------------------------
+        // 3. Subsample contour points like Python
+        // Python code:
+        //   step = 1 if len(c) < 500 else max(1, len(c)//500)
+        // ---------------------------------------------------------------
+        var allPts: [(Int,Int)] = []
+
+        for c in contours {
+            let n = c.count
+            let step = (n < 500) ? 1 : max(1, n / 500)
+            var idx = 0
+            for p in c {
+                if idx % step == 0 {
+                    allPts.append((p.x, p.y))
+                }
+                idx += 1
+            }
+        }
+
+        if allPts.count < 4 {
+            return bin   // identical to python fallback
+        }
+
+        // ---------------------------------------------------------------
+        // 4. Compute alpha shape using your working Delaunay + hull code
+        // returns edges forming polygon boundaries
+        // ---------------------------------------------------------------
+        let edges = AlphaShape.compute(points: allPts, alpha: alpha)
+        if edges.isEmpty {
+            return bin
+        }
+
+        // ---------------------------------------------------------------
+        // 5. Reconstruct polygon(s) EXACTLY like Python polygonize
+        // (We treat edges as one exterior polygon – same behavior your Python gave)
+        // ---------------------------------------------------------------
+        let polygon = constructPolygonFromEdges(edges)
+
+        // ---------------------------------------------------------------
+        // 6. Rasterize the polygon to a filled mask
+        // MATCHES cv2.fillPoly (scanline fill)
+        // ---------------------------------------------------------------
+        var outMask = Array(repeating: UInt8(0), count: width * height)
+        rasterizePolygonFill(polygon: polygon, outMask: &outMask, width: width, height: height)
+
+        return outMask
+    }
+
+    
     // MARK: - TWO-STAGE CUTOUT (with Accelerate prototype build & binary mask)
     private func generateCutoutTwoStage(
         stage1Detections: [DetectionSmarty],
@@ -2496,105 +2692,109 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
 
                 case .clothBased:
-                    // Solid fill using exterior flood-fill to close interior holes
+                    // Concave hull fill: build a hull from prototype-space edge points, then scanline-fill in full-res alpha
                     if !edges.isEmpty {
                         let sxOutline = Float(width) / Float(Wp)
                         let syOutline = Float(height) / Float(Hp)
 
-                        // Find bounding box of the mask in full-res coordinates
-                        var minX = width, maxX = 0, minY = height, maxY = 0
+                        // 1) Build point cloud in prototype resolution from edge pixels
+                        var pts: [(x: Int, y: Int)] = []
+                        pts.reserveCapacity(min(edges.count, 2000))
+                        // Downsample edge points by simple stride to cap work; AlphaShape also downsamples internally
+                        let step = max(1, edges.count / 1500)
+                        var idx = 0
                         for (ex, ey) in edges {
-                            let fx = Int(Float(ex) * sxOutline)
-                            let fy = Int(Float(ey) * syOutline)
-                            if fx >= 0 && fx < width && fy >= 0 && fy < height {
-                                minX = min(minX, fx)
-                                maxX = max(maxX, fx)
-                                minY = min(minY, fy)
-                                maxY = max(maxY, fy)
+                            if idx % step == 0 { pts.append((x: ex, y: ey)) }
+                            idx += 1
+                        }
+
+                        // 2) Compute concave hull edges in prototype space
+                        let hullEdges = AlphaShape.compute(points: pts, alpha: 0.5)
+                        guard !hullEdges.isEmpty else { /* nothing to fill */ break }
+
+                        // 3) Reconstruct ordered polygon vertices (prototype coords)
+                        // Build adjacency map
+                        var adjacency: [String: (x: Int, y: Int)] = [:]
+                        func key(_ p: (x: Int, y: Int)) -> String { "\(p.x)_\(p.y)" }
+                        for e in hullEdges {
+                            adjacency[key(e.start)] = e.end
+                        }
+                        // Start chain from first edge
+                        var polygon: [(x: Int, y: Int)] = []
+                        var current = hullEdges[0].start
+                        polygon.append(current)
+                        var safety = 0
+                        while let next = adjacency[key(current)], safety < 5000 {
+                            if next.x == polygon.first!.x && next.y == polygon.first!.y { break }
+                            polygon.append(next)
+                            current = next
+                            safety += 1
+                        }
+                        guard polygon.count >= 3 else { break }
+
+                        // 4) Map polygon vertices to full-resolution integer coordinates
+                        var polyFull: [(x: Int, y: Int)] = []
+                        polyFull.reserveCapacity(polygon.count)
+                        var minYFull = height, maxYFull = 0
+                        for p in polygon {
+                            let fx = Int(Float(p.x) * sxOutline)
+                            let fy = Int(Float(p.y) * syOutline)
+                            let cx = max(0, min(fx, width - 1))
+                            let cy = max(0, min(fy, height - 1))
+                            polyFull.append((cx, cy))
+                            if cy < minYFull { minYFull = cy }
+                            if cy > maxYFull { maxYFull = cy }
+                        }
+                        if minYFull < 0 || maxYFull >= height || minYFull >= maxYFull { break }
+
+                        // 5) Precompute polygon edges in full-res for scanline intersection
+                        struct EdgeI { let x0: Int; let y0: Int; let x1: Int; let y1: Int }
+                        var edgesFull: [EdgeI] = []
+                        edgesFull.reserveCapacity(polyFull.count)
+                        for i in 0..<polyFull.count {
+                            let a = polyFull[i]
+                            let b = polyFull[(i + 1) % polyFull.count]
+                            if a.y == b.y { continue } // skip horizontal edges for robustness
+                            edgesFull.append(EdgeI(x0: a.x, y0: a.y, x1: b.x, y1: b.y))
+                        }
+                        guard !edgesFull.isEmpty else { break }
+
+                        // 6) Fast integer scanline fill: for each row, compute intersections and set alpha to 255 between pairs
+                        for fy in minYFull...maxYFull {
+                            var xIntersections: [Int] = []
+                            xIntersections.reserveCapacity(16)
+                            for e in edgesFull {
+                                let yMin = min(e.y0, e.y1)
+                                let yMax = max(e.y0, e.y1)
+                                // Half-open interval: include yMin, exclude yMax to avoid double-counting
+                                if fy >= yMin && fy < yMax {
+                                    let dy = e.y1 - e.y0
+                                    let dx = e.x1 - e.x0
+                                    // Compute intersection x with integer arithmetic
+                                    let num = (fy - e.y0) * dx
+                                    let xi = e.x0 + (dy != 0 ? num / dy : 0)
+                                    xIntersections.append(xi)
+                                }
+                            }
+                            if xIntersections.count < 2 { continue }
+                            xIntersections.sort()
+                            let row = pixels.advanced(by: fy * width * 4)
+                            var i = 0
+                            while i + 1 < xIntersections.count {
+                                let start = max(0, min(xIntersections[i], width - 1))
+                                let end   = max(0, min(xIntersections[i + 1], width - 1))
+                                if end > start {
+                                    var xx = start
+                                    while xx < end {
+                                        row[xx * 4 + 3] = 255
+                                        xx += 1
+                                    }
+                                }
+                                i += 2
                             }
                         }
 
-                        // Add padding for flood fill boundary
-                        let pad = 2
-                        minX = max(0, minX - pad)
-                        maxX = min(width - 1, maxX + pad)
-                        minY = max(0, minY - pad)
-                        maxY = min(height - 1, maxY + pad)
-
-                        let boxW = maxX - minX + 1
-                        let boxH = maxY - minY + 1
-
-                        if boxW > 4 && boxH > 4 {
-                            // Create a mask of opaque pixels (from current alpha)
-                            // 0 = transparent (unknown), 1 = opaque (definitely mask), 2 = exterior (flood-filled)
-                            var fillMask = [UInt8](repeating: 0, count: boxW * boxH)
-
-                            // Mark opaque pixels
-                            for ly in 0..<boxH {
-                                let fy = minY + ly
-                                let srcRow = pixels.advanced(by: fy * width * 4)
-                                for lx in 0..<boxW {
-                                    let fx = minX + lx
-                                    if srcRow[fx * 4 + 3] > 0 {
-                                        fillMask[ly * boxW + lx] = 1
-                                    }
-                                }
-                            }
-
-                            // Flood fill from edges to mark exterior pixels
-                            var queue = [(x: Int, y: Int)]()
-                            queue.reserveCapacity(2 * (boxW + boxH))
-
-                            // Add border pixels to queue
-                            for lx in 0..<boxW {
-                                if fillMask[lx] == 0 { queue.append((lx, 0)); fillMask[lx] = 2 }
-                                let bottomIdx = (boxH - 1) * boxW + lx
-                                if fillMask[bottomIdx] == 0 { queue.append((lx, boxH - 1)); fillMask[bottomIdx] = 2 }
-                            }
-                            for ly in 1..<(boxH - 1) {
-                                let leftIdx = ly * boxW
-                                if fillMask[leftIdx] == 0 { queue.append((0, ly)); fillMask[leftIdx] = 2 }
-                                let rightIdx = ly * boxW + boxW - 1
-                                if fillMask[rightIdx] == 0 { queue.append((boxW - 1, ly)); fillMask[rightIdx] = 2 }
-                            }
-
-                            // BFS flood fill
-                            var qIdx = 0
-                            while qIdx < queue.count {
-                                let (cx, cy) = queue[qIdx]
-                                qIdx += 1
-
-                                let neighbors = [(cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)]
-                                for (nx, ny) in neighbors {
-                                    guard nx >= 0 && nx < boxW && ny >= 0 && ny < boxH else { continue }
-                                    let nIdx = ny * boxW + nx
-                                    if fillMask[nIdx] == 0 {
-                                        fillMask[nIdx] = 2
-                                        queue.append((nx, ny))
-                                    }
-                                }
-                            }
-
-                            // Fill interior holes (still 0)
-                            var holesFilled = 0
-                            for ly in 0..<boxH {
-                                let fy = minY + ly
-                                let srcRow = pixels.advanced(by: fy * width * 4)
-                                for lx in 0..<boxW {
-                                    let idx = ly * boxW + lx
-                                    if fillMask[idx] == 0 {
-                                        let fx = minX + lx
-                                        srcRow[fx * 4 + 3] = 255
-                                        holesFilled += 1
-                                    }
-                                }
-                            }
-                            if self.debugMode {
-                                print("🕳️ Hole fill: filled \(holesFilled) interior hole pixels")
-                            }
-                        }
-
-                        // Draw original edge outline in magenta
+                        // 7) Draw original edge outline in magenta for visibility (optional)
                         let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
                         for (ex, ey) in edges {
                             let fx = Int(Float(ex) * sxOutline)
