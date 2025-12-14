@@ -67,8 +67,222 @@ struct DetectionSmarty {
     let classIdx: Int
     let className: String
     let maskCoeffs: [Float]
+    var trackId: Int? = nil  // Assigned by tracker
 }
 
+// MARK: - Track State for SORT-style Tracking
+struct Track {
+    let id: Int
+    var x: Float           // Center x
+    var y: Float           // Center y
+    var width: Float
+    var height: Float
+    var classIdx: Int
+    var className: String
+    var confidence: Float
+    var age: Int           // Frames since track was created
+    var hitStreak: Int     // Consecutive frames with detection match
+    var timeSinceUpdate: Int  // Frames since last matched detection
+
+    // Velocity estimates for simple prediction
+    var vx: Float = 0
+    var vy: Float = 0
+
+    // Get predicted position
+    func predicted() -> (x: Float, y: Float, w: Float, h: Float) {
+        return (x + vx, y + vy, width, height)
+    }
+
+    // Calculate IoU with a detection
+    func iou(with det: DetectionSmarty) -> Float {
+        let pred = predicted()
+
+        let aLeft = pred.x - pred.w * 0.5
+        let aRight = pred.x + pred.w * 0.5
+        let aTop = pred.y - pred.h * 0.5
+        let aBottom = pred.y + pred.h * 0.5
+
+        let bLeft = det.x - det.width * 0.5
+        let bRight = det.x + det.width * 0.5
+        let bTop = det.y - det.height * 0.5
+        let bBottom = det.y + det.height * 0.5
+
+        let ix1 = max(aLeft, bLeft)
+        let ix2 = min(aRight, bRight)
+        let iy1 = max(aTop, bTop)
+        let iy2 = min(aBottom, bBottom)
+
+        let iw = max(0, ix2 - ix1)
+        let ih = max(0, iy2 - iy1)
+        let inter = iw * ih
+
+        let areaA = pred.w * pred.h
+        let areaB = det.width * det.height
+        let union = areaA + areaB - inter
+
+        guard union > 0 else { return 0 }
+        return inter / union
+    }
+
+    // Update track with matched detection
+    mutating func update(with det: DetectionSmarty) {
+        // Update velocity (simple exponential smoothing)
+        let alpha: Float = 0.3
+        let newVx = det.x - x
+        let newVy = det.y - y
+        vx = alpha * newVx + (1 - alpha) * vx
+        vy = alpha * newVy + (1 - alpha) * vy
+
+        // Update position and size
+        x = det.x
+        y = det.y
+        width = det.width
+        height = det.height
+        confidence = det.confidence
+        classIdx = det.classIdx
+        className = det.className
+
+        // Update counters
+        age += 1
+        hitStreak += 1
+        timeSinceUpdate = 0
+    }
+
+    // Mark as unmatched this frame
+    mutating func markMissed() {
+        age += 1
+        hitStreak = 0
+        timeSinceUpdate += 1
+
+        // Apply velocity prediction
+        x += vx
+        y += vy
+    }
+}
+
+// MARK: - Simple SORT-style Tracker
+final class SimpleTracker {
+    private var tracks: [Track] = []
+    private var nextId: Int = 1
+
+    // Configuration
+    let iouThreshold: Float = 0.3      // Minimum IoU to match
+    let maxAge: Int = 30               // Max frames to keep unmatched track
+    let minHits: Int = 3               // Min hits before track is confirmed
+
+    init() {}
+
+    /// Update tracker with new detections, returns detections with assigned track IDs
+    func update(detections: [DetectionSmarty]) -> [DetectionSmarty] {
+        // Step 1: Predict existing tracks forward
+        for i in 0..<tracks.count {
+            // Prediction is applied in iou() and markMissed()
+        }
+
+        // Step 2: Build cost matrix (negative IoU for Hungarian, but we'll use greedy)
+        var matchedDetIdx = Set<Int>()
+        var matchedTrackIdx = Set<Int>()
+        var matches: [(trackIdx: Int, detIdx: Int, iou: Float)] = []
+
+        // Calculate all IoU pairs
+        for (ti, track) in tracks.enumerated() {
+            for (di, det) in detections.enumerated() {
+                let iouVal = track.iou(with: det)
+                if iouVal >= iouThreshold {
+                    matches.append((ti, di, iouVal))
+                }
+            }
+        }
+
+        // Greedy matching: sort by IoU descending, assign greedily
+        matches.sort { $0.iou > $1.iou }
+
+        for match in matches {
+            if matchedTrackIdx.contains(match.trackIdx) || matchedDetIdx.contains(match.detIdx) {
+                continue
+            }
+            matchedTrackIdx.insert(match.trackIdx)
+            matchedDetIdx.insert(match.detIdx)
+
+            // Update track with detection
+            tracks[match.trackIdx].update(with: detections[match.detIdx])
+        }
+
+        // Step 3: Mark unmatched tracks as missed
+        for i in 0..<tracks.count {
+            if !matchedTrackIdx.contains(i) {
+                tracks[i].markMissed()
+            }
+        }
+
+        // Step 4: Create new tracks for unmatched detections
+        for (di, det) in detections.enumerated() {
+            if !matchedDetIdx.contains(di) {
+                let newTrack = Track(
+                    id: nextId,
+                    x: det.x,
+                    y: det.y,
+                    width: det.width,
+                    height: det.height,
+                    classIdx: det.classIdx,
+                    className: det.className,
+                    confidence: det.confidence,
+                    age: 1,
+                    hitStreak: 1,
+                    timeSinceUpdate: 0,
+                    vx: 0,
+                    vy: 0
+                )
+                tracks.append(newTrack)
+                nextId += 1
+            }
+        }
+
+        // Step 5: Remove dead tracks
+        tracks.removeAll { $0.timeSinceUpdate > maxAge }
+
+        // Step 6: Build output - detections with track IDs assigned
+        var result: [DetectionSmarty] = []
+
+        for (di, det) in detections.enumerated() {
+            var detWithId = det
+
+            // Find which track this detection was matched to
+            if let matchedTrackIdx = matches.first(where: { $0.detIdx == di && matchedDetIdx.contains(di) })?.trackIdx {
+                let track = tracks[matchedTrackIdx]
+                // Only assign ID if track is confirmed (enough hits)
+                if track.hitStreak >= minHits || track.age >= minHits {
+                    detWithId.trackId = track.id
+                }
+            } else {
+                // New detection - find its new track
+                if let newTrack = tracks.first(where: {
+                    abs($0.x - det.x) < 1 && abs($0.y - det.y) < 1 && $0.age == 1
+                }) {
+                    // New tracks need minHits before showing ID
+                    if newTrack.hitStreak >= minHits {
+                        detWithId.trackId = newTrack.id
+                    }
+                }
+            }
+
+            result.append(detWithId)
+        }
+
+        return result
+    }
+
+    /// Get all confirmed tracks (for visualization)
+    func getConfirmedTracks() -> [Track] {
+        return tracks.filter { $0.hitStreak >= minHits || $0.age >= minHits }
+    }
+
+    /// Reset tracker state
+    func reset() {
+        tracks.removeAll()
+        nextId = 1
+    }
+}
 
 // MARK: - Main Container View
 final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
@@ -158,6 +372,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
     private let ciContext = CIContext(options: [.workingColorSpace: CGColorSpaceCreateDeviceRGB()])
+
+    // MARK: Object Tracker
+    private let tracker = SimpleTracker()
 
     // MARK: Furniture & Household Classes (LVIS indices)
     private let furnitureClasses: [Int: String] = [
@@ -949,13 +1166,32 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             return
         }
 
+        // MARK: Apply tracking to assign persistent IDs
+        let trackStart = Date()
+        let allDetections = rawDetections + stage2Detections
+        let trackedDetections = tracker.update(detections: allDetections)
+
+        // Split back into stage1 and stage2 with track IDs
+        let trackedStage1 = Array(trackedDetections.prefix(rawDetections.count))
+        let trackedStage2 = Array(trackedDetections.suffix(stage2Detections.count))
+
+        if self.debugMode {
+            let trackEnd = Date()
+            print(String(format: "⏱ Tracker update: %.2f ms", trackEnd.timeIntervalSince(trackStart) * 1000.0))
+            let confirmedTracks = tracker.getConfirmedTracks()
+            print("🔢 Active tracks: \(confirmedTracks.count) confirmed")
+            for det in trackedDetections where det.trackId != nil {
+                print("   → ID\(det.trackId!) \(det.className)")
+            }
+        }
+
         setProgress(0.8, text: "Building mask…")
 
         let cutoutStart = Date()
         generateCutoutTwoStage(
-            stage1Detections: rawDetections,
+            stage1Detections: trackedStage1,
             stage1Prototypes: prototypesArray,
-            stage2Detections: stage2Detections,
+            stage2Detections: trackedStage2,
             stage2Prototypes: stage2Prototypes,
             primaryBBox: primary,
             originalImage: pixelBuffer
@@ -2406,9 +2642,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         rectY = max(0, min(rectY, CGFloat(imageHeight - 1)))
 
         // ---------------------------------------
-        // Prepare label text
+        // Prepare label text (include track ID if available)
         // ---------------------------------------
-        let label = "\(detection.className) \(Int(detection.confidence * 100))%"
+        let trackPrefix = detection.trackId != nil ? "ID\(detection.trackId!) " : ""
+        let label = "\(trackPrefix)\(detection.className) \(Int(detection.confidence * 100))%"
         let font = UIFont.boldSystemFont(ofSize: 26)
 
         let attrs: [NSAttributedString.Key: Any] = [
@@ -2456,9 +2693,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
         ctx.stroke(rect)
 
-        // label text
+        // label text (include track ID if available)
         let confidence = Int(detection.confidence * 100)
-        let labelText = "\(detection.className) \(confidence)%"
+        let trackIdStr = detection.trackId != nil ? "ID\(detection.trackId!) " : ""
+        let labelText = "\(trackIdStr)\(detection.className) \(confidence)%"
         let attributed = NSAttributedString(string: labelText, attributes: bboxAttributes)
         let textSize = attributed.size()
 
