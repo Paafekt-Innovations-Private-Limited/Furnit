@@ -2605,9 +2605,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                     var xx = start
                                     while xx < end {
                                         let p = row.advanced(by: xx * 4)
-                                        if p[3] != 0 {
-                                            p[3] = 255
-                                        }
+                                        // Fill ALL pixels inside scanline bounds (fills holes)
+                                        p[3] = 255
                                         xx += 1
                                     }
                                 }
@@ -2711,9 +2710,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                         if maskRow[lx] > 0 {  // Inside alpha shape
                                             let xx = minX + lx
                                             let p = srcRow.advanced(by: xx * 4)
-                                            if p[3] != 0 {
-                                                p[3] = 255
-                                            }
+                                            // Fill ALL pixels inside alpha shape (fills holes)
+                                            p[3] = 255
                                         }
                                     }
                                 }
