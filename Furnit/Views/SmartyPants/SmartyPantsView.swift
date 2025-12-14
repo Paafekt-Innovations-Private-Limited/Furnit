@@ -18,9 +18,9 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = true
+    var debugMode: Bool = false
     var active: Bool = false
-    var edgeFillMode: EdgeFillMode = .concaveHull
+    var edgeFillMode: EdgeFillMode = .clothBased
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
         let v = SmartyPantsContainerView()
@@ -52,10 +52,11 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         uiView.stop()
     }
 }
-// MARK: - Edge Fill Mode for debug overlay
+// MARK: - Edge Fill Mode (user selectable)
 enum EdgeFillMode {
-    case scanline
-    case concaveHull // Delaunay-based alpha shape (true concave hull)
+    case furniMaterial  // Preserve fine edges using scanline - for chairs, tables, solid items
+    case clothBased     // Solid fill using hull - for beds, sofas, fabric items with gaps
+    case chairType      // Morphological close - fills small gaps, preserves general shape
 }
 
 // MARK: - Alpha Shape (Concave Hull) using Delaunay Triangulation
@@ -717,8 +718,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.5
-    var debugMode: Bool = true  // Enable debug prints and image saves
-    var edgeFillMode: EdgeFillMode = .concaveHull
+    var debugMode: Bool = false  // Enable debug prints and image saves
+    var edgeFillMode: EdgeFillMode = .clothBased
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = false
@@ -2431,20 +2432,73 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 tracker.storeMask(rawMask, forTrackId: trackId)
             }
 
-            // Fill convex hull of mask pixels to eliminate gaps
             var addedPixels = 0
-            addedPixels = fillConvexHullOfMask(
-                mask: maskToApply,
-                into: &globalMask,
-                width: Wp,
-                height: Hp,
-                bboxX1: mx1, bboxY1: my1, bboxX2: mx2, bboxY2: my2,
-                threshold: maskThreshold
-            )
 
-            if self.debugMode && detIndex < 5 {
-                let smoothingInfo = det.trackId != nil ? " (smoothed)" : ""
-                print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px (hull)\(smoothingInfo)")
+            switch edgeFillMode {
+            case .clothBased:
+                // Solid fill using hull - for beds, sofas, fabric items with gaps
+                addedPixels = fillConvexHullOfMask(
+                    mask: maskToApply,
+                    into: &globalMask,
+                    width: Wp,
+                    height: Hp,
+                    bboxX1: mx1, bboxY1: my1, bboxX2: mx2, bboxY2: my2,
+                    threshold: maskThreshold
+                )
+                if self.debugMode && detIndex < 5 {
+                    let smoothingInfo = det.trackId != nil ? " (smoothed)" : ""
+                    print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px (hull)\(smoothingInfo)")
+                }
+
+            case .furniMaterial:
+                // Preserve fine edges - for chairs, tables, solid items
+                maskToApply.withUnsafeBufferPointer { rPtr in
+                    globalMask.withUnsafeMutableBufferPointer { gPtr in
+                        if mx2 > mx1 && my2 > my1 {
+                            for py in my1..<my2 {
+                                let rowStart = py * Wp + mx1
+                                let rowLen = mx2 - mx1
+                                for i in 0..<rowLen {
+                                    let idx = rowStart + i
+                                    if rPtr[idx] > maskThreshold && gPtr[idx] == 0 {
+                                        gPtr[idx] = 1.0
+                                        addedPixels += 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if self.debugMode && detIndex < 5 {
+                    let smoothingInfo = det.trackId != nil ? " (smoothed)" : ""
+                    print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px (fine)\(smoothingInfo)")
+                }
+
+            case .chairType:
+                // Morphological close on per-detection mask - fills small gaps, preserves shape
+                var closedMask = maskToApply
+                applyMorphologicalClosing(to: &closedMask, width: Wp, height: Hp, kernelSize: 9, iterations: 1)
+                closedMask.withUnsafeBufferPointer { rPtr in
+                    globalMask.withUnsafeMutableBufferPointer { gPtr in
+                        if mx2 > mx1 && my2 > my1 {
+                            for py in my1..<my2 {
+                                let rowStart = py * Wp + mx1
+                                let rowLen = mx2 - mx1
+                                for i in 0..<rowLen {
+                                    let idx = rowStart + i
+                                    if rPtr[idx] > maskThreshold && gPtr[idx] == 0 {
+                                        gPtr[idx] = 1.0
+                                        addedPixels += 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if self.debugMode && detIndex < 5 {
+                    let smoothingInfo = det.trackId != nil ? " (smoothed)" : ""
+                    print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: +\(addedPixels)px (morph)\(smoothingInfo)")
+                }
             }
         }
         let s1MaskEnd = Date()
@@ -2791,7 +2845,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let edgeStart = Date()
                 let edges = computeMaskEdges(mask: globalMask, width: Wp, height: Hp)
                 switch edgeFillMode {
-                case .scanline:
+                case .furniMaterial:
                     if !edges.isEmpty {
                         let sxOutline = Float(width) / Float(Wp)
                         let syOutline = Float(height) / Float(Hp)
@@ -2846,7 +2900,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                             }
                         }
                     }
-                case .concaveHull:
+                case .clothBased:
                     if !edges.isEmpty {
                         // MORPHOLOGICAL HOLE FILL: preserves original boundary, only fills interior holes
                         // Instead of alpha shape (which simplifies boundary), we use flood-fill from outside
@@ -2972,6 +3026,61 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
                         if self.debugMode {
                             print("🔺 Edge outline: \(edges.count) boundary points (original mask edges preserved)")
+                        }
+                    }
+
+                case .chairType:
+                    // Same as furniMaterial - draw edges and fill with scanline
+                    if !edges.isEmpty {
+                        let sxOutline = Float(width) / Float(Wp)
+                        let syOutline = Float(height) / Float(Hp)
+
+                        var rowXs = Array(repeating: [Int](), count: height)
+                        for (ex, ey) in edges {
+                            let fx = Int(Float(ex) * sxOutline)
+                            let fy = Int(Float(ey) * syOutline)
+                            guard fx >= 0, fx < width, fy >= 0, fy < height else { continue }
+                            rowXs[fy].append(fx)
+                        }
+
+                        // Draw edge dots
+                        let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
+                        for (ex, ey) in edges {
+                            let fx = Int(Float(ex) * sxOutline)
+                            let fy = Int(Float(ey) * syOutline)
+                            let y0 = max(0, fy - 1), y1 = min(height - 1, fy + 1)
+                            let x0 = max(0, fx - 1), x1 = min(width - 1, fx + 1)
+                            for yy in y0...y1 {
+                                let row = pixels.advanced(by: yy * width * 4)
+                                for xx in x0...x1 {
+                                    let p = row.advanced(by: xx * 4)
+                                    if p[3] != 0 {
+                                        p[0] = b; p[1] = g; p[2] = r; p[3] = a
+                                    }
+                                }
+                            }
+                        }
+
+                        // Fill interior with scanline
+                        for fy in 0..<height {
+                            var xs = rowXs[fy]
+                            if xs.count < 2 { continue }
+                            xs.sort()
+                            let row = pixels.advanced(by: fy * width * 4)
+                            var i = 0
+                            while i + 1 < xs.count {
+                                let start = max(0, min(xs[i], width - 1))
+                                let end   = max(0, min(xs[i + 1], width - 1))
+                                if end > start {
+                                    var xx = start
+                                    while xx < end {
+                                        let p = row.advanced(by: xx * 4)
+                                        p[3] = 255
+                                        xx += 1
+                                    }
+                                }
+                                i += 2
+                            }
                         }
                     }
                 }

@@ -36,6 +36,9 @@ struct ModelViewerView: View {
     // Furniture hint
     @State private var showFurnitureHint = true
 
+    // Edge fill mode for SmartyPants segmentation
+    @State private var selectedEdgeFillMode: EdgeFillMode = .clothBased
+
     init(model: USDZModel) {
         self.model = model
     }
@@ -93,12 +96,20 @@ struct ModelViewerView: View {
 
                 // NEW: SmartyPants overlay
                 if showingSmartyPants {
-                    SmartyPantsViewSwiftUI(
-                        mlModel: mlModel,
-                        processInterval: 0.07,
-//                        scoreThreshold: 0.25,
-                        active: true
-                    )
+                    ZStack {
+                        SmartyPantsViewSwiftUI(
+                            mlModel: mlModel,
+                            processInterval: 0.07,
+                            active: true,
+                            edgeFillMode: selectedEdgeFillMode
+                        )
+
+                        // Edge fill mode toggle at top
+                        VStack {
+                            edgeFillModeToggle
+                            Spacer()
+                        }
+                    }
                     .zIndex(9000)
                 }
 
@@ -297,6 +308,25 @@ struct ModelViewerView: View {
                 }
                 .frame(width: 60, height: 60)
             }
+        }
+    }
+
+    // Edge fill mode toggle for SmartyPants
+    private var edgeFillModeToggle: some View {
+        HStack {
+            Spacer()
+            Picker("Edge Mode", selection: $selectedEdgeFillMode) {
+                Text("Cloth").tag(EdgeFillMode.clothBased)
+                Text("Chair").tag(EdgeFillMode.chairType)
+                Text("Furni").tag(EdgeFillMode.furniMaterial)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 240)
+            .padding(8)
+            .background(Color.black.opacity(0.6))
+            .cornerRadius(12)
+            .padding(.top, 60)
+            .padding(.trailing, 16)
         }
     }
 
