@@ -18,7 +18,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = false
+    var debugMode: Bool = true
     var active: Bool = false
     var edgeFillMode: EdgeFillMode = .chairType
 
@@ -450,7 +450,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.3
-    var debugMode: Bool = false  // Enable debug prints and image saves
+    var debugMode: Bool = true  // Enable debug prints and image saves
     var edgeFillMode: EdgeFillMode = .chairType
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
@@ -1226,62 +1226,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         setProgress(0.55, text: "Refining crop…")
 
-        // STAGE 2
-        if self.debugMode { print("\n🔬 ========== STAGE 2: CROPPED ==========") }
-
-        var stage2Detections: [DetectionSmarty] = []
-        var stage2Prototypes: MLMultiArray? = nil
-
+        // STAGE 2 removed: single-stage pipeline only
+        if self.debugMode { print("\n🔬 STAGE 2 removed — using single-stage masks (full frame only)") }
         let stage2Start = Date()
-        // Kishore
-        if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.0),
-           let resizedCrop = resizePixelBufferToSquare(croppedBuffer, size: 1280),
-           let cropInputArray = pixelBufferToMLMultiArray(resizedCrop),
-           let cropInputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": cropInputArray]) {
-
-            let stage2InfStart = Date()
-            if let cropOutput = try? model.prediction(from: cropInputProvider) {
-                let stage2InfEnd = Date()
-                if self.debugMode {
-                    print(String(format: "⏱ Stage2 model.prediction: %.2f ms", stage2InfEnd.timeIntervalSince(stage2InfStart) * 1000.0))
-                }
-                
-                var cropDetArray: MLMultiArray?
-                //Kishore
-//                if let arr = cropOutput.featureValue(for: "var_2421")?.multiArrayValue {
-                if let arr = cropOutput.featureValue(for: "var_2497")?.multiArrayValue {
-                    cropDetArray = arr
-                } else {
-                    for name in cropOutput.featureNames {
-                        if let arr = cropOutput.featureValue(for: name)?.multiArrayValue {
-                            let shape = arr.shape.map { $0.intValue }
-                            if shape.count == 3 && shape[0] == 1 && shape[1] > 100 {
-                                cropDetArray = arr
-                                break
-                            }
-                        }
-                    }
-                }
-
-                if let detArray = cropDetArray,
-                   let protoArray = cropOutput.featureValue(for: "p")?.multiArrayValue {
-                    let s2DecodeStart = Date()
-                    stage2Detections = extractDetections(from: detArray, confThreshold: 0.01)
-                    let s2DecodeEnd = Date()
-                    stage2Prototypes = protoArray
-                    if self.debugMode {
-                        print("📊 Stage 2: \(stage2Detections.count) detections")
-                        print(String(format: "⏱ Stage2 detection decode: %.2f ms", s2DecodeEnd.timeIntervalSince(s2DecodeStart) * 1000.0))
-                    }
-                }
-            }
-        } else {
-            if self.debugMode { print("⚠️ Stage 2: Failed to crop/process") }
-        }
+        let stage2Detections: [DetectionSmarty] = []
+        let stage2Prototypes: MLMultiArray? = nil
         let stage2End = Date()
         if self.debugMode {
-            print(String(format: "⏱ Stage2 total (crop+preprocess+infer+decode): %.2f ms",
-                         stage2End.timeIntervalSince(stage2Start) * 1000.0))
+            print(String(format: "⏱ Stage2 (skipped): %.2f ms", stage2End.timeIntervalSince(stage2Start) * 1000.0))
         }
         
         let rawDetections = extractDetections(from: detArray, confThreshold: 0.3)
@@ -1308,7 +1260,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         if self.debugMode {
             print("\n📊 UNION SUMMARY:")
             print("   Stage 1: keeping \(rawDetections.count) overlapping detections")
-            print("   Stage 2: keeping \(stage2Detections.count) overlapping detections")
+            print("   Stage 2: removed")
         }
 
 //        if uniqueDetections.isEmpty && stage2Kept.isEmpty {
@@ -1318,7 +1270,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //            }
 //            return
 //        }
-        if rawDetections.isEmpty && stage2Detections.isEmpty {
+        if rawDetections.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -2361,106 +2313,22 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             saveMaskToFile(rawMask: rawMask, width: Wp, height: Hp, detection: det)
         }
 
-        // Stage 2 masks
-        if let proto2 = stage2Prototypes, !stage2Detections.isEmpty {
-            let s2ProtoStart = Date()
-            if self.debugMode { print("\n🟢 Processing Stage 2 masks (cropped → full frame)...") }
-
-            let protoMatrix2 = makePrototypeBuffer(from: proto2, C: C, Hp: Hp, Wp: Wp)
-            let s2ProtoEnd = Date()
-            if self.debugMode {
-                print(String(format: "⏱ Stage2 prototype buffer build (Accelerate): %.2f ms",
-                             s2ProtoEnd.timeIntervalSince(s2ProtoStart) * 1000.0))
-            }
-
-            let padding: Float = 0.1
-            let cropX1 = max(0, primaryBBox.x - primaryBBox.width / 2 * (1 + padding))
-            let cropY1 = max(0, primaryBBox.y - primaryBBox.height / 2 * (1 + padding))
-            let cropX2 = min(1280, primaryBBox.x + primaryBBox.width / 2 * (1 + padding))
-            let cropY2 = min(1280, primaryBBox.y + primaryBBox.height / 2 * (1 + padding))
-            let cropW = cropX2 - cropX1
-            let cropH = cropY2 - cropY1
-
-            if self.debugMode {
-                print("   Crop region (model): (\(Int(cropX1)),\(Int(cropY1)))→(\(Int(cropX2)),\(Int(cropY2))) = \(Int(cropW))x\(Int(cropH))")
-            }
-
-            let scale = Float(Wp) / 1280.0
-
-            let s2MaskStart = Date()
-            for det in stage2Detections {
-                var rawMask = [Float](repeating: 0, count: spatial)
-                let mmulStart = Date()
-                vDSP_mmul(det.maskCoeffs, 1,
-                          protoMatrix2, 1,
-                          &rawMask, 1,
-                          1, vDSP_Length(spatial), vDSP_Length(C))
-                let mmulEnd = Date()
-                if self.debugMode {
-                    print(String(format: "   ⏱ vDSP_mmul Stage2: %.2f ms",
-                                 mmulEnd.timeIntervalSince(mmulStart) * 1000.0))
-                }
-
-                let mx1_crop = max(0, Int((det.x - det.width / 2) * scale))
-                let my1_crop = max(0, Int((det.y - det.height / 2) * scale))
-                let mx2_crop = min(Wp, Int((det.x + det.width / 2) * scale))
-                let my2_crop = min(Hp, Int((det.y + det.height / 2) * scale))
-
-                var addedPixels = 0
-
-                rawMask.withUnsafeBufferPointer { rPtr in
-                    globalMask.withUnsafeMutableBufferPointer { gPtr in
-                        if mx2_crop > mx1_crop && my2_crop > my1_crop {
-                            for py_crop in my1_crop..<my2_crop {
-                                let base = py_crop * Wp
-                                for px_crop in mx1_crop..<mx2_crop {
-                                    let cropIdx = base + px_crop
-                                    if rPtr[cropIdx] > maskThreshold {
-                                        let fracX = Float(px_crop) / Float(Wp)
-                                        let fracY = Float(py_crop) / Float(Hp)
-                                        let fullX = cropX1 + fracX * cropW
-                                        let fullY = cropY1 + fracY * cropH
-                                        let mx_full = Int(fullX * scale)
-                                        let my_full = Int(fullY * scale)
-                                        if mx_full >= 0 && mx_full < Wp && my_full >= 0 && my_full < Hp {
-                                            let fullIdx = my_full * Wp + mx_full
-                                            if gPtr[fullIdx] == 0 {
-                                                addedPixels += 1
-                                            }
-                                            gPtr[fullIdx] = 1.0
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if self.debugMode {
-                    print("   ✅ S2 \(det.className) @ \(Int(det.confidence*100))%: bbox(\(mx1_crop),\(my1_crop))→(\(mx2_crop),\(my2_crop)), +\(addedPixels)px NEW")
-                }
-            }
-            let s2MaskEnd = Date()
-            if self.debugMode {
-                print(String(format: "⏱ Stage2 mask build+apply: %.2f ms",
-                             s2MaskEnd.timeIntervalSince(s2MaskStart) * 1000.0))
-            }
-        }
+        // Stage 2 removed — no cropped/proto application. All masks come from Stage 1 only.
 
         var finalPixelCount = 0
         for i in 0..<spatial { if globalMask[i] > 0 { finalPixelCount += 1 } }
-        let addedByStage2 = finalPixelCount - stage1PixelCount
+        let addedByStage2 = 0
 
         if self.debugMode {
-            print(String(format: "\n📊 MERGED MASK: %d/%d pixels (%.1f%%)", finalPixelCount, spatial, Float(finalPixelCount)/Float(spatial)*100))
+            print(String(format: "\n📊 MERGED MASK (Stage1 only): %d/%d pixels (%.1f%%)", finalPixelCount, spatial, Float(finalPixelCount)/Float(spatial)*100))
             print("   Stage 1 contributed: \(stage1PixelCount) pixels")
-            print("   Stage 2 added: \(addedByStage2) NEW pixels")
+            print("   Stage 2: removed")
         }
 
         // Accelerate: convert globalMask float (0/1) to 0/255 UInt8
         let binaryMask = makeBinaryMaskFromGlobalMask(globalMask, count: spatial)
         
-        if self.debugMode { print20x20BinaryGrid("MERGED STAGE1+STAGE2", mask: binaryMask, width: Wp, height: Hp) }
+        if self.debugMode { print20x20BinaryGrid("MERGED STAGE1", mask: binaryMask, width: Wp, height: Hp) }
 
         var minX = Wp
         var maxX = -1
@@ -2480,7 +2348,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         let maskBuildEnd = Date()
         if self.debugMode {
-            print(String(format: "⏱ Mask building (Stage1+Stage2+tight bbox): %.2f ms",
+            print(String(format: "⏱ Mask building (Stage1 tight bbox): %.2f ms",
                          maskBuildEnd.timeIntervalSince(funcStart) * 1000.0))
         }
 
@@ -2532,7 +2400,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             var xMap = [Int](repeating: 0, count: width)
             for px in 0..<width { xMap[px] = min(max(Int(Float(px) * scaleX), 0), Wp - 1) }
 
-            let keptDetections: [DetectionSmarty] = (stage1Detections + stage2Detections)
+            let keptDetections: [DetectionSmarty] = stage1Detections
 
             if keptDetections.isEmpty {
                 memset(data, 0, width * height * 4)
