@@ -1203,13 +1203,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
 //        let sorted = stage1DetectionsFull.sorted { $0.confidence > $1.confidence }
         
-        let sorted = stage1DetectionsFull.sorted {
-            let area0 = ($0.width * $0.height)
-            let area1 = ($1.width * $1.height)
-            let score0 = area0 + $0.confidence
-            let score1 = area1 + $1.confidence
-            return score0 > score1
-        }
+        // Sort detections by bounding-box area (largest first)
+        let sorted = stage1DetectionsFull.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         
         guard let primary = sorted.first else {
             DispatchQueue.main.async {
@@ -1236,9 +1231,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print(String(format: "⏱ Stage2 (skipped): %.2f ms", stage2End.timeIntervalSince(stage2Start) * 1000.0))
         }
         
-        let rawDetections = extractDetections(from: detArray, confThreshold: 0.3)
+        let rawDetections = extractDetections(from: detArray, confThreshold: 0.01)
 //        let nmsStart = Date()
-//        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.99)
+        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.9)
 //        let stage1Kept = keepOverlappingDetections(uniqueDetections)
 //        let stage2Kept = stage2Prototypes != nil
 //            ? applyNMS(stage2Detections, iouThreshold: 0.99)
@@ -1259,7 +1254,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //        }
         if self.debugMode {
             print("\n📊 UNION SUMMARY:")
-            print("   Stage 1: keeping \(rawDetections.count) overlapping detections")
+            print("   Stage 1: keeping \(uniqueDetections.count) overlapping detections")
             print("   Stage 2: removed")
         }
 
@@ -1270,7 +1265,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //            }
 //            return
 //        }
-        if rawDetections.isEmpty {
+        if uniqueDetections.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -1300,12 +1295,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         setProgress(0.8, text: "Building mask…")
 
         let cutoutStart = Date()
+        // Keep top-5 stage1 detections for boxes/labels and inspection
+        // Keep the top-5 detections by bbox area (largest boxes)
+        let top5Stage1 = Array(uniqueDetections.sorted { ($0.width * $0.height) > ($1.width * $1.height) }.prefix(10))
         generateCutoutTwoStage(
-            stage1Detections: rawDetections,
+            stage1Detections: uniqueDetections,
             stage1Prototypes: prototypesArray,
             stage2Detections: stage2Detections,
             stage2Prototypes: stage2Prototypes,
-            primaryBBox: primary,
+            primaryBBoxes: top5Stage1,
             originalImage: pixelBuffer
         )
         let cutoutEnd = Date()
@@ -2186,7 +2184,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         stage1Prototypes: MLMultiArray,
         stage2Detections: [DetectionSmarty],
         stage2Prototypes: MLMultiArray?,
-        primaryBBox: DetectionSmarty,
+        primaryBBoxes: [DetectionSmarty],
         originalImage: CVPixelBuffer
     ) {
         let funcStart = Date()
@@ -2275,26 +2273,59 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let my1 = max(0, Int((det.y - det.height / 2) * scale))
             let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
             let my2 = min(Hp, Int((det.y + det.height / 2) * scale))
+            // Vectorized threshold + region-aware merge (vDSP)
+            var bin = rawMask // copy
+            let n = vDSP_Length(spatial)
+            var thr = maskThreshold
+            // Clamp values below threshold to threshold
+            vDSP_vthr(bin, 1, &thr, &bin, 1, n)
+            // Subtract threshold so values < thr -> 0, >= thr -> positive (raw - thr)
+            var negThr = -thr
+            vDSP_vsadd(bin, 1, &negThr, &bin, 1, n)
 
-            var addedPixels = 0
-            rawMask.withUnsafeBufferPointer { rPtr in
-                globalMask.withUnsafeMutableBufferPointer { gPtr in
-                    if mx2 > mx1 && my2 > my1 {
-                        for py in my1..<my2 {
-                            let rowStart = py * Wp + mx1
-                            let rowLen = mx2 - mx1
-                            let base = rowStart
-                            for i in 0..<rowLen {
-                                let idx = base + i
-                                if rPtr[idx] > maskThreshold && gPtr[idx] == 0 {
-                                    gPtr[idx] = 1.0
-                                    addedPixels += 1
-                                }
-                            }
-                        }
+            // Zero-out areas outside the detection bbox to preserve original behavior
+            if mx1 >= 0 && mx2 <= Wp && my1 >= 0 && my2 <= Hp {
+                // rows before bbox
+                if my1 > 0 {
+                    for py in 0..<my1 {
+                        let base = py * Wp
+                        memset(&bin[base], 0, Wp * MemoryLayout<Float>.size)
+                    }
+                }
+                // rows after bbox
+                if my2 < Hp {
+                    for py in my2..<Hp {
+                        let base = py * Wp
+                        memset(&bin[base], 0, Wp * MemoryLayout<Float>.size)
+                    }
+                }
+                // inside bbox: zero left & right columns per row
+                for py in my1..<my2 {
+                    let rowBase = py * Wp
+                    if mx1 > 0 {
+                        memset(&bin[rowBase], 0, mx1 * MemoryLayout<Float>.size)
+                    }
+                    if mx2 < Wp {
+                        let rightBase = rowBase + mx2
+                        memset(&bin[rightBase], 0, (Wp - mx2) * MemoryLayout<Float>.size)
                     }
                 }
             }
+
+            // Count newly added pixels (for debug) inside bbox by checking where bin>0 and globalMask==0
+            var addedPixels = 0
+            if detIndex < 5 {
+                for py in my1..<my2 {
+                    let base = py * Wp
+                    for px in mx1..<mx2 {
+                        let idx = base + px
+                        if bin[idx] > 0 && globalMask[idx] == 0 { addedPixels += 1 }
+                    }
+                }
+            }
+
+            // Merge: globalMask = max(globalMask, bin)
+            vDSP_vmax(globalMask, 1, bin, 1, &globalMask, 1, n)
 
             if self.debugMode && detIndex < 5 {
                 print("   ✅ S1 \(det.className) @ \(Int(det.confidence*100))%: bbox(\(mx1),\(my1))→(\(mx2),\(my2)), +\(addedPixels)px")
@@ -2558,125 +2589,206 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
 
                 case .clothBased:
-                    // ✅ Concave hull (alpha-shape) fill, mirroring Python alpha_shape() on union mask
-                    // 1) Build point cloud from globalMask in prototype (Wp×Hp) coordinates
-                    var pts: [(x: Int, y: Int)] = []
-                    pts.reserveCapacity(spatial)
-                    for y in 0..<Hp {
-                        let rowBase = y * Wp
-                        for x in 0..<Wp {
-                            if globalMask[rowBase + x] > 0 {
-                                pts.append((x: x, y: y))
-                            }
+                    // Accelerated cloth-based fill:
+                    // 1) Convert prototype-resolution globalMask (Float 0/1) -> Planar8 via vImage
+                    // 2) Morphological close (vImage dilate+erode) at proto resolution
+                    // 3) Upscale Planar8 -> full-res Planar8 (vImageScale_Planar8)
+                    // 4) Apply upscaled mask as alpha channel (set pixels' A to 255 where mask>0)
+                    // If the accelerated result is empty/sparse, fallback to alpha-shape path below.
+
+                    // Prepare proto Float buffer (globalMask already contains 0/1 floats)
+                    var protoFloat = globalMask // copy
+                    var protoBuf = protoFloat // alias for clarity
+
+                    // vImage convert PlanarF -> Planar8 (scale by 255)
+                    var protoPlanar = [UInt8](repeating: 0, count: spatial)
+                    protoBuf.withUnsafeMutableBufferPointer { fPtr in
+                        protoPlanar.withUnsafeMutableBytes { pPtr in
+                            var src = vImage_Buffer(data: fPtr.baseAddress!, height: vImagePixelCount(Hp), width: vImagePixelCount(Wp), rowBytes: Wp * MemoryLayout<Float>.size)
+                            var dst = vImage_Buffer(data: pPtr.baseAddress!, height: vImagePixelCount(Hp), width: vImagePixelCount(Wp), rowBytes: Wp)
+                            var fmul: Float = 255.0
+                            let convErr = vImageConvert_PlanarFtoPlanar8(&src, &dst, fmul, 0, vImage_Flags(kvImageNoFlags))
+                            if convErr != kvImageNoError && self.debugMode { print("⚠️ vImageConvert_PlanarFtoPlanar8 failed: \(convErr)") }
                         }
                     }
-                    if self.debugMode {
-                        print("🔺 Alpha-shape input points (proto): \(pts.count)")
-                    }
-                    guard pts.count >= 3 else { break }
 
-                    // 2) Compute concave hull edges in prototype space (alpha matches Python: ALPHA = 2.5)
-                    let alphaValue: Float = 2.5
-                    let hullEdges = AlphaShape.compute(points: pts, alpha: alphaValue)
-                    if self.debugMode {
-                        print("🔺 Alpha-shape produced \(hullEdges.count) edges (alpha=\(alphaValue))")
-                    }
-                    guard !hullEdges.isEmpty else { break }
+                    // Morphological closing at proto resolution (kernel 5x5 for cloth smoothing)
+                    var closedProto = [UInt8](repeating: 0, count: spatial)
+                    let kernelSize = 5
+                    var kernel = [UInt8](repeating: 1, count: kernelSize * kernelSize)
+                    // Count non-zero proto pixels BEFORE closing
+                    var protoOnBefore = 0
+                    for i in 0..<spatial { if protoPlanar[i] > 0 { protoOnBefore += 1 } }
+                    if self.debugMode { print("🔍 proto nonzero BEFORE close: \(protoOnBefore)/\(spatial) (\(String(format: "%.2f", Float(protoOnBefore)/Float(spatial)*100))%)") }
 
-                    // 3) Reconstruct ordered polygon vertices (prototype coords)
-                    var adjacency: [String: (x: Int, y: Int)] = [:]
-                    func key(_ p: (x: Int, y: Int)) -> String { "\(p.x)_\(p.y)" }
-                    for e in hullEdges {
-                        adjacency[key(e.start)] = e.end
-                    }
-                    var polygon: [(x: Int, y: Int)] = []
-                    var current = hullEdges[0].start
-                    polygon.append(current)
-                    var safety = 0
-                    while let next = adjacency[key(current)], safety < 10000 {
-                        if next.x == polygon.first!.x && next.y == polygon.first!.y { break }
-                        polygon.append(next)
-                        current = next
-                        safety += 1
-                    }
-                    guard polygon.count >= 3 else { break }
-
-                    // 4) Map polygon vertices to full-resolution integer coordinates
-                    let sxOutline = Float(width) / Float(Wp)
-                    let syOutline = Float(height) / Float(Hp)
-
-                    var polyFull: [(x: Int, y: Int)] = []
-                    polyFull.reserveCapacity(polygon.count)
-                    var minYFull = height
-                    var maxYFull = 0
-                    for p in polygon {
-                        let fx = Int(Float(p.x) * sxOutline)
-                        let fy = Int(Float(p.y) * syOutline)
-                        let cx = max(0, min(fx, width - 1))
-                        let cy = max(0, min(fy, height - 1))
-                        polyFull.append((cx, cy))
-                        if cy < minYFull { minYFull = cy }
-                        if cy > maxYFull { maxYFull = cy }
-                    }
-                    if minYFull < 0 || maxYFull >= height || minYFull >= maxYFull { break }
-
-                    // 5) Precompute polygon edges in full-res for scanline intersection
-                    struct EdgeI { let x0: Int; let y0: Int; let x1: Int; let y1: Int }
-                    var edgesFull: [EdgeI] = []
-                    edgesFull.reserveCapacity(polyFull.count)
-                    for i in 0..<polyFull.count {
-                        let a = polyFull[i]
-                        let b = polyFull[(i + 1) % polyFull.count]
-                        if a.y == b.y { continue } // skip horizontal edges for robustness
-                        edgesFull.append(EdgeI(x0: a.x, y0: a.y, x1: b.x, y1: b.y))
-                    }
-                    guard !edgesFull.isEmpty else { break }
-
-                    // 6) Fast integer scanline fill: for each row, compute intersections and set alpha to 255 between pairs
-                    for fy in minYFull...maxYFull {
-                        var xIntersections: [Int] = []
-                        xIntersections.reserveCapacity(16)
-                        for e in edgesFull {
-                            let yMin = min(e.y0, e.y1)
-                            let yMax = max(e.y0, e.y1)
-                            // Half-open interval: include yMin, exclude yMax to avoid double-counting
-                            if fy >= yMin && fy < yMax {
-                                let dy = e.y1 - e.y0
-                                let dx = e.x1 - e.x0
-                                let num = (fy - e.y0) * dx
-                                let xi = e.x0 + (dy != 0 ? num / dy : 0)
-                                xIntersections.append(xi)
+                    protoPlanar.withUnsafeMutableBytes { pPtr in
+                        closedProto.withUnsafeMutableBytes { cPtr in
+                            var src = vImage_Buffer(data: pPtr.baseAddress!, height: vImagePixelCount(Hp), width: vImagePixelCount(Wp), rowBytes: Wp)
+                            guard let tmpData = malloc(Wp * Hp) else { return }
+                            guard let dstData = malloc(Wp * Hp) else { free(tmpData); return }
+                            var tmp = vImage_Buffer(data: tmpData, height: vImagePixelCount(Hp), width: vImagePixelCount(Wp), rowBytes: Wp)
+                            var dst = vImage_Buffer(data: dstData, height: vImagePixelCount(Hp), width: vImagePixelCount(Wp), rowBytes: Wp)
+                            defer { free(tmp.data); free(dst.data) }
+                            kernel.withUnsafeMutableBufferPointer { kPtr in
+                                vImageDilate_Planar8(&src, &tmp, 0, 0, kPtr.baseAddress!, vImagePixelCount(kernelSize), vImagePixelCount(kernelSize), vImage_Flags(kvImageNoFlags))
+                                vImageErode_Planar8(&tmp, &dst, 0, 0, kPtr.baseAddress!, vImagePixelCount(kernelSize), vImagePixelCount(kernelSize), vImage_Flags(kvImageNoFlags))
                             }
+                            // copy dst -> closedProto
+                            memcpy(cPtr.baseAddress!, dst.data, spatial)
                         }
-                        if xIntersections.count < 2 { continue }
-                        xIntersections.sort()
-                        let row = pixels.advanced(by: fy * width * 4)
-                        var i = 0
-                        while i + 1 < xIntersections.count {
-                            let start = max(0, min(xIntersections[i], width - 1))
-                            let end   = max(0, min(xIntersections[i + 1], width - 1))
-                            if end > start {
-                                var xx = start
-                                while xx < end {
-                                    row[xx * 4 + 3] = 255
-                                    xx += 1
+                    }
+
+                    // Count non-zero proto pixels AFTER closing
+                    var protoOnAfter = 0
+                    for i in 0..<spatial { if closedProto[i] > 0 { protoOnAfter += 1 } }
+                    if self.debugMode { print("🔍 proto nonzero AFTER close (kernel=\(kernelSize)x\(kernelSize)): \(protoOnAfter)/\(spatial) (\(String(format: "%.2f", Float(protoOnAfter)/Float(spatial)*100))%)") }
+
+                    // Upscale closedProto -> full resolution Planar8
+                    let fullCount = width * height
+                    var fullPlanar = [UInt8](repeating: 0, count: fullCount)
+                    closedProto.withUnsafeMutableBytes { cPtr in
+                        fullPlanar.withUnsafeMutableBytes { fPtr in
+                            var src = vImage_Buffer(data: cPtr.baseAddress!, height: vImagePixelCount(Hp), width: vImagePixelCount(Wp), rowBytes: Wp)
+                            var dst = vImage_Buffer(data: fPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
+                            let scaleErr = vImageScale_Planar8(&src, &dst, nil, vImage_Flags(kvImageHighQualityResampling))
+                            if scaleErr != kvImageNoError && self.debugMode { print("⚠️ vImageScale_Planar8 failed: \(scaleErr)") }
+                        }
+                    }
+
+
+                    // Check coverage; if too small, fallback to alpha-shape original flow
+                    var coverage: Int = 0
+                    for i in 0..<fullCount { if fullPlanar[i] > 0 { coverage += 1 } }
+                    if self.debugMode { print("🔺 Accelerated cloth mask coverage: \(coverage)/\(fullCount) (\(String(format: "%.2f", Float(coverage)/Float(fullCount)*100))%)") }
+
+                    // Compute bounding box of upscaled mask
+                    if coverage > 0 {
+                        var minXFull = width, maxXFull = 0, minYFull = height, maxYFull = 0
+                        for y in 0..<height {
+                            let rowBase = y * width
+                            for x in 0..<width {
+                                if fullPlanar[rowBase + x] > 0 {
+                                    if x < minXFull { minXFull = x }
+                                    if x > maxXFull { maxXFull = x }
+                                    if y < minYFull { minYFull = y }
+                                    if y > maxYFull { maxYFull = y }
                                 }
                             }
-                            i += 2
+                        }
+                        let bboxW = max(0, maxXFull - minXFull + 1)
+                        let bboxH = max(0, maxYFull - minYFull + 1)
+                        if self.debugMode {
+                            print("🔎 Upscaled mask bbox: x:\(minXFull)-\(maxXFull) y:\(minYFull)-\(maxYFull) size:\(bboxW)x\(bboxH) area:\(bboxW*bboxH)")
                         }
                     }
 
-                    // 7) Draw hull outline in magenta for visibility (optional)
-                    let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
-                    for p in polygon {
-                        let fx = Int(Float(p.x) * sxOutline)
-                        let fy = Int(Float(p.y) * syOutline)
-                        guard fx >= 1 && fx < width - 1 && fy >= 1 && fy < height - 1 else { continue }
-                        for yy in (fy - 1)...(fy + 1) {
-                            let row = pixels.advanced(by: yy * width * 4)
-                            for xx in (fx - 1)...(fx + 1) {
-                                let q = row.advanced(by: xx * 4)
-                                if q[3] != 0 { q[0] = b; q[1] = g; q[2] = r; q[3] = a }
+                    if coverage < 8 {
+                        // Fallback: use original alpha-shape approach (leave existing code path by continuing into it)
+                        // Reconstruct pts and run alpha-shape fallback exactly as previous implementation
+                        var pts: [(x: Int, y: Int)] = []
+                        pts.reserveCapacity(spatial)
+                        for y in 0..<Hp {
+                            let rowBase = y * Wp
+                            for x in 0..<Wp {
+                                if globalMask[rowBase + x] > 0 { pts.append((x: x, y: y)) }
+                            }
+                        }
+                        if self.debugMode { print("🔁 Falling back to alpha-shape: proto pts=\(pts.count)") }
+                        if pts.count < 3 { break }
+                        let alphaValue: Float = 2.5
+                        let hullEdges = AlphaShape.compute(points: pts, alpha: alphaValue)
+                        if hullEdges.isEmpty { break }
+                        var adjacency: [String: (x: Int, y: Int)] = [:]
+                        func key(_ p: (x: Int, y: Int)) -> String { "\(p.x)_\(p.y)" }
+                        for e in hullEdges { adjacency[key(e.start)] = e.end }
+                        var polygon: [(x: Int, y: Int)] = []
+                        var current = hullEdges[0].start
+                        polygon.append(current)
+                        var safety = 0
+                        while let next = adjacency[key(current)], safety < 10000 {
+                            if next.x == polygon.first!.x && next.y == polygon.first!.y { break }
+                            polygon.append(next)
+                            current = next
+                            safety += 1
+                        }
+                        if polygon.count < 3 { break }
+
+                        // Map and fill exactly as original path
+                        let sxOutline = Float(width) / Float(Wp)
+                        let syOutline = Float(height) / Float(Hp)
+                        var polyFull: [(x: Int, y: Int)] = []
+                        polyFull.reserveCapacity(polygon.count)
+                        var minYFull = height
+                        var maxYFull = 0
+                        for p in polygon {
+                            let fx = Int(Float(p.x) * sxOutline)
+                            let fy = Int(Float(p.y) * syOutline)
+                            let cx = max(0, min(fx, width - 1))
+                            let cy = max(0, min(fy, height - 1))
+                            polyFull.append((cx, cy))
+                            if cy < minYFull { minYFull = cy }
+                            if cy > maxYFull { maxYFull = cy }
+                        }
+                        if minYFull < 0 || maxYFull >= height || minYFull >= maxYFull { break }
+                        struct EdgeI { let x0: Int; let y0: Int; let x1: Int; let y1: Int }
+                        var edgesFull: [EdgeI] = []
+                        for i in 0..<polyFull.count {
+                            let a = polyFull[i]
+                            let b = polyFull[(i + 1) % polyFull.count]
+                            if a.y == b.y { continue }
+                            edgesFull.append(EdgeI(x0: a.x, y0: a.y, x1: b.x, y1: b.y))
+                        }
+                        if edgesFull.isEmpty { break }
+                        for fy in minYFull...maxYFull {
+                            var xIntersections: [Int] = []
+                            xIntersections.reserveCapacity(16)
+                            for e in edgesFull {
+                                let yMin = min(e.y0, e.y1)
+                                let yMax = max(e.y0, e.y1)
+                                if fy >= yMin && fy < yMax {
+                                    let dy = e.y1 - e.y0
+                                    let dx = e.x1 - e.x0
+                                    let num = (fy - e.y0) * dx
+                                    let xi = e.x0 + (dy != 0 ? num / dy : 0)
+                                    xIntersections.append(xi)
+                                }
+                            }
+                            if xIntersections.count < 2 { continue }
+                            xIntersections.sort()
+                            let row = pixels.advanced(by: fy * width * 4)
+                            var i = 0
+                            while i + 1 < xIntersections.count {
+                                let start = max(0, min(xIntersections[i], width - 1))
+                                let end   = max(0, min(xIntersections[i + 1], width - 1))
+                                if end > start {
+                                    var xx = start
+                                    while xx < end {
+                                        row[xx * 4 + 3] = 255
+                                        xx += 1
+                                    }
+                                }
+                                i += 2
+                            }
+                        }
+                        // optional outline draw omitted in fallback for brevity
+                        break
+                    }
+
+                    // Apply fullPlanar as alpha channel (set A=255 where mask>0)
+                    fullPlanar.withUnsafeBufferPointer { maskPtr in
+                        for y in 0..<height {
+                            let row = pixels.advanced(by: y * width * 4)
+                            let rowBase = y * width
+                            for x in 0..<width {
+                                let idx = rowBase + x
+                                if maskPtr[idx] > 0 {
+                                    row[x * 4 + 3] = 255
+                                } else {
+                                    row[x * 4 + 0] = 0
+                                    row[x * 4 + 1] = 0
+                                    row[x * 4 + 2] = 0
+                                    row[x * 4 + 3] = 0
+                                }
                             }
                         }
                     }
@@ -2763,10 +2875,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
                 
             }
-            // ✅ Labels (always), boxes only in debugMode
+            // ✅ Labels (always), boxes only in debugMode — show top stage1 bboxes
             self.drawLabelsAndBoxes(
                 ctx: ctx,
-                stage1: [primaryBBox],
+                stage1: primaryBBoxes,
                 stage2: stage2Detections,
                 imageWidth: width,
                 imageHeight: height,
