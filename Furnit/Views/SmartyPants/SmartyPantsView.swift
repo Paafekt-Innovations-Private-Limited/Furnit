@@ -18,7 +18,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var detectAllObjects: Bool = false
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = true
+    var debugMode: Bool = false
     var active: Bool = false
     var edgeFillMode: EdgeFillMode = .chairType
 
@@ -450,7 +450,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.3
-    var debugMode: Bool = true  // Enable debug prints and image saves
+    var debugMode: Bool = false  // Enable debug prints and image saves
     var edgeFillMode: EdgeFillMode = .chairType
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
@@ -1032,8 +1032,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let fullWf = Float(CVPixelBufferGetWidth(pixelBuffer))
         let fullHf = Float(CVPixelBufferGetHeight(pixelBuffer))
         
-        let scaleX = fullWf / 960.0
-        let scaleY = fullHf / 960.0
+        let scaleX = fullWf / 1280.0
+        let scaleY = fullHf / 1280.0
         
         let centerX = det.x * scaleX
         let centerY = det.y * scaleY
@@ -1129,7 +1129,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         // STAGE 1: Preprocess
         let stage1PreStart = Date()
-        guard let resized = resizePixelBufferToSquare(pixelBuffer, size: 960) else {
+        guard let resized = resizePixelBufferToSquare(pixelBuffer, size: 1280) else {
             isProcessing = false
             return
         }
@@ -1235,7 +1235,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let stage2Start = Date()
         // Kishore
         if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, padding: 0.0),
-           let resizedCrop = resizePixelBufferToSquare(croppedBuffer, size: 960),
+           let resizedCrop = resizePixelBufferToSquare(croppedBuffer, size: 1280),
            let cropInputArray = pixelBufferToMLMultiArray(resizedCrop),
            let cropInputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": cropInputArray]) {
 
@@ -1442,7 +1442,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     
-    private func resizePixelBufferToSquare(_ src: CVPixelBuffer, size: Int = 960) -> CVPixelBuffer? {
+    private func resizePixelBufferToSquare(_ src: CVPixelBuffer, size: Int = 1280) -> CVPixelBuffer? {
         let t0 = Date()
         
         CVPixelBufferLockBaseAddress(src, .readOnly)
@@ -1589,7 +1589,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
         
-        let scale = Float(width) / 960.0
+        let scale = Float(width) / 1280.0
         let mx1 = max(0, Int((detection.x - detection.width / 2) * scale))
         let my1 = max(0, Int((detection.y - detection.height / 2) * scale))
         let mx2 = min(width, Int((detection.x + detection.width / 2) * scale))
@@ -2229,7 +2229,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     
-    // MARK: - TWO-STAGE CUTOUT (with Accelerate prototype build & binary mask)
     private func generateCutoutTwoStage(
         stage1Detections: [DetectionSmarty],
         stage1Prototypes: MLMultiArray,
@@ -2293,9 +2292,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(spatial))
                 var mean: Float = 0
                 vDSP_meanv(rawMask, 1, &mean, vDSP_Length(spatial))
-
-                print("\n📊 PRIMARY MASK RAW VALUES (\(det.className) @ \(Int(det.confidence*100))%):")
-                print("   Range: min=\(minVal), max=\(maxVal), mean=\(mean)")
+                if debugMode {
+                    print("\n📊 PRIMARY MASK RAW VALUES (\(det.className) @ \(Int(det.confidence*100))%):")
+                    print("   Range: min=\(minVal), max=\(maxVal), mean=\(mean)")
+                }
 
                 var posCount = 0, negCount = 0, zeroCount = 0
                 for v in rawMask {
@@ -2303,11 +2303,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     else if v < 0 { negCount += 1 }
                     else { zeroCount += 1 }
                 }
-                print("   Distribution: \(posCount) positive, \(negCount) negative, \(zeroCount) zero")
+                if debugMode {
+                    print("   Distribution: \(posCount) positive, \(negCount) negative, \(zeroCount) zero")
+                    
+                    print("   Mask coefficients (32): [\(det.maskCoeffs.map { String(format: "%.6f", $0) }.joined(separator: ", "))]")
+                }
 
-                print("   Mask coefficients (32): [\(det.maskCoeffs.map { String(format: "%.6f", $0) }.joined(separator: ", "))]")
-
-                let scale = Float(Wp) / 960.0
+                let scale = Float(Wp) / 1280.0
                 let mx1 = max(0, Int((det.x - det.width / 2) * scale))
                 let my1 = max(0, Int((det.y - det.height / 2) * scale))
                 let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
@@ -2316,7 +2318,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 print("   BBox in mask coords: (\(mx1),\(my1)) → (\(mx2),\(my2))")
             }
 
-            let scale = Float(Wp) / 960.0
+            let scale = Float(Wp) / 1280.0
             let mx1 = max(0, Int((det.x - det.width / 2) * scale))
             let my1 = max(0, Int((det.y - det.height / 2) * scale))
             let mx2 = min(Wp, Int((det.x + det.width / 2) * scale))
@@ -2351,7 +2353,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         for i in 0..<spatial { if globalMask[i] > 0 { stage1PixelCount += 1 } }
         if self.debugMode {
             print("   ⚙️ Mask threshold: \(maskThreshold)")
-            print("   📊 After Stage 1: \(stage1PixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(stage1PixelCount)/Float(spatial)*100))%)")
+            print(String(format: "   📊 After Stage 1: %d/%d pixels (%.1f%%)", stage1PixelCount, spatial, Float(stage1PixelCount)/Float(spatial)*100))
             print(String(format: "⏱ Stage1 mask build+apply: %.2f ms", s1MaskEnd.timeIntervalSince(s1MaskStart) * 1000.0))
         }
 
@@ -2374,8 +2376,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let padding: Float = 0.1
             let cropX1 = max(0, primaryBBox.x - primaryBBox.width / 2 * (1 + padding))
             let cropY1 = max(0, primaryBBox.y - primaryBBox.height / 2 * (1 + padding))
-            let cropX2 = min(960, primaryBBox.x + primaryBBox.width / 2 * (1 + padding))
-            let cropY2 = min(960, primaryBBox.y + primaryBBox.height / 2 * (1 + padding))
+            let cropX2 = min(1280, primaryBBox.x + primaryBBox.width / 2 * (1 + padding))
+            let cropY2 = min(1280, primaryBBox.y + primaryBBox.height / 2 * (1 + padding))
             let cropW = cropX2 - cropX1
             let cropH = cropY2 - cropY1
 
@@ -2383,7 +2385,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 print("   Crop region (model): (\(Int(cropX1)),\(Int(cropY1)))→(\(Int(cropX2)),\(Int(cropY2))) = \(Int(cropW))x\(Int(cropH))")
             }
 
-            let scale = Float(Wp) / 960.0
+            let scale = Float(Wp) / 1280.0
 
             let s2MaskStart = Date()
             for det in stage2Detections {
@@ -2450,7 +2452,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let addedByStage2 = finalPixelCount - stage1PixelCount
 
         if self.debugMode {
-            print("\n📊 MERGED MASK: \(finalPixelCount)/\(spatial) pixels (\(String(format: "%.1f", Float(finalPixelCount)/Float(spatial)*100))%)")
+            print(String(format: "\n📊 MERGED MASK: %d/%d pixels (%.1f%%)", finalPixelCount, spatial, Float(finalPixelCount)/Float(spatial)*100))
             print("   Stage 1 contributed: \(stage1PixelCount) pixels")
             print("   Stage 2 added: \(addedByStage2) NEW pixels")
         }
@@ -2458,10 +2460,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // Accelerate: convert globalMask float (0/1) to 0/255 UInt8
         let binaryMask = makeBinaryMaskFromGlobalMask(globalMask, count: spatial)
         
-        
-        
-        
-
         if self.debugMode { print20x20BinaryGrid("MERGED STAGE1+STAGE2", mask: binaryMask, width: Wp, height: Hp) }
 
         var minX = Wp
@@ -2540,7 +2538,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 memset(data, 0, width * height * 4)
                 if self.debugMode { print("📊 Output: 0/\(width * height) opaque (0.0%)") }
             } else {
-                let modelSize: Float = 960.0
+                let modelSize: Float = 1280.0
                 var imageRects = [(x0: Int, y0: Int, x1: Int, y1: Int)]()
                 imageRects.reserveCapacity(keptDetections.count)
                 
@@ -2692,120 +2690,125 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
 
                 case .clothBased:
-                    // Concave hull fill: build a hull from prototype-space edge points, then scanline-fill in full-res alpha
-                    if !edges.isEmpty {
-                        let sxOutline = Float(width) / Float(Wp)
-                        let syOutline = Float(height) / Float(Hp)
-
-                        // 1) Build point cloud in prototype resolution from edge pixels
-                        var pts: [(x: Int, y: Int)] = []
-                        pts.reserveCapacity(min(edges.count, 2000))
-                        // Downsample edge points by simple stride to cap work; AlphaShape also downsamples internally
-                        let step = max(1, edges.count / 1500)
-                        var idx = 0
-                        for (ex, ey) in edges {
-                            if idx % step == 0 { pts.append((x: ex, y: ey)) }
-                            idx += 1
-                        }
-
-                        // 2) Compute concave hull edges in prototype space
-                        let hullEdges = AlphaShape.compute(points: pts, alpha: 0.5)
-                        guard !hullEdges.isEmpty else { /* nothing to fill */ break }
-
-                        // 3) Reconstruct ordered polygon vertices (prototype coords)
-                        // Build adjacency map
-                        var adjacency: [String: (x: Int, y: Int)] = [:]
-                        func key(_ p: (x: Int, y: Int)) -> String { "\(p.x)_\(p.y)" }
-                        for e in hullEdges {
-                            adjacency[key(e.start)] = e.end
-                        }
-                        // Start chain from first edge
-                        var polygon: [(x: Int, y: Int)] = []
-                        var current = hullEdges[0].start
-                        polygon.append(current)
-                        var safety = 0
-                        while let next = adjacency[key(current)], safety < 5000 {
-                            if next.x == polygon.first!.x && next.y == polygon.first!.y { break }
-                            polygon.append(next)
-                            current = next
-                            safety += 1
-                        }
-                        guard polygon.count >= 3 else { break }
-
-                        // 4) Map polygon vertices to full-resolution integer coordinates
-                        var polyFull: [(x: Int, y: Int)] = []
-                        polyFull.reserveCapacity(polygon.count)
-                        var minYFull = height, maxYFull = 0
-                        for p in polygon {
-                            let fx = Int(Float(p.x) * sxOutline)
-                            let fy = Int(Float(p.y) * syOutline)
-                            let cx = max(0, min(fx, width - 1))
-                            let cy = max(0, min(fy, height - 1))
-                            polyFull.append((cx, cy))
-                            if cy < minYFull { minYFull = cy }
-                            if cy > maxYFull { maxYFull = cy }
-                        }
-                        if minYFull < 0 || maxYFull >= height || minYFull >= maxYFull { break }
-
-                        // 5) Precompute polygon edges in full-res for scanline intersection
-                        struct EdgeI { let x0: Int; let y0: Int; let x1: Int; let y1: Int }
-                        var edgesFull: [EdgeI] = []
-                        edgesFull.reserveCapacity(polyFull.count)
-                        for i in 0..<polyFull.count {
-                            let a = polyFull[i]
-                            let b = polyFull[(i + 1) % polyFull.count]
-                            if a.y == b.y { continue } // skip horizontal edges for robustness
-                            edgesFull.append(EdgeI(x0: a.x, y0: a.y, x1: b.x, y1: b.y))
-                        }
-                        guard !edgesFull.isEmpty else { break }
-
-                        // 6) Fast integer scanline fill: for each row, compute intersections and set alpha to 255 between pairs
-                        for fy in minYFull...maxYFull {
-                            var xIntersections: [Int] = []
-                            xIntersections.reserveCapacity(16)
-                            for e in edgesFull {
-                                let yMin = min(e.y0, e.y1)
-                                let yMax = max(e.y0, e.y1)
-                                // Half-open interval: include yMin, exclude yMax to avoid double-counting
-                                if fy >= yMin && fy < yMax {
-                                    let dy = e.y1 - e.y0
-                                    let dx = e.x1 - e.x0
-                                    // Compute intersection x with integer arithmetic
-                                    let num = (fy - e.y0) * dx
-                                    let xi = e.x0 + (dy != 0 ? num / dy : 0)
-                                    xIntersections.append(xi)
-                                }
-                            }
-                            if xIntersections.count < 2 { continue }
-                            xIntersections.sort()
-                            let row = pixels.advanced(by: fy * width * 4)
-                            var i = 0
-                            while i + 1 < xIntersections.count {
-                                let start = max(0, min(xIntersections[i], width - 1))
-                                let end   = max(0, min(xIntersections[i + 1], width - 1))
-                                if end > start {
-                                    var xx = start
-                                    while xx < end {
-                                        row[xx * 4 + 3] = 255
-                                        xx += 1
-                                    }
-                                }
-                                i += 2
+                    // ✅ Concave hull (alpha-shape) fill, mirroring Python alpha_shape() on union mask
+                    // 1) Build point cloud from globalMask in prototype (Wp×Hp) coordinates
+                    var pts: [(x: Int, y: Int)] = []
+                    pts.reserveCapacity(spatial)
+                    for y in 0..<Hp {
+                        let rowBase = y * Wp
+                        for x in 0..<Wp {
+                            if globalMask[rowBase + x] > 0 {
+                                pts.append((x: x, y: y))
                             }
                         }
+                    }
+                    if self.debugMode {
+                        print("🔺 Alpha-shape input points (proto): \(pts.count)")
+                    }
+                    guard pts.count >= 3 else { break }
 
-                        // 7) Draw original edge outline in magenta for visibility (optional)
-                        let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
-                        for (ex, ey) in edges {
-                            let fx = Int(Float(ex) * sxOutline)
-                            let fy = Int(Float(ey) * syOutline)
-                            guard fx >= 1 && fx < width - 1 && fy >= 1 && fy < height - 1 else { continue }
-                            for yy in (fy - 1)...(fy + 1) {
-                                let row = pixels.advanced(by: yy * width * 4)
-                                for xx in (fx - 1)...(fx + 1) {
-                                    let p = row.advanced(by: xx * 4)
-                                    if p[3] != 0 { p[0] = b; p[1] = g; p[2] = r; p[3] = a }
+                    // 2) Compute concave hull edges in prototype space (alpha matches Python: ALPHA = 2.5)
+                    let alphaValue: Float = 2.5
+                    let hullEdges = AlphaShape.compute(points: pts, alpha: alphaValue)
+                    if self.debugMode {
+                        print("🔺 Alpha-shape produced \(hullEdges.count) edges (alpha=\(alphaValue))")
+                    }
+                    guard !hullEdges.isEmpty else { break }
+
+                    // 3) Reconstruct ordered polygon vertices (prototype coords)
+                    var adjacency: [String: (x: Int, y: Int)] = [:]
+                    func key(_ p: (x: Int, y: Int)) -> String { "\(p.x)_\(p.y)" }
+                    for e in hullEdges {
+                        adjacency[key(e.start)] = e.end
+                    }
+                    var polygon: [(x: Int, y: Int)] = []
+                    var current = hullEdges[0].start
+                    polygon.append(current)
+                    var safety = 0
+                    while let next = adjacency[key(current)], safety < 10000 {
+                        if next.x == polygon.first!.x && next.y == polygon.first!.y { break }
+                        polygon.append(next)
+                        current = next
+                        safety += 1
+                    }
+                    guard polygon.count >= 3 else { break }
+
+                    // 4) Map polygon vertices to full-resolution integer coordinates
+                    let sxOutline = Float(width) / Float(Wp)
+                    let syOutline = Float(height) / Float(Hp)
+
+                    var polyFull: [(x: Int, y: Int)] = []
+                    polyFull.reserveCapacity(polygon.count)
+                    var minYFull = height
+                    var maxYFull = 0
+                    for p in polygon {
+                        let fx = Int(Float(p.x) * sxOutline)
+                        let fy = Int(Float(p.y) * syOutline)
+                        let cx = max(0, min(fx, width - 1))
+                        let cy = max(0, min(fy, height - 1))
+                        polyFull.append((cx, cy))
+                        if cy < minYFull { minYFull = cy }
+                        if cy > maxYFull { maxYFull = cy }
+                    }
+                    if minYFull < 0 || maxYFull >= height || minYFull >= maxYFull { break }
+
+                    // 5) Precompute polygon edges in full-res for scanline intersection
+                    struct EdgeI { let x0: Int; let y0: Int; let x1: Int; let y1: Int }
+                    var edgesFull: [EdgeI] = []
+                    edgesFull.reserveCapacity(polyFull.count)
+                    for i in 0..<polyFull.count {
+                        let a = polyFull[i]
+                        let b = polyFull[(i + 1) % polyFull.count]
+                        if a.y == b.y { continue } // skip horizontal edges for robustness
+                        edgesFull.append(EdgeI(x0: a.x, y0: a.y, x1: b.x, y1: b.y))
+                    }
+                    guard !edgesFull.isEmpty else { break }
+
+                    // 6) Fast integer scanline fill: for each row, compute intersections and set alpha to 255 between pairs
+                    for fy in minYFull...maxYFull {
+                        var xIntersections: [Int] = []
+                        xIntersections.reserveCapacity(16)
+                        for e in edgesFull {
+                            let yMin = min(e.y0, e.y1)
+                            let yMax = max(e.y0, e.y1)
+                            // Half-open interval: include yMin, exclude yMax to avoid double-counting
+                            if fy >= yMin && fy < yMax {
+                                let dy = e.y1 - e.y0
+                                let dx = e.x1 - e.x0
+                                let num = (fy - e.y0) * dx
+                                let xi = e.x0 + (dy != 0 ? num / dy : 0)
+                                xIntersections.append(xi)
+                            }
+                        }
+                        if xIntersections.count < 2 { continue }
+                        xIntersections.sort()
+                        let row = pixels.advanced(by: fy * width * 4)
+                        var i = 0
+                        while i + 1 < xIntersections.count {
+                            let start = max(0, min(xIntersections[i], width - 1))
+                            let end   = max(0, min(xIntersections[i + 1], width - 1))
+                            if end > start {
+                                var xx = start
+                                while xx < end {
+                                    row[xx * 4 + 3] = 255
+                                    xx += 1
                                 }
+                            }
+                            i += 2
+                        }
+                    }
+
+                    // 7) Draw hull outline in magenta for visibility (optional)
+                    let r: UInt8 = 255, g: UInt8 = 0, b: UInt8 = 200, a: UInt8 = 255
+                    for p in polygon {
+                        let fx = Int(Float(p.x) * sxOutline)
+                        let fy = Int(Float(p.y) * syOutline)
+                        guard fx >= 1 && fx < width - 1 && fy >= 1 && fy < height - 1 else { continue }
+                        for yy in (fy - 1)...(fy + 1) {
+                            let row = pixels.advanced(by: yy * width * 4)
+                            for xx in (fx - 1)...(fx + 1) {
+                                let q = row.advanced(by: xx * 4)
+                                if q[3] != 0 { q[0] = b; q[1] = g; q[2] = r; q[3] = a }
                             }
                         }
                     }
@@ -2923,6 +2926,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
 
+
     // ======================================================
     // SAFE LABEL + BOX DRAWING (NO CoreText, NO CTLineDraw)
     // ======================================================
@@ -2942,7 +2946,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         let W = CGFloat(imageWidth)
         let H = CGFloat(imageHeight)
-        let modelSize: CGFloat = 960.0
+        let modelSize: CGFloat = 1280.0
         let sx = W / modelSize
         let sy = H / modelSize
 
@@ -3138,9 +3142,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let w  = CGFloat(detection.width)
         let h  = CGFloat(detection.height)
 
-        // YOLOE outputs are scaled to 960×960 model input
-        let sx = CGFloat(imageWidth) / 960.0
-        let sy = CGFloat(imageHeight) / 960.0
+        // YOLOE outputs are scaled to 1280×1280 model input
+        let sx = CGFloat(imageWidth) / 1280.0
+        let sy = CGFloat(imageHeight) / 1280.0
 
         // ---------------------------------------
         // Compute top-left of bbox in output image
@@ -3186,7 +3190,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private func drawBoundingBox(ctx: CGContext, detection: DetectionSmarty, imageWidth: Int, imageHeight: Int) {
         let originalWidth = CGFloat(imageWidth)
         let originalHeight = CGFloat(imageHeight)
-        let modelSize: CGFloat = 960.0
+        let modelSize: CGFloat = 1280.0
         let scaleX = originalWidth / modelSize
         let scaleY = originalHeight / modelSize
 
@@ -3521,14 +3525,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: - Pixel Buffer to MLMultiArray (Accelerate) — with timing
     private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
         let t0 = Date()
-        guard let array = try? MLMultiArray(shape: [1, 3, 960, 960], dataType: .float32) else { return nil }
+        guard let array = try? MLMultiArray(shape: [1, 3, 1280, 1280], dataType: .float32) else { return nil }
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
 
         let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let width = 960
-        let height = 960
+        let width = 1280
+        let height = 1280
         let pixelCount = width * height
         let src = baseAddress.assumingMemoryBound(to: UInt8.self)
 
