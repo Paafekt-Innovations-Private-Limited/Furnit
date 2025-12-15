@@ -15,7 +15,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.5
     
-    var detectAllObjects: Bool = false
+    var detectAllObjects: Bool = true
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
     var debugMode: Bool = true
@@ -1233,7 +1233,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let rawDetections = extractDetections(from: detArray, confThreshold: 0.01)
 //        let nmsStart = Date()
-        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.9)
+//        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.9)
 //        let stage1Kept = keepOverlappingDetections(uniqueDetections)
 //        let stage2Kept = stage2Prototypes != nil
 //            ? applyNMS(stage2Detections, iouThreshold: 0.99)
@@ -1254,7 +1254,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //        }
         if self.debugMode {
             print("\n📊 UNION SUMMARY:")
-            print("   Stage 1: keeping \(uniqueDetections.count) overlapping detections")
+            print("   Stage 1: keeping \(rawDetections.count) overlapping detections")
             print("   Stage 2: removed")
         }
 
@@ -1265,7 +1265,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //            }
 //            return
 //        }
-        if uniqueDetections.isEmpty {
+        if rawDetections.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -1297,13 +1297,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let cutoutStart = Date()
         // Keep top-5 stage1 detections for boxes/labels and inspection
         // Keep the top-5 detections by bbox area (largest boxes)
-        let top5Stage1 = Array(uniqueDetections.sorted { ($0.width * $0.height) > ($1.width * $1.height) }.prefix(10))
-        generateCutoutTwoStage(
-            stage1Detections: uniqueDetections,
+//        let top5Stage1 = Array(uniqueDetections.sorted { ($0.width * $0.height) > ($1.width * $1.height) }.prefix(500))
+        generateCutout(
             stage1Prototypes: prototypesArray,
-            stage2Detections: stage2Detections,
-            stage2Prototypes: stage2Prototypes,
-            primaryBBoxes: top5Stage1,
+            primaryBBoxes: rawDetections,
             originalImage: pixelBuffer
         )
         let cutoutEnd = Date()
@@ -2179,11 +2176,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     
-    private func generateCutoutTwoStage(
-        stage1Detections: [DetectionSmarty],
+    private func generateCutout(
         stage1Prototypes: MLMultiArray,
-        stage2Detections: [DetectionSmarty],
-        stage2Prototypes: MLMultiArray?,
         primaryBBoxes: [DetectionSmarty],
         originalImage: CVPixelBuffer
     ) {
@@ -2196,9 +2190,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let spatial = Hp * Wp
 
         if self.debugMode {
-            print("\n🎨 Generating TWO-STAGE UNION cutout")
-            print("   Stage 1: \(stage1Detections.count) detections")
-            print("   Stage 2: \(stage2Detections.count) detections")
+            print("\n🎨 Generating UNION cutout (stage-2 removed)")
+//            print("   Stage 1: \(stage1Detections.count) detections")
+            print("   Stage 2: removed")
             print("📐 Prototype shape: C=\(C), H=\(Hp), W=\(Wp)")
         }
 
@@ -2220,7 +2214,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         var stage1PixelCount = 0
 
         let s1MaskStart = Date()
-        for (detIndex, det) in stage1Detections.enumerated() {
+        // If caller provided top primary bboxes, only use those to build the global mask.
+//        let stage1Keep = primaryBBoxes.isEmpty ? stage1Detections : primaryBBoxes
+        for (detIndex, det) in primaryBBoxes.enumerated() {
             var rawMask = [Float](repeating: 0, count: spatial)
             let mmulStart = Date()
             vDSP_mmul(det.maskCoeffs, 1,
@@ -2431,7 +2427,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             var xMap = [Int](repeating: 0, count: width)
             for px in 0..<width { xMap[px] = min(max(Int(Float(px) * scaleX), 0), Wp - 1) }
 
-            let keptDetections: [DetectionSmarty] = stage1Detections
+                // Use the provided primaryBBoxes (top-5) for final rendering and intervals
+                let keptDetections: [DetectionSmarty] = primaryBBoxes
 
             if keptDetections.isEmpty {
                 memset(data, 0, width * height * 4)
@@ -2879,7 +2876,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             self.drawLabelsAndBoxes(
                 ctx: ctx,
                 stage1: primaryBBoxes,
-                stage2: stage2Detections,
+                stage2: [],
                 imageWidth: width,
                 imageHeight: height,
                 drawBoxes: self.debugMode
