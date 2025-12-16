@@ -1237,34 +1237,68 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         var selectedDets: [UnionDet] = []
         selectedDets.reserveCapacity(512)
+        
+        // FURNITURE-ONLY path — keep a tight loop over furniture indices
+        let furnitureList = furnitureClasses.filter { $0.key < numClasses }
 
-//        if detectAllObjects {
-            var tempScores = [Float](repeating: 0, count: numClasses)
+        // Debug: track best furniture confidence found
+        var bestFurnitureConf: Float = 0
+        var bestFurnitureClass = ""
+        var bestFurnitureAnchor = -1
+        var tempScores = [Float](repeating: 0, count: numClasses)
 
-            for anchor in 0..<numAnchors {
-                let x = detBuf[0 * stride + anchor]
-                let y = detBuf[1 * stride + anchor]
-                let w = detBuf[2 * stride + anchor]
-                let h = detBuf[3 * stride + anchor]
-                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) { continue }
+        for anchor in 0..<numAnchors {
+            let x = detBuf[0 * stride + anchor]
+            let y = detBuf[1 * stride + anchor]
+            let w = detBuf[2 * stride + anchor]
+            let h = detBuf[3 * stride + anchor]
 
-                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-                cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
+            if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) {
+                continue
+            }
 
-                var maxVal: Float = 0
-                var maxIdx: vDSP_Length = 0
-                vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
+            for (classIdx, className) in furnitureList {
+                let conf = detBuf[(4 + classIdx) * stride + anchor]
 
-                if maxVal > confidenceThreshold {
+                // Track best furniture confidence for debug
+                if conf.isFinite && conf > bestFurnitureConf {
+                    bestFurnitureConf = conf
+                    bestFurnitureClass = className
+                    bestFurnitureAnchor = anchor
+                }
+
+                if conf.isFinite && conf > confidenceThreshold {
                     var coeffs = [Float](repeating: 0, count: 32)
                     let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
                     cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
-                    selectedDets.append(
-                        UnionDet(x: x, y: y, w: w, h: h, coeffs: coeffs)
-                    )
+
+                    selectedDets.append(UnionDet(
+                        x: x, y: y, w: w, h: h, coeffs: coeffs
+                    ))
                 }
             }
-//        }
+        }
+
+        // Debug: show best furniture confidence found even if below threshold
+        if self.debugMode && selectedDets.isEmpty {
+            print("🔍 FURNITURE DEBUG: Best conf=\(String(format: "%.3f", bestFurnitureConf)) for '\(bestFurnitureClass)' at anchor \(bestFurnitureAnchor)")
+            print("   Threshold was: \(confidenceThreshold), furniture classes checked: \(furnitureList.count)")
+
+            // Also find best confidence across ALL classes for comparison (sample first 100 anchors)
+            var bestOverallConf: Float = 0
+            var bestOverallClass = -1
+            let sampleAnchors = min(100, numAnchors)
+            for anchor in 0..<sampleAnchors {
+                // Copy class scores into temp buffer
+                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
+                cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
+                var maxVal: Float = 0
+                var maxIdx: vDSP_Length = 0
+                vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
+                if maxVal > bestOverallConf { bestOverallConf = maxVal; bestOverallClass = Int(maxIdx) }
+            }
+            print("   Best OVERALL conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass)")
+        }
 
         if selectedDets.isEmpty {
             DispatchQueue.main.async {
@@ -1496,8 +1530,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         if debugMode {
             let ms = Date().timeIntervalSince(frameStart) * 1000
-            print(String(format: "🕒 Frame total (single method): %.2f ms", ms))
-            print("   Selected detections: \(selectedDets.count)")
+            print(String(format: "🕒 Frame total (furniture-only method): %.2f ms", ms))
+            print("   Furniture detections: \(selectedDets.count)")
             print("   Opaque pixels: \(totalSet) (\(String(format: "%.2f", Float(totalSet)/Float(origW*origH)*100))%)")
             print("   Letterbox correction: gain=\(String(format: "%.3f", letterboxGain)), pad=(\(String(format: "%.1f", letterboxPadX)),\(String(format: "%.1f", letterboxPadY)))")
             print("   Union bbox coverage: \((bx2-bx1)*(by2-by1)) pixels (\(String(format: "%.2f", Float((bx2-bx1)*(by2-by1))/Float(origW*origH)*100))% of image)")
