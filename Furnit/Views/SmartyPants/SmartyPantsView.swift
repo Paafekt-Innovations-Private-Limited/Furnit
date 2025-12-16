@@ -26,7 +26,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         let v = SmartyPantsContainerView()
         v.processInterval = processInterval
         v.confidenceThreshold = confidenceThreshold
-        v.detectAllObjects = detectAllObjects
+//        v.detectAllObjects = detectAllObjects
         v.useBilinearUpscaling = useBilinearUpscaling
         v.maskThreshold = maskThreshold
         v.debugMode = debugMode
@@ -40,7 +40,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
         uiView.confidenceThreshold = confidenceThreshold
-        uiView.detectAllObjects = detectAllObjects
+//        uiView.detectAllObjects = detectAllObjects
         uiView.useBilinearUpscaling = useBilinearUpscaling
         uiView.maskThreshold = maskThreshold
         uiView.debugMode = debugMode
@@ -449,13 +449,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.3
-    var debugMode: Bool = false  // Enable debug prints and image saves
+    var confidenceThreshold: Float = 0.01
+    var debugMode: Bool = true  // Enable debug prints and image saves
     var strongDebug: Bool = false  // Enable debug prints and image saves
     var edgeFillMode: EdgeFillMode = .chairType
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
-    var detectAllObjects: Bool = true
+//    var detectAllObjects: Bool = true
     
     // MARK: Brightness gate (prevent processing when phone is lying down / frame is dark)
     private var lumaThreshold: Float = 0.08          // 0.0 .. 1.0
@@ -695,7 +695,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
 
-            self.processFrame(pixelBuffer)
+            self.processFrameUnionCutout(pixelBuffer)
         }
     }
 
@@ -1113,45 +1113,37 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return dst
     }
     
-    private func processFrame(_ pixelBuffer: CVPixelBuffer) {
+//    import Accelerate
+//    import CoreML
+//    import UIKit
+
+    private func processFrameUnionCutout(_ pixelBuffer: CVPixelBuffer) {
         let frameStart = Date()
-        
+
         guard let model = mlModel else { return }
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval, !isProcessing else { return }
         lastProcessTime = now
         isProcessing = true
 
-        if self.debugMode {
+        if debugMode {
             print("\n🕒 ===== NEW FRAME @ \(now.timeIntervalSince1970) =====")
-            print("🔬 ========== STAGE 1: FULL FRAME ==========")
+            print("🔬 Single-stage: detect → union mask → cutout")
         }
-        setProgress(0.2, text: "Preprocessing frame…")
 
-        // STAGE 1: Preprocess
-        let stage1PreStart = Date()
-        guard let letterboxResult = resizePixelBufferToSquare(pixelBuffer, size: 1280) else {
+        // 1) Letterbox + to MLMultiArray
+        setProgress(0.25, text: "Preprocessing…")
+        guard let lb = resizePixelBufferToSquare(pixelBuffer, size: 1280) else {
             isProcessing = false
             return
         }
-        let resized = letterboxResult.buffer
-        let letterboxGain = letterboxResult.gain
-        let letterboxPadX = letterboxResult.padX
-        let letterboxPadY = letterboxResult.padY
-        
-        guard let inputArray = pixelBufferToMLMultiArray(resized) else {
+        guard let inputArray = pixelBufferToMLMultiArray(lb.buffer) else {
             isProcessing = false
             return
         }
-        let stage1PreEnd = Date()
-        if self.debugMode {
-            print(String(format: "⏱ Stage1 preprocess (letterbox+toMultiArray): %.2f ms", stage1PreEnd.timeIntervalSince(stage1PreStart) * 1000.0))
-        }
 
-        setProgress(0.35, text: "Running detection…")
-
-        // STAGE 1: Inference
-        let stage1InfStart = Date()
+        // 2) Inference
+        setProgress(0.45, text: "Running model…")
         guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
             isProcessing = false
             return
@@ -1160,350 +1152,300 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             isProcessing = false
             return
         }
-        let stage1InfEnd = Date()
-        if self.debugMode {
-            print(String(format: "⏱ Stage1 model.prediction: %.2f ms", stage1InfEnd.timeIntervalSince(stage1InfStart) * 1000.0))
-        }
 
-        if self.debugMode {
-            let names = output.featureNames.joined(separator: ", ")
-            print("📤 Model outputs: \(names)")
-        }
-
+        // 3) Grab detections + prototypes
         var detectionsArray: MLMultiArray?
-        if let arr = output.featureValue(for: "var_1432")?.multiArrayValue {
+        if let arr = output.featureValue(for: "var_2497")?.multiArrayValue {
             detectionsArray = arr
-//        } else if let arr = output.featureValue(for: "var_2421")?.multiArrayValue {
-        } else if let arr = output.featureValue(for: "var_2497")?.multiArrayValue {
-            detectionsArray = arr
-        } else {
-            for name in output.featureNames {
-                if let arr = output.featureValue(for: name)?.multiArrayValue {
-                    let shape = arr.shape.map { $0.intValue }
-                    if shape.count == 3 && shape[0] == 1 && shape[1] > 100 {
-                        detectionsArray = arr
-                        if self.debugMode { print("   → Using '\(name)' as detections: \(shape)") }
-                        break
-                    }
+        }
+
+        guard let detArray = detectionsArray,
+              let protoArray = output.featureValue(for: "p")?.multiArrayValue
+        else {
+            isProcessing = false
+            return
+        }
+
+        // 4) Read tensor dims
+        let numFeatures = detArray.shape[1].intValue
+        let numAnchors  = detArray.shape[2].intValue
+        let numClasses  = numFeatures - 4 - 32
+        guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
+            if debugMode { print("⚠️ Invalid det tensor dims") }
+            isProcessing = false
+            return
+        }
+
+        // 5) Copy detArray -> detBuf (Float32)
+        let totalCount = detArray.count
+        let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
+        defer { detBuf.deallocate() }
+
+        if detArray.dataType == .float32 {
+            let src = detArray.dataPointer.assumingMemoryBound(to: Float.self)
+            memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
+        }
+
+        // 6) Parse prototypes -> planes + dims
+        guard let protoInfo = parsePrototypes(protoArray) else {
+            isProcessing = false
+            return
+        }
+        let planes = protoInfo.planes
+        let pCount = protoInfo.count
+        let pH = protoInfo.height
+        let pW = protoInfo.width
+        guard pCount >= 32 else {
+            isProcessing = false
+            return
+        }
+
+        let planeSize = pH * pW
+
+        // 7) Reorg prototypes to A: [planeSize x 32] row-major
+        setProgress(0.60, text: "Building union mask…")
+        var A = [Float](repeating: 0, count: planeSize * 32)
+        var zero: Float = 0
+        A.withUnsafeMutableBufferPointer { dstPtr in
+            planes.withUnsafeBufferPointer { srcPtr in
+                for k in 0..<32 {
+                    let srcStart = srcPtr.baseAddress!.advanced(by: k * planeSize)
+                    let dstStart = dstPtr.baseAddress!.advanced(by: k)
+                    vDSP_vsadd(srcStart, 1, &zero, dstStart, 32, vDSP_Length(planeSize))
                 }
             }
         }
 
-        guard let detArray = detectionsArray else {
-            isProcessing = false
-            return
-        }
-
-        guard let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
-            isProcessing = false
-            return
-        }
-
-        let decodeStart = Date()
-        var all: [DetectionSmarty] = []
-
-        let numFeatures = detArray.shape[1].intValue
-        let numAnchors = detArray.shape[2].intValue
-        let numClasses = numFeatures - 4 - 32
-
-        // Validate tensor dimensions
-        guard numFeatures >= 36 && numAnchors > 0 && numClasses > 0 else {
-            if self.debugMode {
-                print("⚠️ extractDetections: Invalid tensor dimensions - features:\(numFeatures), anchors:\(numAnchors), classes:\(numClasses)")
-            }
-            isProcessing = false
-            return
-        }
-
-        let totalCount = detArray.count
-
-        // Validate total count matches expected dimensions
-        let expectedCount = numFeatures * numAnchors
-        guard totalCount >= expectedCount else {
-            if self.debugMode {
-                print("⚠️ extractDetections: Array size mismatch - expected:\(expectedCount), got:\(totalCount)")
-            }
-            isProcessing = false
-            return
-        }
-
-        let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
-        defer { detBuf.deallocate() }
-
-        let copyStart = Date()
-        if detArray.dataType == .float16 {
-            let src = detArray.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
-            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src),
-                                       height: 1, width: vImagePixelCount(totalCount),
-                                       rowBytes: totalCount * MemoryLayout<UInt16>.size)
-            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf),
-                                       height: 1, width: vImagePixelCount(totalCount),
-                                       rowBytes: totalCount * MemoryLayout<Float>.size)
-            let result = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-            if result != kvImageNoError && self.debugMode {
-                print("⚠️ extractDetections: vImage conversion failed: \(result)")
-            }
-        } else if detArray.dataType == .float32 {
-            let src = detArray.dataPointer.assumingMemoryBound(to: Float.self)
-            memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
-        } else {
-            for i in 0..<totalCount {
-                detBuf[i] = detArray[i].floatValue
-            }
-        }
-        let copyEnd = Date()
-        if self.debugMode {
-            print(String(format: "⏱ extractDetections copy/convert: %.2f ms",
-                         copyEnd.timeIntervalSince(copyStart) * 1000.0))
-        }
-
-        let coeffOffset = 4 + numClasses
+        // 8) Select anchors that pass threshold AND (optionally) furniture-only
+        //    We only keep coeffs; no DetectionSmarty allocations.
         let stride = numAnchors
+        let coeffOffset = 4 + numClasses
 
-        // Replace original decode loop with optimized version:
+        var selectedCoeffs: [[Float]] = []
+        selectedCoeffs.reserveCapacity(512)
 
-        // We'll treat the class scores as a matrix [numClasses x numAnchors]
-        // laid out with row stride = stride (numAnchors). For a fixed anchor,
-        // we can copy the column (strided) into a contiguous temp buffer using
-        // BLAS, then get max and argmax with vDSP in one pass.
-        var tempScores = [Float](repeating: 0, count: numClasses)
+//        if detectAllObjects {
+            var tempScores = [Float](repeating: 0, count: numClasses)
 
-        if detectAllObjects {
-            // ALL OBJECTS path — optimized with BLAS + vDSP
             for anchor in 0..<numAnchors {
-                // Coordinates (no per-anchor bounds checks; we validated sizes above)
                 let x = detBuf[0 * stride + anchor]
                 let y = detBuf[1 * stride + anchor]
                 let w = detBuf[2 * stride + anchor]
                 let h = detBuf[3 * stride + anchor]
+                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) { continue }
 
-                // Validate coordinate values quickly
-                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) {
-                    continue
-                }
-
-                // Copy class scores for this anchor into tempScores contiguously
-                // Base pointer to the first class score for this anchor
                 let basePtr = detBuf.advanced(by: 4 * stride + anchor)
                 cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
 
-                // Find max and argmax in one pass
                 var maxVal: Float = 0
                 var maxIdx: vDSP_Length = 0
                 vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
 
                 if maxVal > confidenceThreshold {
-                    // Copy 32 mask coefficients (strided) with BLAS
                     var coeffs = [Float](repeating: 0, count: 32)
                     let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
                     cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
-
-                    let clsIdx = Int(maxIdx)
-                    let className = furnitureClasses[clsIdx] ?? "object_\(clsIdx)"
-                    
-                    // Debug: Show unknown classes
-                    if self.debugMode && furnitureClasses[clsIdx] == nil && maxVal > 0.7 {
-                        print("🔍 High-confidence unknown class: \(clsIdx) (conf=\(String(format: "%.3f", maxVal)))")
-                    }
-                    
-                    all.append(DetectionSmarty(
-                        x: x, y: y, width: w, height: h,
-                        confidence: maxVal, classIdx: clsIdx, className: className,
-                        maskCoeffs: coeffs
-                    ))
+                    selectedCoeffs.append(coeffs)
                 }
+            }
+//        }
+
+        if selectedCoeffs.isEmpty {
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.isProcessing = false
+            }
+            return
+        }
+
+        // 9) UNION MASK via batched GEMM (safe RAM)
+        //    Maintain maxLogits[planeSize] across batches.
+        var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
+
+        let batchSize = 64 // tune 32/64/128
+        let M = Int32(planeSize)
+        let K = Int32(32)
+        let alpha: Float = 1
+        let beta: Float = 0
+
+        var bStart = 0
+        while bStart < selectedCoeffs.count {
+            let bEnd = min(selectedCoeffs.count, bStart + batchSize)
+            let Bn = bEnd - bStart
+            let N = Int32(Bn)
+
+            // B: [32 x Bn] row-major, ldb = N
+            var B = [Float](repeating: 0, count: 32 * Bn)
+            for j in 0..<Bn {
+                let coeffs = selectedCoeffs[bStart + j]
+                for i in 0..<32 {
+                    B[i * Bn + j] = coeffs[i]
+                }
+            }
+
+            // C: [planeSize x Bn]
+            var C = [Float](repeating: 0, count: planeSize * Bn)
+
+            A.withUnsafeBufferPointer { aPtr in
+                B.withUnsafeBufferPointer { bPtr in
+                    C.withUnsafeMutableBufferPointer { cPtr in
+                        cblas_sgemm(
+                            CblasRowMajor,
+                            CblasNoTrans, CblasNoTrans,
+                            M, N, K,
+                            alpha,
+                            aPtr.baseAddress!, K,   // lda=32
+                            bPtr.baseAddress!, N,   // ldb=Bn
+                            beta,
+                            cPtr.baseAddress!, N    // ldc=Bn
+                        )
+                    }
+                }
+            }
+
+            // Reduce each pixel row -> update maxLogits[px]
+            C.withUnsafeBufferPointer { cPtr in
+                maxLogits.withUnsafeMutableBufferPointer { maxPtr in
+                    for px in 0..<planeSize {
+                        var localMax: Float = 0
+                        vDSP_maxv(cPtr.baseAddress!.advanced(by: px * Bn), 1, &localMax, vDSP_Length(Bn))
+                        if localMax > maxPtr[px] { maxPtr[px] = localMax }
+                    }
+                }
+            }
+
+            bStart = bEnd
+        }
+
+        // Threshold -> maskSmall Planar8
+        var maskSmall = [UInt8](repeating: 0, count: planeSize)
+        for i in 0..<planeSize {
+            maskSmall[i] = (maxLogits[i] > 0.0) ? 255 : 0
+        }
+
+        // 10) Upscale ONCE to full image
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+
+        var maskFull = [UInt8](repeating: 0, count: width * height)
+        maskFull.withUnsafeMutableBufferPointer { dstPtr in
+            maskSmall.withUnsafeBufferPointer { srcPtr in
+                var s = vImage_Buffer(
+                    data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!),
+                    height: vImagePixelCount(pH),
+                    width:  vImagePixelCount(pW),
+                    rowBytes: pW
+                )
+                var d = vImage_Buffer(
+                    data: dstPtr.baseAddress!,
+                    height: vImagePixelCount(height),
+                    width:  vImagePixelCount(width),
+                    rowBytes: width
+                )
+                let flags: vImage_Flags = self.useBilinearUpscaling
+                    ? vImage_Flags(kvImageHighQualityResampling)
+                    : vImage_Flags(kvImageNoFlags)
+                _ = vImageScale_Planar8(&s, &d, nil, flags)
+            }
+        }
+        
+        // ✅ SAVE FINAL MASK USED FOR CUTOUT (debug only)
+        if self.debugMode {
+            // Convert final mask (0/255) -> Float (0.0/1.0) so your save function can normalize it
+            var rawMaskFloat = [Float](repeating: 0, count: maskFull.count)
+            for i in 0..<maskFull.count {
+                rawMaskFloat[i] = (maskFull[i] > 0) ? 1.0 : 0.0
+            }
+
+            // Dummy detection that covers full 1280x1280 model space (so your bbox-gating keeps everything)
+            let fullDet = DetectionSmarty(
+                x: 640, y: 640,
+                width: 1280, height: 1280,
+                confidence: 1.0,
+                classIdx: 0,
+                className: "UNION_MASK",
+                maskCoeffs: [Float](repeating: 0, count: 32)
+            )
+
+            self.saveMaskToFile(
+                rawMask: rawMaskFloat,
+                width: width,
+                height: height,
+                detection: fullDet
+            )
+        }
+
+        // 11) Composite ONCE: transparent bg, copy RGB where mask=1
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            isProcessing = false
+            return
+        }
+        guard let outBase = ctx.data?.assumingMemoryBound(to: UInt8.self) else {
+            isProcessing = false
+            return
+        }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        guard let origBase = CVPixelBufferGetBaseAddress(pixelBuffer)?.assumingMemoryBound(to: UInt8.self) else {
+            isProcessing = false
+            return
+        }
+        let origBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+
+        var totalSet = 0
+        for y in 0..<height {
+            let origRow = y * origBytesPerRow
+            let outRow  = y * width * 4
+            let mRow    = y * width
+            for x in 0..<width {
+                let m = maskFull[mRow + x]
+                let outPx = outRow + x * 4
+                if m > 0 {
+                    let origPx = origRow + x * 4
+                    outBase[outPx + 0] = origBase[origPx + 0]
+                    outBase[outPx + 1] = origBase[origPx + 1]
+                    outBase[outPx + 2] = origBase[origPx + 2]
+                    outBase[outPx + 3] = 255
+                    totalSet += 1
+                } else {
+                    outBase[outPx + 3] = 0
+                }
+            }
+        }
+
+        // 12) UI update
+        if let out = ctx.makeImage() {
+            DispatchQueue.main.async {
+                self.maskImageView.image = UIImage(cgImage: out)
+                self.isProcessing = false
             }
         } else {
-            // FURNITURE-ONLY path — keep a tight loop over furniture indices
-            let furnitureList = furnitureClasses.filter { $0.key < numClasses }
-
-            // Debug: track best furniture confidence found
-            var bestFurnitureConf: Float = 0
-            var bestFurnitureClass = ""
-            var bestFurnitureAnchor = -1
-
-            for anchor in 0..<numAnchors {
-                let x = detBuf[0 * stride + anchor]
-                let y = detBuf[1 * stride + anchor]
-                let w = detBuf[2 * stride + anchor]
-                let h = detBuf[3 * stride + anchor]
-
-                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) {
-                    continue
-                }
-
-                for (classIdx, className) in furnitureList {
-                    let conf = detBuf[(4 + classIdx) * stride + anchor]
-
-                    // Track best furniture confidence for debug
-                    if conf.isFinite && conf > bestFurnitureConf {
-                        bestFurnitureConf = conf
-                        bestFurnitureClass = className
-                        bestFurnitureAnchor = anchor
-                    }
-
-                    if conf.isFinite && conf > confidenceThreshold {
-                        var coeffs = [Float](repeating: 0, count: 32)
-                        let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-                        cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
-
-                        all.append(DetectionSmarty(
-                            x: x, y: y, width: w, height: h,
-                            confidence: conf, classIdx: classIdx, className: className,
-                            maskCoeffs: coeffs
-                        ))
-                    }
-                }
-            }
-
-            // Debug: show best furniture confidence found even if below threshold
-            if self.debugMode && all.isEmpty {
-                print("🔍 FURNITURE DEBUG: Best conf=\(String(format: "%.3f", bestFurnitureConf)) for '\(bestFurnitureClass)' at anchor \(bestFurnitureAnchor)")
-                print("   Threshold was: \(confidenceThreshold), furniture classes checked: \(furnitureList.count)")
-
-                // Also find best confidence across ALL classes for comparison (sample first 100 anchors)
-                var bestOverallConf: Float = 0
-                var bestOverallClass = -1
-                let sampleAnchors = min(100, numAnchors)
-                for anchor in 0..<sampleAnchors {
-                    // Copy class scores into temp buffer
-                    let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-                    cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
-                    var maxVal: Float = 0
-                    var maxIdx: vDSP_Length = 0
-                    vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
-                    if maxVal > bestOverallConf { bestOverallConf = maxVal; bestOverallClass = Int(maxIdx) }
-                }
-                print("   Best OVERALL conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass)")
-            }
+            DispatchQueue.main.async { self.isProcessing = false }
         }
 
-        let decodeEnd = Date()
-
-        if self.debugMode {
-            print(String(format: "⏱ extractDetections decode loop: %.2f ms",
-                         decodeEnd.timeIntervalSince(decodeStart) * 1000.0))
-
-            let grouped = Dictionary(grouping: all) { $0.className }
-            print("\n📊 DETECTION SUMMARY: \(all.count) total")
-            for (className, dets) in grouped.sorted(by: { $0.value.count > $1.value.count }).prefix(20) {
-                let confidences = dets.map { Int($0.confidence * 100) }
-                print("  - \(className): \(dets.count)x, conf: \(confidences)%")
-            }
-            if grouped.count > 20 {
-                print("  ... and \(grouped.count - 20) more classes")
-            }
-            let tEnd = Date()
-            print(String(format: "⏱ extractDetections total: %.2f ms",
-                         tEnd.timeIntervalSince(decodeStart) * 1000.0))
+        if debugMode {
+            let ms = Date().timeIntervalSince(frameStart) * 1000
+            print(String(format: "🕒 Frame total (single method): %.2f ms", ms))
+            print("   Selected coeffs: \(selectedCoeffs.count)")
+            print("   Opaque pixels: \(totalSet) (\(String(format: "%.2f", Float(totalSet)/Float(width*height)*100))%)")
         }
 
-        // Continue with the rest of the original code (unchanged)
-        let stage1DetectionsFull = all
-        let decodeEndOuter = Date()
-        if self.debugMode {
-            print("📊 Stage 1: \(stage1DetectionsFull.count) detections")
-            print(String(format: "⏱ Stage1 detection decode: %.2f ms", decodeEndOuter.timeIntervalSince(decodeStart) * 1000.0))
-        }
-
-//        let sorted = stage1DetectionsFull.sorted { $0.confidence > $1.confidence }
-        
-        // Sort detections by bounding-box area (largest first)
-        let sorted = stage1DetectionsFull.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
-        
-        guard let primary = sorted.first else {
-            DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.isProcessing = false
-            }
-            return
-        }
-
-        if self.debugMode {
-            print("🎯 Primary: \(primary.className) @ \(Int(primary.confidence * 100))%")
-            print("   BBox: center(\(Int(primary.x)), \(Int(primary.y))) size(\(Int(primary.width))x\(Int(primary.height)))")
-        }
-
-        setProgress(0.55, text: "Refining crop…")
-
-        // STAGE 2 removed: single-stage pipeline only
-        if self.debugMode { print("\n🔬 STAGE 2 removed — using single-stage masks (full frame only)") }
-        let stage2Start = Date()
-        let stage2Detections: [DetectionSmarty] = []
-        let stage2Prototypes: MLMultiArray? = nil
-        let stage2End = Date()
-        if self.debugMode {
-            print(String(format: "⏱ Stage2 (skipped): %.2f ms", stage2End.timeIntervalSince(stage2Start) * 1000.0))
-        }
-        
-        let rawDetections = extractDetections(from: detArray, confThreshold: 0.01)
-//        let nmsStart = Date()
-//        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.9)
-//        let stage1Kept = keepOverlappingDetections(uniqueDetections)
-//        let stage2Kept = stage2Prototypes != nil
-//            ? applyNMS(stage2Detections, iouThreshold: 0.99)
-//            : []
-//        let stage2Kept = stage2Prototypes != nil ? applyNMS(stage2Detections, iouThreshold: 0.99) : []
-//        let stage2Kept = stage2Prototypes != nil
-//            ? keepOverlappingDetections(applyNMS(stage2Detections, iouThreshold: 0.99))
-//            : []
-//        let nmsEnd = Date()
-//        if self.debugMode {
-//            print(String(format: "⏱ NMS + keepOverlapping: %.2f ms", nmsEnd.timeIntervalSince(nmsStart) * 1000.0))
-//        }
-
-//        if self.debugMode {
-//            print("\n📊 UNION SUMMARY:")
-//            print("   Stage 1: keeping \(uniqueDetections.count) overlapping detections")
-//            print("   Stage 2: keeping \(stage2Kept.count) overlapping detections")
-//        }
-        if rawDetections.isEmpty {
-            DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.isProcessing = false
-            }
-            return
-        }
-
-        // MARK: Apply tracking to assign persistent IDs
-//        let trackStart = Date()
-//        let allDetections = rawDetections + stage2Detections
-//        let trackedDetections = tracker.update(detections: allDetections)
-
-        // Split back into stage1 and stage2 with track IDs
-//        let trackedStage1 = Array(trackedDetections.prefix(rawDetections.count))
-//        let trackedStage2 = Array(trackedDetections.suffix(stage2Detections.count))
-//
-//        if self.debugMode {
-//            let trackEnd = Date()
-//            print(String(format: "⏱ Tracker update: %.2f ms", trackEnd.timeIntervalSince(trackStart) * 1000.0))
-//            let confirmedTracks = tracker.getConfirmedTracks()
-//            print("🔢 Active tracks: \(confirmedTracks.count) confirmed")
-//            for det in trackedDetections where det.trackId != nil {
-//                print("   → ID\(det.trackId!) \(det.className)")
-//            }
-//        }
-
-        setProgress(0.8, text: "Building mask…")
-
-        let cutoutStart = Date()
-        // Keep top-5 stage1 detections for boxes/labels and inspection
-        // Keep the top-5 detections by bbox area (largest boxes)
-//        let top5Stage1 = Array(uniqueDetections.sorted { ($0.width * $0.height) > ($1.width * $1.height) }.prefix(500))
-        generateCutout(
-            stage1Prototypes: prototypesArray,
-            primaryBBoxes: rawDetections,
-            originalImage: pixelBuffer,
-            letterboxGain: letterboxGain,
-            letterboxPadX: letterboxPadX,
-            letterboxPadY: letterboxPadY
-        )
-        let cutoutEnd = Date()
-        if self.debugMode {
-            print(String(format: "⏱ generateCutoutTwoStage call: %.2f ms", cutoutEnd.timeIntervalSince(cutoutStart) * 1000.0))
-            print(String(format: "🕒 Frame total (processFrame): %.2f ms", cutoutEnd.timeIntervalSince(frameStart) * 1000.0))
+        if totalSet > 0 {
+            finishFirstDetectionIfNeeded()
         }
     }
+
     
     // MARK: - Pixel Buffer to MLMultiArray (BGRA -> [1,3,1280,1280] Float32)
     private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
@@ -1576,23 +1518,23 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // Copy/convert into contiguous Float buffer
         let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
         defer { detBuf.deallocate() }
-        if detections.dataType == .float16 {
-            let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
-            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<UInt16>.size)
-            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<Float>.size)
-            _ = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-        } else if detections.dataType == .float32 {
+//        if detections.dataType == .float16 {
+//            let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
+//            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<UInt16>.size)
+//            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<Float>.size)
+//            _ = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+//        } else if detections.dataType == .float32 {
             let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
             memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
-        } else {
-            for i in 0..<totalCount { detBuf[i] = detections[i].floatValue }
-        }
+//        } else {
+//            for i in 0..<totalCount { detBuf[i] = detections[i].floatValue }
+//        }
 
         let stride = numAnchors
         let coeffOffset = 4 + numClasses
         var tempScores = [Float](repeating: 0, count: numClasses)
 
-        if detectAllObjects {
+        if true {//Kishore
             for anchor in 0..<numAnchors {
                 let x = detBuf[0 * stride + anchor]
                 let y = detBuf[1 * stride + anchor]
