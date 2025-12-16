@@ -450,7 +450,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.3
-    var debugMode: Bool = true  // Enable debug prints and image saves
+    var debugMode: Bool = false  // Enable debug prints and image saves
+    var strongDebug: Bool = false  // Enable debug prints and image saves
     var edgeFillMode: EdgeFillMode = .chairType
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
@@ -1725,10 +1726,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let width  = CVPixelBufferGetWidth(originalImage)
         let height = CVPixelBufferGetHeight(originalImage)
-        
-        print("📐 Image dimensions: \(width) x \(height)")
-        print("📦 Input params: letterboxGain=\(letterboxGain), padX=\(letterboxPadX), padY=\(letterboxPadY), modelInput=\(modelInput)")
-        print("🔢 Primary bboxes count: \(primaryBBoxes.count)")
+        if debugMode {
+            print("📐 Image dimensions: \(width) x \(height)")
+            print("📦 Input params: letterboxGain=\(letterboxGain), padX=\(letterboxPadX), padY=\(letterboxPadY), modelInput=\(modelInput)")
+            print("🔢 Primary bboxes count: \(primaryBBoxes.count)")
+        }
 
         // STAGE 1: Parse prototypes
         let parseStart = Date()
@@ -1747,10 +1749,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             return
         }
         let parseEnd = Date()
-        
-        print("✅ STAGE 1 - Parse prototypes: \(String(format: "%.2f", parseEnd.timeIntervalSince(parseStart) * 1000))ms")
-        print("   Proto dimensions: \(pCount) channels, \(pW) x \(pH)")
-        print("   Proto plane size: \(planes.count) floats")
+        if debugMode {
+            print("✅ STAGE 1 - Parse prototypes: \(String(format: "%.2f", parseEnd.timeIntervalSince(parseStart) * 1000))ms")
+            print("   Proto dimensions: \(pCount) channels, \(pW) x \(pH)")
+            print("   Proto plane size: \(planes.count) floats")
+        }
 
         let planeSize = pH * pW
 
@@ -1774,21 +1777,25 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         
         let reorganizeEnd = Date()
-        
-        print("✅ STAGE 2 - Reorganize planes: \(String(format: "%.2f", reorganizeEnd.timeIntervalSince(reorganizeStart) * 1000))ms")
-        print("   Created row-major matrix: \(planeSize) x 32")
+        if debugMode {
+            print("✅ STAGE 2 - Reorganize planes: \(String(format: "%.2f", reorganizeEnd.timeIntervalSince(reorganizeStart) * 1000))ms")
+            print("   Created row-major matrix: \(planeSize) x 32")
+        }
 
         // STAGE 3: Select and sort detections
         let selectStart = Date()
-        let maxMasks = 5  // Reduced from 10 to 5 for better performance
+        let maxMasks = 100  // Reduced from 10 to 5 for better performance
         let dets = primaryBBoxes.sorted { $0.confidence > $1.confidence }
         let selected = Array(dets.prefix(maxMasks))
         let selectEnd = Date()
-        
-        print("✅ STAGE 3 - Select detections: \(String(format: "%.2f", selectEnd.timeIntervalSince(selectStart) * 1000))ms")
-        print("   Selected \(selected.count)/\(primaryBBoxes.count) detections (max \(maxMasks))")
-        for (i, det) in selected.enumerated() {
-            print("   [\(i)] \(det.className) conf=\(String(format: "%.3f", det.confidence)) bbox=(\(Int(det.x)), \(Int(det.y)), \(Int(det.width))x\(Int(det.height)))")
+        if debugMode {
+            print("✅ STAGE 3 - Select detections: \(String(format: "%.2f", selectEnd.timeIntervalSince(selectStart) * 1000))ms")
+            print("   Selected \(selected.count)/\(primaryBBoxes.count) detections (max \(maxMasks))")
+            if strongDebug {
+                for (i, det) in selected.enumerated() {
+                    print("   [\(i)] \(det.className) conf=\(String(format: "%.3f", det.confidence)) bbox=(\(Int(det.x)), \(Int(det.y)), \(Int(det.width))x\(Int(det.height)))")
+                }
+            }
         }
 
         // STAGE 4: Create CGContext for output
@@ -1826,14 +1833,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         if selected.isEmpty {
             print("⚠️  No detections selected - drawing empty result")
-            self.drawLabelsAndBoxes(
-                ctx: ctx,
-                stage1: primaryBBoxes,
-                stage2: [],
-                imageWidth: width,
-                imageHeight: height,
-                drawBoxes: self.debugMode
-            )
+//            self.drawLabelsAndBoxes(
+//                ctx: ctx,
+//                stage1: primaryBBoxes,
+//                stage2: [],
+//                imageWidth: width,
+//                imageHeight: height,
+//                drawBoxes: self.debugMode,
+//                letterboxGain: letterboxGain,
+//                letterboxPadX: letterboxPadX,
+//                letterboxPadY: letterboxPadY
+//            )
             if let out = ctx.makeImage() {
                 DispatchQueue.main.async {
                     self.maskImageView.image = UIImage(cgImage: out)
@@ -1891,7 +1901,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         for (detIndex, det) in selected.enumerated() {
             let detStart = Date()
-            print("\n  🎯 Detection \(detIndex + 1)/\(selected.count): \(det.className)")
+            if strongDebug {
+                print("\n  🎯 Detection \(detIndex + 1)/\(selected.count): \(det.className)")
+            }
             
             // SUB-STAGE 6.1: Matrix multiplication (logits = prototypes * coeffs)
             let matmulStart = Date()
@@ -1917,9 +1929,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             vDSP_minv(logits, 1, &minLogit, vDSP_Length(logits.count))
             vDSP_maxv(logits, 1, &maxLogit, vDSP_Length(logits.count))
             let positiveCount = logits.filter { $0 > 0 }.count
-            
-            print("    ✅ 6.1 Matrix multiply: \(String(format: "%.2f", matmulEnd.timeIntervalSince(matmulStart) * 1000))ms")
-            print("       Logits range: [\(String(format: "%.3f", minLogit)), \(String(format: "%.3f", maxLogit))], positive: \(positiveCount)/\(logits.count)")
+            if strongDebug {
+                print("    ✅ 6.1 Matrix multiply: \(String(format: "%.2f", matmulEnd.timeIntervalSince(matmulStart) * 1000))ms")
+                print("       Logits range: [\(String(format: "%.3f", minLogit)), \(String(format: "%.3f", maxLogit))], positive: \(positiveCount)/\(logits.count)")
+            }
 
             // SUB-STAGE 6.2: Coordinate transformations
             let coordStart = Date()
@@ -1966,12 +1979,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             
             let coordEnd = Date()
-            
-            print("    ✅ 6.2 Coordinates: \(String(format: "%.2f", coordEnd.timeIntervalSince(coordStart) * 1000))ms")
-            print("       Model bbox: [\(String(format: "%.1f", mx1)),\(String(format: "%.1f", my1))] to [\(String(format: "%.1f", mx2)),\(String(format: "%.1f", my2))]")
-            print("       Image bbox: [\(bx1),\(by1)] to [\(bx2),\(by2)] → \(bw)x\(bh)")
-            print("       Proto bbox: [\(px1),\(py1)] to [\(px2),\(py2)] → \((px2-px1))x\((py2-py1))")
-
+            if strongDebug {
+                print("    ✅ 6.2 Coordinates: \(String(format: "%.2f", coordEnd.timeIntervalSince(coordStart) * 1000))ms")
+                print("       Model bbox: [\(String(format: "%.1f", mx1)),\(String(format: "%.1f", my1))] to [\(String(format: "%.1f", mx2)),\(String(format: "%.1f", my2))]")
+                print("       Image bbox: [\(bx1),\(by1)] to [\(bx2),\(by2)] → \(bw)x\(bh)")
+                print("       Proto bbox: [\(px1),\(py1)] to [\(px2),\(py2)] → \((px2-px1))x\((py2-py1))")
+            }
             // SUB-STAGE 6.3: Binarize logits in proto space
             let binarizeStart = Date()
             binMaskSmall.withUnsafeMutableBytes { memset($0.baseAddress!, 0, planeSize) }
@@ -1988,9 +2001,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
             let binarizeEnd = Date()
-            
-            print("    ✅ 6.3 Binarize: \(String(format: "%.2f", binarizeEnd.timeIntervalSince(binarizeStart) * 1000))ms")
-            print("       Proto positive pixels: \(protoPositiveCount)/\((px2-px1)*(py2-py1))")
+            if strongDebug {
+                print("    ✅ 6.3 Binarize: \(String(format: "%.2f", binarizeEnd.timeIntervalSince(binarizeStart) * 1000))ms")
+                print("       Proto positive pixels: \(protoPositiveCount)/\((px2-px1)*(py2-py1))")
+            }
 
             // SUB-STAGE 6.4: Upscale proto mask to image ROI
             let upscaleStart = Date()
@@ -2018,10 +2032,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let upscaleEnd = Date()
             
             let roiPositiveCount = binMaskROI.filter { $0 > 0 }.count
-            print("    ✅ 6.4 Upscale: \(String(format: "%.2f", upscaleEnd.timeIntervalSince(upscaleStart) * 1000))ms")
-            print("       ROI positive pixels: \(roiPositiveCount)/\(bw*bh) (\(String(format: "%.1f", Float(roiPositiveCount) / Float(bw*bh) * 100))%)")
-            print("       Upscale method: \(self.useBilinearUpscaling ? "bilinear" : "nearest-neighbor")")
-
+            if strongDebug {
+                print("    ✅ 6.4 Upscale: \(String(format: "%.2f", upscaleEnd.timeIntervalSince(upscaleStart) * 1000))ms")
+                print("       ROI positive pixels: \(roiPositiveCount)/\(bw*bh) (\(String(format: "%.1f", Float(roiPositiveCount) / Float(bw*bh) * 100))%)")
+                print("       Upscale method: \(self.useBilinearUpscaling ? "bilinear" : "nearest-neighbor")")
+            }
             // SUB-STAGE 6.5: Composite into output image - Copy original pixels
             let compositeStart = Date()
             var pixelsSet = 0
@@ -2050,31 +2065,43 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             totalPixelsSet += pixelsSet
             let compositeEnd = Date()
+            if strongDebug {
+                print("    ✅ 6.5 Composite: \(String(format: "%.2f", compositeEnd.timeIntervalSince(compositeStart) * 1000))ms")
+                print("       Pixels set in output: \(pixelsSet)")
+            }
             
-            print("    ✅ 6.5 Composite: \(String(format: "%.2f", compositeEnd.timeIntervalSince(compositeStart) * 1000))ms")
-            print("       Pixels set in output: \(pixelsSet)")
-            
-            let detEnd = Date()
-            print("    🎯 Detection \(detIndex + 1) total: \(String(format: "%.2f", detEnd.timeIntervalSince(detStart) * 1000))ms")
+            if strongDebug {
+                let detEnd = Date()
+                print("    🎯 Detection \(detIndex + 1) total: \(String(format: "%.2f", detEnd.timeIntervalSince(detStart) * 1000))ms")
+            }
         }
         
         let processEnd = Date()
-        print("✅ STAGE 6 - Process detections: \(String(format: "%.2f", processEnd.timeIntervalSince(processStart) * 1000))ms")
-        print("   Total output pixels set: \(totalPixelsSet) (\(String(format: "%.3f", Float(totalPixelsSet) / Float(width * height) * 100))%)")
+        if debugMode {
+            print("✅ STAGE 6 - Process detections: \(String(format: "%.2f", processEnd.timeIntervalSince(processStart) * 1000))ms")
+            print("   Total output pixels set: \(totalPixelsSet) (\(String(format: "%.3f", Float(totalPixelsSet) / Float(width * height) * 100))%)")
+        }
 
-        // STAGE 7: Draw labels and boxes
-        let labelsStart = Date()
-        self.drawLabelsAndBoxes(
-            ctx: ctx,
-            stage1: selected,  // Use same selected detections instead of all primaryBBoxes
-            stage2: [],
-            imageWidth: width,
-            imageHeight: height,
-            drawBoxes: self.debugMode
-        )
-        let labelsEnd = Date()
-        
-        print("✅ STAGE 7 - Draw labels: \(String(format: "%.2f", labelsEnd.timeIntervalSince(labelsStart) * 1000))ms")
+        if strongDebug {
+            // STAGE 7: Draw labels and boxes
+            let labelsStart = Date()
+            self.drawLabelsAndBoxes(
+                ctx: ctx,
+                stage1: selected,  // Use same selected detections instead of all primaryBBoxes
+                stage2: [],
+                imageWidth: width,
+                imageHeight: height,
+                drawBoxes: self.debugMode,
+                letterboxGain: letterboxGain,
+                letterboxPadX: letterboxPadX,
+                letterboxPadY: letterboxPadY
+            )
+            
+            let labelsEnd = Date()
+            if debugMode {
+                print("✅ STAGE 7 - Draw labels: \(String(format: "%.2f", labelsEnd.timeIntervalSince(labelsStart) * 1000))ms")
+            }
+        }
 
         // STAGE 8: Create final image and update UI
         let finalizeStart = Date()
@@ -2100,7 +2127,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         print("     4. Context: \(String(format: "%.1f", contextEnd.timeIntervalSince(contextStart) * 1000))ms")
         print("     5. Setup: \(String(format: "%.1f", setupEnd.timeIntervalSince(setupStart) * 1000))ms")
         print("     6. Process: \(String(format: "%.1f", processEnd.timeIntervalSince(processStart) * 1000))ms")
-        print("     7. Labels: \(String(format: "%.1f", labelsEnd.timeIntervalSince(labelsStart) * 1000))ms")
+//        print("     7. Labels: \(String(format: "%.1f", labelsEnd.timeIntervalSince(labelsStart) * 1000))ms")
         print("     8. Finalize: \(String(format: "%.1f", finalizeEnd.timeIntervalSince(finalizeStart) * 1000))ms")
         
         // Call finishFirstDetectionIfNeeded if this was successful
@@ -2401,112 +2428,134 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         stage2: [DetectionSmarty],
         imageWidth: Int,
         imageHeight: Int,
-        drawBoxes: Bool
+        drawBoxes: Bool,
+        letterboxGain: Float = 1.0,
+        letterboxPadX: Float = 0.0,
+        letterboxPadY: Float = 0.0
     ) {
-        print("\n🏷️ ===== DRAW LABELS AND BOXES DEBUG =====")
+        if debugMode {
+            print("\n🏷️ ===== DRAW LABELS AND BOXES DEBUG =====")
+            
+            let allDetections = stage1 + stage2
+            print("📊 Input parameters:")
+            print("   stage1 count: \(stage1.count)")
+            print("   stage2 count: \(stage2.count)")
+            print("   total detections: \(allDetections.count)")
+            print("   imageWidth: \(imageWidth), imageHeight: \(imageHeight)")
+            print("   drawBoxes: \(drawBoxes)")
+            print("   letterbox: gain=\(letterboxGain), padX=\(letterboxPadX), padY=\(letterboxPadY)")
+        }
         
         let allDetections = stage1 + stage2
-        print("📊 Input parameters:")
-        print("   stage1 count: \(stage1.count)")
-        print("   stage2 count: \(stage2.count)")
-        print("   total detections: \(allDetections.count)")
-        print("   imageWidth: \(imageWidth), imageHeight: \(imageHeight)")
-        print("   drawBoxes: \(drawBoxes)")
-        
         guard !allDetections.isEmpty else { 
-            print("⚠️  No detections to draw - returning early")
+            if debugMode { print("⚠️  No detections to draw - returning early") }
             return 
         }
         
-        let scale = Float(imageWidth) / 1280.0
-        print("📐 Scaling calculation:")
-        print("   scale = imageWidth(\(imageWidth)) / 1280.0 = \(String(format: "%.4f", scale))")
+        // Helper functions to convert from model coordinates to image coordinates
+        @inline(__always)
+        func modelToImageX(_ xModel: Float) -> Float {
+            return (xModel - letterboxPadX) / letterboxGain
+        }
+        
+        @inline(__always)
+        func modelToImageY(_ yModel: Float) -> Float {
+            return (yModel - letterboxPadY) / letterboxGain
+        }
+        
+        if debugMode {
+            print("📐 Coordinate transformation:")
+            print("   Model space: 1280x1280 (letterboxed)")
+            print("   Image space: \(imageWidth)x\(imageHeight) (original)")
+            print("   Transform: (modelCoord - pad) / gain")
+        }
         
         // Set up text attributes
         let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 20, nil)
-        let textColor = UIColor.white.cgColor
-        print("🖋  Text setup completed - font size: 20pt")
+        if debugMode { print("🖋  Text setup completed - font size: 20pt") }
         
         for (index, detection) in allDetections.enumerated() {
-            print("\n  🎯 Processing detection \(index + 1)/\(allDetections.count):")
-            print("     Class: \(detection.className), Confidence: \(String(format: "%.3f", detection.confidence))")
-            print("     Original model coords: x=\(String(format: "%.1f", detection.x)), y=\(String(format: "%.1f", detection.y)), w=\(String(format: "%.1f", detection.width)), h=\(String(format: "%.1f", detection.height))")
+            if debugMode && index < 10 {  // Only debug first 10 detections to avoid spam
+                print("\n  🎯 Processing detection \(index + 1)/\(allDetections.count):")
+                print("     Class: \(detection.className), Confidence: \(String(format: "%.3f", detection.confidence))")
+                print("     Original model coords: x=\(String(format: "%.1f", detection.x)), y=\(String(format: "%.1f", detection.y)), w=\(String(format: "%.1f", detection.width)), h=\(String(format: "%.1f", detection.height))")
+            }
             
-            // Convert coordinates to image space
-            let x = detection.x * scale
-            let y = detection.y * scale
-            let w = detection.width * scale
-            let h = detection.height * scale
+            // Convert model coordinates to image coordinates using letterbox transformation
+            let centerX = modelToImageX(detection.x)
+            let centerY = modelToImageY(detection.y)
+            let width = detection.width / letterboxGain
+            let height = detection.height / letterboxGain
             
-            print("     Scaled coords: x=\(String(format: "%.1f", x)), y=\(String(format: "%.1f", y)), w=\(String(format: "%.1f", w)), h=\(String(format: "%.1f", h))")
+            let left = centerX - width / 2
+            let top = centerY - height / 2
+            let right = centerX + width / 2
+            let bottom = centerY + height / 2
             
-            let left = x - w / 2
-            let top = y - h / 2
-            let right = x + w / 2
-            let bottom = y + h / 2
-            
-            print("     Bounding box: left=\(String(format: "%.1f", left)), top=\(String(format: "%.1f", top)), right=\(String(format: "%.1f", right)), bottom=\(String(format: "%.1f", bottom))")
-            print("     Box dimensions: width=\(String(format: "%.1f", w)), height=\(String(format: "%.1f", h))")
-            
-            // Check if coordinates are reasonable
-            if left < -50 || top < -50 || right > Float(imageWidth + 50) || bottom > Float(imageHeight + 50) {
-                print("     ⚠️  WARNING: Coordinates seem out of bounds!")
-                print("        Image bounds: 0x0 to \(imageWidth)x\(imageHeight)")
-                print("        Box extends: \(String(format: "%.1f", left)) to \(String(format: "%.1f", right)) (x), \(String(format: "%.1f", top)) to \(String(format: "%.1f", bottom)) (y)")
+            if debugMode && index < 10 {
+                print("     Transformed coords: centerX=\(String(format: "%.1f", centerX)), centerY=\(String(format: "%.1f", centerY)), w=\(String(format: "%.1f", width)), h=\(String(format: "%.1f", height))")
+                print("     Final box: left=\(String(format: "%.1f", left)), top=\(String(format: "%.1f", top)), right=\(String(format: "%.1f", right)), bottom=\(String(format: "%.1f", bottom))")
+                
+                // Check if coordinates are reasonable
+                if left < -50 || top < -50 || right > Float(imageWidth + 50) || bottom > Float(imageHeight + 50) {
+                    print("     ⚠️  WARNING: Coordinates seem out of bounds!")
+                    print("        Image bounds: 0x0 to \(imageWidth)x\(imageHeight)")
+                    print("        Box extends: \(String(format: "%.1f", left)) to \(String(format: "%.1f", right)) (x), \(String(format: "%.1f", top)) to \(String(format: "%.1f", bottom)) (y)")
+                }
             }
             
             if drawBoxes {
-                print("     📦 Drawing bounding box...")
+                if debugMode && index < 10 { print("     📦 Drawing bounding box...") }
                 // Draw bounding box
                 ctx.setStrokeColor(UIColor.green.cgColor)
                 ctx.setLineWidth(2.0)
                 let rect = CGRect(x: CGFloat(left), y: CGFloat(top),
-                                width: CGFloat(w), height: CGFloat(h))
-                print("        CGRect: \(rect)")
+                                width: CGFloat(width), height: CGFloat(height))
+                if debugMode && index < 10 { print("        CGRect: \(rect)") }
                 ctx.stroke(rect)
-                print("        ✅ Bounding box drawn")
-            } else {
-                print("     📦 Skipping bounding box (drawBoxes=false)")
+                if debugMode && index < 10 { print("        ✅ Bounding box drawn") }
             }
             
             // Draw label with clamped confidence
             let clampedConf = min(99, max(0, Int(detection.confidence * 100)))
             let label = "\(detection.className) \(clampedConf)%"
-            print("     🏷️  Preparing label: '\(label)'")
+            if debugMode && index < 10 { print("     🏷️  Preparing label: '\(label)'") }
             
             let attributedString = NSAttributedString(string: label, attributes: [
                 .font: font,
                 .foregroundColor: UIColor.white
             ])
             
-            let labelRect = CGRect(x: CGFloat(left), y: CGFloat(max(0, top - 25)),  // Ensure label stays within bounds
-                                 width: CGFloat(w), height: 25)
-            print("        Label rect: \(labelRect)")
+            let labelRect = CGRect(x: CGFloat(left), y: CGFloat(max(0, top - 25)),
+                                 width: CGFloat(width), height: 25)
+            if debugMode && index < 10 { print("        Label rect: \(labelRect)") }
             
             // Check label positioning
-            if labelRect.minY < 0 {
+            if labelRect.minY < 0 && debugMode && index < 10 {
                 print("        ⚠️  WARNING: Label rect extends above image bounds (minY: \(labelRect.minY))")
             }
             
             // Draw background for text
-            print("        Drawing label background...")
+            if debugMode && index < 10 { print("        Drawing label background...") }
             ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
             ctx.fill(labelRect)
             
             // Draw text
-            print("        Drawing label text...")
+            if debugMode && index < 10 { print("        Drawing label text...") }
             let line = CTLineCreateWithAttributedString(attributedString)
-            let textPosition = CGPoint(x: CGFloat(left + 5), y: CGFloat(max(20, top - 5)))  // Adjust text position too
-            print("        Text position: \(textPosition)")
+            let textPosition = CGPoint(x: CGFloat(left + 5), y: CGFloat(max(20, top - 5)))
+            if debugMode && index < 10 { print("        Text position: \(textPosition)") }
             ctx.textPosition = textPosition
             CTLineDraw(line, ctx)
-            print("        ✅ Label drawn successfully")
+            if debugMode && index < 10 { print("        ✅ Label drawn successfully") }
         }
         
-        print("🏷️ ===== DRAW LABELS AND BOXES COMPLETE =====")
-        print("   Total detections processed: \(allDetections.count)")
-        print("   Scaling factor used: \(String(format: "%.4f", scale))")
-        print("   Target image size: \(imageWidth) x \(imageHeight)")
+        if debugMode {
+            print("🏷️ ===== DRAW LABELS AND BOXES COMPLETE =====")
+            print("   Total detections processed: \(allDetections.count)")
+            print("   Letterbox transform: gain=\(letterboxGain), padX=\(letterboxPadX), padY=\(letterboxPadY)")
+            print("   Target image size: \(imageWidth) x \(imageHeight)")
+        }
     }
     
     // MARK: - Remaining utility methods
