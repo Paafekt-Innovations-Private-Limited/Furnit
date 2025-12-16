@@ -444,6 +444,15 @@ struct DetectionSmarty {
     let maskCoeffs: [Float]
 }
 
+// MARK: - Union Detection Struct
+struct UnionDet {
+    let x: Float
+    let y: Float
+    let w: Float
+    let h: Float
+    let coeffs: [Float]
+}
+
 // MARK: - Main Container View
 final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
     
@@ -1137,6 +1146,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             isProcessing = false
             return
         }
+        
+        // 🔑 Bind letterbox parameters to local variables for scope access
+        let letterboxGain: Float = lb.gain
+        let letterboxPadX: Float = lb.padX
+        let letterboxPadY: Float = lb.padY
+        
         guard let inputArray = pixelBufferToMLMultiArray(lb.buffer) else {
             isProcessing = false
             return
@@ -1216,13 +1231,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
 
-        // 8) Select anchors that pass threshold AND (optionally) furniture-only
-        //    We only keep coeffs; no DetectionSmarty allocations.
+        // 8) Select anchors that pass threshold AND store both bbox + coeffs
         let stride = numAnchors
         let coeffOffset = 4 + numClasses
 
-        var selectedCoeffs: [[Float]] = []
-        selectedCoeffs.reserveCapacity(512)
+        var selectedDets: [UnionDet] = []
+        selectedDets.reserveCapacity(512)
 
 //        if detectAllObjects {
             var tempScores = [Float](repeating: 0, count: numClasses)
@@ -1245,17 +1259,61 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     var coeffs = [Float](repeating: 0, count: 32)
                     let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
                     cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
-                    selectedCoeffs.append(coeffs)
+                    selectedDets.append(
+                        UnionDet(x: x, y: y, w: w, h: h, coeffs: coeffs)
+                    )
                 }
             }
 //        }
 
-        if selectedCoeffs.isEmpty {
+        if selectedDets.isEmpty {
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
             }
             return
+        }
+        
+        // Step 1: Compute UNION BBOX in model space (1280x1280)
+        var ux1: Float = .greatestFiniteMagnitude
+        var uy1: Float = .greatestFiniteMagnitude
+        var ux2: Float = -.greatestFiniteMagnitude
+        var uy2: Float = -.greatestFiniteMagnitude
+
+        for d in selectedDets {
+            ux1 = min(ux1, d.x - d.w * 0.5)
+            uy1 = min(uy1, d.y - d.h * 0.5)
+            ux2 = max(ux2, d.x + d.w * 0.5)
+            uy2 = max(uy2, d.y + d.h * 0.5)
+        }
+        
+        // Step 2: Map UNION BBOX to original image space using letterbox params
+        @inline(__always)
+        func modelToOrigX(_ x: Float) -> Int {
+            Int(round((x - letterboxPadX) / letterboxGain))
+        }
+        @inline(__always)
+        func modelToOrigY(_ y: Float) -> Int {
+            Int(round((y - letterboxPadY) / letterboxGain))
+        }
+        
+        let origW = CVPixelBufferGetWidth(pixelBuffer)
+        let origH = CVPixelBufferGetHeight(pixelBuffer)
+        
+        var bx1 = modelToOrigX(ux1)
+        var by1 = modelToOrigY(uy1)
+        var bx2 = modelToOrigX(ux2)
+        var by2 = modelToOrigY(uy2)
+
+        // Clamp to image bounds
+        bx1 = max(0, min(origW - 1, bx1))
+        by1 = max(0, min(origH - 1, by1))
+        bx2 = max(0, min(origW, bx2))
+        by2 = max(0, min(origH, by2))
+        
+        if debugMode {
+            print("🔲 Union bbox (model space): [\(String(format: "%.1f", ux1)),\(String(format: "%.1f", uy1))] to [\(String(format: "%.1f", ux2)),\(String(format: "%.1f", uy2))]")
+            print("🔲 Union bbox (image space): [\(bx1),\(by1)] to [\(bx2),\(by2)] → \((bx2-bx1))x\((by2-by1))")
         }
 
         // 9) UNION MASK via batched GEMM (safe RAM)
@@ -1269,15 +1327,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let beta: Float = 0
 
         var bStart = 0
-        while bStart < selectedCoeffs.count {
-            let bEnd = min(selectedCoeffs.count, bStart + batchSize)
+        while bStart < selectedDets.count {
+            let bEnd = min(selectedDets.count, bStart + batchSize)
             let Bn = bEnd - bStart
             let N = Int32(Bn)
 
             // B: [32 x Bn] row-major, ldb = N
             var B = [Float](repeating: 0, count: 32 * Bn)
             for j in 0..<Bn {
-                let coeffs = selectedCoeffs[bStart + j]
+                let coeffs = selectedDets[bStart + j].coeffs
                 for i in 0..<32 {
                     B[i * Bn + j] = coeffs[i]
                 }
@@ -1324,9 +1382,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // 10) Proper letterbox-aware upscaling using helper function
-        let origW = CVPixelBufferGetWidth(pixelBuffer)
-        let origH = CVPixelBufferGetHeight(pixelBuffer)
-        
         let maskFull = makeFullMaskFromProtoWithResizeSquareFix(
             maskSmall: maskSmall,
             pW: pW,
@@ -1334,9 +1389,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             modelInput: 1280,
             origW: origW,
             origH: origH,
-            letterboxGain: lb.gain,
-            letterboxPadX: lb.padX,
-            letterboxPadY: lb.padY,
+            letterboxGain: letterboxGain,
+            letterboxPadX: letterboxPadX,
+            letterboxPadY: letterboxPadY,
             useBilinear: self.useBilinearUpscaling
         )
         
@@ -1400,8 +1455,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let outRow  = y * origW * 4
             let mRow    = y * origW
             for x in 0..<origW {
-                let m = maskFull[mRow + x]
                 let outPx = outRow + x * 4
+                
+                // Step 3: Enforce transparency outside union bbox (CRITICAL)
+                if x < bx1 || x >= bx2 || y < by1 || y >= by2 {
+                    // ❌ Outside UNION BBOX → transparent
+                    outBase[outPx + 3] = 0
+                    continue
+                }
+                
+                // Inside union bbox → apply mask
+                let m = maskFull[mRow + x]
                 if m > 0 {
                     let origPx = origRow + x * 4
                     outBase[outPx + 0] = origBase[origPx + 0]
@@ -1415,7 +1479,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
 
-        // 12) UI update
+        // 12) Draw MAIN UNION bbox (green) for live visualization
+        ctx.setStrokeColor(UIColor.green.cgColor)
+        ctx.setLineWidth(4.0)
+        ctx.stroke(CGRect(x: bx1, y: by1, width: bx2 - bx1, height: by2 - by1))
+
+        // 13) UI update
         if let out = ctx.makeImage() {
             DispatchQueue.main.async {
                 self.maskImageView.image = UIImage(cgImage: out)
@@ -1428,9 +1497,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         if debugMode {
             let ms = Date().timeIntervalSince(frameStart) * 1000
             print(String(format: "🕒 Frame total (single method): %.2f ms", ms))
-            print("   Selected coeffs: \(selectedCoeffs.count)")
+            print("   Selected detections: \(selectedDets.count)")
             print("   Opaque pixels: \(totalSet) (\(String(format: "%.2f", Float(totalSet)/Float(origW*origH)*100))%)")
-            print("   Letterbox correction: gain=\(String(format: "%.3f", lb.gain)), pad=(\(String(format: "%.1f", lb.padX)),\(String(format: "%.1f", lb.padY)))")
+            print("   Letterbox correction: gain=\(String(format: "%.3f", letterboxGain)), pad=(\(String(format: "%.1f", letterboxPadX)),\(String(format: "%.1f", letterboxPadY)))")
+            print("   Union bbox coverage: \((bx2-bx1)*(by2-by1)) pixels (\(String(format: "%.2f", Float((bx2-bx1)*(by2-by1))/Float(origW*origH)*100))% of image)")
         }
 
         if totalSet > 0 {
