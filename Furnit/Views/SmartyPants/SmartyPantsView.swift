@@ -1323,31 +1323,22 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             maskSmall[i] = (maxLogits[i] > 0.0) ? 255 : 0
         }
 
-        // 10) Upscale ONCE to full image
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-
-        var maskFull = [UInt8](repeating: 0, count: width * height)
-        maskFull.withUnsafeMutableBufferPointer { dstPtr in
-            maskSmall.withUnsafeBufferPointer { srcPtr in
-                var s = vImage_Buffer(
-                    data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!),
-                    height: vImagePixelCount(pH),
-                    width:  vImagePixelCount(pW),
-                    rowBytes: pW
-                )
-                var d = vImage_Buffer(
-                    data: dstPtr.baseAddress!,
-                    height: vImagePixelCount(height),
-                    width:  vImagePixelCount(width),
-                    rowBytes: width
-                )
-                let flags: vImage_Flags = self.useBilinearUpscaling
-                    ? vImage_Flags(kvImageHighQualityResampling)
-                    : vImage_Flags(kvImageNoFlags)
-                _ = vImageScale_Planar8(&s, &d, nil, flags)
-            }
-        }
+        // 10) Proper letterbox-aware upscaling using helper function
+        let origW = CVPixelBufferGetWidth(pixelBuffer)
+        let origH = CVPixelBufferGetHeight(pixelBuffer)
+        
+        let maskFull = makeFullMaskFromProtoWithResizeSquareFix(
+            maskSmall: maskSmall,
+            pW: pW,
+            pH: pH,
+            modelInput: 1280,
+            origW: origW,
+            origH: origH,
+            letterboxGain: lb.gain,
+            letterboxPadX: lb.padX,
+            letterboxPadY: lb.padY,
+            useBilinear: self.useBilinearUpscaling
+        )
         
         // ✅ SAVE FINAL MASK USED FOR CUTOUT (debug only)
         if self.debugMode {
@@ -1369,8 +1360,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
             self.saveMaskToFile(
                 rawMask: rawMaskFloat,
-                width: width,
-                height: height,
+                width: origW,
+                height: origH,
                 detection: fullDet
             )
         }
@@ -1379,10 +1370,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let ctx = CGContext(
             data: nil,
-            width: width,
-            height: height,
+            width: origW,
+            height: origH,
             bitsPerComponent: 8,
-            bytesPerRow: width * 4,
+            bytesPerRow: origW * 4,
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else {
@@ -1404,11 +1395,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let origBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
 
         var totalSet = 0
-        for y in 0..<height {
+        for y in 0..<origH {
             let origRow = y * origBytesPerRow
-            let outRow  = y * width * 4
-            let mRow    = y * width
-            for x in 0..<width {
+            let outRow  = y * origW * 4
+            let mRow    = y * origW
+            for x in 0..<origW {
                 let m = maskFull[mRow + x]
                 let outPx = outRow + x * 4
                 if m > 0 {
@@ -1438,12 +1429,98 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let ms = Date().timeIntervalSince(frameStart) * 1000
             print(String(format: "🕒 Frame total (single method): %.2f ms", ms))
             print("   Selected coeffs: \(selectedCoeffs.count)")
-            print("   Opaque pixels: \(totalSet) (\(String(format: "%.2f", Float(totalSet)/Float(width*height)*100))%)")
+            print("   Opaque pixels: \(totalSet) (\(String(format: "%.2f", Float(totalSet)/Float(origW*origH)*100))%)")
+            print("   Letterbox correction: gain=\(String(format: "%.3f", lb.gain)), pad=(\(String(format: "%.1f", lb.padX)),\(String(format: "%.1f", lb.padY)))")
         }
 
         if totalSet > 0 {
             finishFirstDetectionIfNeeded()
         }
+    }
+
+    private func makeFullMaskFromProtoWithResizeSquareFix(
+        maskSmall: [UInt8],   // size pW*pH
+        pW: Int,
+        pH: Int,
+        modelInput: Int,      // 1280
+        origW: Int,
+        origH: Int,
+        letterboxGain: Float,
+        letterboxPadX: Float,
+        letterboxPadY: Float,
+        useBilinear: Bool
+    ) -> [UInt8] {
+
+        // 1) Scale proto mask -> modelInput x modelInput (1280x1280)
+        var maskModel = [UInt8](repeating: 0, count: modelInput * modelInput)
+        maskModel.withUnsafeMutableBufferPointer { dstPtr in
+            maskSmall.withUnsafeBufferPointer { srcPtr in
+                var s = vImage_Buffer(
+                    data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!),
+                    height: vImagePixelCount(pH),
+                    width:  vImagePixelCount(pW),
+                    rowBytes: pW
+                )
+                var d = vImage_Buffer(
+                    data: dstPtr.baseAddress!,
+                    height: vImagePixelCount(modelInput),
+                    width:  vImagePixelCount(modelInput),
+                    rowBytes: modelInput
+                )
+                let flags: vImage_Flags = useBilinear
+                    ? vImage_Flags(kvImageHighQualityResampling)
+                    : vImage_Flags(kvImageNoFlags)
+                _ = vImageScale_Planar8(&s, &d, nil, flags)
+            }
+        }
+
+        // 2) Compute content rect in MODEL space (crop out padding)
+        let contentW = Int(round(Float(origW) * letterboxGain))
+        let contentH = Int(round(Float(origH) * letterboxGain))
+        let x0 = Int(round(letterboxPadX))
+        let y0 = Int(round(letterboxPadY))
+
+        // Clamp defensively
+        let cx0 = max(0, min(modelInput - 1, x0))
+        let cy0 = max(0, min(modelInput - 1, y0))
+        let cW  = max(1, min(modelInput - cx0, contentW))
+        let cH  = max(1, min(modelInput - cy0, contentH))
+
+        // 3) Copy crop into a tight buffer (cW x cH)
+        var cropped = [UInt8](repeating: 0, count: cW * cH)
+        for y in 0..<cH {
+            let srcRow = (cy0 + y) * modelInput + cx0
+            let dstRow = y * cW
+            // manual copy (avoid memcpy if you prefer)
+            for x in 0..<cW {
+                cropped[dstRow + x] = maskModel[srcRow + x]
+            }
+        }
+
+        // 4) Scale cropped mask -> original size (origW x origH)
+        var maskFull = [UInt8](repeating: 0, count: origW * origH)
+        maskFull.withUnsafeMutableBufferPointer { dstPtr in
+            cropped.withUnsafeBufferPointer { srcPtr in
+                var s = vImage_Buffer(
+                    data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!),
+                    height: vImagePixelCount(cH),
+                    width:  vImagePixelCount(cW),
+                    rowBytes: cW
+                )
+                var d = vImage_Buffer(
+                    data: dstPtr.baseAddress!,
+                    height: vImagePixelCount(origH),
+                    width:  vImagePixelCount(origW),
+                    rowBytes: origW
+                )
+                let flags: vImage_Flags = useBilinear
+                    ? vImage_Flags(kvImageHighQualityResampling)
+                    : vImage_Flags(kvImageNoFlags)
+                _ = vImageScale_Planar8(&s, &d, nil, flags)
+            }
+        }
+
+        return maskFull
     }
 
     
