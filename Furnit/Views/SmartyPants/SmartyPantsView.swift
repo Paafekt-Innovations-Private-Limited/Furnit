@@ -1812,8 +1812,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             DispatchQueue.main.async { self.isProcessing = false }
             return
         }
-        // Initialize to transparent (0,0,0,0) - completely transparent background
-        memset(outBase, 0, width * height * 4)
+        // Initialize to white background for opaque cutout effect
+        for i in stride(from: 0, to: width * height * 4, by: 4) {
+//            outBase[i + 0] = 255  // B (Blue) = White
+//            outBase[i + 1] = 255  // G (Green) = White  
+//            outBase[i + 2] = 255  // R (Red) = White
+            outBase[i + 3] = 0  // A (Alpha) = Opaque
+        }
         let contextEnd = Date()
         
         print("✅ STAGE 4 - Create context: \(String(format: "%.2f", contextEnd.timeIntervalSince(contextStart) * 1000))ms")
@@ -1873,6 +1878,16 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         print("\n🔄 STAGE 6 - Processing detections...")
         let processStart = Date()
         var totalPixelsSet = 0
+        
+        // Lock original image for reading once for all detections
+        CVPixelBufferLockBaseAddress(originalImage, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(originalImage, .readOnly) }
+        guard let origBase = CVPixelBufferGetBaseAddress(originalImage)?.assumingMemoryBound(to: UInt8.self) else {
+            print("❌ Could not access original image pixels")
+            DispatchQueue.main.async { self.isProcessing = false }
+            return
+        }
+        let origBytesPerRow = CVPixelBufferGetBytesPerRow(originalImage)
         
         for (detIndex, det) in selected.enumerated() {
             let detStart = Date()
@@ -2007,53 +2022,29 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("       ROI positive pixels: \(roiPositiveCount)/\(bw*bh) (\(String(format: "%.1f", Float(roiPositiveCount) / Float(bw*bh) * 100))%)")
             print("       Upscale method: \(self.useBilinearUpscaling ? "bilinear" : "nearest-neighbor")")
 
-            // SUB-STAGE 6.5: Composite into output image (OPTIMIZED)
+            // SUB-STAGE 6.5: Composite into output image - Copy original pixels
             let compositeStart = Date()
             var pixelsSet = 0
-            
-            // Use vDSP for faster pixel operations when possible
-            let greenColor: UInt32 = 0xFF00FF00  // ARGB format: Alpha=FF, R=00, G=FF, B=00
             
             for y in 0..<bh {
                 let outRowStart = (by1 + y) * width + bx1
                 let roiRowStart = y * bw
+                let origRowStart = (by1 + y) * origBytesPerRow + bx1 * 4
                 
-                // Process 4 pixels at a time when aligned
-                var x = 0
-                while x < (bw - 3) {
-                    let roiIdx = roiRowStart + x
-                    if binMaskROI[roiIdx] > 0 || binMaskROI[roiIdx + 1] > 0 || 
-                       binMaskROI[roiIdx + 2] > 0 || binMaskROI[roiIdx + 3] > 0 {
-                        // Process 4 pixels individually for this batch
-                        for offset in 0..<4 {
-                            let roiPixel = roiRowStart + x + offset
-                            if binMaskROI[roiPixel] > 0 {
-                                let outIdx = outRowStart + x + offset
-                                let px = outIdx * 4
-                                outBase[px + 0] = 0     // B (Blue) 
-                                outBase[px + 1] = 255   // G (Green)  
-                                outBase[px + 2] = 0     // R (Red)
-                                outBase[px + 3] = 255   // A (Alpha)
-                                pixelsSet += 1
-                            }
-                        }
-                    }
-                    x += 4
-                }
-                
-                // Handle remaining pixels
-                while x < bw {
+                for x in 0..<bw {
                     let roiPixel = roiRowStart + x
                     if binMaskROI[roiPixel] > 0 {
                         let outIdx = outRowStart + x
                         let px = outIdx * 4
-                        outBase[px + 0] = 0     // B (Blue)
-                        outBase[px + 1] = 255   // G (Green)
-                        outBase[px + 2] = 0     // R (Red)
-                        outBase[px + 3] = 255   // A (Alpha)
+                        let origPx = origRowStart + x * 4
+                        
+                        // Copy original pixel colors (BGRA -> BGRA)
+                        outBase[px + 0] = origBase[origPx + 0]  // B
+                        outBase[px + 1] = origBase[origPx + 1]  // G  
+                        outBase[px + 2] = origBase[origPx + 2]  // R
+                        outBase[px + 3] = 255                   // A (fully opaque)
                         pixelsSet += 1
                     }
-                    x += 1
                 }
             }
             
@@ -2075,7 +2066,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let labelsStart = Date()
         self.drawLabelsAndBoxes(
             ctx: ctx,
-            stage1: primaryBBoxes,
+            stage1: selected,  // Use same selected detections instead of all primaryBBoxes
             stage2: [],
             imageWidth: width,
             imageHeight: height,
@@ -2412,56 +2403,110 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         imageHeight: Int,
         drawBoxes: Bool
     ) {
+        print("\n🏷️ ===== DRAW LABELS AND BOXES DEBUG =====")
+        
         let allDetections = stage1 + stage2
-        guard !allDetections.isEmpty else { return }
+        print("📊 Input parameters:")
+        print("   stage1 count: \(stage1.count)")
+        print("   stage2 count: \(stage2.count)")
+        print("   total detections: \(allDetections.count)")
+        print("   imageWidth: \(imageWidth), imageHeight: \(imageHeight)")
+        print("   drawBoxes: \(drawBoxes)")
+        
+        guard !allDetections.isEmpty else { 
+            print("⚠️  No detections to draw - returning early")
+            return 
+        }
         
         let scale = Float(imageWidth) / 1280.0
+        print("📐 Scaling calculation:")
+        print("   scale = imageWidth(\(imageWidth)) / 1280.0 = \(String(format: "%.4f", scale))")
         
         // Set up text attributes
         let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 20, nil)
         let textColor = UIColor.white.cgColor
+        print("🖋  Text setup completed - font size: 20pt")
         
-        for detection in allDetections {
+        for (index, detection) in allDetections.enumerated() {
+            print("\n  🎯 Processing detection \(index + 1)/\(allDetections.count):")
+            print("     Class: \(detection.className), Confidence: \(String(format: "%.3f", detection.confidence))")
+            print("     Original model coords: x=\(String(format: "%.1f", detection.x)), y=\(String(format: "%.1f", detection.y)), w=\(String(format: "%.1f", detection.width)), h=\(String(format: "%.1f", detection.height))")
+            
             // Convert coordinates to image space
             let x = detection.x * scale
             let y = detection.y * scale
             let w = detection.width * scale
             let h = detection.height * scale
             
+            print("     Scaled coords: x=\(String(format: "%.1f", x)), y=\(String(format: "%.1f", y)), w=\(String(format: "%.1f", w)), h=\(String(format: "%.1f", h))")
+            
             let left = x - w / 2
             let top = y - h / 2
             let right = x + w / 2
             let bottom = y + h / 2
             
+            print("     Bounding box: left=\(String(format: "%.1f", left)), top=\(String(format: "%.1f", top)), right=\(String(format: "%.1f", right)), bottom=\(String(format: "%.1f", bottom))")
+            print("     Box dimensions: width=\(String(format: "%.1f", w)), height=\(String(format: "%.1f", h))")
+            
+            // Check if coordinates are reasonable
+            if left < -50 || top < -50 || right > Float(imageWidth + 50) || bottom > Float(imageHeight + 50) {
+                print("     ⚠️  WARNING: Coordinates seem out of bounds!")
+                print("        Image bounds: 0x0 to \(imageWidth)x\(imageHeight)")
+                print("        Box extends: \(String(format: "%.1f", left)) to \(String(format: "%.1f", right)) (x), \(String(format: "%.1f", top)) to \(String(format: "%.1f", bottom)) (y)")
+            }
+            
             if drawBoxes {
+                print("     📦 Drawing bounding box...")
                 // Draw bounding box
                 ctx.setStrokeColor(UIColor.green.cgColor)
                 ctx.setLineWidth(2.0)
                 let rect = CGRect(x: CGFloat(left), y: CGFloat(top),
                                 width: CGFloat(w), height: CGFloat(h))
+                print("        CGRect: \(rect)")
                 ctx.stroke(rect)
+                print("        ✅ Bounding box drawn")
+            } else {
+                print("     📦 Skipping bounding box (drawBoxes=false)")
             }
             
             // Draw label with clamped confidence
             let clampedConf = min(99, max(0, Int(detection.confidence * 100)))
             let label = "\(detection.className) \(clampedConf)%"
+            print("     🏷️  Preparing label: '\(label)'")
+            
             let attributedString = NSAttributedString(string: label, attributes: [
                 .font: font,
                 .foregroundColor: UIColor.white
             ])
             
-            let labelRect = CGRect(x: CGFloat(left), y: CGFloat(top - 25),
+            let labelRect = CGRect(x: CGFloat(left), y: CGFloat(max(0, top - 25)),  // Ensure label stays within bounds
                                  width: CGFloat(w), height: 25)
+            print("        Label rect: \(labelRect)")
+            
+            // Check label positioning
+            if labelRect.minY < 0 {
+                print("        ⚠️  WARNING: Label rect extends above image bounds (minY: \(labelRect.minY))")
+            }
             
             // Draw background for text
+            print("        Drawing label background...")
             ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
             ctx.fill(labelRect)
             
             // Draw text
+            print("        Drawing label text...")
             let line = CTLineCreateWithAttributedString(attributedString)
-            ctx.textPosition = CGPoint(x: CGFloat(left + 5), y: CGFloat(top - 5))
+            let textPosition = CGPoint(x: CGFloat(left + 5), y: CGFloat(max(20, top - 5)))  // Adjust text position too
+            print("        Text position: \(textPosition)")
+            ctx.textPosition = textPosition
             CTLineDraw(line, ctx)
+            print("        ✅ Label drawn successfully")
         }
+        
+        print("🏷️ ===== DRAW LABELS AND BOXES COMPLETE =====")
+        print("   Total detections processed: \(allDetections.count)")
+        print("   Scaling factor used: \(String(format: "%.4f", scale))")
+        print("   Target image size: \(imageWidth) x \(imageHeight)")
     }
     
     // MARK: - Remaining utility methods
