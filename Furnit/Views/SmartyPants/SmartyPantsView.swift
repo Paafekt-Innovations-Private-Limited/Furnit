@@ -8,12 +8,6 @@ import CoreML
 import Accelerate
 import AVFoundation
 import Photos
-import Accelerate.vImage
-import Foundation
-//import CoreML
-//import Accelerate
-import CoreVideo
-
 
 // MARK: - SwiftUI Wrapper
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
@@ -462,26 +456,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // Detection mode: true = detect ALL objects, false = furniture classes only
     var detectAllObjects: Bool = true
     
-//    private var protoFloatBuf: [Float] = []
-//    private var protoPlanar8: [UInt8] = []
-//    private var tmpPlanar8: [UInt8] = []
-//    private var closedProto8: [UInt8] = []
-//    private var upscaledPlanar8: [UInt8] = []
-    
-    // Preallocated reusable buffers
-    private var detFloatBuf: UnsafeMutablePointer<Float>? = nil
-    private var protoFloatBuf: [Float] = []
-    private var protoPlanar8: [UInt8] = []
-    private var tmpPlanar8: [UInt8] = []
-    private var closedProto8: [UInt8] = []
-    private var upscaledPlanar8: [UInt8] = []
-    
-    private var detFloatBufCapacity: Int = 0
-
-    // vDSP temp for argmax when numClasses large
-    private var tempConf: [Float] = []
-
-    
     // MARK: Brightness gate (prevent processing when phone is lying down / frame is dark)
     private var lumaThreshold: Float = 0.08          // 0.0 .. 1.0
     private var brightStreak: Int = 0
@@ -623,7 +597,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         213: "baby seat", 733: "car seat", 834: "changing table", 679: "cake stand",
         1143: "counter", 1144: "counter top", 1303: "desktop", 1733: "food stand",
         1801: "fruit stand", 2193: "ice shelf", 2219: "information desk",
-        1099: "cot", 1183: "cradle", 3088: "playpen"
+        1099: "cot", 1183: "cradle", 3088: "playpen", 1234: "furniture"  // ← Add mystery class
     ]
     
     private var isAppActive: Bool = true
@@ -1140,64 +1114,1013 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     private func processFrame(_ pixelBuffer: CVPixelBuffer) {
         let frameStart = Date()
+        
         guard let model = mlModel else { return }
         let now = Date()
         guard now.timeIntervalSince(lastProcessTime) >= processInterval, !isProcessing else { return }
         lastProcessTime = now
         isProcessing = true
-        if debugMode { print("\n🕒 ===== NEW FRAME @ \(now.timeIntervalSince1970) =====") }
 
+        if self.debugMode {
+            print("\n🕒 ===== NEW FRAME @ \(now.timeIntervalSince1970) =====")
+            print("🔬 ========== STAGE 1: FULL FRAME ==========")
+        }
         setProgress(0.2, text: "Preprocessing frame…")
-        // Preprocess -> resize + MLMultiArray
+
+        // STAGE 1: Preprocess
         let stage1PreStart = Date()
-        guard let resized = resizePixelBufferToSquare(pixelBuffer, size: 1280),
-              let inputArray = pixelBufferToMLMultiArray(resized) else { isProcessing = false; return }
-        if debugMode { print(String(format: "⏱ Stage1 preprocess: %.2f ms", Date().timeIntervalSince(stage1PreStart)*1000)) }
-
-        // Inference
-        setProgress(0.35, text: "Running detection…")
-        let stage1InfStart = Date()
-        guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]),
-              let output = try? model.prediction(from: inputProvider) else { isProcessing = false; return }
-        if debugMode { print(String(format: "⏱ Stage1 model.prediction: %.2f ms", Date().timeIntervalSince(stage1InfStart)*1000)) }
-
-        // Extract outputs (detections + prototypes)
-        guard let detArray = output.featureValue(for: "var_2497")?.multiArrayValue,
-              let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
-            isProcessing = false; return
+        guard let letterboxResult = resizePixelBufferToSquare(pixelBuffer, size: 1280) else {
+            isProcessing = false
+            return
+        }
+        let resized = letterboxResult.buffer
+        let letterboxGain = letterboxResult.gain
+        let letterboxPadX = letterboxResult.padX
+        let letterboxPadY = letterboxResult.padY
+        
+        guard let inputArray = pixelBufferToMLMultiArray(resized) else {
+            isProcessing = false
+            return
+        }
+        let stage1PreEnd = Date()
+        if self.debugMode {
+            print(String(format: "⏱ Stage1 preprocess (letterbox+toMultiArray): %.2f ms", stage1PreEnd.timeIntervalSince(stage1PreStart) * 1000.0))
         }
 
-        // Quick decode (low-threshold for masks)
-        setProgress(0.55, text: "Refining crop…")
-//        let rawDetections = extractDetections(from: detArray, confThreshold: 0.01)
-//        let rawDetections = extractDetections(from: detArray, confThreshold: 0.01, topK: min(50, 10000))
-        
-        let rawDetections = extractDetections(from: detArray, confThreshold: 0.01, topK: min(50, /*some upper bound*/ 10000))
+        setProgress(0.35, text: "Running detection…")
 
-        if rawDetections.isEmpty {
-            DispatchQueue.main.async { self.maskImageView.image = nil; self.isProcessing = false }
+        // STAGE 1: Inference
+        let stage1InfStart = Date()
+        guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
+            isProcessing = false
+            return
+        }
+        guard let output = try? model.prediction(from: inputProvider) else {
+            isProcessing = false
+            return
+        }
+        let stage1InfEnd = Date()
+        if self.debugMode {
+            print(String(format: "⏱ Stage1 model.prediction: %.2f ms", stage1InfEnd.timeIntervalSince(stage1InfStart) * 1000.0))
+        }
+
+        if self.debugMode {
+            let names = output.featureNames.joined(separator: ", ")
+            print("📤 Model outputs: \(names)")
+        }
+
+        var detectionsArray: MLMultiArray?
+        if let arr = output.featureValue(for: "var_1432")?.multiArrayValue {
+            detectionsArray = arr
+//        } else if let arr = output.featureValue(for: "var_2421")?.multiArrayValue {
+        } else if let arr = output.featureValue(for: "var_2497")?.multiArrayValue {
+            detectionsArray = arr
+        } else {
+            for name in output.featureNames {
+                if let arr = output.featureValue(for: name)?.multiArrayValue {
+                    let shape = arr.shape.map { $0.intValue }
+                    if shape.count == 3 && shape[0] == 1 && shape[1] > 100 {
+                        detectionsArray = arr
+                        if self.debugMode { print("   → Using '\(name)' as detections: \(shape)") }
+                        break
+                    }
+                }
+            }
+        }
+
+        guard let detArray = detectionsArray else {
+            isProcessing = false
             return
         }
 
-        // Compute masks once (fast path)
-        setProgress(0.8, text: "Building mask…")
-        let maskCoeffs = rawDetections.map { $0.maskCoeffs }
-        let imageW = CVPixelBufferGetWidth(pixelBuffer), imageH = CVPixelBufferGetHeight(pixelBuffer)
-        let masks = processMasks(protos: prototypesArray, maskCoeffs: maskCoeffs, boxes: rawDetections, outSize: (height: imageH, width: imageW), upsample: true)
-
-        // Fast generateCutout which accepts precomputed masks
-        let cutoutStart = Date()
-        generateCutout(stage1Prototypes: prototypesArray, primaryBBoxes: rawDetections, masks: masks, originalImage: pixelBuffer)
-        if debugMode {
-            let cutoutEnd = Date()
-            print(String(format: "⏱ generateCutout: %.2f ms", cutoutEnd.timeIntervalSince(cutoutStart)*1000))
-            print(String(format: "🕒 Frame total: %.2f ms", cutoutEnd.timeIntervalSince(frameStart)*1000))
+        guard let prototypesArray = output.featureValue(for: "p")?.multiArrayValue else {
+            isProcessing = false
+            return
         }
-        isProcessing = false
+
+        let decodeStart = Date()
+        var all: [DetectionSmarty] = []
+
+        let numFeatures = detArray.shape[1].intValue
+        let numAnchors = detArray.shape[2].intValue
+        let numClasses = numFeatures - 4 - 32
+
+        // Validate tensor dimensions
+        guard numFeatures >= 36 && numAnchors > 0 && numClasses > 0 else {
+            if self.debugMode {
+                print("⚠️ extractDetections: Invalid tensor dimensions - features:\(numFeatures), anchors:\(numAnchors), classes:\(numClasses)")
+            }
+            isProcessing = false
+            return
+        }
+
+        let totalCount = detArray.count
+
+        // Validate total count matches expected dimensions
+        let expectedCount = numFeatures * numAnchors
+        guard totalCount >= expectedCount else {
+            if self.debugMode {
+                print("⚠️ extractDetections: Array size mismatch - expected:\(expectedCount), got:\(totalCount)")
+            }
+            isProcessing = false
+            return
+        }
+
+        let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
+        defer { detBuf.deallocate() }
+
+        let copyStart = Date()
+        if detArray.dataType == .float16 {
+            let src = detArray.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
+            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src),
+                                       height: 1, width: vImagePixelCount(totalCount),
+                                       rowBytes: totalCount * MemoryLayout<UInt16>.size)
+            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf),
+                                       height: 1, width: vImagePixelCount(totalCount),
+                                       rowBytes: totalCount * MemoryLayout<Float>.size)
+            let result = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+            if result != kvImageNoError && self.debugMode {
+                print("⚠️ extractDetections: vImage conversion failed: \(result)")
+            }
+        } else if detArray.dataType == .float32 {
+            let src = detArray.dataPointer.assumingMemoryBound(to: Float.self)
+            memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
+        } else {
+            for i in 0..<totalCount {
+                detBuf[i] = detArray[i].floatValue
+            }
+        }
+        let copyEnd = Date()
+        if self.debugMode {
+            print(String(format: "⏱ extractDetections copy/convert: %.2f ms",
+                         copyEnd.timeIntervalSince(copyStart) * 1000.0))
+        }
+
+        let coeffOffset = 4 + numClasses
+        let stride = numAnchors
+
+        // Replace original decode loop with optimized version:
+
+        // We'll treat the class scores as a matrix [numClasses x numAnchors]
+        // laid out with row stride = stride (numAnchors). For a fixed anchor,
+        // we can copy the column (strided) into a contiguous temp buffer using
+        // BLAS, then get max and argmax with vDSP in one pass.
+        var tempScores = [Float](repeating: 0, count: numClasses)
+
+        if detectAllObjects {
+            // ALL OBJECTS path — optimized with BLAS + vDSP
+            for anchor in 0..<numAnchors {
+                // Coordinates (no per-anchor bounds checks; we validated sizes above)
+                let x = detBuf[0 * stride + anchor]
+                let y = detBuf[1 * stride + anchor]
+                let w = detBuf[2 * stride + anchor]
+                let h = detBuf[3 * stride + anchor]
+
+                // Validate coordinate values quickly
+                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) {
+                    continue
+                }
+
+                // Copy class scores for this anchor into tempScores contiguously
+                // Base pointer to the first class score for this anchor
+                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
+                cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
+
+                // Find max and argmax in one pass
+                var maxVal: Float = 0
+                var maxIdx: vDSP_Length = 0
+                vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
+
+                if maxVal > confidenceThreshold {
+                    // Copy 32 mask coefficients (strided) with BLAS
+                    var coeffs = [Float](repeating: 0, count: 32)
+                    let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
+                    cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
+
+                    let clsIdx = Int(maxIdx)
+                    let className = furnitureClasses[clsIdx] ?? "object_\(clsIdx)"
+                    
+                    // Debug: Show unknown classes
+                    if self.debugMode && furnitureClasses[clsIdx] == nil && maxVal > 0.7 {
+                        print("🔍 High-confidence unknown class: \(clsIdx) (conf=\(String(format: "%.3f", maxVal)))")
+                    }
+                    
+                    all.append(DetectionSmarty(
+                        x: x, y: y, width: w, height: h,
+                        confidence: maxVal, classIdx: clsIdx, className: className,
+                        maskCoeffs: coeffs
+                    ))
+                }
+            }
+        } else {
+            // FURNITURE-ONLY path — keep a tight loop over furniture indices
+            let furnitureList = furnitureClasses.filter { $0.key < numClasses }
+
+            // Debug: track best furniture confidence found
+            var bestFurnitureConf: Float = 0
+            var bestFurnitureClass = ""
+            var bestFurnitureAnchor = -1
+
+            for anchor in 0..<numAnchors {
+                let x = detBuf[0 * stride + anchor]
+                let y = detBuf[1 * stride + anchor]
+                let w = detBuf[2 * stride + anchor]
+                let h = detBuf[3 * stride + anchor]
+
+                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) {
+                    continue
+                }
+
+                for (classIdx, className) in furnitureList {
+                    let conf = detBuf[(4 + classIdx) * stride + anchor]
+
+                    // Track best furniture confidence for debug
+                    if conf.isFinite && conf > bestFurnitureConf {
+                        bestFurnitureConf = conf
+                        bestFurnitureClass = className
+                        bestFurnitureAnchor = anchor
+                    }
+
+                    if conf.isFinite && conf > confidenceThreshold {
+                        var coeffs = [Float](repeating: 0, count: 32)
+                        let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
+                        cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
+
+                        all.append(DetectionSmarty(
+                            x: x, y: y, width: w, height: h,
+                            confidence: conf, classIdx: classIdx, className: className,
+                            maskCoeffs: coeffs
+                        ))
+                    }
+                }
+            }
+
+            // Debug: show best furniture confidence found even if below threshold
+            if self.debugMode && all.isEmpty {
+                print("🔍 FURNITURE DEBUG: Best conf=\(String(format: "%.3f", bestFurnitureConf)) for '\(bestFurnitureClass)' at anchor \(bestFurnitureAnchor)")
+                print("   Threshold was: \(confidenceThreshold), furniture classes checked: \(furnitureList.count)")
+
+                // Also find best confidence across ALL classes for comparison (sample first 100 anchors)
+                var bestOverallConf: Float = 0
+                var bestOverallClass = -1
+                let sampleAnchors = min(100, numAnchors)
+                for anchor in 0..<sampleAnchors {
+                    // Copy class scores into temp buffer
+                    let basePtr = detBuf.advanced(by: 4 * stride + anchor)
+                    cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
+                    var maxVal: Float = 0
+                    var maxIdx: vDSP_Length = 0
+                    vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
+                    if maxVal > bestOverallConf { bestOverallConf = maxVal; bestOverallClass = Int(maxIdx) }
+                }
+                print("   Best OVERALL conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass)")
+            }
+        }
+
+        let decodeEnd = Date()
+
+        if self.debugMode {
+            print(String(format: "⏱ extractDetections decode loop: %.2f ms",
+                         decodeEnd.timeIntervalSince(decodeStart) * 1000.0))
+
+            let grouped = Dictionary(grouping: all) { $0.className }
+            print("\n📊 DETECTION SUMMARY: \(all.count) total")
+            for (className, dets) in grouped.sorted(by: { $0.value.count > $1.value.count }).prefix(20) {
+                let confidences = dets.map { Int($0.confidence * 100) }
+                print("  - \(className): \(dets.count)x, conf: \(confidences)%")
+            }
+            if grouped.count > 20 {
+                print("  ... and \(grouped.count - 20) more classes")
+            }
+            let tEnd = Date()
+            print(String(format: "⏱ extractDetections total: %.2f ms",
+                         tEnd.timeIntervalSince(decodeStart) * 1000.0))
+        }
+
+        // Continue with the rest of the original code (unchanged)
+        let stage1DetectionsFull = all
+        let decodeEndOuter = Date()
+        if self.debugMode {
+            print("📊 Stage 1: \(stage1DetectionsFull.count) detections")
+            print(String(format: "⏱ Stage1 detection decode: %.2f ms", decodeEndOuter.timeIntervalSince(decodeStart) * 1000.0))
+        }
+
+//        let sorted = stage1DetectionsFull.sorted { $0.confidence > $1.confidence }
+        
+        // Sort detections by bounding-box area (largest first)
+        let sorted = stage1DetectionsFull.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+        
+        guard let primary = sorted.first else {
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.isProcessing = false
+            }
+            return
+        }
+
+        if self.debugMode {
+            print("🎯 Primary: \(primary.className) @ \(Int(primary.confidence * 100))%")
+            print("   BBox: center(\(Int(primary.x)), \(Int(primary.y))) size(\(Int(primary.width))x\(Int(primary.height)))")
+        }
+
+        setProgress(0.55, text: "Refining crop…")
+
+        // STAGE 2 removed: single-stage pipeline only
+        if self.debugMode { print("\n🔬 STAGE 2 removed — using single-stage masks (full frame only)") }
+        let stage2Start = Date()
+        let stage2Detections: [DetectionSmarty] = []
+        let stage2Prototypes: MLMultiArray? = nil
+        let stage2End = Date()
+        if self.debugMode {
+            print(String(format: "⏱ Stage2 (skipped): %.2f ms", stage2End.timeIntervalSince(stage2Start) * 1000.0))
+        }
+        
+        let rawDetections = extractDetections(from: detArray, confThreshold: 0.01)
+//        let nmsStart = Date()
+//        let uniqueDetections = applyNMS(rawDetections, iouThreshold: 0.9)
+//        let stage1Kept = keepOverlappingDetections(uniqueDetections)
+//        let stage2Kept = stage2Prototypes != nil
+//            ? applyNMS(stage2Detections, iouThreshold: 0.99)
+//            : []
+//        let stage2Kept = stage2Prototypes != nil ? applyNMS(stage2Detections, iouThreshold: 0.99) : []
+//        let stage2Kept = stage2Prototypes != nil
+//            ? keepOverlappingDetections(applyNMS(stage2Detections, iouThreshold: 0.99))
+//            : []
+//        let nmsEnd = Date()
+//        if self.debugMode {
+//            print(String(format: "⏱ NMS + keepOverlapping: %.2f ms", nmsEnd.timeIntervalSince(nmsStart) * 1000.0))
+//        }
+
+//        if self.debugMode {
+//            print("\n📊 UNION SUMMARY:")
+//            print("   Stage 1: keeping \(uniqueDetections.count) overlapping detections")
+//            print("   Stage 2: keeping \(stage2Kept.count) overlapping detections")
+//        }
+        if rawDetections.isEmpty {
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.isProcessing = false
+            }
+            return
+        }
+
+        // MARK: Apply tracking to assign persistent IDs
+//        let trackStart = Date()
+//        let allDetections = rawDetections + stage2Detections
+//        let trackedDetections = tracker.update(detections: allDetections)
+
+        // Split back into stage1 and stage2 with track IDs
+//        let trackedStage1 = Array(trackedDetections.prefix(rawDetections.count))
+//        let trackedStage2 = Array(trackedDetections.suffix(stage2Detections.count))
+//
+//        if self.debugMode {
+//            let trackEnd = Date()
+//            print(String(format: "⏱ Tracker update: %.2f ms", trackEnd.timeIntervalSince(trackStart) * 1000.0))
+//            let confirmedTracks = tracker.getConfirmedTracks()
+//            print("🔢 Active tracks: \(confirmedTracks.count) confirmed")
+//            for det in trackedDetections where det.trackId != nil {
+//                print("   → ID\(det.trackId!) \(det.className)")
+//            }
+//        }
+
+        setProgress(0.8, text: "Building mask…")
+
+        let cutoutStart = Date()
+        // Keep top-5 stage1 detections for boxes/labels and inspection
+        // Keep the top-5 detections by bbox area (largest boxes)
+//        let top5Stage1 = Array(uniqueDetections.sorted { ($0.width * $0.height) > ($1.width * $1.height) }.prefix(500))
+        generateCutout(
+            stage1Prototypes: prototypesArray,
+            primaryBBoxes: rawDetections,
+            originalImage: pixelBuffer,
+            letterboxGain: letterboxGain,
+            letterboxPadX: letterboxPadX,
+            letterboxPadY: letterboxPadY
+        )
+        let cutoutEnd = Date()
+        if self.debugMode {
+            print(String(format: "⏱ generateCutoutTwoStage call: %.2f ms", cutoutEnd.timeIntervalSince(cutoutStart) * 1000.0))
+            print(String(format: "🕒 Frame total (processFrame): %.2f ms", cutoutEnd.timeIntervalSince(frameStart) * 1000.0))
+        }
+    }
+    
+    // MARK: - Pixel Buffer to MLMultiArray (BGRA -> [1,3,1280,1280] Float32)
+    private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        guard width == 1280 && height == 1280 else {
+            if self.debugMode { print("⚠️ pixelBufferToMLMultiArray: expected 1280x1280, got \(width)x\(height)") }
+            return nil
+        }
+        guard let array = try? MLMultiArray(shape: [1, 3, 1280, 1280], dataType: .float32) else { return nil }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+
+        let pixelCount = width * height
+        let floatSize = MemoryLayout<Float32>.size
+        let planeStrideBytes = pixelCount * floatSize
+        let rPtr = array.dataPointer.advanced(by: 0 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
+        let gPtr = array.dataPointer.advanced(by: 1 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
+        let bPtr = array.dataPointer.advanced(by: 2 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
+
+        let src = baseAddress.assumingMemoryBound(to: UInt8.self)
+        var rowU8 = [UInt8](repeating: 0, count: width * 4)
+        var rowF  = [Float](repeating: 0, count: width * 4)
+        var scale: Float = 1.0 / 255.0
+
+        var indicesR = [vDSP_Length](repeating: 0, count: width)
+        var indicesG = [vDSP_Length](repeating: 0, count: width)
+        var indicesB = [vDSP_Length](repeating: 0, count: width)
+        for i in 0..<width {
+            indicesR[i] = vDSP_Length(2 + i * 4) // BGRA -> R at +2
+            indicesG[i] = vDSP_Length(1 + i * 4) // G at +1
+            indicesB[i] = vDSP_Length(0 + i * 4) // B at +0
+        }
+
+        for y in 0..<height {
+            let rowStart = src.advanced(by: y * bytesPerRow)
+            memcpy(&rowU8, rowStart, width * 4)
+            rowU8.withUnsafeBufferPointer { u8 in
+                rowF.withUnsafeMutableBufferPointer { f in
+                    vDSP_vfltu8(u8.baseAddress!, 1, f.baseAddress!, 1, vDSP_Length(width * 4))
+                    vDSP_vsmul(f.baseAddress!, 1, &scale, f.baseAddress!, 1, vDSP_Length(width * 4))
+                }
+            }
+            rowF.withUnsafeBufferPointer { rf in
+                let baseF = rf.baseAddress!
+                vDSP_vgathr(baseF, indicesR, 1, rPtr.advanced(by: y * width), 1, vDSP_Length(width))
+                vDSP_vgathr(baseF, indicesG, 1, gPtr.advanced(by: y * width), 1, vDSP_Length(width))
+                vDSP_vgathr(baseF, indicesB, 1, bPtr.advanced(by: y * width), 1, vDSP_Length(width))
+            }
+        }
+        return array
+    }
+    
+    // MARK: - Extract Detections (optimized)
+    private func extractDetections(from detections: MLMultiArray, confThreshold: Float) -> [DetectionSmarty] {
+        var results: [DetectionSmarty] = []
+
+        let numFeatures = detections.shape[1].intValue
+        let numAnchors = detections.shape[2].intValue
+        let numClasses = numFeatures - 4 - 32
+        guard numFeatures >= 36 && numAnchors > 0 && numClasses > 0 else { return [] }
+
+        let totalCount = detections.count
+        let expectedCount = numFeatures * numAnchors
+        guard totalCount >= expectedCount else { return [] }
+
+        // Copy/convert into contiguous Float buffer
+        let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
+        defer { detBuf.deallocate() }
+        if detections.dataType == .float16 {
+            let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
+            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<UInt16>.size)
+            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<Float>.size)
+            _ = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+        } else if detections.dataType == .float32 {
+            let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
+            memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
+        } else {
+            for i in 0..<totalCount { detBuf[i] = detections[i].floatValue }
+        }
+
+        let stride = numAnchors
+        let coeffOffset = 4 + numClasses
+        var tempScores = [Float](repeating: 0, count: numClasses)
+
+        if detectAllObjects {
+            for anchor in 0..<numAnchors {
+                let x = detBuf[0 * stride + anchor]
+                let y = detBuf[1 * stride + anchor]
+                let w = detBuf[2 * stride + anchor]
+                let h = detBuf[3 * stride + anchor]
+                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) { continue }
+
+                // Copy class scores column -> tempScores
+                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
+                cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
+
+                var maxVal: Float = 0
+                var maxIdx: vDSP_Length = 0
+                vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
+                if maxVal > confThreshold {
+                    var coeffs = [Float](repeating: 0, count: 32)
+                    let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
+                    cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
+                    let clsIdx = Int(maxIdx)
+                    let className = furnitureClasses[clsIdx] ?? "object_\(clsIdx)"
+                    results.append(DetectionSmarty(x: x, y: y, width: w, height: h, confidence: maxVal, classIdx: clsIdx, className: className, maskCoeffs: coeffs))
+                }
+            }
+        } else {
+            let furnitureList = furnitureClasses.filter { $0.key < numClasses }
+            for anchor in 0..<numAnchors {
+                let x = detBuf[0 * stride + anchor]
+                let y = detBuf[1 * stride + anchor]
+                let w = detBuf[2 * stride + anchor]
+                let h = detBuf[3 * stride + anchor]
+                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) { continue }
+
+                for (classIdx, className) in furnitureList {
+                    let conf = detBuf[(4 + classIdx) * stride + anchor]
+                    if conf.isFinite && conf > confThreshold {
+                        var coeffs = [Float](repeating: 0, count: 32)
+                        let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
+                        cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
+                        results.append(DetectionSmarty(x: x, y: y, width: w, height: h, confidence: conf, classIdx: classIdx, className: className, maskCoeffs: coeffs))
+                    }
+                }
+            }
+        }
+        return results
+    }
+    
+    // Parse prototype tensor `p` into contiguous Float planes [32][H][W]
+    private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], count: Int, height: Int, width: Int)? {
+        // Normalize shape: drop leading batch dim if present
+        var shape = proto.shape.map { $0.intValue }
+        if shape.count == 4 && shape[0] == 1 { shape.removeFirst() }
+        guard shape.count == 3 else { return nil }
+
+        // Locate 32-channel dimension
+        let cIdx: Int
+        if shape[0] == 32 { cIdx = 0 }
+        else if shape[2] == 32 { cIdx = 2 }
+        else { cIdx = shape.firstIndex(of: 32) ?? -1 }
+        guard cIdx >= 0 else { return nil }
+
+        let count = 32
+        let h: Int
+        let w: Int
+        if cIdx == 0 {
+            h = shape[1]; w = shape[2]
+        } else if cIdx == 2 {
+            h = shape[0]; w = shape[1]
+        } else {
+            // Fallback assume [C,H,W]
+            h = shape[1]; w = shape[2]
+        }
+        let planeSize = h * w
+        let total = shape[0] * shape[1] * shape[2]
+
+        // Copy data to Float buffer
+        var rawFloats = [Float](repeating: 0, count: total)
+        if proto.dataType == .float16 {
+            let src = proto.dataPointer.bindMemory(to: UInt16.self, capacity: total)
+            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(total), rowBytes: total * MemoryLayout<UInt16>.size)
+            var dstBuf = vImage_Buffer(data: &rawFloats, height: 1, width: vImagePixelCount(total), rowBytes: total * MemoryLayout<Float>.size)
+            _ = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+        } else if proto.dataType == .float32 {
+            let src = proto.dataPointer.assumingMemoryBound(to: Float.self)
+            memcpy(&rawFloats, src, total * MemoryLayout<Float>.size)
+        } else {
+            for i in 0..<total { rawFloats[i] = proto[i].floatValue }
+        }
+
+        // Reorder to [count][h][w]
+        var planes = [Float](repeating: 0, count: count * planeSize)
+        if cIdx == 0 {
+            // Already [C,H,W]
+            memcpy(&planes, rawFloats, count * planeSize * MemoryLayout<Float>.size)
+        } else if cIdx == 2 {
+            // [H,W,C] -> [C,H,W]
+            for y in 0..<h {
+                for x in 0..<w {
+                    let baseHW = (y * w + x) * count
+                    let dstBase = y * w + x
+                    for k in 0..<count {
+                        planes[k * planeSize + dstBase] = rawFloats[baseHW + k]
+                    }
+                }
+            }
+        } else {
+            // Generic reorder using strides
+            let strides = proto.strides.map { $0.intValue }
+            for k in 0..<count {
+                for y in 0..<h {
+                    for x in 0..<w {
+                        let idx = k * strides[0] + y * strides[1] + x * strides[2]
+                        planes[k * planeSize + (y * w + x)] = rawFloats[idx]
+                    }
+                }
+            }
+        }
+        return (planes, count, h, w)
+    }
+
+    private func generateCutout(
+        stage1Prototypes: MLMultiArray,
+        primaryBBoxes: [DetectionSmarty],
+        originalImage: CVPixelBuffer,
+        letterboxGain: Float,
+        letterboxPadX: Float,
+        letterboxPadY: Float,
+        modelInput: Int = 1280
+    ) {
+        let functionStart = Date()
+        print("\n🎭 ===== GENERATE CUTOUT START =====")
+        
+        let width  = CVPixelBufferGetWidth(originalImage)
+        let height = CVPixelBufferGetHeight(originalImage)
+        
+        print("📐 Image dimensions: \(width) x \(height)")
+        print("📦 Input params: letterboxGain=\(letterboxGain), padX=\(letterboxPadX), padY=\(letterboxPadY), modelInput=\(modelInput)")
+        print("🔢 Primary bboxes count: \(primaryBBoxes.count)")
+
+        // STAGE 1: Parse prototypes
+        let parseStart = Date()
+        guard let protoInfo = parsePrototypes(stage1Prototypes) else {
+            print("❌ STAGE 1 FAILED: Could not parse prototypes")
+            DispatchQueue.main.async { self.isProcessing = false }
+            return
+        }
+        let planes = protoInfo.planes
+        let pCount = protoInfo.count
+        let pH = protoInfo.height
+        let pW = protoInfo.width
+        guard pCount >= 32 else {
+            print("❌ STAGE 1 FAILED: Proto count \(pCount) < 32")
+            DispatchQueue.main.async { self.isProcessing = false }
+            return
+        }
+        let parseEnd = Date()
+        
+        print("✅ STAGE 1 - Parse prototypes: \(String(format: "%.2f", parseEnd.timeIntervalSince(parseStart) * 1000))ms")
+        print("   Proto dimensions: \(pCount) channels, \(pW) x \(pH)")
+        print("   Proto plane size: \(planes.count) floats")
+
+        let planeSize = pH * pW
+
+        // STAGE 2: Reorganize prototype planes to row-major matrix (ULTRA OPTIMIZED)
+        let reorganizeStart = Date()
+        var planesRM = [Float](repeating: 0, count: planeSize * 32)
+        var zero: Float = 0.0  // vDSP_vsadd needs this
+        
+        // Use vDSP for vectorized strided copies - much faster than manual loops
+        planesRM.withUnsafeMutableBufferPointer { dstPtr in
+            planes.withUnsafeBufferPointer { srcPtr in
+                for k in 0..<32 {
+                    let srcStart = srcPtr.baseAddress!.advanced(by: k * planeSize)
+                    let dstStart = dstPtr.baseAddress!.advanced(by: k)
+                    
+                    // Copy plane k to every 32nd position starting at k
+                    // This is equivalent to: dstStart[i*32] = srcStart[i] for i in 0..<planeSize
+                    vDSP_vsadd(srcStart, 1, &zero, dstStart, 32, vDSP_Length(planeSize))
+                }
+            }
+        }
+        
+        let reorganizeEnd = Date()
+        
+        print("✅ STAGE 2 - Reorganize planes: \(String(format: "%.2f", reorganizeEnd.timeIntervalSince(reorganizeStart) * 1000))ms")
+        print("   Created row-major matrix: \(planeSize) x 32")
+
+        // STAGE 3: Select and sort detections
+        let selectStart = Date()
+        let maxMasks = 5  // Reduced from 10 to 5 for better performance
+        let dets = primaryBBoxes.sorted { $0.confidence > $1.confidence }
+        let selected = Array(dets.prefix(maxMasks))
+        let selectEnd = Date()
+        
+        print("✅ STAGE 3 - Select detections: \(String(format: "%.2f", selectEnd.timeIntervalSince(selectStart) * 1000))ms")
+        print("   Selected \(selected.count)/\(primaryBBoxes.count) detections (max \(maxMasks))")
+        for (i, det) in selected.enumerated() {
+            print("   [\(i)] \(det.className) conf=\(String(format: "%.3f", det.confidence)) bbox=(\(Int(det.x)), \(Int(det.y)), \(Int(det.width))x\(Int(det.height)))")
+        }
+
+        // STAGE 4: Create CGContext for output
+        let contextStart = Date()
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            print("❌ STAGE 4 FAILED: Could not create CGContext")
+            DispatchQueue.main.async { self.isProcessing = false }
+            return
+        }
+        guard let outBase = ctx.data?.assumingMemoryBound(to: UInt8.self) else {
+            print("❌ STAGE 4 FAILED: Could not get CGContext data pointer")
+            DispatchQueue.main.async { self.isProcessing = false }
+            return
+        }
+        memset(outBase, 0, width * height * 4)
+        let contextEnd = Date()
+        
+        print("✅ STAGE 4 - Create context: \(String(format: "%.2f", contextEnd.timeIntervalSince(contextStart) * 1000))ms")
+        print("   Context: \(width) x \(height) RGBA, \(width * height * 4) bytes")
+
+        if selected.isEmpty {
+            print("⚠️  No detections selected - drawing empty result")
+            self.drawLabelsAndBoxes(
+                ctx: ctx,
+                stage1: primaryBBoxes,
+                stage2: [],
+                imageWidth: width,
+                imageHeight: height,
+                drawBoxes: self.debugMode
+            )
+            if let out = ctx.makeImage() {
+                DispatchQueue.main.async {
+                    self.maskImageView.image = UIImage(cgImage: out)
+                    self.isProcessing = false
+                }
+            } else {
+                DispatchQueue.main.async { self.isProcessing = false }
+            }
+            return
+        }
+
+        // STAGE 5: Setup work buffers and parameters
+        let setupStart = Date()
+        var logits = [Float](repeating: 0, count: planeSize)
+        var binMaskSmall = [UInt8](repeating: 0, count: planeSize)
+
+        // BLAS GEMV params
+        let alpha: Float = 1.0
+        let beta:  Float = 0.0
+        let m = Int32(planeSize) // rows
+        let n = Int32(32)        // cols
+        let lda = Int32(32)      // row-major leading dim = cols
+
+        // Model -> proto scaling
+        let protoScaleX = Float(pW) / Float(modelInput)
+        let protoScaleY = Float(pH) / Float(modelInput)
+
+        @inline(__always)
+        func modelToOrigX(_ xModel: Float) -> Float { (xModel - letterboxPadX) / letterboxGain }
+        @inline(__always)
+        func modelToOrigY(_ yModel: Float) -> Float { (yModel - letterboxPadY) / letterboxGain }
+        
+        let setupEnd = Date()
+        
+        print("✅ STAGE 5 - Setup buffers: \(String(format: "%.2f", setupEnd.timeIntervalSince(setupStart) * 1000))ms")
+        print("   Logits buffer: \(logits.count) floats")
+        print("   Binary mask buffer: \(binMaskSmall.count) bytes")
+        print("   Proto scale: X=\(String(format: "%.4f", protoScaleX)), Y=\(String(format: "%.4f", protoScaleY))")
+        print("   BLAS params: m=\(m), n=\(n), lda=\(lda)")
+
+        // STAGE 6: Process each detection
+        print("\n🔄 STAGE 6 - Processing detections...")
+        let processStart = Date()
+        var totalPixelsSet = 0
+        
+        for (detIndex, det) in selected.enumerated() {
+            let detStart = Date()
+            print("\n  🎯 Detection \(detIndex + 1)/\(selected.count): \(det.className)")
+            
+            // SUB-STAGE 6.1: Matrix multiplication (logits = prototypes * coeffs)
+            let matmulStart = Date()
+            logits.withUnsafeMutableBufferPointer { yPtr in
+                det.maskCoeffs.withUnsafeBufferPointer { xPtr in
+                    planesRM.withUnsafeBufferPointer { aPtr in
+                        cblas_sgemv(
+                            CblasRowMajor, CblasNoTrans,
+                            m, n,
+                            alpha,
+                            aPtr.baseAddress!, lda,
+                            xPtr.baseAddress!, 1,
+                            beta,
+                            yPtr.baseAddress!, 1
+                        )
+                    }
+                }
+            }
+            let matmulEnd = Date()
+            
+            // Analyze logits
+            var minLogit: Float = 0, maxLogit: Float = 0
+            vDSP_minv(logits, 1, &minLogit, vDSP_Length(logits.count))
+            vDSP_maxv(logits, 1, &maxLogit, vDSP_Length(logits.count))
+            let positiveCount = logits.filter { $0 > 0 }.count
+            
+            print("    ✅ 6.1 Matrix multiply: \(String(format: "%.2f", matmulEnd.timeIntervalSince(matmulStart) * 1000))ms")
+            print("       Logits range: [\(String(format: "%.3f", minLogit)), \(String(format: "%.3f", maxLogit))], positive: \(positiveCount)/\(logits.count)")
+
+            // SUB-STAGE 6.2: Coordinate transformations
+            let coordStart = Date()
+            
+            // bbox in model (letterboxed) coords
+            let mx1 = det.x - det.width  * 0.5
+            let my1 = det.y - det.height * 0.5
+            let mx2 = det.x + det.width  * 0.5
+            let my2 = det.y + det.height * 0.5
+
+            // map bbox to original image pixels
+            var bx1 = Int(floor(modelToOrigX(mx1)))
+            var by1 = Int(floor(modelToOrigY(my1)))
+            var bx2 = Int(ceil (modelToOrigX(mx2)))
+            var by2 = Int(ceil (modelToOrigY(my2)))
+
+            bx1 = max(0, min(width  - 1, bx1))
+            by1 = max(0, min(height - 1, by1))
+            bx2 = max(0, min(width,  bx2))
+            by2 = max(0, min(height, by2))
+
+            let bw = bx2 - bx1
+            let bh = by2 - by1
+            
+            if bw <= 0 || bh <= 0 { 
+                print("    ❌ 6.2 Invalid bbox size: \(bw) x \(bh) - skipping")
+                continue 
+            }
+
+            // proto-space bbox (still model-space scaled)
+            var px1 = Int(floor(mx1 * protoScaleX))
+            var py1 = Int(floor(my1 * protoScaleY))
+            var px2 = Int(ceil (mx2 * protoScaleX))
+            var py2 = Int(ceil (my2 * protoScaleY))
+
+            px1 = max(0, min(pW - 1, px1))
+            py1 = max(0, min(pH - 1, py1))
+            px2 = max(0, min(pW, px2))
+            py2 = max(0, min(pH, py2))
+            
+            if px2 <= px1 || py2 <= py1 { 
+                print("    ❌ 6.2 Invalid proto bbox: [\(px1),\(py1)] to [\(px2),\(py2)] - skipping")
+                continue 
+            }
+            
+            let coordEnd = Date()
+            
+            print("    ✅ 6.2 Coordinates: \(String(format: "%.2f", coordEnd.timeIntervalSince(coordStart) * 1000))ms")
+            print("       Model bbox: [\(String(format: "%.1f", mx1)),\(String(format: "%.1f", my1))] to [\(String(format: "%.1f", mx2)),\(String(format: "%.1f", my2))]")
+            print("       Image bbox: [\(bx1),\(by1)] to [\(bx2),\(by2)] → \(bw)x\(bh)")
+            print("       Proto bbox: [\(px1),\(py1)] to [\(px2),\(py2)] → \((px2-px1))x\((py2-py1))")
+
+            // SUB-STAGE 6.3: Binarize logits in proto space
+            let binarizeStart = Date()
+            binMaskSmall.withUnsafeMutableBytes { memset($0.baseAddress!, 0, planeSize) }
+
+            var protoPositiveCount = 0
+            for y in py1..<py2 {
+                let rowBase = y * pW
+                for x in px1..<px2 {
+                    let idx = rowBase + x
+                    if logits[idx] > 0.0 {
+                        binMaskSmall[idx] = 255
+                        protoPositiveCount += 1
+                    }
+                }
+            }
+            let binarizeEnd = Date()
+            
+            print("    ✅ 6.3 Binarize: \(String(format: "%.2f", binarizeEnd.timeIntervalSince(binarizeStart) * 1000))ms")
+            print("       Proto positive pixels: \(protoPositiveCount)/\((px2-px1)*(py2-py1))")
+
+            // SUB-STAGE 6.4: Upscale proto mask to image ROI
+            let upscaleStart = Date()
+            var binMaskROI = [UInt8](repeating: 0, count: bw * bh)
+            binMaskROI.withUnsafeMutableBufferPointer { dstPtr in
+                binMaskSmall.withUnsafeBufferPointer { srcPtr in
+                    var s = vImage_Buffer(
+                        data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!),
+                        height: vImagePixelCount(pH),
+                        width:  vImagePixelCount(pW),
+                        rowBytes: pW
+                    )
+                    var d = vImage_Buffer(
+                        data: dstPtr.baseAddress!,
+                        height: vImagePixelCount(bh),
+                        width:  vImagePixelCount(bw),
+                        rowBytes: bw
+                    )
+                    let flags: vImage_Flags = self.useBilinearUpscaling
+                        ? vImage_Flags(kvImageHighQualityResampling)
+                        : vImage_Flags(kvImageNoFlags)
+                    _ = vImageScale_Planar8(&s, &d, nil, flags)
+                }
+            }
+            let upscaleEnd = Date()
+            
+            let roiPositiveCount = binMaskROI.filter { $0 > 0 }.count
+            print("    ✅ 6.4 Upscale: \(String(format: "%.2f", upscaleEnd.timeIntervalSince(upscaleStart) * 1000))ms")
+            print("       ROI positive pixels: \(roiPositiveCount)/\(bw*bh) (\(String(format: "%.1f", Float(roiPositiveCount) / Float(bw*bh) * 100))%)")
+            print("       Upscale method: \(self.useBilinearUpscaling ? "bilinear" : "nearest-neighbor")")
+
+            // SUB-STAGE 6.5: Composite into output image (OPTIMIZED)
+            let compositeStart = Date()
+            var pixelsSet = 0
+            
+            // Use vDSP for faster pixel operations when possible
+            let greenColor: UInt32 = 0xFF00FF00  // ARGB format: Alpha=FF, R=00, G=FF, B=00
+            
+            for y in 0..<bh {
+                let outRowStart = (by1 + y) * width + bx1
+                let roiRowStart = y * bw
+                
+                // Process 4 pixels at a time when aligned
+                var x = 0
+                while x < (bw - 3) {
+                    let roiIdx = roiRowStart + x
+                    if binMaskROI[roiIdx] > 0 || binMaskROI[roiIdx + 1] > 0 || 
+                       binMaskROI[roiIdx + 2] > 0 || binMaskROI[roiIdx + 3] > 0 {
+                        // Process 4 pixels individually for this batch
+                        for offset in 0..<4 {
+                            let roiPixel = roiRowStart + x + offset
+                            if binMaskROI[roiPixel] > 0 {
+                                let outIdx = outRowStart + x + offset
+                                let px = outIdx * 4
+                                outBase[px + 0] = 0     // B
+                                outBase[px + 1] = 255   // G  
+                                outBase[px + 2] = 0     // R
+                                outBase[px + 3] = 255   // A
+                                pixelsSet += 1
+                            }
+                        }
+                    }
+                    x += 4
+                }
+                
+                // Handle remaining pixels
+                while x < bw {
+                    let roiPixel = roiRowStart + x
+                    if binMaskROI[roiPixel] > 0 {
+                        let outIdx = outRowStart + x
+                        let px = outIdx * 4
+                        outBase[px + 0] = 0     // B
+                        outBase[px + 1] = 255   // G
+                        outBase[px + 2] = 0     // R
+                        outBase[px + 3] = 255   // A
+                        pixelsSet += 1
+                    }
+                    x += 1
+                }
+            }
+            
+            totalPixelsSet += pixelsSet
+            let compositeEnd = Date()
+            
+            print("    ✅ 6.5 Composite: \(String(format: "%.2f", compositeEnd.timeIntervalSince(compositeStart) * 1000))ms")
+            print("       Pixels set in output: \(pixelsSet)")
+            
+            let detEnd = Date()
+            print("    🎯 Detection \(detIndex + 1) total: \(String(format: "%.2f", detEnd.timeIntervalSince(detStart) * 1000))ms")
+        }
+        
+        let processEnd = Date()
+        print("✅ STAGE 6 - Process detections: \(String(format: "%.2f", processEnd.timeIntervalSince(processStart) * 1000))ms")
+        print("   Total output pixels set: \(totalPixelsSet) (\(String(format: "%.3f", Float(totalPixelsSet) / Float(width * height) * 100))%)")
+
+        // STAGE 7: Draw labels and boxes
+        let labelsStart = Date()
+        self.drawLabelsAndBoxes(
+            ctx: ctx,
+            stage1: primaryBBoxes,
+            stage2: [],
+            imageWidth: width,
+            imageHeight: height,
+            drawBoxes: self.debugMode
+        )
+        let labelsEnd = Date()
+        
+        print("✅ STAGE 7 - Draw labels: \(String(format: "%.2f", labelsEnd.timeIntervalSince(labelsStart) * 1000))ms")
+
+        // STAGE 8: Create final image and update UI
+        let finalizeStart = Date()
+        if let out = ctx.makeImage() {
+            DispatchQueue.main.async {
+                self.maskImageView.image = UIImage(cgImage: out)
+                self.isProcessing = false
+            }
+            print("✅ STAGE 8 - Finalize: Image created and UI updated")
+        } else {
+            DispatchQueue.main.async { self.isProcessing = false }
+            print("❌ STAGE 8 FAILED: Could not create final image")
+        }
+        let finalizeEnd = Date()
+        
+        let functionEnd = Date()
+        print("🎭 ===== GENERATE CUTOUT COMPLETE =====")
+        print("   Total time: \(String(format: "%.2f", functionEnd.timeIntervalSince(functionStart) * 1000))ms")
+        print("   Stage breakdown:")
+        print("     1. Parse: \(String(format: "%.1f", parseEnd.timeIntervalSince(parseStart) * 1000))ms")
+        print("     2. Reorganize: \(String(format: "%.1f", reorganizeEnd.timeIntervalSince(reorganizeStart) * 1000))ms")
+        print("     3. Select: \(String(format: "%.1f", selectEnd.timeIntervalSince(selectStart) * 1000))ms")
+        print("     4. Context: \(String(format: "%.1f", contextEnd.timeIntervalSince(contextStart) * 1000))ms")
+        print("     5. Setup: \(String(format: "%.1f", setupEnd.timeIntervalSince(setupStart) * 1000))ms")
+        print("     6. Process: \(String(format: "%.1f", processEnd.timeIntervalSince(processStart) * 1000))ms")
+        print("     7. Labels: \(String(format: "%.1f", labelsEnd.timeIntervalSince(labelsStart) * 1000))ms")
+        print("     8. Finalize: \(String(format: "%.1f", finalizeEnd.timeIntervalSince(finalizeStart) * 1000))ms")
+        
+        // Call finishFirstDetectionIfNeeded if this was successful
+        if totalPixelsSet > 0 {
+            self.finishFirstDetectionIfNeeded()
+        }
     }
 
 
 
+
+    // MARK: - NMS and Utility Methods
     private func applyNMS(_ detections: [DetectionSmarty], iouThreshold: Float) -> [DetectionSmarty] {
         // Guard against empty or invalid input
         guard !detections.isEmpty else { return [] }
@@ -1277,7 +2200,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     
-    private func resizePixelBufferToSquare(_ src: CVPixelBuffer, size: Int = 1280) -> CVPixelBuffer? {
+    private func resizePixelBufferToSquare(_ src: CVPixelBuffer, size: Int = 1280) -> (buffer: CVPixelBuffer, gain: Float, padX: Float, padY: Float)? {
         let t0 = Date()
         
         CVPixelBufferLockBaseAddress(src, .readOnly)
@@ -1285,6 +2208,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         let srcW = CVPixelBufferGetWidth(src)
         let srcH = CVPixelBufferGetHeight(src)
+
+        // Calculate letterbox parameters
+        let scaleW = Float(size) / Float(srcW)
+        let scaleH = Float(size) / Float(srcH)
+        let gain = min(scaleW, scaleH)  // Scale that fits inside square
+        
+        let newW = Int(Float(srcW) * gain)
+        let newH = Int(Float(srcH) * gain)
+        
+        let padX = Float(size - newW) / 2.0
+        let padY = Float(size - newH) / 2.0
 
         var dstOpt: CVPixelBuffer?
         let status = CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &dstOpt)
@@ -1296,25 +2230,35 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         guard let srcBase = CVPixelBufferGetBaseAddress(src),
               let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
 
+        // Clear destination to gray (letterbox color)
+        memset(dstBase, 128, size * size * 4)
+
+        // Scale and center the image
         var srcBuffer = vImage_Buffer(data: srcBase,
                                       height: vImagePixelCount(srcH),
                                       width: vImagePixelCount(srcW),
                                       rowBytes: CVPixelBufferGetBytesPerRow(src))
-        var dstBuffer = vImage_Buffer(data: dstBase,
-                                      height: vImagePixelCount(size),
-                                      width: vImagePixelCount(size),
-                                      rowBytes: CVPixelBufferGetBytesPerRow(dst))
+        
+        // Create destination buffer for scaled content
+        let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
+        let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
+        let offsetPtr = dstPtr.advanced(by: Int(padY) * dstRowBytes + Int(padX) * 4)
+        
+        var dstBuffer = vImage_Buffer(data: offsetPtr,
+                                      height: vImagePixelCount(newH),
+                                      width: vImagePixelCount(newW),
+                                      rowBytes: dstRowBytes)
 
         let err = vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(0))
         guard err == kvImageNoError else { return nil }
 
         if self.debugMode {
             let dt = Date().timeIntervalSince(t0) * 1000.0
-            print(String(format: "⏱ letterbox %dx%d → %dx%d: %.2f ms",
-                         srcW, srcH, size, size, dt))
+            print(String(format: "⏱ letterbox %dx%d → %dx%d: %.2f ms (gain=%.3f, pad=%.1f,%.1f)",
+                         srcW, srcH, size, size, dt, gain, padX, padY))
         }
 
-        return dst
+        return (buffer: dst, gain: gain, padX: padX, padY: padY)
     }
 
     private func keepOverlappingDetections(_ detections: [DetectionSmarty]) -> [DetectionSmarty] {
@@ -1458,916 +2402,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
     }
-    
-    // MARK: - Morphological Closing (Dilate then Erode) on binary mask at prototype resolution
-    // MARK: - Fill Convex Hull of Mask
-    /// Computes convex hull of mask pixels and fills the entire hull area
-    /// This guarantees no gaps within each detection's boundary
-    private func fillConvexHullOfMask(
-        mask: [Float],
-        into globalMask: inout [Float],
-        width: Int,
-        height: Int,
-        bboxX1: Int, bboxY1: Int, bboxX2: Int, bboxY2: Int,
-        threshold: Float
-    ) -> Int {
-        // Collect mask pixels above threshold within bbox
-        var points = [(x: Int, y: Int)]()
-        for py in bboxY1..<bboxY2 {
-            let rowStart = py * width
-            for px in bboxX1..<bboxX2 {
-                let idx = rowStart + px
-                if mask[idx] > threshold {
-                    points.append((px, py))
-                }
-            }
-        }
 
-        guard points.count >= 3 else {
-            // Not enough points for hull, just copy mask directly
-            var added = 0
-            for py in bboxY1..<bboxY2 {
-                let rowStart = py * width
-                for px in bboxX1..<bboxX2 {
-                    let idx = rowStart + px
-                    if mask[idx] > threshold && globalMask[idx] == 0 {
-                        globalMask[idx] = 1.0
-                        added += 1
-                    }
-                }
-            }
-            return added
-        }
-
-        // Compute convex hull using Graham scan
-        let hull = convexHull(points: points)
-        guard hull.count >= 3 else {
-            return 0
-        }
-
-        // Fill the convex hull polygon using scanline
-        var added = 0
-        let minY = hull.min(by: { $0.y < $1.y })!.y
-        let maxY = hull.max(by: { $0.y < $1.y })!.y
-
-        for y in minY...maxY {
-            // Find all x-intersections with hull edges at this y
-            var xIntersections = [Int]()
-
-            for i in 0..<hull.count {
-                let p1 = hull[i]
-                let p2 = hull[(i + 1) % hull.count]
-
-                // Check if edge crosses this scanline
-                if (p1.y <= y && p2.y > y) || (p2.y <= y && p1.y > y) {
-                    // Calculate x intersection
-                    let t = Float(y - p1.y) / Float(p2.y - p1.y)
-                    let x = Int(Float(p1.x) + t * Float(p2.x - p1.x))
-                    xIntersections.append(x)
-                }
-            }
-
-            xIntersections.sort()
-
-            // Fill between pairs of intersections
-            var i = 0
-            while i + 1 < xIntersections.count {
-                let x1 = max(bboxX1, xIntersections[i])
-                let x2 = min(bboxX2 - 1, xIntersections[i + 1])
-                if x2 >= x1 && y >= 0 && y < height {
-                    let rowStart = y * width
-                    for x in x1...x2 {
-                        if x >= 0 && x < width {
-                            let idx = rowStart + x
-                            if globalMask[idx] == 0 {
-                                globalMask[idx] = 1.0
-                                added += 1
-                            }
-                        }
-                    }
-                }
-                i += 2
-            }
-        }
-
-        return added
-    }
-
-    /// Graham scan convex hull algorithm
-    private func convexHull(points: [(x: Int, y: Int)]) -> [(x: Int, y: Int)] {
-        guard points.count >= 3 else { return points }
-
-        // Find lowest point (and leftmost if tie)
-        var sorted = points
-        let start = sorted.min { a, b in
-            if a.y != b.y { return a.y < b.y }
-            return a.x < b.x
-        }!
-
-        // Sort by polar angle with respect to start point
-        sorted.sort { a, b in
-            let ax = a.x - start.x, ay = a.y - start.y
-            let bx = b.x - start.x, by = b.y - start.y
-            let cross = ax * by - ay * bx
-            if cross != 0 { return cross > 0 }
-            // Collinear - sort by distance
-            return ax * ax + ay * ay < bx * bx + by * by
-        }
-
-        // Build hull
-        var hull = [(x: Int, y: Int)]()
-        for p in sorted {
-            while hull.count >= 2 {
-                let o = hull[hull.count - 2]
-                let a = hull[hull.count - 1]
-                let cross = (a.x - o.x) * (p.y - o.y) - (a.y - o.y) * (p.x - o.x)
-                if cross <= 0 {
-                    hull.removeLast()
-                } else {
-                    break
-                }
-            }
-            hull.append(p)
-        }
-
-        return hull
-    }
-
-    private func applyMorphologicalClosing(to mask: inout [Float], width: Int, height: Int, kernelSize: Int = 9, iterations: Int = 2) {
-        let count = width * height
-        guard count > 0, mask.count == count else { return }
-
-        // Convert Float (0/1) -> Planar8 (0/255)
-        var buf1 = [UInt8](repeating: 0, count: count)
-        for i in 0..<count { buf1[i] = mask[i] > 0 ? 255 : 0 }
-
-        var buf2 = [UInt8](repeating: 0, count: count)
-        var tmpBuf = [UInt8](repeating: 0, count: count)
-
-        // Create kernel (all ones)
-        let kSize = kernelSize
-        var kernel = [UInt8](repeating: 1, count: kSize * kSize)
-
-        for iter in 0..<iterations {
-            let isEven = (iter % 2 == 0)
-
-            if isEven {
-                buf1.withUnsafeMutableBytes { srcPtr in
-                    tmpBuf.withUnsafeMutableBytes { tmpPtr in
-                        buf2.withUnsafeMutableBytes { dstPtr in
-                            var srcVBuf = vImage_Buffer(data: srcPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-                            var tmpVBuf = vImage_Buffer(data: tmpPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-                            var dstVBuf = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-
-                            kernel.withUnsafeMutableBufferPointer { kPtr in
-                                vImageDilate_Planar8(&srcVBuf, &tmpVBuf, 0, 0, kPtr.baseAddress!, vImagePixelCount(kSize), vImagePixelCount(kSize), vImage_Flags(kvImageNoFlags))
-                                vImageErode_Planar8(&tmpVBuf, &dstVBuf, 0, 0, kPtr.baseAddress!, vImagePixelCount(kSize), vImagePixelCount(kSize), vImage_Flags(kvImageNoFlags))
-                            }
-                        }
-                    }
-                }
-            } else {
-                buf2.withUnsafeMutableBytes { srcPtr in
-                    tmpBuf.withUnsafeMutableBytes { tmpPtr in
-                        buf1.withUnsafeMutableBytes { dstPtr in
-                            var srcVBuf = vImage_Buffer(data: srcPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-                            var tmpVBuf = vImage_Buffer(data: tmpPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-                            var dstVBuf = vImage_Buffer(data: dstPtr.baseAddress!, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width)
-
-                            kernel.withUnsafeMutableBufferPointer { kPtr in
-                                vImageDilate_Planar8(&srcVBuf, &tmpVBuf, 0, 0, kPtr.baseAddress!, vImagePixelCount(kSize), vImagePixelCount(kSize), vImage_Flags(kvImageNoFlags))
-                                vImageErode_Planar8(&tmpVBuf, &dstVBuf, 0, 0, kPtr.baseAddress!, vImagePixelCount(kSize), vImagePixelCount(kSize), vImage_Flags(kvImageNoFlags))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Result is in buf2 if iterations is even, buf1 if odd
-        let resultBuf = (iterations % 2 == 0) ? buf1 : buf2
-
-        // Convert back Planar8 -> Float (0/1)
-        for i in 0..<count { mask[i] = resultBuf[i] > 0 ? 1.0 : 0.0 }
-    }
-
-    
-    func clearOutsideUsingIntCorners(x0: Int, y0: Int, x1: Int, y1: Int, in image: CGImage) -> CGImage? {
-        let t0 = Date()
-        
-        let width = image.width
-        let height = image.height
-        let imageRect = CGRect(x: 0, y: 0, width: width, height: height)
-
-        let minX0 = min(x0, x1)
-        let maxX0 = max(x0, x1)
-        let minY0 = min(y0, y1)
-        let maxY0 = max(y0, y1)
-
-        var bbox = CGRect(x: CGFloat(minX0),
-                          y: CGFloat(minY0),
-                          width: CGFloat(maxX0 - minX0),
-                          height: CGFloat(maxY0 - minY0))
-
-        if bbox.isNull || bbox.width <= 0 || bbox.height <= 0 {
-            let bytesPerPixel = 4
-            let bytesPerRow = bytesPerPixel * width
-            let dataSize = bytesPerRow * height
-            guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: dataSize)
-            buffer.initialize(repeating: 0, count: dataSize)
-            defer {
-                buffer.deinitialize(count: dataSize)
-                buffer.deallocate()
-            }
-            guard let ctx = CGContext(data: buffer,
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: bytesPerRow,
-                                      space: colorSpace,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-            else { return nil }
-            let out = ctx.makeImage()
-            if self.debugMode {
-                let dt = Date().timeIntervalSince(t0) * 1000.0
-                print(String(format: "⏱ clearOutsideUsingIntCorners (empty bbox): %.2f ms", dt))
-            }
-            return out
-        }
-
-        bbox = bbox.intersection(imageRect)
-
-        if bbox.isNull || bbox.width <= 0 || bbox.height <= 0 {
-            let bytesPerPixel = 4
-            let bytesPerRow = bytesPerPixel * width
-            let dataSize = bytesPerRow * height
-            guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: dataSize)
-            buffer.initialize(repeating: 0, count: dataSize)
-            defer {
-                buffer.deinitialize(count: dataSize)
-                buffer.deallocate()
-            }
-            guard let ctx = CGContext(data: buffer,
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: bytesPerRow,
-                                      space: colorSpace,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-            else { return nil }
-            let out = ctx.makeImage()
-            if self.debugMode {
-                let dt = Date().timeIntervalSince(t0) * 1000.0
-                print(String(format: "⏱ clearOutsideUsingIntCorners (clipped empty): %.2f ms", dt))
-            }
-            return out
-        }
-
-        let bytesPerPixel = 4
-        let bytesPerRow = bytesPerPixel * width
-        let dataSize = bytesPerRow * height
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-
-        let rawData = UnsafeMutablePointer<UInt8>.allocate(capacity: dataSize)
-        rawData.initialize(repeating: 0, count: dataSize)
-        defer {
-            rawData.deinitialize(count: dataSize)
-            rawData.deallocate()
-        }
-
-        guard let ctx = CGContext(data: rawData,
-                                  width: width,
-                                  height: height,
-                                  bitsPerComponent: 8,
-                                  bytesPerRow: bytesPerRow,
-                                  space: colorSpace,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-
-        ctx.translateBy(x: 0, y: CGFloat(height))
-        ctx.scaleBy(x: 1.0, y: -1.0)
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        let startX = 0
-        let endX = width
-        let startY = 0
-        let endY = height
-
-        var kx0 = Int(floor(bbox.minX))
-        var ky0 = Int(floor(bbox.minY))
-        var kx1 = Int(ceil(bbox.maxX))
-        var ky1 = Int(ceil(bbox.maxY))
-
-        kx0 = max(startX, min(kx0, endX))
-        kx1 = max(startX, min(kx1, endX))
-        ky0 = max(startY, min(ky0, endY))
-        ky1 = max(startY, min(ky1, endY))
-
-        if kx0 > kx1 { swap(&kx0, &kx1) }
-        if ky0 > ky1 { swap(&ky0, &ky1) }
-
-        for y in startY..<endY {
-            let rowBase = rawData + y * bytesPerRow
-            for x in startX..<endX {
-                let px = rowBase + x * bytesPerPixel
-                let inside = (x >= kx0 && x < kx1 && y >= ky0 && y < ky1)
-                if !inside {
-                    px[0] = 0
-                    px[1] = 0
-                    px[2] = 0
-                    px[3] = 0
-                }
-            }
-        }
-
-        let out = ctx.makeImage()
-        if self.debugMode {
-            let dt = Date().timeIntervalSince(t0) * 1000.0
-            print(String(format: "⏱ clearOutsideUsingIntCorners: %.2f ms", dt))
-        }
-        return out
-    }
-
-    private func makePrototypeBuffer(from array: MLMultiArray, C: Int, Hp: Int, Wp: Int) -> [Float] {
-        let count = C * Hp * Wp
-        var out = [Float](repeating: 0, count: count)
-        
-        // Validate array size matches expected count
-        guard array.count >= count else {
-            if self.debugMode {
-                print("⚠️ makePrototypeBuffer: Array size mismatch! Expected: \(count), Got: \(array.count)")
-            }
-            return out
-        }
-        
-        switch array.dataType {
-        case .float32:
-            // Safer memory copying with bounds checking
-            array.dataPointer.withMemoryRebound(to: Float.self, capacity: array.count) { src in
-                out.withUnsafeMutableBufferPointer { dst in
-                    guard let dstPtr = dst.baseAddress else {
-                        if self.debugMode { print("⚠️ makePrototypeBuffer: Null destination pointer") }
-                        return
-                    }
-                    let safeCopyCount = min(count, array.count)
-                    memcpy(dstPtr, src, safeCopyCount * MemoryLayout<Float>.size)
-                }
-            }
-        case .float16:
-            // Safer Float16 conversion with bounds checking
-            let actualCount = min(count, array.count)
-            let src = array.dataPointer.bindMemory(to: UInt16.self, capacity: actualCount)
-            var srcBuf = vImage_Buffer(
-                data: UnsafeMutableRawPointer(mutating: src),
-                height: 1,
-                width: vImagePixelCount(actualCount),
-                rowBytes: actualCount * MemoryLayout<UInt16>.size
-            )
-            out.withUnsafeMutableBufferPointer { dst in
-                var dstBuf = vImage_Buffer(
-                    data: dst.baseAddress,
-                    height: 1,
-                    width: vImagePixelCount(actualCount),
-                    rowBytes: actualCount * MemoryLayout<Float>.size
-                )
-                let result = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-                if result != kvImageNoError && self.debugMode {
-                    print("⚠️ makePrototypeBuffer: vImage conversion failed with error: \(result)")
-                }
-            }
-        default:
-            // Safe fallback with bounds checking
-            let safeCopyCount = min(count, array.count)
-            for i in 0..<safeCopyCount {
-                out[i] = array[i].floatValue
-            }
-        }
-        
-        return out
-    }
-
-    
-    private func makeBinaryMaskFromGlobalMask(_ globalMask: [Float], count: Int) -> [UInt8] {
-        var scaled = [Float](repeating: 0, count: count)
-        var scale255: Float = 255.0
-        
-        globalMask.withUnsafeBufferPointer { src in
-            scaled.withUnsafeMutableBufferPointer { dst in
-                vDSP_vsmul(src.baseAddress!, 1, &scale255, dst.baseAddress!, 1, vDSP_Length(count))
-            }
-        }
-        
-        var binary = [UInt8](repeating: 0, count: count)
-        scaled.withUnsafeBufferPointer { src in
-            binary.withUnsafeMutableBufferPointer { dst in
-                vDSP_vfixu8(src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(count))
-            }
-        }
-        return binary
-    }
-    
-    func rasterizePolygonFill(polygon: [(Int,Int)],
-                              outMask: inout [UInt8],
-                              width: Int,
-                              height: Int)
-    {
-        if polygon.count < 3 { return }
-
-        // Compute bounding box
-        var minY = height, maxY = 0
-        for (x,y) in polygon {
-            if y < minY { minY = y }
-            if y > maxY { maxY = y }
-        }
-        minY = max(minY,0)
-        maxY = min(maxY,height-1)
-
-        // Scanline fill
-        for fy in minY...maxY {
-            var xs: [Int] = []
-            xs.reserveCapacity(16)
-
-            for i in 0..<polygon.count {
-                let (x0,y0) = polygon[i]
-                let (x1,y1) = polygon[(i+1)%polygon.count]
-                if y0 == y1 { continue }
-                let ymin = min(y0,y1)
-                let ymax = max(y0,y1)
-                if fy >= ymin && fy < ymax {
-                    let dy = y1 - y0
-                    let dx = x1 - x0
-                    let t = Float(fy - y0) / Float(dy)
-                    let xf = Float(x0) + t * Float(dx)
-                    xs.append(Int(xf))
-                }
-            }
-
-            if xs.count < 2 { continue }
-            xs.sort()
-            var i = 0
-            while i + 1 < xs.count {
-                let xStart = max(0, min(xs[i], width-1))
-                let xEnd   = max(0, min(xs[i+1], width-1))
-                if xEnd > xStart {
-                    for x in xStart..<xEnd {
-                        outMask[fy*width + x] = 1
-                    }
-                }
-                i += 2
-            }
-        }
-    }
-
-    
-    func constructPolygonFromEdges(_ edges: [(start:(x:Int,y:Int),end:(x:Int,y:Int))])
-        -> [(Int,Int)] {
-
-        // Build adjacency
-        var next: [String:(x:Int,y:Int)] = [:]
-        func key(_ p:(x:Int,y:Int)) -> String { "\(p.x)_\(p.y)" }
-        for e in edges {
-            next[key(e.start)] = e.end
-        }
-
-        // Build chain
-        var polygon: [(Int,Int)] = []
-        guard let first = edges.first else { return [] }
-        var cur = first.start
-        polygon.append(cur)
-
-        var safety = 0
-        while let n = next[key(cur)], safety < 10000 {
-            if n.x == polygon.first!.0 && n.y == polygon.first!.1 { break }
-            polygon.append((n.x,n.y))
-            cur = n
-            safety += 1
-        }
-
-        return polygon
-    }
-
-    
-    // MARK: cv2.findContours(RETR_EXTERNAL) Equivalent
-    func findContoursExternal(binary: [UInt8], w: Int, h: Int) -> [[(x: Int, y: Int)]] {
-        var visited = Array(repeating: false, count: w * h)
-        var contours: [[(Int,Int)]] = []
-
-        let dirs = [(1,0),(-1,0),(0,1),(0,-1)]
-
-        func dfs(_ sx: Int, _ sy: Int) -> [(Int,Int)] {
-            var stack = [(sx, sy)]
-            var out: [(x: Int, y: Int)] = []
-            while let (x,y) = stack.popLast() {
-                let idx = y*w + x
-                if visited[idx] { continue }
-                visited[idx] = true
-                if binary[idx] == 0 { continue }
-                out.append((x,y))
-                for (dx,dy) in dirs {
-                    let nx=x+dx, ny=y+dy
-                    if nx>=0 && nx<w && ny>=0 && ny<h {
-                        if binary[ny*w+nx] > 0 && !visited[ny*w+nx] {
-                            stack.append((nx,ny))
-                        }
-                    }
-                }
-            }
-            return out
-        }
-
-        for y in 0..<h {
-            for x in 0..<w {
-                let idx = y*w + x
-                if binary[idx] > 0 && !visited[idx] {
-                    let c = dfs(x,y)
-                    if !c.isEmpty { contours.append(c) }
-                }
-            }
-        }
-
-        return contours
-    }
-
-    
-    //
-    // MARK: - Python-Exact Concave Hull + Raster Fill
-    //
-    func buildConcaveHullMaskPythonExact(unionMask: UnsafeMutablePointer<UInt8>,
-                                         width: Int,
-                                         height: Int,
-                                         alpha: Float = 2.5) -> [UInt8] {
-
-        // ---------------------------------------------------------------
-        // 1. Convert unionMask → UInt8 2D array for contour detection
-        // ---------------------------------------------------------------
-        var bin: [UInt8] = Array(repeating: 0, count: width * height)
-        for i in 0..<(width * height) {
-            bin[i] = unionMask[i] > 0 ? 1 : 0
-        }
-
-        // ---------------------------------------------------------------
-        // 2. Extract contours EXACTLY like Python cv2.findContours(..., RETR_EXTERNAL)
-        // ---------------------------------------------------------------
-        let contours = findContoursExternal(binary: bin, w: width, h: height)
-        if contours.isEmpty {
-            return bin  // nothing to fill
-        }
-
-        // ---------------------------------------------------------------
-        // 3. Subsample contour points like Python
-        // Python code:
-        //   step = 1 if len(c) < 500 else max(1, len(c)//500)
-        // ---------------------------------------------------------------
-        var allPts: [(Int,Int)] = []
-
-        for c in contours {
-            let n = c.count
-            let step = (n < 500) ? 1 : max(1, n / 500)
-            var idx = 0
-            for p in c {
-                if idx % step == 0 {
-                    allPts.append((p.x, p.y))
-                }
-                idx += 1
-            }
-        }
-
-        if allPts.count < 4 {
-            return bin   // identical to python fallback
-        }
-
-        // ---------------------------------------------------------------
-        // 4. Compute alpha shape using your working Delaunay + hull code
-        // returns edges forming polygon boundaries
-        // ---------------------------------------------------------------
-        let edges = AlphaShape.compute(points: allPts, alpha: alpha)
-        if edges.isEmpty {
-            return bin
-        }
-
-        // ---------------------------------------------------------------
-        // 5. Reconstruct polygon(s) EXACTLY like Python polygonize
-        // (We treat edges as one exterior polygon – same behavior your Python gave)
-        // ---------------------------------------------------------------
-        let polygon = constructPolygonFromEdges(edges)
-
-        // ---------------------------------------------------------------
-        // 6. Rasterize the polygon to a filled mask
-        // MATCHES cv2.fillPoly (scanline fill)
-        // ---------------------------------------------------------------
-        var outMask = Array(repeating: UInt8(0), count: width * height)
-        rasterizePolygonFill(polygon: polygon, outMask: &outMask, width: width, height: height)
-
-        return outMask
-    }
-    
-    
-    func generateCutout(
-        stage1Prototypes: MLMultiArray,
-        primaryBBoxes: [DetectionSmarty],
-        masks: [[UInt8]]?,                 // optional precomputed full-image masks (0/255)
-        originalImage: CVPixelBuffer,
-        outlineWidth: Int = 1,
-        outlineColor: (r: UInt8, g: UInt8, b: UInt8, a: UInt8) = (255, 0, 0, 255),
-        debugMode: Bool = false
-    ) {
-        CVPixelBufferLockBaseAddress(originalImage, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(originalImage, .readOnly) }
-
-        let W = CVPixelBufferGetWidth(originalImage)
-        let H = CVPixelBufferGetHeight(originalImage)
-        let fullCount = W * H
-        let dstRowBytes = W * 4
-
-        // Validate masks
-        var useMasks = masks
-        if let m = masks {
-            if m.count != primaryBBoxes.count || m.first?.count != fullCount {
-                if debugMode { print("⚠️ generateCutout: masks mismatch; falling back to computed masks") }
-                useMasks = nil
-            }
-        }
-
-        // Source BGRA bytes
-        guard let srcBase = CVPixelBufferGetBaseAddress(originalImage) else { return }
-        let srcRowBytes = CVPixelBufferGetBytesPerRow(originalImage)
-        let srcPtr = srcBase.assumingMemoryBound(to: UInt8.self)
-
-        // Result buffer (premultiplied ARGB interleaved)
-        guard let resultData = malloc(H * dstRowBytes) else { return }
-        defer { free(resultData) }
-        let resultPtr = resultData.assumingMemoryBound(to: UInt8.self)
-        memset(resultPtr, 0, H * dstRowBytes)
-
-        // Convert source BGRA -> premultiplied ARGB buffer
-        guard let srcARGBData = malloc(H * dstRowBytes) else { return }
-        defer { free(srcARGBData) }
-        let srcARGB = srcARGBData.assumingMemoryBound(to: UInt8.self)
-        for y in 0..<H {
-            let srcRow = srcPtr.advanced(by: y * srcRowBytes)
-            let dstRow = srcARGB.advanced(by: y * dstRowBytes)
-            for x in 0..<W {
-                let b = srcRow[x*4 + 0]
-                let g = srcRow[x*4 + 1]
-                let r = srcRow[x*4 + 2]
-                let a = srcRow[x*4 + 3]
-                dstRow[x*4 + 0] = a
-                dstRow[x*4 + 1] = UInt8((UInt16(r) * UInt16(a) + 127) / 255)
-                dstRow[x*4 + 2] = UInt8((UInt16(g) * UInt16(a) + 127) / 255)
-                dstRow[x*4 + 3] = UInt8((UInt16(b) * UInt16(a) + 127) / 255)
-            }
-        }
-
-        // Compute masks if not provided
-        var computedMasks: [[UInt8]]? = useMasks
-        if useMasks == nil {
-            computedMasks = processMasks(protos: stage1Prototypes,
-                                         maskCoeffs: primaryBBoxes.map { $0.maskCoeffs },
-                                         boxes: primaryBBoxes,
-                                         outSize: (height: H, width: W),
-                                         upsample: true)
-        }
-        guard let masksToUse = computedMasks else { return }
-
-        // Dilate helper via integral-image existence test
-        func dilateMask(boxRadius: Int, srcAlpha: UnsafePointer<UInt8>, dstOut: UnsafeMutablePointer<UInt8>) {
-            var integral = [UInt32](repeating: 0, count: (W+1)*(H+1))
-            for y in 0..<H {
-                var rowSum: UInt32 = 0
-                for x in 0..<W {
-                    rowSum += UInt32(srcAlpha[y*W + x])
-                    integral[(y+1)*(W+1) + (x+1)] = integral[y*(W+1) + (x+1)] + rowSum
-                }
-            }
-            for y in 0..<H {
-                let y0 = max(0, y - boxRadius)
-                let y1 = min(H-1, y + boxRadius)
-                for x in 0..<W {
-                    let x0 = max(0, x - boxRadius)
-                    let x1 = min(W-1, x + boxRadius)
-                    let sum = integral[(y1+1)*(W+1) + (x1+1)]
-                            - integral[(y0)*(W+1) + (x1+1)]
-                            - integral[(y1+1)*(W+1) + (x0)]
-                            + integral[(y0)*(W+1) + (x0)]
-                    dstOut[y*W + x] = (sum > 0) ? 255 : 0
-                }
-            }
-        }
-
-        // Temp buffers
-        var dilated = [UInt8](repeating: 0, count: fullCount)
-        var outlinePlane = [UInt8](repeating: 0, count: fullCount)
-        let srcARGBPtr = srcARGB
-        let resultARGBPtr = resultPtr
-        let rC = outlineColor.r, gC = outlineColor.g, bC = outlineColor.b
-
-        // Per-detection processing
-        for (i, _) in primaryBBoxes.enumerated() {
-            let mask = masksToUse[i]
-
-            // Build premultiplied ARGB mask (alpha from mask, RGB from outlineColor)
-            guard let maskARGBData = malloc(H * dstRowBytes) else { return }
-            defer { free(maskARGBData) }
-            let maskARGB = maskARGBData.assumingMemoryBound(to: UInt8.self)
-            mask.withUnsafeBufferPointer { mPtr in
-                let aPtr = mPtr.baseAddress!
-                for p in 0..<fullCount {
-                    let a = aPtr[p]
-                    maskARGB[p*4 + 0] = a
-                    maskARGB[p*4 + 1] = UInt8((UInt16(rC) * UInt16(a) + 127) / 255)
-                    maskARGB[p*4 + 2] = UInt8((UInt16(gC) * UInt16(a) + 127) / 255)
-                    maskARGB[p*4 + 3] = UInt8((UInt16(bC) * UInt16(a) + 127) / 255)
-                }
-            }
-
-            // Blend source into result using mask (both premultiplied)
-            for p in 0..<fullCount {
-                let ma = maskARGB[p*4 + 0]
-                if ma == 0 { continue }
-                if ma == 255 {
-                    resultARGBPtr[p*4 + 0] = srcARGBPtr[p*4 + 0]
-                    resultARGBPtr[p*4 + 1] = srcARGBPtr[p*4 + 1]
-                    resultARGBPtr[p*4 + 2] = srcARGBPtr[p*4 + 2]
-                    resultARGBPtr[p*4 + 3] = srcARGBPtr[p*4 + 3]
-                    continue
-                }
-                let invA = 255 - ma
-                let sA = Int(srcARGBPtr[p*4 + 0])
-                let dA = Int(resultARGBPtr[p*4 + 0])
-                let outA = (sA * Int(ma) + dA * Int(invA) + 127) / 255
-                resultARGBPtr[p*4 + 0] = UInt8(outA)
-                for c in 1...3 {
-                    let sC = Int(srcARGBPtr[p*4 + c])
-                    let dC = Int(resultARGBPtr[p*4 + c])
-                    let oC = (sC * Int(ma) + dC * Int(invA) + 127) / 255
-                    resultARGBPtr[p*4 + c] = UInt8(oC)
-                }
-            }
-
-            // Dilate mask
-            mask.withUnsafeBufferPointer { mPtr in
-                dilateMask(boxRadius: outlineWidth, srcAlpha: mPtr.baseAddress!, dstOut: &dilated)
-            }
-
-            // outline = dilated - mask (clamped)
-            mask.withUnsafeBufferPointer { mPtr in
-                let aPtr = mPtr.baseAddress!
-                for p in 0..<fullCount {
-                    let val = Int(dilated[p]) - Int(aPtr[p])
-                    outlinePlane[p] = UInt8(clamping: val)
-                }
-            }
-
-            // Build premultiplied ARGB outline and blend over result
-            guard let outlineARGBData = malloc(H * dstRowBytes) else { return }
-            defer { free(outlineARGBData) }
-            let outlineARGB = outlineARGBData.assumingMemoryBound(to: UInt8.self)
-            for p in 0..<fullCount {
-                let a = outlinePlane[p]
-                outlineARGB[p*4 + 0] = a
-                outlineARGB[p*4 + 1] = UInt8((UInt16(rC) * UInt16(a) + 127) / 255)
-                outlineARGB[p*4 + 2] = UInt8((UInt16(gC) * UInt16(a) + 127) / 255)
-                outlineARGB[p*4 + 3] = UInt8((UInt16(bC) * UInt16(a) + 127) / 255)
-            }
-            for p in 0..<fullCount {
-                let ma = outlineARGB[p*4 + 0]
-                if ma == 0 { continue }
-                if ma == 255 {
-                    resultARGBPtr[p*4 + 0] = outlineARGB[p*4 + 0]
-                    resultARGBPtr[p*4 + 1] = outlineARGB[p*4 + 1]
-                    resultARGBPtr[p*4 + 2] = outlineARGB[p*4 + 2]
-                    resultARGBPtr[p*4 + 3] = outlineARGB[p*4 + 3]
-                    continue
-                }
-                let invA = 255 - ma
-                let sA = Int(outlineARGB[p*4 + 0])
-                let dA = Int(resultARGBPtr[p*4 + 0])
-                let outA = (sA * Int(ma) + dA * Int(invA) + 127) / 255
-                resultARGBPtr[p*4 + 0] = UInt8(outA)
-                for c in 1...3 {
-                    let sC = Int(outlineARGB[p*4 + c])
-                    let dC = Int(resultARGBPtr[p*4 + c])
-                    let oC = (sC * Int(ma) + dC * Int(invA) + 127) / 255
-                    resultARGBPtr[p*4 + c] = UInt8(oC)
-                }
-            }
-        }
-
-        if debugMode { print("generateCutout finished; processed \(primaryBBoxes.count) detections") }
-
-        // resultPtr contains premultiplied ARGB. If you need BGRA CVPixelBuffer output, I can append unpremultiply+permute + buffer creation.
-    }
-
-
-
-
-    // maskPlaneBuf: vImage_Buffer with Planar8 alpha (rowBytes = width)
-    // outARGBBuf: vImage_Buffer pointing to allocated ARGB8888 buffer (rowBytes = width*4)
-    // outlineColor: (r,g,b,a) as UInt8 but we only need r,g,b here (we'll premultiply)
-    func buildPremultipliedARGBMask(maskPlaneBuf: inout vImage_Buffer, outARGBBuf: inout vImage_Buffer, outlineColor: (r: UInt8,g: UInt8,b: UInt8)) -> vImage_Error {
-        // Create constant RGB planes filled with outlineColor components
-        // vImage expects pointers to planar sources (A,R,G,B). We'll pass alpha as maskPlaneBuf and use constant fills for RGB.
-        // Create temporary planar buffers for R,G,B filled with respective color values scaled to 255 (we'll premultiply later)
-        let width = Int(maskPlaneBuf.width)
-        let height = Int(maskPlaneBuf.height)
-        let planeBytes = width * height
-
-        // allocate small temporary constant planes (reuse outside loop ideally)
-        let rPlane = malloc(planeBytes)!
-        let gPlane = malloc(planeBytes)!
-        let bPlane = malloc(planeBytes)!
-        defer { free(rPlane); free(gPlane); free(bPlane) }
-
-        memset(rPlane, Int32(outlineColor.r), planeBytes)
-        memset(gPlane, Int32(outlineColor.g), planeBytes)
-        memset(bPlane, Int32(outlineColor.b), planeBytes)
-
-        var rBuf = vImage_Buffer(data: rPlane, height: maskPlaneBuf.height, width: maskPlaneBuf.width, rowBytes: width)
-        var gBuf = vImage_Buffer(data: gPlane, height: maskPlaneBuf.height, width: maskPlaneBuf.width, rowBytes: width)
-        var bBuf = vImage_Buffer(data: bPlane, height: maskPlaneBuf.height, width: maskPlaneBuf.width, rowBytes: width)
-
-        // vImageConvert_Planar8toARGB8888 expects source planes in order A,R,G,B and writes interleaved ARGB8888
-        let err = vImageConvert_Planar8toARGB8888(&maskPlaneBuf, &rBuf, &gBuf, &bBuf, &outARGBBuf, vImage_Flags(kvImageNoFlags))
-        if err != kvImageNoError { return err }
-
-        // Now premultiply (makes RGB := RGB * (A/255))
-        return vImagePremultiplyData_ARGB8888(&outARGBBuf, &outARGBBuf, vImage_Flags(kvImageNoFlags))
-    }
-
-    // maskPlaneBuf: source Planar8 alpha (in), tmpDilatedBuf: Planar8 buffer (out), outlineARGBBuf: ARGB8888 buffer (out)
-    // kernelSize = 2*outlineWidth + 1
-    func buildOutlineARGB(maskPlaneBuf: inout vImage_Buffer, tmpDilatedBuf: inout vImage_Buffer, outlineARGBBuf: inout vImage_Buffer, outlineColor: (r: UInt8,g: UInt8,b: UInt8), kernelSize: Int) -> vImage_Error {
-        // Dilate mask into tmpDilatedBuf
-        // Create kernel filled with 1s
-        var kernel = [UInt8](repeating: 1, count: kernelSize * kernelSize)
-        var kerr: vImage_Error = kvImageNoError
-        kernel.withUnsafeBufferPointer { kptr in
-            kerr = vImageDilate_Planar8(&maskPlaneBuf, &tmpDilatedBuf, 0, 0, kptr.baseAddress!, vImagePixelCount(kernelSize), vImagePixelCount(kernelSize), vImage_Flags(kvImageNoFlags))
-        }
-        if kerr != kvImageNoError { return kerr }
-
-        // outlinePlane = tmpDilated - maskPlane (clamped)
-        // Use vImageSubtract_Planar8: dest = src2 - src1 -> we want (dilated - mask)
-        // vImageSubtract_Planar8(src1, src2, dest, flags) does dest = src2 - src1
-//        var outlinePlaneData = malloc(Int(maskPlaneBuf.height) * Int(maskPlaneBuf.width))!
-//        defer { free(outlinePlaneData) }
-        
-        // outlinePlane = tmpDilated - maskPlane (clamped)
-        // Manual per-pixel subtraction to avoid unavailable vImageSubtract_Planar8
-        let planeWidth = Int(maskPlaneBuf.width)
-        let planeHeight = Int(maskPlaneBuf.height)
-        let planeBytes = planeWidth * planeHeight
-
-        var outlinePlaneData = malloc(planeBytes)!
-        defer { free(outlinePlaneData) }
-        var outlinePlaneBuf = vImage_Buffer(data: outlinePlaneData,
-                                            height: maskPlaneBuf.height,
-                                            width: maskPlaneBuf.width,
-                                            rowBytes: planeWidth)
-
-        let mPtr = maskPlaneBuf.data!.assumingMemoryBound(to: UInt8.self)
-        let dPtr = tmpDilatedBuf.data!.assumingMemoryBound(to: UInt8.self)
-        let oPtr = outlinePlaneBuf.data!.assumingMemoryBound(to: UInt8.self)
-        for i in 0..<planeBytes {
-            let val = Int(dPtr[i]) - Int(mPtr[i])
-            oPtr[i] = UInt8(clamping: val)
-        }
-//        var outlinePlaneBuf = vImage_Buffer(data: outlinePlaneData, height: maskPlaneBuf.height, width: maskPlaneBuf.width, rowBytes: Int(maskPlaneBuf.width))
-//        let subErr = vImageSubtract_Planar8(&maskPlaneBuf, &tmpDilatedBuf, &outlinePlaneBuf, vImage_Flags(kvImageNoFlags))
-//        if subErr != kvImageNoError { return subErr }
-        // Note: vImageSubtract_Planar8 order: dest = src2 - src1 -> so passed (mask, dilated, dest) gives dilated - mask.
-
-        // Convert outlinePlane (A) + constant RGB into ARGB8888
-        // Create constant RGB planes filled with outlineColor
-        let width = Int(maskPlaneBuf.width)
-        let height = Int(maskPlaneBuf.height)
-        let planeBytess = width * height
-        let rPlane = malloc(planeBytess)!
-        let gPlane = malloc(planeBytess)!
-        let bPlane = malloc(planeBytess)!
-        defer { free(rPlane); free(gPlane); free(bPlane) }
-        memset(rPlane, Int32(outlineColor.r), planeBytess)
-        memset(gPlane, Int32(outlineColor.g), planeBytess)
-        memset(bPlane, Int32(outlineColor.b), planeBytess)
-        var rBuf = vImage_Buffer(data: rPlane, height: maskPlaneBuf.height, width: maskPlaneBuf.width, rowBytes: width)
-        var gBuf = vImage_Buffer(data: gPlane, height: maskPlaneBuf.height, width: maskPlaneBuf.width, rowBytes: width)
-        var bBuf = vImage_Buffer(data: bPlane, height: maskPlaneBuf.height, width: maskPlaneBuf.width, rowBytes: width)
-
-        let convErr = vImageConvert_Planar8toARGB8888(&outlinePlaneBuf, &rBuf, &gBuf, &bBuf, &outlineARGBBuf, vImage_Flags(kvImageNoFlags))
-        if convErr != kvImageNoError { return convErr }
-
-        // Premultiply outlineARGB
-        return vImagePremultiplyData_ARGB8888(&outlineARGBBuf, &outlineARGBBuf, vImage_Flags(kvImageNoFlags))
-    }
-
-    // ======================================================
-    // SAFE LABEL + BOX DRAWING (NO CoreText, NO CTLineDraw)
-    // ======================================================
-    // ======================================================
-    // SAFE LABEL + BOX DRAWING  (CYAN, BIG FONT, FIXED FLIP)
-    // ======================================================
     private func drawLabelsAndBoxes(
         ctx: CGContext,
         stage1: [DetectionSmarty],
@@ -2376,886 +2411,73 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         imageHeight: Int,
         drawBoxes: Bool
     ) {
-        let all = stage1 + stage2
-        guard !all.isEmpty else { return }
-
-        let W = CGFloat(imageWidth)
-        let H = CGFloat(imageHeight)
-        let modelSize: CGFloat = 1280.0
-        let sx = W / modelSize
-        let sy = H / modelSize
-
-        // Fix UIKit upside-down drawing in CGContexts
-        ctx.saveGState()
-        ctx.translateBy(x: 0, y: H)
-        ctx.scaleBy(x: 1, y: -1)
-
-        UIGraphicsPushContext(ctx)
-
-        let font = UIFont.boldSystemFont(ofSize: 38)
-
-        for det in all {
-
-            let cx = CGFloat(det.x)
-            let cy = CGFloat(det.y)
-            let w  = CGFloat(det.width)
-            let h  = CGFloat(det.height)
-
-            let left = (cx - w / 2) * sx
-            let top  = (cy - h / 2) * sy
-            let rect = CGRect(x: left, y: top, width: w * sx, height: h * sy)
-
-            // ---- Cyan Box (optional) ----
-            if drawBoxes {
-                UIColor.cyan.setStroke()
-                let b = UIBezierPath(rect: rect)
-                b.lineWidth = 4
-                b.stroke()
-            }
-
-            // ---- Label text ----
-            let textString = "\(det.className) \(Int(det.confidence * 100))%"
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: UIColor.cyan,                                  // CYAN TEXT
-                .backgroundColor: UIColor.black.withAlphaComponent(0.6),        // DARK BACK
-                .shadow: {
-                    let sh = NSShadow()
-                    sh.shadowBlurRadius = 6
-                    sh.shadowOffset = CGSize(width: 2, height: -2)
-                    sh.shadowColor = UIColor.black.withAlphaComponent(0.8)
-                    return sh
-                }()
-            ]
-
-            let text = NSAttributedString(string: textString, attributes: attributes)
-            let size = text.size()
-
-            var tx = max(0, min(left, W - size.width - 4))
-            var ty = top - size.height - 6
-
-            if ty < 0 { ty = top + 6 }
-
-            let drawRect = CGRect(x: tx, y: ty, width: size.width, height: size.height)
-
-            text.draw(in: drawRect)
-        }
-
-        UIGraphicsPopContext()
-        ctx.restoreGState()
-    }
-
-
-    // ======================================================
-    // FINAL LABEL RENDERING — SAFE, CRASH-PROOF
-    // Draws both Stage 1 + Stage 2 labels on final CGImage
-    // ======================================================
-    private func renderLabelsOnFinalImage(
-        baseCGImage: CGImage,
-        width: Int,
-        height: Int,
-        stage1: [DetectionSmarty],
-        stage2: [DetectionSmarty]
-    ) -> CGImage {
-
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-
-        guard let ctx = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: width * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            print("❌ renderLabelsOnFinalImage: failed to create CGContext")
-            return baseCGImage
-        }
-
-        // Draw the already-rendered cutout mask
-        ctx.draw(baseCGImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        // Return the final composited CGImage
-        return ctx.makeImage() ?? baseCGImage
-    }
-
-    private func renderFinalMaskAndLabels(
-        mergedMaskUpscaled: CGImage,
-        outputWidth: Int,
-        outputHeight: Int,
-        stage1Detections: [DetectionSmarty],
-        stage2DetectionsMapped: [DetectionSmarty],
-        tightBBoxRect: CGRect
-    ) {
-        let startTime = Date()
-
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let ctx = CGContext(
-            data: nil,
-            width: outputWidth,
-            height: outputHeight,
-            bitsPerComponent: 8,
-            bytesPerRow: outputWidth * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            print("❌ CGContext failed")
-            return
-        }
-
-        // ---------------------------------------
-        // 1️⃣ Draw the cutout mask (already upscaled)
-        // ---------------------------------------
-        ctx.draw(mergedMaskUpscaled, in: CGRect(x: 0, y: 0,
-                                                width: outputWidth,
-                                                height: outputHeight))
-
-        // ---------------------------------------
-        // 2️⃣ Clip to the tight bounding box for cutout,
-        //    but labels must be drawn OUTSIDE clip.
-        // ---------------------------------------
-        ctx.saveGState()
-        ctx.clip(to: tightBBoxRect)
-
-        // (Your cutout drawing happens here if required)
-
-        ctx.restoreGState()   // Important: remove clipping before labels.
-
-        // ---------------------------------------
-        // 3️⃣ Labels must be drawn AFTER clipping is removed
-        // ---------------------------------------
-        ctx.resetClip()   // ← ***THE CRITICAL FIX***
-
-        // Draw labels for Stage 1 detections
-        for det in stage1Detections {
-            drawDetectionLabelOnly(
-                ctx: ctx,
-                detection: det,
-                imageWidth: outputWidth,
-                imageHeight: outputHeight
-            )
-        }
-
-        // Draw labels for Stage 2 detections
-        for det in stage2DetectionsMapped {
-            drawDetectionLabelOnly(
-                ctx: ctx,
-                detection: det,
-                imageWidth: outputWidth,
-                imageHeight: outputHeight
-            )
-        }
-
-        let endTime = Date()
-        if self.debugMode {
-            print(String(format: "⏱ renderFinalMaskAndLabels: %.2f ms",
-                         (endTime.timeIntervalSince(startTime) * 1000)))
-        }
-
-        // ---------------------------------------
-        // 4️⃣ Export final image
-        // ---------------------------------------
-        if let result = ctx.makeImage() {
-            DispatchQueue.main.async {
-                self.maskImageView.image = UIImage(cgImage: result)
-            }
-        }
-    }
-
-    private func drawDetectionLabelOnly(
-        ctx: CGContext,
-        detection: DetectionSmarty,
-        imageWidth: Int,
-        imageHeight: Int
-    ) {
-        // ---------------------------------------
-        // Convert Float → CGFloat
-        // ---------------------------------------
-        let cx = CGFloat(detection.x)
-        let cy = CGFloat(detection.y)
-        let w  = CGFloat(detection.width)
-        let h  = CGFloat(detection.height)
-
-        // YOLOE outputs are scaled to 1280×1280 model input
-        let sx = CGFloat(imageWidth) / 1280.0
-        let sy = CGFloat(imageHeight) / 1280.0
-
-        // ---------------------------------------
-        // Compute top-left of bbox in output image
-        // ---------------------------------------
-        var rectX = (cx - w/2.0) * sx
-        var rectY = (cy - h/2.0) * sy
-
-        // Clamp inside final image
-        rectX = max(0, min(rectX, CGFloat(imageWidth - 1)))
-        rectY = max(0, min(rectY, CGFloat(imageHeight - 1)))
-
-        // ---------------------------------------
-        // Prepare label text (include track ID if available)
-        // ---------------------------------------
-//        let trackPrefix = detection.trackId != nil ? "ID\(detection.trackId!) " : ""
-        let label = "\(detection.className) \(Int(detection.confidence * 100))%"
-        let font = UIFont.boldSystemFont(ofSize: 26)
-
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: UIColor.white,
-            .backgroundColor: UIColor.black.withAlphaComponent(0.65)
-        ]
-
-        let text = NSAttributedString(string: label, attributes: attrs)
-        let textSize = text.size()
-
-        // Draw label slightly above bbox
-        let textRect = CGRect(
-            x: rectX,
-            y: max(0, rectY - textSize.height - 4),
-            width: textSize.width,
-            height: textSize.height
-        )
-
-        ctx.saveGState()
-        text.draw(in: textRect)
-        ctx.restoreGState()
-    }
-
-
-
-    private func drawBoundingBox(ctx: CGContext, detection: DetectionSmarty, imageWidth: Int, imageHeight: Int) {
-        let originalWidth = CGFloat(imageWidth)
-        let originalHeight = CGFloat(imageHeight)
-        let modelSize: CGFloat = 1280.0
-        let scaleX = originalWidth / modelSize
-        let scaleY = originalHeight / modelSize
-
-        let centerX = CGFloat(detection.x) * scaleX
-        let centerY = CGFloat(detection.y) * scaleY
-        let boxWidth = CGFloat(detection.width) * scaleX
-        let boxHeight = CGFloat(detection.height) * scaleY
-
-        let x = centerX - boxWidth / 2
-        let y = centerY - boxHeight / 2
-
-        // cyan box
-        ctx.setStrokeColor(CGColor(red: 0, green: 1, blue: 1, alpha: 1))
-        ctx.setLineWidth(3.0)
-        let rect = CGRect(x: x, y: y, width: boxWidth, height: boxHeight)
-        ctx.stroke(rect)
-
-        // label text (include track ID if available)
-        let confidence = Int(detection.confidence * 100)
-//        let trackIdStr = detection.trackId != nil ? "ID\(detection.trackId!) " : ""
-        let labelText = "\(detection.className) \(confidence)%"
-        let attributed = NSAttributedString(string: labelText, attributes: bboxAttributes)
-        let textSize = attributed.size()
-
-        let labelPadding: CGFloat = 6
-        let labelWidth = textSize.width + (labelPadding * 2)
-        let labelHeight = textSize.height + (labelPadding * 2)
-
-        var labelX: CGFloat
-        var labelY: CGFloat
-
-        if y - labelHeight - 5 >= 0 {
-            labelX = max(0, min(x, originalWidth - labelWidth))
-            labelY = y - labelHeight - 5
-        } else if y + boxHeight + labelHeight + 5 <= originalHeight {
-            labelX = max(0, min(x, originalWidth - labelWidth))
-            labelY = y + boxHeight + 5
-        } else {
-            labelX = max(0, min(x + 5, originalWidth - labelWidth))
-            labelY = max(0, y + 5)
-        }
-
-        ctx.setFillColor(CGColor(red: 0, green: 1, blue: 1, alpha: 1))
-        let labelRect = CGRect(x: labelX, y: labelY, width: labelWidth, height: labelHeight)
-        ctx.fill(labelRect)
-
-        let textX = labelX + labelPadding
-        let textY = labelY + labelPadding
-
-        let line = CTLineCreateWithAttributedString(attributed)
-
-        ctx.saveGState()
-        ctx.textMatrix = .identity
-
-        let ctm = ctx.ctm
-        let isFlipped = ctm.d < 0 || ctm.ty != 0
-
-        if isFlipped {
-            ctx.translateBy(x: 0, y: CGFloat(imageHeight))
-            ctx.scaleBy(x: 1.0, y: -1.0)
-            let ascent = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
-            let flippedY = CGFloat(imageHeight) - textY - ascent
-            ctx.textPosition = CGPoint(x: textX, y: flippedY)
-        } else {
-            ctx.textPosition = CGPoint(x: textX, y: textY)
-        }
-
-        CTLineDraw(line, ctx)
-        ctx.restoreGState()
-    }
-//    private var detFloatBuf: UnsafeMutablePointer<Float>? = nil
-    
-//    private var tempConf: [Float] = []
-    
-    private func extractDetections(from detections: MLMultiArray, confThreshold: Float, topK: Int = 50) -> [DetectionSmarty] {
-        let tAll = Date()
-        var results: [DetectionSmarty] = []
-
-        let shapeInts = detections.shape.map { $0.intValue }
-        guard shapeInts.count >= 3 else {
-            if debugMode { print("⚠️ extractDetections: unexpected shape \(shapeInts)") }
-            return []
-        }
-        let numFeatures = shapeInts[1]
-        let numAnchors = shapeInts[2]
-        let protoDim = 32
-        let numClasses = numFeatures - 4 - protoDim
-        guard numFeatures >= 4 + numClasses + protoDim && numAnchors > 0 && numClasses > 0 else {
-            if debugMode { print("⚠️ extractDetections: invalid dims F:\(numFeatures) A:\(numAnchors) nc:\(numClasses)") }
-            return []
-        }
-
-        if debugMode {
-            print("🔍 detections: features=\(numFeatures) anchors=\(numAnchors) classes=\(numClasses)")
-        }
-
-        let expectedCount = numFeatures * numAnchors
-
-        // Ensure persistent buffer capacity
-        if detFloatBuf == nil || detFloatBufCapacity < expectedCount {
-            if let existing = detFloatBuf { existing.deallocate() }
-            detFloatBuf = UnsafeMutablePointer<Float>.allocate(capacity: expectedCount)
-            detFloatBufCapacity = expectedCount
-        }
-        guard let detBuf = detFloatBuf else { return [] }
-
-        // Copy MLMultiArray to detBuf
-        if detections.dataType == .float16 {
-            let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: expectedCount)
-            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src),
-                                       height: 1, width: vImagePixelCount(expectedCount),
-                                       rowBytes: expectedCount * MemoryLayout<UInt16>.size)
-            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf),
-                                       height: 1, width: vImagePixelCount(expectedCount),
-                                       rowBytes: expectedCount * MemoryLayout<Float>.size)
-            let r = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-            if r != kvImageNoError && debugMode { print("⚠️ vImage conv16->32 failed: \(r)") }
-        } else if detections.dataType == .float32 {
-            let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
-            memcpy(detBuf, src, expectedCount * MemoryLayout<Float>.size)
-        } else {
-            for i in 0..<expectedCount { detBuf[i] = detections[i].floatValue }
-        }
-        if debugMode {
-            print(String(format: "⏱ copy dets: %.2f ms", Date().timeIntervalSince(tAll)*1000))
-        }
-
-        let detPtr = UnsafeMutableBufferPointer(start: detBuf, count: expectedCount)
-        if tempConf.count < numClasses { tempConf = [Float](repeating: 0, count: numClasses) }
-
-        let stride = numAnchors
-        let confBaseOffset = 4 * stride
-        let coeffsOffset = (4 + numClasses) * stride
-
-        var intermediate: [DetectionSmarty] = []
-        intermediate.reserveCapacity(min(512, numAnchors))
-
-        let decodeStart = Date()
-        for a in 0..<numAnchors {
-            let ix = 0 * stride + a
-            let iy = 1 * stride + a
-            let iw = 2 * stride + a
-            let ih = 3 * stride + a
-            if ix >= expectedCount || iy >= expectedCount || iw >= expectedCount || ih >= expectedCount { continue }
-            let x = detPtr[ix], y = detPtr[iy], w = detPtr[iw], h = detPtr[ih]
-            if !x.isFinite || !y.isFinite || !w.isFinite || !h.isFinite || w <= 0 || h <= 0 { continue }
-
-            // copy class confidences into tempConf (strided)
-            let confStart = confBaseOffset + a
-            for c in 0..<numClasses {
-                let idx = confStart + c * stride
-                tempConf[c] = (idx < expectedCount) ? detPtr[idx] : 0.0
-            }
-
-            // argmax via vDSP
-            var maxVal: Float = 0
-            var maxIdx: vDSP_Length = 0
-            vDSP_maxvi(tempConf, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
-            let bestConf = maxVal
-            let bestClass = Int(maxIdx)
-            if bestConf <= confThreshold { continue }
-
-            // read protoDim coeffs (strided)
-            var coeffs = [Float](repeating: 0, count: protoDim)
-            var coeffValid = true
-            let coeffStart = coeffsOffset + a
-            for k in 0..<protoDim {
-                let idx = coeffStart + k * stride
-                if idx < expectedCount { coeffs[k] = detPtr[idx] } else { coeffValid = false; break }
-            }
-            if !coeffValid { continue }
-
-            let className = furnitureClasses[bestClass] ?? "object_\(bestClass)"
-            let det = DetectionSmarty(x: x, y: y, width: w, height: h, confidence: bestConf, classIdx: bestClass, className: className, maskCoeffs: coeffs)
-            intermediate.append(det)
-        }
-        if debugMode {
-            print(String(format: "⏱ decode anchors: %.2f ms", Date().timeIntervalSince(decodeStart)*1000))
-        }
-
-        // keep top-K by confidence
-        let kept = intermediate.sorted(by: { $0.confidence > $1.confidence }).prefix(topK)
-        results = Array(kept)
-
-        if debugMode {
-            print("📊 extracted kept: \(results.count) (topK=\(topK))")
-            print(String(format: "⏱ extractDetections total: %.2f ms", Date().timeIntervalSince(tAll)*1000))
-        }
-
-        return results
-    }
-
-    
-    // Requires: import Accelerate, import CoreGraphics, import UIKit
-    // Assumes originalImage is CVPixelBuffer in kCVPixelFormatType_32BGRA or similar.
-    // Helper: convert CVPixelBuffer -> planar BGRA bytes
-    private func cgImageFromPixelBuffer(_ pb: CVPixelBuffer) -> CGImage? {
-        // existing helper you may already have; keep or replace with this minimal one
-        let ci = CIImage(cvPixelBuffer: pb)
-        let context = CIContext(options: nil)
-        return context.createCGImage(ci, from: CGRect(x: 0, y: 0, width: CVPixelBufferGetWidth(pb), height: CVPixelBufferGetHeight(pb)))
-    }
-
-//    import Accelerate
-//    import Accelerate.vImage
-//    import Foundation
-//    import CoreML
-//
-//    struct DetectionSmarty { var x: Float; var y: Float; var width: Float; var height: Float }
-
-    func processMasks(
-        protos: MLMultiArray,
-        maskCoeffs: [[Float]],
-        boxes: [DetectionSmarty],
-        outSize: (height: Int, width: Int),
-        upsample: Bool,
-        debugMode: Bool = false
-    ) -> [[UInt8]] {
-
-        let protoShape = protos.shape.map { $0.intValue }
-        guard protoShape.count >= 3 else { return [] }
-
-        let hasBatchDim = protoShape.count == 4
-        let offset = hasBatchDim ? 1 : 0
-        let C = protoShape[offset]
-        let Hp = protoShape[offset + 1]
-        let Wp = protoShape[offset + 2]
-        let spatial = Hp * Wp
-        let N = maskCoeffs.count
-        guard N > 0 && C > 0 && boxes.count == N else { return [] }
-
-        // Prepare protoMatrix
-        var protoMatrix = [Float](repeating: 0, count: C * spatial)
-        let t_proto_build_start = Date()
-
-        // Fast path: bind data pointer (non-optional) and copy per-channel blocks concurrently
-        let totalProtoCount = C * Hp * Wp
-        let srcPtr = protos.dataPointer.bindMemory(to: Float.self, capacity: protos.count)
-
-        if protos.count == totalProtoCount || protos.count == totalProtoCount * (hasBatchDim ? 1 : 1) {
-            // Assume contiguous inner layout: either (1,C,Hp,Wp) or (C,Hp,Wp)
-            DispatchQueue.concurrentPerform(iterations: C) { c in
-                let dstBase = c * spatial
-                let srcBase = (hasBatchDim ? (0 * C + c) : c) * spatial
-                protoMatrix.withUnsafeMutableBufferPointer { dstBuf in
-                    let dstPtr = dstBuf.baseAddress! + dstBase
-                    let srcRow = srcPtr.advanced(by: srcBase)
-                    dstPtr.assign(from: srcRow, count: spatial)
-                }
-            }
-        } else {
-            // Stride-aware fallback using MLMultiArray.strides
-            let strides = protos.strides.map { $0.intValue }
-            let bStride = hasBatchDim ? strides[0] : 0
-            let cStride = strides[offset]
-            let yStride = strides[offset + 1]
-            let xStride = strides[offset + 2]
-
-            for c in 0..<C {
-                let dstBase = c * spatial
-                for y in 0..<Hp {
-                    for x in 0..<Wp {
-                        let srcIndex = (hasBatchDim ? 0 * bStride : 0) + c * cStride + y * yStride + x * xStride
-                        protoMatrix[dstBase + y * Wp + x] = srcPtr[srcIndex]
-                    }
-                }
-            }
-        }
-
-        let t_proto_build_dt = Date().timeIntervalSince(t_proto_build_start) * 1000.0
-        if debugMode { print(String(format: "⏱ processMasks: protoMatrix build: %.2f ms", t_proto_build_dt)) }
-
-        // Buffers
-        let fullCount = outSize.height * outSize.width
-        var masksOut = Array(repeating: [UInt8](repeating: 0, count: fullCount), count: N)
-        var protoFloatBuf = [Float](repeating: 0, count: spatial)
-        var protoPlanar8 = [UInt8](repeating: 0, count: spatial)
-        var upscaledPlanar8 = [UInt8](repeating: 0, count: fullCount)
-
-        let vImageFlags = vImage_Flags(kvImageNoFlags)
-        let upsampleFlags = vImage_Flags(kvImageHighQualityResampling)
-
-        let m_blas = Int32(C)
-        let n_blas = Int32(spatial)
-        let lda = Int32(spatial)
-
-        // timers
-        var total_sgemv: Double = 0
-        var total_f2p: Double = 0
-        var total_upscale: Double = 0
-        var total_finalize: Double = 0
-
-        let t_loop_start = Date()
-        for i in 0..<N {
-            let coeffs = maskCoeffs[i]
-            guard coeffs.count == C else { return [] }
-
-            // SGEMV
-            let t_sgemv_start = Date()
-            protoFloatBuf.withUnsafeMutableBufferPointer { yPtr in
-                protoMatrix.withUnsafeBufferPointer { aPtr in
-                    coeffs.withUnsafeBufferPointer { xPtr in
-                        cblas_sgemv(
-                            CblasRowMajor,
-                            CblasTrans,
-                            m_blas,
-                            n_blas,
-                            1.0,
-                            aPtr.baseAddress!,
-                            lda,
-                            xPtr.baseAddress!,
-                            1,
-                            0.0,
-                            yPtr.baseAddress!,
-                            1
-                        )
-                    }
-                }
-            }
-            total_sgemv += Date().timeIntervalSince(t_sgemv_start) * 1000.0
-
-            // bbox -> proto coords
-            let det = boxes[i]
-            let cx = det.x, cy = det.y, bw = det.width, bh = det.height
-            var x1 = Int(floor((cx - bw/2) * Float(Wp)))
-            var x2 = Int(ceil ((cx + bw/2) * Float(Wp)))
-            var y1 = Int(floor((cy - bh/2) * Float(Hp)))
-            var y2 = Int(ceil ((cy + bh/2) * Float(Hp)))
-            x1 = max(0, min(Wp - 1, x1)); x2 = max(0, min(Wp, x2))
-            y1 = max(0, min(Hp - 1, y1)); y2 = max(0, min(Hp, y2))
-
-            // threshold negatives
-            var thr: Float = 0.0
-            protoFloatBuf.withUnsafeMutableBufferPointer { pPtr in
-                vDSP_vthr(pPtr.baseAddress!, 1, &thr, pPtr.baseAddress!, 1, vDSP_Length(spatial))
-            }
-
-            // zero outside bbox
-            protoFloatBuf.withUnsafeMutableBufferPointer { pPtr in
-                let base = pPtr.baseAddress!
-                if y1 > 0 {
-                    memset(base, 0, y1 * Wp * MemoryLayout<Float>.size)
-                }
-                if y2 < Hp {
-                    let start = y2 * Wp
-                    let count = spatial - start
-                    if count > 0 {
-                        memset(base + start, 0, count * MemoryLayout<Float>.size)
-                    }
-                }
-                for row in y1..<y2 {
-                    let rowBase = base + row * Wp
-                    if x1 > 0 {
-                        memset(rowBase, 0, x1 * MemoryLayout<Float>.size)
-                    }
-                    if x2 < Wp {
-                        memset(rowBase + x2, 0, (Wp - x2) * MemoryLayout<Float>.size)
-                    }
-                }
-            }
-
-            // Float -> Planar8
-            let t_f2p_start = Date()
-            protoFloatBuf.withUnsafeMutableBytes { fPtr in
-                protoPlanar8.withUnsafeMutableBytes { pPtr in
-                    var src = vImage_Buffer(data: fPtr.baseAddress!, height: vImagePixelCount(Hp), width: vImagePixelCount(Wp), rowBytes: Wp * MemoryLayout<Float>.size)
-                    var dst = vImage_Buffer(data: pPtr.baseAddress!, height: vImagePixelCount(Hp), width: vImagePixelCount(Wp), rowBytes: Wp)
-                    vImageConvert_PlanarFtoPlanar8(&src, &dst, 255.0, 0, vImageFlags)
-                }
-            }
-            total_f2p += Date().timeIntervalSince(t_f2p_start) * 1000.0
-
-            // Upsample
-            let t_up_start = Date()
-            protoPlanar8.withUnsafeMutableBytes { cPtr in
-                upscaledPlanar8.withUnsafeMutableBytes { fPtr in
-                    var src = vImage_Buffer(data: cPtr.baseAddress!, height: vImagePixelCount(Hp), width: vImagePixelCount(Wp), rowBytes: Wp)
-                    var dst = vImage_Buffer(data: fPtr.baseAddress!, height: vImagePixelCount(outSize.height), width: vImagePixelCount(outSize.width), rowBytes: outSize.width)
-                    vImageScale_Planar8(&src, &dst, nil, upsample ? upsampleFlags : vImageFlags)
-                }
-            }
-            total_upscale += Date().timeIntervalSince(t_up_start) * 1000.0
-
-            // Finalize
-            let t_fin_start = Date()
-            masksOut[i].withUnsafeMutableBufferPointer { oPtr in
-                upscaledPlanar8.withUnsafeBufferPointer { iPtr in
-                    if let dst = oPtr.baseAddress, let src = iPtr.baseAddress {
-                        memcpy(dst, src, fullCount)
-                    }
-                }
-            }
-            total_finalize += Date().timeIntervalSince(t_fin_start) * 1000.0
-        }
-
-        let t_loop_dt = Date().timeIntervalSince(t_loop_start) * 1000.0
-        if debugMode {
-            print(String(format: "⏱ processMasks: loop total %.2f ms (N=%d)", t_loop_dt, N))
-            print(String(format: "    sgemv total: %.2f ms (avg %.2f ms)", total_sgemv, total_sgemv / Double(N)))
-            print(String(format: "    float->planar total: %.2f ms (avg %.2f ms)", total_f2p, total_f2p / Double(N)))
-            print(String(format: "    upsample total: %.2f ms (avg %.2f ms)", total_upscale, total_upscale / Double(N)))
-            print(String(format: "    finalize total: %.2f ms (avg %.2f ms)", total_finalize, total_finalize / Double(N)))
-        }
-
-        return masksOut
-    }
-
-
-
-
-
-
-
-    
-    // MARK: - Pixel Buffer to MLMultiArray (Accelerate) — with timing
-    private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
-        let t0 = Date()
-        guard let array = try? MLMultiArray(shape: [1, 3, 1280, 1280], dataType: .float32) else { return nil }
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
-
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
-        let width = 1280
-        let height = 1280
-        let pixelCount = width * height
-        let src = baseAddress.assumingMemoryBound(to: UInt8.self)
-
-        let floatSize = MemoryLayout<Float32>.size
-        let planeStrideBytes = pixelCount * floatSize
-        let rPtr = array.dataPointer.advanced(by: 0 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
-        let gPtr = array.dataPointer.advanced(by: 1 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
-        let bPtr = array.dataPointer.advanced(by: 2 * planeStrideBytes).assumingMemoryBound(to: Float32.self)
-
-        var indicesR = [vDSP_Length](repeating: 0, count: width)
-        var indicesG = [vDSP_Length](repeating: 0, count: width)
-        var indicesB = [vDSP_Length](repeating: 0, count: width)
-        for i in 0..<width {
-            indicesR[i] = vDSP_Length(2 + i * 4)
-            indicesG[i] = vDSP_Length(1 + i * 4)
-            indicesB[i] = vDSP_Length(0 + i * 4)
-        }
-
-        var rowUInt8 = [UInt8](repeating: 0, count: width * 4)
-        var rowFloat = [Float](repeating: 0, count: width * 4)
-
-        var scaleF: Float = 1.0 / 255.0
-
-        for y in 0..<height {
-            let rowStart = src.advanced(by: y * bytesPerRow)
-            memcpy(&rowUInt8, rowStart, width * 4)
-
-            rowUInt8.withUnsafeBufferPointer { u8Ptr in
-                rowFloat.withUnsafeMutableBufferPointer { fPtr in
-                    vDSP_vfltu8(u8Ptr.baseAddress!, 1, fPtr.baseAddress!, 1, vDSP_Length(width * 4))
-                    vDSP_vsmul(fPtr.baseAddress!, 1, &scaleF, fPtr.baseAddress!, 1, vDSP_Length(width * 4))
-                }
-            }
-
-            rowFloat.withUnsafeBufferPointer { rf in
-                let baseF = rf.baseAddress!
-                vDSP_vgathr(baseF, indicesR, 1, rPtr.advanced(by: y * width), 1, vDSP_Length(width))
-                vDSP_vgathr(baseF, indicesG, 1, gPtr.advanced(by: y * width), 1, vDSP_Length(width))
-                vDSP_vgathr(baseF, indicesB, 1, bPtr.advanced(by: y * width), 1, vDSP_Length(width))
-            }
-        }
-
-        if self.debugMode {
-            let dt = Date().timeIntervalSince(t0) * 1000.0
-            print(String(format: "⏱ pixelBufferToMLMultiArray: %.2f ms", dt))
-        }
-
-        return array
-    }
-    
-    // MARK: - Compute edge pixels (circumference) of a binary mask (4-neighborhood)
-      private func computeMaskEdges(mask: [Float], width: Int, height: Int) -> [(x: Int, y: Int)] {
-          let w = width, h = height
-          guard mask.count == w * h, w > 0, h > 0 else { return [] }
-          var edges: [(Int, Int)] = []
-          edges.reserveCapacity(w * h / 8)
-          for y in 0..<h {
-              let rowOff = y * w
-              for x in 0..<w {
-                  let idx = rowOff + x
-                  if mask[idx] <= 0 { continue }
-                  // 4-neighborhood: if any neighbor is background or out of bounds, it's an edge
-                  let leftEmpty   = (x == 0)        || mask[idx - 1] <= 0
-                  let rightEmpty  = (x == w - 1)    || mask[idx + 1] <= 0
-                  let topEmpty    = (y == 0)        || mask[idx - w] <= 0
-                  let bottomEmpty = (y == h - 1)    || mask[idx + w] <= 0
-                  if leftEmpty || rightEmpty || topEmpty || bottomEmpty {
-                      edges.append((x, y))
-                  }
-              }
-          }
-          return edges
-      }
-    
-    public func cutoutClearOutsideAccelerated(x0: Int, y0: Int, x1: Int, y1: Int, in image: CGImage) -> CGImage? {
-        let t0 = Date()
+        let allDetections = stage1 + stage2
+        guard !allDetections.isEmpty else { return }
         
-        let width = image.width
-        let height = image.height
-        guard width > 0 && height > 0 else { return nil }
-
-        var minX = min(x0, x1)
-        var maxX = max(x0, x1)
-        var minY = min(y0, y1)
-        var maxY = max(y0, y1)
-
-        minX = max(0, min(minX, width))
-        maxX = max(0, min(maxX, width))
-        minY = max(0, min(minY, height))
-        maxY = max(0, min(maxY, height))
-
-        if minX >= maxX || minY >= maxY {
-            let out = makeTransparentImage(width: width, height: height)
-            if self.debugMode {
-                let dt = Date().timeIntervalSince(t0) * 1000.0
-                print(String(format: "⏱ cutoutClearOutsideAccelerated (empty): %.2f ms", dt))
+        let scale = Float(imageWidth) / 1280.0
+        
+        // Set up text attributes
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 20, nil)
+        let textColor = UIColor.white.cgColor
+        
+        for detection in allDetections {
+            // Convert coordinates to image space
+            let x = detection.x * scale
+            let y = detection.y * scale
+            let w = detection.width * scale
+            let h = detection.height * scale
+            
+            let left = x - w / 2
+            let top = y - h / 2
+            let right = x + w / 2
+            let bottom = y + h / 2
+            
+            if drawBoxes {
+                // Draw bounding box
+                ctx.setStrokeColor(UIColor.green.cgColor)
+                ctx.setLineWidth(2.0)
+                let rect = CGRect(x: CGFloat(left), y: CGFloat(top),
+                                width: CGFloat(w), height: CGFloat(h))
+                ctx.stroke(rect)
             }
-            return out
+            
+            // Draw label with clamped confidence
+            let clampedConf = min(99, max(0, Int(detection.confidence * 100)))
+            let label = "\(detection.className) \(clampedConf)%"
+            let attributedString = NSAttributedString(string: label, attributes: [
+                .font: font,
+                .foregroundColor: UIColor.white
+            ])
+            
+            let labelRect = CGRect(x: CGFloat(left), y: CGFloat(top - 25),
+                                 width: CGFloat(w), height: 25)
+            
+            // Draw background for text
+            ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+            ctx.fill(labelRect)
+            
+            // Draw text
+            let line = CTLineCreateWithAttributedString(attributedString)
+            ctx.textPosition = CGPoint(x: CGFloat(left + 5), y: CGFloat(top - 5))
+            CTLineDraw(line, ctx)
         }
-
-        let bytesPerPixel = 4
-        let bytesPerRow = width * bytesPerPixel
-        let bufSize = bytesPerRow * height
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-
-        guard let destData = malloc(bufSize) else { return nil }
-        defer { free(destData) }
-
-        guard let ctx = CGContext(data: destData,
-                                  width: width,
-                                  height: height,
-                                  bitsPerComponent: 8,
-                                  bytesPerRow: bytesPerRow,
-                                  space: colorSpace,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else {
-            return nil
-        }
-
-        ctx.translateBy(x: 0, y: CGFloat(height))
-        ctx.scaleBy(x: 1.0, y: -1.0)
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        var srcBuffer = vImage_Buffer(data: destData, height: vImagePixelCount(height),
-                                      width: vImagePixelCount(width), rowBytes: bytesPerRow)
-
-        guard let zeroRow = malloc(bytesPerRow) else { return nil }
-        memset(zeroRow, 0, bytesPerRow)
-        defer { free(zeroRow) }
-
-        if minY > 0 {
-            let dstPtr = destData
-            for r in 0..<minY {
-                let rowBase = dstPtr.advanced(by: r * bytesPerRow)
-                memcpy(rowBase, zeroRow, bytesPerRow)
-            }
-        }
-
-        if maxY < height {
-            let dstPtr = destData.advanced(by: maxY * bytesPerRow)
-            for r in 0..<(height - maxY) {
-                let rowBase = dstPtr.advanced(by: r * bytesPerRow)
-                memcpy(rowBase, zeroRow, bytesPerRow)
-            }
-        }
-
-        if minX > 0 || maxX < width {
-            let leftBytes = minX * bytesPerPixel
-            let rightBytes = (width - maxX) * bytesPerPixel
-            for row in minY..<maxY {
-                let rowBase = destData.advanced(by: row * bytesPerRow)
-                if leftBytes > 0 {
-                    memset(rowBase, 0, leftBytes)
-                }
-                if rightBytes > 0 {
-                    let rightPtr = rowBase.advanced(by: maxX * bytesPerPixel)
-                    memset(rightPtr, 0, rightBytes)
-                }
-            }
-        }
-
-        guard let outCtx = CGContext(data: destData,
-                                     width: width,
-                                     height: height,
-                                     bitsPerComponent: 8,
-                                     bytesPerRow: bytesPerRow,
-                                     space: colorSpace,
-                                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else {
-            return nil
-        }
-
-        let outImage = outCtx.makeImage()
-        if self.debugMode {
-            let dt = Date().timeIntervalSince(t0) * 1000.0
-            print(String(format: "⏱ cutoutClearOutsideAccelerated: %.2f ms", dt))
-        }
-        return outImage
     }
-
-    private func makeTransparentImage(width: Int, height: Int) -> CGImage? {
-        guard width > 0 && height > 0 else { return nil }
-        let bytesPerPixel = 4
-        let bytesPerRow = width * bytesPerPixel
-        let bufSize = bytesPerRow * height
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-        guard let data = calloc(1, bufSize) else { return nil }
-        defer { free(data) }
-
-        guard let ctx = CGContext(data: data,
-                                  width: width,
-                                  height: height,
-                                  bitsPerComponent: 8,
-                                  bytesPerRow: bytesPerRow,
-                                  space: colorSpace,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { return nil }
-
-        return ctx.makeImage()
-    }
-
-    public func cutoutClearOutsideAcceleratedUIImage(x0: Int, y0: Int, x1: Int, y1: Int, in image: UIImage) -> UIImage? {
-        guard let cg = image.cgImage else { return nil }
-        guard let outCG = cutoutClearOutsideAccelerated(x0: x0, y0: y0, x1: x1, y1: y1, in: cg) else { return nil }
-        return UIImage(cgImage: outCG, scale: image.scale, orientation: image.imageOrientation)
-    }
-
+    
+    // MARK: - Remaining utility methods
 }
+
+
+// Add sigmoid helper function outside the class here:
+fileprivate func sigmoid(_ x: inout [Float]) {
+    let count = vDSP_Length(x.count)
+    var zero: Float = 0
+    var one: Float = 1
+    // sigmoid(x) = 1 / (1 + exp(-x))
+    var negX = [Float](repeating: 0, count: x.count)
+    vDSP_vneg(x, 1, &negX, 1, count)
+    vvexpf(&negX, negX, [Int32(x.count)])
+    vDSP_vsadd(negX, 1, &one, &negX, 1, count) // 1 + exp(-x)
+    vvrecf(&x, negX, [Int32(x.count)]) // 1 / (1 + exp(-x))
+}
+
+
