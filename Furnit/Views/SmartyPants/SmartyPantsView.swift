@@ -1299,8 +1299,65 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             print("   Best OVERALL conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass)")
         }
+        
+        // Create a "best detection" for visualization if we found something but it was below threshold
+        var bestDetectionForVisualization: DetectionSmarty?
+        if selectedDets.isEmpty && bestFurnitureAnchor >= 0 && bestFurnitureConf > 0.001 {
+            let anchor = bestFurnitureAnchor
+            let x = detBuf[0 * stride + anchor]
+            let y = detBuf[1 * stride + anchor]
+            let w = detBuf[2 * stride + anchor]
+            let h = detBuf[3 * stride + anchor]
+            
+            if x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 {
+                bestDetectionForVisualization = DetectionSmarty(
+                    x: x, y: y, width: w, height: h,
+                    confidence: bestFurnitureConf,
+                    classIdx: -1,  // Special flag for "best but below threshold"
+                    className: bestFurnitureClass,
+                    maskCoeffs: [Float](repeating: 0, count: 32)
+                )
+            }
+        }
 
+        // Get image dimensions first (needed for both paths)
+        let origW = CVPixelBufferGetWidth(pixelBuffer)
+        let origH = CVPixelBufferGetHeight(pixelBuffer)
+        
         if selectedDets.isEmpty {
+            // If we have a best detection visualization, draw just the label without processing
+            if let bestDet = bestDetectionForVisualization {
+                let colorSpace = CGColorSpaceCreateDeviceRGB()
+                guard let ctx = CGContext(
+                    data: nil,
+                    width: origW,
+                    height: origH,
+                    bitsPerComponent: 8,
+                    bytesPerRow: origW * 4,
+                    space: colorSpace,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                ) else {
+                    isProcessing = false
+                    return
+                }
+                
+                // Draw best detection with special styling (red box to indicate below threshold)
+                drawBestDetectionVisualization(ctx: ctx, detection: bestDet, 
+                                             imageWidth: origW, imageHeight: origH,
+                                             letterboxGain: letterboxGain, 
+                                             letterboxPadX: letterboxPadX, letterboxPadY: letterboxPadY)
+                
+                if let out = ctx.makeImage() {
+                    DispatchQueue.main.async {
+                        self.maskImageView.image = UIImage(cgImage: out)
+                        self.isProcessing = false
+                    }
+                } else {
+                    DispatchQueue.main.async { self.isProcessing = false }
+                }
+                return
+            }
+            
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -1330,9 +1387,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         func modelToOrigY(_ y: Float) -> Int {
             Int(round((y - letterboxPadY) / letterboxGain))
         }
-        
-        let origW = CVPixelBufferGetWidth(pixelBuffer)
-        let origH = CVPixelBufferGetHeight(pixelBuffer)
         
         var bx1 = modelToOrigX(ux1)
         var by1 = modelToOrigY(uy1)
@@ -1514,9 +1568,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // 12) Draw MAIN UNION bbox (green) for live visualization
+        let boxHeight = by2 - by1
+        let flippedY = origH - by1 - boxHeight
+        
         ctx.setStrokeColor(UIColor.green.cgColor)
         ctx.setLineWidth(4.0)
-        ctx.stroke(CGRect(x: bx1, y: by1, width: bx2 - bx1, height: by2 - by1))
+        ctx.stroke(CGRect(
+            x: bx1,
+            y: flippedY,
+            width: bx2 - bx1,
+            height: boxHeight
+        ))
 
         // 13) UI update
         if let out = ctx.makeImage() {
@@ -2678,6 +2740,95 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("   Total detections processed: \(allDetections.count)")
             print("   Letterbox transform: gain=\(letterboxGain), padX=\(letterboxPadX), padY=\(letterboxPadY)")
             print("   Target image size: \(imageWidth) x \(imageHeight)")
+        }
+    }
+    
+    // MARK: - Best Detection Visualization
+    private func drawBestDetectionVisualization(
+        ctx: CGContext,
+        detection: DetectionSmarty,
+        imageWidth: Int,
+        imageHeight: Int,
+        letterboxGain: Float,
+        letterboxPadX: Float,
+        letterboxPadY: Float
+    ) {
+        // Helper functions to convert from model coordinates to image coordinates
+        @inline(__always)
+        func modelToImageX(_ xModel: Float) -> Float {
+            return (xModel - letterboxPadX) / letterboxGain
+        }
+        
+        @inline(__always)
+        func modelToImageY(_ yModel: Float) -> Float {
+            return (yModel - letterboxPadY) / letterboxGain
+        }
+        
+        // Convert model coordinates to image coordinates
+        let centerX = modelToImageX(detection.x)
+        let centerY = modelToImageY(detection.y)
+        let width = detection.width / letterboxGain
+        let height = detection.height / letterboxGain
+        
+        let left = centerX - width / 2
+        let top = centerY - height / 2
+        
+        // Draw RED dashed bounding box to indicate "below threshold"
+        ctx.setStrokeColor(UIColor.red.cgColor)
+        ctx.setLineWidth(3.0)
+        ctx.setLineDash(phase: 0, lengths: [10.0, 5.0]) // Dashed line pattern
+        let rect = CGRect(x: CGFloat(left), y: CGFloat(top),
+                        width: CGFloat(width), height: CGFloat(height))
+        ctx.stroke(rect)
+        
+        // Reset line dash for text background
+        ctx.setLineDash(phase: 0, lengths: [])
+        
+        // Draw label with special formatting
+        let clampedConf = min(99, max(0, Int(detection.confidence * 100)))
+        let label = "BEST: \(detection.className) \(clampedConf)% (below threshold)"
+        
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 18, nil)
+        let attributedString = NSAttributedString(string: label, attributes: [
+            .font: font,
+            .foregroundColor: UIColor.white
+        ])
+        
+        // Calculate label size
+        let textBounds = CTLineGetBoundsWithOptions(
+            CTLineCreateWithAttributedString(attributedString), 
+            CTLineBoundsOptions()
+        )
+        let labelWidth = max(200.0, textBounds.width + 20.0)
+        let labelHeight: CGFloat = 30
+        
+        let labelRect = CGRect(
+            x: CGFloat(left), 
+            y: CGFloat(max(0.0, CGFloat(top) - labelHeight - 5.0)),
+            width: labelWidth, 
+            height: labelHeight
+        )
+        
+        // Draw red background for "below threshold" label
+        ctx.setFillColor(UIColor.red.withAlphaComponent(0.8).cgColor)
+        ctx.fill(labelRect)
+        
+        // Draw white border around label
+        ctx.setStrokeColor(UIColor.white.cgColor)
+        ctx.setLineWidth(1.0)
+        ctx.stroke(labelRect)
+        
+        // Draw text
+        let line = CTLineCreateWithAttributedString(attributedString)
+        let textPosition = CGPoint(x: CGFloat(left + 10), y: CGFloat(max(25, top - 10)))
+        ctx.textPosition = textPosition
+        CTLineDraw(line, ctx)
+        
+        if debugMode {
+            print("📍 Drawing BEST detection visualization:")
+            print("   Class: \(detection.className), Confidence: \(String(format: "%.3f", detection.confidence))")
+            print("   Box: [\(String(format: "%.1f", left)),\(String(format: "%.1f", top))] size \(String(format: "%.1f", width))x\(String(format: "%.1f", height))")
+            print("   Status: Below threshold (showing as red dashed box)")
         }
     }
     
