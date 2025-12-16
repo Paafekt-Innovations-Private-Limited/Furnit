@@ -1812,6 +1812,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             DispatchQueue.main.async { self.isProcessing = false }
             return
         }
+        // Initialize to transparent (0,0,0,0) - completely transparent background
         memset(outBase, 0, width * height * 4)
         let contextEnd = Date()
         
@@ -2029,10 +2030,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                             if binMaskROI[roiPixel] > 0 {
                                 let outIdx = outRowStart + x + offset
                                 let px = outIdx * 4
-                                outBase[px + 0] = 0     // B
-                                outBase[px + 1] = 255   // G  
-                                outBase[px + 2] = 0     // R
-                                outBase[px + 3] = 255   // A
+                                outBase[px + 0] = 0     // B (Blue) 
+                                outBase[px + 1] = 255   // G (Green)  
+                                outBase[px + 2] = 0     // R (Red)
+                                outBase[px + 3] = 255   // A (Alpha)
                                 pixelsSet += 1
                             }
                         }
@@ -2046,10 +2047,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     if binMaskROI[roiPixel] > 0 {
                         let outIdx = outRowStart + x
                         let px = outIdx * 4
-                        outBase[px + 0] = 0     // B
-                        outBase[px + 1] = 255   // G
-                        outBase[px + 2] = 0     // R
-                        outBase[px + 3] = 255   // A
+                        outBase[px + 0] = 0     // B (Blue)
+                        outBase[px + 1] = 255   // G (Green)
+                        outBase[px + 2] = 0     // R (Red)
+                        outBase[px + 3] = 255   // A (Alpha)
                         pixelsSet += 1
                     }
                     x += 1
