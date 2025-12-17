@@ -18,7 +18,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var detectAllObjects: Bool = true
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = true
+    var debugMode: Bool = false
     var active: Bool = false
     var edgeFillMode: EdgeFillMode = .chairType
 
@@ -459,7 +459,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.01
-    var debugMode: Bool = true  // Enable debug prints and image saves
+    var debugMode: Bool = false  // Enable debug prints and image saves
     var strongDebug: Bool = false  // Enable debug prints and image saves
     var edgeFillMode: EdgeFillMode = .chairType
     
@@ -1279,44 +1279,79 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
 
-        // Debug: show best furniture confidence found even if below threshold
+        // Debug: find best detection across ALL classes (not just furniture) for comparison
+        var bestOverallConf: Float = 0
+        var bestOverallClass = -1
+        var bestOverallAnchor = -1
+        
         if self.debugMode && selectedDets.isEmpty {
-            print("🔍 FURNITURE DEBUG: Best conf=\(String(format: "%.3f", bestFurnitureConf)) for '\(bestFurnitureClass)' at anchor \(bestFurnitureAnchor)")
+            print("🔍 FURNITURE DEBUG: Best furniture conf=\(String(format: "%.3f", bestFurnitureConf)) for '\(bestFurnitureClass)' at anchor \(bestFurnitureAnchor)")
             print("   Threshold was: \(confidenceThreshold), furniture classes checked: \(furnitureList.count)")
 
-            // Also find best confidence across ALL classes for comparison (sample first 100 anchors)
-            var bestOverallConf: Float = 0
-            var bestOverallClass = -1
-            let sampleAnchors = min(100, numAnchors)
-            for anchor in 0..<sampleAnchors {
-                // Copy class scores into temp buffer
+            // Find best confidence across ALL classes for comparison
+            for anchor in 0..<numAnchors {
+                let x = detBuf[0 * stride + anchor]
+                let y = detBuf[1 * stride + anchor]
+                let w = detBuf[2 * stride + anchor]
+                let h = detBuf[3 * stride + anchor]
+
+                // Skip anchors with invalid geometry
+                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) {
+                    continue
+                }
+
+                // Copy class scores into temp buffer using BLAS
                 let basePtr = detBuf.advanced(by: 4 * stride + anchor)
                 cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
+                
+                // Find max confidence across all classes using vDSP
                 var maxVal: Float = 0
                 var maxIdx: vDSP_Length = 0
                 vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
-                if maxVal > bestOverallConf { bestOverallConf = maxVal; bestOverallClass = Int(maxIdx) }
+                
+                if maxVal > bestOverallConf {
+                    bestOverallConf = maxVal
+                    bestOverallClass = Int(maxIdx)
+                    bestOverallAnchor = anchor
+                }
             }
-            print("   Best OVERALL conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass)")
+            print("   Best OVERALL conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass) at anchor \(bestOverallAnchor)")
         }
         
         // Create a "best detection" for visualization if we found something but it was below threshold
         var bestDetectionForVisualization: DetectionSmarty?
-        if selectedDets.isEmpty && bestFurnitureAnchor >= 0 && bestFurnitureConf > 0.001 {
-            let anchor = bestFurnitureAnchor
-            let x = detBuf[0 * stride + anchor]
-            let y = detBuf[1 * stride + anchor]
-            let w = detBuf[2 * stride + anchor]
-            let h = detBuf[3 * stride + anchor]
+        if selectedDets.isEmpty {
+            // Prefer overall best if available, otherwise fall back to furniture best
+            var useAnchor = -1
+            var useConf: Float = 0
+            var useClassName = ""
             
-            if x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 {
-                bestDetectionForVisualization = DetectionSmarty(
-                    x: x, y: y, width: w, height: h,
-                    confidence: bestFurnitureConf,
-                    classIdx: -1,  // Special flag for "best but below threshold"
-                    className: bestFurnitureClass,
-                    maskCoeffs: [Float](repeating: 0, count: 32)
-                )
+            if bestOverallAnchor >= 0 && bestOverallConf > 0.001 {
+                useAnchor = bestOverallAnchor
+                useConf = bestOverallConf
+                // Look up class name from furniture classes if available, otherwise generic
+                useClassName = furnitureClasses[bestOverallClass] ?? "object_\(bestOverallClass)"
+            } else if bestFurnitureAnchor >= 0 && bestFurnitureConf > 0.001 {
+                useAnchor = bestFurnitureAnchor
+                useConf = bestFurnitureConf
+                useClassName = bestFurnitureClass
+            }
+            
+            if useAnchor >= 0 {
+                let x = detBuf[0 * stride + useAnchor]
+                let y = detBuf[1 * stride + useAnchor]
+                let w = detBuf[2 * stride + useAnchor]
+                let h = detBuf[3 * stride + useAnchor]
+                
+                if x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 {
+                    bestDetectionForVisualization = DetectionSmarty(
+                        x: x, y: y, width: w, height: h,
+                        confidence: useConf,
+                        classIdx: -1,  // Special flag for "best but below threshold"
+                        className: useClassName,
+                        maskCoeffs: [Float](repeating: 0, count: 32)
+                    )
+                }
             }
         }
 
