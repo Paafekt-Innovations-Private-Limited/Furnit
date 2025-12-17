@@ -12,13 +12,14 @@ import Photos
 // MARK: - SwiftUI Wrapper
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
-    var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.5
+    var processInterval: TimeInterval = 0.05
+    var confidenceThreshold: Float = 0.52//kiss
     
     var detectAllObjects: Bool = true
     var useBilinearUpscaling: Bool = true
     var maskThreshold: Float = 0.0
-    var debugMode: Bool = false
+    var minimumMaskPixels: Int = 10
+    var debugMode: Bool = true
     var active: Bool = false
     var edgeFillMode: EdgeFillMode = .chairType
 
@@ -29,6 +30,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
 //        v.detectAllObjects = detectAllObjects
         v.useBilinearUpscaling = useBilinearUpscaling
         v.maskThreshold = maskThreshold
+        v.minimumMaskPixels = minimumMaskPixels
         v.debugMode = debugMode
         v.edgeFillMode = edgeFillMode
         v.setModel(mlModel)
@@ -43,6 +45,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
 //        uiView.detectAllObjects = detectAllObjects
         uiView.useBilinearUpscaling = useBilinearUpscaling
         uiView.maskThreshold = maskThreshold
+        uiView.minimumMaskPixels = minimumMaskPixels
         uiView.debugMode = debugMode
         uiView.edgeFillMode = edgeFillMode
         if active { uiView.startIfNeeded() } else { uiView.stop() }
@@ -457,10 +460,10 @@ struct UnionDet {
 final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
     
     // MARK: Config
-    var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.01
-    var debugMode: Bool = false  // Enable debug prints and image saves
-    var strongDebug: Bool = false  // Enable debug prints and image saves
+    var processInterval: TimeInterval = 0.05
+    var confidenceThreshold: Float = 0.52 //kiss
+    var debugMode: Bool = true  // Enable debug prints and image saves
+    var strongDebug: Bool = true  // Enable debug prints and image saves
     var edgeFillMode: EdgeFillMode = .chairType
     
     // Detection mode: true = detect ALL objects, false = furniture classes only
@@ -476,7 +479,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var useBilinearUpscaling: Bool = true
     
     // Mask threshold: values above this are considered "object"
-    var maskThreshold: Float = 0.0
+    var maskThreshold: Float = 0.52 //kiss
+    
+    // Minimum mask pixels: filter out detections with masks smaller than this
+    var minimumMaskPixels: Int = 10
     
     // Optional fast morphological closing (3x3) to strengthen edges and close small gaps
     private var enableMaskClosing: Bool = true
@@ -545,70 +551,130 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
     // MARK: Object Tracker
 //    private let tracker = SimpleTracker()
+    
+    
+    
+    // MARK: - Ignored (Structure / Room / Background / Openings)
+    private let clsToIgnore: [Int: String] = [
+        // Walls / surfaces
+        571: "wall",
+        944: "city wall",
+        1887: "glass wall",
 
-    // MARK: Furniture & Household Classes (LVIS indices)
-    private let furnitureClasses: [Int: String] = [
-        // Seating
-        132: "armchair", 276: "bar stool", 352: "beach chair", 364: "bean bag chair",
-        402: "bench", 821: "chair", 1060: "computer chair", 1602: "feeding chair",
-        1721: "folding chair", 2499: "loveseat", 2754: "music stool", 2834: "office chair",
-        2939: "park bench", 3024: "church bench", 3423: "rocking chair", 3584: "seat",
-        3888: "step stool", 3909: "stool", 4041: "swivel chair", 4473: "wheelchair",
-        4506: "window seat",
-        
-        // Beds & Bedding
-        375: "bed", 376: "bedcover", 377: "bed frame", 378: "bedsheet", 379: "bed sheet",
-        632: "bunk bed", 714: "canopy bed", 823: "daybed", 1137: "infant bed",
-        1270: "day bed", 1364: "dog bed", 2141: "hospital bed", 2599: "mattress",
-        3049: "pillow", 455: "blanket", 1047: "comforter", 1425: "duvet",
-        3625: "sheet", 3626: "sheets", 431: "bedspread", 2450: "linen",
-        
-        // Sofas & Couches
-        1141: "couch", 1816: "futon", 4331: "vanity", 2936: "ottoman", 3728: "sofa",
-        
-        // Tables
-        429: "billiard table", 1006: "cocktail table", 1061: "computer desk", 1301: "table",
-        1325: "dining table", 1503: "side table", 1885: "glass table", 2247: "island",
-        2319: "kitchen counter", 2322: "kitchen island",
-        2324: "kitchen table", 2802: "nightstand", 2836: "office desk", 3045: "picnic table",
-        3061: "table tennis table", 3145: "poker table", 3449: "round table",
-        4055: "table top", 4545: "workbench", 4564: "writing desk", 1007: "coffee table",
-        
-        // Storage
-        332: "bathroom cabinet", 517: "bookshelf", 567: "chest", 636: "bureau",
-        670: "cabinet", 977: "closet", 996: "coatrack", 1396: "drawer", 1405: "dresser",
-        1624: "file cabinet", 2318: "kitchen cabinet", 2614: "medicine cabinet",
-        3621: "shelf", 3678: "side cabinet", 3812: "spice rack", 4004: "supermarket shelf",
-        4294: "tv cabinet", 4513: "wine cabinet", 4516: "wine rack", 4433: "wardrobe",
-        
-        // Lighting
-        382: "bedside lamp", 1302: "table lamp", 1619: "floor lamp", 2383: "lamp",
-        2384: "lampshade", 732: "candle", 898: "chandelier",
-        2449: "light bulb", 2451: "light fixture", 4210: "torch", 3862: "stand",
-        
-        // Mirrors & Decor
-        334: "bathroom mirror", 2654: "mirror", 1214: "curtain", 3485: "rug",
-        3046: "picture frame", 4056: "tablecloth", 4358: "vase", 3081: "plant",
-        1750: "footrest", 749: "carpet", 1402: "drape", 1403: "drapery",
-        
-        // Electronics
-        4161: "television", 4162: "tv", 1058: "computer monitor", 1059: "computer",
-        3365: "remote control", 3802: "speaker",
-        
-        // Bathroom
-        4179: "toilet seat", 4178: "toilet", 4213: "towel bar", 4212: "towel",
-        386: "bathtub", 3635: "shower", 3636: "shower curtain", 387: "bath mat",
-        
-        // Kitchen
-        3357: "refrigerator", 2914: "oven", 2637: "microwave", 3675: "sink",
-        1350: "dishwasher", 3915: "stovetop", 1780: "freezer",
-        
-        // Misc
-        213: "baby seat", 733: "car seat", 834: "changing table", 679: "cake stand",
-        1143: "counter", 1144: "counter top", 1303: "desktop", 1733: "food stand",
-        1801: "fruit stand", 2193: "ice shelf", 2219: "information desk",
-        1099: "cot", 1183: "cradle", 3088: "playpen", 1234: "furniture"  // ← Add mystery class
+        // Floor / ground
+        1692: "floor",
+        1758: "forest floor",
+        2037: "hardwood floor",
+        1881: "glass floor",
+
+        // Ceiling / roof
+        802: "ceiling",
+
+        // Curtains / coverings
+        1234: "curtain",
+
+        // Tiles / materials
+        815: "ceramic tile",
+
+        // Rooms / interiors
+        330: "bathroom",
+        378: "bedroom",
+        1323: "dining room",
+        1518: "entrance hall",
+        1080: "meeting room",
+        2115: "home interior",
+        2152: "hotel room",
+
+        // Windows
+        1719: "window",
+        1720: "windowpane",
+        1880: "glass window",
+        2045: "bay window",
+        2050: "skylight",
+
+        // Doors
+        531: "door",
+        532: "sliding door",
+        533: "glass door",
+        534: "screen door",
+
+        // Generic building / structure
+        613: "building",
+        615: "building facade",
+        616: "building material",
+        1072: "concrete",
+        810: "cement"
     ]
+
+
+    private func shouldIgnore(className: String) -> Bool {
+        let lower = className.lowercased()
+        return clsToIgnore.values.contains { $0.lowercased() == lower }
+    }
+    
+    // MARK: Furniture & Household Classes (LVIS indices)
+//    private let furnitureClasses: [Int: String] = [
+//        // Seating
+//        132: "armchair", 276: "bar stool", 352: "beach chair", 364: "bean bag chair",
+//        402: "bench", 821: "chair", 1060: "computer chair", 1602: "feeding chair",
+//        1721: "folding chair", 2499: "loveseat", 2754: "music stool", 2834: "office chair",
+//        2939: "park bench", 3024: "church bench", 3423: "rocking chair", 3584: "seat",
+//        3888: "step stool", 3909: "stool", 4041: "swivel chair", 4473: "wheelchair",
+//        4506: "window seat",
+//        
+//        // Beds & Bedding
+//        375: "bed", 376: "bedcover", 377: "bed frame", 378: "bedsheet", 379: "bed sheet",
+//        632: "bunk bed", 714: "canopy bed", 823: "daybed", 1137: "infant bed",
+//        1270: "day bed", 1364: "dog bed", 2141: "hospital bed", 2599: "mattress",
+//        3049: "pillow", 455: "blanket", 1047: "comforter", 1425: "duvet",
+//        3625: "sheet", 3626: "sheets", 431: "bedspread", 2450: "linen",
+//        
+//        // Sofas & Couches
+//        1141: "couch", 1816: "futon", 4331: "vanity", 2936: "ottoman", 3728: "sofa",
+//        
+//        // Tables
+//        429: "billiard table", 1006: "cocktail table", 1061: "computer desk", 1301: "table",
+//        1325: "dining table", 1503: "side table", 1885: "glass table", 2247: "island",
+//        2319: "kitchen counter", 2322: "kitchen island",
+//        2324: "kitchen table", 2802: "nightstand", 2836: "office desk", 3045: "picnic table",
+//        3061: "table tennis table", 3145: "poker table", 3449: "round table",
+//        4055: "table top", 4545: "workbench", 4564: "writing desk", 1007: "coffee table",
+//        
+//        // Storage
+//        332: "bathroom cabinet", 517: "bookshelf", 567: "chest", 636: "bureau",
+//        670: "cabinet", 977: "closet", 996: "coatrack", 1396: "drawer", 1405: "dresser",
+//        1624: "file cabinet", 2318: "kitchen cabinet", 2614: "medicine cabinet",
+//        3621: "shelf", 3678: "side cabinet", 3812: "spice rack", 4004: "supermarket shelf",
+//        4294: "tv cabinet", 4513: "wine cabinet", 4516: "wine rack", 4433: "wardrobe",
+//        
+//        // Lighting
+//        382: "bedside lamp", 1302: "table lamp", 1619: "floor lamp", 2383: "lamp",
+//        2384: "lampshade", 732: "candle", 898: "chandelier",
+//        2449: "light bulb", 2451: "light fixture", 4210: "torch", 3862: "stand",
+//        
+//        // Mirrors & Decor
+//        334: "bathroom mirror", 2654: "mirror", 1214: "curtain", 3485: "rug",
+//        3046: "picture frame", 4056: "tablecloth", 4358: "vase", 3081: "plant",
+//        1750: "footrest", 749: "carpet", 1402: "drape", 1403: "drapery",
+//        
+//        // Electronics
+//        4161: "television", 4162: "tv", 1058: "computer monitor", 1059: "computer",
+//        3365: "remote control", 3802: "speaker",
+//        
+//        // Bathroom
+//        4179: "toilet seat", 4178: "toilet", 4213: "towel bar", 4212: "towel",
+//        386: "bathtub", 3635: "shower", 3636: "shower curtain", 387: "bath mat",
+//        
+//        // Kitchen
+//        3357: "refrigerator", 2914: "oven", 2637: "microwave", 3675: "sink",
+//        1350: "dishwasher", 3915: "stovetop", 1780: "freezer",
+//        
+//        // Misc
+//        213: "baby seat", 733: "car seat", 834: "changing table", 679: "cake stand",
+//        1143: "counter", 1144: "counter top", 1303: "desktop", 1733: "food stand",
+//        1801: "fruit stand", 2193: "ice shelf", 2219: "information desk",
+//        1099: "cot", 1183: "cradle", 3088: "playpen", 1234: "furniture"  // ← Add mystery class
+//    ]
     
     private var isAppActive: Bool = true
 
@@ -828,14 +894,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
 
     @objc private func handleAppDidEnterBackground() {
-        if debugMode { print("📵 App entered background – stopping camera & delegate") }
+//        if debugMode { print("📵 App entered background – stopping camera & delegate") }
         // Stop delivering frames
         videoOutput.setSampleBufferDelegate(nil, queue: nil)
         stopCamera()
     }
 
     @objc private func handleAppDidBecomeActive() {
-        if debugMode { print("📲 App became active – restarting camera if needed") }
+//        if debugMode { print("📲 App became active – restarting camera if needed") }
         // Only restart if you want live detection when active
         videoOutput.setSampleBufferDelegate(self, queue: sampleQueue)
         requestCameraPermissionAndStart()
@@ -1035,6 +1101,80 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //    }
     
 
+    
+    // MARK: - Mask Pixel Count Validation
+    private func validateMaskPixelCount(
+        coeffs: [Float], 
+        planes: [Float], 
+        planeSize: Int,
+        bbox: (x: Float, y: Float, w: Float, h: Float),
+        pW: Int, pH: Int,
+        minimumPixels: Int
+    ) -> Int {
+        // 1) Compute mask logits using matrix multiplication (coeffs · planes)
+        var logits = [Float](repeating: 0, count: planeSize)
+        
+        // Reorganize planes for this specific computation if needed
+        // Use the same row-major approach as the main processing
+        var A = [Float](repeating: 0, count: planeSize * 32)
+        var zero: Float = 0
+        A.withUnsafeMutableBufferPointer { dstPtr in
+            planes.withUnsafeBufferPointer { srcPtr in
+                for k in 0..<32 {
+                    let srcStart = srcPtr.baseAddress!.advanced(by: k * planeSize)
+                    let dstStart = dstPtr.baseAddress!.advanced(by: k)
+                    vDSP_vsadd(srcStart, 1, &zero, dstStart, 32, vDSP_Length(planeSize))
+                }
+            }
+        }
+        
+        // Matrix-vector multiplication: logits = A * coeffs
+        let m = Int32(planeSize)
+        let n = Int32(32)
+        let alpha: Float = 1.0
+        let beta: Float = 0.0
+        
+        logits.withUnsafeMutableBufferPointer { yPtr in
+            coeffs.withUnsafeBufferPointer { xPtr in
+                A.withUnsafeBufferPointer { aPtr in
+                    cblas_sgemv(
+                        CblasRowMajor, CblasNoTrans,
+                        m, n,
+                        alpha,
+                        aPtr.baseAddress!, n,
+                        xPtr.baseAddress!, 1,
+                        beta,
+                        yPtr.baseAddress!, 1
+                    )
+                }
+            }
+        }
+        
+        // 2) Apply bbox constraint and count positive pixels
+        // Map bbox from model space (1280x1280) to proto space (pW x pH)
+        let protoScaleX = Float(pW) / 1280.0
+        let protoScaleY = Float(pH) / 1280.0
+        
+        let px1 = max(0, min(pW - 1, Int((bbox.x - bbox.w * 0.5) * protoScaleX)))
+        let py1 = max(0, min(pH - 1, Int((bbox.y - bbox.h * 0.5) * protoScaleY)))
+        let px2 = max(0, min(pW, Int((bbox.x + bbox.w * 0.5) * protoScaleX)))
+        let py2 = max(0, min(pH, Int((bbox.y + bbox.h * 0.5) * protoScaleY)))
+        
+        // Count positive logits within bbox
+        var positivePixels = 0
+        for y in py1..<py2 {
+            let rowBase = y * pW
+            for x in px1..<px2 {
+                let idx = rowBase + x
+                if logits[idx] > 0.0 {
+                    positivePixels += 1
+                }
+            }
+        }
+        
+        return positivePixels
+    }
+
     // MARK: - Crop Pixel Buffer to BBox (vImage copy)
     private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = 0.1) -> CVPixelBuffer? {
         let cropStart = Date()
@@ -1135,10 +1275,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         lastProcessTime = now
         isProcessing = true
 
-        if debugMode {
+//        if debugMode {
             print("\n🕒 ===== NEW FRAME @ \(now.timeIntervalSince1970) =====")
             print("🔬 Single-stage: detect → union mask → cutout")
-        }
+//        }
 
         // 1) Letterbox + to MLMultiArray
         setProgress(0.25, text: "Preprocessing…")
@@ -1231,21 +1371,24 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
 
-        // 8) Select anchors that pass threshold AND store both bbox + coeffs
+        // 8) Select anchors class-agnostically (ANY object, not just furniture)
         let stride = numAnchors
         let coeffOffset = 4 + numClasses
 
         var selectedDets: [UnionDet] = []
         selectedDets.reserveCapacity(512)
         
-        // FURNITURE-ONLY path — keep a tight loop over furniture indices
-        let furnitureList = furnitureClasses.filter { $0.key < numClasses }
-
-        // Debug: track best furniture confidence found
-        var bestFurnitureConf: Float = 0
-        var bestFurnitureClass = ""
-        var bestFurnitureAnchor = -1
+        // Class-agnostic path - find best confidence across ALL classes for each anchor
         var tempScores = [Float](repeating: 0, count: numClasses)
+        var bestOverallConf: Float = 0
+        var bestOverallClass = -1
+        var bestOverallAnchor = -1
+        
+        // Track filtering statistics
+        var totalCandidates = 0
+        var confidenceRejected = 0
+        var maskPixelRejected = 0
+        var ignoredClasses = 0
 
         for anchor in 0..<numAnchors {
             let x = detBuf[0 * stride + anchor]
@@ -1253,102 +1396,106 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let w = detBuf[2 * stride + anchor]
             let h = detBuf[3 * stride + anchor]
 
+            // Skip anchors with invalid geometry
             if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) {
                 continue
             }
 
-            for (classIdx, className) in furnitureList {
-                let conf = detBuf[(4 + classIdx) * stride + anchor]
+            totalCandidates += 1
 
-                // Track best furniture confidence for debug
-                if conf.isFinite && conf > bestFurnitureConf {
-                    bestFurnitureConf = conf
-                    bestFurnitureClass = className
-                    bestFurnitureAnchor = anchor
-                }
+            // Copy all class scores for this anchor using BLAS (vectorized)
+            let basePtr = detBuf.advanced(by: 4 * stride + anchor)
+            cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
+            
+            // Find max confidence across all classes using vDSP (vectorized)
+            var maxVal: Float = 0
+            var maxIdx: vDSP_Length = 0
+            vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
 
-                if conf.isFinite && conf > confidenceThreshold {
-                    var coeffs = [Float](repeating: 0, count: 32)
-                    let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-                    cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
+            // Track best detection for debug visualization
+            if maxVal > bestOverallConf {
+                bestOverallConf = maxVal
+                bestOverallClass = Int(maxIdx)
+                bestOverallAnchor = anchor
+            }
 
+            // Accept this anchor if its best class confidence exceeds threshold
+            // Skip anchors whose best class is in ignore list
+            let bestClassName = "object_\(Int(maxIdx))"
+            if shouldIgnore(className: bestClassName) {
+                ignoredClasses += 1
+                continue
+            }
+            
+            if maxVal > confidenceThreshold && maxVal.isFinite {
+                var coeffs = [Float](repeating: 0, count: 32)
+                let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
+                cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
+
+                // 🔍 MASK PIXEL COUNT VALIDATION: Filter out masks with < minimumMaskPixels
+                let maskPixelCount = validateMaskPixelCount(
+                    coeffs: coeffs, 
+                    planes: planes, 
+                    planeSize: planeSize,
+                    bbox: (x: x, y: y, w: w, h: h),
+                    pW: pW, pH: pH,
+                    minimumPixels: minimumMaskPixels
+                )
+                
+                if maskPixelCount >= minimumMaskPixels {
                     selectedDets.append(UnionDet(
                         x: x, y: y, w: w, h: h, coeffs: coeffs
                     ))
+                    if debugMode && selectedDets.count <= 5 {
+                        print("✅ Accepted detection: class \(Int(maxIdx)), conf=\(String(format: "%.3f", maxVal)), mask pixels=\(maskPixelCount)")
+                    }
+                } else {
+                    maskPixelRejected += 1
+                    if debugMode && selectedDets.count <= 5 {
+                        print("❌ Rejected detection: class \(Int(maxIdx)), conf=\(String(format: "%.3f", maxVal)), mask pixels=\(maskPixelCount) < \(minimumMaskPixels)")
+                    }
                 }
+            } else {
+                confidenceRejected += 1
             }
         }
 
-        // Debug: find best detection across ALL classes (not just furniture) for comparison
-        var bestOverallConf: Float = 0
-        var bestOverallClass = -1
-        var bestOverallAnchor = -1
-        
-        if self.debugMode && selectedDets.isEmpty {
-            print("🔍 FURNITURE DEBUG: Best furniture conf=\(String(format: "%.3f", bestFurnitureConf)) for '\(bestFurnitureClass)' at anchor \(bestFurnitureAnchor)")
-            print("   Threshold was: \(confidenceThreshold), furniture classes checked: \(furnitureList.count)")
-
-            // Find best confidence across ALL classes for comparison
-            for anchor in 0..<numAnchors {
-                let x = detBuf[0 * stride + anchor]
-                let y = detBuf[1 * stride + anchor]
-                let w = detBuf[2 * stride + anchor]
-                let h = detBuf[3 * stride + anchor]
-
-                // Skip anchors with invalid geometry
-                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) {
-                    continue
-                }
-
-                // Copy class scores into temp buffer using BLAS
-                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-                cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
-                
-                // Find max confidence across all classes using vDSP
-                var maxVal: Float = 0
-                var maxIdx: vDSP_Length = 0
-                vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
-                
-                if maxVal > bestOverallConf {
-                    bestOverallConf = maxVal
-                    bestOverallClass = Int(maxIdx)
-                    bestOverallAnchor = anchor
-                }
-            }
-            print("   Best OVERALL conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass) at anchor \(bestOverallAnchor)")
+        // Print filtering statistics
+        if debugMode {
+            print("🔍 Detection filtering stats:")
+            print("   Total candidate anchors: \(totalCandidates)")
+            print("   Ignored classes: \(ignoredClasses)")
+            print("   Confidence rejected: \(confidenceRejected)")
+            print("   Mask pixel rejected: \(maskPixelRejected)")
+            print("   Final selected: \(selectedDets.count)")
         }
-        
-        // Create a "best detection" for visualization if we found something but it was below threshold
+
+        // Debug: show best detection found even if below threshold
         var bestDetectionForVisualization: DetectionSmarty?
-        if selectedDets.isEmpty {
-            // Prefer overall best if available, otherwise fall back to furniture best
-            var useAnchor = -1
-            var useConf: Float = 0
-            var useClassName = ""
+        if self.debugMode && selectedDets.isEmpty && bestOverallAnchor >= 0 && bestOverallConf > 0.52 {//kiss
+            print("🔍 CLASS-AGNOSTIC DEBUG: Best conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass) at anchor \(bestOverallAnchor)")
+            print("   Threshold was: \(confidenceThreshold), checked ALL \(numClasses) classes")
             
-            if bestOverallAnchor >= 0 && bestOverallConf > 0.001 {
-                useAnchor = bestOverallAnchor
-                useConf = bestOverallConf
+            let anchor = bestOverallAnchor
+            let x = detBuf[0 * stride + anchor]
+            let y = detBuf[1 * stride + anchor]
+            let w = detBuf[2 * stride + anchor]
+            let h = detBuf[3 * stride + anchor]
+            
+            if x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 {
                 // Look up class name from furniture classes if available, otherwise generic
-                useClassName = furnitureClasses[bestOverallClass] ?? "object_\(bestOverallClass)"
-            } else if bestFurnitureAnchor >= 0 && bestFurnitureConf > 0.001 {
-                useAnchor = bestFurnitureAnchor
-                useConf = bestFurnitureConf
-                useClassName = bestFurnitureClass
-            }
-            
-            if useAnchor >= 0 {
-                let x = detBuf[0 * stride + useAnchor]
-                let y = detBuf[1 * stride + useAnchor]
-                let w = detBuf[2 * stride + useAnchor]
-                let h = detBuf[3 * stride + useAnchor]
+//                let className = furnitureClasses[bestOverallClass] ?? "object_\(bestOverallClass)"
+                let className = "object_\(bestOverallClass)"
                 
-                if x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 {
+                // Don't visualize ignored classes
+                if shouldIgnore(className: className) {
+                    bestDetectionForVisualization = nil
+                } else {
                     bestDetectionForVisualization = DetectionSmarty(
                         x: x, y: y, width: w, height: h,
-                        confidence: useConf,
+                        confidence: bestOverallConf,
                         classIdx: -1,  // Special flag for "best but below threshold"
-                        className: useClassName,
+                        className: className,
                         maskCoeffs: [Float](repeating: 0, count: 32)
                     )
                 }
@@ -1359,46 +1506,46 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let origW = CVPixelBufferGetWidth(pixelBuffer)
         let origH = CVPixelBufferGetHeight(pixelBuffer)
         
-        if selectedDets.isEmpty {
-            // If we have a best detection visualization, draw just the label without processing
-            if let bestDet = bestDetectionForVisualization {
-                let colorSpace = CGColorSpaceCreateDeviceRGB()
-                guard let ctx = CGContext(
-                    data: nil,
-                    width: origW,
-                    height: origH,
-                    bitsPerComponent: 8,
-                    bytesPerRow: origW * 4,
-                    space: colorSpace,
-                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                ) else {
-                    isProcessing = false
-                    return
-                }
-                
-                // Draw best detection with special styling (red box to indicate below threshold)
-                drawBestDetectionVisualization(ctx: ctx, detection: bestDet, 
-                                             imageWidth: origW, imageHeight: origH,
-                                             letterboxGain: letterboxGain, 
-                                             letterboxPadX: letterboxPadX, letterboxPadY: letterboxPadY)
-                
-                if let out = ctx.makeImage() {
-                    DispatchQueue.main.async {
-                        self.maskImageView.image = UIImage(cgImage: out)
-                        self.isProcessing = false
-                    }
-                } else {
-                    DispatchQueue.main.async { self.isProcessing = false }
-                }
-                return
-            }
-            
-            DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.isProcessing = false
-            }
-            return
-        }
+//        if selectedDets.isEmpty {
+//            // If we have a best detection visualization, draw just the label without processing
+//            if let bestDet = bestDetectionForVisualization {
+//                let colorSpace = CGColorSpaceCreateDeviceRGB()
+//                guard let ctx = CGContext(
+//                    data: nil,
+//                    width: origW,
+//                    height: origH,
+//                    bitsPerComponent: 8,
+//                    bytesPerRow: origW * 4,
+//                    space: colorSpace,
+//                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+//                ) else {
+//                    isProcessing = false
+//                    return
+//                }
+//                
+//                // Draw best detection with special styling (red box to indicate below threshold)
+//                drawBestDetectionVisualization(ctx: ctx, detection: bestDet, 
+//                                             imageWidth: origW, imageHeight: origH,
+//                                             letterboxGain: letterboxGain, 
+//                                             letterboxPadX: letterboxPadX, letterboxPadY: letterboxPadY)
+//                
+//                if let out = ctx.makeImage() {
+//                    DispatchQueue.main.async {
+//                        self.maskImageView.image = UIImage(cgImage: out)
+//                        self.isProcessing = false
+//                    }
+//                } else {
+//                    DispatchQueue.main.async { self.isProcessing = false }
+//                }
+//                return
+//            }
+//            
+//            DispatchQueue.main.async {
+//                self.maskImageView.image = nil
+//                self.isProcessing = false
+//            }
+//            return
+//        }
         
         // Step 1: Compute UNION BBOX in model space (1280x1280)
         var ux1: Float = .greatestFiniteMagnitude
@@ -1434,10 +1581,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         bx2 = max(0, min(origW, bx2))
         by2 = max(0, min(origH, by2))
         
-        if debugMode {
+//        if debugMode {
             print("🔲 Union bbox (model space): [\(String(format: "%.1f", ux1)),\(String(format: "%.1f", uy1))] to [\(String(format: "%.1f", ux2)),\(String(format: "%.1f", uy2))]")
             print("🔲 Union bbox (image space): [\(bx1),\(by1)] to [\(bx2),\(by2)] → \((bx2-bx1))x\((by2-by1))")
-        }
+//        }
 
         // 9) UNION MASK via batched GEMM (safe RAM)
         //    Maintain maxLogits[planeSize] across batches.
@@ -1625,14 +1772,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             DispatchQueue.main.async { self.isProcessing = false }
         }
 
-        if debugMode {
+//        if debugMode {
             let ms = Date().timeIntervalSince(frameStart) * 1000
-            print(String(format: "🕒 Frame total (furniture-only method): %.2f ms", ms))
-            print("   Furniture detections: \(selectedDets.count)")
+            print(String(format: "🕒 Frame total (class-agnostic method): %.2f ms", ms))
+            print("   Object detections: \(selectedDets.count)")
             print("   Opaque pixels: \(totalSet) (\(String(format: "%.2f", Float(totalSet)/Float(origW*origH)*100))%)")
             print("   Letterbox correction: gain=\(String(format: "%.3f", letterboxGain)), pad=(\(String(format: "%.1f", letterboxPadX)),\(String(format: "%.1f", letterboxPadY)))")
             print("   Union bbox coverage: \((bx2-bx1)*(by2-by1)) pixels (\(String(format: "%.2f", Float((bx2-bx1)*(by2-by1))/Float(origW*origH)*100))% of image)")
-        }
+//        }
 
         if totalSet > 0 {
             finishFirstDetectionIfNeeded()
@@ -1832,12 +1979,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
                     cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
                     let clsIdx = Int(maxIdx)
-                    let className = furnitureClasses[clsIdx] ?? "object_\(clsIdx)"
+//                    let className = furnitureClasses[clsIdx] ?? "object_\(clsIdx)"
+                    let className = "object_\(clsIdx)"
+                    if shouldIgnore(className: className) {
+                        continue
+                    }
                     results.append(DetectionSmarty(x: x, y: y, width: w, height: h, confidence: maxVal, classIdx: clsIdx, className: className, maskCoeffs: coeffs))
                 }
             }
         } else {
-            let furnitureList = furnitureClasses.filter { $0.key < numClasses }
+            // Furniture-only detection path (currently disabled)
+            // This path would iterate over specific furniture classes only
             for anchor in 0..<numAnchors {
                 let x = detBuf[0 * stride + anchor]
                 let y = detBuf[1 * stride + anchor]
@@ -1845,12 +1997,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let h = detBuf[3 * stride + anchor]
                 if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) { continue }
 
-                for (classIdx, className) in furnitureList {
+                // Example: check only first few classes (furniture subset)
+                for classIdx in 0..<min(10, numClasses) {
                     let conf = detBuf[(4 + classIdx) * stride + anchor]
                     if conf.isFinite && conf > confThreshold {
                         var coeffs = [Float](repeating: 0, count: 32)
                         let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
                         cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
+                        let className = "furniture_\(classIdx)"
                         results.append(DetectionSmarty(x: x, y: y, width: w, height: h, confidence: conf, classIdx: classIdx, className: className, maskCoeffs: coeffs))
                     }
                 }
@@ -2008,14 +2162,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let dets = primaryBBoxes.sorted { $0.confidence > $1.confidence }
         let selected = Array(dets.prefix(maxMasks))
         let selectEnd = Date()
-        if debugMode {
+//        if debugMode {
             print("✅ STAGE 3 - Select detections: \(String(format: "%.2f", selectEnd.timeIntervalSince(selectStart) * 1000))ms")
             print("   Selected \(selected.count)/\(primaryBBoxes.count) detections (max \(maxMasks))")
-            if strongDebug {
+//            if strongDebug {
                 for (i, det) in selected.enumerated() {
                     print("   [\(i)] \(det.className) conf=\(String(format: "%.3f", det.confidence)) bbox=(\(Int(det.x)), \(Int(det.y)), \(Int(det.width))x\(Int(det.height)))")
-                }
-            }
+//                }
+//            }
         }
 
         // STAGE 4: Create CGContext for output
@@ -2121,9 +2275,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         for (detIndex, det) in selected.enumerated() {
             let detStart = Date()
-            if strongDebug {
+//            if strongDebug {
                 print("\n  🎯 Detection \(detIndex + 1)/\(selected.count): \(det.className)")
-            }
+//            }
             
             // SUB-STAGE 6.1: Matrix multiplication (logits = prototypes * coeffs)
             let matmulStart = Date()
@@ -2149,10 +2303,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             vDSP_minv(logits, 1, &minLogit, vDSP_Length(logits.count))
             vDSP_maxv(logits, 1, &maxLogit, vDSP_Length(logits.count))
             let positiveCount = logits.filter { $0 > 0 }.count
-            if strongDebug {
+//            if strongDebug {
                 print("    ✅ 6.1 Matrix multiply: \(String(format: "%.2f", matmulEnd.timeIntervalSince(matmulStart) * 1000))ms")
                 print("       Logits range: [\(String(format: "%.3f", minLogit)), \(String(format: "%.3f", maxLogit))], positive: \(positiveCount)/\(logits.count)")
-            }
+//            }
 
             // SUB-STAGE 6.2: Coordinate transformations
             let coordStart = Date()
@@ -2199,12 +2353,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
             
             let coordEnd = Date()
-            if strongDebug {
+//            if strongDebug {
                 print("    ✅ 6.2 Coordinates: \(String(format: "%.2f", coordEnd.timeIntervalSince(coordStart) * 1000))ms")
                 print("       Model bbox: [\(String(format: "%.1f", mx1)),\(String(format: "%.1f", my1))] to [\(String(format: "%.1f", mx2)),\(String(format: "%.1f", my2))]")
                 print("       Image bbox: [\(bx1),\(by1)] to [\(bx2),\(by2)] → \(bw)x\(bh)")
                 print("       Proto bbox: [\(px1),\(py1)] to [\(px2),\(py2)] → \((px2-px1))x\((py2-py1))")
-            }
+//            }
             // SUB-STAGE 6.3: Binarize logits in proto space
             let binarizeStart = Date()
             binMaskSmall.withUnsafeMutableBytes { memset($0.baseAddress!, 0, planeSize) }
@@ -2221,10 +2375,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
             let binarizeEnd = Date()
-            if strongDebug {
+//            if strongDebug {
                 print("    ✅ 6.3 Binarize: \(String(format: "%.2f", binarizeEnd.timeIntervalSince(binarizeStart) * 1000))ms")
                 print("       Proto positive pixels: \(protoPositiveCount)/\((px2-px1)*(py2-py1))")
-            }
+//            }
 
             // SUB-STAGE 6.4: Upscale proto mask to image ROI
             let upscaleStart = Date()
@@ -2252,11 +2406,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let upscaleEnd = Date()
             
             let roiPositiveCount = binMaskROI.filter { $0 > 0 }.count
-            if strongDebug {
+//            if strongDebug {
                 print("    ✅ 6.4 Upscale: \(String(format: "%.2f", upscaleEnd.timeIntervalSince(upscaleStart) * 1000))ms")
                 print("       ROI positive pixels: \(roiPositiveCount)/\(bw*bh) (\(String(format: "%.1f", Float(roiPositiveCount) / Float(bw*bh) * 100))%)")
                 print("       Upscale method: \(self.useBilinearUpscaling ? "bilinear" : "nearest-neighbor")")
-            }
+//            }
             // SUB-STAGE 6.5: Composite into output image - Copy original pixels
             let compositeStart = Date()
             var pixelsSet = 0
@@ -2285,43 +2439,43 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             totalPixelsSet += pixelsSet
             let compositeEnd = Date()
-            if strongDebug {
+//            if strongDebug {
                 print("    ✅ 6.5 Composite: \(String(format: "%.2f", compositeEnd.timeIntervalSince(compositeStart) * 1000))ms")
                 print("       Pixels set in output: \(pixelsSet)")
-            }
+//            }
             
-            if strongDebug {
+//            if strongDebug {
                 let detEnd = Date()
                 print("    🎯 Detection \(detIndex + 1) total: \(String(format: "%.2f", detEnd.timeIntervalSince(detStart) * 1000))ms")
-            }
+//            }
         }
         
         let processEnd = Date()
-        if debugMode {
+//        if debugMode {
             print("✅ STAGE 6 - Process detections: \(String(format: "%.2f", processEnd.timeIntervalSince(processStart) * 1000))ms")
             print("   Total output pixels set: \(totalPixelsSet) (\(String(format: "%.3f", Float(totalPixelsSet) / Float(width * height) * 100))%)")
-        }
+//        }
 
-        if strongDebug {
+//        if strongDebug {
             // STAGE 7: Draw labels and boxes
             let labelsStart = Date()
-            self.drawLabelsAndBoxes(
-                ctx: ctx,
-                stage1: selected,  // Use same selected detections instead of all primaryBBoxes
-                stage2: [],
-                imageWidth: width,
-                imageHeight: height,
-                drawBoxes: self.debugMode,
-                letterboxGain: letterboxGain,
-                letterboxPadX: letterboxPadX,
-                letterboxPadY: letterboxPadY
-            )
+//            self.drawLabelsAndBoxes(
+//                ctx: ctx,
+//                stage1: selected,  // Use same selected detections instead of all primaryBBoxes
+//                stage2: [],
+//                imageWidth: width,
+//                imageHeight: height,
+//                drawBoxes: self.debugMode,
+//                letterboxGain: letterboxGain,
+//                letterboxPadX: letterboxPadX,
+//                letterboxPadY: letterboxPadY
+//            )
             
             let labelsEnd = Date()
             if debugMode {
                 print("✅ STAGE 7 - Draw labels: \(String(format: "%.2f", labelsEnd.timeIntervalSince(labelsStart) * 1000))ms")
             }
-        }
+//        }
 
         // STAGE 8: Create final image and update UI
         let finalizeStart = Date()
