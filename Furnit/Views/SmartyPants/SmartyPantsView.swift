@@ -13,7 +13,7 @@ import Photos
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.05
-    var confidenceThreshold: Float = 0.52//kiss
+    var confidenceThreshold: Float = 0.01//kiss
     
     var detectAllObjects: Bool = true
     var useBilinearUpscaling: Bool = true
@@ -461,7 +461,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.05
-    var confidenceThreshold: Float = 0.52 //kiss
+    var confidenceThreshold: Float = 0.01 //kiss
     var debugMode: Bool = true  // Enable debug prints and image saves
     var strongDebug: Bool = true  // Enable debug prints and image saves
     var edgeFillMode: EdgeFillMode = .chairType
@@ -479,7 +479,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var useBilinearUpscaling: Bool = true
     
     // Mask threshold: values above this are considered "object"
-    var maskThreshold: Float = 0.52 //kiss
+    var maskThreshold: Float = 0.0 //kiss
     
     // Minimum mask pixels: filter out detections with masks smaller than this
     var minimumMaskPixels: Int = 10
@@ -603,7 +603,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         615: "building facade",
         616: "building material",
         1072: "concrete",
-        810: "cement"
+        810: "cement",
+        
+        2320: "kitchen floor",
+        4161: "tile",
+        4162: "tile flooring",
+        4163: "tile roof",
+        4164: "tile wall"
     ]
 
 
@@ -1461,18 +1467,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // Print filtering statistics
-        if debugMode {
+//        if debugMode {
             print("🔍 Detection filtering stats:")
             print("   Total candidate anchors: \(totalCandidates)")
             print("   Ignored classes: \(ignoredClasses)")
             print("   Confidence rejected: \(confidenceRejected)")
             print("   Mask pixel rejected: \(maskPixelRejected)")
             print("   Final selected: \(selectedDets.count)")
-        }
+//        }
 
         // Debug: show best detection found even if below threshold
         var bestDetectionForVisualization: DetectionSmarty?
-        if self.debugMode && selectedDets.isEmpty && bestOverallAnchor >= 0 && bestOverallConf > 0.52 {//kiss
+        if self.debugMode && selectedDets.isEmpty && bestOverallAnchor >= 0 && bestOverallConf > 0.01 {//kiss
             print("🔍 CLASS-AGNOSTIC DEBUG: Best conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass) at anchor \(bestOverallAnchor)")
             print("   Threshold was: \(confidenceThreshold), checked ALL \(numClasses) classes")
             
@@ -1506,46 +1512,46 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let origW = CVPixelBufferGetWidth(pixelBuffer)
         let origH = CVPixelBufferGetHeight(pixelBuffer)
         
-//        if selectedDets.isEmpty {
-//            // If we have a best detection visualization, draw just the label without processing
-//            if let bestDet = bestDetectionForVisualization {
-//                let colorSpace = CGColorSpaceCreateDeviceRGB()
-//                guard let ctx = CGContext(
-//                    data: nil,
-//                    width: origW,
-//                    height: origH,
-//                    bitsPerComponent: 8,
-//                    bytesPerRow: origW * 4,
-//                    space: colorSpace,
-//                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-//                ) else {
-//                    isProcessing = false
-//                    return
-//                }
-//                
-//                // Draw best detection with special styling (red box to indicate below threshold)
-//                drawBestDetectionVisualization(ctx: ctx, detection: bestDet, 
-//                                             imageWidth: origW, imageHeight: origH,
-//                                             letterboxGain: letterboxGain, 
-//                                             letterboxPadX: letterboxPadX, letterboxPadY: letterboxPadY)
-//                
-//                if let out = ctx.makeImage() {
-//                    DispatchQueue.main.async {
-//                        self.maskImageView.image = UIImage(cgImage: out)
-//                        self.isProcessing = false
-//                    }
-//                } else {
-//                    DispatchQueue.main.async { self.isProcessing = false }
-//                }
-//                return
-//            }
-//            
-//            DispatchQueue.main.async {
-//                self.maskImageView.image = nil
-//                self.isProcessing = false
-//            }
-//            return
-//        }
+        if selectedDets.isEmpty {
+            // If we have a best detection visualization, draw just the label without processing
+            if let bestDet = bestDetectionForVisualization {
+                let colorSpace = CGColorSpaceCreateDeviceRGB()
+                guard let ctx = CGContext(
+                    data: nil,
+                    width: origW,
+                    height: origH,
+                    bitsPerComponent: 8,
+                    bytesPerRow: origW * 4,
+                    space: colorSpace,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                ) else {
+                    isProcessing = false
+                    return
+                }
+                
+                // Draw best detection with special styling (red box to indicate below threshold)
+                drawBestDetectionVisualization(ctx: ctx, detection: bestDet, 
+                                             imageWidth: origW, imageHeight: origH,
+                                             letterboxGain: letterboxGain, 
+                                             letterboxPadX: letterboxPadX, letterboxPadY: letterboxPadY)
+                
+                if let out = ctx.makeImage() {
+                    DispatchQueue.main.async {
+                        self.maskImageView.image = UIImage(cgImage: out)
+                        self.isProcessing = false
+                    }
+                } else {
+                    DispatchQueue.main.async { self.isProcessing = false }
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.isProcessing = false
+            }
+            return
+        }
         
         // Step 1: Compute UNION BBOX in model space (1280x1280)
         var ux1: Float = .greatestFiniteMagnitude
@@ -1683,12 +1689,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 maskCoeffs: [Float](repeating: 0, count: 32)
             )
 
-            self.saveMaskToFile(
-                rawMask: rawMaskFloat,
-                width: origW,
-                height: origH,
-                detection: fullDet
-            )
+//            self.saveMaskToFile(
+//                rawMask: rawMaskFloat,
+//                width: origW,
+//                height: origH,
+//                detection: fullDet
+//            )
         }
 
         // 11) Composite ONCE: transparent bg, copy RGB where mask=1
