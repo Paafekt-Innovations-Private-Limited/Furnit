@@ -13,10 +13,10 @@ import Photos
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.05
-    var confidenceThreshold: Float = 0.01//kiss
+    var confidenceThreshold: Float = 0.5//kiss
     
     var detectAllObjects: Bool = true
-    var useBilinearUpscaling: Bool = true
+    var useBilinearUpscaling: Bool = false
     var maskThreshold: Float = 0.0
     var minimumMaskPixels: Int = 10
     var debugMode: Bool = true
@@ -461,7 +461,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.05
-    var confidenceThreshold: Float = 0.01 //kiss
+    var confidenceThreshold: Float = 0.5 //kiss
     var debugMode: Bool = true  // Enable debug prints and image saves
     var strongDebug: Bool = true  // Enable debug prints and image saves
     var edgeFillMode: EdgeFillMode = .chairType
@@ -1107,61 +1107,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
 
     
-    // MARK: - Mask Pixel Count Validation
-    private func validateMaskPixelCount(
-        coeffs: [Float],
-        A: [Float],                // precomputed [planeSize x 32] row-major
-        planeSize: Int,
-        bbox: (x: Float, y: Float, w: Float, h: Float),
-        pW: Int, pH: Int,
-        minimumPixels: Int
-    ) -> Int {
-        // Fast proto-space bbox gate to avoid GEMV when clearly too small
-        let protoScaleX = Float(pW) / 1280.0
-        let protoScaleY = Float(pH) / 1280.0
-        let px1i = max(0, min(pW - 1, Int((bbox.x - bbox.w * 0.5) * protoScaleX)))
-        let py1i = max(0, min(pH - 1, Int((bbox.y - bbox.h * 0.5) * protoScaleY)))
-        let px2i = max(0, min(pW,     Int((bbox.x + bbox.w * 0.5) * protoScaleX)))
-        let py2i = max(0, min(pH,     Int((bbox.y + bbox.h * 0.5) * protoScaleY)))
-        let area = max(0, px2i - px1i) * max(0, py2i - py1i)
-        if area < minimumPixels { return 0 }
-
-        // 1) Compute mask logits using matrix multiplication (A * coeffs)
-        var logits = [Float](repeating: 0, count: planeSize)
-        let m = Int32(planeSize)
-        let n = Int32(32)
-        let lda = Int32(32)
-        let alpha: Float = 1.0
-        let beta: Float = 0.0
-
-        logits.withUnsafeMutableBufferPointer { yPtr in
-            coeffs.withUnsafeBufferPointer { xPtr in
-                A.withUnsafeBufferPointer { aPtr in
-                    cblas_sgemv(
-                        CblasRowMajor, CblasNoTrans,
-                        m, n,
-                        alpha,
-                        aPtr.baseAddress!, lda,
-                        xPtr.baseAddress!, 1,
-                        beta,
-                        yPtr.baseAddress!, 1
-                    )
-                }
-            }
-        }
-
-        // 2) Count positive logits within proto-space bbox
-        var positivePixels = 0
-        for y in py1i..<py2i {
-            let rowBase = y * pW
-            for x in px1i..<px2i {
-                let idx = rowBase + x
-                if logits[idx] > 0.0 { positivePixels += 1 }
-            }
-        }
-        return positivePixels
-    }
-
     // MARK: - Crop Pixel Buffer to BBox (vImage copy)
     private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: DetectionSmarty, padding: Float = 0.1) -> CVPixelBuffer? {
         let cropStart = Date()
@@ -1438,48 +1383,89 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
 
-        // Sort by confidence and validate top-K only
         candidates.sort { $0.conf > $1.conf }
-        let maxValidate = 256  // validate at most this many with GEMV
-        let toValidate = min(maxValidate, candidates.count)
 
-        var validatedCount = 0
-        var maskPixelRejected = 0
-        for i in 0..<toValidate {
+        // Build union directly with early-stop, no per-candidate validation
+        logTime("Union selection start")
+        let maxCandidates = 64
+        let maxAdds = 32
+        let minNewPixels = max(200, planeSize / 400) // ~0.25% of proto plane
+
+        // Prepare buffers for union building in proto space
+        var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
+        var logitsTmp = [Float](repeating: 0, count: planeSize)
+        let m = Int32(planeSize)
+        let n = Int32(32)
+        let lda = Int32(32)
+        let alphaBLAS: Float = 1.0
+        let betaBLAS: Float = 0.0
+
+        // Iterate top candidates by confidence and add those that contribute enough new pixels
+        let toConsider = min(maxCandidates, candidates.count)
+        var added = 0
+        var attempted = 0
+        for i in 0..<toConsider {
             let anchor = candidates[i].anchor
             let x = detBuf[0 * stride + anchor]
             let y = detBuf[1 * stride + anchor]
             let w = detBuf[2 * stride + anchor]
             let h = detBuf[3 * stride + anchor]
 
-            // Prepare coeffs lazily only for validated anchors
+            // Sanity check
+            if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) {
+                continue
+            }
+
+            // Gather coeffs for this anchor
             var coeffs = [Float](repeating: 0, count: 32)
             let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
             cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
 
-            let maskPixelCount = validateMaskPixelCount(
-                coeffs: coeffs,
-                A: A,
-                planeSize: planeSize,
-                bbox: (x: x, y: y, w: w, h: h),
-                pW: pW, pH: pH,
-                minimumPixels: minimumMaskPixels
-            )
-
-            if maskPixelCount >= minimumMaskPixels {
-                selectedDets.append(UnionDet(x: x, y: y, w: w, h: h, coeffs: coeffs))
-                validatedCount += 1
-            } else {
-                maskPixelRejected += 1
+            // Compute logits for this candidate (proto space)
+            logitsTmp.withUnsafeMutableBufferPointer { yPtr in
+                coeffs.withUnsafeBufferPointer { xPtr in
+                    A.withUnsafeBufferPointer { aPtr in
+                        cblas_sgemv(
+                            CblasRowMajor, CblasNoTrans,
+                            m, n,
+                            alphaBLAS,
+                            aPtr.baseAddress!, lda,
+                            xPtr.baseAddress!, 1,
+                            betaBLAS,
+                            yPtr.baseAddress!, 1
+                        )
+                    }
+                }
             }
-        }
-        logTime("Anchor selection done")
 
-        print("Detection stats: \(selectedDets.count) selected from \(totalAnchorsScanned) anchors (candidates=\(candidates.count), validated=\(validatedCount), ignored=\(ignoredClasses))")
+            // Measure marginal contribution: count indices where this candidate adds a new positive
+            var newPixels = 0
+            for idx in 0..<planeSize {
+                let v = logitsTmp[idx]
+                if v > 0 && v > maxLogits[idx] { newPixels += 1 }
+            }
+
+            attempted += 1
+            if newPixels >= minNewPixels {
+                // Accept: update union and record detection
+                maxLogits.withUnsafeMutableBufferPointer { dst in
+                    logitsTmp.withUnsafeBufferPointer { src in
+                        vDSP_vmax(dst.baseAddress!, 1, src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(planeSize))
+                    }
+                }
+                selectedDets.append(UnionDet(x: x, y: y, w: w, h: h, coeffs: coeffs))
+                added += 1
+            }
+
+            if added >= maxAdds { break }
+        }
+        logTime("Union selection done")
+
+        print("Detection stats: \(selectedDets.count) selected from \(totalAnchorsScanned) anchors (candidates=\(candidates.count), considered=\(toConsider), added=\(added), ignored=\(ignoredClasses))")
 
         // Debug: show best detection found even if below threshold
         var bestDetectionForVisualization: DetectionSmarty?
-        if self.debugMode && selectedDets.isEmpty && bestOverallAnchor >= 0 && bestOverallConf > 0.01 {
+        if self.debugMode && selectedDets.isEmpty && bestOverallAnchor >= 0 && bestOverallConf > 0.51 {
             let anchor = bestOverallAnchor
             let x = detBuf[0 * stride + anchor]
             let y = detBuf[1 * stride + anchor]
@@ -1580,6 +1566,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         by2 = max(0, min(origH, by2))
         logTime("Union bbox done")
 
+        // The following block is removed (was redundant recomputation of union mask)
+        /*
         // Union mask computation
         logTime("Union mask start")
         let maxUnionDetections = 128
@@ -1621,12 +1609,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
         logTime("Union mask done")
+        */
 
         // Threshold to binary mask
         logTime("Threshold mask start")
         var maskSmall = [UInt8](repeating: 0, count: planeSize)
         for i in 0..<planeSize {
-            maskSmall[i] = (maxLogits[i] > 0.0) ? 255 : 0
+            maskSmall[i] = (maxLogits[i] > 0.51) ? 255 : 0
         }
         logTime("Threshold mask done")
 
@@ -1940,6 +1929,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         attr.draw(at: CGPoint(x: bgRect.minX + pad, y: bgRect.minY + pad))
     }
 }
+// Removed the entire function 'validateMaskPixelCount' as requested
+
 fileprivate func resizePixelBufferToSquare(_ pixelBuffer: CVPixelBuffer, size: Int) -> (buffer: CVPixelBuffer, gain: Float, padX: Float, padY: Float)? {
     let srcW = CVPixelBufferGetWidth(pixelBuffer)
     let srcH = CVPixelBufferGetHeight(pixelBuffer)
