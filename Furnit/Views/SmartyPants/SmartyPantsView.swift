@@ -613,9 +613,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     ]
 
 
-    private func shouldIgnore(className: String) -> Bool {
-        let lower = className.lowercased()
-        return clsToIgnore.values.contains { $0.lowercased() == lower }
+    private func shouldIgnore(classId: Int) -> Bool {
+        return clsToIgnore.keys.contains(classId)
     }
     
     // MARK: Furniture & Household Classes (LVIS indices)
@@ -1110,36 +1109,31 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: - Mask Pixel Count Validation
     private func validateMaskPixelCount(
-        coeffs: [Float], 
-        planes: [Float], 
+        coeffs: [Float],
+        A: [Float],                // precomputed [planeSize x 32] row-major
         planeSize: Int,
         bbox: (x: Float, y: Float, w: Float, h: Float),
         pW: Int, pH: Int,
         minimumPixels: Int
     ) -> Int {
-        // 1) Compute mask logits using matrix multiplication (coeffs · planes)
+        // Fast proto-space bbox gate to avoid GEMV when clearly too small
+        let protoScaleX = Float(pW) / 1280.0
+        let protoScaleY = Float(pH) / 1280.0
+        let px1i = max(0, min(pW - 1, Int((bbox.x - bbox.w * 0.5) * protoScaleX)))
+        let py1i = max(0, min(pH - 1, Int((bbox.y - bbox.h * 0.5) * protoScaleY)))
+        let px2i = max(0, min(pW,     Int((bbox.x + bbox.w * 0.5) * protoScaleX)))
+        let py2i = max(0, min(pH,     Int((bbox.y + bbox.h * 0.5) * protoScaleY)))
+        let area = max(0, px2i - px1i) * max(0, py2i - py1i)
+        if area < minimumPixels { return 0 }
+
+        // 1) Compute mask logits using matrix multiplication (A * coeffs)
         var logits = [Float](repeating: 0, count: planeSize)
-        
-        // Reorganize planes for this specific computation if needed
-        // Use the same row-major approach as the main processing
-        var A = [Float](repeating: 0, count: planeSize * 32)
-        var zero: Float = 0
-        A.withUnsafeMutableBufferPointer { dstPtr in
-            planes.withUnsafeBufferPointer { srcPtr in
-                for k in 0..<32 {
-                    let srcStart = srcPtr.baseAddress!.advanced(by: k * planeSize)
-                    let dstStart = dstPtr.baseAddress!.advanced(by: k)
-                    vDSP_vsadd(srcStart, 1, &zero, dstStart, 32, vDSP_Length(planeSize))
-                }
-            }
-        }
-        
-        // Matrix-vector multiplication: logits = A * coeffs
         let m = Int32(planeSize)
         let n = Int32(32)
+        let lda = Int32(32)
         let alpha: Float = 1.0
         let beta: Float = 0.0
-        
+
         logits.withUnsafeMutableBufferPointer { yPtr in
             coeffs.withUnsafeBufferPointer { xPtr in
                 A.withUnsafeBufferPointer { aPtr in
@@ -1147,7 +1141,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                         CblasRowMajor, CblasNoTrans,
                         m, n,
                         alpha,
-                        aPtr.baseAddress!, n,
+                        aPtr.baseAddress!, lda,
                         xPtr.baseAddress!, 1,
                         beta,
                         yPtr.baseAddress!, 1
@@ -1155,29 +1149,16 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
         }
-        
-        // 2) Apply bbox constraint and count positive pixels
-        // Map bbox from model space (1280x1280) to proto space (pW x pH)
-        let protoScaleX = Float(pW) / 1280.0
-        let protoScaleY = Float(pH) / 1280.0
-        
-        let px1 = max(0, min(pW - 1, Int((bbox.x - bbox.w * 0.5) * protoScaleX)))
-        let py1 = max(0, min(pH - 1, Int((bbox.y - bbox.h * 0.5) * protoScaleY)))
-        let px2 = max(0, min(pW, Int((bbox.x + bbox.w * 0.5) * protoScaleX)))
-        let py2 = max(0, min(pH, Int((bbox.y + bbox.h * 0.5) * protoScaleY)))
-        
-        // Count positive logits within bbox
+
+        // 2) Count positive logits within proto-space bbox
         var positivePixels = 0
-        for y in py1..<py2 {
+        for y in py1i..<py2i {
             let rowBase = y * pW
-            for x in px1..<px2 {
+            for x in px1i..<px2i {
                 let idx = rowBase + x
-                if logits[idx] > 0.0 {
-                    positivePixels += 1
-                }
+                if logits[idx] > 0.0 { positivePixels += 1 }
             }
         }
-        
         return positivePixels
     }
 
@@ -1274,6 +1255,16 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
     private func processFrameUnionCutout(_ pixelBuffer: CVPixelBuffer) {
         let frameStart = Date()
+        var t0 = CFAbsoluteTimeGetCurrent()
+        var tLast = t0
+        
+        func logTime(_ label: String) {
+            let now = CFAbsoluteTimeGetCurrent()
+            let delta = (now - tLast) * 1000.0
+            let total = (now - t0) * 1000.0
+            print(String(format: "%@: %.1f ms (%.1f ms total)", label, delta, total))
+            tLast = now
+        }
 
         guard let model = mlModel else { return }
         let now = Date()
@@ -1281,40 +1272,43 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         lastProcessTime = now
         isProcessing = true
 
-//        if debugMode {
-            print("\n🕒 ===== NEW FRAME @ \(now.timeIntervalSince1970) =====")
-            print("🔬 Single-stage: detect → union mask → cutout")
-//        }
-
         // 1) Letterbox + to MLMultiArray
+        logTime("Letterbox start")
         setProgress(0.25, text: "Preprocessing…")
         guard let lb = resizePixelBufferToSquare(pixelBuffer, size: 1280) else {
             isProcessing = false
             return
         }
+        logTime("Letterbox done")
         
         // 🔑 Bind letterbox parameters to local variables for scope access
         let letterboxGain: Float = lb.gain
         let letterboxPadX: Float = lb.padX
         let letterboxPadY: Float = lb.padY
         
+        logTime("MLMultiArray start")
         guard let inputArray = pixelBufferToMLMultiArray(lb.buffer) else {
             isProcessing = false
             return
         }
+        logTime("MLMultiArray done")
 
         // 2) Inference
+        logTime("Model prediction start")
         setProgress(0.45, text: "Running model…")
         guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
             isProcessing = false
             return
         }
+
         guard let output = try? model.prediction(from: inputProvider) else {
             isProcessing = false
             return
         }
+        logTime("Model prediction done")
 
         // 3) Grab detections + prototypes
+        logTime("Extract tensors start")
         var detectionsArray: MLMultiArray?
         if let arr = output.featureValue(for: "var_2497")?.multiArrayValue {
             detectionsArray = arr
@@ -1326,18 +1320,19 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             isProcessing = false
             return
         }
+        logTime("Extract tensors done")
 
         // 4) Read tensor dims
         let numFeatures = detArray.shape[1].intValue
         let numAnchors  = detArray.shape[2].intValue
         let numClasses  = numFeatures - 4 - 32
         guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
-            if debugMode { print("⚠️ Invalid det tensor dims") }
             isProcessing = false
             return
         }
 
         // 5) Copy detArray -> detBuf (Float32)
+        logTime("Copy detections start")
         let totalCount = detArray.count
         let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
         defer { detBuf.deallocate() }
@@ -1346,8 +1341,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let src = detArray.dataPointer.assumingMemoryBound(to: Float.self)
             memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
         }
+        logTime("Copy detections done")
 
         // 6) Parse prototypes -> planes + dims
+        logTime("Parse prototypes start")
         guard let protoInfo = parsePrototypes(protoArray) else {
             isProcessing = false
             return
@@ -1360,10 +1357,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             isProcessing = false
             return
         }
+        logTime("Parse prototypes done")
 
         let planeSize = pH * pW
 
         // 7) Reorg prototypes to A: [planeSize x 32] row-major
+        logTime("Matrix reorganization start")
         setProgress(0.60, text: "Building union mask…")
         var A = [Float](repeating: 0, count: planeSize * 32)
         var zero: Float = 0
@@ -1376,26 +1375,28 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
         }
+        logTime("Matrix reorganization done")
 
         // 8) Select anchors class-agnostically (ANY object, not just furniture)
+        logTime("Anchor selection start")
         let stride = numAnchors
         let coeffOffset = 4 + numClasses
 
         var selectedDets: [UnionDet] = []
-        selectedDets.reserveCapacity(512)
-        
-        // Class-agnostic path - find best confidence across ALL classes for each anchor
-        var tempScores = [Float](repeating: 0, count: numClasses)
+        selectedDets.reserveCapacity(256)
+
+        // Track best detection for debug visualization
         var bestOverallConf: Float = 0
         var bestOverallClass = -1
         var bestOverallAnchor = -1
-        
-        // Track filtering statistics
-        var totalCandidates = 0
-        var confidenceRejected = 0
-        var maskPixelRejected = 0
-        var ignoredClasses = 0
 
+        // First pass: collect candidate anchors by best class confidence (no GEMV yet)
+        var tempScores = [Float](repeating: 0, count: numClasses)
+        var candidates: [(anchor: Int, conf: Float)] = []
+        candidates.reserveCapacity(1024)
+
+        var totalAnchorsScanned = 0
+        var ignoredClasses = 0
         for anchor in 0..<numAnchors {
             let x = detBuf[0 * stride + anchor]
             let y = detBuf[1 * stride + anchor]
@@ -1407,81 +1408,78 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 continue
             }
 
-            totalCandidates += 1
+            totalAnchorsScanned += 1
 
-            // Copy all class scores for this anchor using BLAS (vectorized)
+            // Copy all class scores for this anchor
             let basePtr = detBuf.advanced(by: 4 * stride + anchor)
             cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
-            
-            // Find max confidence across all classes using vDSP (vectorized)
+
+            // Find max confidence across all classes
             var maxVal: Float = 0
             var maxIdx: vDSP_Length = 0
             vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
 
-            // Track best detection for debug visualization
+            // Track best overall for debug
             if maxVal > bestOverallConf {
                 bestOverallConf = maxVal
                 bestOverallClass = Int(maxIdx)
                 bestOverallAnchor = anchor
             }
 
-            // Accept this anchor if its best class confidence exceeds threshold
-            // Skip anchors whose best class is in ignore list
-            let bestClassName = "object_\(Int(maxIdx))"
-            if shouldIgnore(className: bestClassName) {
+            // Skip ignored classes entirely
+            if shouldIgnore(classId: Int(maxIdx)) {
                 ignoredClasses += 1
                 continue
             }
-            
-            if maxVal > confidenceThreshold && maxVal.isFinite {
-                var coeffs = [Float](repeating: 0, count: 32)
-                let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-                cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
 
-                // 🔍 MASK PIXEL COUNT VALIDATION: Filter out masks with < minimumMaskPixels
-                let maskPixelCount = validateMaskPixelCount(
-                    coeffs: coeffs, 
-                    planes: planes, 
-                    planeSize: planeSize,
-                    bbox: (x: x, y: y, w: w, h: h),
-                    pW: pW, pH: pH,
-                    minimumPixels: minimumMaskPixels
-                )
-                
-                if maskPixelCount >= minimumMaskPixels {
-                    selectedDets.append(UnionDet(
-                        x: x, y: y, w: w, h: h, coeffs: coeffs
-                    ))
-                    if debugMode && selectedDets.count <= 5 {
-                        print("✅ Accepted detection: class \(Int(maxIdx)), conf=\(String(format: "%.3f", maxVal)), mask pixels=\(maskPixelCount)")
-                    }
-                } else {
-                    maskPixelRejected += 1
-                    if debugMode && selectedDets.count <= 5 {
-                        print("❌ Rejected detection: class \(Int(maxIdx)), conf=\(String(format: "%.3f", maxVal)), mask pixels=\(maskPixelCount) < \(minimumMaskPixels)")
-                    }
-                }
-            } else {
-                confidenceRejected += 1
+            // Keep as candidate if above threshold
+            if maxVal > confidenceThreshold && maxVal.isFinite {
+                candidates.append((anchor: anchor, conf: maxVal))
             }
         }
 
-        // Print filtering statistics
-//        if debugMode {
-            print("🔍 Detection filtering stats:")
-            print("   Total candidate anchors: \(totalCandidates)")
-            print("   Ignored classes: \(ignoredClasses)")
-            print("   Confidence rejected: \(confidenceRejected)")
-            print("   Mask pixel rejected: \(maskPixelRejected)")
-            print("   Final selected: \(selectedDets.count)")
-//        }
+        // Sort by confidence and validate top-K only
+        candidates.sort { $0.conf > $1.conf }
+        let maxValidate = 256  // validate at most this many with GEMV
+        let toValidate = min(maxValidate, candidates.count)
+
+        var validatedCount = 0
+        var maskPixelRejected = 0
+        for i in 0..<toValidate {
+            let anchor = candidates[i].anchor
+            let x = detBuf[0 * stride + anchor]
+            let y = detBuf[1 * stride + anchor]
+            let w = detBuf[2 * stride + anchor]
+            let h = detBuf[3 * stride + anchor]
+
+            // Prepare coeffs lazily only for validated anchors
+            var coeffs = [Float](repeating: 0, count: 32)
+            let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
+            cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
+
+            let maskPixelCount = validateMaskPixelCount(
+                coeffs: coeffs,
+                A: A,
+                planeSize: planeSize,
+                bbox: (x: x, y: y, w: w, h: h),
+                pW: pW, pH: pH,
+                minimumPixels: minimumMaskPixels
+            )
+
+            if maskPixelCount >= minimumMaskPixels {
+                selectedDets.append(UnionDet(x: x, y: y, w: w, h: h, coeffs: coeffs))
+                validatedCount += 1
+            } else {
+                maskPixelRejected += 1
+            }
+        }
+        logTime("Anchor selection done")
+
+        print("Detection stats: \(selectedDets.count) selected from \(totalAnchorsScanned) anchors (candidates=\(candidates.count), validated=\(validatedCount), ignored=\(ignoredClasses))")
 
         // Debug: show best detection found even if below threshold
         var bestDetectionForVisualization: DetectionSmarty?
-        if self.debugMode && selectedDets.isEmpty && bestOverallAnchor >= 0 && bestOverallConf > 0.01 {//kiss
-            print("🔍 CLASS-AGNOSTIC DEBUG: Best conf=\(String(format: "%.3f", bestOverallConf)) for class \(bestOverallClass) at anchor \(bestOverallAnchor)")
-            print("   Threshold was: \(confidenceThreshold), checked ALL \(numClasses) classes")
-            
+        if self.debugMode && selectedDets.isEmpty && bestOverallAnchor >= 0 && bestOverallConf > 0.01 {
             let anchor = bestOverallAnchor
             let x = detBuf[0 * stride + anchor]
             let y = detBuf[1 * stride + anchor]
@@ -1489,18 +1487,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let h = detBuf[3 * stride + anchor]
             
             if x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0 {
-                // Look up class name from furniture classes if available, otherwise generic
-//                let className = furnitureClasses[bestOverallClass] ?? "object_\(bestOverallClass)"
                 let className = "object_\(bestOverallClass)"
                 
-                // Don't visualize ignored classes
-                if shouldIgnore(className: className) {
-                    bestDetectionForVisualization = nil
-                } else {
+                if !shouldIgnore(classId: bestOverallClass) {
                     bestDetectionForVisualization = DetectionSmarty(
                         x: x, y: y, width: w, height: h,
                         confidence: bestOverallConf,
-                        classIdx: -1,  // Special flag for "best but below threshold"
+                        classIdx: -1,
                         className: className,
                         maskCoeffs: [Float](repeating: 0, count: 32)
                     )
@@ -1529,7 +1522,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     return
                 }
                 
-                // Draw best detection with special styling (red box to indicate below threshold)
                 drawBestDetectionVisualization(ctx: ctx, detection: bestDet, 
                                              imageWidth: origW, imageHeight: origH,
                                              letterboxGain: letterboxGain, 
@@ -1553,7 +1545,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             return
         }
         
-        // Step 1: Compute UNION BBOX in model space (1280x1280)
+        // Compute UNION BBOX
+        logTime("Union bbox start")
         var ux1: Float = .greatestFiniteMagnitude
         var uy1: Float = .greatestFiniteMagnitude
         var ux2: Float = -.greatestFiniteMagnitude
@@ -1566,7 +1559,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             uy2 = max(uy2, d.y + d.h * 0.5)
         }
         
-        // Step 2: Map UNION BBOX to original image space using letterbox params
+        // Map to image space
         @inline(__always)
         func modelToOrigX(_ x: Float) -> Int {
             Int(round((x - letterboxPadX) / letterboxGain))
@@ -1581,83 +1574,64 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         var bx2 = modelToOrigX(ux2)
         var by2 = modelToOrigY(uy2)
 
-        // Clamp to image bounds
         bx1 = max(0, min(origW - 1, bx1))
         by1 = max(0, min(origH - 1, by1))
         bx2 = max(0, min(origW, bx2))
         by2 = max(0, min(origH, by2))
-        
-//        if debugMode {
-            print("🔲 Union bbox (model space): [\(String(format: "%.1f", ux1)),\(String(format: "%.1f", uy1))] to [\(String(format: "%.1f", ux2)),\(String(format: "%.1f", uy2))]")
-            print("🔲 Union bbox (image space): [\(bx1),\(by1)] to [\(bx2),\(by2)] → \((bx2-bx1))x\((by2-by1))")
-//        }
+        logTime("Union bbox done")
 
-        // 9) UNION MASK via batched GEMM (safe RAM)
-        //    Maintain maxLogits[planeSize] across batches.
+        // Union mask computation
+        logTime("Union mask start")
+        let maxUnionDetections = 128
+        let limitedDets: [UnionDet]
+        if selectedDets.count > maxUnionDetections {
+            limitedDets = selectedDets.sorted { ($0.w * $0.h) > ($1.w * $1.h) }.prefix(maxUnionDetections).map { $0 }
+        } else {
+            limitedDets = selectedDets
+        }
+
         var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
+        var logitsTmp = [Float](repeating: 0, count: planeSize)
+        let m = Int32(planeSize)
+        let n = Int32(32)
+        let lda = Int32(32)
+        let alphaBLAS: Float = 1.0
+        let betaBLAS: Float = 0.0
 
-        let batchSize = 64 // tune 32/64/128
-        let M = Int32(planeSize)
-        let K = Int32(32)
-        let alpha: Float = 1
-        let beta: Float = 0
-
-        var bStart = 0
-        while bStart < selectedDets.count {
-            let bEnd = min(selectedDets.count, bStart + batchSize)
-            let Bn = bEnd - bStart
-            let N = Int32(Bn)
-
-            // B: [32 x Bn] row-major, ldb = N
-            var B = [Float](repeating: 0, count: 32 * Bn)
-            for j in 0..<Bn {
-                let coeffs = selectedDets[bStart + j].coeffs
-                for i in 0..<32 {
-                    B[i * Bn + j] = coeffs[i]
-                }
-            }
-
-            // C: [planeSize x Bn]
-            var C = [Float](repeating: 0, count: planeSize * Bn)
-
-            A.withUnsafeBufferPointer { aPtr in
-                B.withUnsafeBufferPointer { bPtr in
-                    C.withUnsafeMutableBufferPointer { cPtr in
-                        cblas_sgemm(
-                            CblasRowMajor,
-                            CblasNoTrans, CblasNoTrans,
-                            M, N, K,
-                            alpha,
-                            aPtr.baseAddress!, K,   // lda=32
-                            bPtr.baseAddress!, N,   // ldb=Bn
-                            beta,
-                            cPtr.baseAddress!, N    // ldc=Bn
+        for det in limitedDets {
+            logitsTmp.withUnsafeMutableBufferPointer { yPtr in
+                det.coeffs.withUnsafeBufferPointer { xPtr in
+                    A.withUnsafeBufferPointer { aPtr in
+                        cblas_sgemv(
+                            CblasRowMajor, CblasNoTrans,
+                            m, n,
+                            alphaBLAS,
+                            aPtr.baseAddress!, lda,
+                            xPtr.baseAddress!, 1,
+                            betaBLAS,
+                            yPtr.baseAddress!, 1
                         )
                     }
                 }
             }
-
-            // Reduce each pixel row -> update maxLogits[px]
-            C.withUnsafeBufferPointer { cPtr in
-                maxLogits.withUnsafeMutableBufferPointer { maxPtr in
-                    for px in 0..<planeSize {
-                        var localMax: Float = 0
-                        vDSP_maxv(cPtr.baseAddress!.advanced(by: px * Bn), 1, &localMax, vDSP_Length(Bn))
-                        if localMax > maxPtr[px] { maxPtr[px] = localMax }
-                    }
+            maxLogits.withUnsafeMutableBufferPointer { dst in
+                logitsTmp.withUnsafeBufferPointer { src in
+                    vDSP_vmax(dst.baseAddress!, 1, src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(planeSize))
                 }
             }
-
-            bStart = bEnd
         }
+        logTime("Union mask done")
 
-        // Threshold -> maskSmall Planar8
+        // Threshold to binary mask
+        logTime("Threshold mask start")
         var maskSmall = [UInt8](repeating: 0, count: planeSize)
         for i in 0..<planeSize {
             maskSmall[i] = (maxLogits[i] > 0.0) ? 255 : 0
         }
+        logTime("Threshold mask done")
 
-        // 10) Proper letterbox-aware upscaling using helper function
+        // Upscale mask
+        logTime("Upscale mask start")
         let maskFull = makeFullMaskFromProtoWithResizeSquareFix(
             maskSmall: maskSmall,
             pW: pW,
@@ -1670,34 +1644,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             letterboxPadY: letterboxPadY,
             useBilinear: self.useBilinearUpscaling
         )
-        
-        // ✅ SAVE FINAL MASK USED FOR CUTOUT (debug only)
-        if self.debugMode {
-            // Convert final mask (0/255) -> Float (0.0/1.0) so your save function can normalize it
-            var rawMaskFloat = [Float](repeating: 0, count: maskFull.count)
-            for i in 0..<maskFull.count {
-                rawMaskFloat[i] = (maskFull[i] > 0) ? 1.0 : 0.0
-            }
+        logTime("Upscale mask done")
 
-            // Dummy detection that covers full 1280x1280 model space (so your bbox-gating keeps everything)
-            let fullDet = DetectionSmarty(
-                x: 640, y: 640,
-                width: 1280, height: 1280,
-                confidence: 1.0,
-                classIdx: 0,
-                className: "UNION_MASK",
-                maskCoeffs: [Float](repeating: 0, count: 32)
-            )
-
-//            self.saveMaskToFile(
-//                rawMask: rawMaskFloat,
-//                width: origW,
-//                height: origH,
-//                detection: fullDet
-//            )
-        }
-
-        // 11) Composite ONCE: transparent bg, copy RGB where mask=1
+        // Composite image
+        logTime("Composite start")
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let ctx = CGContext(
             data: nil,
@@ -1711,6 +1661,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             isProcessing = false
             return
         }
+        
         guard let outBase = ctx.data?.assumingMemoryBound(to: UInt8.self) else {
             isProcessing = false
             return
@@ -1733,14 +1684,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             for x in 0..<origW {
                 let outPx = outRow + x * 4
                 
-                // Step 3: Enforce transparency outside union bbox (CRITICAL)
                 if x < bx1 || x >= bx2 || y < by1 || y >= by2 {
-                    // ❌ Outside UNION BBOX → transparent
                     outBase[outPx + 3] = 0
                     continue
                 }
                 
-                // Inside union bbox → apply mask
                 let m = maskFull[mRow + x]
                 if m > 0 {
                     let origPx = origRow + x * 4
@@ -1754,8 +1702,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 }
             }
         }
+        logTime("Composite done")
 
-        // 12) Draw MAIN UNION bbox (green) for live visualization
+        // Draw bbox overlay
         let boxHeight = by2 - by1
         let flippedY = origH - by1 - boxHeight
         
@@ -1768,7 +1717,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             height: boxHeight
         ))
 
-        // 13) UI update
+        // UI update
+        logTime("UI update start")
         if let out = ctx.makeImage() {
             DispatchQueue.main.async {
                 self.maskImageView.image = UIImage(cgImage: out)
@@ -1777,15 +1727,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         } else {
             DispatchQueue.main.async { self.isProcessing = false }
         }
+        logTime("UI update done")
 
-//        if debugMode {
-            let ms = Date().timeIntervalSince(frameStart) * 1000
-            print(String(format: "🕒 Frame total (class-agnostic method): %.2f ms", ms))
-            print("   Object detections: \(selectedDets.count)")
-            print("   Opaque pixels: \(totalSet) (\(String(format: "%.2f", Float(totalSet)/Float(origW*origH)*100))%)")
-            print("   Letterbox correction: gain=\(String(format: "%.3f", letterboxGain)), pad=(\(String(format: "%.1f", letterboxPadX)),\(String(format: "%.1f", letterboxPadY)))")
-            print("   Union bbox coverage: \((bx2-bx1)*(by2-by1)) pixels (\(String(format: "%.2f", Float((bx2-bx1)*(by2-by1))/Float(origW*origH)*100))% of image)")
-//        }
+        // Final stats
+        let ms = Date().timeIntervalSince(frameStart) * 1000
+        print(String(format: "Frame total: %.1f ms, detections: %d, pixels: %d", ms, selectedDets.count, totalSet))
 
         if totalSet > 0 {
             finishFirstDetectionIfNeeded()
@@ -1933,1012 +1879,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return array
     }
     
-    // MARK: - Extract Detections (optimized)
-    private func extractDetections(from detections: MLMultiArray, confThreshold: Float) -> [DetectionSmarty] {
-        var results: [DetectionSmarty] = []
+    // Add sigmoid helper function outside the class here:
 
-        let numFeatures = detections.shape[1].intValue
-        let numAnchors = detections.shape[2].intValue
-        let numClasses = numFeatures - 4 - 32
-        guard numFeatures >= 36 && numAnchors > 0 && numClasses > 0 else { return [] }
-
-        let totalCount = detections.count
-        let expectedCount = numFeatures * numAnchors
-        guard totalCount >= expectedCount else { return [] }
-
-        // Copy/convert into contiguous Float buffer
-        let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
-        defer { detBuf.deallocate() }
-//        if detections.dataType == .float16 {
-//            let src = detections.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
-//            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<UInt16>.size)
-//            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * MemoryLayout<Float>.size)
-//            _ = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-//        } else if detections.dataType == .float32 {
-            let src = detections.dataPointer.assumingMemoryBound(to: Float.self)
-            memcpy(detBuf, src, totalCount * MemoryLayout<Float>.size)
-//        } else {
-//            for i in 0..<totalCount { detBuf[i] = detections[i].floatValue }
-//        }
-
-        let stride = numAnchors
-        let coeffOffset = 4 + numClasses
-        var tempScores = [Float](repeating: 0, count: numClasses)
-
-        if true {//Kishore
-            for anchor in 0..<numAnchors {
-                let x = detBuf[0 * stride + anchor]
-                let y = detBuf[1 * stride + anchor]
-                let w = detBuf[2 * stride + anchor]
-                let h = detBuf[3 * stride + anchor]
-                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) { continue }
-
-                // Copy class scores column -> tempScores
-                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-                cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
-
-                var maxVal: Float = 0
-                var maxIdx: vDSP_Length = 0
-                vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
-                if maxVal > confThreshold {
-                    var coeffs = [Float](repeating: 0, count: 32)
-                    let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-                    cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
-                    let clsIdx = Int(maxIdx)
-//                    let className = furnitureClasses[clsIdx] ?? "object_\(clsIdx)"
-                    let className = "object_\(clsIdx)"
-                    if shouldIgnore(className: className) {
-                        continue
-                    }
-                    results.append(DetectionSmarty(x: x, y: y, width: w, height: h, confidence: maxVal, classIdx: clsIdx, className: className, maskCoeffs: coeffs))
-                }
-            }
-        } else {
-            // Furniture-only detection path (currently disabled)
-            // This path would iterate over specific furniture classes only
-            for anchor in 0..<numAnchors {
-                let x = detBuf[0 * stride + anchor]
-                let y = detBuf[1 * stride + anchor]
-                let w = detBuf[2 * stride + anchor]
-                let h = detBuf[3 * stride + anchor]
-                if !(x.isFinite && y.isFinite && w.isFinite && h.isFinite && w > 0 && h > 0) { continue }
-
-                // Example: check only first few classes (furniture subset)
-                for classIdx in 0..<min(10, numClasses) {
-                    let conf = detBuf[(4 + classIdx) * stride + anchor]
-                    if conf.isFinite && conf > confThreshold {
-                        var coeffs = [Float](repeating: 0, count: 32)
-                        let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-                        cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
-                        let className = "furniture_\(classIdx)"
-                        results.append(DetectionSmarty(x: x, y: y, width: w, height: h, confidence: conf, classIdx: classIdx, className: className, maskCoeffs: coeffs))
-                    }
-                }
-            }
-        }
-        return results
-    }
-    
-    // Parse prototype tensor `p` into contiguous Float planes [32][H][W]
-    private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], count: Int, height: Int, width: Int)? {
-        // Normalize shape: drop leading batch dim if present
-        var shape = proto.shape.map { $0.intValue }
-        if shape.count == 4 && shape[0] == 1 { shape.removeFirst() }
-        guard shape.count == 3 else { return nil }
-
-        // Locate 32-channel dimension
-        let cIdx: Int
-        if shape[0] == 32 { cIdx = 0 }
-        else if shape[2] == 32 { cIdx = 2 }
-        else { cIdx = shape.firstIndex(of: 32) ?? -1 }
-        guard cIdx >= 0 else { return nil }
-
-        let count = 32
-        let h: Int
-        let w: Int
-        if cIdx == 0 {
-            h = shape[1]; w = shape[2]
-        } else if cIdx == 2 {
-            h = shape[0]; w = shape[1]
-        } else {
-            // Fallback assume [C,H,W]
-            h = shape[1]; w = shape[2]
-        }
-        let planeSize = h * w
-        let total = shape[0] * shape[1] * shape[2]
-
-        // Copy data to Float buffer
-        var rawFloats = [Float](repeating: 0, count: total)
-        if proto.dataType == .float16 {
-            let src = proto.dataPointer.bindMemory(to: UInt16.self, capacity: total)
-            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(total), rowBytes: total * MemoryLayout<UInt16>.size)
-            var dstBuf = vImage_Buffer(data: &rawFloats, height: 1, width: vImagePixelCount(total), rowBytes: total * MemoryLayout<Float>.size)
-            _ = vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-        } else if proto.dataType == .float32 {
-            let src = proto.dataPointer.assumingMemoryBound(to: Float.self)
-            memcpy(&rawFloats, src, total * MemoryLayout<Float>.size)
-        } else {
-            for i in 0..<total { rawFloats[i] = proto[i].floatValue }
-        }
-
-        // Reorder to [count][h][w]
-        var planes = [Float](repeating: 0, count: count * planeSize)
-        if cIdx == 0 {
-            // Already [C,H,W]
-            memcpy(&planes, rawFloats, count * planeSize * MemoryLayout<Float>.size)
-        } else if cIdx == 2 {
-            // [H,W,C] -> [C,H,W]
-            for y in 0..<h {
-                for x in 0..<w {
-                    let baseHW = (y * w + x) * count
-                    let dstBase = y * w + x
-                    for k in 0..<count {
-                        planes[k * planeSize + dstBase] = rawFloats[baseHW + k]
-                    }
-                }
-            }
-        } else {
-            // Generic reorder using strides
-            let strides = proto.strides.map { $0.intValue }
-            for k in 0..<count {
-                for y in 0..<h {
-                    for x in 0..<w {
-                        let idx = k * strides[0] + y * strides[1] + x * strides[2]
-                        planes[k * planeSize + (y * w + x)] = rawFloats[idx]
-                    }
-                }
-            }
-        }
-        return (planes, count, h, w)
-    }
-
-    private func generateCutout(
-        stage1Prototypes: MLMultiArray,
-        primaryBBoxes: [DetectionSmarty],
-        originalImage: CVPixelBuffer,
-        letterboxGain: Float,
-        letterboxPadX: Float,
-        letterboxPadY: Float,
-        modelInput: Int = 1280
-    ) {
-        let functionStart = Date()
-        print("\n🎭 ===== GENERATE CUTOUT START =====")
-        
-        let width  = CVPixelBufferGetWidth(originalImage)
-        let height = CVPixelBufferGetHeight(originalImage)
-        if debugMode {
-            print("📐 Image dimensions: \(width) x \(height)")
-            print("📦 Input params: letterboxGain=\(letterboxGain), padX=\(letterboxPadX), padY=\(letterboxPadY), modelInput=\(modelInput)")
-            print("🔢 Primary bboxes count: \(primaryBBoxes.count)")
-        }
-
-        // STAGE 1: Parse prototypes
-        let parseStart = Date()
-        guard let protoInfo = parsePrototypes(stage1Prototypes) else {
-            print("❌ STAGE 1 FAILED: Could not parse prototypes")
-            DispatchQueue.main.async { self.isProcessing = false }
-            return
-        }
-        let planes = protoInfo.planes
-        let pCount = protoInfo.count
-        let pH = protoInfo.height
-        let pW = protoInfo.width
-        guard pCount >= 32 else {
-            print("❌ STAGE 1 FAILED: Proto count \(pCount) < 32")
-            DispatchQueue.main.async { self.isProcessing = false }
-            return
-        }
-        let parseEnd = Date()
-        if debugMode {
-            print("✅ STAGE 1 - Parse prototypes: \(String(format: "%.2f", parseEnd.timeIntervalSince(parseStart) * 1000))ms")
-            print("   Proto dimensions: \(pCount) channels, \(pW) x \(pH)")
-            print("   Proto plane size: \(planes.count) floats")
-        }
-
-        let planeSize = pH * pW
-
-        // STAGE 2: Reorganize prototype planes to row-major matrix (ULTRA OPTIMIZED)
-        let reorganizeStart = Date()
-        var planesRM = [Float](repeating: 0, count: planeSize * 32)
-        var zero: Float = 0.0  // vDSP_vsadd needs this
-        
-        // Use vDSP for vectorized strided copies - much faster than manual loops
-        planesRM.withUnsafeMutableBufferPointer { dstPtr in
-            planes.withUnsafeBufferPointer { srcPtr in
-                for k in 0..<32 {
-                    let srcStart = srcPtr.baseAddress!.advanced(by: k * planeSize)
-                    let dstStart = dstPtr.baseAddress!.advanced(by: k)
-                    
-                    // Copy plane k to every 32nd position starting at k
-                    // This is equivalent to: dstStart[i*32] = srcStart[i] for i in 0..<planeSize
-                    vDSP_vsadd(srcStart, 1, &zero, dstStart, 32, vDSP_Length(planeSize))
-                }
-            }
-        }
-        
-        let reorganizeEnd = Date()
-        if debugMode {
-            print("✅ STAGE 2 - Reorganize planes: \(String(format: "%.2f", reorganizeEnd.timeIntervalSince(reorganizeStart) * 1000))ms")
-            print("   Created row-major matrix: \(planeSize) x 32")
-        }
-
-        // STAGE 3: Select and sort detections
-        let selectStart = Date()
-        let maxMasks = 100  // Reduced from 10 to 5 for better performance
-        let dets = primaryBBoxes.sorted { $0.confidence > $1.confidence }
-        let selected = Array(dets.prefix(maxMasks))
-        let selectEnd = Date()
-//        if debugMode {
-            print("✅ STAGE 3 - Select detections: \(String(format: "%.2f", selectEnd.timeIntervalSince(selectStart) * 1000))ms")
-            print("   Selected \(selected.count)/\(primaryBBoxes.count) detections (max \(maxMasks))")
-//            if strongDebug {
-                for (i, det) in selected.enumerated() {
-                    print("   [\(i)] \(det.className) conf=\(String(format: "%.3f", det.confidence)) bbox=(\(Int(det.x)), \(Int(det.y)), \(Int(det.width))x\(Int(det.height)))")
-//                }
-//            }
-        }
-
-        // STAGE 4: Create CGContext for output
-        let contextStart = Date()
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let ctx = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: width * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            print("❌ STAGE 4 FAILED: Could not create CGContext")
-            DispatchQueue.main.async { self.isProcessing = false }
-            return
-        }
-        guard let outBase = ctx.data?.assumingMemoryBound(to: UInt8.self) else {
-            print("❌ STAGE 4 FAILED: Could not get CGContext data pointer")
-            DispatchQueue.main.async { self.isProcessing = false }
-            return
-        }
-        // Initialize to white background for opaque cutout effect
-        for i in stride(from: 0, to: width * height * 4, by: 4) {
-//            outBase[i + 0] = 255  // B (Blue) = White
-//            outBase[i + 1] = 255  // G (Green) = White  
-//            outBase[i + 2] = 255  // R (Red) = White
-            outBase[i + 3] = 0  // A (Alpha) = Opaque
-        }
-        let contextEnd = Date()
-        
-        print("✅ STAGE 4 - Create context: \(String(format: "%.2f", contextEnd.timeIntervalSince(contextStart) * 1000))ms")
-        print("   Context: \(width) x \(height) RGBA, \(width * height * 4) bytes")
-
-        if selected.isEmpty {
-            print("⚠️  No detections selected - drawing empty result")
-//            self.drawLabelsAndBoxes(
-//                ctx: ctx,
-//                stage1: primaryBBoxes,
-//                stage2: [],
-//                imageWidth: width,
-//                imageHeight: height,
-//                drawBoxes: self.debugMode,
-//                letterboxGain: letterboxGain,
-//                letterboxPadX: letterboxPadX,
-//                letterboxPadY: letterboxPadY
-//            )
-            if let out = ctx.makeImage() {
-                DispatchQueue.main.async {
-                    self.maskImageView.image = UIImage(cgImage: out)
-                    self.isProcessing = false
-                }
-            } else {
-                DispatchQueue.main.async { self.isProcessing = false }
-            }
-            return
-        }
-
-        // STAGE 5: Setup work buffers and parameters
-        let setupStart = Date()
-        var logits = [Float](repeating: 0, count: planeSize)
-        var binMaskSmall = [UInt8](repeating: 0, count: planeSize)
-
-        // BLAS GEMV params
-        let alpha: Float = 1.0
-        let beta:  Float = 0.0
-        let m = Int32(planeSize) // rows
-        let n = Int32(32)        // cols
-        let lda = Int32(32)      // row-major leading dim = cols
-
-        // Model -> proto scaling
-        let protoScaleX = Float(pW) / Float(modelInput)
-        let protoScaleY = Float(pH) / Float(modelInput)
-
-        @inline(__always)
-        func modelToOrigX(_ xModel: Float) -> Float { (xModel - letterboxPadX) / letterboxGain }
-        @inline(__always)
-        func modelToOrigY(_ yModel: Float) -> Float { (yModel - letterboxPadY) / letterboxGain }
-        
-        let setupEnd = Date()
-        
-        print("✅ STAGE 5 - Setup buffers: \(String(format: "%.2f", setupEnd.timeIntervalSince(setupStart) * 1000))ms")
-        print("   Logits buffer: \(logits.count) floats")
-        print("   Binary mask buffer: \(binMaskSmall.count) bytes")
-        print("   Proto scale: X=\(String(format: "%.4f", protoScaleX)), Y=\(String(format: "%.4f", protoScaleY))")
-        print("   BLAS params: m=\(m), n=\(n), lda=\(lda)")
-
-        // STAGE 6: Process each detection
-        print("\n🔄 STAGE 6 - Processing detections...")
-        let processStart = Date()
-        var totalPixelsSet = 0
-        
-        // Lock original image for reading once for all detections
-        CVPixelBufferLockBaseAddress(originalImage, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(originalImage, .readOnly) }
-        guard let origBase = CVPixelBufferGetBaseAddress(originalImage)?.assumingMemoryBound(to: UInt8.self) else {
-            print("❌ Could not access original image pixels")
-            DispatchQueue.main.async { self.isProcessing = false }
-            return
-        }
-        let origBytesPerRow = CVPixelBufferGetBytesPerRow(originalImage)
-        
-        for (detIndex, det) in selected.enumerated() {
-            let detStart = Date()
-//            if strongDebug {
-                print("\n  🎯 Detection \(detIndex + 1)/\(selected.count): \(det.className)")
-//            }
-            
-            // SUB-STAGE 6.1: Matrix multiplication (logits = prototypes * coeffs)
-            let matmulStart = Date()
-            logits.withUnsafeMutableBufferPointer { yPtr in
-                det.maskCoeffs.withUnsafeBufferPointer { xPtr in
-                    planesRM.withUnsafeBufferPointer { aPtr in
-                        cblas_sgemv(
-                            CblasRowMajor, CblasNoTrans,
-                            m, n,
-                            alpha,
-                            aPtr.baseAddress!, lda,
-                            xPtr.baseAddress!, 1,
-                            beta,
-                            yPtr.baseAddress!, 1
-                        )
-                    }
-                }
-            }
-            let matmulEnd = Date()
-            
-            // Analyze logits
-            var minLogit: Float = 0, maxLogit: Float = 0
-            vDSP_minv(logits, 1, &minLogit, vDSP_Length(logits.count))
-            vDSP_maxv(logits, 1, &maxLogit, vDSP_Length(logits.count))
-            let positiveCount = logits.filter { $0 > 0 }.count
-//            if strongDebug {
-                print("    ✅ 6.1 Matrix multiply: \(String(format: "%.2f", matmulEnd.timeIntervalSince(matmulStart) * 1000))ms")
-                print("       Logits range: [\(String(format: "%.3f", minLogit)), \(String(format: "%.3f", maxLogit))], positive: \(positiveCount)/\(logits.count)")
-//            }
-
-            // SUB-STAGE 6.2: Coordinate transformations
-            let coordStart = Date()
-            
-            // bbox in model (letterboxed) coords
-            let mx1 = det.x - det.width  * 0.5
-            let my1 = det.y - det.height * 0.5
-            let mx2 = det.x + det.width  * 0.5
-            let my2 = det.y + det.height * 0.5
-
-            // map bbox to original image pixels
-            var bx1 = Int(floor(modelToOrigX(mx1)))
-            var by1 = Int(floor(modelToOrigY(my1)))
-            var bx2 = Int(ceil (modelToOrigX(mx2)))
-            var by2 = Int(ceil (modelToOrigY(my2)))
-
-            bx1 = max(0, min(width  - 1, bx1))
-            by1 = max(0, min(height - 1, by1))
-            bx2 = max(0, min(width,  bx2))
-            by2 = max(0, min(height, by2))
-
-            let bw = bx2 - bx1
-            let bh = by2 - by1
-            
-            if bw <= 0 || bh <= 0 { 
-                print("    ❌ 6.2 Invalid bbox size: \(bw) x \(bh) - skipping")
-                continue 
-            }
-
-            // proto-space bbox (still model-space scaled)
-            var px1 = Int(floor(mx1 * protoScaleX))
-            var py1 = Int(floor(my1 * protoScaleY))
-            var px2 = Int(ceil (mx2 * protoScaleX))
-            var py2 = Int(ceil (my2 * protoScaleY))
-
-            px1 = max(0, min(pW - 1, px1))
-            py1 = max(0, min(pH - 1, py1))
-            px2 = max(0, min(pW, px2))
-            py2 = max(0, min(pH, py2))
-            
-            if px2 <= px1 || py2 <= py1 { 
-                print("    ❌ 6.2 Invalid proto bbox: [\(px1),\(py1)] to [\(px2),\(py2)] - skipping")
-                continue 
-            }
-            
-            let coordEnd = Date()
-//            if strongDebug {
-                print("    ✅ 6.2 Coordinates: \(String(format: "%.2f", coordEnd.timeIntervalSince(coordStart) * 1000))ms")
-                print("       Model bbox: [\(String(format: "%.1f", mx1)),\(String(format: "%.1f", my1))] to [\(String(format: "%.1f", mx2)),\(String(format: "%.1f", my2))]")
-                print("       Image bbox: [\(bx1),\(by1)] to [\(bx2),\(by2)] → \(bw)x\(bh)")
-                print("       Proto bbox: [\(px1),\(py1)] to [\(px2),\(py2)] → \((px2-px1))x\((py2-py1))")
-//            }
-            // SUB-STAGE 6.3: Binarize logits in proto space
-            let binarizeStart = Date()
-            binMaskSmall.withUnsafeMutableBytes { memset($0.baseAddress!, 0, planeSize) }
-
-            var protoPositiveCount = 0
-            for y in py1..<py2 {
-                let rowBase = y * pW
-                for x in px1..<px2 {
-                    let idx = rowBase + x
-                    if logits[idx] > 0.0 {
-                        binMaskSmall[idx] = 255
-                        protoPositiveCount += 1
-                    }
-                }
-            }
-            let binarizeEnd = Date()
-//            if strongDebug {
-                print("    ✅ 6.3 Binarize: \(String(format: "%.2f", binarizeEnd.timeIntervalSince(binarizeStart) * 1000))ms")
-                print("       Proto positive pixels: \(protoPositiveCount)/\((px2-px1)*(py2-py1))")
-//            }
-
-            // SUB-STAGE 6.4: Upscale proto mask to image ROI
-            let upscaleStart = Date()
-            var binMaskROI = [UInt8](repeating: 0, count: bw * bh)
-            binMaskROI.withUnsafeMutableBufferPointer { dstPtr in
-                binMaskSmall.withUnsafeBufferPointer { srcPtr in
-                    var s = vImage_Buffer(
-                        data: UnsafeMutableRawPointer(mutating: srcPtr.baseAddress!),
-                        height: vImagePixelCount(pH),
-                        width:  vImagePixelCount(pW),
-                        rowBytes: pW
-                    )
-                    var d = vImage_Buffer(
-                        data: dstPtr.baseAddress!,
-                        height: vImagePixelCount(bh),
-                        width:  vImagePixelCount(bw),
-                        rowBytes: bw
-                    )
-                    let flags: vImage_Flags = self.useBilinearUpscaling
-                        ? vImage_Flags(kvImageHighQualityResampling)
-                        : vImage_Flags(kvImageNoFlags)
-                    _ = vImageScale_Planar8(&s, &d, nil, flags)
-                }
-            }
-            let upscaleEnd = Date()
-            
-            let roiPositiveCount = binMaskROI.filter { $0 > 0 }.count
-//            if strongDebug {
-                print("    ✅ 6.4 Upscale: \(String(format: "%.2f", upscaleEnd.timeIntervalSince(upscaleStart) * 1000))ms")
-                print("       ROI positive pixels: \(roiPositiveCount)/\(bw*bh) (\(String(format: "%.1f", Float(roiPositiveCount) / Float(bw*bh) * 100))%)")
-                print("       Upscale method: \(self.useBilinearUpscaling ? "bilinear" : "nearest-neighbor")")
-//            }
-            // SUB-STAGE 6.5: Composite into output image - Copy original pixels
-            let compositeStart = Date()
-            var pixelsSet = 0
-            
-            for y in 0..<bh {
-                let outRowStart = (by1 + y) * width + bx1
-                let roiRowStart = y * bw
-                let origRowStart = (by1 + y) * origBytesPerRow + bx1 * 4
-                
-                for x in 0..<bw {
-                    let roiPixel = roiRowStart + x
-                    if binMaskROI[roiPixel] > 0 {
-                        let outIdx = outRowStart + x
-                        let px = outIdx * 4
-                        let origPx = origRowStart + x * 4
-                        
-                        // Copy original pixel colors (BGRA -> BGRA)
-                        outBase[px + 0] = origBase[origPx + 0]  // B
-                        outBase[px + 1] = origBase[origPx + 1]  // G  
-                        outBase[px + 2] = origBase[origPx + 2]  // R
-                        outBase[px + 3] = 255                   // A (fully opaque)
-                        pixelsSet += 1
-                    }
-                }
-            }
-            
-            totalPixelsSet += pixelsSet
-            let compositeEnd = Date()
-//            if strongDebug {
-                print("    ✅ 6.5 Composite: \(String(format: "%.2f", compositeEnd.timeIntervalSince(compositeStart) * 1000))ms")
-                print("       Pixels set in output: \(pixelsSet)")
-//            }
-            
-//            if strongDebug {
-                let detEnd = Date()
-                print("    🎯 Detection \(detIndex + 1) total: \(String(format: "%.2f", detEnd.timeIntervalSince(detStart) * 1000))ms")
-//            }
-        }
-        
-        let processEnd = Date()
-//        if debugMode {
-            print("✅ STAGE 6 - Process detections: \(String(format: "%.2f", processEnd.timeIntervalSince(processStart) * 1000))ms")
-            print("   Total output pixels set: \(totalPixelsSet) (\(String(format: "%.3f", Float(totalPixelsSet) / Float(width * height) * 100))%)")
-//        }
-
-//        if strongDebug {
-            // STAGE 7: Draw labels and boxes
-            let labelsStart = Date()
-//            self.drawLabelsAndBoxes(
-//                ctx: ctx,
-//                stage1: selected,  // Use same selected detections instead of all primaryBBoxes
-//                stage2: [],
-//                imageWidth: width,
-//                imageHeight: height,
-//                drawBoxes: self.debugMode,
-//                letterboxGain: letterboxGain,
-//                letterboxPadX: letterboxPadX,
-//                letterboxPadY: letterboxPadY
-//            )
-            
-            let labelsEnd = Date()
-            if debugMode {
-                print("✅ STAGE 7 - Draw labels: \(String(format: "%.2f", labelsEnd.timeIntervalSince(labelsStart) * 1000))ms")
-            }
-//        }
-
-        // STAGE 8: Create final image and update UI
-        let finalizeStart = Date()
-        if let out = ctx.makeImage() {
-            DispatchQueue.main.async {
-                self.maskImageView.image = UIImage(cgImage: out)
-                self.isProcessing = false
-            }
-            print("✅ STAGE 8 - Finalize: Image created and UI updated")
-        } else {
-            DispatchQueue.main.async { self.isProcessing = false }
-            print("❌ STAGE 8 FAILED: Could not create final image")
-        }
-        let finalizeEnd = Date()
-        
-        let functionEnd = Date()
-        print("🎭 ===== GENERATE CUTOUT COMPLETE =====")
-        print("   Total time: \(String(format: "%.2f", functionEnd.timeIntervalSince(functionStart) * 1000))ms")
-        print("   Stage breakdown:")
-        print("     1. Parse: \(String(format: "%.1f", parseEnd.timeIntervalSince(parseStart) * 1000))ms")
-        print("     2. Reorganize: \(String(format: "%.1f", reorganizeEnd.timeIntervalSince(reorganizeStart) * 1000))ms")
-        print("     3. Select: \(String(format: "%.1f", selectEnd.timeIntervalSince(selectStart) * 1000))ms")
-        print("     4. Context: \(String(format: "%.1f", contextEnd.timeIntervalSince(contextStart) * 1000))ms")
-        print("     5. Setup: \(String(format: "%.1f", setupEnd.timeIntervalSince(setupStart) * 1000))ms")
-        print("     6. Process: \(String(format: "%.1f", processEnd.timeIntervalSince(processStart) * 1000))ms")
-//        print("     7. Labels: \(String(format: "%.1f", labelsEnd.timeIntervalSince(labelsStart) * 1000))ms")
-        print("     8. Finalize: \(String(format: "%.1f", finalizeEnd.timeIntervalSince(finalizeStart) * 1000))ms")
-        
-        // Call finishFirstDetectionIfNeeded if this was successful
-        if totalPixelsSet > 0 {
-            self.finishFirstDetectionIfNeeded()
-        }
-    }
-
-
-
-
-    // MARK: - NMS and Utility Methods
-    private func applyNMS(_ detections: [DetectionSmarty], iouThreshold: Float) -> [DetectionSmarty] {
-        // Guard against empty or invalid input
-        guard !detections.isEmpty else { return [] }
-        guard iouThreshold >= 0 && iouThreshold <= 1 else {
-            if self.debugMode { print("⚠️ applyNMS: Invalid IoU threshold: \(iouThreshold)") }
-            return detections
-        }
-        
-        // Filter out detections with invalid dimensions before sorting
-        let validDetections = detections.filter { det in
-            guard det.width > 0, det.height > 0,
-                  det.width.isFinite, det.height.isFinite,
-                  det.x.isFinite, det.y.isFinite,
-                  det.confidence >= 0 && det.confidence <= 1 else {
-                if self.debugMode {
-                    print("⚠️ applyNMS: Filtering invalid detection: w=\(det.width), h=\(det.height), x=\(det.x), y=\(det.y), conf=\(det.confidence)")
-                }
-                return false
-            }
-            return true
-        }
-        
-        guard !validDetections.isEmpty else { return [] }
-        
-        let sorted = validDetections.sorted { $0.confidence > $1.confidence }
-        var kept: [DetectionSmarty] = []
-        kept.reserveCapacity(sorted.count)
-
-        for det in sorted {
-            var dominated = false
-            for k in kept {
-                let iou = bboxIoU(det, k)
-                if iou.isFinite && iou > iouThreshold {
-                    dominated = true
-                    break
-                }
-            }
-            if !dominated { kept.append(det) }
-        }
-        return kept
-    }
-
-    private func bboxIoU(_ a: DetectionSmarty, _ b: DetectionSmarty) -> Float {
-        // Guard against invalid inputs
-        guard a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0 else { return 0 }
-        guard a.width.isFinite && a.height.isFinite && b.width.isFinite && b.height.isFinite else { return 0 }
-        guard a.x.isFinite && a.y.isFinite && b.x.isFinite && b.y.isFinite else { return 0 }
-        
-        let aLeft = a.x - a.width * 0.5
-        let aRight = a.x + a.width * 0.5
-        let aTop = a.y - a.height * 0.5
-        let aBottom = a.y + a.height * 0.5
-
-        let bLeft = b.x - b.width * 0.5
-        let bRight = b.x + b.width * 0.5
-        let bTop = b.y - b.height * 0.5
-        let bBottom = b.y + b.height * 0.5
-
-        let ix1 = max(aLeft, bLeft)
-        let ix2 = min(aRight, bRight)
-        let iy1 = max(aTop, bTop)
-        let iy2 = min(aBottom, bBottom)
-        
-        let iw = max(0, ix2 - ix1)
-        let ih = max(0, iy2 - iy1)
-        let inter = iw * ih
-        
-        let areaA = a.width * a.height
-        let areaB = b.width * b.height
-        let union = areaA + areaB - inter
-        
-        // Prevent division by zero and ensure result is valid
-        guard union > 0 && union.isFinite && inter.isFinite else { return 0 }
-        
-        let iou = inter / union
-        return iou.isFinite ? iou : 0
-    }
-
-    
-    private func resizePixelBufferToSquare(_ src: CVPixelBuffer, size: Int = 1280) -> (buffer: CVPixelBuffer, gain: Float, padX: Float, padY: Float)? {
-        let t0 = Date()
-        
-        CVPixelBufferLockBaseAddress(src, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
-
-        let srcW = CVPixelBufferGetWidth(src)
-        let srcH = CVPixelBufferGetHeight(src)
-
-        // Calculate letterbox parameters
-        let scaleW = Float(size) / Float(srcW)
-        let scaleH = Float(size) / Float(srcH)
-        let gain = min(scaleW, scaleH)  // Scale that fits inside square
-        
-        let newW = Int(Float(srcW) * gain)
-        let newH = Int(Float(srcH) * gain)
-        
-        let padX = Float(size - newW) / 2.0
-        let padY = Float(size - newH) / 2.0
-
-        var dstOpt: CVPixelBuffer?
-        let status = CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &dstOpt)
-        guard status == kCVReturnSuccess, let dst = dstOpt else { return nil }
-
-        CVPixelBufferLockBaseAddress(dst, [])
-        defer { CVPixelBufferUnlockBaseAddress(dst, []) }
-
-        guard let srcBase = CVPixelBufferGetBaseAddress(src),
-              let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
-
-        // Clear destination to gray (letterbox color)
-        memset(dstBase, 128, size * size * 4)
-
-        // Scale and center the image
-        var srcBuffer = vImage_Buffer(data: srcBase,
-                                      height: vImagePixelCount(srcH),
-                                      width: vImagePixelCount(srcW),
-                                      rowBytes: CVPixelBufferGetBytesPerRow(src))
-        
-        // Create destination buffer for scaled content
-        let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
-        let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
-        let offsetPtr = dstPtr.advanced(by: Int(padY) * dstRowBytes + Int(padX) * 4)
-        
-        var dstBuffer = vImage_Buffer(data: offsetPtr,
-                                      height: vImagePixelCount(newH),
-                                      width: vImagePixelCount(newW),
-                                      rowBytes: dstRowBytes)
-
-        let err = vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(0))
-        guard err == kvImageNoError else { return nil }
-
-        if self.debugMode {
-            let dt = Date().timeIntervalSince(t0) * 1000.0
-            print(String(format: "⏱ letterbox %dx%d → %dx%d: %.2f ms (gain=%.3f, pad=%.1f,%.1f)",
-                         srcW, srcH, size, size, dt, gain, padX, padY))
-        }
-
-        return (buffer: dst, gain: gain, padX: padX, padY: padY)
-    }
-
-    private func keepOverlappingDetections(_ detections: [DetectionSmarty]) -> [DetectionSmarty] {
-        guard detections.count > 0 else { return [] }
-        if detections.count == 1 { return detections }
-
-        let sorted = detections.sorted { $0.confidence > $1.confidence }
-        let primary = sorted[0]
-        let pLeft = primary.x - primary.width / 2
-        let pRight = primary.x + primary.width / 2
-        let pTop = primary.y - primary.height / 2
-        let pBottom = primary.y + primary.height / 2
-
-        var kept: [DetectionSmarty] = []
-        kept.reserveCapacity(sorted.count)
-
-        for det in sorted {
-            let aLeft = det.x - det.width / 2
-            let aRight = det.x + det.width / 2
-            let aTop = det.y - det.height / 2
-            let aBottom = det.y + det.height / 2
-
-            if aRight < pLeft || pRight < aLeft { continue }
-            if aBottom < pTop || pBottom < aTop { continue }
-            kept.append(det)
-        }
-        return kept
-    }
-    
-    // MARK: - Print 20x20 Binary Grid
-    private func print20x20BinaryGrid(_ title: String, mask: [UInt8], width: Int, height: Int) {
-        guard self.debugMode else { return }
-        
-        print("\n🔢 [\(title)] (20x20 binary, * = object, . = background):")
-        for gy in 0..<20 {
-            var rowSymbols = ""
-            for gx in 0..<20 {
-                let y = gy * 8 + 7
-                let x = gx * 8 + 7
-                if y < height && x < width {
-                    let idx = y * width + x
-                    rowSymbols += mask[idx] > 0 ? "*" : "."
-                } else {
-                    rowSymbols += " "
-                }
-            }
-            print("   \(rowSymbols)")
-        }
-    }
-    
-    // MARK: - Save Mask to File (with Accelerate normalization)
-    private func saveMaskToFile(rawMask: [Float], width: Int, height: Int, detection: DetectionSmarty) {
-        let timestamp = Int(Date().timeIntervalSince1970)
-        let colorSpace = CGColorSpaceCreateDeviceGray()
-        
-        var minVal: Float = 0
-        var maxVal: Float = 0
-        vDSP_minv(rawMask, 1, &minVal, vDSP_Length(rawMask.count))
-        vDSP_maxv(rawMask, 1, &maxVal, vDSP_Length(rawMask.count))
-        let range = maxVal - minVal
-        
-        let count = rawMask.count
-        var normalized = [Float](repeating: 0, count: count)
-        
-        if range > 0 {
-            var negMin = -minVal
-            rawMask.withUnsafeBufferPointer { src in
-                normalized.withUnsafeMutableBufferPointer { dst in
-                    vDSP_vsadd(src.baseAddress!, 1, &negMin, dst.baseAddress!, 1, vDSP_Length(count))
-                }
-            }
-            var invRange: Float = 1.0 / range
-            vDSP_vsmul(normalized, 1, &invRange, &normalized, 1, vDSP_Length(count))
-        } else {
-            normalized = [Float](repeating: 0.5, count: count)
-        }
-        
-        var scale255: Float = 255.0
-        vDSP_vsmul(normalized, 1, &scale255, &normalized, 1, vDSP_Length(count))
-        
-        var clipLow: Float = 0
-        var clipHigh: Float = 255
-        vDSP_vclip(normalized, 1, &clipLow, &clipHigh, &normalized, 1, vDSP_Length(count))
-        
-        var grayPixels = [UInt8](repeating: 0, count: count)
-        normalized.withUnsafeBufferPointer { src in
-            grayPixels.withUnsafeMutableBufferPointer { dst in
-                vDSP_vfixu8(src.baseAddress!, 1, dst.baseAddress!, 1, vDSP_Length(count))
-            }
-        }
-        
-        if let provider = CGDataProvider(data: Data(grayPixels) as CFData),
-           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
-                                  bytesPerRow: width, space: colorSpace,
-                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
-                                  provider: provider, decode: nil, shouldInterpolate: false,
-                                  intent: .defaultIntent) {
-            let grayImage = UIImage(cgImage: cgImage)
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAsset(from: grayImage)
-            }) { success, error in
-                if success {
-                    print("💾 Saved GRAYSCALE mask to Photos @ \(timestamp)")
-                } else {
-                    print("❌ Failed to save grayscale: \(error?.localizedDescription ?? "unknown")")
-                }
-            }
-        }
-        
-        let scale = Float(width) / 1280.0
-        let mx1 = max(0, Int((detection.x - detection.width / 2) * scale))
-        let my1 = max(0, Int((detection.y - detection.height / 2) * scale))
-        let mx2 = min(width, Int((detection.x + detection.width / 2) * scale))
-        let my2 = min(height, Int((detection.y + detection.height / 2) * scale))
-        
-        var binaryPixels = [UInt8](repeating: 0, count: width * height)
-        for y in 0..<height {
-            for x in 0..<width {
-                let idx = y * width + x
-                if x >= mx1 && x < mx2 && y >= my1 && y < my2 && rawMask[idx] > maskThreshold {
-                    binaryPixels[idx] = 255
-                }
-            }
-        }
-        
-        if let provider = CGDataProvider(data: Data(binaryPixels) as CFData),
-           let cgImage = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8,
-                                  bytesPerRow: width, space: colorSpace,
-                                  bitmapInfo: CGBitmapInfo(rawValue: 0),
-                                  provider: provider, decode: nil, shouldInterpolate: false,
-                                  intent: .defaultIntent) {
-            let binaryImage = UIImage(cgImage: cgImage)
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAsset(from: binaryImage)
-            }) { success, error in
-                if success {
-                    print("💾 Saved BINARY mask to Photos (threshold: \(self.maskThreshold)) @ \(timestamp)")
-                } else {
-                    print("❌ Failed to save binary: \(error?.localizedDescription ?? "unknown")")
-                }
-            }
-        }
-    }
-
-    private func drawLabelsAndBoxes(
-        ctx: CGContext,
-        stage1: [DetectionSmarty],
-        stage2: [DetectionSmarty],
-        imageWidth: Int,
-        imageHeight: Int,
-        drawBoxes: Bool,
-        letterboxGain: Float = 1.0,
-        letterboxPadX: Float = 0.0,
-        letterboxPadY: Float = 0.0
-    ) {
-        if debugMode {
-            print("\n🏷️ ===== DRAW LABELS AND BOXES DEBUG =====")
-            
-            let allDetections = stage1 + stage2
-            print("📊 Input parameters:")
-            print("   stage1 count: \(stage1.count)")
-            print("   stage2 count: \(stage2.count)")
-            print("   total detections: \(allDetections.count)")
-            print("   imageWidth: \(imageWidth), imageHeight: \(imageHeight)")
-            print("   drawBoxes: \(drawBoxes)")
-            print("   letterbox: gain=\(letterboxGain), padX=\(letterboxPadX), padY=\(letterboxPadY)")
-        }
-        
-        let allDetections = stage1 + stage2
-        guard !allDetections.isEmpty else { 
-            if debugMode { print("⚠️  No detections to draw - returning early") }
-            return 
-        }
-        
-        // Helper functions to convert from model coordinates to image coordinates
-        @inline(__always)
-        func modelToImageX(_ xModel: Float) -> Float {
-            return (xModel - letterboxPadX) / letterboxGain
-        }
-        
-        @inline(__always)
-        func modelToImageY(_ yModel: Float) -> Float {
-            return (yModel - letterboxPadY) / letterboxGain
-        }
-        
-        if debugMode {
-            print("📐 Coordinate transformation:")
-            print("   Model space: 1280x1280 (letterboxed)")
-            print("   Image space: \(imageWidth)x\(imageHeight) (original)")
-            print("   Transform: (modelCoord - pad) / gain")
-        }
-        
-        // Set up text attributes
-        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 20, nil)
-        if debugMode { print("🖋  Text setup completed - font size: 20pt") }
-        
-        for (index, detection) in allDetections.enumerated() {
-            if debugMode && index < 10 {  // Only debug first 10 detections to avoid spam
-                print("\n  🎯 Processing detection \(index + 1)/\(allDetections.count):")
-                print("     Class: \(detection.className), Confidence: \(String(format: "%.3f", detection.confidence))")
-                print("     Original model coords: x=\(String(format: "%.1f", detection.x)), y=\(String(format: "%.1f", detection.y)), w=\(String(format: "%.1f", detection.width)), h=\(String(format: "%.1f", detection.height))")
-            }
-            
-            // Convert model coordinates to image coordinates using letterbox transformation
-            let centerX = modelToImageX(detection.x)
-            let centerY = modelToImageY(detection.y)
-            let width = detection.width / letterboxGain
-            let height = detection.height / letterboxGain
-            
-            let left = centerX - width / 2
-            let top = centerY - height / 2
-            let right = centerX + width / 2
-            let bottom = centerY + height / 2
-            
-            if debugMode && index < 10 {
-                print("     Transformed coords: centerX=\(String(format: "%.1f", centerX)), centerY=\(String(format: "%.1f", centerY)), w=\(String(format: "%.1f", width)), h=\(String(format: "%.1f", height))")
-                print("     Final box: left=\(String(format: "%.1f", left)), top=\(String(format: "%.1f", top)), right=\(String(format: "%.1f", right)), bottom=\(String(format: "%.1f", bottom))")
-                
-                // Check if coordinates are reasonable
-                if left < -50 || top < -50 || right > Float(imageWidth + 50) || bottom > Float(imageHeight + 50) {
-                    print("     ⚠️  WARNING: Coordinates seem out of bounds!")
-                    print("        Image bounds: 0x0 to \(imageWidth)x\(imageHeight)")
-                    print("        Box extends: \(String(format: "%.1f", left)) to \(String(format: "%.1f", right)) (x), \(String(format: "%.1f", top)) to \(String(format: "%.1f", bottom)) (y)")
-                }
-            }
-            
-            if drawBoxes {
-                if debugMode && index < 10 { print("     📦 Drawing bounding box...") }
-                // Draw bounding box
-                ctx.setStrokeColor(UIColor.green.cgColor)
-                ctx.setLineWidth(2.0)
-                let rect = CGRect(x: CGFloat(left), y: CGFloat(top),
-                                width: CGFloat(width), height: CGFloat(height))
-                if debugMode && index < 10 { print("        CGRect: \(rect)") }
-                ctx.stroke(rect)
-                if debugMode && index < 10 { print("        ✅ Bounding box drawn") }
-            }
-            
-            // Draw label with clamped confidence
-            let clampedConf = min(99, max(0, Int(detection.confidence * 100)))
-            let label = "\(detection.className) \(clampedConf)%"
-            if debugMode && index < 10 { print("     🏷️  Preparing label: '\(label)'") }
-            
-            let attributedString = NSAttributedString(string: label, attributes: [
-                .font: font,
-                .foregroundColor: UIColor.white
-            ])
-            
-            let labelRect = CGRect(x: CGFloat(left), y: CGFloat(max(0, top - 25)),
-                                 width: CGFloat(width), height: 25)
-            if debugMode && index < 10 { print("        Label rect: \(labelRect)") }
-            
-            // Check label positioning
-            if labelRect.minY < 0 && debugMode && index < 10 {
-                print("        ⚠️  WARNING: Label rect extends above image bounds (minY: \(labelRect.minY))")
-            }
-            
-            // Draw background for text
-            if debugMode && index < 10 { print("        Drawing label background...") }
-            ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
-            ctx.fill(labelRect)
-            
-            // Draw text
-            if debugMode && index < 10 { print("        Drawing label text...") }
-            let line = CTLineCreateWithAttributedString(attributedString)
-            let textPosition = CGPoint(x: CGFloat(left + 5), y: CGFloat(max(20, top - 5)))
-            if debugMode && index < 10 { print("        Text position: \(textPosition)") }
-            ctx.textPosition = textPosition
-            CTLineDraw(line, ctx)
-            if debugMode && index < 10 { print("        ✅ Label drawn successfully") }
-        }
-        
-        if debugMode {
-            print("🏷️ ===== DRAW LABELS AND BOXES COMPLETE =====")
-            print("   Total detections processed: \(allDetections.count)")
-            print("   Letterbox transform: gain=\(letterboxGain), padX=\(letterboxPadX), padY=\(letterboxPadY)")
-            print("   Target image size: \(imageWidth) x \(imageHeight)")
-        }
-    }
-    
-    // MARK: - Best Detection Visualization
     private func drawBestDetectionVisualization(
         ctx: CGContext,
         detection: DetectionSmarty,
@@ -2948,90 +1890,182 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         letterboxPadX: Float,
         letterboxPadY: Float
     ) {
-        // Helper functions to convert from model coordinates to image coordinates
+        // Map bbox from model space (1280x1280) to original image space
         @inline(__always)
-        func modelToImageX(_ xModel: Float) -> Float {
-            return (xModel - letterboxPadX) / letterboxGain
-        }
-        
+        func modelToOrigX(_ x: Float) -> Int { Int(round((x - letterboxPadX) / letterboxGain)) }
         @inline(__always)
-        func modelToImageY(_ yModel: Float) -> Float {
-            return (yModel - letterboxPadY) / letterboxGain
-        }
-        
-        // Convert model coordinates to image coordinates
-        let centerX = modelToImageX(detection.x)
-        let centerY = modelToImageY(detection.y)
-        let width = detection.width / letterboxGain
-        let height = detection.height / letterboxGain
-        
-        let left = centerX - width / 2
-        let top = centerY - height / 2
-        
-        // Draw RED dashed bounding box to indicate "below threshold"
+        func modelToOrigY(_ y: Float) -> Int { Int(round((y - letterboxPadY) / letterboxGain)) }
+
+        let mx1 = detection.x - detection.width * 0.5
+        let my1 = detection.y - detection.height * 0.5
+        let mx2 = detection.x + detection.width * 0.5
+        let my2 = detection.y + detection.height * 0.5
+
+        var bx1 = modelToOrigX(mx1)
+        var by1 = modelToOrigY(my1)
+        var bx2 = modelToOrigX(mx2)
+        var by2 = modelToOrigY(my2)
+
+        bx1 = max(0, min(imageWidth - 1, bx1))
+        by1 = max(0, min(imageHeight - 1, by1))
+        bx2 = max(0, min(imageWidth, bx2))
+        by2 = max(0, min(imageHeight, by2))
+
+        let boxW = max(0, bx2 - bx1)
+        let boxH = max(0, by2 - by1)
+        let flippedY = imageHeight - by1 - boxH
+
         ctx.setStrokeColor(UIColor.red.cgColor)
-        ctx.setLineWidth(3.0)
-        ctx.setLineDash(phase: 0, lengths: [10.0, 5.0]) // Dashed line pattern
-        let rect = CGRect(x: CGFloat(left), y: CGFloat(top),
-                        width: CGFloat(width), height: CGFloat(height))
-        ctx.stroke(rect)
-        
-        // Reset line dash for text background
-        ctx.setLineDash(phase: 0, lengths: [])
-        
-        // Draw label with special formatting
-        let clampedConf = min(99, max(0, Int(detection.confidence * 100)))
-        let label = "BEST: \(detection.className) \(clampedConf)% (below threshold)"
-        
-        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 18, nil)
-        let attributedString = NSAttributedString(string: label, attributes: [
-            .font: font,
-            .foregroundColor: UIColor.white
-        ])
-        
-        // Calculate label size
-        let textBounds = CTLineGetBoundsWithOptions(
-            CTLineCreateWithAttributedString(attributedString), 
-            CTLineBoundsOptions()
-        )
-        let labelWidth = max(200.0, textBounds.width + 20.0)
-        let labelHeight: CGFloat = 30
-        
-        let labelRect = CGRect(
-            x: CGFloat(left), 
-            y: CGFloat(max(0.0, CGFloat(top) - labelHeight - 5.0)),
-            width: labelWidth, 
-            height: labelHeight
-        )
-        
-        // Draw red background for "below threshold" label
-        ctx.setFillColor(UIColor.red.withAlphaComponent(0.8).cgColor)
-        ctx.fill(labelRect)
-        
-        // Draw white border around label
-        ctx.setStrokeColor(UIColor.white.cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.stroke(labelRect)
-        
-        // Draw text
-        let line = CTLineCreateWithAttributedString(attributedString)
-        let textPosition = CGPoint(x: CGFloat(left + 10), y: CGFloat(max(25, top - 10)))
-        ctx.textPosition = textPosition
-        CTLineDraw(line, ctx)
-        
-        if debugMode {
-            print("📍 Drawing BEST detection visualization:")
-            print("   Class: \(detection.className), Confidence: \(String(format: "%.3f", detection.confidence))")
-            print("   Box: [\(String(format: "%.1f", left)),\(String(format: "%.1f", top))] size \(String(format: "%.1f", width))x\(String(format: "%.1f", height))")
-            print("   Status: Below threshold (showing as red dashed box)")
+        ctx.setLineWidth(4.0)
+        ctx.stroke(CGRect(x: bx1, y: flippedY, width: boxW, height: boxH))
+
+        // Draw label background + text
+        let confText: String
+        if detection.confidence.isFinite {
+            confText = String(format: "%.3f", detection.confidence)
+        } else {
+            confText = ""
         }
+        let labelText = confText.isEmpty ? detection.className : "\(detection.className) (\(confText))"
+        let attr = NSAttributedString(string: labelText, attributes: self.bboxAttributes)
+        let textSize = attr.size()
+        let pad: CGFloat = 6
+        let bgRect = CGRect(x: CGFloat(bx1), y: CGFloat(flippedY) - textSize.height - pad * 2, width: textSize.width + pad * 2, height: textSize.height + pad * 2)
+
+        ctx.setFillColor(UIColor.black.withAlphaComponent(0.6).cgColor)
+        let path = UIBezierPath(roundedRect: bgRect, cornerRadius: 8)
+        ctx.addPath(path.cgPath)
+        ctx.fillPath()
+
+        attr.draw(at: CGPoint(x: bgRect.minX + pad, y: bgRect.minY + pad))
     }
-    
-    // MARK: - Remaining utility methods
+}
+fileprivate func resizePixelBufferToSquare(_ pixelBuffer: CVPixelBuffer, size: Int) -> (buffer: CVPixelBuffer, gain: Float, padX: Float, padY: Float)? {
+    let srcW = CVPixelBufferGetWidth(pixelBuffer)
+    let srcH = CVPixelBufferGetHeight(pixelBuffer)
+    guard srcW > 0, srcH > 0 else { return nil }
+
+    let fSize = Float(size)
+    let gain = min(fSize / Float(srcW), fSize / Float(srcH))
+    let dstW = max(1, Int(round(Float(srcW) * gain)))
+    let dstH = max(1, Int(round(Float(srcH) * gain)))
+    let padX = (fSize - Float(dstW)) * 0.5
+    let padY = (fSize - Float(dstH)) * 0.5
+
+    var dstBuf: CVPixelBuffer?
+    var tmpBuf: CVPixelBuffer?
+
+    let attrs: CFDictionary = [
+        kCVPixelBufferCGImageCompatibilityKey: true,
+        kCVPixelBufferCGBitmapContextCompatibilityKey: true
+    ] as CFDictionary
+
+    guard CVPixelBufferCreate(kCFAllocatorDefault, size, size, kCVPixelFormatType_32BGRA, attrs, &dstBuf) == kCVReturnSuccess,
+          CVPixelBufferCreate(kCFAllocatorDefault, dstW, dstH, kCVPixelFormatType_32BGRA, attrs, &tmpBuf) == kCVReturnSuccess,
+          let dst = dstBuf, let tmp = tmpBuf else {
+        return nil
+    }
+
+    // Clear destination to black
+    CVPixelBufferLockBaseAddress(dst, [])
+    if let base = CVPixelBufferGetBaseAddress(dst) {
+        memset(base, 0, CVPixelBufferGetBytesPerRow(dst) * CVPixelBufferGetHeight(dst))
+    }
+    CVPixelBufferUnlockBaseAddress(dst, [])
+
+    // Scale source -> tmp
+    CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+    CVPixelBufferLockBaseAddress(tmp, [])
+    defer {
+        CVPixelBufferUnlockBaseAddress(tmp, [])
+        CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
+    }
+
+    guard let sBase = CVPixelBufferGetBaseAddress(pixelBuffer),
+          let dBase = CVPixelBufferGetBaseAddress(tmp) else {
+        return nil
+    }
+
+    var s = vImage_Buffer(
+        data: sBase,
+        height: vImagePixelCount(srcH),
+        width: vImagePixelCount(srcW),
+        rowBytes: CVPixelBufferGetBytesPerRow(pixelBuffer)
+    )
+    var d = vImage_Buffer(
+        data: dBase,
+        height: vImagePixelCount(dstH),
+        width: vImagePixelCount(dstW),
+        rowBytes: CVPixelBufferGetBytesPerRow(tmp)
+    )
+
+    _ = vImageScale_ARGB8888(&s, &d, nil, vImage_Flags(kvImageHighQualityResampling))
+
+    // Copy tmp into dst at offset (padX, padY)
+    let offX = max(0, Int(round(padX)))
+    let offY = max(0, Int(round(padY)))
+
+    CVPixelBufferLockBaseAddress(dst, [])
+    defer { CVPixelBufferUnlockBaseAddress(dst, []) }
+
+    guard let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
+
+    let tmpRowBytes = CVPixelBufferGetBytesPerRow(tmp)
+    let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
+
+    let srcPtr = dBase.assumingMemoryBound(to: UInt8.self)
+    let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
+
+    for row in 0..<dstH {
+        let srcOffset = row * tmpRowBytes
+        let dstOffset = (offY + row) * dstRowBytes + offX * 4
+        memcpy(dstPtr.advanced(by: dstOffset), srcPtr.advanced(by: srcOffset), dstW * 4)
+    }
+
+    return (buffer: dst, gain: gain, padX: Float(offX), padY: Float(offY))
 }
 
+fileprivate func parsePrototypes(_ protoArray: MLMultiArray) -> (planes: [Float], count: Int, height: Int, width: Int)? {
+    guard protoArray.dataType == .float32 else { return nil }
+    let shape = protoArray.shape.map { $0.intValue }
 
-// Add sigmoid helper function outside the class here:
+    var c = 0, h = 0, w = 0
+    var baseOffset = 0
+
+    if shape.count == 4, shape[0] == 1 {
+        // [1, C, H, W]
+        c = shape[1]; h = shape[2]; w = shape[3]
+        baseOffset = 0
+    } else if shape.count == 3 {
+        // [C, H, W]
+        c = shape[0]; h = shape[1]; w = shape[2]
+        baseOffset = 0
+    } else {
+        return nil
+    }
+
+    let planeSize = h * w
+    let expectedCount = c * planeSize
+    var out = [Float](repeating: 0, count: expectedCount)
+
+    // Fast path: assume row-major contiguous in [C,H,W]
+    protoArray.dataPointer.withMemoryRebound(to: Float.self, capacity: protoArray.count) { ptr in
+        if shape.count == 4 {
+            // [1,C,H,W] laid out with planes contiguous per C
+            for k in 0..<c {
+                let src = ptr.advanced(by: baseOffset + k * planeSize)
+                let dst = out.withUnsafeMutableBufferPointer { $0.baseAddress! }.advanced(by: k * planeSize)
+                memcpy(dst, src, planeSize * MemoryLayout<Float>.size)
+            }
+        } else {
+            // [C,H,W]
+            memcpy(out.withUnsafeMutableBytes { $0.baseAddress! }, ptr, expectedCount * MemoryLayout<Float>.size)
+        }
+    }
+
+    return (planes: out, count: c, height: h, width: w)
+}
+
 fileprivate func sigmoid(_ x: inout [Float]) {
     let count = vDSP_Length(x.count)
     var zero: Float = 0
@@ -3043,5 +2077,4 @@ fileprivate func sigmoid(_ x: inout [Float]) {
     vDSP_vsadd(negX, 1, &one, &negX, 1, count) // 1 + exp(-x)
     vvrecf(&x, negX, [Int32(x.count)]) // 1 / (1 + exp(-x))
 }
-
 
