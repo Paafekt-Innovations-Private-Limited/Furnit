@@ -54,8 +54,8 @@
   "1880": "glass door",
   "1888": "glass window",
   "4501": "window",
-  "1234": "curtain",
-  "467": "blind",
+//  "1234": "curtain",
+//  "467": "blind",
   "815": "ceramic tile",
   "4161": "tile",
   "4163": "tile roof",
@@ -75,5 +75,9 @@
   "4303": "twin",
   "4558": "wrinkle",
   "470": "snowstorm",
-  "1694": "floor mat"
+  "1694": "floor mat",
+  "3772": "socket",
+  "2481": "hallway",
+  "4146": "throne",
+  "4147": "throne room"
 }
