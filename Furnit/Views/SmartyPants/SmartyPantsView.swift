@@ -15,7 +15,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var confidenceThreshold: Float = 0.05
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = true
-    var debugMode: Bool = true
+    var debugMode: Bool = false
     var active: Bool = false
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -61,7 +61,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var confidenceThreshold: Float = 0.05
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = true
-    var debugMode: Bool = true
+    var debugMode: Bool = false
     
     // MARK: - Ignored Classes (Structure / Room / Background / Openings)
     private let clsToIgnore: Set<Int> = [
@@ -142,7 +142,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            print("⚠️ Failed to load classes.json")
+            if debugMode { print("⚠️ Failed to load classes.json") }
             return [:]
         }
         var result: [Int: String] = [:]
@@ -151,7 +151,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 result[id] = value
             }
         }
-        print("✅ Loaded \(result.count) class names")
+        if debugMode { print("✅ Loaded \(result.count) class names") }
         return result
     }()
     
@@ -830,21 +830,23 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // STAGE 17: Finalize
         let t17 = Date()
         
-        ctx.setStrokeColor(UIColor.cyan.cgColor)
-        ctx.setLineWidth(2.0)
-        for d in kept2 {
-            let dx1 = Int(round((d.x - d.w * 0.5 - padX) / resizeGain))
-            let dy1 = Int(round((d.y - d.h * 0.5 - padY) / resizeGain))
-            let dx2 = Int(round((d.x + d.w * 0.5 - padX) / resizeGain))
-            let dy2 = Int(round((d.y + d.h * 0.5 - padY) / resizeGain))
-            ctx.stroke(CGRect(x: max(0, dx1), y: max(0, dy1),
-                              width: min(origW - max(0, dx1), dx2 - dx1),
-                              height: min(origH - max(0, dy1), dy2 - dy1)))
+        if debugMode {
+            ctx.setStrokeColor(UIColor.cyan.cgColor)
+            ctx.setLineWidth(2.0)
+            for d in kept2 {
+                let dx1 = Int(round((d.x - d.w * 0.5 - padX) / resizeGain))
+                let dy1 = Int(round((d.y - d.h * 0.5 - padY) / resizeGain))
+                let dx2 = Int(round((d.x + d.w * 0.5 - padX) / resizeGain))
+                let dy2 = Int(round((d.y + d.h * 0.5 - padY) / resizeGain))
+                ctx.stroke(CGRect(x: max(0, dx1), y: max(0, dy1),
+                                  width: min(origW - max(0, dx1), dx2 - dx1),
+                                  height: min(origH - max(0, dy1), dy2 - dy1)))
+            }
+            
+            ctx.setStrokeColor(UIColor.green.cgColor)
+            ctx.setLineWidth(6.0)
+            ctx.stroke(CGRect(x: bx1, y: by1, width: bx2 - bx1, height: by2 - by1))
         }
-        
-        ctx.setStrokeColor(UIColor.green.cgColor)
-        ctx.setLineWidth(6.0)
-        ctx.stroke(CGRect(x: bx1, y: by1, width: bx2 - bx1, height: by2 - by1))
         
         if let out = ctx.makeImage() {
             DispatchQueue.main.async {
