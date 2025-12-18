@@ -7,6 +7,7 @@ import UIKit
 import CoreML
 import Accelerate
 import AVFoundation
+import CoreText
 
 // MARK: - SwiftUI Wrapper
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
@@ -15,7 +16,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var confidenceThreshold: Float = 0.05
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = true
-    var debugMode: Bool = false
+    var debugMode: Bool = true
     var active: Bool = false
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -61,33 +62,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var confidenceThreshold: Float = 0.05
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = true
-    var debugMode: Bool = false
+    var debugMode: Bool = true
     
-    // MARK: - Ignored Classes (Structure / Room / Background / Openings)
-    private let clsToIgnore: Set<Int> = [
-        // ROOMS
-        330, 378, 881, 951, 1064, 1080, 1259, 1290, 1323, 1406, 1518, 1573, 1973,
-        2115, 2116, 2142, 2152, 2234, 2390, 2410, 2475, 2476, 3122, 3331, 3377,
-        3439, 3600, 3917, 3956, 3957, 4107, 4147, 4324, 4388,
-        // WALLS
-        571, 944, 1887, 4164, 4536,
-        // FLOOR
-        1692, 1758, 1881, 2037, 2320, 4162, 4535,
-        // CEILING
-        802,
-        // SKY
-        483, 2799, 2800, 3721,
-        // WINDOWS / DOORS
-        1380, 1880, 4501, 1888,
-        // CURTAINS / BLINDS
-        1234, 467,
-        // TILES
-        815, 4161, 4163,
-        // BUILDING / STRUCTURE
-        613, 615, 616, 810, 1072, 3955,
-        // ABSTRACT / SCENE
-        1041, 2669, 3604, 3682, 3760, 4248, 4261, 4303, 4558, 470, 3092,
-    ]
+    // MARK: - Ignored Classes (loaded from blacklist.json)
+    private lazy var clsToIgnore: Set<Int> = {
+        guard let url = Bundle.main.url(forResource: "blacklist", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
+            if debugMode { print("⚠️ Failed to load blacklist.json") }
+            return []
+        }
+        let blacklistSet = Set(dict.keys.compactMap { Int($0) })
+        if debugMode { print("✅ Loaded \(blacklistSet.count) blacklisted classes") }
+        return blacklistSet
+    }()
 
     // MARK: Camera
     private let captureSession = AVCaptureSession()
@@ -138,7 +126,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private var isProcessing = false
     
     // MARK: Class Names (loaded from classes.json)
-    private lazy var classNames: [Int: String] = {
+    internal lazy var classNames: [Int: String] = {
         guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
@@ -156,7 +144,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }()
     
     private func className(_ id: Int) -> String {
-        return classNames[id] ?? "\(id)"
+        let name = classNames[id] ?? "unknown"
+        return "\u{001B}[1m::\(name) (id:\(id))\u{001B}[0m"
     }
 
     // MARK: - Init
@@ -507,7 +496,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let t8End = Date()
         if debugMode {
             print("⏱️ STAGE 8 - Primary: \(String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)) ms")
-            print("   🎯 PRIMARY[\(primaryIdx)]: \(className(primary.classIdx)) conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
+            print("   🎯 PRIMARY[\(primaryIdx)]: \u{001B}[1m\(className(primary.classIdx))\u{001B}[0m conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
         }
 
         // STAGE 9: Parse prototypes
@@ -868,18 +857,67 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let t17 = Date()
         
         if debugMode {
+            // Draw detection bounding boxes with class names
             ctx.setStrokeColor(UIColor.cyan.cgColor)
+            ctx.setFillColor(UIColor.cyan.cgColor)
             ctx.setLineWidth(2.0)
-            for d in kept2 {
+            
+            // Configure text drawing
+            let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 16, nil)
+            let textColor = UIColor.cyan.cgColor
+            
+            for (index, d) in kept2.enumerated() {
                 let dx1 = Int(round((d.x - d.w * 0.5 - padX) / resizeGain))
                 let dy1 = Int(round((d.y - d.h * 0.5 - padY) / resizeGain))
                 let dx2 = Int(round((d.x + d.w * 0.5 - padX) / resizeGain))
                 let dy2 = Int(round((d.y + d.h * 0.5 - padY) / resizeGain))
-                ctx.stroke(CGRect(x: max(0, dx1), y: max(0, dy1),
-                                  width: min(origW - max(0, dx1), dx2 - dx1),
-                                  height: min(origH - max(0, dy1), dy2 - dy1)))
+                
+                let clampedX1 = max(0, dx1)
+                let clampedY1 = max(0, dy1)
+                let clampedW = min(origW - clampedX1, dx2 - dx1)
+                let clampedH = min(origH - clampedY1, dy2 - dy1)
+                
+                // Draw bounding box
+                ctx.stroke(CGRect(x: clampedX1, y: clampedY1, width: clampedW, height: clampedH))
+                
+                // Get class name
+                let className = classNames[d.classIdx] ?? "unknown"
+                let confidence = String(format: "%.2f", d.confidence)
+                let labelText = "\(className) (\(confidence))"
+                
+                // Create attributed string for the label
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: UIColor.cyan
+                ]
+                let attributedString = NSAttributedString(string: labelText, attributes: attributes)
+                let line = CTLineCreateWithAttributedString(attributedString)
+                let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+                
+                // Position label above the bounding box
+                let labelX = CGFloat(clampedX1)
+                let labelY = CGFloat(origH - clampedY1 + 4) // Flip Y coordinate and add padding
+                
+                // Draw semi-transparent background for text
+                let textBackgroundRect = CGRect(
+                    x: labelX - 2,
+                    y: labelY - textBounds.height - 2,
+                    width: textBounds.width + 4,
+                    height: textBounds.height + 4
+                )
+                ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+                ctx.fill(textBackgroundRect)
+                
+                // Draw the text
+                ctx.saveGState()
+                ctx.textMatrix = .identity
+                ctx.translateBy(x: labelX, y: labelY - textBounds.height)
+                ctx.setFillColor(textColor)
+                CTLineDraw(line, ctx)
+                ctx.restoreGState()
             }
             
+            // Draw union bounding box in green
             ctx.setStrokeColor(UIColor.green.cgColor)
             ctx.setLineWidth(6.0)
             ctx.stroke(CGRect(x: bx1, y: by1, width: bx2 - bx1, height: by2 - by1))
