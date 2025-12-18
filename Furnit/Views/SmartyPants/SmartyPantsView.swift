@@ -863,7 +863,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             ctx.setLineWidth(2.0)
             
             // Configure text drawing
-            let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 16, nil)
+            let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
             let textColor = UIColor.cyan.cgColor
             
             for (index, d) in kept2.enumerated() {
