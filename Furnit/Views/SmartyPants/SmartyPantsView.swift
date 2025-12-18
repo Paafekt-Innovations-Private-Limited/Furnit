@@ -12,7 +12,7 @@ import AVFoundation
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.01
+    var confidenceThreshold: Float = 0.05
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = true
     var debugMode: Bool = true
@@ -65,26 +65,122 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: - Ignored Classes (Structure / Room / Background / Openings)
     private let clsToIgnore: Set<Int> = [
-        // Walls / surfaces
-        571, 944, 1887,
-        // Floor / ground
-        1692, 1758, 2037, 1881,
-        // Ceiling
-        802,
-        // Curtains
-        1234,
-        // Tiles
-        815,
-        // Rooms / interiors
-        330, 378, 1323, 1518, 1080, 2115, 2152,
-        // Windows
-        1719, 1720, 1880, 2045, 2050,
-        // Doors
-        531, 532, 533, 534,
-        // Building / structure
-        613, 615, 616, 1072, 810,
-        // Kitchen/tile
-        2320, 4161, 4162, 4163, 4164
+        // ══════════════════════════════════════════════════════════════
+        // ROOMS
+        // ══════════════════════════════════════════════════════════════
+        330,   // bathroom
+        378,   // bedroom
+        881,   // childs room
+        951,   // classroom
+        1064,  // computer room
+        1080,  // meeting room
+        1259,  // dance room
+        1290,  // den
+        1323,  // dining room
+        1406,  // dressing room
+        1518,  // entrance hall
+        1573,  // family room
+        1973,  // guest room
+        2115,  // home interior
+        2116,  // home office
+        2142,  // hospital room
+        2152,  // hotel room
+        2234,  // interior design
+        2390,  // laundry room
+        2410,  // lecture room
+        2475,  // living room
+        2476,  // living space
+        3122,  // playroom
+        3331,  // recreation room
+        3377,  // restroom
+        3439,  // room
+        3600,  // server room
+        3917,  // storage room
+        3956,  // studio
+        3957,  // studio shot
+        4107,  // television room
+        4147,  // throne room
+        4324,  // utility room
+        4388,  // waiting room
+        
+        // ══════════════════════════════════════════════════════════════
+        // WALLS / SURFACES
+        // ══════════════════════════════════════════════════════════════
+        571,   // wall
+        944,   // city wall
+        1887,  // glass wall
+        4164,  // tile wall
+        4536,  // wood wall
+        
+        // ══════════════════════════════════════════════════════════════
+        // FLOOR / GROUND
+        // ══════════════════════════════════════════════════════════════
+        1692,  // floor
+        1758,  // forest floor
+        1881,  // glass floor
+        2037,  // hardwood floor
+        2320,  // kitchen floor
+        4162,  // tile flooring
+        4535,  // wood floor
+        
+        // ══════════════════════════════════════════════════════════════
+        // CEILING
+        // ══════════════════════════════════════════════════════════════
+        802,   // ceiling
+        
+        // ══════════════════════════════════════════════════════════════
+        // SKY / ATMOSPHERE
+        // ══════════════════════════════════════════════════════════════
+        483,   // blue sky
+        2799,  // night sky
+        2800,  // night view
+        3721,  // sky
+        
+        // ══════════════════════════════════════════════════════════════
+        // WINDOWS / DOORS / OPENINGS
+        // ══════════════════════════════════════════════════════════════
+        1380,  // door
+        1880,  // glass door
+        4501,  // window
+        1888,  // glass window
+        
+        // ══════════════════════════════════════════════════════════════
+        // CURTAINS / BLINDS
+        // ══════════════════════════════════════════════════════════════
+        1234,  // curtain
+        467,   // blind
+        
+        // ══════════════════════════════════════════════════════════════
+        // TILES
+        // ══════════════════════════════════════════════════════════════
+        815,   // ceramic tile
+        4161,  // tile
+        4163,  // tile roof
+        
+        // ══════════════════════════════════════════════════════════════
+        // BUILDING / STRUCTURE
+        // ══════════════════════════════════════════════════════════════
+        613,   // building
+        615,   // building facade
+        616,   // building material
+        810,   // cement
+        1072,  // conduit (was marked as building)
+        3955,  // structure
+        
+        // ══════════════════════════════════════════════════════════════
+        // ABSTRACT / SCENE LABELS
+        // ══════════════════════════════════════════════════════════════
+        1041,  // comfort
+        2669,  // moisture
+        3604,  // shadow
+        3682,  // siding
+        3760,  // snowflake
+        4248,  // transparency
+        4261,  // triangle
+        4303,  // twin
+        4558,  // wrinkle
+        470,   // snowstorm
+        3092,  // plank
     ]
 
     // MARK: Camera
@@ -541,94 +637,44 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // STAGE 11: Generate primary mask + filter by mask IoU
+        // STAGE 11: Filter - detection center must be inside primary bbox
         // ═══════════════════════════════════════════════════════════════
         let t11 = Date()
         
-        // Generate primary mask using GEMV
-        var primaryMask = [UInt8](repeating: 0, count: planeSize)
-        var primaryLogits = [Float](repeating: 0, count: planeSize)
+        let pL = primary.x - primary.w * 0.5
+        let pR = primary.x + primary.w * 0.5
+        let pT = primary.y - primary.h * 0.5
+        let pB = primary.y + primary.h * 0.5
         
-        primaryLogits.withUnsafeMutableBufferPointer { yPtr in
-            primary.coeffs.withUnsafeBufferPointer { xPtr in
-                A.withUnsafeBufferPointer { aPtr in
-                    cblas_sgemv(
-                        CblasRowMajor, CblasNoTrans,
-                        Int32(planeSize), Int32(32),
-                        1.0,
-                        aPtr.baseAddress!, Int32(32),
-                        xPtr.baseAddress!, 1,
-                        0.0,
-                        yPtr.baseAddress!, 1
-                    )
-                }
-            }
+        if debugMode {
+            print("   📦 PRIMARY bbox: L=\(Int(pL)) R=\(Int(pR)) T=\(Int(pT)) B=\(Int(pB))")
         }
         
-        var primaryPixelCount = 0
-        for i in 0..<planeSize {
-            if primaryLogits[i] > 0 {
-                primaryMask[i] = 1
-                primaryPixelCount += 1
-            }
-        }
-        
-        // Filter other detections by mask IoU with primary
-        let maskIoUThreshold: Float = 0.05  // 5% overlap required
-        var kept: [UnionDet] = [primary]
-        
-        var tempLogits = [Float](repeating: 0, count: planeSize)
-        
+        var kept2: [UnionDet] = [primary]
         for (i, d) in afterNMS.enumerated() {
             if i == primaryIdx { continue }
             
-            // Generate mask for this detection
-            tempLogits.withUnsafeMutableBufferPointer { yPtr in
-                d.coeffs.withUnsafeBufferPointer { xPtr in
-                    A.withUnsafeBufferPointer { aPtr in
-                        cblas_sgemv(
-                            CblasRowMajor, CblasNoTrans,
-                            Int32(planeSize), Int32(32),
-                            1.0,
-                            aPtr.baseAddress!, Int32(32),
-                            xPtr.baseAddress!, 1,
-                            0.0,
-                            yPtr.baseAddress!, 1
-                        )
-                    }
-                }
-            }
+            // Is detection center inside primary bbox?
+            let inside = d.x >= pL && d.x <= pR && d.y >= pT && d.y <= pB
             
-            // Compute mask IoU with primary
-            var intersection = 0
-            var thisPixelCount = 0
-            for j in 0..<planeSize {
-                let thisMask = tempLogits[j] > 0
-                if thisMask { thisPixelCount += 1 }
-                if thisMask && primaryMask[j] == 1 { intersection += 1 }
-            }
-            
-            let union = primaryPixelCount + thisPixelCount - intersection
-            let iou = union > 0 ? Float(intersection) / Float(union) : 0
-            
-            if iou > maskIoUThreshold {
-                kept.append(d)
+            if inside {
+                kept2.append(d)
                 if debugMode {
-                    print("   ✅ KEPT[\(i)]: class=\(d.classIdx) conf=\(String(format: "%.2f", d.confidence)) maskIoU=\(String(format: "%.3f", iou))")
+                    print("   ✅ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) INSIDE")
                 }
             } else if debugMode {
-                print("   ❌ DROP[\(i)]: class=\(d.classIdx) conf=\(String(format: "%.2f", d.confidence)) maskIoU=\(String(format: "%.3f", iou))")
+                print("   ❌ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) OUTSIDE")
             }
         }
         
         let t11End = Date()
         if debugMode {
-            print("⏱️ STAGE 11 - Mask IoU filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms")
-            print("   primaryPixels=\(primaryPixelCount), kept=\(kept.count) of \(afterNMS.count)")
+            print("⏱️ STAGE 11 - Center filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms")
+            print("   kept=\(kept2.count) of \(afterNMS.count)")
         }
         
-        if kept.isEmpty {
-            if debugMode { print("⚠️ No detections after mask IoU filter") }
+        if kept2.isEmpty {
+            if debugMode { print("⚠️ No detections after center filter") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -646,7 +692,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         var ux2: Float = -.greatestFiniteMagnitude
         var uy2: Float = -.greatestFiniteMagnitude
         
-        for d in kept {
+        for d in kept2 {
             ux1 = min(ux1, d.x - d.w * 0.5)
             uy1 = min(uy1, d.y - d.h * 0.5)
             ux2 = max(ux2, d.x + d.w * 0.5)
@@ -688,15 +734,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let beta: Float = 0
         
         var bStart = 0
-        while bStart < kept.count {
-            let bEnd = min(kept.count, bStart + batchSize)
+        while bStart < kept2.count {
+            let bEnd = min(kept2.count, bStart + batchSize)
             let Bn = bEnd - bStart
             let N = Int32(Bn)
             
             // B: [32 x Bn] row-major
             var B = [Float](repeating: 0, count: 32 * Bn)
             for j in 0..<Bn {
-                let coeffs = kept[bStart + j].coeffs
+                let coeffs = kept2[bStart + j].coeffs
                 for i in 0..<32 {
                     B[i * Bn + j] = coeffs[i]
                 }
@@ -849,7 +895,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // Draw individual detection boxes (cyan, thin)
         ctx.setStrokeColor(UIColor.cyan.cgColor)
         ctx.setLineWidth(2.0)
-        for d in kept {
+        for d in kept2 {
             let dx1 = Int(round((d.x - d.w * 0.5 - padX) / resizeGain))
             let dy1 = Int(round((d.y - d.h * 0.5 - padY) / resizeGain))
             let dx2 = Int(round((d.x + d.w * 0.5 - padX) / resizeGain))
@@ -882,7 +928,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("⏱️ STAGE 17 - Finalize: \(String(format: "%.2f", t17End.timeIntervalSince(t17) * 1000)) ms")
             print("⏱️ ═══════════════════════════════════════════")
             print("⏱️ FRAME TOTAL: \(String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)) ms")
-            print("⏱️ Detections: \(allDets.count) → NMS: \(afterNMS.count) → MaskIoU: \(kept.count)")
+            print("⏱️ Detections: \(allDets.count) → NMS: \(afterNMS.count) → Center: \(kept2.count)")
             print("⏱️ ═══════════════════════════════════════════\n")
         }
         
@@ -916,11 +962,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let bx1 = b.x - b.w * 0.5, bx2 = b.x + b.w * 0.5
         let by1 = b.y - b.h * 0.5, by2 = b.y + b.h * 0.5
         
-        let ix = max(0, min(ax2, bx2) - max(ax1, bx1))
-        let iy = max(0, min(ay2, by2) - max(ay1, by1))
+        let ix = max(Float(0), min(ax2, bx2) - max(ax1, bx1))
+        let iy = max(Float(0), min(ay2, by2) - max(ay1, by1))
         let inter = ix * iy
         let union = a.w * a.h + b.w * b.h - inter
-        return union > 0 ? inter / union : 0
+        return union > 0 ? inter / union : 0.0
     }
 
     // MARK: - Parse Prototypes
