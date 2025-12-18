@@ -637,29 +637,55 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // STAGE 11: Filter - drop if detection is much larger than primary
+        // STAGE 11: Filter - must touch primary bbox, drop if much larger
         // ═══════════════════════════════════════════════════════════════
         let t11 = Date()
         
+        // Primary bbox edges
+        let pLeft = primary.x - primary.w * 0.5
+        let pRight = primary.x + primary.w * 0.5
+        let pTop = primary.y - primary.h * 0.5
+        let pBottom = primary.y + primary.h * 0.5
+        
         if debugMode {
-            print("   📦 PRIMARY: size=\(Int(primary.w))x\(Int(primary.h))")
+            print("   📦 PRIMARY: center=(\(Int(primary.x)),\(Int(primary.y))) size=\(Int(primary.w))x\(Int(primary.h))")
+            print("      edges: L=\(Int(pLeft)) R=\(Int(pRight)) T=\(Int(pTop)) B=\(Int(pBottom))")
         }
         
         var kept2: [UnionDet] = [primary]
         for (i, d) in afterNMS.enumerated() {
             if i == primaryIdx { continue }
             
-            // If detection is 1.5x larger in BOTH dimensions → room/scene → DROP
+            // Detection bbox edges
+            let dLeft = d.x - d.w * 0.5
+            let dRight = d.x + d.w * 0.5
+            let dTop = d.y - d.h * 0.5
+            let dBottom = d.y + d.h * 0.5
+            
+            let wPct = Int(d.w / primary.w * 100)
+            let hPct = Int(d.h / primary.h * 100)
+            
+            // Check 1: Do bboxes overlap at all?
+            let overlaps = dRight >= pLeft && dLeft <= pRight && dBottom >= pTop && dTop <= pBottom
+            
+            if !overlaps {
+                if debugMode {
+                    print("   ❌ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] NO TOUCH")
+                }
+                continue
+            }
+            
+            // Check 2: If detection is 1.5x larger in BOTH dimensions → room/scene → DROP
             let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
             
             if tooLarge {
                 if debugMode {
-                    print("   ❌ [\(i)]: class=\(d.classIdx) size=\(Int(d.w))x\(Int(d.h)) TOO LARGE")
+                    print("   ❌ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] TOO LARGE")
                 }
             } else {
                 kept2.append(d)
                 if debugMode {
-                    print("   ✅ [\(i)]: class=\(d.classIdx) size=\(Int(d.w))x\(Int(d.h))")
+                    print("   ✅ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%]")
                 }
             }
         }
@@ -809,7 +835,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let t15 = Date()
         setProgress(0.85, text: "Upscaling mask…")
         
-        let maskFull = upscaleMask(
+        var maskFull = upscaleMask(
             maskSmall: maskSmall, pW: pW, pH: pH,
             modelInput: 1280, origW: origW, origH: origH,
             resizeGain: resizeGain, padX: padX, padY: padY
@@ -818,6 +844,53 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let t15End = Date()
         if debugMode {
             print("⏱️ STAGE 15 - Upscale: \(String(format: "%.2f", t15End.timeIntervalSince(t15) * 1000)) ms")
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // STAGE 15b: Morphological close (dilate then erode) 3x3
+        // ═══════════════════════════════════════════════════════════════
+        let t15b = Date()
+        
+        let fullSize = origW * origH
+        
+        var srcBuffer = vImage_Buffer(
+            data: &maskFull,
+            height: vImagePixelCount(origH),
+            width: vImagePixelCount(origW),
+            rowBytes: origW
+        )
+        
+        var dilated = [UInt8](repeating: 0, count: fullSize)
+        var dilatedBuffer = vImage_Buffer(
+            data: &dilated,
+            height: vImagePixelCount(origH),
+            width: vImagePixelCount(origW),
+            rowBytes: origW
+        )
+        
+        var closed = [UInt8](repeating: 0, count: fullSize)
+        var closedBuffer = vImage_Buffer(
+            data: &closed,
+            height: vImagePixelCount(origH),
+            width: vImagePixelCount(origW),
+            rowBytes: origW
+        )
+        
+        // 3x3 square structuring element
+        var kernel: [UInt8] = [1, 1, 1,
+                               1, 1, 1,
+                               1, 1, 1]
+        
+        kernel.withUnsafeBufferPointer { kernelPtr in
+            vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+            vImageErode_Planar8(&dilatedBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+        }
+        
+        maskFull = closed
+        
+        let t15bEnd = Date()
+        if debugMode {
+            print("⏱️ STAGE 15b - Morph close 3x3: \(String(format: "%.2f", t15bEnd.timeIntervalSince(t15b) * 1000)) ms")
         }
 
         // ═══════════════════════════════════════════════════════════════
