@@ -65,122 +65,28 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: - Ignored Classes (Structure / Room / Background / Openings)
     private let clsToIgnore: Set<Int> = [
-        // ══════════════════════════════════════════════════════════════
         // ROOMS
-        // ══════════════════════════════════════════════════════════════
-        330,   // bathroom
-        378,   // bedroom
-        881,   // childs room
-        951,   // classroom
-        1064,  // computer room
-        1080,  // meeting room
-        1259,  // dance room
-        1290,  // den
-        1323,  // dining room
-        1406,  // dressing room
-        1518,  // entrance hall
-        1573,  // family room
-        1973,  // guest room
-        2115,  // home interior
-        2116,  // home office
-        2142,  // hospital room
-        2152,  // hotel room
-        2234,  // interior design
-        2390,  // laundry room
-        2410,  // lecture room
-        2475,  // living room
-        2476,  // living space
-        3122,  // playroom
-        3331,  // recreation room
-        3377,  // restroom
-        3439,  // room
-        3600,  // server room
-        3917,  // storage room
-        3956,  // studio
-        3957,  // studio shot
-        4107,  // television room
-        4147,  // throne room
-        4324,  // utility room
-        4388,  // waiting room
-        
-        // ══════════════════════════════════════════════════════════════
-        // WALLS / SURFACES
-        // ══════════════════════════════════════════════════════════════
-        571,   // wall
-        944,   // city wall
-        1887,  // glass wall
-        4164,  // tile wall
-        4536,  // wood wall
-        
-        // ══════════════════════════════════════════════════════════════
-        // FLOOR / GROUND
-        // ══════════════════════════════════════════════════════════════
-        1692,  // floor
-        1758,  // forest floor
-        1881,  // glass floor
-        2037,  // hardwood floor
-        2320,  // kitchen floor
-        4162,  // tile flooring
-        4535,  // wood floor
-        
-        // ══════════════════════════════════════════════════════════════
+        330, 378, 881, 951, 1064, 1080, 1259, 1290, 1323, 1406, 1518, 1573, 1973,
+        2115, 2116, 2142, 2152, 2234, 2390, 2410, 2475, 2476, 3122, 3331, 3377,
+        3439, 3600, 3917, 3956, 3957, 4107, 4147, 4324, 4388,
+        // WALLS
+        571, 944, 1887, 4164, 4536,
+        // FLOOR
+        1692, 1758, 1881, 2037, 2320, 4162, 4535,
         // CEILING
-        // ══════════════════════════════════════════════════════════════
-        802,   // ceiling
-        
-        // ══════════════════════════════════════════════════════════════
-        // SKY / ATMOSPHERE
-        // ══════════════════════════════════════════════════════════════
-        483,   // blue sky
-        2799,  // night sky
-        2800,  // night view
-        3721,  // sky
-        
-        // ══════════════════════════════════════════════════════════════
-        // WINDOWS / DOORS / OPENINGS
-        // ══════════════════════════════════════════════════════════════
-        1380,  // door
-        1880,  // glass door
-        4501,  // window
-        1888,  // glass window
-        
-        // ══════════════════════════════════════════════════════════════
+        802,
+        // SKY
+        483, 2799, 2800, 3721,
+        // WINDOWS / DOORS
+        1380, 1880, 4501, 1888,
         // CURTAINS / BLINDS
-        // ══════════════════════════════════════════════════════════════
-        1234,  // curtain
-        467,   // blind
-        
-        // ══════════════════════════════════════════════════════════════
+        1234, 467,
         // TILES
-        // ══════════════════════════════════════════════════════════════
-        815,   // ceramic tile
-        4161,  // tile
-        4163,  // tile roof
-        
-        // ══════════════════════════════════════════════════════════════
+        815, 4161, 4163,
         // BUILDING / STRUCTURE
-        // ══════════════════════════════════════════════════════════════
-        613,   // building
-        615,   // building facade
-        616,   // building material
-        810,   // cement
-        1072,  // conduit (was marked as building)
-        3955,  // structure
-        
-        // ══════════════════════════════════════════════════════════════
-        // ABSTRACT / SCENE LABELS
-        // ══════════════════════════════════════════════════════════════
-        1041,  // comfort
-        2669,  // moisture
-        3604,  // shadow
-        3682,  // siding
-        3760,  // snowflake
-        4248,  // transparency
-        4261,  // triangle
-        4303,  // twin
-        4558,  // wrinkle
-        470,   // snowstorm
-        3092,  // plank
+        613, 615, 616, 810, 1072, 3955,
+        // ABSTRACT / SCENE
+        1041, 2669, 3604, 3682, 3760, 4248, 4261, 4303, 4558, 470, 3092,
     ]
 
     // MARK: Camera
@@ -230,6 +136,28 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
+    
+    // MARK: Class Names (loaded from classes.json)
+    private lazy var classNames: [Int: String] = {
+        guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
+            print("⚠️ Failed to load classes.json")
+            return [:]
+        }
+        var result: [Int: String] = [:]
+        for (key, value) in dict {
+            if let id = Int(key) {
+                result[id] = value
+            }
+        }
+        print("✅ Loaded \(result.count) class names")
+        return result
+    }()
+    
+    private func className(_ id: Int) -> String {
+        return classNames[id] ?? "\(id)"
+    }
 
     // MARK: - Init
     override init(frame: CGRect) {
@@ -377,9 +305,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("⏱️ ═══════════════════════════════════════════")
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 1: Resize to square
-        // ═══════════════════════════════════════════════════════════════
         let t1 = Date()
         setProgress(0.15, text: "Resizing…")
         
@@ -394,13 +320,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t1End = Date()
         if debugMode {
-            print("⏱️ STAGE 1 - Resize to square: \(String(format: "%.2f", t1End.timeIntervalSince(t1) * 1000)) ms")
-            print("   gain=\(String(format: "%.3f", resizeGain)), padX=\(String(format: "%.1f", padX)), padY=\(String(format: "%.1f", padY))")
+            print("⏱️ STAGE 1 - Resize: \(String(format: "%.2f", t1End.timeIntervalSince(t1) * 1000)) ms")
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 2: Convert to MLMultiArray
-        // ═══════════════════════════════════════════════════════════════
         let t2 = Date()
         setProgress(0.25, text: "Preprocessing…")
         
@@ -415,9 +338,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("⏱️ STAGE 2 - MLMultiArray: \(String(format: "%.2f", t2End.timeIntervalSince(t2) * 1000)) ms")
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 3: Model inference
-        // ═══════════════════════════════════════════════════════════════
         let t3 = Date()
         setProgress(0.40, text: "Running model…")
         
@@ -433,9 +354,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("⏱️ STAGE 3 - Inference: \(String(format: "%.2f", t3End.timeIntervalSince(t3) * 1000)) ms")
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 4: Extract tensors
-        // ═══════════════════════════════════════════════════════════════
         let t4 = Date()
         
         guard let detArray = output.featureValue(for: "var_2497")?.multiArrayValue,
@@ -458,12 +377,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let t4End = Date()
         if debugMode {
             print("⏱️ STAGE 4 - Extract tensors: \(String(format: "%.2f", t4End.timeIntervalSince(t4) * 1000)) ms")
-            print("   shape: [1, \(numFeatures), \(numAnchors)], classes: \(numClasses)")
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 5: Copy detection tensor to float buffer
-        // ═══════════════════════════════════════════════════════════════
         let t5 = Date()
         
         let totalCount = detArray.count
@@ -484,9 +400,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("⏱️ STAGE 5 - Copy detBuf: \(String(format: "%.2f", t5End.timeIntervalSince(t5) * 1000)) ms")
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // STAGE 6: Extract detections (ignore-list filtering)
-        // ═══════════════════════════════════════════════════════════════
+        // STAGE 6: Extract detections
         let t6 = Date()
         setProgress(0.55, text: "Extracting detections…")
         
@@ -505,7 +419,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
             
-            // Find best class using BLAS + vDSP
             let basePtr = detBuf.advanced(by: 4 * stride + anchor)
             cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
             
@@ -515,10 +428,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             let classIdx = Int(maxIdx)
             
-            // Skip if below threshold or in ignore list
             guard maxVal > confidenceThreshold, !clsToIgnore.contains(classIdx) else { continue }
             
-            // Extract 32 mask coefficients using BLAS
             var coeffs = [Float](repeating: 0, count: 32)
             let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
             cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
@@ -541,22 +452,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             return
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 7: Apply NMS
-        // ═══════════════════════════════════════════════════════════════
         let t7 = Date()
-        
         let afterNMS = applyNMS(allDets)
-        
         let t7End = Date()
         if debugMode {
-            print("⏱️ STAGE 7 - NMS: \(String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)) ms")
-            print("   after NMS: \(afterNMS.count)")
+            print("⏱️ STAGE 7 - NMS: \(String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)) ms, kept: \(afterNMS.count)")
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 8: Find primary (conf > 0.5, largest area)
-        // ═══════════════════════════════════════════════════════════════
         let t8 = Date()
         
         var primaryIdx = -1
@@ -572,7 +476,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         
         if primaryIdx < 0 {
-            if debugMode { print("   ⚠️ No detection with conf > 0.5 - returning empty") }
+            if debugMode { print("   ⚠️ No detection with conf > 0.5") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -583,18 +487,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let primary = afterNMS[primaryIdx]
         let t8End = Date()
         if debugMode {
-            let pL = primary.x - primary.w * 0.5
-            let pT = primary.y - primary.h * 0.5
-            let pR = primary.x + primary.w * 0.5
-            let pB = primary.y + primary.h * 0.5
-            print("⏱️ STAGE 8 - Find primary: \(String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)) ms")
-            print("   🎯 PRIMARY[\(primaryIdx)]: class=\(primary.classIdx) conf=\(String(format: "%.2f", primary.confidence)) area=\(Int(maxArea))")
-            print("      center=(\(Int(primary.x)),\(Int(primary.y))) size=\(Int(primary.w))x\(Int(primary.h)) bbox=[\(Int(pL)),\(Int(pT))]→[\(Int(pR)),\(Int(pB))]")
+            print("⏱️ STAGE 8 - Primary: \(String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)) ms")
+            print("   🎯 PRIMARY[\(primaryIdx)]: \(className(primary.classIdx)) conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 9: Parse prototypes
-        // ═══════════════════════════════════════════════════════════════
         let t9 = Date()
         setProgress(0.65, text: "Building mask…")
         
@@ -610,13 +507,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t9End = Date()
         if debugMode {
-            print("⏱️ STAGE 9 - Parse prototypes: \(String(format: "%.2f", t9End.timeIntervalSince(t9) * 1000)) ms")
-            print("   proto: \(pW)x\(pH), 32 channels")
+            print("⏱️ STAGE 9 - Prototypes: \(String(format: "%.2f", t9End.timeIntervalSince(t9) * 1000)) ms")
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // STAGE 10: Reorganize prototypes to row-major [planeSize x 32]
-        // ═══════════════════════════════════════════════════════════════
+        // STAGE 10: Reorganize prototypes
         let t10 = Date()
         
         var A = [Float](repeating: 0, count: planeSize * 32)
@@ -633,15 +527,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t10End = Date()
         if debugMode {
-            print("⏱️ STAGE 10 - Reorganize protos: \(String(format: "%.2f", t10End.timeIntervalSince(t10) * 1000)) ms")
+            print("⏱️ STAGE 10 - Reorganize: \(String(format: "%.2f", t10End.timeIntervalSince(t10) * 1000)) ms")
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 11: Filter - must touch primary bbox, drop if much larger
-        // ═══════════════════════════════════════════════════════════════
         let t11 = Date()
         
-        // Primary bbox edges
         let pLeft = primary.x - primary.w * 0.5
         let pRight = primary.x + primary.w * 0.5
         let pTop = primary.y - primary.h * 0.5
@@ -656,7 +547,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         for (i, d) in afterNMS.enumerated() {
             if i == primaryIdx { continue }
             
-            // Detection bbox edges
             let dLeft = d.x - d.w * 0.5
             let dRight = d.x + d.w * 0.5
             let dTop = d.y - d.h * 0.5
@@ -665,39 +555,36 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let wPct = Int(d.w / primary.w * 100)
             let hPct = Int(d.h / primary.h * 100)
             
-            // Check 1: Do bboxes overlap at all?
             let overlaps = dRight >= pLeft && dLeft <= pRight && dBottom >= pTop && dTop <= pBottom
             
             if !overlaps {
                 if debugMode {
-                    print("   ❌ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] NO TOUCH")
+                    print("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] NO TOUCH")
                 }
                 continue
             }
             
-            // Check 2: If detection is 1.5x larger in BOTH dimensions → room/scene → DROP
             let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
             
             if tooLarge {
                 if debugMode {
-                    print("   ❌ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] TOO LARGE")
+                    print("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] TOO LARGE")
                 }
             } else {
                 kept2.append(d)
                 if debugMode {
-                    print("   ✅ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%]")
+                    print("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%]")
                 }
             }
         }
         
         let t11End = Date()
         if debugMode {
-            print("⏱️ STAGE 11 - Size filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms")
-            print("   kept=\(kept2.count) of \(afterNMS.count)")
+            print("⏱️ STAGE 11 - Filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms, kept=\(kept2.count)")
         }
         
         if kept2.isEmpty {
-            if debugMode { print("⚠️ No detections after size filter") }
+            if debugMode { print("⚠️ No detections after filter") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -705,9 +592,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             return
         }
 
-        // ═══════════════════════════════════════════════════════════════
         // STAGE 12: Compute union bbox
-        // ═══════════════════════════════════════════════════════════════
         let t12 = Date()
         
         var ux1: Float = .greatestFiniteMagnitude
@@ -738,13 +623,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let t12End = Date()
         if debugMode {
             print("⏱️ STAGE 12 - Union bbox: \(String(format: "%.2f", t12End.timeIntervalSince(t12) * 1000)) ms")
-            print("   model: [\(String(format: "%.1f", ux1)),\(String(format: "%.1f", uy1))]→[\(String(format: "%.1f", ux2)),\(String(format: "%.1f", uy2))]")
             print("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // STAGE 13: Batched GEMM for union mask
-        // ═══════════════════════════════════════════════════════════════
+        // STAGE 13: Batched GEMM
         let t13 = Date()
         setProgress(0.75, text: "Computing mask…")
         
@@ -762,35 +644,26 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let Bn = bEnd - bStart
             let N = Int32(Bn)
             
-            // B: [32 x Bn] row-major
             var B = [Float](repeating: 0, count: 32 * Bn)
             for j in 0..<Bn {
                 let coeffs = kept2[bStart + j].coeffs
-                for i in 0..<32 {
-                    B[i * Bn + j] = coeffs[i]
-                }
+                for i in 0..<32 { B[i * Bn + j] = coeffs[i] }
             }
             
-            // C: [planeSize x Bn]
             var C = [Float](repeating: 0, count: planeSize * Bn)
             
             A.withUnsafeBufferPointer { aPtr in
                 B.withUnsafeBufferPointer { bPtr in
                     C.withUnsafeMutableBufferPointer { cPtr in
-                        cblas_sgemm(
-                            CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                            M, N, K,
-                            alpha,
-                            aPtr.baseAddress!, K,
-                            bPtr.baseAddress!, N,
-                            beta,
-                            cPtr.baseAddress!, N
-                        )
+                        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                                    M, N, K, alpha,
+                                    aPtr.baseAddress!, K,
+                                    bPtr.baseAddress!, N,
+                                    beta, cPtr.baseAddress!, N)
                     }
                 }
             }
             
-            // Reduce: max across batch dimension
             C.withUnsafeBufferPointer { cPtr in
                 maxLogits.withUnsafeMutableBufferPointer { maxPtr in
                     for px in 0..<planeSize {
@@ -800,18 +673,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     }
                 }
             }
-            
             bStart = bEnd
         }
         
         let t13End = Date()
         if debugMode {
-            print("⏱️ STAGE 13 - Batched GEMM: \(String(format: "%.2f", t13End.timeIntervalSince(t13) * 1000)) ms")
+            print("⏱️ STAGE 13 - GEMM: \(String(format: "%.2f", t13End.timeIntervalSince(t13) * 1000)) ms")
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // STAGE 14: Threshold to binary mask (threshold = 0)
-        // ═══════════════════════════════════════════════════════════════
+        // STAGE 14: Threshold
         let t14 = Date()
         
         var maskSmall = [UInt8](repeating: 0, count: planeSize)
@@ -825,88 +695,54 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t14End = Date()
         if debugMode {
-            print("⏱️ STAGE 14 - Threshold: \(String(format: "%.2f", t14End.timeIntervalSince(t14) * 1000)) ms")
-            print("   positive pixels: \(positiveCount)/\(planeSize) (\(String(format: "%.1f", Float(positiveCount)/Float(planeSize)*100))%)")
+            print("⏱️ STAGE 14 - Threshold: \(String(format: "%.2f", t14End.timeIntervalSince(t14) * 1000)) ms, positive: \(positiveCount)")
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // STAGE 15: Upscale mask to original size
-        // ═══════════════════════════════════════════════════════════════
+        // STAGE 15: Upscale
         let t15 = Date()
-        setProgress(0.85, text: "Upscaling mask…")
+        setProgress(0.85, text: "Upscaling…")
         
-        var maskFull = upscaleMask(
-            maskSmall: maskSmall, pW: pW, pH: pH,
-            modelInput: 1280, origW: origW, origH: origH,
-            resizeGain: resizeGain, padX: padX, padY: padY
-        )
+        var maskFull = upscaleMask(maskSmall: maskSmall, pW: pW, pH: pH,
+                                    modelInput: 1280, origW: origW, origH: origH,
+                                    resizeGain: resizeGain, padX: padX, padY: padY)
         
         let t15End = Date()
         if debugMode {
             print("⏱️ STAGE 15 - Upscale: \(String(format: "%.2f", t15End.timeIntervalSince(t15) * 1000)) ms")
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // STAGE 15b: Morphological close (dilate then erode) 3x3
-        // ═══════════════════════════════════════════════════════════════
+        // STAGE 15b: Morph close
         let t15b = Date()
-        
         let fullSize = origW * origH
         
-        var srcBuffer = vImage_Buffer(
-            data: &maskFull,
-            height: vImagePixelCount(origH),
-            width: vImagePixelCount(origW),
-            rowBytes: origW
-        )
-        
+        var srcBuffer = vImage_Buffer(data: &maskFull, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
         var dilated = [UInt8](repeating: 0, count: fullSize)
-        var dilatedBuffer = vImage_Buffer(
-            data: &dilated,
-            height: vImagePixelCount(origH),
-            width: vImagePixelCount(origW),
-            rowBytes: origW
-        )
-        
+        var dilatedBuffer = vImage_Buffer(data: &dilated, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
         var closed = [UInt8](repeating: 0, count: fullSize)
-        var closedBuffer = vImage_Buffer(
-            data: &closed,
-            height: vImagePixelCount(origH),
-            width: vImagePixelCount(origW),
-            rowBytes: origW
-        )
+        var closedBuffer = vImage_Buffer(data: &closed, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
         
-        // 3x3 square structuring element
-        var kernel: [UInt8] = [1, 1, 1,
-                               1, 1, 1,
-                               1, 1, 1]
-        
+        var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
         kernel.withUnsafeBufferPointer { kernelPtr in
             vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
             vImageErode_Planar8(&dilatedBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
         }
-        
         maskFull = closed
         
         let t15bEnd = Date()
         if debugMode {
-            print("⏱️ STAGE 15b - Morph close 3x3: \(String(format: "%.2f", t15bEnd.timeIntervalSince(t15b) * 1000)) ms")
+            print("⏱️ STAGE 15b - Morph: \(String(format: "%.2f", t15bEnd.timeIntervalSince(t15b) * 1000)) ms")
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // STAGE 16: Composite cutout
-        // ═══════════════════════════════════════════════════════════════
+        // STAGE 16: Composite
         let t16 = Date()
         setProgress(0.92, text: "Compositing…")
         
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let ctx = CGContext(
-            data: nil, width: origW, height: origH,
-            bitsPerComponent: 8, bytesPerRow: origW * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ), let outBase = ctx.data?.assumingMemoryBound(to: UInt8.self) else {
-            if debugMode { print("❌ STAGE 16 FAILED: Create context") }
+        guard let ctx = CGContext(data: nil, width: origW, height: origH,
+                                   bitsPerComponent: 8, bytesPerRow: origW * 4,
+                                   space: colorSpace,
+                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let outBase = ctx.data?.assumingMemoryBound(to: UInt8.self) else {
             isProcessing = false
             return
         }
@@ -915,7 +751,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
         
         guard let origBase = CVPixelBufferGetBaseAddress(pixelBuffer)?.assumingMemoryBound(to: UInt8.self) else {
-            if debugMode { print("❌ STAGE 16 FAILED: Get pixel buffer") }
             isProcessing = false
             return
         }
@@ -930,13 +765,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             for x in 0..<origW {
                 let outPx = outRow + x * 4
                 
-                // Outside union bbox → transparent
                 if x < bx1 || x >= bx2 || y < by1 || y >= by2 {
                     outBase[outPx + 3] = 0
                     continue
                 }
                 
-                // Inside bbox → check mask
                 let m = maskFull[mRow + x]
                 if m > 0 {
                     let origPx = origRow + x * 4
@@ -953,16 +786,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t16End = Date()
         if debugMode {
-            print("⏱️ STAGE 16 - Composite: \(String(format: "%.2f", t16End.timeIntervalSince(t16) * 1000)) ms")
-            print("   opaque pixels: \(totalSet) (\(String(format: "%.2f", Float(totalSet)/Float(origW*origH)*100))%)")
+            print("⏱️ STAGE 16 - Composite: \(String(format: "%.2f", t16End.timeIntervalSince(t16) * 1000)) ms, opaque: \(totalSet)")
         }
 
-        // ═══════════════════════════════════════════════════════════════
-        // STAGE 17: Draw bboxes and finalize
-        // ═══════════════════════════════════════════════════════════════
+        // STAGE 17: Finalize
         let t17 = Date()
         
-        // Draw individual detection boxes (cyan, thin)
         ctx.setStrokeColor(UIColor.cyan.cgColor)
         ctx.setLineWidth(2.0)
         for d in kept2 {
@@ -970,14 +799,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let dy1 = Int(round((d.y - d.h * 0.5 - padY) / resizeGain))
             let dx2 = Int(round((d.x + d.w * 0.5 - padX) / resizeGain))
             let dy2 = Int(round((d.y + d.h * 0.5 - padY) / resizeGain))
-            let dxC = max(0, min(origW - 1, dx1))
-            let dyC = max(0, min(origH - 1, dy1))
-            let dwC = max(0, min(origW - dxC, dx2 - dx1))
-            let dhC = max(0, min(origH - dyC, dy2 - dy1))
-            ctx.stroke(CGRect(x: dxC, y: dyC, width: dwC, height: dhC))
+            ctx.stroke(CGRect(x: max(0, dx1), y: max(0, dy1),
+                              width: min(origW - max(0, dx1), dx2 - dx1),
+                              height: min(origH - max(0, dy1), dy2 - dy1)))
         }
         
-        // Draw union box (green, thick)
         ctx.setStrokeColor(UIColor.green.cgColor)
         ctx.setLineWidth(6.0)
         ctx.stroke(CGRect(x: bx1, y: by1, width: bx2 - bx1, height: by2 - by1))
@@ -996,15 +822,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         if debugMode {
             print("⏱️ STAGE 17 - Finalize: \(String(format: "%.2f", t17End.timeIntervalSince(t17) * 1000)) ms")
-            print("⏱️ ═══════════════════════════════════════════")
             print("⏱️ FRAME TOTAL: \(String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)) ms")
-            print("⏱️ Detections: \(allDets.count) → NMS: \(afterNMS.count) → Size: \(kept2.count)")
             print("⏱️ ═══════════════════════════════════════════\n")
         }
         
-        if totalSet > 0 {
-            finishFirstDetectionIfNeeded()
-        }
+        if totalSet > 0 { finishFirstDetectionIfNeeded() }
     }
 
     // MARK: - NMS
@@ -1087,12 +909,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
 
     // MARK: - Upscale Mask
-    private func upscaleMask(
-        maskSmall: [UInt8], pW: Int, pH: Int,
-        modelInput: Int, origW: Int, origH: Int,
-        resizeGain: Float, padX: Float, padY: Float
-    ) -> [UInt8] {
-        // 1) Scale proto → model space (1280x1280)
+    private func upscaleMask(maskSmall: [UInt8], pW: Int, pH: Int, modelInput: Int, origW: Int, origH: Int, resizeGain: Float, padX: Float, padY: Float) -> [UInt8] {
         var maskModel = [UInt8](repeating: 0, count: modelInput * modelInput)
         maskModel.withUnsafeMutableBufferPointer { dstPtr in
             maskSmall.withUnsafeBufferPointer { srcPtr in
@@ -1103,7 +920,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
         }
         
-        // 2) Compute content rect (remove padding)
         let contentW = Int(round(Float(origW) * resizeGain))
         let contentH = Int(round(Float(origH) * resizeGain))
         let x0 = max(0, min(modelInput - 1, Int(round(padX))))
@@ -1111,17 +927,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let cW = max(1, min(modelInput - x0, contentW))
         let cH = max(1, min(modelInput - y0, contentH))
         
-        // 3) Crop content
         var cropped = [UInt8](repeating: 0, count: cW * cH)
         for y in 0..<cH {
             let srcRow = (y0 + y) * modelInput + x0
             let dstRow = y * cW
-            for x in 0..<cW {
-                cropped[dstRow + x] = maskModel[srcRow + x]
-            }
+            for x in 0..<cW { cropped[dstRow + x] = maskModel[srcRow + x] }
         }
         
-        // 4) Scale to original size
         var maskFull = [UInt8](repeating: 0, count: origW * origH)
         maskFull.withUnsafeMutableBufferPointer { dstPtr in
             cropped.withUnsafeBufferPointer { srcPtr in
@@ -1134,7 +946,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return maskFull
     }
 
-    // MARK: - Resize to Square (with padding)
+    // MARK: - Resize to Square
     private func resizeToSquare(_ src: CVPixelBuffer, size: Int) -> (buffer: CVPixelBuffer, gain: Float, padX: Float, padY: Float)? {
         CVPixelBufferLockBaseAddress(src, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
@@ -1142,10 +954,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let srcW = CVPixelBufferGetWidth(src)
         let srcH = CVPixelBufferGetHeight(src)
         
-        let scaleW = Float(size) / Float(srcW)
-        let scaleH = Float(size) / Float(srcH)
-        let gain = min(scaleW, scaleH)
-        
+        let gain = min(Float(size) / Float(srcW), Float(size) / Float(srcH))
         let newW = Int(Float(srcW) * gain)
         let newH = Int(Float(srcH) * gain)
         let padX = Float(size - newW) / 2.0
@@ -1164,11 +973,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         memset(dstBase, 128, size * size * 4)
         
         var srcBuffer = vImage_Buffer(data: srcBase, height: vImagePixelCount(srcH), width: vImagePixelCount(srcW), rowBytes: CVPixelBufferGetBytesPerRow(src))
-        
         let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
         let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
         let offsetPtr = dstPtr.advanced(by: Int(padY) * dstRowBytes + Int(padX) * 4)
-        
         var dstBuffer = vImage_Buffer(data: offsetPtr, height: vImagePixelCount(newH), width: vImagePixelCount(newW), rowBytes: dstRowBytes)
         
         guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(0)) == kvImageNoError else { return nil }
@@ -1176,7 +983,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         return (buffer: dst, gain: gain, padX: padX, padY: padY)
     }
 
-    // MARK: - Pixel Buffer to MLMultiArray
+    // MARK: - MLMultiArray
     private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
