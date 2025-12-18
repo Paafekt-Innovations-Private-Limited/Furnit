@@ -730,10 +730,33 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         var closedBuffer = vImage_Buffer(data: &closed, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
         
         var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
+        // STAGE 15b: Morph close
         kernel.withUnsafeBufferPointer { kernelPtr in
-            // First: dilate
+            // First: dilate the source into an intermediate buffer
             vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
 
+            // Second: Anti-aliasing pass (replaces Gaussian blur) using vImageTentConvolve_Planar8
+            // This smooths jagged edges without the heavier Gaussian kernel.
+            // (Original Gaussian blur is commented out below for reference.)
+
+            // --- Begin anti-aliasing ---
+            var antialiased = [UInt8](repeating: 0, count: fullSize)
+            var antialiasedBuffer = vImage_Buffer(data: &antialiased, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
+            vImageTentConvolve_Planar8(&dilatedBuffer,
+                                       &antialiasedBuffer,
+                                       nil,
+                                       0,
+                                       0,
+                                       3,
+                                       3,
+                                       0,
+                                       vImage_Flags(kvImageEdgeExtend))
+            // --- End anti-aliasing ---
+
+            // Third: erode the anti-aliased result
+            vImageErode_Planar8(&antialiasedBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+
+            /*
             // Second: Gaussian blur (SIMD-optimized via vImageConvolve_Planar8 with 5x5 Gaussian kernel)
             // 5x5 integer Gaussian kernel, sum (divisor) = 256
             var gaussianKernel: [Int16] = [
@@ -763,6 +786,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
             // Third: erode the blurred result
             vImageErode_Planar8(&blurredBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+            */
+        
+
         }
         maskFull = closed
         
