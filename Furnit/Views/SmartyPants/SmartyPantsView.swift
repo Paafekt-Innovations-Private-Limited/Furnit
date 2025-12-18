@@ -637,44 +637,41 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // STAGE 11: Filter - detection center must be inside primary bbox
+        // STAGE 11: Filter - drop if detection is much larger than primary
         // ═══════════════════════════════════════════════════════════════
         let t11 = Date()
         
-        let pL = primary.x - primary.w * 0.5
-        let pR = primary.x + primary.w * 0.5
-        let pT = primary.y - primary.h * 0.5
-        let pB = primary.y + primary.h * 0.5
-        
         if debugMode {
-            print("   📦 PRIMARY bbox: L=\(Int(pL)) R=\(Int(pR)) T=\(Int(pT)) B=\(Int(pB))")
+            print("   📦 PRIMARY: size=\(Int(primary.w))x\(Int(primary.h))")
         }
         
         var kept2: [UnionDet] = [primary]
         for (i, d) in afterNMS.enumerated() {
             if i == primaryIdx { continue }
             
-            // Is detection center inside primary bbox?
-            let inside = d.x >= pL && d.x <= pR && d.y >= pT && d.y <= pB
+            // If detection is 1.5x larger in BOTH dimensions → room/scene → DROP
+            let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
             
-            if inside {
+            if tooLarge {
+                if debugMode {
+                    print("   ❌ [\(i)]: class=\(d.classIdx) size=\(Int(d.w))x\(Int(d.h)) TOO LARGE")
+                }
+            } else {
                 kept2.append(d)
                 if debugMode {
-                    print("   ✅ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) INSIDE")
+                    print("   ✅ [\(i)]: class=\(d.classIdx) size=\(Int(d.w))x\(Int(d.h))")
                 }
-            } else if debugMode {
-                print("   ❌ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) OUTSIDE")
             }
         }
         
         let t11End = Date()
         if debugMode {
-            print("⏱️ STAGE 11 - Center filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms")
+            print("⏱️ STAGE 11 - Size filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms")
             print("   kept=\(kept2.count) of \(afterNMS.count)")
         }
         
         if kept2.isEmpty {
-            if debugMode { print("⚠️ No detections after center filter") }
+            if debugMode { print("⚠️ No detections after size filter") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -928,7 +925,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("⏱️ STAGE 17 - Finalize: \(String(format: "%.2f", t17End.timeIntervalSince(t17) * 1000)) ms")
             print("⏱️ ═══════════════════════════════════════════")
             print("⏱️ FRAME TOTAL: \(String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)) ms")
-            print("⏱️ Detections: \(allDets.count) → NMS: \(afterNMS.count) → Center: \(kept2.count)")
+            print("⏱️ Detections: \(allDets.count) → NMS: \(afterNMS.count) → Size: \(kept2.count)")
             print("⏱️ ═══════════════════════════════════════════\n")
         }
         
