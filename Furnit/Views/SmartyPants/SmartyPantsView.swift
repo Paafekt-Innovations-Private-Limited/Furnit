@@ -858,13 +858,24 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         if debugMode {
             // Draw detection bounding boxes with class names
-            ctx.setStrokeColor(UIColor.cyan.cgColor)
-            ctx.setFillColor(UIColor.cyan.cgColor)
             ctx.setLineWidth(2.0)
             
             // Configure text drawing
             let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
-            let textColor = UIColor.cyan.cgColor
+            
+            // Color palette for different detections
+            let colors: [UIColor] = [
+                .cyan,      // First detection
+                .magenta,   // Second detection  
+                .yellow,    // Third detection
+                .orange,    // Fourth detection
+                .green,     // Fifth detection
+                .red,       // Sixth detection
+                .blue,      // Seventh detection
+                .purple,    // Eighth detection
+                .brown,     // Ninth detection
+                .systemPink // Tenth detection
+            ]
             
             for (index, d) in kept2.enumerated() {
                 let dx1 = Int(round((d.x - d.w * 0.5 - padX) / resizeGain))
@@ -877,6 +888,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 let clampedW = min(origW - clampedX1, dx2 - dx1)
                 let clampedH = min(origH - clampedY1, dy2 - dy1)
                 
+                // Get color for this detection (cycle through colors if more than 10 detections)
+                let colorIndex = index % colors.count
+                let detectionColor = colors[colorIndex]
+                
+                // Set stroke and fill color for this detection
+                ctx.setStrokeColor(detectionColor.cgColor)
+                ctx.setFillColor(detectionColor.cgColor)
+                
                 // Draw bounding box
                 ctx.stroke(CGRect(x: clampedX1, y: clampedY1, width: clampedW, height: clampedH))
                 
@@ -888,7 +907,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 // Create attributed string for the label
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: font,
-                    .foregroundColor: UIColor.cyan
+                    .foregroundColor: detectionColor
                 ]
                 let attributedString = NSAttributedString(string: labelText, attributes: attributes)
                 let line = CTLineCreateWithAttributedString(attributedString)
@@ -912,7 +931,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 ctx.saveGState()
                 ctx.textMatrix = .identity
                 ctx.translateBy(x: labelX, y: labelY - textBounds.height)
-                ctx.setFillColor(textColor)
+                ctx.setFillColor(detectionColor.cgColor)
                 CTLineDraw(line, ctx)
                 ctx.restoreGState()
             }
