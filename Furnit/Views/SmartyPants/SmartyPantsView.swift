@@ -59,7 +59,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.05
-    var iouThreshold: Float = 1.0  // Area ratio threshold: suppress if larger/smaller > this
+    var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = true
     var debugMode: Bool = true
     
@@ -555,13 +555,32 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // STAGE 8: Primary = highest confidence (first after NMS)
+        // STAGE 8: Find primary (conf > 0.5, largest area)
         // ═══════════════════════════════════════════════════════════════
         let t8 = Date()
         
-        let primary = afterNMS[0]  // NMS sorted by confidence, first = highest
-        let primaryIdx = 0
+        var primaryIdx = -1
+        var maxArea: Float = 0
+        for (i, d) in afterNMS.enumerated() {
+            if d.confidence > 0.5 {
+                let area = d.w * d.h
+                if area > maxArea {
+                    maxArea = area
+                    primaryIdx = i
+                }
+            }
+        }
         
+        if primaryIdx < 0 {
+            if debugMode { print("   ⚠️ No detection with conf > 0.5 - returning empty") }
+            DispatchQueue.main.async {
+                self.maskImageView.image = nil
+                self.isProcessing = false
+            }
+            return
+        }
+        
+        let primary = afterNMS[primaryIdx]
         let t8End = Date()
         if debugMode {
             let pL = primary.x - primary.w * 0.5
@@ -569,7 +588,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let pR = primary.x + primary.w * 0.5
             let pB = primary.y + primary.h * 0.5
             print("⏱️ STAGE 8 - Find primary: \(String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)) ms")
-            print("   🎯 PRIMARY[0]: class=\(primary.classIdx) conf=\(String(format: "%.2f", primary.confidence)) area=\(Int(primary.w * primary.h))")
+            print("   🎯 PRIMARY[\(primaryIdx)]: class=\(primary.classIdx) conf=\(String(format: "%.2f", primary.confidence)) area=\(Int(maxArea))")
             print("      center=(\(Int(primary.x)),\(Int(primary.y))) size=\(Int(primary.w))x\(Int(primary.h)) bbox=[\(Int(pL)),\(Int(pT))]→[\(Int(pR)),\(Int(pB))]")
         }
 
@@ -618,7 +637,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // STAGE 11: Filter - get all detections that touch primary bbox
+        // STAGE 11: Filter - must touch primary bbox, drop if much larger
         // ═══════════════════════════════════════════════════════════════
         let t11 = Date()
         
@@ -633,9 +652,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("      edges: L=\(Int(pLeft)) R=\(Int(pRight)) T=\(Int(pTop)) B=\(Int(pBottom))")
         }
         
-        // Filter from ALL detections (not just afterNMS)
-        var kept2: [UnionDet] = []
-        for (i, d) in allDets.enumerated() {
+        var kept2: [UnionDet] = [primary]
+        for (i, d) in afterNMS.enumerated() {
+            if i == primaryIdx { continue }
+            
             // Detection bbox edges
             let dLeft = d.x - d.w * 0.5
             let dRight = d.x + d.w * 0.5
@@ -645,25 +665,39 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let wPct = Int(d.w / primary.w * 100)
             let hPct = Int(d.h / primary.h * 100)
             
-            // Do bboxes overlap at all?
+            // Check 1: Do bboxes overlap at all?
             let overlaps = dRight >= pLeft && dLeft <= pRight && dBottom >= pTop && dTop <= pBottom
             
-            if overlaps {
+            if !overlaps {
+                if debugMode {
+                    print("   ❌ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] NO TOUCH")
+                }
+                continue
+            }
+            
+            // Check 2: If detection is 1.5x larger in BOTH dimensions → room/scene → DROP
+            let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
+            
+            if tooLarge {
+                if debugMode {
+                    print("   ❌ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] TOO LARGE")
+                }
+            } else {
                 kept2.append(d)
-                if debugMode && kept2.count <= 30 {  // Limit debug output
-                    print("   ✅ [\(i)]: class=\(d.classIdx) conf=\(String(format: "%.2f", d.confidence)) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%]")
+                if debugMode {
+                    print("   ✅ [\(i)]: class=\(d.classIdx) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%]")
                 }
             }
         }
         
         let t11End = Date()
         if debugMode {
-            print("⏱️ STAGE 11 - Bbox filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms")
-            print("   kept=\(kept2.count) of \(allDets.count)")
+            print("⏱️ STAGE 11 - Size filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms")
+            print("   kept=\(kept2.count) of \(afterNMS.count)")
         }
         
         if kept2.isEmpty {
-            if debugMode { print("⚠️ No detections after bbox filter") }
+            if debugMode { print("⚠️ No detections after size filter") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -672,43 +706,41 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // ═══════════════════════════════════════════════════════════════
-                // STAGE 12: Compute union bbox from all kept detections
-                // ═══════════════════════════════════════════════════════════════
-                let t12 = Date()
-                
-                let origW = CVPixelBufferGetWidth(pixelBuffer)
-                let origH = CVPixelBufferGetHeight(pixelBuffer)
-                
-                // Union of all kept detections
-                var ux1: Float = .greatestFiniteMagnitude
-                var uy1: Float = .greatestFiniteMagnitude
-                var ux2: Float = -.greatestFiniteMagnitude
-                var uy2: Float = -.greatestFiniteMagnitude
-                
-                for d in kept2 {
-                    ux1 = min(ux1, d.x - d.w * 0.5)  // leftmost
-                    uy1 = min(uy1, d.y - d.h * 0.5)  // topmost
-                    ux2 = max(ux2, d.x + d.w * 0.5)  // rightmost
-                    uy2 = max(uy2, d.y + d.h * 0.5)  // bottommost
-                }
-                
-                // Convert to image space
-                var bx1 = Int(round((ux1 - padX) / resizeGain))
-                var by1 = Int(round((uy1 - padY) / resizeGain))
-                var bx2 = Int(round((ux2 - padX) / resizeGain))
-                var by2 = Int(round((uy2 - padY) / resizeGain))
-                
-                bx1 = max(0, min(origW - 1, bx1))
-                by1 = max(0, min(origH - 1, by1))
-                bx2 = max(0, min(origW, bx2))
-                by2 = max(0, min(origH, by2))
-                
-                let t12End = Date()
-                if debugMode {
-                    print("⏱️ STAGE 12 - Union bbox: \(String(format: "%.2f", t12End.timeIntervalSince(t12) * 1000)) ms")
-                    print("   model: [\(String(format: "%.1f", ux1)),\(String(format: "%.1f", uy1))]→[\(String(format: "%.1f", ux2)),\(String(format: "%.1f", uy2))]")
-                    print("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
-                }
+        // STAGE 12: Compute union bbox
+        // ═══════════════════════════════════════════════════════════════
+        let t12 = Date()
+        
+        var ux1: Float = .greatestFiniteMagnitude
+        var uy1: Float = .greatestFiniteMagnitude
+        var ux2: Float = -.greatestFiniteMagnitude
+        var uy2: Float = -.greatestFiniteMagnitude
+        
+        for d in kept2 {
+            ux1 = min(ux1, d.x - d.w * 0.5)
+            uy1 = min(uy1, d.y - d.h * 0.5)
+            ux2 = max(ux2, d.x + d.w * 0.5)
+            uy2 = max(uy2, d.y + d.h * 0.5)
+        }
+        
+        let origW = CVPixelBufferGetWidth(pixelBuffer)
+        let origH = CVPixelBufferGetHeight(pixelBuffer)
+        
+        var bx1 = Int(round((ux1 - padX) / resizeGain))
+        var by1 = Int(round((uy1 - padY) / resizeGain))
+        var bx2 = Int(round((ux2 - padX) / resizeGain))
+        var by2 = Int(round((uy2 - padY) / resizeGain))
+        
+        bx1 = max(0, min(origW - 1, bx1))
+        by1 = max(0, min(origH - 1, by1))
+        bx2 = max(0, min(origW, bx2))
+        by2 = max(0, min(origH, by2))
+        
+        let t12End = Date()
+        if debugMode {
+            print("⏱️ STAGE 12 - Union bbox: \(String(format: "%.2f", t12End.timeIntervalSince(t12) * 1000)) ms")
+            print("   model: [\(String(format: "%.1f", ux1)),\(String(format: "%.1f", uy1))]→[\(String(format: "%.1f", ux2)),\(String(format: "%.1f", uy2))]")
+            print("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
+        }
 
         // ═══════════════════════════════════════════════════════════════
         // STAGE 13: Batched GEMM for union mask
@@ -803,7 +835,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let t15 = Date()
         setProgress(0.85, text: "Upscaling mask…")
         
-        let maskFull = upscaleMask(
+        var maskFull = upscaleMask(
             maskSmall: maskSmall, pW: pW, pH: pH,
             modelInput: 1280, origW: origW, origH: origH,
             resizeGain: resizeGain, padX: padX, padY: padY
@@ -812,6 +844,53 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let t15End = Date()
         if debugMode {
             print("⏱️ STAGE 15 - Upscale: \(String(format: "%.2f", t15End.timeIntervalSince(t15) * 1000)) ms")
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // STAGE 15b: Morphological close (dilate then erode) 3x3
+        // ═══════════════════════════════════════════════════════════════
+        let t15b = Date()
+        
+        let fullSize = origW * origH
+        
+        var srcBuffer = vImage_Buffer(
+            data: &maskFull,
+            height: vImagePixelCount(origH),
+            width: vImagePixelCount(origW),
+            rowBytes: origW
+        )
+        
+        var dilated = [UInt8](repeating: 0, count: fullSize)
+        var dilatedBuffer = vImage_Buffer(
+            data: &dilated,
+            height: vImagePixelCount(origH),
+            width: vImagePixelCount(origW),
+            rowBytes: origW
+        )
+        
+        var closed = [UInt8](repeating: 0, count: fullSize)
+        var closedBuffer = vImage_Buffer(
+            data: &closed,
+            height: vImagePixelCount(origH),
+            width: vImagePixelCount(origW),
+            rowBytes: origW
+        )
+        
+        // 3x3 square structuring element
+        var kernel: [UInt8] = [1, 1, 1,
+                               1, 1, 1,
+                               1, 1, 1]
+        
+        kernel.withUnsafeBufferPointer { kernelPtr in
+            vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+            vImageErode_Planar8(&dilatedBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+        }
+        
+        maskFull = closed
+        
+        let t15bEnd = Date()
+        if debugMode {
+            print("⏱️ STAGE 15b - Morph close 3x3: \(String(format: "%.2f", t15bEnd.timeIntervalSince(t15b) * 1000)) ms")
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -919,7 +998,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             print("⏱️ STAGE 17 - Finalize: \(String(format: "%.2f", t17End.timeIntervalSince(t17) * 1000)) ms")
             print("⏱️ ═══════════════════════════════════════════")
             print("⏱️ FRAME TOTAL: \(String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)) ms")
-            print("⏱️ Detections: \(allDets.count) → NMS: \(afterNMS.count) → InBbox: \(kept2.count)")
+            print("⏱️ Detections: \(allDets.count) → NMS: \(afterNMS.count) → Size: \(kept2.count)")
             print("⏱️ ═══════════════════════════════════════════\n")
         }
         
@@ -928,39 +1007,24 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
     }
 
-    // MARK: - NMS with area ratio
-        private func applyNMS(_ dets: [UnionDet]) -> [UnionDet] {
-            guard !dets.isEmpty else { return [] }
-            let sorted = dets.sorted { ($0.confidence * $0.w * $0.h) > ($1.confidence * $1.w * $1.h) }
-            var kept: [UnionDet] = []
-            
-            for d in sorted {
-                var dominated = false
-                for k in kept {
-                    let ax1 = d.x - d.w * 0.5, ax2 = d.x + d.w * 0.5
-                    let ay1 = d.y - d.h * 0.5, ay2 = d.y + d.h * 0.5
-                    let bx1 = k.x - k.w * 0.5, bx2 = k.x + k.w * 0.5
-                    let by1 = k.y - k.h * 0.5, by2 = k.y + k.h * 0.5
-                    
-                    let ix = max(Float(0), min(ax2, bx2) - max(ax1, bx1))
-                    let iy = max(Float(0), min(ay2, by2) - max(ay1, by1))
-                    let inter = ix * iy
-                    
-                    if inter > 0 {
-                        let areaD = d.w * d.h
-                        let areaK = k.w * k.h
-                        let ratio = max(areaD, areaK) / min(areaD, areaK)
-                        
-                        if ratio > iouThreshold {
-                            dominated = true
-                            break
-                        }
-                    }
+    // MARK: - NMS
+    private func applyNMS(_ dets: [UnionDet]) -> [UnionDet] {
+        guard !dets.isEmpty else { return [] }
+        let sorted = dets.sorted { $0.confidence > $1.confidence }
+        var kept: [UnionDet] = []
+        
+        for d in sorted {
+            var dominated = false
+            for k in kept {
+                if iou(d, k) > iouThreshold {
+                    dominated = true
+                    break
                 }
-                if !dominated { kept.append(d) }
             }
-            return kept
+            if !dominated { kept.append(d) }
         }
+        return kept
+    }
     
     private func iou(_ a: UnionDet, _ b: UnionDet) -> Float {
         let ax1 = a.x - a.w * 0.5, ax2 = a.x + a.w * 0.5
