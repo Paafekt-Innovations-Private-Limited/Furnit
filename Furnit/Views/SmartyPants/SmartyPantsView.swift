@@ -13,10 +13,10 @@ import CoreText
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.05
+    var confidenceThreshold: Float = 0.2
     var iouThreshold: Float = 0.5
-    var useBilinearUpscaling: Bool = true
-    var debugMode: Bool = true
+    var useBilinearUpscaling: Bool = false
+    var debugMode: Bool = false
     var active: Bool = false
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -59,10 +59,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.05
+    var confidenceThreshold: Float = 0.2
     var iouThreshold: Float = 0.5
-    var useBilinearUpscaling: Bool = true
-    var debugMode: Bool = true
+    var useBilinearUpscaling: Bool = false
+    var debugMode: Bool = false
     
     // MARK: - Ignored Classes (loaded from blacklist.json)
     private lazy var clsToIgnore: Set<Int> = {
@@ -856,17 +856,70 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // STAGE 17: Finalize
         let t17 = Date()
         
-        if debugMode {
-            // Draw detection bounding boxes with class names
-            ctx.setLineWidth(2.0)
+        // Always draw class name labels
+        // Configure text drawing
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
+        
+        for (index, d) in kept2.enumerated() {
+            let dx1 = Int(round((d.x - d.w * 0.5 - padX) / resizeGain))
+            let dy1 = Int(round((d.y - d.h * 0.5 - padY) / resizeGain))
+            let dx2 = Int(round((d.x + d.w * 0.5 - padX) / resizeGain))
+            let dy2 = Int(round((d.y + d.h * 0.5 - padY) / resizeGain))
             
-            // Configure text drawing
-            let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
+            let clampedX1 = max(0, dx1)
+            let clampedY1 = max(0, dy1)
+            let clampedW = min(origW - clampedX1, dx2 - dx1)
+            let clampedH = min(origH - clampedY1, dy2 - dy1)
+            
+            // Use white color for labels (more neutral)
+            let detectionColor = UIColor.white
+            
+            // Get class name
+            let className = classNames[d.classIdx] ?? "unknown"
+            let confidence = String(format: "%.2f", d.confidence)
+            let labelText = "\(className) (\(confidence))"
+            
+            // Create attributed string for the label
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: detectionColor
+            ]
+            let attributedString = NSAttributedString(string: labelText, attributes: attributes)
+            let line = CTLineCreateWithAttributedString(attributedString)
+            let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+            
+            // Position label above the bounding box
+            let labelX = CGFloat(clampedX1)
+            let labelY = CGFloat(origH - clampedY1 + 4) // Flip Y coordinate and add padding
+            
+            // Draw semi-transparent background for text
+            let textBackgroundRect = CGRect(
+                x: labelX - 2,
+                y: labelY - textBounds.height - 2,
+                width: textBounds.width + 4,
+                height: textBounds.height + 4
+            )
+            ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+            ctx.fill(textBackgroundRect)
+            
+            // Draw the text
+            ctx.saveGState()
+            ctx.textMatrix = .identity
+            ctx.translateBy(x: labelX, y: labelY - textBounds.height)
+            ctx.setFillColor(detectionColor.cgColor)
+            CTLineDraw(line, ctx)
+            ctx.restoreGState()
+        }
+        
+        // Only draw debug visualization elements when debug mode is on
+        if debugMode {
+            // Draw detection bounding boxes with different colors
+            ctx.setLineWidth(2.0)
             
             // Color palette for different detections
             let colors: [UIColor] = [
                 .cyan,      // First detection
-                .magenta,   // Second detection  
+                .magenta,   // Second detection
                 .yellow,    // Third detection
                 .orange,    // Fourth detection
                 .green,     // Fifth detection
@@ -898,42 +951,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 
                 // Draw bounding box
                 ctx.stroke(CGRect(x: clampedX1, y: clampedY1, width: clampedW, height: clampedH))
-                
-                // Get class name
-                let className = classNames[d.classIdx] ?? "unknown"
-                let confidence = String(format: "%.2f", d.confidence)
-                let labelText = "\(className) (\(confidence))"
-                
-                // Create attributed string for the label
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: font,
-                    .foregroundColor: detectionColor
-                ]
-                let attributedString = NSAttributedString(string: labelText, attributes: attributes)
-                let line = CTLineCreateWithAttributedString(attributedString)
-                let textBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
-                
-                // Position label above the bounding box
-                let labelX = CGFloat(clampedX1)
-                let labelY = CGFloat(origH - clampedY1 + 4) // Flip Y coordinate and add padding
-                
-                // Draw semi-transparent background for text
-                let textBackgroundRect = CGRect(
-                    x: labelX - 2,
-                    y: labelY - textBounds.height - 2,
-                    width: textBounds.width + 4,
-                    height: textBounds.height + 4
-                )
-                ctx.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
-                ctx.fill(textBackgroundRect)
-                
-                // Draw the text
-                ctx.saveGState()
-                ctx.textMatrix = .identity
-                ctx.translateBy(x: labelX, y: labelY - textBounds.height)
-                ctx.setFillColor(detectionColor.cgColor)
-                CTLineDraw(line, ctx)
-                ctx.restoreGState()
             }
             
             // Draw union bounding box in green
