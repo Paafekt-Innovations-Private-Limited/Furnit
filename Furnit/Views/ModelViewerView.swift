@@ -135,6 +135,39 @@ struct ModelViewerView: View {
                 }
                 .zIndex(99999) // HIGHEST POSSIBLE Z-INDEX
                 .allowsHitTesting(true)
+                
+                // TOPMOST BRAIN ICON - ALWAYS ON TOP
+                VStack {
+                    Spacer()
+                    HStack {
+                        VStack(spacing: 16) {
+                            smartyPantsButton  // BRAIN ICON AT TOP LEVEL
+                                .allowsHitTesting(true)
+                        }
+                        .padding(.leading, 16)
+                        .padding(.bottom, 20)
+                        Spacer()
+                    }
+                }
+                .zIndex(99998) // SECOND HIGHEST Z-INDEX
+                .allowsHitTesting(true)
+                
+                // TOPMOST JOYSTICK - ALWAYS ON TOP
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        VirtualJoystick(joystickOffset: $joystickOffset)
+                            .onChange(of: joystickOffset) { _, newOffset in
+                                cameraMovementManager.updateJoystickInput(newOffset)
+                            }
+                            .allowsHitTesting(true)
+                            .padding(.bottom, 20)
+                            .padding(.trailing, isLandscape(geometry: geometry) ? 16 : 100)
+                    }
+                }
+                .zIndex(99997) // THIRD HIGHEST Z-INDEX
+                .allowsHitTesting(true)
             }
         }
         .navigationBarHidden(true)
@@ -168,21 +201,14 @@ struct ModelViewerView: View {
                     // segmentExamineButton
                     // segmentForegroundButton
                     // segmentFurnitureButton
-                    smartyPantsButton  // NEW - ONLY BRAIN ICON ACTIVE
-                        .zIndex(10000)  // HIGH Z-INDEX TO STAY ON TOP
+                    // smartyPantsButton - NOW AT TOPMOST LEVEL
                 }
                 .padding(.leading, 16)
                 .padding(.bottom, 20)
                 
                 Spacer()
                 
-                VirtualJoystick(joystickOffset: $joystickOffset)
-                    .onChange(of: joystickOffset) { _, newOffset in
-                        cameraMovementManager.updateJoystickInput(newOffset)
-                    }
-                    .padding(.bottom, 20)
-                    .padding(.trailing, 100)
-                    .zIndex(10000)  // HIGH Z-INDEX TO STAY ON TOP
+                // VirtualJoystick - NOW AT TOPMOST LEVEL
                 
                 Spacer()
             }
@@ -200,15 +226,9 @@ struct ModelViewerView: View {
                 // segmentExamineButton
                 // segmentForegroundButton
                 // segmentFurnitureButton
-                smartyPantsButton  // NEW - ONLY BRAIN ICON ACTIVE
-                    .zIndex(10000)  // HIGH Z-INDEX TO STAY ON TOP
+                // smartyPantsButton - NOW AT TOPMOST LEVEL
                 Spacer()
-                VirtualJoystick(joystickOffset: $joystickOffset)
-                    .onChange(of: joystickOffset) { _, newOffset in
-                        cameraMovementManager.updateJoystickInput(newOffset)
-                    }
-                    .padding(.top, 20)
-                    .zIndex(10000)  // HIGH Z-INDEX TO STAY ON TOP
+                // VirtualJoystick - NOW AT TOPMOST LEVEL
                 Spacer()
             }
             .padding()
