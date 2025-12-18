@@ -203,11 +203,19 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         pinchGesture.delegate = self
-        addGestureRecognizer(pinchGesture)
+        pinchGesture.cancelsTouchesInView = false
         
         let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         panGesture.delegate = self
+        panGesture.cancelsTouchesInView = false
+        panGesture.minimumNumberOfTouches = 2
+        
+        addGestureRecognizer(pinchGesture)
         maskImageView.addGestureRecognizer(panGesture)
+        
+        if let vc = self.parentViewController, let pop = vc.navigationController?.interactivePopGestureRecognizer {
+            panGesture.require(toFail: pop)
+        }
         
         setupCamera()
         if debugMode { print("✅ SmartyPantsContainerView initialized") }
@@ -723,8 +731,38 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
         kernel.withUnsafeBufferPointer { kernelPtr in
+            // First: dilate
             vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-            vImageErode_Planar8(&dilatedBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+
+            // Second: Gaussian blur (SIMD-optimized via vImageConvolve_Planar8 with 5x5 Gaussian kernel)
+            // 5x5 integer Gaussian kernel, sum (divisor) = 256
+            var gaussianKernel: [Int16] = [
+                1,  4,  6,  4, 1,
+                4, 16, 24, 16, 4,
+                6, 24, 36, 24, 6,
+                4, 16, 24, 16, 4,
+                1,  4,  6,  4, 1
+            ]
+            let divisor: Int32 = 256
+
+            var blurred = [UInt8](repeating: 0, count: fullSize)
+            var blurredBuffer = vImage_Buffer(data: &blurred, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
+
+            // Use edge extension to avoid introducing dark borders
+            vImageConvolve_Planar8(&dilatedBuffer,
+                                   &blurredBuffer,
+                                   nil,
+                                   0,
+                                   0,
+                                   &gaussianKernel,
+                                   5,
+                                   5,
+                                   divisor,
+                                   0,
+                                   vImage_Flags(kvImageEdgeExtend))
+
+            // Third: erode the blurred result
+            vImageErode_Planar8(&blurredBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
         }
         maskFull = closed
         
@@ -1096,5 +1134,16 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         return true
+    }
+}
+
+extension UIView {
+    var parentViewController: UIViewController? {
+        var responder: UIResponder? = self
+        while let r = responder {
+            if let vc = r as? UIViewController { return vc }
+            responder = r.next
+        }
+        return nil
     }
 }
