@@ -12,6 +12,7 @@ struct ModelViewerView: View {
     @Environment(\.verticalSizeClass) var verticalSizeClass
     let model: USDZModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) var presentationMode
 
     // Camera movement state
     @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
@@ -37,7 +38,7 @@ struct ModelViewerView: View {
     @State private var showFurnitureHint = true
 
     // Edge fill mode for SmartyPants segmentation
-    @State private var selectedEdgeFillMode: EdgeFillMode = .chairType
+//    @State private var selectedEdgeFillMode: EdgeFillMode = .chairType
 
     init(model: USDZModel) {
         self.model = model
@@ -50,74 +51,90 @@ struct ModelViewerView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                RealityKitView(
-                    model: model,
-                    cameraMovementManager: cameraMovementManager,
-                    arObjectPlacementManager: arObjectPlacementManager,
-                    isARActive: isARActive,
-                    shouldCaptureSnapshot: $shouldCaptureARViewSnapshot,
-                    capturedSnapshot: $roomSnapshot
-                )
-                .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingSmartyPants))
-                .ignoresSafeArea(.all)
-
-                if showingCameraPreview {
-                    SimpleCameraOverlay(
-                        capturedImage: $capturedImage,
-                        isShowingCamera: $showingCameraPreview
+                // Main content ZStack
+                ZStack {
+                    RealityKitView(
+                        model: model,
+                        cameraMovementManager: cameraMovementManager,
+                        arObjectPlacementManager: arObjectPlacementManager,
+                        isARActive: isARActive,
+                        shouldCaptureSnapshot: $shouldCaptureARViewSnapshot,
+                        capturedSnapshot: $roomSnapshot
                     )
-                    .zIndex(9000)
-                }
+                    .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingSmartyPants))
+                    .ignoresSafeArea(.all)
 
-                if showingSegmentExamine {
-                    SegmentExamine(
-                        capturedImage: $capturedImage,
-                        isShowingCamera: $showingSegmentExamine
-                    )
-                    .zIndex(9999)
-                }
-
-                if showingSegmentForeground {
-                    SegmentForeground(
-                        capturedImage: $capturedImage,
-                        isShowingCamera: $showingSegmentForeground
-                    )
-                    .zIndex(9000)
-                }
-
-                if showingSegmentFurniture {
-                    SegmentFurniture(
-                        capturedImage: $capturedImage,
-                        isShowingCamera: $showingSegmentFurniture,
-                        roomImage: roomSnapshot
-                    )
-                    .zIndex(9000)
-                }
-
-                // NEW: SmartyPants overlay
-                if showingSmartyPants {
-                    ZStack {
-                        SmartyPantsViewSwiftUI(
-                            mlModel: mlModel,
-                            processInterval: 0.07,
-                            active: true,
-                            edgeFillMode: selectedEdgeFillMode
+                    if showingCameraPreview {
+                        SimpleCameraOverlay(
+                            capturedImage: $capturedImage,
+                            isShowingCamera: $showingCameraPreview
                         )
-
-                        // Edge fill mode toggle at top
-                        VStack {
-                            edgeFillModeToggle
-                            Spacer()
-                        }
+                        .zIndex(9000)
                     }
-                    .zIndex(9000)
-                }
 
-                if isLandscape(geometry: geometry) {
-                    landscapeControls
-                } else {
-                    portraitControls
+                    if showingSegmentExamine {
+                        SegmentExamine(
+                            capturedImage: $capturedImage,
+                            isShowingCamera: $showingSegmentExamine
+                        )
+                        .zIndex(9999)
+                    }
+
+                    if showingSegmentForeground {
+                        SegmentForeground(
+                            capturedImage: $capturedImage,
+                            isShowingCamera: $showingSegmentForeground
+                        )
+                        .zIndex(9000)
+                    }
+
+                    if showingSegmentFurniture {
+                        SegmentFurniture(
+                            capturedImage: $capturedImage,
+                            isShowingCamera: $showingSegmentFurniture,
+                            roomImage: roomSnapshot
+                        )
+                        .zIndex(9000)
+                    }
+
+                    // NEW: SmartyPants overlay
+                    if showingSmartyPants {
+                        ZStack {
+                            SmartyPantsViewSwiftUI(
+                                mlModel: mlModel,
+                                processInterval: 0.07,
+                                active: true
+    //                            edgeFillMode: selectedEdgeFillMode
+                            )
+
+    //                        // Edge fill mode toggle at top
+    //                        VStack {
+    //                            edgeFillModeToggle
+    //                            Spacer()
+    //                        }
+                        }
+                        .zIndex(9000)
+                    }
+
+                    if isLandscape(geometry: geometry) {
+                        landscapeControls
+                    } else {
+                        portraitControls
+                    }
                 }
+                
+                // TOPMOST BACK BUTTON - ALWAYS ON TOP
+                VStack {
+                    HStack {
+                        backButton
+                            .allowsHitTesting(true)
+                        Spacer()
+                    }
+                    .padding()
+                    Spacer()
+                }
+                .zIndex(99999) // HIGHEST POSSIBLE Z-INDEX
+                .allowsHitTesting(true)
             }
         }
         .navigationBarHidden(true)
@@ -143,20 +160,16 @@ struct ModelViewerView: View {
     // PORTRAIT controls
     private var portraitControls: some View {
         VStack {
-            HStack {
-                backButton
-                Spacer()
-            }.padding()
-            
             Spacer()
             
             HStack(alignment: .bottom, spacing: 0) {
                 VStack(spacing: 16) {
-                    cameraButton
-                    segmentExamineButton
-                    segmentForegroundButton
-                    segmentFurnitureButton
-                    smartyPantsButton  // NEW
+                    // cameraButton
+                    // segmentExamineButton
+                    // segmentForegroundButton
+                    // segmentFurnitureButton
+                    smartyPantsButton  // NEW - ONLY BRAIN ICON ACTIVE
+                        .zIndex(10000)  // HIGH Z-INDEX TO STAY ON TOP
                 }
                 .padding(.leading, 16)
                 .padding(.bottom, 20)
@@ -169,6 +182,7 @@ struct ModelViewerView: View {
                     }
                     .padding(.bottom, 20)
                     .padding(.trailing, 100)
+                    .zIndex(10000)  // HIGH Z-INDEX TO STAY ON TOP
                 
                 Spacer()
             }
@@ -179,28 +193,22 @@ struct ModelViewerView: View {
     // LANDSCAPE controls
     private var landscapeControls: some View {
         HStack {
-            VStack {
-                HStack(spacing: 12) {
-                    backButton
-                }
-                Spacer()
-            }
-            .padding()
-            
             Spacer()
             
             VStack(spacing: 16) {
-                cameraButton
-                segmentExamineButton
-                segmentForegroundButton
-                segmentFurnitureButton
-                smartyPantsButton  // NEW
+                // cameraButton
+                // segmentExamineButton
+                // segmentForegroundButton
+                // segmentFurnitureButton
+                smartyPantsButton  // NEW - ONLY BRAIN ICON ACTIVE
+                    .zIndex(10000)  // HIGH Z-INDEX TO STAY ON TOP
                 Spacer()
                 VirtualJoystick(joystickOffset: $joystickOffset)
                     .onChange(of: joystickOffset) { _, newOffset in
                         cameraMovementManager.updateJoystickInput(newOffset)
                     }
                     .padding(.top, 20)
+                    .zIndex(10000)  // HIGH Z-INDEX TO STAY ON TOP
                 Spacer()
             }
             .padding()
@@ -208,10 +216,26 @@ struct ModelViewerView: View {
     }
 
     private var backButton: some View {
-        Button("Back") { dismiss() }
+        Button(action: {
+            // Try both dismiss methods for better compatibility
+            if #available(iOS 15.0, *) {
+                dismiss()
+            } else {
+                presentationMode.wrappedValue.dismiss()
+            }
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .medium))
+                Text("Back")
+                    .font(.system(size: 16, weight: .medium))
+            }
             .foregroundColor(.white)
-            .padding(.horizontal, 16).padding(.vertical, 8)
-            .background(Color.black.opacity(0.7)).cornerRadius(20)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(20)
+        }
     }
 
     private var cameraButton: some View {
@@ -312,49 +336,70 @@ struct ModelViewerView: View {
     }
 
     // Edge fill mode toggle for SmartyPants
-    private var edgeFillModeToggle: some View {
-        HStack {
-            Spacer()
-            Picker("Edge Mode", selection: $selectedEdgeFillMode) {
-                Text("Cloth").tag(EdgeFillMode.clothBased)
-                Text("Chair").tag(EdgeFillMode.chairType)
-                Text("Furni").tag(EdgeFillMode.furniMaterial)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 240)
-            .padding(8)
-            .background(Color.black.opacity(0.6))
-            .cornerRadius(12)
-            .padding(.top, 60)
-            .padding(.trailing, 16)
-        }
-    }
+//    private var edgeFillModeToggle: some View {
+//        HStack {
+//            Spacer()
+//            Picker("Edge Mode", selection: $selectedEdgeFillMode) {
+//                Text("Cloth").tag(EdgeFillMode.clothBased)
+//                Text("Chair").tag(EdgeFillMode.chairType)
+//                Text("Furni").tag(EdgeFillMode.furniMaterial)
+//            }
+//            .pickerStyle(.segmented)
+//            .frame(width: 240)
+//            .padding(8)
+//            .background(Color.black.opacity(0.6))
+//            .cornerRadius(12)
+//            .padding(.top, 60)
+//            .padding(.trailing, 16)
+//        }
+//    }
 
     // NEW: SmartyPants Button (YOLOE - 168 furniture classes!)
     private var smartyPantsButton: some View {
-        Button(action: {
-            if showingSmartyPants {
-                showingSmartyPants = false
-            } else {
-                // Trigger ARView snapshot
-                shouldCaptureARViewSnapshot = true
+        ZStack {
+            Button(action: {
+                // Dismiss hint on first touch
+                showFurnitureHint = false
                 
-                // Hide other overlays
-                showingCameraPreview = false
-                showingSegmentExamine = false
-                showingSegmentForeground = false
-                showingSegmentFurniture = false
-                
-                // Wait briefly for snapshot to complete
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    self.showingSmartyPants = true
+                if showingSmartyPants {
+                    showingSmartyPants = false
+                } else {
+                    // Trigger ARView snapshot
+                    shouldCaptureARViewSnapshot = true
+                    
+                    // Hide other overlays
+                    showingCameraPreview = false
+                    showingSegmentExamine = false
+                    showingSegmentForeground = false
+                    showingSegmentFurniture = false
+                    
+                    // Wait briefly for snapshot to complete
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        self.showingSmartyPants = true
+                    }
                 }
+            }) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 28)).foregroundColor(.white)
+                    .frame(width: 60, height: 60)
+                    .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
             }
-        }) {
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 28)).foregroundColor(.white)
+            
+            // Hint badge on button
+            if showFurnitureHint {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "hand.tap.fill")
+                            .font(.caption)
+                            .foregroundColor(.white)
+                            .padding(4)
+                            .background(Circle().fill(Color.orange))
+                    }
+                    Spacer()
+                }
                 .frame(width: 60, height: 60)
-                .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+            }
         }
     }
 

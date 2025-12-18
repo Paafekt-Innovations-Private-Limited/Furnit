@@ -213,10 +213,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         addGestureRecognizer(pinchGesture)
         maskImageView.addGestureRecognizer(panGesture)
         
-        if let vc = self.parentViewController, let pop = vc.navigationController?.interactivePopGestureRecognizer {
-            panGesture.require(toFail: pop)
-        }
-        
         setupCamera()
         if debugMode { print("✅ SmartyPantsContainerView initialized") }
     }
@@ -224,6 +220,21 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     override func layoutSubviews() {
         super.layoutSubviews()
         previewLayer.frame = bounds
+    }
+    
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        setupGestureConflictResolution()
+    }
+    
+    private func setupGestureConflictResolution() {
+        guard let panGesture = maskImageView.gestureRecognizers?.first(where: { $0 is UIPanGestureRecognizer }) as? UIPanGestureRecognizer else { return }
+        
+        if let vc = self.parentViewController,
+           let navController = vc.navigationController,
+           let interactivePopGesture = navController.interactivePopGestureRecognizer {
+            panGesture.require(toFail: interactivePopGesture)
+        }
     }
 
     // MARK: - Public
@@ -1151,6 +1162,15 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard maskImageView.image != nil else { return }
+        
+        // Only allow panning if we're not too close to the edges (to avoid navigation conflicts)
+        let location = gesture.location(in: self)
+        let edgeThreshold: CGFloat = 20
+        
+        if location.x < edgeThreshold || location.y < edgeThreshold {
+            return
+        }
+        
         let translation = gesture.translation(in: self)
         switch gesture.state {
         case .began, .changed:
@@ -1161,7 +1181,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-        return true
+        // Allow pinch and pan to work together
+        if (gestureRecognizer is UIPinchGestureRecognizer && other is UIPanGestureRecognizer) ||
+           (gestureRecognizer is UIPanGestureRecognizer && other is UIPinchGestureRecognizer) {
+            return true
+        }
+        return false
+    }
+    
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Don't interfere with navigation gestures
+        return false
     }
 }
 
