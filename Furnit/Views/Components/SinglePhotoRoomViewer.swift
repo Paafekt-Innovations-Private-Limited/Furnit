@@ -1,11 +1,22 @@
 import SwiftUI
 import SceneKit
+import Accelerate
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
     let originalImage: UIImage
     @Binding var savedBoundaries: RoomStructure? // ✅ NEW: Binding to save adjusted boundaries
     @State private var detectedBoundariesImage: UIImage?
+
+    // ✅ GPU-accelerated CIContext for image processing
+    private static let ciContext: CIContext = {
+        if let device = MTLCreateSystemDefaultDevice() {
+            print("🚀 [BoundaryView] Using Metal GPU for image processing")
+            return CIContext(mtlDevice: device, options: [.useSoftwareRenderer: false])
+        }
+        print("⚠️ [BoundaryView] Metal not available, using CPU")
+        return CIContext(options: [.useSoftwareRenderer: true])
+    }()
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
     @State private var offset: CGSize = .zero
@@ -238,13 +249,30 @@ struct RoomBoundaryDetectionView: View {
     }
     
     func drawBoundariesOnImage() async -> UIImage {
-        let width = originalImage.size.width
-        let height = originalImage.size.height
-        
-        let renderer = UIGraphicsImageRenderer(size: originalImage.size)
-        return renderer.image { context in
-            // Draw original image
-            originalImage.draw(at: .zero)
+        // ✅ OPTIMIZATION: Downscale large images to prevent memory crashes
+        // Using vImage from Accelerate framework for GPU/NEON acceleration
+        let maxDimension: CGFloat = 1600  // Max 1600px - balances quality & memory
+        let originalWidth = originalImage.size.width
+        let originalHeight = originalImage.size.height
+        let scaleFactor = min(maxDimension / max(originalWidth, originalHeight), 1.0)
+
+        let workingImage: UIImage
+        if scaleFactor < 1.0 {
+            print("🚀 [BoundaryView] Downscaling \(Int(originalWidth))x\(Int(originalHeight)) → \(Int(originalWidth * scaleFactor))x\(Int(originalHeight * scaleFactor))")
+            workingImage = downscaleWithAccelerate(originalImage, scale: scaleFactor) ?? originalImage
+        } else {
+            workingImage = originalImage
+        }
+
+        let width = workingImage.size.width
+        let height = workingImage.size.height
+
+        // Use autoreleasepool to free memory immediately after rendering
+        return autoreleasepool {
+            let renderer = UIGraphicsImageRenderer(size: workingImage.size)
+            return renderer.image { context in
+                // Draw working image (downscaled if needed)
+                workingImage.draw(at: .zero)
             
             let cgContext = context.cgContext
             
@@ -341,7 +369,58 @@ struct RoomBoundaryDetectionView: View {
                 .strokeWidth: -3.0
             ]
             vpLabel.draw(at: CGPoint(x: vpX - 30, y: vpY - 100), withAttributes: vpAttrs)
+            }
+        } // autoreleasepool
+    }
+
+    // ✅ vImage-accelerated downscaling (uses GPU/NEON SIMD for speed)
+    private func downscaleWithAccelerate(_ image: UIImage, scale: CGFloat) -> UIImage? {
+        guard let cgImage = image.cgImage else { return nil }
+
+        let newWidth = Int(CGFloat(cgImage.width) * scale)
+        let newHeight = Int(CGFloat(cgImage.height) * scale)
+
+        // Use vImage for hardware-accelerated scaling
+        var format = vImage_CGImageFormat(
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            colorSpace: nil,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            version: 0,
+            decode: nil,
+            renderingIntent: .defaultIntent
+        )
+
+        var sourceBuffer = vImage_Buffer()
+        var error = vImageBuffer_InitWithCGImage(&sourceBuffer, &format, nil, cgImage, vImage_Flags(kvImageNoFlags))
+        guard error == kvImageNoError else {
+            print("❌ vImage source buffer init failed: \(error)")
+            return nil
         }
+        defer { free(sourceBuffer.data) }
+
+        var destBuffer = vImage_Buffer()
+        error = vImageBuffer_Init(&destBuffer, vImagePixelCount(newHeight), vImagePixelCount(newWidth), 32, vImage_Flags(kvImageNoFlags))
+        guard error == kvImageNoError else {
+            print("❌ vImage dest buffer init failed: \(error)")
+            return nil
+        }
+        defer { free(destBuffer.data) }
+
+        // High-quality Lanczos scaling
+        error = vImageScale_ARGB8888(&sourceBuffer, &destBuffer, nil, vImage_Flags(kvImageHighQualityResampling))
+        guard error == kvImageNoError else {
+            print("❌ vImage scale failed: \(error)")
+            return nil
+        }
+
+        guard let scaledCGImage = vImageCreateCGImageFromBuffer(&destBuffer, &format, nil, nil, vImage_Flags(kvImageNoFlags), &error)?.takeRetainedValue() else {
+            print("❌ vImage CGImage creation failed: \(error)")
+            return nil
+        }
+
+        print("✅ [vImage] Downscaled to \(newWidth)x\(newHeight)")
+        return UIImage(cgImage: scaledCGImage)
     }
 }
 

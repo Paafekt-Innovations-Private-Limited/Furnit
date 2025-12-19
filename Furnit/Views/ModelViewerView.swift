@@ -17,6 +17,7 @@ struct ModelViewerView: View {
     // Camera movement state
     @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
     @State private var joystickOffset: CGSize = .zero
+    @State private var shouldResetCamera = false  // ✅ Trigger camera reset on appear
 
     // Required for RealityKitView
     @StateObject private var arObjectPlacementManager = RealityKitObjectPlacementManager()
@@ -61,7 +62,8 @@ struct ModelViewerView: View {
                         arObjectPlacementManager: arObjectPlacementManager,
                         isARActive: isARActive,
                         shouldCaptureSnapshot: $shouldCaptureARViewSnapshot,
-                        capturedSnapshot: $roomSnapshot
+                        capturedSnapshot: $roomSnapshot,
+                        shouldResetCamera: $shouldResetCamera  // ✅ Camera reset trigger
                     )
                     .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingSmartyPants))
                     .ignoresSafeArea(.all)
@@ -223,6 +225,10 @@ struct ModelViewerView: View {
         .onAppear {
             isARActive = true
             loadModelOnce()
+            // ✅ Reset camera to optimal position every time view appears
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                shouldResetCamera = true
+            }
         }
     }
 

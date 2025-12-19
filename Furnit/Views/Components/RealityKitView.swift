@@ -7,10 +7,13 @@ struct RealityKitView: UIViewRepresentable {
     let cameraMovementManager: CameraMovementManager
     let arObjectPlacementManager: ARObjectPlacementManager
     let isARActive: Bool
-    
+
     // ✅ NEW: Snapshot capability - for capturing clean 3D room
     @Binding var shouldCaptureSnapshot: Bool
     @Binding var capturedSnapshot: UIImage?
+
+    // ✅ NEW: Camera reset trigger - resets camera to optimal position
+    @Binding var shouldResetCamera: Bool
     
     // Access quality settings from environment
     @Environment(\.appState) private var appState
@@ -53,6 +56,29 @@ struct RealityKitView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: ARView, context: Context) {
+        // ✅ Check if model changed - reset camera position if so
+        if context.coordinator.currentModelID != model.id {
+            print("🔄 [RealityKitView.updateUIView] MODEL CHANGED! Resetting camera position...")
+            print("   Old model: \(context.coordinator.currentModelID?.uuidString ?? "nil")")
+            print("   New model: \(model.id.uuidString) (\(model.displayName))")
+
+            // Reset camera to optimal position using stored boundary manager
+            if let cameraAnchor = context.coordinator.cameraAnchor,
+               let boundaryManager = context.coordinator.boundaryManager,
+               boundaryManager.bounds != nil {
+                let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition()
+                cameraAnchor.transform.translation = cameraPosition
+
+                let lookDirection = normalize(lookAtPosition - cameraPosition)
+                let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
+                cameraAnchor.transform.rotation = lookRotation
+
+                print("📷 [RealityKitView.updateUIView] Camera RESET to: \(cameraPosition)")
+            }
+
+            context.coordinator.currentModelID = model.id
+        }
+
         // Update rendering quality if settings changed
         let currentQuality = appState.currentQuality
         configureRenderingQuality(arView: uiView, quality: currentQuality)
@@ -68,6 +94,30 @@ struct RealityKitView: UIViewRepresentable {
             cameraMovementManager.setSpeed(.fast)
         }
         
+        // ✅ Handle camera reset requests (triggered on view appear)
+        if shouldResetCamera {
+            print("🔄 [RealityKitView.updateUIView] CAMERA RESET TRIGGERED")
+            if let cameraAnchor = context.coordinator.cameraAnchor,
+               let boundaryManager = context.coordinator.boundaryManager,
+               boundaryManager.bounds != nil {
+                let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition()
+                cameraAnchor.transform.translation = cameraPosition
+
+                let lookDirection = normalize(lookAtPosition - cameraPosition)
+                let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
+                cameraAnchor.transform.rotation = lookRotation
+
+                print("📷 [RealityKitView] Camera RESET to optimal position: \(cameraPosition)")
+            } else {
+                print("⚠️ [RealityKitView] Cannot reset camera - missing cameraAnchor or boundaryManager")
+            }
+
+            // Clear the flag
+            DispatchQueue.main.async {
+                self.shouldResetCamera = false
+            }
+        }
+
         // ✅ FIXED: Handle snapshot requests
         if shouldCaptureSnapshot {
             print("📸 [RealityKitView] Snapshot requested, capturing ARView...")
@@ -103,9 +153,13 @@ struct RealityKitView: UIViewRepresentable {
 
         // World anchor for object placement (the model anchor)
         var worldAnchor: AnchorEntity?
-        
+
         // ✅ NEW: Store ARView reference for snapshot
         weak var arView: ARView?
+
+        // ✅ Track current model to detect room changes
+        var currentModelID: UUID?
+        var boundaryManager: RealityKitBoundaryManager?
         
         func setupGestures(for arView: ARView, placementManager: ARObjectPlacementManager) {
             gestureHandlers = RealityKitGestureHandlers(arView: arView)
@@ -295,6 +349,11 @@ struct RealityKitView: UIViewRepresentable {
                 boundaryManager.calculateRoomBounds(from: modelEntity)
                 coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
 
+                // ✅ Store boundary manager and model ID in coordinator for camera reset on revisit
+                coordinator.boundaryManager = boundaryManager
+                coordinator.currentModelID = self.model.id
+                print("📝 [RealityKitView] Stored model ID: \(self.model.id) for tracking")
+
                 // Share boundary manager with camera movement manager
                 self.cameraMovementManager.setupARView(arView)
                 self.cameraMovementManager.setBoundaryManager(boundaryManager)
@@ -310,34 +369,54 @@ struct RealityKitView: UIViewRepresentable {
                 }
                 
                 // Position custom camera inside the room bounds
+                print("🔍 [RealityKitView] === CAMERA POSITIONING DEBUG ===")
+                print("   cameraAnchor exists: \(coordinator.cameraAnchor != nil)")
+                print("   boundaryManager.bounds exists: \(boundaryManager.bounds != nil)")
+
                 if let cameraAnchor = coordinator.cameraAnchor, let bounds = boundaryManager.bounds {
-                    // ✅ NEW: Use intelligent camera positioning based on room structure
+                    print("✅ [RealityKitView] BOUNDS AVAILABLE - using BACK-LEFT CORNER positioning")
+                    print("   Room bounds min: \(bounds.min)")
+                    print("   Room bounds max: \(bounds.max)")
+
+                    // ✅ Use BACK-LEFT CORNER camera positioning
                     let (cameraPosition, lookAtPosition) = boundaryManager.getOptimalCameraPosition()
-                    
+
+                    print("📍 [RealityKitView] Camera position from getOptimalCameraPosition():")
+                    print("   Position: \(cameraPosition)")
+                    print("   LookAt: \(lookAtPosition)")
+
                     // Set camera position
+                    let oldPosition = cameraAnchor.transform.translation
                     cameraAnchor.transform.translation = cameraPosition
-                    
+                    print("📷 [RealityKitView] Camera translation SET:")
+                    print("   OLD position: \(oldPosition)")
+                    print("   NEW position: \(cameraAnchor.transform.translation)")
+
                     // Make camera look at the calculated target point
                     let lookDirection = normalize(lookAtPosition - cameraPosition)
                     let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
                     cameraAnchor.transform.rotation = lookRotation
-                    
-                    print("📷 [RealityKitView] Camera positioned intelligently:")
-                    print("   📍 Position: \(cameraPosition)")
+
+                    print("📷 [RealityKitView] Camera BACK-LEFT CORNER positioned:")
+                    print("   📍 Final Position: \(cameraAnchor.transform.translation)")
                     print("   👁️ Looking at: \(lookAtPosition)")
                     print("   🧭 Direction: \(lookDirection)")
                 } else if let cameraAnchor = coordinator.cameraAnchor {
                     // Fallback if no bounds - use default position
+                    print("⚠️ [RealityKitView] NO BOUNDS - using DEFAULT position")
                     let defaultPosition = SIMD3<Float>(0, 1.5, 3)
                     cameraAnchor.transform.translation = defaultPosition
-                    
+
                     // Look toward origin
                     let lookDirection = normalize(SIMD3<Float>(0, 1.4, 0) - defaultPosition)
                     let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
                     cameraAnchor.transform.rotation = lookRotation
-                    
+
                     print("📷 Custom camera positioned at default: \(defaultPosition) (no bounds available)")
+                } else {
+                    print("❌ [RealityKitView] NO CAMERA ANCHOR - cannot position camera!")
                 }
+                print("🔍 [RealityKitView] === END CAMERA POSITIONING DEBUG ===")
                 
                 // Set up camera movement manager with custom camera references
                 self.cameraMovementManager.setupARView(arView)

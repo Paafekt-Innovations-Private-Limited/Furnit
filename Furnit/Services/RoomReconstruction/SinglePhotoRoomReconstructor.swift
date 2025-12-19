@@ -3,6 +3,7 @@ import CoreML
 import Vision
 import CoreImage
 import SceneKit
+import Accelerate
 
 // MARK: - Single Photo Room Reconstructor
 class SinglePhotoRoomReconstructor: ObservableObject {
@@ -24,8 +25,53 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         var confidence: Float = 0.6
     }
     
+    // ✅ Max image dimension to prevent memory crashes
+    private let maxImageDimension: CGFloat = 1600
+
     init() {
         print("🏗️ [Reconstructor] Initialized")
+    }
+
+    // ✅ vImage-accelerated downscaling (GPU/NEON SIMD)
+    private func downscaleIfNeeded(_ image: UIImage) -> UIImage {
+        let maxDim = max(image.size.width, image.size.height)
+        guard maxDim > maxImageDimension else { return image }
+
+        let scale = maxImageDimension / maxDim
+        guard let cgImage = image.cgImage else { return image }
+
+        let newWidth = Int(CGFloat(cgImage.width) * scale)
+        let newHeight = Int(CGFloat(cgImage.height) * scale)
+
+        var format = vImage_CGImageFormat(
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            colorSpace: nil,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            version: 0,
+            decode: nil,
+            renderingIntent: .defaultIntent
+        )
+
+        var sourceBuffer = vImage_Buffer()
+        var error = vImageBuffer_InitWithCGImage(&sourceBuffer, &format, nil, cgImage, vImage_Flags(kvImageNoFlags))
+        guard error == kvImageNoError else { return image }
+        defer { free(sourceBuffer.data) }
+
+        var destBuffer = vImage_Buffer()
+        error = vImageBuffer_Init(&destBuffer, vImagePixelCount(newHeight), vImagePixelCount(newWidth), 32, vImage_Flags(kvImageNoFlags))
+        guard error == kvImageNoError else { return image }
+        defer { free(destBuffer.data) }
+
+        error = vImageScale_ARGB8888(&sourceBuffer, &destBuffer, nil, vImage_Flags(kvImageHighQualityResampling))
+        guard error == kvImageNoError else { return image }
+
+        guard let scaledCGImage = vImageCreateCGImageFromBuffer(&destBuffer, &format, nil, nil, vImage_Flags(kvImageNoFlags), &error)?.takeRetainedValue() else {
+            return image
+        }
+
+        print("🚀 [Reconstructor] Downscaled \(Int(image.size.width))x\(Int(image.size.height)) → \(newWidth)x\(newHeight)")
+        return UIImage(cgImage: scaledCGImage)
     }
     
     // MARK: - Helper Methods
@@ -58,9 +104,12 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         }
         
         // ✅ Fix image orientation FIRST
-        let fixedImage = image.fixedOrientation()
+        let orientedImage = image.fixedOrientation()
         print("✅ [Reconstructor] Image orientation fixed")
-        
+
+        // ✅ OPTIMIZATION: Downscale large images to prevent memory crashes
+        let fixedImage = downscaleIfNeeded(orientedImage)
+
         // Step 1: Generate depth map
         await updateProgress(0.2, "Extracting depth information...")
         print("🔍 [Reconstructor] Step 1: Starting depth estimation")
@@ -136,15 +185,18 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         }
         
         // Fix image orientation FIRST
-        let fixedImage = image.fixedOrientation()
+        let orientedImage = image.fixedOrientation()
         print("✅ [Reconstructor] Image orientation fixed")
-        
+
+        // ✅ OPTIMIZATION: Downscale large images
+        let fixedImage = downscaleIfNeeded(orientedImage)
+
         await updateProgress(0.2, "Extracting depth information...")
         guard let depthMap = await depthEstimator.estimateDepth(from: fixedImage) else {
             await setError("Failed to estimate depth")
             return
         }
-        
+
         await updateProgress(0.4, "Using your adjusted boundaries...")
         
         // Use the adjusted boundaries instead of detecting new ones
@@ -415,20 +467,10 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         roomNode.addChildNode(frontNode)
         print("✅ FRONT WALL with photo at z=-\(dimensions.depth/2)")
         
-        // BACK WALL
-        print("🔨 Creating BACK WALL...")
-        let backWall = SCNBox(width: CGFloat(dimensions.width),
-                              height: CGFloat(dimensions.height),
-                              length: 0.01,
-                              chamferRadius: 0)
-        let backMaterial = SCNMaterial()
-        configureMaterialForUSDZExport(backMaterial, texture: backWallColor)
-        backWall.materials = [backMaterial]
-        
-        let backNode = SCNNode(geometry: backWall)
-        backNode.position = SCNVector3(0, Float(dimensions.height) / 2, Float(dimensions.depth) / 2)
-        roomNode.addChildNode(backNode)
-        print("✅ BACK WALL at z=+\(dimensions.depth/2)")
+        // BACK WALL - REMOVED so camera can be positioned outside looking in
+        // The camera will be placed at MAX Z looking toward FRONT wall (MIN Z)
+        print("⏭️ BACK WALL SKIPPED - camera will view from outside")
+        _ = backWallColor // Suppress unused variable warning
         
         // LEFT WALL
         print("🔨 Creating LEFT WALL...")

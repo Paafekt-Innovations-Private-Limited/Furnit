@@ -213,57 +213,63 @@ class RealityKitBoundaryManager {
         return constrainCameraPosition(safePosition)
     }
     
-    // âœ… NEW: Get optimal camera position for viewing the room
+    // ✅ Get optimal camera position for viewing the room
     // Returns a tuple with camera position and look-at target
+    // STRATEGY: Position camera at BACK-LEFT corner for every room
     func getOptimalCameraPosition() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
-        print("🎯 [BoundaryManager] Calculating optimal camera position...")
-        
+        print("🎯🎯🎯 [BoundaryManager] === BACK-LEFT CORNER CAMERA CALCULATION ===")
+
         guard let bounds = roomBounds else {
-            print("   âš ï¸ No bounds available, using default position")
+            print("   ⚠️ NO BOUNDS - using default position")
             let defaultPosition = SIMD3<Float>(0, 1.5, 3)
             let defaultLookAt = SIMD3<Float>(0, 1.4, 0)
             return (position: defaultPosition, lookAt: defaultLookAt)
         }
-        
+
         let roomSize = getRoomDimensions()
         let roomCenter = getRoomCenter()
-        
-        print("   📦 Room bounds: min(\(bounds.min)), max(\(bounds.max))")
+
+        print("   📦 Room bounds:")
+        print("      MIN: X=\(bounds.min.x), Y=\(bounds.min.y), Z=\(bounds.min.z)")
+        print("      MAX: X=\(bounds.max.x), Y=\(bounds.max.y), Z=\(bounds.max.z)")
         print("   📏 Room size: \(roomSize.x)m x \(roomSize.y)m x \(roomSize.z)m")
-        print("   🎯 Room center: \(roomCenter)")
-        
-        // Camera positioning strategy:
-        // - LEFT side: 30% toward the left wall from center
-        // - BACK wall: 35% toward the back wall from center
-        // - HEIGHT: 40% of room height from floor (comfortable viewing level)
-        
-        let eyeLevelRatio: Float = 0.4 // 40% of room height
-        let leftRatio: Float = 0.3     // 30% toward left wall
-        let backRatio: Float = 0.35    // 35% toward back wall
-        
-        let cameraHeight = bounds.min.y + (roomSize.y * eyeLevelRatio)
-        
-        // Position camera to the LEFT and toward the BACK
-        // Assuming: -X is left, +Z is back (adjust based on your coordinate system)
-        let cameraPosition = SIMD3<Float>(
-            roomCenter.x - (roomSize.x * leftRatio),  // Move LEFT from center
-            cameraHeight,                              // Eye level height
-            roomCenter.z + (roomSize.z * backRatio)   // Move BACK from center
-        )
-        
-        // Look-at point: slightly toward the front and center
-        // This creates a diagonal view across the room showing the main photo wall
-        let lookAtPosition = SIMD3<Float>(
-            roomCenter.x + (roomSize.x * 0.2),  // Slightly right of center
-            roomCenter.y + (roomSize.y * 0.2),  // Slightly above center
-            roomCenter.z - (roomSize.z * 0.375) // Toward front wall (where photo usually is)
-        )
-        
-        print("   📷 Calculated camera position:")
-        print("      Position: \(cameraPosition)")
-        print("      Looking at: \(lookAtPosition)")
-        print("      Strategy: LEFT side + BACK wall → diagonal view toward photo wall")
-        
+        print("   🎯 Room center: X=\(roomCenter.x), Y=\(roomCenter.y), Z=\(roomCenter.z)")
+        print("   🧱 Boundary padding: \(boundaryPadding)m")
+
+        // Camera positioning strategy: OUTSIDE the room (no back wall), looking at FRONT wall
+        // Position camera BEYOND MAX Z (where back wall would be), looking at MIN Z (front/photo wall)
+        // This gives a clear view of the photo wall from outside the room
+
+        let cameraHeight = roomCenter.y  // Center height for level view
+        let camX = roomCenter.x  // Center X for symmetric view
+        let camZ = bounds.max.z + (roomSize.z * 0.3)  // OUTSIDE room, beyond where back wall was
+
+        print("   📐 OUTSIDE-BACK positioning (no back wall):")
+        print("   📐 Camera X: \(roomCenter.x) (CENTER)")
+        print("   📐 Camera Y: \(roomCenter.y) (CENTER HEIGHT)")
+        print("   📐 Camera Z: \(bounds.max.z) + (\(roomSize.z) * 0.3) = \(camZ) (OUTSIDE, beyond back)")
+
+        let cameraPosition = SIMD3<Float>(camX, cameraHeight, camZ)
+
+        // Look-at point: FRONT wall center (where photo is)
+        // FRONT = MIN Z (photo wall)
+        let lookX = roomCenter.x  // Center X
+        let lookY = roomCenter.y  // Center height
+        let lookZ = bounds.min.z  // FRONT wall (MIN Z) where photo is
+        let lookAtPosition = SIMD3<Float>(lookX, lookY, lookZ)
+
+        print("   📐 Looking at FRONT/PHOTO wall:")
+        print("   📐 LookAt X: \(roomCenter.x) (CENTER)")
+        print("   📐 LookAt Y: \(roomCenter.y) (CENTER HEIGHT)")
+        print("   📐 LookAt Z: \(bounds.min.z) = \(lookZ) (FRONT/PHOTO wall)")
+
+        print("   📷 FINAL CAMERA POSITION:")
+        print("      X=\(cameraPosition.x), Y=\(cameraPosition.y), Z=\(cameraPosition.z)")
+        print("   👁️ LOOK-AT POSITION:")
+        print("      X=\(lookAtPosition.x), Y=\(lookAtPosition.y), Z=\(lookAtPosition.z)")
+        print("   ✅ Strategy: BACK-LEFT CORNER → diagonal view toward front-right")
+        print("🎯🎯🎯 [BoundaryManager] === END CALCULATION ===")
+
         return (position: cameraPosition, lookAt: lookAtPosition)
     }
     
