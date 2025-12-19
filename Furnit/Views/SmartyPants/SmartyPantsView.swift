@@ -13,7 +13,7 @@ import CoreText
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.2
+    var confidenceThreshold: Float = 0.3
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
     var debugMode: Bool = false
@@ -59,7 +59,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.2
+    var confidenceThreshold: Float = 0.3
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
     var debugMode: Bool = false
@@ -197,7 +197,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         panGesture.delegate = self
         panGesture.cancelsTouchesInView = false
-        panGesture.minimumNumberOfTouches = 2
+        panGesture.minimumNumberOfTouches = 1
+        panGesture.maximumNumberOfTouches = 1
         
         addGestureRecognizer(pinchGesture)
         maskImageView.addGestureRecognizer(panGesture)
@@ -1239,14 +1240,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard maskImageView.image != nil else { return }
         
-        // Only allow panning if we're not too close to the edges (to avoid navigation conflicts)
-        let location = gesture.location(in: self)
-        let edgeThreshold: CGFloat = 20
-        
-        if location.x < edgeThreshold || location.y < edgeThreshold {
-            return
-        }
-        
         let translation = gesture.translation(in: self)
         switch gesture.state {
         case .began, .changed:
@@ -1281,3 +1274,4 @@ extension UIView {
         return nil
     }
 }
+
