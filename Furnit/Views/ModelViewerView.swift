@@ -37,7 +37,9 @@ struct ModelViewerView: View {
     // Furniture hint
     @State private var showFurnitureHint = true
 
-    // Edge fill mode for SmartyPants segmentation
+    @State private var isCapturingSnapshot = false
+
+//    // Edge fill mode for SmartyPants segmentation
 //    @State private var selectedEdgeFillMode: EdgeFillMode = .chairType
 
     init(model: USDZModel) {
@@ -100,18 +102,19 @@ struct ModelViewerView: View {
                     // NEW: SmartyPants overlay
                     if showingSmartyPants {
                         ZStack {
-                            SmartyPantsViewSwiftUI(
+                            SmartyPantsUIView(
+                                capturedImage: $capturedImage,
+                                roomImage: roomSnapshot,
                                 mlModel: mlModel,
                                 processInterval: 0.07,
                                 active: true
-    //                            edgeFillMode: selectedEdgeFillMode
                             )
 
-    //                        // Edge fill mode toggle at top
-    //                        VStack {
-    //                            edgeFillModeToggle
-    //                            Spacer()
-    //                        }
+//                            // Edge fill mode toggle at top
+//                            VStack {
+//                                edgeFillModeToggle
+//                                Spacer()
+//                            }
                         }
                         .zIndex(9000)
                     }
@@ -129,10 +132,31 @@ struct ModelViewerView: View {
                         backButton
                             .allowsHitTesting(true)
                         Spacer()
+                        if showingSegmentFurniture {
+                            Button(action: {
+                                // Use GeometryReader size via a proxy in body; we'll call with screen size
+                                let screen = UIScreen.main.bounds.size
+                                saveSegmentFurnitureSnapshot(screen)
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "square.and.arrow.down")
+                                        .font(.system(size: 16, weight: .medium))
+                                    Text("Save")
+                                        .font(.system(size: 16, weight: .medium))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(20)
+                            }
+                            .allowsHitTesting(true)
+                        }
                     }
                     .padding()
                     Spacer()
                 }
+                .opacity(isCapturingSnapshot ? 0 : 1)
                 .zIndex(99999) // HIGHEST POSSIBLE Z-INDEX
                 .allowsHitTesting(true)
                 
@@ -149,23 +173,41 @@ struct ModelViewerView: View {
                         Spacer()
                     }
                 }
+                .opacity(isCapturingSnapshot ? 0 : 1)
                 .zIndex(99998) // SECOND HIGHEST Z-INDEX
                 .allowsHitTesting(true)
                 
                 // TOPMOST JOYSTICK - ALWAYS ON TOP
                 VStack {
                     Spacer()
-                    HStack {
+                    HStack(spacing: 12) {
                         Spacer()
                         VirtualJoystick(joystickOffset: $joystickOffset)
                             .onChange(of: joystickOffset) { _, newOffset in
                                 cameraMovementManager.updateJoystickInput(newOffset)
                             }
                             .allowsHitTesting(true)
-                            .padding(.bottom, 20)
-                            .padding(.trailing, isLandscape(geometry: geometry) ? 16 : 100)
+                        if showingSmartyPants {
+                            Button(action: {
+                                let screen = UIScreen.main.bounds.size
+                                saveSmartyPantsSnapshot(screen)
+                            }) {
+                                Image(systemName: "square.and.arrow.down")
+                                    .font(.system(size: 28, weight: .regular))
+                                    .foregroundColor(.white)
+                                    .frame(width: 48, height: 48)
+                                    .background(
+                                        Circle()
+                                            .fill(Color.blue)
+                                    )
+                            }
+                            .disabled(isCapturingSnapshot)
+                        }
+                        Spacer()
                     }
+                    .padding(.bottom, 20)
                 }
+                .opacity(isCapturingSnapshot ? 0 : 1)
                 .zIndex(99997) // THIRD HIGHEST Z-INDEX
                 .allowsHitTesting(true)
             }
@@ -430,6 +472,117 @@ struct ModelViewerView: View {
         }
     }
     
+    private func saveUIImageToPhotos(_ image: UIImage) {
+        let saveBlock = {
+            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+            print("✅ Saved image to Photos via UIImageWriteToSavedPhotosAlbum")
+        }
+        if #available(iOS 14, *) {
+            let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+            switch status {
+            case .authorized, .limited:
+                saveBlock()
+            case .denied, .restricted:
+                print("❌ Photos add-only access denied or restricted")
+            case .notDetermined:
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
+                    DispatchQueue.main.async {
+                        if newStatus == .authorized || newStatus == .limited {
+                            saveBlock()
+                        } else {
+                            print("❌ Photos add-only access not granted")
+                        }
+                    }
+                }
+            @unknown default:
+                print("❌ Unknown Photos authorization status")
+            }
+        } else {
+            // Fallback for iOS < 14
+            let status = PHPhotoLibrary.authorizationStatus()
+            switch status {
+            case .authorized, .limited:
+                saveBlock()
+            case .denied, .restricted:
+                print("❌ Photos access denied or restricted")
+            case .notDetermined:
+                PHPhotoLibrary.requestAuthorization { newStatus in
+                    DispatchQueue.main.async {
+                        if newStatus == .authorized || newStatus == .limited {
+                            saveBlock()
+                        } else {
+                            print("❌ Photos access not granted")
+                        }
+                    }
+                }
+            @unknown default:
+                print("❌ Unknown Photos authorization status (legacy)")
+            }
+        }
+    }
+    
+    private func saveSegmentFurnitureSnapshot(_ size: CGSize) {
+        guard let roomSnapshot else { return }
+        // Build a minimal view containing only the room background and the segmentation overlay
+        let snapshotView = ZStack {
+            Image(uiImage: roomSnapshot)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size.width, height: size.height)
+                .clipped()
+            SegmentFurniture(
+                capturedImage: $capturedImage,
+                isShowingCamera: .constant(true),
+                roomImage: roomSnapshot
+            )
+            .frame(width: size.width, height: size.height)
+        }
+
+        let renderer = ImageRenderer(content: snapshotView)
+        renderer.scale = UIScreen.main.scale
+        renderer.proposedSize = .init(width: size.width, height: size.height)
+        if let uiImage = renderer.uiImage {
+            saveUIImageToPhotos(uiImage)
+        }
+    }
+    
+    private func saveSmartyPantsSnapshot(_ size: CGSize) {
+        // Hide UI chrome briefly so it doesn't appear in the snapshot
+        isCapturingSnapshot = true
+        // Allow the UI to update before capturing
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            guard let uiImage = captureAppWindowImage() else {
+                isCapturingSnapshot = false
+                print("❌ Failed to capture app window image")
+                return
+            }
+            self.saveUIImageToPhotos(uiImage)
+            DispatchQueue.main.async {
+                self.isCapturingSnapshot = false
+            }
+        }
+    }
+    
+    private func captureAppWindowImage() -> UIImage? {
+        // Prefer the key window from the active scene
+        let windows: [UIWindow] = {
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                return scene.windows
+            }
+            // Fallback for older APIs
+            return UIApplication.shared.windows
+        }()
+        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+        let image = renderer.image { _ in
+            // Using drawHierarchy provides a rendered snapshot with effects
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        return image
+    }
+    
     private func loadModelOnce() {
         guard mlModel == nil else {
             print("✅ ML Model already loaded")
@@ -523,3 +676,4 @@ struct SmartyPantsUIView: UIViewRepresentable {
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }
+
