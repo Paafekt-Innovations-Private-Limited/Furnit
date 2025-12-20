@@ -228,27 +228,26 @@ class RealityKitBoundaryManager {
         print("   🎯 Room center: X=\(roomCenter.x), Y=\(roomCenter.y), Z=\(roomCenter.z)")
         print("   🧱 Boundary padding: \(boundaryPadding)m")
 
-        // Camera positioning strategy: INSIDE the room near back wall, looking toward front wall
-        // Position camera INSIDE room near MAX Z (back wall), looking at MIN Z (front/photo wall)
-        // This gives the feeling of being inside the home
+        // Camera positioning strategy: INSIDE the room near back wall corner, looking toward front wall
+        // Position camera INSIDE room at back wall corner, looking at front wall
+        // This gives the feeling of standing in the back corner of the home
 
-        let cameraHeight = roomCenter.y  // Center height for level view
-        let camX = roomCenter.x  // Center X for symmetric view
+        let cameraHeight = roomCenter.y + 0.4  // Raise camera higher - eye level above center
         
-        // Position camera INSIDE the room, near the back wall but not touching it
-        let backWallPadding = roomSize.z * 0.15  // 15% of room depth from back wall
-        let camZ = bounds.max.z - backWallPadding  // INSIDE room, near back wall
+        // Position camera near the back wall corner (back-left corner)
+        let wallPadding: Float = 0.3  // 30cm from walls for realistic positioning
+        let camX = bounds.min.x + wallPadding  // Near left wall
+        let camZ = bounds.max.z - wallPadding  // Near back wall
         
-        print("   📐 INSIDE-ROOM positioning (near back wall):")
-        print("   📐 Camera X: \(roomCenter.x) (CENTER)")
+        print("   📐 BACK-CORNER positioning (inside room at back wall):")
+        print("   📐 Camera X: \(bounds.min.x) + \(wallPadding) = \(camX) (NEAR LEFT WALL)")
         print("   📐 Camera Y: \(roomCenter.y) (CENTER HEIGHT)")
-        print("   📐 Camera Z: \(bounds.max.z) - (\(roomSize.z) * 0.15) = \(camZ) (INSIDE, near back wall)")
+        print("   📐 Camera Z: \(bounds.max.z) - \(wallPadding) = \(camZ) (NEAR BACK WALL)")
 
         let cameraPosition = SIMD3<Float>(camX, cameraHeight, camZ)
 
-        // Look-at point: FRONT wall center (where photo is)
-        // FRONT = MIN Z (photo wall)
-        let lookX = roomCenter.x  // Center X
+        // Look-at point: Front wall, but slightly toward the center for better view
+        let lookX = roomCenter.x  // Center X for balanced view
         let lookY = roomCenter.y  // Center height
         let lookZ = bounds.min.z  // FRONT wall (MIN Z) where photo is
         let lookAtPosition = SIMD3<Float>(lookX, lookY, lookZ)
@@ -262,7 +261,7 @@ class RealityKitBoundaryManager {
         print("      X=\(cameraPosition.x), Y=\(cameraPosition.y), Z=\(cameraPosition.z)")
         print("   👁️ LOOK-AT POSITION:")
         print("      X=\(lookAtPosition.x), Y=\(lookAtPosition.y), Z=\(lookAtPosition.z)")
-        print("   ✅ Strategy: INSIDE ROOM near back wall → looking toward front wall")
+        print("   ✅ Strategy: BACK-LEFT CORNER (against walls) → looking toward front center")
         print("🎯🎯🎯 [BoundaryManager] === END CALCULATION ===")
 
         return (position: cameraPosition, lookAt: lookAtPosition)
