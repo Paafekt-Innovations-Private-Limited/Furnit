@@ -191,24 +191,29 @@ struct RealityKitView: UIViewRepresentable {
         func setupCustomCamera(for arView: ARView) {
             // Create perspective camera entity with reasonable field of view
             cameraEntity = PerspectiveCamera()
-            cameraEntity?.camera.fieldOfViewInDegrees = 75.0
+            cameraEntity?.camera.fieldOfViewInDegrees = 60.0 // Reduced from 75 for better framing
 
-            // Create camera anchor at lower height inside the room
-            cameraAnchor = AnchorEntity(world: SIMD3<Float>(0, 1.2, 3))
+            // Create camera anchor - initial position will be set after model loads and bounds are calculated
+            cameraAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0)) // Temporary position
             cameraAnchor?.name = "CustomCameraAnchor" // Give it a name for identification
 
             // Add camera entity to anchor with no offset (prevents orbital rotation)
             if let camera = cameraEntity, let anchor = cameraAnchor {
                 camera.position = SIMD3<Float>(0, 0, 0) // No offset from anchor center
                 camera.name = "CustomPerspectiveCamera" // Name the camera
+                
+                // Configure camera for full screen rendering
+                camera.camera.near = 0.1
+                camera.camera.far = 100.0
+                
                 anchor.addChild(camera)
-                // ❌ DON'T add to scene here - will add AFTER model loads
+                // ❌ DON'T add to scene here - will add AFTER model loads and positioning
                 // arView.scene.addAnchor(anchor)
 
                 // Pass camera references to gesture handlers for direct camera control
                 gestureHandlers?.setCameraReferences(camera: camera, cameraAnchor: anchor)
 
-                print("📷 Custom camera CREATED (will add to scene after model loads)")
+                print("📷 Custom camera CREATED (position will be set after model loads and bounds calculated)")
             }
         }
 
