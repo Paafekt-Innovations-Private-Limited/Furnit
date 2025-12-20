@@ -16,7 +16,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var confidenceThreshold: Float = 0.15
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
-    var debugMode: Bool = true
+    var debugMode: Bool = false
     var active: Bool = false
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -62,7 +62,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var confidenceThreshold: Float = 0.15
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
-    var debugMode: Bool = true
+    var debugMode: Bool = false
     
     // MARK: - Ignored Classes (loaded from blacklist.json)
     private lazy var clsToIgnore: Set<Int> = {

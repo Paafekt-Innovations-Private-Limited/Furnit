@@ -3,9 +3,8 @@ import SwiftUI
 struct OTPVerificationView: View {
     let name: String
     let phoneNumber: String
-    let expectedOTP: String
     let authManager: AuthenticationManager
-    
+
     @State private var otpDigits: [String] = Array(repeating: "", count: 6)
     @State private var showError = false
     @State private var errorMessage = ""
@@ -13,9 +12,10 @@ struct OTPVerificationView: View {
     @State private var navigateToHome = false
     @State private var resendTimer = 30
     @State private var canResend = false
+    @State private var isResending = false
     @FocusState private var focusedField: Int?
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         ZStack {
             // Background gradient
@@ -25,7 +25,7 @@ struct OTPVerificationView: View {
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
-            
+
             VStack(spacing: 30) {
                 // Back Button
                 HStack {
@@ -43,30 +43,30 @@ struct OTPVerificationView: View {
                     Spacer()
                 }
                 .padding()
-                
+
                 Spacer()
-                
+
                 // Header
                 VStack(spacing: 16) {
                     Image(systemName: "lock.shield.fill")
                         .font(.system(size: 50))
                         .foregroundColor(.white)
                         .shadow(radius: 10)
-                    
+
                     Text("Verify OTP")
                         .font(.largeTitle)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
-                    
+
                     Text("Enter the code sent to")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.9))
-                    
+
                     Text(phoneNumber)
                         .font(.headline)
                         .foregroundColor(.white)
                 }
-                
+
                 // OTP Input Fields
                 VStack(spacing: 20) {
                     HStack(spacing: 12) {
@@ -79,14 +79,10 @@ struct OTPVerificationView: View {
                             .onChange(of: otpDigits[index]) { oldValue, newValue in
                                 handleOTPInput(at: index, oldValue: oldValue, newValue: newValue)
                             }
+                            .disabled(isVerifying)
                         }
                     }
-                    
-                    // Demo hint
-                    Text("Demo Mode: Enter 123456")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.7))
-                    
+
                     // Verify Button
                     Button(action: verifyOTP) {
                         HStack {
@@ -105,21 +101,28 @@ struct OTPVerificationView: View {
                         .padding()
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(isOTPComplete ? Color.green : Color.gray)
+                                .fill(isOTPComplete && !isVerifying ? Color.green : Color.gray)
                         )
                     }
                     .disabled(!isOTPComplete || isVerifying)
-                    
+
                     // Resend OTP
                     HStack {
                         if canResend {
                             Button(action: resendOTP) {
                                 HStack {
-                                    Image(systemName: "arrow.clockwise")
-                                    Text("Resend OTP")
+                                    if isResending {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                            .scaleEffect(0.6)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
+                                    }
+                                    Text(isResending ? "Sending..." : "Resend OTP")
                                 }
                                 .foregroundColor(.white)
                             }
+                            .disabled(isResending)
                         } else {
                             Text("Resend in \(resendTimer)s")
                                 .foregroundColor(.white.opacity(0.7))
@@ -137,7 +140,7 @@ struct OTPVerificationView: View {
                         )
                 )
                 .padding(.horizontal)
-                
+
                 Spacer()
                 Spacer()
             }
@@ -156,27 +159,27 @@ struct OTPVerificationView: View {
             ContentView() // This will show HomeView since user is authenticated
         }
     }
-    
+
     private var isOTPComplete: Bool {
         otpDigits.allSatisfy { !$0.isEmpty }
     }
-    
+
     private var enteredOTP: String {
         otpDigits.joined()
     }
-    
+
     private func handleOTPInput(at index: Int, oldValue: String, newValue: String) {
         // Ensure only one digit
         if newValue.count > 1 {
             otpDigits[index] = String(newValue.suffix(1))
             return
         }
-        
+
         // Move to next field if digit entered
         if !newValue.isEmpty && index < 5 {
             focusedField = index + 1
         }
-        
+
         // Handle paste
         if newValue.count == 0 && oldValue.count > 0 {
             // Backspace pressed
@@ -184,55 +187,60 @@ struct OTPVerificationView: View {
                 focusedField = index - 1
             }
         }
-        
+
         // Auto-verify when complete
-        if isOTPComplete {
+        if isOTPComplete && !isVerifying {
             verifyOTP()
         }
     }
-    
+
     private func verifyOTP() {
+        guard !isVerifying else { return }
         isVerifying = true
-        
-        // Simulate API delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if authManager.verifyOTP(enteredOTP, actualOTP: expectedOTP) {
-                // Success - login the user
-                authManager.login(name: name, phoneNumber: phoneNumber)
-                
+
+        authManager.verifyOTP(enteredOTP, name: name, phoneNumber: phoneNumber) { success, error in
+            if success {
                 // Haptic feedback
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                 impactFeedback.impactOccurred()
-                
+
                 // Navigate to home
                 navigateToHome = true
             } else {
                 // Error - wrong OTP
-                errorMessage = "Invalid OTP. Please try again."
+                errorMessage = error ?? "Invalid OTP. Please try again."
                 showError = true
                 isVerifying = false
-                
+
                 // Clear fields
                 otpDigits = Array(repeating: "", count: 6)
                 focusedField = 0
             }
         }
     }
-    
+
     private func resendOTP() {
-        // Reset timer
-        canResend = false
-        resendTimer = 30
-        startResendTimer()
-        
-        // Request new OTP
-        _ = authManager.sendOTP(to: phoneNumber)
-        
-        // Show confirmation
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
+        isResending = true
+
+        authManager.sendOTP(to: phoneNumber) { success, error in
+            isResending = false
+
+            if success {
+                // Reset timer
+                canResend = false
+                resendTimer = 30
+                startResendTimer()
+
+                // Haptic feedback
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+            } else {
+                errorMessage = error ?? "Failed to resend OTP."
+                showError = true
+            }
+        }
     }
-    
+
     private func startResendTimer() {
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
             if resendTimer > 0 {
@@ -249,7 +257,7 @@ struct OTPVerificationView: View {
 struct OTPDigitField: View {
     @Binding var digit: String
     let isActive: Bool
-    
+
     var body: some View {
         TextField("", text: $digit)
             .keyboardType(.numberPad)
@@ -274,7 +282,6 @@ struct OTPDigitField: View {
     OTPVerificationView(
         name: "John Doe",
         phoneNumber: "123-456-7890",
-        expectedOTP: "123456",
         authManager: AuthenticationManager()
     )
 }

@@ -2,8 +2,10 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject private var appState = AppStateManager.shared
+    @EnvironmentObject var authManager: AuthenticationManager
     @Environment(\.dismiss) private var dismiss
-    
+    @State private var showLogoutConfirmation = false
+
     var body: some View {
         NavigationView {
             Form {
@@ -24,6 +26,21 @@ struct SettingsView: View {
                     Text("Quality affects rendering detail and performance. Higher quality may impact battery life.")
                         .font(.footnote)
                 }
+                
+                // Development Section (Debug builds only)
+                #if DEBUG
+                Section {
+                    NavigationLink(destination: FirebaseTestView()) {
+                        HStack {
+                            Image(systemName: "flame")
+                                .foregroundColor(.orange)
+                            Text("Firebase Setup Test")
+                        }
+                    }
+                } header: {
+                    Text("Development Tools")
+                }
+                #endif
                 
                 // App Info Section
                 Section {
@@ -61,8 +78,42 @@ struct SettingsView: View {
                     Text("Controls how fast the camera moves when using the joystick. Choose the speed that feels most comfortable for you.")
                         .font(.footnote)
                 }
+
+                // Account Section
+                Section {
+                    if let user = authManager.currentUser {
+                        HStack {
+                            Text("Logged in as")
+                            Spacer()
+                            Text(user.name)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Button(action: {
+                        showLogoutConfirmation = true
+                    }) {
+                        HStack {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .foregroundColor(.red)
+                            Text("Logout")
+                                .foregroundColor(.red)
+                        }
+                    }
+                } header: {
+                    Text("Account")
+                }
             }
             .navigationTitle("Settings")
+            .alert("Logout", isPresented: $showLogoutConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Logout", role: .destructive) {
+                    authManager.logout()
+                    dismiss()
+                }
+            } message: {
+                Text("Are you sure you want to logout?")
+            }
             .navigationBarTitleDisplayMode(.large)
             .navigationBarBackButtonHidden(false)
             .toolbar {
