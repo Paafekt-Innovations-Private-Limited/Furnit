@@ -16,7 +16,6 @@ struct ModelViewerView: View {
 
     // Camera movement state
     @StateObject private var cameraMovementManager = RealityKitCameraMovementManager()
-    @State private var joystickOffset: CGSize = .zero
     @State private var shouldResetCamera = false  // ✅ Trigger camera reset on appear
 
     // Required for RealityKitView
@@ -179,17 +178,17 @@ struct ModelViewerView: View {
                 .zIndex(99998) // SECOND HIGHEST Z-INDEX
                 .allowsHitTesting(true)
                 
-                // TOPMOST JOYSTICK - ALWAYS ON TOP
-                VStack {
-                    Spacer()
-                    HStack(spacing: 12) {
+                // ✅ GLOBAL JOYSTICK - uses GlobalCameraController
+                SimpleJoystickOverlay()
+                    .opacity(isCapturingSnapshot ? 0 : 1)
+                    .zIndex(99997)
+
+                // SmartyPants snapshot button (separate from joystick)
+                if showingSmartyPants {
+                    VStack {
                         Spacer()
-                        VirtualJoystick(joystickOffset: $joystickOffset)
-                            .onChange(of: joystickOffset) { _, newOffset in
-                                cameraMovementManager.updateJoystickInput(newOffset)
-                            }
-                            .allowsHitTesting(true)
-                        if showingSmartyPants {
+                        HStack {
+                            Spacer()
                             Button(action: {
                                 let screen = UIScreen.main.bounds.size
                                 saveSmartyPantsSnapshot(screen)
@@ -204,14 +203,13 @@ struct ModelViewerView: View {
                                     )
                             }
                             .disabled(isCapturingSnapshot)
+                            .padding(.trailing, 30)
+                            .padding(.bottom, 40)
                         }
-                        Spacer()
                     }
-                    .padding(.bottom, 20)
+                    .opacity(isCapturingSnapshot ? 0 : 1)
+                    .zIndex(99996)
                 }
-                .opacity(isCapturingSnapshot ? 0 : 1)
-                .zIndex(99997) // THIRD HIGHEST Z-INDEX
-                .allowsHitTesting(true)
             }
         }
         .navigationBarHidden(true)

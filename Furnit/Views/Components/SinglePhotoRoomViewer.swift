@@ -1105,24 +1105,32 @@ struct SceneKitViewer: View {
                 print("   - Scene nodes: \(scene.rootNode.childNodes.count)")
                 setupCamera()
             }
-            
+            .onDisappear {
+                GlobalCameraController.shared.clearCamera()
+            }
+
             // Save progress overlay
             if isSavingRoom {
                 saveRoomProgressOverlay
             }
-            
+
+            // ✅ GLOBAL JOYSTICK - uses GlobalCameraController
+            SimpleJoystickOverlay()
+                .zIndex(99997)
+
             if showControls {
                 VStack {
                     Spacer()
                     HStack {
                         Image(systemName: "hand.draw")
-                        Text("Drag to rotate • Pinch to zoom • Two fingers to pan")
+                        Text("Use joystick to move • Pinch to zoom")
                             .font(.caption)
                     }
                     .padding(8)
                     .background(.ultraThinMaterial)
                     .cornerRadius(8)
                     .padding()
+                    .padding(.bottom, 100) // Move above joystick
                 }
                 .onAppear {
                     print("ℹ️ [Viewer] Controls hint displayed")
@@ -1396,19 +1404,15 @@ struct SceneKitViewer: View {
         camNode.camera = camera
         camNode.position = SCNVector3(camX, camY, camZ)
 
-        // Make camera look at front wall
-        let lookAtConstraint = SCNLookAtConstraint(target: {
-            let targetNode = SCNNode()
-            targetNode.position = SCNVector3(lookAtX, lookAtY, lookAtZ)
-            scene.rootNode.addChildNode(targetNode)
-            return targetNode
-        }())
-        lookAtConstraint.isGimbalLockEnabled = true
-        camNode.constraints = [lookAtConstraint]
+        // Point camera at front wall (without constraint for joystick movement)
+        camNode.look(at: SCNVector3(lookAtX, lookAtY, lookAtZ))
 
         scene.rootNode.addChildNode(camNode)
         cameraNode = camNode
 
-        print("   ✅ Camera setup complete - positioned outside room looking at front wall")
+        // ✅ Register with GlobalCameraController for joystick movement
+        GlobalCameraController.shared.registerSceneKitCamera(camNode)
+
+        print("   ✅ Camera setup complete and registered with GlobalCameraController")
     }
 }

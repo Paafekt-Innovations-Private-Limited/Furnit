@@ -47,15 +47,28 @@ struct RealityKitView: UIViewRepresentable {
         // Set up coordinator and custom camera for non-AR mode
         context.coordinator.setupGestures(for: arView, placementManager: arObjectPlacementManager)
         context.coordinator.setupCustomCamera(for: arView)
+
+        // Note: Camera will be registered with GlobalCameraController AFTER model loads
+        // (see loadModel - camera is added to scene after model for proper precedence)
+
         loadModel(into: arView, coordinator: context.coordinator)
-        
-        // Set up camera movement manager with the ARView
+
+        // Set up camera movement manager with the ARView (for other features)
         cameraMovementManager.setupARView(arView)
-        
+        if let cameraAnchor = context.coordinator.cameraAnchor {
+            cameraMovementManager.setCameraAnchor(cameraAnchor)
+        }
+
         return arView
     }
     
     func updateUIView(_ uiView: ARView, context: Context) {
+        // ✅ ALWAYS register camera with global controller (both anchor and camera entity)
+        if let cameraAnchor = context.coordinator.cameraAnchor {
+            GlobalCameraController.shared.registerRealityKitCamera(cameraAnchor, camera: context.coordinator.cameraEntity, arView: uiView)
+            cameraMovementManager.setCameraAnchor(cameraAnchor)
+        }
+
         // ✅ Check if model changed - reset camera position if so
         if context.coordinator.currentModelID != model.id {
             print("🔄 [RealityKitView.updateUIView] MODEL CHANGED! Resetting camera position...")
@@ -174,24 +187,89 @@ struct RealityKitView: UIViewRepresentable {
         }
         
         // Set up custom camera for non-AR mode with controllable rotation
+        // NOTE: This only CREATES the camera, does NOT add to scene yet (that happens after model loads)
         func setupCustomCamera(for arView: ARView) {
             // Create perspective camera entity with reasonable field of view
             cameraEntity = PerspectiveCamera()
             cameraEntity?.camera.fieldOfViewInDegrees = 75.0
-            
+
             // Create camera anchor at lower height inside the room
             cameraAnchor = AnchorEntity(world: SIMD3<Float>(0, 1.2, 3))
-            
+            cameraAnchor?.name = "CustomCameraAnchor" // Give it a name for identification
+
             // Add camera entity to anchor with no offset (prevents orbital rotation)
             if let camera = cameraEntity, let anchor = cameraAnchor {
                 camera.position = SIMD3<Float>(0, 0, 0) // No offset from anchor center
+                camera.name = "CustomPerspectiveCamera" // Name the camera
                 anchor.addChild(camera)
-                arView.scene.addAnchor(anchor)
-                
+                // ❌ DON'T add to scene here - will add AFTER model loads
+                // arView.scene.addAnchor(anchor)
+
                 // Pass camera references to gesture handlers for direct camera control
                 gestureHandlers?.setCameraReferences(camera: camera, cameraAnchor: anchor)
+
+                print("📷 Custom camera CREATED (will add to scene after model loads)")
+            }
+        }
+
+        // Add camera to scene - called AFTER model loads to ensure camera takes precedence
+        func addCameraToScene(arView: ARView) {
+            guard let cameraAnchor = cameraAnchor else {
+                print("❌ [addCameraToScene] No camera anchor to add!")
+                return
+            }
+
+            // First, find and log any existing cameras in the scene
+            var existingCameraCount = 0
+            for anchor in arView.scene.anchors {
+                func findCameras(in entity: Entity) {
+                    if entity is PerspectiveCamera {
+                        existingCameraCount += 1
+                        print("⚠️ Found existing PerspectiveCamera: \(entity.name.isEmpty ? "unnamed" : entity.name)")
+                    }
+                    for child in entity.children {
+                        findCameras(in: child)
+                    }
+                }
+                findCameras(in: anchor)
+            }
+            print("📷 [addCameraToScene] Found \(existingCameraCount) existing cameras in scene")
+
+            // Add our camera anchor to the scene LAST
+            arView.scene.addAnchor(cameraAnchor)
+            print("📷 [addCameraToScene] Camera anchor added to scene as LAST anchor")
+            print("   Total anchors in scene: \(arView.scene.anchors.count)")
+            
+            // ✅ Try a more aggressive approach - remove ALL cameras then add ours
+            if let cameraEntity = cameraEntity {
+                print("🧹 Clearing all existing cameras from scene before adding ours")
                 
-                print("📷 Custom camera set up for non-AR mode at position: \(anchor.transform.translation)")
+                // Collect all existing camera entities
+                var existingCameras: [PerspectiveCamera] = []
+                for anchor in arView.scene.anchors {
+                    func collectCameras(in entity: Entity) {
+                        if let perspectiveCamera = entity as? PerspectiveCamera,
+                           perspectiveCamera !== cameraEntity {
+                            existingCameras.append(perspectiveCamera)
+                        }
+                        for child in entity.children {
+                            collectCameras(in: child)
+                        }
+                    }
+                    collectCameras(in: anchor)
+                }
+                
+                // Remove all existing cameras
+                for camera in existingCameras {
+                    camera.parent?.removeChild(camera)
+                    print("🗑️ Removed existing camera: \(camera.name)")
+                }
+                
+                print("✅ [addCameraToScene] Scene cleared. Our camera should now be the only one.")
+                print("   Camera Entity: \(cameraEntity)")
+                print("   Camera Name: \(cameraEntity.name)")
+                print("   Camera FOV: \(cameraEntity.camera.fieldOfViewInDegrees)")
+                print("   Camera Position: \(cameraAnchor.transform.translation)")
             }
         }
         
@@ -341,7 +419,13 @@ struct RealityKitView: UIViewRepresentable {
                     coordinator.worldAnchor = nil
                     print("🧹 [RealityKitView] Removed previous model anchor from scene")
                 }
-                
+
+                // Also remove camera anchor if it exists (will re-add after model)
+                if let cameraAnchor = coordinator.cameraAnchor {
+                    arView.scene.removeAnchor(cameraAnchor)
+                    print("🧹 [RealityKitView] Removed camera anchor (will re-add after model)")
+                }
+
                 let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
                 modelAnchor.addChild(modelEntity)
                 arView.scene.addAnchor(modelAnchor)
@@ -414,6 +498,13 @@ struct RealityKitView: UIViewRepresentable {
                     print("   📍 Final Position: \(cameraAnchor.transform.translation)")
                     print("   👁️ Looking at: \(lookAtPosition)")
                     print("   🧭 Direction: \(lookDirection)")
+
+                    // ✅ Add camera to scene AFTER model and AFTER positioning (ensures camera takes precedence)
+                    coordinator.addCameraToScene(arView: arView)
+
+                    // Register with GlobalCameraController
+                    GlobalCameraController.shared.registerRealityKitCamera(cameraAnchor, camera: coordinator.cameraEntity)
+                    print("✅ [RealityKitView] Camera registered with GlobalCameraController")
                 } else if let cameraAnchor = coordinator.cameraAnchor {
                     // Fallback if no bounds - use default position
                     print("⚠️ [RealityKitView] NO BOUNDS - using DEFAULT position")
@@ -426,6 +517,13 @@ struct RealityKitView: UIViewRepresentable {
                     cameraAnchor.transform.rotation = lookRotation
 
                     print("📷 Custom camera positioned at default: \(defaultPosition) (no bounds available)")
+
+                    // ✅ Add camera to scene AFTER model and AFTER positioning
+                    coordinator.addCameraToScene(arView: arView)
+
+                    // Register with GlobalCameraController
+                    GlobalCameraController.shared.registerRealityKitCamera(cameraAnchor, camera: coordinator.cameraEntity)
+                    print("✅ [RealityKitView] Camera registered with GlobalCameraController")
                 } else {
                     print("❌ [RealityKitView] NO CAMERA ANCHOR - cannot position camera!")
                 }

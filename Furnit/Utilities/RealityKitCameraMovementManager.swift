@@ -10,37 +10,38 @@ class RealityKitCameraMovementManager: ObservableObject {
         case normal = 0.003  // 2x original for comfortable cruising
         case fast = 0.006    // 2x original for quicker navigation
     }
-    
+
     // Camera movement properties
     weak var arView: ARView?
     private var boundaryManager: RealityKitBoundaryManager?
     private var displayLink: CADisplayLink?
     private var currentJoystickOffset: CGSize = .zero
-    
+
     // Custom camera control for non-AR mode
     private weak var cameraAnchor: AnchorEntity?
-    
+
     // Current speed setting
     @Published var currentSpeed: MovementSpeed = .normal
-    
+
     // Movement configuration - BALANCED FOR SMOOTH MOVEMENT
     private var movementSpeed: Float = 0.04 // Moderate speed for smooth control
     private let joystickSensitivity: Float = 0.001 // Keep original sensitivity
     private let joystickDeadZone: Float = 5.0 // Dead zone threshold
-    
+
     // Smooth movement
     private var targetVelocity: SIMD2<Float> = .zero
     private var currentVelocity: SIMD2<Float> = .zero
     private let smoothingFactor: Float = 0.18 // Balanced for smooth transitions
-    
+
     // Callback for camera movement notifications
     var onCameraMove: (() -> Void)?
-    
+
     init() {
-        // Set up display link for smooth continuous movement
-        displayLink = CADisplayLink(target: self, selector: #selector(updateCameraPosition))
-        displayLink?.add(to: .main, forMode: .common)
-        print("🎮 Camera movement manager initialized with enhanced joystick support")
+        // ❌ DISABLED: GlobalCameraController now handles all camera movement
+        // displayLink = CADisplayLink(target: self, selector: #selector(updateCameraPosition))
+        // displayLink?.add(to: .main, forMode: .common)
+
+        print("🎮 Camera movement manager initialized (displayLink DISABLED - using GlobalCameraController)")
     }
     
     deinit {
@@ -60,8 +61,13 @@ class RealityKitCameraMovementManager: ObservableObject {
     
     // Set camera anchor reference for direct camera control
     func setCameraAnchor(_ anchor: AnchorEntity) {
+        // Only log if anchor is changing
+        let isNewAnchor = self.cameraAnchor !== anchor
         self.cameraAnchor = anchor
-        print("🎮 Camera movement manager now using camera anchor for direct control")
+
+        if isNewAnchor {
+            print("🎮 Camera anchor set")
+        }
     }
 
     // Set boundary manager reference (shared from RealityKitView)
@@ -85,24 +91,25 @@ class RealityKitCameraMovementManager: ObservableObject {
     // Update joystick input from the virtual joystick
     func updateJoystickInput(_ offset: CGSize) {
         currentJoystickOffset = offset
-        
+
         // Calculate target velocity based on joystick position
         let x = Float(offset.width)
         let y = Float(offset.height)
-        
+
         // Apply dead zone
         let magnitude = sqrt(x * x + y * y)
-        
+
         if magnitude > joystickDeadZone {
             // Normalize and apply sensitivity
             let normalizedX = x / 30.0  // 30 is max joystick distance
             let normalizedY = y / 30.0
-            
+
             targetVelocity = SIMD2<Float>(normalizedX, normalizedY)
-            
+
             // Debug output for significant movements
             if abs(normalizedX) > 0.3 || abs(normalizedY) > 0.3 {
                 print("🕹️ Joystick active: X=\(String(format: "%.2f", normalizedX)), Y=\(String(format: "%.2f", normalizedY))")
+                print("   📍 arView set: \(arView != nil), cameraAnchor set: \(cameraAnchor != nil)")
             }
         } else {
             targetVelocity = .zero
@@ -111,17 +118,34 @@ class RealityKitCameraMovementManager: ObservableObject {
     
     // Continuous camera position updates based on joystick input
     @objc private func updateCameraPosition() {
+        // ✅ DIRECTLY READ from GlobalJoystickManager - no callbacks needed
+        let joystickOffset = GlobalJoystickManager.shared.joystickOffset
+
+        // Debug: log if joystick is active but camera refs missing
+        let hasInput = joystickOffset.width != 0 || joystickOffset.height != 0
+        if hasInput && (arView == nil || cameraAnchor == nil) {
+            print("⚠️ [CameraMove] Joystick active but missing refs - arView:\(arView != nil) cameraAnchor:\(cameraAnchor != nil)")
+        }
+
         guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
-        
+
+        let x = Float(joystickOffset.width)
+        let y = Float(joystickOffset.height)
+        let magnitude = sqrt(x * x + y * y)
+
+        if magnitude > joystickDeadZone {
+            let normalizedX = x / 30.0
+            let normalizedY = y / 30.0
+            targetVelocity = SIMD2<Float>(normalizedX, normalizedY)
+        } else {
+            targetVelocity = .zero
+        }
+
         // Smooth velocity transition
         currentVelocity = mix(currentVelocity, targetVelocity, t: smoothingFactor)
-        
+
         // Skip if velocity is too small
         guard length(currentVelocity) > 0.01 else {
-            // If we were moving and now stopped, call the callback
-            if length(currentVelocity) < 0.01 && length(targetVelocity) < 0.01 {
-                return
-            }
             return
         }
         
