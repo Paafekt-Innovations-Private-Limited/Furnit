@@ -163,6 +163,7 @@ struct RealityKitView: UIViewRepresentable {
         
         func setupGestures(for arView: ARView, placementManager: ARObjectPlacementManager) {
             gestureHandlers = RealityKitGestureHandlers(arView: arView)
+            self.arObjectPlacementManager = placementManager
 
             // Connect object placement manager to gesture handlers for manipulation support
             gestureHandlers?.setObjectPlacementManager(placementManager)
@@ -333,19 +334,31 @@ struct RealityKitView: UIViewRepresentable {
                     print("   - ✅ Added emergency fill light at [2, 1, 2]")
                 }
                 
-                // In non-AR mode, simply add model to scene directly
+                // Clean up any previous model anchor to avoid state pollution
                 print("🎨 [RealityKitView.loadModel] Adding model to scene...")
+                if let oldAnchor = coordinator.worldAnchor {
+                    arView.scene.removeAnchor(oldAnchor)
+                    coordinator.worldAnchor = nil
+                    print("🧹 [RealityKitView] Removed previous model anchor from scene")
+                }
+                
                 let modelAnchor = AnchorEntity(world: SIMD3<Float>(0, 0, 0))
                 modelAnchor.addChild(modelEntity)
                 arView.scene.addAnchor(modelAnchor)
                 coordinator.scene = arView.scene
-
-                // Store the model anchor for object placement
-                coordinator.worldAnchor = modelAnchor
-                print("✅ [RealityKitView.loadModel] Model added to scene successfully")
                 
+                // Store and broadcast the new world/model anchor
+                coordinator.worldAnchor = modelAnchor
+                // Ensure object placement manager uses the fresh scene and anchor
+                arObjectPlacementManager.setSceneReferences(arView: arView, scene: arView.scene)
+                arObjectPlacementManager.setWorldAnchor(modelAnchor)
+                print("📌 [RealityKitView] World anchor set on placement manager")
+
                 // Set up boundary manager for camera constraints
                 let boundaryManager = RealityKitBoundaryManager(arView: arView)
+                // Option B: Ensure fresh bounds per model load (avoid inheriting previous room bounds)
+                boundaryManager.reset()
+                print("🧹 [RealityKitView] Boundary manager reset before calculating new room bounds")
                 boundaryManager.calculateRoomBounds(from: modelEntity)
                 coordinator.gestureHandlers?.setBoundaryManager(boundaryManager)
 
@@ -575,3 +588,4 @@ struct RealityKitView: UIViewRepresentable {
 }
 
 // MARK: - Extensions for SIMD math operations are defined in RealityKitObjectPlacementManager.swift
+

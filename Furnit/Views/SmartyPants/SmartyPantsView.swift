@@ -13,7 +13,7 @@ import CoreText
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.3
+    var confidenceThreshold: Float = 0.2
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
     var debugMode: Bool = false
@@ -59,7 +59,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.3
+    var confidenceThreshold: Float = 0.2
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
     var debugMode: Bool = false

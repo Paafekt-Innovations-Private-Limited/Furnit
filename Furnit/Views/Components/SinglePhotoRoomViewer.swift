@@ -5,10 +5,14 @@ import Accelerate
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
     let originalImage: UIImage
-    @Binding var savedBoundaries: RoomStructure? // ✅ NEW: Binding to save adjusted boundaries
+    @Binding var savedBoundaries: RoomStructure?
     @State private var detectedBoundariesImage: UIImage?
 
-    // ✅ GPU-accelerated CIContext for image processing
+    // ✅ Fix image orientation ONCE to prevent 90° tilt
+    @State private var fixedImage: UIImage?
+    private var displayImage: UIImage { fixedImage ?? originalImage }
+
+    // GPU-accelerated CIContext for image processing
     private static let ciContext: CIContext = {
         if let device = MTLCreateSystemDefaultDevice() {
             print("🚀 [BoundaryView] Using Metal GPU for image processing")
@@ -43,15 +47,15 @@ struct RoomBoundaryDetectionView: View {
                     // Interactive adjustment view
                     GeometryReader { geometry in
                         ZStack {
-                            // Background image
-                            Image(uiImage: originalImage)
+                            // Background image (orientation-fixed)
+                            Image(uiImage: displayImage)
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: geometry.size.width)
-                            
+
                             // Overlay with draggable boundaries
                             BoundaryLinesCanvas(
-                                imageSize: originalImage.size,
+                                imageSize: displayImage.size,
                                 floorY: floorY,
                                 ceilingY: ceilingY,
                                 leftX: leftX,
@@ -64,7 +68,7 @@ struct RoomBoundaryDetectionView: View {
                             // Draggable handles
                             DraggableHandlesOverlay(
                                 geometry: geometry,
-                                imageSize: originalImage.size,
+                                imageSize: displayImage.size,
                                 floorY: $floorY,
                                 ceilingY: $ceilingY,
                                 leftX: $leftX,
@@ -238,7 +242,14 @@ struct RoomBoundaryDetectionView: View {
                 }
             }
         }
-        .onAppear { generateFinalImage() }
+        .onAppear {
+            // ✅ Fix image orientation ONCE on appear to prevent 90° tilt
+            if fixedImage == nil {
+                fixedImage = originalImage.fixedOrientation()
+                print("🔧 [BoundaryView] Fixed image orientation on appear")
+            }
+            generateFinalImage()
+        }
     }
     
     func generateFinalImage() {
@@ -249,19 +260,22 @@ struct RoomBoundaryDetectionView: View {
     }
     
     func drawBoundariesOnImage() async -> UIImage {
+        // ✅ Use displayImage (orientation-fixed) instead of originalImage
+        let sourceImage = displayImage
+
         // ✅ OPTIMIZATION: Downscale large images to prevent memory crashes
         // Using vImage from Accelerate framework for GPU/NEON acceleration
         let maxDimension: CGFloat = 1600  // Max 1600px - balances quality & memory
-        let originalWidth = originalImage.size.width
-        let originalHeight = originalImage.size.height
+        let originalWidth = sourceImage.size.width
+        let originalHeight = sourceImage.size.height
         let scaleFactor = min(maxDimension / max(originalWidth, originalHeight), 1.0)
 
         let workingImage: UIImage
         if scaleFactor < 1.0 {
             print("🚀 [BoundaryView] Downscaling \(Int(originalWidth))x\(Int(originalHeight)) → \(Int(originalWidth * scaleFactor))x\(Int(originalHeight * scaleFactor))")
-            workingImage = downscaleWithAccelerate(originalImage, scale: scaleFactor) ?? originalImage
+            workingImage = downscaleWithAccelerate(sourceImage, scale: scaleFactor) ?? sourceImage
         } else {
-            workingImage = originalImage
+            workingImage = sourceImage
         }
 
         let width = workingImage.size.width
@@ -1067,7 +1081,8 @@ struct SceneKitViewer: View {
     let scene: SCNScene
     @Environment(\.dismiss) private var dismiss
     @State private var showControls = true
-    
+    @State private var cameraNode: SCNNode?
+
     // Save room state
     @StateObject private var modelManager = USDZModelManager()
     @State private var isSavingRoom = false
@@ -1077,16 +1092,18 @@ struct SceneKitViewer: View {
     @State private var saveAlertMessage = ""
     @State private var showRoomNameInput = false
     @State private var roomName = ""
-    
+
     var body: some View {
         ZStack {
             SceneView(
                 scene: scene,
+                pointOfView: cameraNode,
                 options: [.allowsCameraControl, .autoenablesDefaultLighting]
             )
             .onAppear {
                 print("🎬 [Viewer] SceneKit viewer appeared")
                 print("   - Scene nodes: \(scene.rootNode.childNodes.count)")
+                setupCamera()
             }
             
             // Save progress overlay
@@ -1310,13 +1327,88 @@ struct SceneKitViewer: View {
     private func cancelSavingRoom() {
         savingTimer?.invalidate()
         savingTimer = nil
-        
+
         withAnimation(.easeOut(duration: 0.2)) {
             isSavingRoom = false
             saveProgress = 0.0
         }
-        
+
         roomName = ""
         print("❌ [Viewer] Room save cancelled")
+    }
+
+    // ✅ Setup camera position like vintage room (outside, looking at front wall)
+    private func setupCamera() {
+        print("📷 [SceneKitViewer] Setting up camera position...")
+
+        // Calculate scene bounds
+        var minBounds = SCNVector3(Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude)
+        var maxBounds = SCNVector3(-Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude)
+
+        scene.rootNode.enumerateChildNodes { node, _ in
+            let (localMin, localMax) = node.boundingBox
+            let worldMin = node.convertPosition(localMin, to: nil)
+            let worldMax = node.convertPosition(localMax, to: nil)
+
+            minBounds.x = min(minBounds.x, worldMin.x, worldMax.x)
+            minBounds.y = min(minBounds.y, worldMin.y, worldMax.y)
+            minBounds.z = min(minBounds.z, worldMin.z, worldMax.z)
+
+            maxBounds.x = max(maxBounds.x, worldMin.x, worldMax.x)
+            maxBounds.y = max(maxBounds.y, worldMin.y, worldMax.y)
+            maxBounds.z = max(maxBounds.z, worldMin.z, worldMax.z)
+        }
+
+        let roomSize = SCNVector3(
+            maxBounds.x - minBounds.x,
+            maxBounds.y - minBounds.y,
+            maxBounds.z - minBounds.z
+        )
+        let roomCenter = SCNVector3(
+            (minBounds.x + maxBounds.x) / 2,
+            (minBounds.y + maxBounds.y) / 2,
+            (minBounds.z + maxBounds.z) / 2
+        )
+
+        print("   📦 Room bounds: min(\(minBounds)), max(\(maxBounds))")
+        print("   📏 Room size: \(roomSize.x) x \(roomSize.y) x \(roomSize.z)")
+        print("   🎯 Room center: \(roomCenter)")
+
+        // ✅ Camera positioning: OUTSIDE the room (beyond max Z), looking at FRONT wall (min Z)
+        // Same strategy as RealityKitBoundaryManager.getOptimalCameraPosition()
+        let camX = roomCenter.x  // Center X
+        let camY = roomCenter.y  // Center height
+        let camZ = maxBounds.z + (roomSize.z * 0.3)  // OUTSIDE room, beyond back
+
+        let lookAtX = roomCenter.x  // Center X
+        let lookAtY = roomCenter.y  // Center height
+        let lookAtZ = minBounds.z   // FRONT wall (where photo is)
+
+        print("   📷 Camera position: (\(camX), \(camY), \(camZ))")
+        print("   👁️ Looking at: (\(lookAtX), \(lookAtY), \(lookAtZ))")
+
+        // Create camera node
+        let camera = SCNCamera()
+        camera.automaticallyAdjustsZRange = true
+        camera.fieldOfView = 60
+
+        let camNode = SCNNode()
+        camNode.camera = camera
+        camNode.position = SCNVector3(camX, camY, camZ)
+
+        // Make camera look at front wall
+        let lookAtConstraint = SCNLookAtConstraint(target: {
+            let targetNode = SCNNode()
+            targetNode.position = SCNVector3(lookAtX, lookAtY, lookAtZ)
+            scene.rootNode.addChildNode(targetNode)
+            return targetNode
+        }())
+        lookAtConstraint.isGimbalLockEnabled = true
+        camNode.constraints = [lookAtConstraint]
+
+        scene.rootNode.addChildNode(camNode)
+        cameraNode = camNode
+
+        print("   ✅ Camera setup complete - positioned outside room looking at front wall")
     }
 }

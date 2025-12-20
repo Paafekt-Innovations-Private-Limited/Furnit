@@ -32,19 +32,11 @@ class RealityKitBoundaryManager {
             let newBounds = (min: minBounds, max: maxBounds)
             let newRoomSize = maxBounds - minBounds
             
-            // Validate bounds to prevent dramatic shrinking
+            // Option A: Always accept new bounds for each model load to avoid stale state
             if let existingBounds = roomBounds {
                 let existingSize = existingBounds.max - existingBounds.min
                 let sizeRatio = (newRoomSize.x * newRoomSize.y * newRoomSize.z) / (existingSize.x * existingSize.y * existingSize.z)
-                
-                // If new bounds are dramatically smaller (less than 10% of original), reject them
-                if sizeRatio < 0.1 {
-                    print("🚫 Rejecting dramatically smaller bounds:")
-                    print("   Existing: \(existingSize.x) x \(existingSize.y) x \(existingSize.z)")
-                    print("   New: \(newRoomSize.x) x \(newRoomSize.y) x \(newRoomSize.z)")
-                    print("   Size ratio: \(sizeRatio) - keeping existing bounds")
-                    return
-                }
+                print("ℹ️ [BoundaryManager] Previous bounds exist. Accepting new bounds regardless of size ratio (Option A). Size ratio: \(sizeRatio)")
             }
             
             roomBounds = newBounds
@@ -281,3 +273,4 @@ class RealityKitBoundaryManager {
 }
 
 // MARK: - Extensions for SIMD operations are defined in RealityKitObjectPlacementManager.swift
+
