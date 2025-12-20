@@ -13,10 +13,10 @@ import CoreText
 struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.2
+    var confidenceThreshold: Float = 0.1
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
-    var debugMode: Bool = false
+    var debugMode: Bool = true
     var active: Bool = false
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
@@ -59,10 +59,10 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.2
+    var confidenceThreshold: Float = 0.1
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
-    var debugMode: Bool = false
+    var debugMode: Bool = true
     
     // MARK: - Ignored Classes (loaded from blacklist.json)
     private lazy var clsToIgnore: Set<Int> = {
@@ -462,19 +462,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         // STAGE 7: Apply NMS
-        let t7 = Date()
-        let afterNMS = applyNMS(allDets)
-        let t7End = Date()
-        if debugMode {
-            print("⏱️ STAGE 7 - NMS: \(String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)) ms, kept: \(afterNMS.count)")
-        }
+//        let t7 = Date()
+//        let afterNMS = applyNMS(allDets)
+//        let t7End = Date()
+//        if debugMode {
+//            print("⏱️ STAGE 7 - NMS: \(String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)) ms, kept: \(afterNMS.count)")
+//        }
 
         // STAGE 8: Find primary (conf > 0.5, largest area)
         let t8 = Date()
         
         var primaryIdx = -1
         var maxArea: Float = 0
-        for (i, d) in afterNMS.enumerated() {
+//        for (i, d) in afterNMS.enumerated() {
+        for (i, d) in allDets.enumerated() {
             if d.confidence > 0.5 {
                 let area = d.w * d.h
                 if area > maxArea {
@@ -493,7 +494,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             return
         }
         
-        let primary = afterNMS[primaryIdx]
+//        let primary = afterNMS[primaryIdx]
+        let primary = allDets[primaryIdx]
         let t8End = Date()
         if debugMode {
             print("⏱️ STAGE 8 - Primary: \(String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)) ms")
@@ -553,7 +555,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         
         var kept2: [UnionDet] = [primary]
-        for (i, d) in afterNMS.enumerated() {
+//        for (i, d) in afterNMS.enumerated() {
+        for (i, d) in allDets.enumerated() {
             if i == primaryIdx { continue }
             
             let dLeft = d.x - d.w * 0.5
