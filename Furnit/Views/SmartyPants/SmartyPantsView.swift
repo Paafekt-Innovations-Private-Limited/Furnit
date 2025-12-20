@@ -956,13 +956,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 ctx.setFillColor(detectionColor.cgColor)
                 
                 // Draw bounding box
-                ctx.stroke(CGRect(x: clampedX1, y: clampedY1, width: clampedW, height: clampedH))
+                ctx.stroke(CGRect(x: clampedX1, y: origH - clampedY1 - clampedH, width: clampedW, height: clampedH))
             }
             
             // Draw union bounding box in green
             ctx.setStrokeColor(UIColor.green.cgColor)
             ctx.setLineWidth(6.0)
-            ctx.stroke(CGRect(x: bx1, y: by1, width: bx2 - bx1, height: by2 - by1))
+            ctx.stroke(CGRect(x: bx1, y: origH - by2, width: bx2 - bx1, height: by2 - by1))
         }
         
         if let out = ctx.makeImage() {
