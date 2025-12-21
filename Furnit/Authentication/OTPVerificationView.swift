@@ -27,24 +27,8 @@ struct OTPVerificationView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 30) {
-                // Back Button
-                HStack {
-                    Button(action: { dismiss() }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text("Back")
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.2))
-                        .cornerRadius(20)
-                    }
-                    Spacer()
-                }
-                .padding()
-
                 Spacer()
+                    .frame(height: 60)
 
                 // Header
                 VStack(spacing: 16) {
@@ -144,6 +128,22 @@ struct OTPVerificationView: View {
                 Spacer()
                 Spacer()
             }
+        }
+        .overlay(alignment: .topLeading) {
+            // Back Button - placed on top layer
+            Button(action: { dismiss() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                    Text("Back")
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.2))
+                .cornerRadius(20)
+            }
+            .padding(.top, 60)
+            .padding(.leading, 16)
         }
         .navigationBarHidden(true)
         .onAppear {
