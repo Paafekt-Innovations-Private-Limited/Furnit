@@ -144,13 +144,17 @@ struct LoginView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Background gradient
+                // Background gradient - tap to dismiss keyboard
                 LinearGradient(
                     colors: [Color.blue.opacity(0.8), Color.purple.opacity(0.6)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 .ignoresSafeArea()
+                .onTapGesture {
+                    nameFieldFocused = false
+                    phoneFieldFocused = false
+                }
 
                 VStack(spacing: 30) {
                     Spacer()
@@ -162,7 +166,7 @@ struct LoginView: View {
                             .foregroundColor(.white)
                             .shadow(radius: 10)
 
-                        Text("Furnit")
+                        Text("Paafekt Beta")
                             .font(.largeTitle)
                             .fontWeight(.bold)
                             .foregroundColor(.white)
@@ -292,10 +296,6 @@ struct LoginView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(errorMessage)
-            }
-            .onTapGesture {
-                nameFieldFocused = false
-                phoneFieldFocused = false
             }
         }
     }
