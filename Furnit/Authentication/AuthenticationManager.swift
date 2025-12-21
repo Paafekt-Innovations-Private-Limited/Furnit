@@ -20,6 +20,15 @@ class AuthenticationManager: ObservableObject {
     private let userPhoneKey = "userPhone"
     private let userIdKey = "userId"
 
+    // Anti-bot protection
+    private let otpAttemptsKey = "otpAttempts"
+    private let otpLockoutKey = "otpLockoutUntil"
+    private let otpRequestCountKey = "otpRequestCount"
+    private let otpRequestWindowKey = "otpRequestWindow"
+    private let maxOTPAttempts = 5
+    private let maxOTPRequestsPerHour = 5
+    private let lockoutDurationMinutes = 30.0
+
     struct User: Codable {
         let id: String
         let name: String
@@ -59,6 +68,18 @@ class AuthenticationManager: ObservableObject {
     func sendOTP(to phoneNumber: String, completion: @escaping (Bool, String?) -> Void) {
         isLoading = true
         errorMessage = nil
+
+        // Anti-bot: Check rate limits
+        let rateCheck = canRequestOTP()
+        if !rateCheck.allowed {
+            isLoading = false
+            errorMessage = rateCheck.message
+            completion(false, rateCheck.message)
+            return
+        }
+
+        // Record this OTP request
+        recordOTPRequest()
 
         // Format phone number with country code
         let formattedPhone = formatPhoneForFirebase(phoneNumber)
@@ -105,6 +126,15 @@ class AuthenticationManager: ObservableObject {
         isLoading = true
         errorMessage = nil
 
+        // Anti-bot: Check if locked out
+        if isLockedOut() {
+            isLoading = false
+            let error = "Too many failed attempts. Try again in \(getLockoutRemainingTime())."
+            errorMessage = error
+            completion(false, error)
+            return
+        }
+
         guard let verificationID = verificationID else {
             isLoading = false
             let error = "Verification expired. Please request a new OTP."
@@ -123,13 +153,26 @@ class AuthenticationManager: ObservableObject {
                 self?.isLoading = false
 
                 if let error = error {
-                    self?.errorMessage = error.localizedDescription
+                    // Anti-bot: Record failed attempt
+                    self?.recordFailedOTPAttempt()
+
+                    let attempts = self?.userDefaults.integer(forKey: self?.otpAttemptsKey ?? "") ?? 0
+                    let remaining = (self?.maxOTPAttempts ?? 5) - attempts
+                    var errorMsg = error.localizedDescription
+                    if remaining > 0 && remaining < 3 {
+                        errorMsg += " (\(remaining) attempts remaining)"
+                    }
+
+                    self?.errorMessage = errorMsg
                     print("❌ OTP verify error: \(error.localizedDescription)")
-                    completion(false, error.localizedDescription)
+                    completion(false, errorMsg)
                     return
                 }
 
                 if let user = authResult?.user {
+                    // Anti-bot: Reset attempts on successful login
+                    self?.resetOTPAttempts()
+
                     self?.loginUser(name: name, phoneNumber: phoneNumber, userId: user.uid)
                     print("✅ Firebase auth successful: \(user.uid)")
                     completion(true, nil)
@@ -175,6 +218,87 @@ class AuthenticationManager: ObservableObject {
         verificationID = nil
 
         print("👋 User logged out")
+    }
+
+    // MARK: - Anti-Bot Protection
+
+    private func isLockedOut() -> Bool {
+        if let lockoutDate = userDefaults.object(forKey: otpLockoutKey) as? Date {
+            if Date() < lockoutDate {
+                return true
+            } else {
+                // Lockout expired, reset
+                userDefaults.removeObject(forKey: otpLockoutKey)
+                userDefaults.set(0, forKey: otpAttemptsKey)
+            }
+        }
+        return false
+    }
+
+    private func getLockoutRemainingTime() -> String {
+        if let lockoutDate = userDefaults.object(forKey: otpLockoutKey) as? Date {
+            let remaining = lockoutDate.timeIntervalSince(Date())
+            if remaining > 0 {
+                let minutes = Int(remaining / 60)
+                return "\(minutes) minute\(minutes == 1 ? "" : "s")"
+            }
+        }
+        return "0 minutes"
+    }
+
+    private func recordFailedOTPAttempt() {
+        let attempts = userDefaults.integer(forKey: otpAttemptsKey) + 1
+        userDefaults.set(attempts, forKey: otpAttemptsKey)
+
+        if attempts >= maxOTPAttempts {
+            let lockoutUntil = Date().addingTimeInterval(lockoutDurationMinutes * 60)
+            userDefaults.set(lockoutUntil, forKey: otpLockoutKey)
+            print("🔒 Account locked for \(lockoutDurationMinutes) minutes due to too many failed attempts")
+        }
+    }
+
+    private func resetOTPAttempts() {
+        userDefaults.set(0, forKey: otpAttemptsKey)
+        userDefaults.removeObject(forKey: otpLockoutKey)
+    }
+
+    private func canRequestOTP() -> (allowed: Bool, message: String?) {
+        // Check lockout first
+        if isLockedOut() {
+            return (false, "Too many failed attempts. Try again in \(getLockoutRemainingTime()).")
+        }
+
+        // Check hourly rate limit
+        let now = Date()
+        let windowStart = userDefaults.object(forKey: otpRequestWindowKey) as? Date ?? Date.distantPast
+        let requestCount = userDefaults.integer(forKey: otpRequestCountKey)
+
+        // Reset window if hour has passed
+        if now.timeIntervalSince(windowStart) > 3600 {
+            userDefaults.set(now, forKey: otpRequestWindowKey)
+            userDefaults.set(0, forKey: otpRequestCountKey)
+            return (true, nil)
+        }
+
+        if requestCount >= maxOTPRequestsPerHour {
+            let remainingTime = Int((3600 - now.timeIntervalSince(windowStart)) / 60)
+            return (false, "Too many OTP requests. Try again in \(remainingTime) minutes.")
+        }
+
+        return (true, nil)
+    }
+
+    private func recordOTPRequest() {
+        let now = Date()
+        let windowStart = userDefaults.object(forKey: otpRequestWindowKey) as? Date ?? now
+
+        if now.timeIntervalSince(windowStart) > 3600 {
+            userDefaults.set(now, forKey: otpRequestWindowKey)
+            userDefaults.set(1, forKey: otpRequestCountKey)
+        } else {
+            let count = userDefaults.integer(forKey: otpRequestCountKey) + 1
+            userDefaults.set(count, forKey: otpRequestCountKey)
+        }
     }
 
     // MARK: - Helper Functions

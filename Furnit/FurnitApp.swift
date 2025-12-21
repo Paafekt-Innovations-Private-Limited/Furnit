@@ -1,11 +1,29 @@
 import SwiftUI
 import FirebaseCore
 import FirebaseAuth
+import FirebaseAppCheck
 import UserNotifications
+
+// App Check provider factory for bot protection
+class AppCheckProviderFactory: NSObject, FirebaseAppCheck.AppCheckProviderFactory {
+    func createProvider(with app: FirebaseApp) -> AppCheckProvider? {
+        #if DEBUG
+        // Use debug provider for simulator/development
+        return AppCheckDebugProvider(app: app)
+        #else
+        // Use App Attest for production (real devices)
+        return AppAttestProvider(app: app)
+        #endif
+    }
+}
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // Enable App Check for bot protection (must be before FirebaseApp.configure)
+        let providerFactory = AppCheckProviderFactory()
+        AppCheck.setAppCheckProviderFactory(providerFactory)
+
         FirebaseApp.configure()
 
         // Request notification permissions for phone auth
