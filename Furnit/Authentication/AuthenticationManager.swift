@@ -69,9 +69,26 @@ class AuthenticationManager: ObservableObject {
                 self?.isLoading = false
 
                 if let error = error {
-                    self?.errorMessage = error.localizedDescription
-                    print("❌ OTP send error: \(error.localizedDescription)")
-                    completion(false, error.localizedDescription)
+                    let nsError = error as NSError
+                    let detailedError = """
+                    ❌ OTP Error:
+                    - Code: \(nsError.code)
+                    - Domain: \(nsError.domain)
+                    - Description: \(nsError.localizedDescription)
+                    - UserInfo: \(nsError.userInfo)
+                    """
+                    print(detailedError)
+
+                    // Show user-friendly message
+                    var userMessage = error.localizedDescription
+                    if nsError.code == 17999 {
+                        userMessage = "Phone authentication failed. Please check your internet connection and try again."
+                    } else if nsError.code == 17010 {
+                        userMessage = "Too many requests. Please wait a few minutes and try again."
+                    }
+
+                    self?.errorMessage = userMessage
+                    completion(false, userMessage)
                     return
                 }
 
