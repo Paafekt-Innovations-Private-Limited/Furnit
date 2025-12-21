@@ -27,7 +27,7 @@ struct HomeViewWithBottomBar: View {
     
     var body: some View {
         // Just show the Home tab directly without TabView
-        HomeTab()
+        HomeTab(authManager: authManager)
             .onAppear {
                 print("🏠 [HomeViewWithBottomBar] Rendering without bottom bar")
             }
@@ -36,6 +36,7 @@ struct HomeViewWithBottomBar: View {
 
 // MARK: - Home Tab (WITH DELETE FUNCTIONALITY ✅)
 struct HomeTab: View {
+    @ObservedObject var authManager: AuthenticationManager
     @StateObject private var modelManager = USDZModelManager()
     @State private var showingSettings = false
     @State private var showingPhotoRoomCreator = false
@@ -155,6 +156,7 @@ struct HomeTab: View {
             // Settings Sheet
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
+                    .environmentObject(authManager)
             }
             // ✅ DELETE CONFIRMATION ALERT ADDED HERE
             .alert("Delete Room?", isPresented: $showDeleteAlert) {
