@@ -1,1 +1,2 @@
 - Always use descriptive variable names
+- compile before concluding the changes every time

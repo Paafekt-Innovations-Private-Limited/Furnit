@@ -6,14 +6,101 @@ struct USDZModel: Identifiable, Hashable {
     let name: String
     let fileName: String
     let dataAsset: NSDataAsset?
+    let isSavedRoom: Bool  // ✅ NEW: Track if this is a saved room
     
-    init(name: String, fileName: String) {
+    init(name: String, fileName: String, isSavedRoom: Bool = false) {
         self.name = name
         self.fileName = fileName
-        self.dataAsset = NSDataAsset(name: fileName)
+        self.isSavedRoom = isSavedRoom
+        // Only load NSDataAsset for bundle rooms
+        self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
     }
     
     var displayName: String {
         return name.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+    
+    // ✅ UPDATED: Handle both bundle and saved rooms with EXTENSIVE LOGGING
+    var temporaryURL: URL? {
+        logDebug("🔍 [USDZModel.temporaryURL] ========================================")
+        logDebug("🔍 [USDZModel.temporaryURL] Called for: \(fileName)")
+        logDebug("🔍 [USDZModel.temporaryURL] isSavedRoom: \(isSavedRoom)")
+        logDebug("🔍 [USDZModel.temporaryURL] displayName: \(displayName)")
+        
+        if isSavedRoom {
+            // For saved rooms, return the actual file path
+            let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            logDebug("🔍 [USDZModel.temporaryURL] Documents directory: \(documentsDirectory.path)")
+            
+            let savedRoomsDir = documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
+            logDebug("🔍 [USDZModel.temporaryURL] SavedRooms directory: \(savedRoomsDir.path)")
+            
+            let savedURL = savedRoomsDir.appendingPathComponent("\(fileName).usdz")
+            logDebug("🔍 [USDZModel.temporaryURL] Looking for file at: \(savedURL.path)")
+            
+            let fileExists = FileManager.default.fileExists(atPath: savedURL.path)
+            logDebug("🔍 [USDZModel.temporaryURL] File exists: \(fileExists)")
+            
+            if fileExists {
+                do {
+                    let attributes = try FileManager.default.attributesOfItem(atPath: savedURL.path)
+                    let fileSize = attributes[.size] as? UInt64 ?? 0
+                    logDebug("✅ [USDZModel.temporaryURL] Found saved room!")
+                    logDebug("   - Path: \(savedURL.path)")
+                    logDebug("   - File name: \(savedURL.lastPathComponent)")
+                    logDebug("   - File size: \(fileSize) bytes (\(fileSize / 1024 / 1024) MB)")
+                    logDebug("   - Readable: \(FileManager.default.isReadableFile(atPath: savedURL.path))")
+                    
+                    // Try to list all files in SavedRooms to verify
+                    if let files = try? FileManager.default.contentsOfDirectory(atPath: savedRoomsDir.path) {
+                        logDebug("   - All files in SavedRooms: \(files)")
+                    }
+                    
+                    return savedURL
+                } catch {
+                    logDebug("❌ [USDZModel.temporaryURL] Error getting file attributes: \(error)")
+                    return savedURL
+                }
+            } else {
+                logDebug("❌ [USDZModel.temporaryURL] Saved room file NOT FOUND!")
+                logDebug("   - Expected path: \(savedURL.path)")
+                
+                // List all files in SavedRooms directory for debugging
+                do {
+                    let files = try FileManager.default.contentsOfDirectory(atPath: savedRoomsDir.path)
+                    logDebug("   - Files in SavedRooms directory: \(files)")
+                    logDebug("   - Expected file: \(fileName).usdz")
+                } catch {
+                    logDebug("   - Could not list SavedRooms directory: \(error)")
+                }
+                
+                return nil
+            }
+        } else {
+            // For bundle rooms, use existing logic
+            logDebug("🔍 [USDZModel.temporaryURL] Processing BUNDLE room")
+            guard let data = dataAsset?.data else {
+                logDebug("❌ [USDZModel.temporaryURL] No dataAsset data for bundle room: \(fileName)")
+                return nil
+            }
+            
+            logDebug("🔍 [USDZModel.temporaryURL] Bundle data size: \(data.count) bytes")
+            
+            let tempDirectory = FileManager.default.temporaryDirectory
+            let tempURL = tempDirectory.appendingPathComponent("\(fileName)_\(id.uuidString).usdz")
+            
+            logDebug("🔍 [USDZModel.temporaryURL] Writing to temp path: \(tempURL.path)")
+            
+            do {
+                try data.write(to: tempURL)
+                logDebug("✅ [USDZModel.temporaryURL] Successfully wrote temporary file")
+                logDebug("   - Path: \(tempURL.path)")
+                logDebug("   - Size: \(data.count) bytes")
+                return tempURL
+            } catch {
+                logDebug("❌ [USDZModel.temporaryURL] Failed to write temporary file: \(error)")
+                return nil
+            }
+        }
     }
 }

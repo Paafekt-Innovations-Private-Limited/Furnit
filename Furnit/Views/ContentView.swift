@@ -1,0 +1,598 @@
+import SwiftUI
+
+struct ContentView: View {
+    @StateObject private var authManager = AuthenticationManager()
+    
+    var body: some View {
+        Group {
+            if authManager.isAuthenticated {
+                HomeViewWithBottomBar(authManager: authManager)
+                    .onAppear {
+                        logDebug("✅ [ContentView] User is authenticated")
+                    }
+            } else {
+                LoginView()
+                    .onAppear {
+                        logDebug("❌ [ContentView] User is NOT authenticated")
+                    }
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: authManager.isAuthenticated)
+    }
+}
+
+// MARK: - HomeViewWithBottomBar (Bottom bar removed)
+struct HomeViewWithBottomBar: View {
+    @ObservedObject var authManager: AuthenticationManager
+    
+    var body: some View {
+        // Just show the Home tab directly without TabView
+        HomeTab(authManager: authManager)
+            .onAppear {
+                logDebug("🏠 [HomeViewWithBottomBar] Rendering without bottom bar")
+            }
+    }
+}
+
+// MARK: - Home Tab (WITH DELETE FUNCTIONALITY ✅)
+struct HomeTab: View {
+    @ObservedObject var authManager: AuthenticationManager
+    @StateObject private var modelManager = USDZModelManager()
+    @State private var showingSettings = false
+    @State private var showingPhotoRoomCreator = false
+    @State private var showDeleteAlert = false
+    @State private var roomToDelete: USDZModel?
+    
+    var body: some View {
+        NavigationStack {
+            VStack {
+                if modelManager.models.isEmpty {
+                    // Empty state with upload suggestion
+                    VStack(spacing: 20) {
+                        ContentUnavailableView(
+                            "No 3D Models Found",
+                            systemImage: "cube.transparent",
+                            description: Text("Create your first room from a photo!")
+                        )
+                        
+                        // Quick action button for empty state
+                        Button(action: {
+                            showingPhotoRoomCreator = true
+                        }) {
+                            HStack {
+                                Image(systemName: "photo.badge.plus")
+                                Text("Create Room from Photo")
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding()
+                            .background(Color.green)
+                            .cornerRadius(12)
+                        }
+                    }
+                    .onAppear {
+                        logDebug("❌ [HomeTab] Showing 'No Models' view - modelManager.models is EMPTY")
+                        logDebug("❌ [HomeTab] Models count: \(modelManager.models.count)")
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        // ✅ Delete hint
+                        HStack {
+                            Text("💡 Swipe left to delete")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGroupedBackground))
+                        
+                        List {
+                            ForEach(Array(modelManager.models.enumerated()), id: \.offset) { index, model in
+                                modelRow(for: model, at: index)
+                                    // ✅ SWIPE TO DELETE ADDED HERE
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            roomToDelete = model
+                                            showDeleteAlert = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                            }
+                        }
+                        .listStyle(PlainListStyle())
+                        .onAppear {
+                            logDebug("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
+                            for (idx, model) in modelManager.models.enumerated() {
+                                logDebug("   [\(idx)] \(model.displayName) - isSavedRoom: \(model.isSavedRoom)")
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("3D Room Models")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                // Upload Photo Button
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showingPhotoRoomCreator = true
+                    } label: {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.title3)
+                    }
+                    .accessibilityLabel("Create room from photo")
+                }
+                
+                // Settings Button
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.title3)
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
+            // Photo Room Creator Sheet
+            .sheet(isPresented: $showingPhotoRoomCreator) {
+                NavigationStack {
+                    SinglePhotoRoomView()
+                        .navigationBarItems(
+                            trailing: Button("Done") {
+                                showingPhotoRoomCreator = false
+                            }
+                        )
+                }
+            }
+            // Refresh models when sheet closes
+            .onChange(of: showingPhotoRoomCreator) { _, isShowing in
+                if !isShowing {
+                    modelManager.refreshModels()
+                }
+            }
+            // Settings Sheet
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
+                    .environmentObject(authManager)
+            }
+            // ✅ DELETE CONFIRMATION ALERT ADDED HERE
+            .alert("Delete Room?", isPresented: $showDeleteAlert) {
+                Button("Cancel", role: .cancel) {
+                    roomToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let room = roomToDelete {
+                        deleteRoom(room)
+                    }
+                }
+            } message: {
+                if let room = roomToDelete {
+                    Text("Are you sure you want to delete '\(room.displayName)'? This action cannot be undone.")
+                }
+            }
+        }
+        .onAppear {
+            logDebug("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
+            logDebug("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
+        }
+    }
+    
+    // ✅ DELETE FUNCTION ADDED HERE
+    private func deleteRoom(_ room: USDZModel) {
+        logDebug("🗑️ [HomeTab] Deleting room: \(room.displayName)")
+        modelManager.deleteModel(id: room.id)
+        roomToDelete = nil
+    }
+    
+    // MARK: - Model Row with Logging
+    private func modelRow(for model: USDZModel, at index: Int) -> some View {
+        let _ = logDebug("📋 [HomeTab.modelRow] ========================================")
+        let _ = logDebug("📋 [HomeTab.modelRow] Creating row for model \(index)")
+        let _ = logDebug("   - Display name: \(model.displayName)")
+        let _ = logDebug("   - File name: \(model.fileName)")
+        let _ = logDebug("   - Is saved room: \(model.isSavedRoom)")
+        
+        return Group {
+            if let modelURL = model.temporaryURL {
+                let _ = logDebug("✅ [HomeTab.modelRow] URL found for: \(model.displayName)")
+                let _ = logDebug("   - URL path: \(modelURL.path)")
+                let _ = logDebug("   - File exists: \(FileManager.default.fileExists(atPath: modelURL.path))")
+                
+                let fileInfo: Void = {
+                    if FileManager.default.fileExists(atPath: modelURL.path) {
+                        do {
+                            let attributes = try FileManager.default.attributesOfItem(atPath: modelURL.path)
+                            if let fileSize = attributes[.size] as? UInt64 {
+                                logDebug("   - File size: \(fileSize) bytes (\(fileSize / 1024 / 1024) MB)")
+                            }
+                        } catch {
+                            logDebug("   - Error getting file info: \(error)")
+                        }
+                    }
+                }()
+                let _ = fileInfo
+                
+                NavigationLink(destination: ModelViewerView(model: model)) {
+                    HomeViewModelRow(model: model)
+                }
+                .onAppear {
+                    let _ = logDebug("👁️ [HomeTab.modelRow] Row appeared for: \(model.displayName)")
+                }
+            } else {
+                let _ = logDebug("❌ [HomeTab.modelRow] No URL for: \(model.displayName)")
+                Text("❌ Model data unavailable: \(model.displayName)")
+                    .foregroundColor(.red)
+            }
+        }
+    }
+}
+
+// MARK: - Explore Tab
+struct ExploreTab: View {
+    @State private var searchText = ""
+    @StateObject private var modelManager = USDZModelManager()
+    
+    var filteredModels: [USDZModel] {
+        if searchText.isEmpty {
+            return modelManager.models
+        }
+        return modelManager.models.filter { $0.displayName.localizedCaseInsensitiveContains(searchText) }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Search Bar
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.gray)
+                    TextField("Search rooms...", text: $searchText)
+                }
+                .padding(12)
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+                .padding()
+                
+                // Categories
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        CategoryButton(title: "All", icon: "square.grid.2x2")
+                        CategoryButton(title: "Living Room", icon: "sofa.fill")
+                        CategoryButton(title: "Bedroom", icon: "bed.double.fill")
+                        CategoryButton(title: "Kitchen", icon: "fork.knife")
+                        CategoryButton(title: "Office", icon: "desktopcomputer")
+                    }
+                    .padding(.horizontal)
+                }
+                .padding(.bottom)
+                
+                // Models Grid
+                if filteredModels.isEmpty {
+                    ContentUnavailableView(
+                        "No Results",
+                        systemImage: "magnifyingglass",
+                        description: Text("Try a different search term")
+                    )
+                    .onAppear {
+                        logDebug("❌ [ExploreTab] Showing 'No Results' - filteredModels is EMPTY")
+                        logDebug("❌ [ExploreTab] Search text: '\(searchText)'")
+                    }
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: [
+                            GridItem(.flexible(), spacing: 16),
+                            GridItem(.flexible(), spacing: 16)
+                        ], spacing: 16) {
+                            ForEach(filteredModels) { model in
+                                NavigationLink(destination: ModelViewerView(model: model)) {
+                                    ExploreModelCard(model: model)
+                                }
+                                .onAppear {
+                                    logDebug("✅ [ExploreTab] Displaying card for: \(model.displayName)")
+                                }
+                            }
+                        }
+                        .padding()
+                    }
+                    .onAppear {
+                        logDebug("✅ [ExploreTab] Showing grid with \(filteredModels.count) filtered models")
+                    }
+                }
+            }
+            .navigationTitle("Explore")
+            .navigationBarTitleDisplayMode(.large)
+        }
+        .onAppear {
+            logDebug("🔍 [ExploreTab] onAppear - Total models: \(modelManager.models.count)")
+        }
+    }
+}
+
+// MARK: - Favorites Tab
+struct FavoritesTab: View {
+    @StateObject private var modelManager = USDZModelManager()
+    @State private var favoriteModels: [USDZModel] = []
+    
+    var body: some View {
+        NavigationStack {
+            if favoriteModels.isEmpty {
+                ContentUnavailableView(
+                    "No Favorites",
+                    systemImage: "heart.slash",
+                    description: Text("Tap the heart icon on rooms to add them here")
+                )
+                .onAppear {
+                    logDebug("❤️ [FavoritesTab] Showing 'No Favorites' view")
+                }
+            } else {
+                List {
+                    ForEach(favoriteModels) { model in
+                        NavigationLink(destination: ModelViewerView(model: model)) {
+                            HomeViewModelRow(model: model)
+                        }
+                    }
+                }
+                .listStyle(PlainListStyle())
+                .onAppear {
+                    logDebug("❤️ [FavoritesTab] Showing list with \(favoriteModels.count) favorites")
+                }
+            }
+        }
+        .navigationTitle("Favorites")
+        .navigationBarTitleDisplayMode(.large)
+        .onAppear {
+            logDebug("❤️ [FavoritesTab] onAppear - Favorite count: \(favoriteModels.count)")
+        }
+    }
+}
+
+// MARK: - Profile Tab
+struct ProfileTab: View {
+    @ObservedObject var authManager: AuthenticationManager
+    @State private var showLogoutConfirmation = false
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                // Profile Header
+                Section {
+                    HStack(spacing: 12) {
+                        // Profile Picture Placeholder
+                        Circle()
+                            .fill(Color.purple.gradient)
+                            .frame(width: 60, height: 60)
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 30))
+                                    .foregroundColor(.white)
+                            )
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(authManager.currentUser?.name ?? "User")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                            
+                            Text(authManager.currentUser?.phoneNumber ?? "")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                }
+                
+                // Account Section
+                Section("Account") {
+                    NavigationLink(destination: EditProfileView()) {
+                        Label("Edit Profile", systemImage: "person.fill")
+                    }
+                    
+                    NavigationLink(destination: NotificationSettingsView()) {
+                        Label("Notifications", systemImage: "bell.fill")
+                    }
+                    
+                    NavigationLink(destination: PrivacySettingsView()) {
+                        Label("Privacy", systemImage: "lock.fill")
+                    }
+                }
+                
+                // App Settings
+                Section("Settings") {
+                    NavigationLink(destination: GeneralSettingsView()) {
+                        Label("General", systemImage: "gearshape.fill")
+                    }
+                    
+                    NavigationLink(destination: AboutView()) {
+                        Label("About", systemImage: "info.circle.fill")
+                    }
+                    
+                    NavigationLink(destination: SupportView()) {
+                        Label("Help & Support", systemImage: "questionmark.circle.fill")
+                    }
+                }
+                
+                // App Info
+                Section("About") {
+                    HStack {
+                        Label("Version", systemImage: "info.circle")
+                        Spacer()
+                        Text("1.0.0")
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    HStack {
+                        Label("Developer", systemImage: "person.2")
+                        Spacer()
+                        Text("Furnit Team")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                // Logout Section
+                Section {
+                    Button(action: {
+                        showLogoutConfirmation = true
+                    }) {
+                        HStack {
+                            Spacer()
+                            Label("Logout", systemImage: "arrow.right.square")
+                                .foregroundColor(.red)
+                            Spacer()
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.large)
+            .alert("Logout", isPresented: $showLogoutConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Logout", role: .destructive) {
+                    authManager.logout()
+                }
+            } message: {
+                Text("Are you sure you want to logout?")
+            }
+        }
+    }
+}
+
+// MARK: - Supporting Views
+
+struct HomeViewModelRow: View {
+    let model: USDZModel
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "cube.fill")
+                .foregroundColor(.green)
+                .font(.title2)
+                .frame(width: 40, height: 40)
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(8)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.displayName)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text("3D Room Model")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.secondary)
+                .font(.caption)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct ExploreModelCard: View {
+    let model: USDZModel
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "cube.fill")
+                .font(.system(size: 50))
+                .foregroundColor(.green)
+                .frame(maxWidth: .infinity)
+                .frame(height: 120)
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(12)
+            
+            Text(model.displayName)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+                .lineLimit(2)
+        }
+        .padding(8)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+    }
+}
+
+struct CategoryButton: View {
+    let title: String
+    let icon: String
+    @State private var isSelected = false
+    
+    var body: some View {
+        Button(action: {
+            isSelected.toggle()
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption)
+                Text(title)
+                    .font(.subheadline)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(isSelected ? Color.green : Color(.systemGray6))
+            .foregroundColor(isSelected ? .white : .primary)
+            .cornerRadius(20)
+        }
+    }
+}
+
+// MARK: - Placeholder Views
+struct EditProfileView: View {
+    var body: some View {
+        Text("Edit Profile")
+            .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct NotificationSettingsView: View {
+    var body: some View {
+        Text("Notification Settings")
+            .navigationTitle("Notifications")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct PrivacySettingsView: View {
+    var body: some View {
+        Text("Privacy Settings")
+            .navigationTitle("Privacy")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct GeneralSettingsView: View {
+    var body: some View {
+        Text("General Settings")
+            .navigationTitle("General")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct AboutView: View {
+    var body: some View {
+        Text("About Furnit")
+            .navigationTitle("About")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct SupportView: View {
+    var body: some View {
+        Text("Help & Support")
+            .navigationTitle("Support")
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+#Preview {
+    ContentView()
+}
