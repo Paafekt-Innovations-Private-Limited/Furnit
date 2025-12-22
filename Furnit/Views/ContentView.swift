@@ -8,12 +8,12 @@ struct ContentView: View {
             if authManager.isAuthenticated {
                 HomeViewWithBottomBar(authManager: authManager)
                     .onAppear {
-                        print("✅ [ContentView] User is authenticated")
+                        logDebug("✅ [ContentView] User is authenticated")
                     }
             } else {
                 LoginView()
                     .onAppear {
-                        print("❌ [ContentView] User is NOT authenticated")
+                        logDebug("❌ [ContentView] User is NOT authenticated")
                     }
             }
         }
@@ -29,7 +29,7 @@ struct HomeViewWithBottomBar: View {
         // Just show the Home tab directly without TabView
         HomeTab(authManager: authManager)
             .onAppear {
-                print("🏠 [HomeViewWithBottomBar] Rendering without bottom bar")
+                logDebug("🏠 [HomeViewWithBottomBar] Rendering without bottom bar")
             }
     }
 }
@@ -71,8 +71,8 @@ struct HomeTab: View {
                         }
                     }
                     .onAppear {
-                        print("❌ [HomeTab] Showing 'No Models' view - modelManager.models is EMPTY")
-                        print("❌ [HomeTab] Models count: \(modelManager.models.count)")
+                        logDebug("❌ [HomeTab] Showing 'No Models' view - modelManager.models is EMPTY")
+                        logDebug("❌ [HomeTab] Models count: \(modelManager.models.count)")
                     }
                 } else {
                     VStack(spacing: 0) {
@@ -103,9 +103,9 @@ struct HomeTab: View {
                         }
                         .listStyle(PlainListStyle())
                         .onAppear {
-                            print("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
+                            logDebug("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
                             for (idx, model) in modelManager.models.enumerated() {
-                                print("   [\(idx)] \(model.displayName) - isSavedRoom: \(model.isSavedRoom)")
+                                logDebug("   [\(idx)] \(model.displayName) - isSavedRoom: \(model.isSavedRoom)")
                             }
                         }
                     }
@@ -175,41 +175,41 @@ struct HomeTab: View {
             }
         }
         .onAppear {
-            print("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
-            print("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
+            logDebug("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
+            logDebug("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
         }
     }
     
     // ✅ DELETE FUNCTION ADDED HERE
     private func deleteRoom(_ room: USDZModel) {
-        print("🗑️ [HomeTab] Deleting room: \(room.displayName)")
+        logDebug("🗑️ [HomeTab] Deleting room: \(room.displayName)")
         modelManager.deleteModel(id: room.id)
         roomToDelete = nil
     }
     
     // MARK: - Model Row with Logging
     private func modelRow(for model: USDZModel, at index: Int) -> some View {
-        let _ = print("📋 [HomeTab.modelRow] ========================================")
-        let _ = print("📋 [HomeTab.modelRow] Creating row for model \(index)")
-        let _ = print("   - Display name: \(model.displayName)")
-        let _ = print("   - File name: \(model.fileName)")
-        let _ = print("   - Is saved room: \(model.isSavedRoom)")
+        let _ = logDebug("📋 [HomeTab.modelRow] ========================================")
+        let _ = logDebug("📋 [HomeTab.modelRow] Creating row for model \(index)")
+        let _ = logDebug("   - Display name: \(model.displayName)")
+        let _ = logDebug("   - File name: \(model.fileName)")
+        let _ = logDebug("   - Is saved room: \(model.isSavedRoom)")
         
         return Group {
             if let modelURL = model.temporaryURL {
-                let _ = print("✅ [HomeTab.modelRow] URL found for: \(model.displayName)")
-                let _ = print("   - URL path: \(modelURL.path)")
-                let _ = print("   - File exists: \(FileManager.default.fileExists(atPath: modelURL.path))")
+                let _ = logDebug("✅ [HomeTab.modelRow] URL found for: \(model.displayName)")
+                let _ = logDebug("   - URL path: \(modelURL.path)")
+                let _ = logDebug("   - File exists: \(FileManager.default.fileExists(atPath: modelURL.path))")
                 
                 let fileInfo: Void = {
                     if FileManager.default.fileExists(atPath: modelURL.path) {
                         do {
                             let attributes = try FileManager.default.attributesOfItem(atPath: modelURL.path)
                             if let fileSize = attributes[.size] as? UInt64 {
-                                print("   - File size: \(fileSize) bytes (\(fileSize / 1024 / 1024) MB)")
+                                logDebug("   - File size: \(fileSize) bytes (\(fileSize / 1024 / 1024) MB)")
                             }
                         } catch {
-                            print("   - Error getting file info: \(error)")
+                            logDebug("   - Error getting file info: \(error)")
                         }
                     }
                 }()
@@ -219,10 +219,10 @@ struct HomeTab: View {
                     HomeViewModelRow(model: model)
                 }
                 .onAppear {
-                    let _ = print("👁️ [HomeTab.modelRow] Row appeared for: \(model.displayName)")
+                    let _ = logDebug("👁️ [HomeTab.modelRow] Row appeared for: \(model.displayName)")
                 }
             } else {
-                let _ = print("❌ [HomeTab.modelRow] No URL for: \(model.displayName)")
+                let _ = logDebug("❌ [HomeTab.modelRow] No URL for: \(model.displayName)")
                 Text("❌ Model data unavailable: \(model.displayName)")
                     .foregroundColor(.red)
             }
@@ -277,8 +277,8 @@ struct ExploreTab: View {
                         description: Text("Try a different search term")
                     )
                     .onAppear {
-                        print("❌ [ExploreTab] Showing 'No Results' - filteredModels is EMPTY")
-                        print("❌ [ExploreTab] Search text: '\(searchText)'")
+                        logDebug("❌ [ExploreTab] Showing 'No Results' - filteredModels is EMPTY")
+                        logDebug("❌ [ExploreTab] Search text: '\(searchText)'")
                     }
                 } else {
                     ScrollView {
@@ -291,14 +291,14 @@ struct ExploreTab: View {
                                     ExploreModelCard(model: model)
                                 }
                                 .onAppear {
-                                    print("✅ [ExploreTab] Displaying card for: \(model.displayName)")
+                                    logDebug("✅ [ExploreTab] Displaying card for: \(model.displayName)")
                                 }
                             }
                         }
                         .padding()
                     }
                     .onAppear {
-                        print("✅ [ExploreTab] Showing grid with \(filteredModels.count) filtered models")
+                        logDebug("✅ [ExploreTab] Showing grid with \(filteredModels.count) filtered models")
                     }
                 }
             }
@@ -306,7 +306,7 @@ struct ExploreTab: View {
             .navigationBarTitleDisplayMode(.large)
         }
         .onAppear {
-            print("🔍 [ExploreTab] onAppear - Total models: \(modelManager.models.count)")
+            logDebug("🔍 [ExploreTab] onAppear - Total models: \(modelManager.models.count)")
         }
     }
 }
@@ -325,7 +325,7 @@ struct FavoritesTab: View {
                     description: Text("Tap the heart icon on rooms to add them here")
                 )
                 .onAppear {
-                    print("❤️ [FavoritesTab] Showing 'No Favorites' view")
+                    logDebug("❤️ [FavoritesTab] Showing 'No Favorites' view")
                 }
             } else {
                 List {
@@ -337,14 +337,14 @@ struct FavoritesTab: View {
                 }
                 .listStyle(PlainListStyle())
                 .onAppear {
-                    print("❤️ [FavoritesTab] Showing list with \(favoriteModels.count) favorites")
+                    logDebug("❤️ [FavoritesTab] Showing list with \(favoriteModels.count) favorites")
                 }
             }
         }
         .navigationTitle("Favorites")
         .navigationBarTitleDisplayMode(.large)
         .onAppear {
-            print("❤️ [FavoritesTab] onAppear - Favorite count: \(favoriteModels.count)")
+            logDebug("❤️ [FavoritesTab] onAppear - Favorite count: \(favoriteModels.count)")
         }
     }
 }

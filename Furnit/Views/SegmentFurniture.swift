@@ -198,14 +198,14 @@ struct SegmentFurniture: View {
         }
         .onAppear {
             camera.startSession()
-            print("📸 Room image: \(roomImage != nil ? "Available (\(Int(roomImage!.size.width))x\(Int(roomImage!.size.height)))" : "Not available")")
+            logDebug("📸 Room image: \(roomImage != nil ? "Available (\(Int(roomImage!.size.width))x\(Int(roomImage!.size.height)))" : "Not available")")
         }
         .onDisappear { camera.stopSession() }
     }
     
     private func captureFurnitureWithRoom() {
         guard let furniture = camera.segmentedImage else {
-            print("❌ No furniture image")
+            logDebug("❌ No furniture image")
             saveMessage = "No furniture detected!"
             showingSaveSuccess = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -214,10 +214,10 @@ struct SegmentFurniture: View {
             return
         }
         
-        print("✅ Furniture: \(furniture.size)")
+        logDebug("✅ Furniture: \(furniture.size)")
         
         guard let room = roomImage else {
-            print("❌ No room image!")
+            logDebug("❌ No room image!")
             saveMessage = "No room image!"
             showingSaveSuccess = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -226,7 +226,7 @@ struct SegmentFurniture: View {
             return
         }
         
-        print("✅ Room: \(room.size)")
+        logDebug("✅ Room: \(room.size)")
         
         // Create composite - simple centered furniture
         UIGraphicsBeginImageContextWithOptions(room.size, false, room.scale)
@@ -246,13 +246,13 @@ struct SegmentFurniture: View {
         furniture.draw(in: furnitureRect)
         
         guard let composite = UIGraphicsGetImageFromCurrentImageContext() else {
-            print("❌ Failed to create composite")
+            logDebug("❌ Failed to create composite")
             saveMessage = "Composite failed!"
             showingSaveSuccess = true
             return
         }
         
-        print("✅ Composite: \(composite.size)")
+        logDebug("✅ Composite: \(composite.size)")
         
         // Save
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
@@ -339,19 +339,19 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
     }
     
     private func loadYOLOModel() {
-        print("🔍 Loading YOLO11-seg model...")
+        logDebug("🔍 Loading YOLO11-seg model...")
         
         for ext in ["mlmodelc", "mlpackage"] {
             if let modelURL = Bundle.main.url(forResource: "yolo11x-seg", withExtension: ext) {
 //            if let modelURL = Bundle.main.url(forResource: "best", withExtension: ext) {
-                print("📦 Found model: yolo11x-seg.\(ext)")
+                logDebug("📦 Found model: yolo11x-seg.\(ext)")
                 do {
                     let model = try MLModel(contentsOf: modelURL)
                     yoloModel = try VNCoreMLModel(for: model)
-                    print("✅ YOLO11-seg loaded!")
+                    logDebug("✅ YOLO11-seg loaded!")
                     return
                 } catch {
-                    print("❌ Failed: \(error)")
+                    logDebug("❌ Failed: \(error)")
                 }
             }
         }
@@ -361,7 +361,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         session.sessionPreset = .hd1280x720
         
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            print("❌ No camera")
+            logDebug("❌ No camera")
             return
         }
         
@@ -384,9 +384,9 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 }
             }
             
-            print("✅ Camera configured")
+            logDebug("✅ Camera configured")
         } catch {
-            print("❌ Camera setup failed: \(error)")
+            logDebug("❌ Camera setup failed: \(error)")
         }
     }
     
@@ -395,7 +395,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             DispatchQueue.global(qos: .background).async {
                 self.session.startRunning()
                 DispatchQueue.main.async {
-                    print("✅ Camera started")
+                    logDebug("✅ Camera started")
                     self.fpsStartTime = Date()
                 }
             }
@@ -436,7 +436,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         
         let request = VNCoreMLRequest(model: model) { [weak self] request, error in
             if let error = error {
-                print("❌ YOLO error: \(error)")
+                logDebug("❌ YOLO error: \(error)")
                 DispatchQueue.main.async {
                     self?.isProcessing = false
                 }
@@ -453,7 +453,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
         do {
             try handler.perform([request])
         } catch {
-            print("❌ Inference failed: \(error)")
+            logDebug("❌ Inference failed: \(error)")
             DispatchQueue.main.async {
                 self.isProcessing = false
             }
@@ -505,7 +505,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
             return
         }
         
-        print("🪑 Detected: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%)")
+        logDebug("🪑 Detected: \(bestDetection.className) (\(Int(bestDetection.confidence * 100))%)")
         
         let bbox = CGRect(
             x: CGFloat(bestDetection.x - bestDetection.width/2),
@@ -603,7 +603,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                                           prototypes: prototypes)
         
         let positivePixels = mask.filter { $0 > 0.5 }.count
-        print("✅ Mask pixels: \(positivePixels)")
+        logDebug("✅ Mask pixels: \(positivePixels)")
         
         applyMaskToImage(mask: mask, detection: detection, to: originalImage)
     }
@@ -723,7 +723,7 @@ class FurnitureSegmentationModel: NSObject, ObservableObject {
                 }
             }
             
-            print("✅ Applied: \(maskedPixels) pixels kept")
+            logDebug("✅ Applied: \(maskedPixels) pixels kept")
             
             if let finalImage = ctx.makeImage() {
                 let uiImage = UIImage(cgImage: finalImage, scale: 1.0, orientation: .up)

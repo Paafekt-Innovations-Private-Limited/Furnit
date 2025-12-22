@@ -41,16 +41,16 @@ class ObjectSegmentationProcessor: ObservableObject {
     // Load the CoreML segmentation model
     private func loadSegmentationModel() {
         // First, let's debug what's actually in the bundle
-        print("🔍 Bundle debugging:")
-        print("   Main bundle path: \(Bundle.main.bundlePath)")
+        logDebug("🔍 Bundle debugging:")
+        logDebug("   Main bundle path: \(Bundle.main.bundlePath)")
         
         // List all .mlmodel files in the bundle
         let mlmodelPaths = Bundle.main.paths(forResourcesOfType: "mlmodel", inDirectory: nil)
-        print("   Found .mlmodel files: \(mlmodelPaths)")
+        logDebug("   Found .mlmodel files: \(mlmodelPaths)")
         
         // Also check for .mlmodelc (compiled model) files
         let mlmodelcPaths = Bundle.main.paths(forResourcesOfType: "mlmodelc", inDirectory: nil)
-        print("   Found .mlmodelc files: \(mlmodelcPaths)")
+        logDebug("   Found .mlmodelc files: \(mlmodelcPaths)")
         
         // Try to load DeepLabV3 model from the main bundle
         var modelURL: URL?
@@ -58,16 +58,16 @@ class ObjectSegmentationProcessor: ObservableObject {
         // First try .mlmodelc (compiled model - this is what Xcode produces)
         if let url = Bundle.main.url(forResource: "DeepLabV3", withExtension: "mlmodelc") {
             modelURL = url
-            print("✅ Found DeepLabV3.mlmodelc at: \(url)")
+            logDebug("✅ Found DeepLabV3.mlmodelc at: \(url)")
         }
         // Fallback to .mlmodel (original uncompiled model)
         else if let url = Bundle.main.url(forResource: "DeepLabV3", withExtension: "mlmodel") {
             modelURL = url
-            print("✅ Found DeepLabV3.mlmodel at: \(url)")
+            logDebug("✅ Found DeepLabV3.mlmodel at: \(url)")
         }
         else {
-            print("⚠️ DeepLabV3 model not found in bundle")
-            print("🔍 Available bundle resources:")
+            logDebug("⚠️ DeepLabV3 model not found in bundle")
+            logDebug("🔍 Available bundle resources:")
             
             // List all resources in bundle for debugging
             if let bundleURL = Bundle.main.resourceURL {
@@ -76,9 +76,9 @@ class ObjectSegmentationProcessor: ObservableObject {
                     let modelFiles = resources.filter { url in
                         url.pathExtension == "mlmodel" || url.pathExtension == "mlmodelc"
                     }
-                    print("   ML model files found: \(modelFiles)")
+                    logDebug("   ML model files found: \(modelFiles)")
                 } catch {
-                    print("   Could not list bundle resources: \(error)")
+                    logDebug("   Could not list bundle resources: \(error)")
                 }
             }
             
@@ -87,28 +87,28 @@ class ObjectSegmentationProcessor: ObservableObject {
         }
         
         guard let finalModelURL = modelURL else {
-            print("⚠️ No model URL available")
+            logDebug("⚠️ No model URL available")
             return
         }
         
         do {
             // Load the CoreML model
             let mlModel = try MLModel(contentsOf: finalModelURL)
-            print("✅ DeepLabV3 CoreML model loaded successfully")
+            logDebug("✅ DeepLabV3 CoreML model loaded successfully")
             
             // Create Vision Core ML model wrapper
             let visionModel = try VNCoreMLModel(for: mlModel)
-            print("✅ Vision CoreML model wrapper created")
+            logDebug("✅ Vision CoreML model wrapper created")
             
             // Store the models for use in processing
             self.mlModel = mlModel
             self.vnModel = visionModel
             
-            print("🤖 DeepLabV3 model ready for furniture segmentation")
+            logDebug("🤖 DeepLabV3 model ready for furniture segmentation")
             
         } catch {
-            print("⚠️ Failed to load DeepLabV3 model: \(error.localizedDescription)")
-            print("📥 Falling back to mock implementation for testing")
+            logDebug("⚠️ Failed to load DeepLabV3 model: \(error.localizedDescription)")
+            logDebug("📥 Falling back to mock implementation for testing")
             errorMessage = "Failed to load AR model - using mock"
         }
     }
@@ -130,17 +130,17 @@ class ObjectSegmentationProcessor: ObservableObject {
                 if let error = error {
                     self?.errorMessage = "Segmentation failed: \(error.localizedDescription)"
                     self?.isProcessing = false
-                    print("⚠️ Vision request error: \(error.localizedDescription)")
+                    logDebug("⚠️ Vision request error: \(error.localizedDescription)")
                     return
                 }
                 
                 self?.processingStatus = "Processing segmentation..."
                 
                 // Debug: Log the actual result types we're getting
-                print("🔍 Vision request completed. Result count: \(request.results?.count ?? 0)")
+                logDebug("🔍 Vision request completed. Result count: \(request.results?.count ?? 0)")
                 if let results = request.results {
                     for (index, result) in results.enumerated() {
-                        print("   Result \(index): \(type(of: result))")
+                        logDebug("   Result \(index): \(type(of: result))")
                     }
                 }
                 
@@ -148,18 +148,18 @@ class ObjectSegmentationProcessor: ObservableObject {
                 if let results = request.results as? [VNCoreMLFeatureValueObservation],
                    let featureValue = results.first?.featureValue,
                    let multiArray = featureValue.multiArrayValue {
-                    print("✅ Got MLMultiArray segmentation results: \(multiArray.shape)")
+                    logDebug("✅ Got MLMultiArray segmentation results: \(multiArray.shape)")
                     self?.processSegmentationMultiArray(multiArray, originalImage: image)
                 } else if let results = request.results as? [VNPixelBufferObservation],
                           let segmentationBuffer = results.first?.pixelBuffer {
                     // Fallback to pixel buffer processing (some models use this format)
-                    print("✅ Got pixel buffer segmentation results")
+                    logDebug("✅ Got pixel buffer segmentation results")
                     self?.processSegmentationResults(segmentationBuffer, originalImage: image)
                 } else {
                     // Enhanced error logging
                     let resultTypes = request.results?.map { type(of: $0) } ?? []
                     self?.errorMessage = "Unexpected Vision result format. Got: \(resultTypes)"
-                    print("⚠️ Failed to get segmentation results. Result types: \(resultTypes)")
+                    logDebug("⚠️ Failed to get segmentation results. Result types: \(resultTypes)")
                     self?.isProcessing = false
                 }
             }
@@ -243,9 +243,9 @@ class ObjectSegmentationProcessor: ObservableObject {
         }
         
         // Debug: Print detected classes and their pixel counts
-        print("🔍 Segmentation Analysis:")
-        print("   Image size: \(width)x\(height) = \(width * height) pixels")
-        print("   Detected classes with >0.1% coverage:")
+        logDebug("🔍 Segmentation Analysis:")
+        logDebug("   Image size: \(width)x\(height) = \(width * height) pixels")
+        logDebug("   Detected classes with >0.1% coverage:")
         let totalPixels = width * height
         let sortedClasses = classPixelCounts.sorted { $0.value > $1.value }
         
@@ -253,7 +253,7 @@ class ObjectSegmentationProcessor: ObservableObject {
             let percentage = Double(pixelCount) / Double(totalPixels) * 100
             if percentage > 0.1 {
                 let className = getClassName(for: classIndex)
-                print("     Class \(classIndex) (\(className)): \(pixelCount) pixels (\(String(format: "%.1f", percentage))%)")
+                logDebug("     Class \(classIndex) (\(className)): \(pixelCount) pixels (\(String(format: "%.1f", percentage))%)")
             }
         }
         
@@ -262,7 +262,7 @@ class ObjectSegmentationProcessor: ObservableObject {
             sum + (classPixelCounts[classLabel] ?? 0)
         }
         let furniturePercentage = Double(furniturePixels) / Double(totalPixels) * 100
-        print("   Furniture pixels (classes 9,11,16,18,20): \(furniturePixels) (\(String(format: "%.3f", furniturePercentage))%)")
+        logDebug("   Furniture pixels (classes 9,11,16,18,20): \(furniturePixels) (\(String(format: "%.3f", furniturePercentage))%)")
         
         // Check if we found any furniture objects
         let furnitureRatio = Double(furniturePixelCount) / Double(width * height)
@@ -305,10 +305,10 @@ class ObjectSegmentationProcessor: ObservableObject {
         let height = shape[0].intValue // Should be 513
         let totalPixels = width * height
         
-        print("🔍 Processing MLMultiArray segmentation:")
-        print("   Array shape: \(shape)")
-        print("   Dimensions: \(width)x\(height) = \(totalPixels) pixels")
-        print("   Data type: \(multiArray.dataType.rawValue)")
+        logDebug("🔍 Processing MLMultiArray segmentation:")
+        logDebug("   Array shape: \(shape)")
+        logDebug("   Dimensions: \(width)x\(height) = \(totalPixels) pixels")
+        logDebug("   Data type: \(multiArray.dataType.rawValue)")
         
         // Convert MLMultiArray to pointer for efficient access
         guard let dataPointer = try? UnsafeBufferPointer<Int32>(multiArray) else {
@@ -341,16 +341,16 @@ class ObjectSegmentationProcessor: ObservableObject {
         }
         
         // Debug: Print detected classes and their pixel counts
-        print("🔍 MLMultiArray Segmentation Analysis:")
-        print("   Image size: \(width)x\(height) = \(totalPixels) pixels")
-        print("   Detected classes with >0.1% coverage:")
+        logDebug("🔍 MLMultiArray Segmentation Analysis:")
+        logDebug("   Image size: \(width)x\(height) = \(totalPixels) pixels")
+        logDebug("   Detected classes with >0.1% coverage:")
         let sortedClasses = classPixelCounts.sorted { $0.value > $1.value }
         
         for (classIndex, pixelCount) in sortedClasses {
             let percentage = Double(pixelCount) / Double(totalPixels) * 100
             if percentage > 0.1 {
                 let className = getClassName(for: classIndex)
-                print("     Class \(classIndex) (\(className)): \(pixelCount) pixels (\(String(format: "%.1f", percentage))%)")
+                logDebug("     Class \(classIndex) (\(className)): \(pixelCount) pixels (\(String(format: "%.1f", percentage))%)")
             }
         }
         
@@ -359,7 +359,7 @@ class ObjectSegmentationProcessor: ObservableObject {
             sum + (classPixelCounts[classLabel] ?? 0)
         }
         let furniturePercentage = Double(furniturePixels) / Double(totalPixels) * 100
-        print("   Furniture pixels (classes 9,11,16,18,20): \(furniturePixels) (\(String(format: "%.3f", furniturePercentage))%)")
+        logDebug("   Furniture pixels (classes 9,11,16,18,20): \(furniturePixels) (\(String(format: "%.3f", furniturePercentage))%)")
         
         // Check if we found any furniture objects
         let furnitureRatio = Double(furniturePixelCount) / Double(totalPixels)

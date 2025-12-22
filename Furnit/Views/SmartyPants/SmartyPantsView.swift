@@ -69,11 +69,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         guard let url = Bundle.main.url(forResource: "blacklist", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            if debugMode { print("⚠️ Failed to load blacklist.json") }
+            if debugMode { logDebug("⚠️ Failed to load blacklist.json") }
             return []
         }
         let blacklistSet = Set(dict.keys.compactMap { Int($0) })
-        if debugMode { print("✅ Loaded \(blacklistSet.count) blacklisted classes") }
+        if debugMode { logDebug("✅ Loaded \(blacklistSet.count) blacklisted classes") }
         return blacklistSet
     }()
 
@@ -130,7 +130,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            if debugMode { print("⚠️ Failed to load classes.json") }
+            if debugMode { logDebug("⚠️ Failed to load classes.json") }
             return [:]
         }
         var result: [Int: String] = [:]
@@ -139,7 +139,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 result[id] = value
             }
         }
-        if debugMode { print("✅ Loaded \(result.count) class names") }
+        if debugMode { logDebug("✅ Loaded \(result.count) class names") }
         return result
     }()
     
@@ -204,7 +204,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         maskImageView.addGestureRecognizer(panGesture)
         
         setupCamera()
-        if debugMode { print("✅ SmartyPantsContainerView initialized") }
+        if debugMode { logDebug("✅ SmartyPantsContainerView initialized") }
     }
     
     override func layoutSubviews() {
@@ -309,9 +309,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         isProcessing = true
 
         if debugMode {
-            print("\n⏱️ ═══════════════════════════════════════════")
-            print("⏱️ FRAME START @ \(String(format: "%.3f", now.timeIntervalSince1970))")
-            print("⏱️ ═══════════════════════════════════════════")
+            logDebug("\n⏱️ ═══════════════════════════════════════════")
+            logDebug("⏱️ FRAME START @ \(String(format: "%.3f", now.timeIntervalSince1970))")
+            logDebug("⏱️ ═══════════════════════════════════════════")
         }
 
         // STAGE 1: Resize to square
@@ -319,7 +319,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         setProgress(0.15, text: "Resizing…")
         
         guard let sq = resizeToSquare(pixelBuffer, size: 1280) else {
-            if debugMode { print("❌ STAGE 1 FAILED: Resize to square") }
+            if debugMode { logDebug("❌ STAGE 1 FAILED: Resize to square") }
             isProcessing = false
             return
         }
@@ -329,7 +329,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t1End = Date()
         if debugMode {
-            print("⏱️ STAGE 1 - Resize: \(String(format: "%.2f", t1End.timeIntervalSince(t1) * 1000)) ms")
+            logDebug("⏱️ STAGE 1 - Resize: \(String(format: "%.2f", t1End.timeIntervalSince(t1) * 1000)) ms")
         }
 
         // STAGE 2: Convert to MLMultiArray
@@ -337,14 +337,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         setProgress(0.25, text: "Preprocessing…")
         
         guard let inputArray = pixelBufferToMLMultiArray(sq.buffer) else {
-            if debugMode { print("❌ STAGE 2 FAILED: MLMultiArray conversion") }
+            if debugMode { logDebug("❌ STAGE 2 FAILED: MLMultiArray conversion") }
             isProcessing = false
             return
         }
         
         let t2End = Date()
         if debugMode {
-            print("⏱️ STAGE 2 - MLMultiArray: \(String(format: "%.2f", t2End.timeIntervalSince(t2) * 1000)) ms")
+            logDebug("⏱️ STAGE 2 - MLMultiArray: \(String(format: "%.2f", t2End.timeIntervalSince(t2) * 1000)) ms")
         }
 
         // STAGE 3: Model inference
@@ -353,14 +353,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]),
               let output = try? model.prediction(from: inputProvider) else {
-            if debugMode { print("❌ STAGE 3 FAILED: Model inference") }
+            if debugMode { logDebug("❌ STAGE 3 FAILED: Model inference") }
             isProcessing = false
             return
         }
         
         let t3End = Date()
         if debugMode {
-            print("⏱️ STAGE 3 - Inference: \(String(format: "%.2f", t3End.timeIntervalSince(t3) * 1000)) ms")
+            logDebug("⏱️ STAGE 3 - Inference: \(String(format: "%.2f", t3End.timeIntervalSince(t3) * 1000)) ms")
         }
 
         // STAGE 4: Extract tensors
@@ -368,7 +368,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         guard let detArray = output.featureValue(for: "var_2497")?.multiArrayValue,
               let protoArray = output.featureValue(for: "p")?.multiArrayValue else {
-            if debugMode { print("❌ STAGE 4 FAILED: Missing output tensors") }
+            if debugMode { logDebug("❌ STAGE 4 FAILED: Missing output tensors") }
             isProcessing = false
             return
         }
@@ -378,14 +378,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let numClasses = numFeatures - 4 - 32
         
         guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
-            if debugMode { print("❌ STAGE 4 FAILED: Invalid tensor dims") }
+            if debugMode { logDebug("❌ STAGE 4 FAILED: Invalid tensor dims") }
             isProcessing = false
             return
         }
         
         let t4End = Date()
         if debugMode {
-            print("⏱️ STAGE 4 - Extract tensors: \(String(format: "%.2f", t4End.timeIntervalSince(t4) * 1000)) ms")
+            logDebug("⏱️ STAGE 4 - Extract tensors: \(String(format: "%.2f", t4End.timeIntervalSince(t4) * 1000)) ms")
         }
 
         // STAGE 5: Copy detection tensor to float buffer
@@ -406,7 +406,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t5End = Date()
         if debugMode {
-            print("⏱️ STAGE 5 - Copy detBuf: \(String(format: "%.2f", t5End.timeIntervalSince(t5) * 1000)) ms")
+            logDebug("⏱️ STAGE 5 - Copy detBuf: \(String(format: "%.2f", t5End.timeIntervalSince(t5) * 1000)) ms")
         }
 
         // STAGE 6: Extract detections
@@ -448,12 +448,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t6End = Date()
         if debugMode {
-            print("⏱️ STAGE 6 - Extract detections: \(String(format: "%.2f", t6End.timeIntervalSince(t6) * 1000)) ms")
-            print("   raw detections: \(allDets.count)")
+            logDebug("⏱️ STAGE 6 - Extract detections: \(String(format: "%.2f", t6End.timeIntervalSince(t6) * 1000)) ms")
+            logDebug("   raw detections: \(allDets.count)")
         }
         
         if allDets.isEmpty {
-            if debugMode { print("⚠️ No detections found") }
+            if debugMode { logDebug("⚠️ No detections found") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -466,7 +466,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 //        let afterNMS = applyNMS(allDets)
 //        let t7End = Date()
 //        if debugMode {
-//            print("⏱️ STAGE 7 - NMS: \(String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)) ms, kept: \(afterNMS.count)")
+//            logDebug("⏱️ STAGE 7 - NMS: \(String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)) ms, kept: \(afterNMS.count)")
 //        }
 
         // STAGE 8: Find primary (conf > 0.5, largest area)
@@ -486,7 +486,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         
         if primaryIdx < 0 {
-            if debugMode { print("   ⚠️ No detection with conf > 0.5") }
+            if debugMode { logDebug("   ⚠️ No detection with conf > 0.5") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -498,8 +498,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let primary = allDets[primaryIdx]
         let t8End = Date()
         if debugMode {
-            print("⏱️ STAGE 8 - Primary: \(String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)) ms")
-            print("   🎯 PRIMARY[\(primaryIdx)]: \u{001B}[1m\(className(primary.classIdx))\u{001B}[0m conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
+            logDebug("⏱️ STAGE 8 - Primary: \(String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)) ms")
+            logDebug("   🎯 PRIMARY[\(primaryIdx)]: \u{001B}[1m\(className(primary.classIdx))\u{001B}[0m conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
         }
 
         // STAGE 9: Parse prototypes
@@ -507,7 +507,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         setProgress(0.65, text: "Building mask…")
         
         guard let protoInfo = parsePrototypes(protoArray) else {
-            if debugMode { print("❌ STAGE 9 FAILED: Parse prototypes") }
+            if debugMode { logDebug("❌ STAGE 9 FAILED: Parse prototypes") }
             isProcessing = false
             return
         }
@@ -518,7 +518,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t9End = Date()
         if debugMode {
-            print("⏱️ STAGE 9 - Prototypes: \(String(format: "%.2f", t9End.timeIntervalSince(t9) * 1000)) ms")
+            logDebug("⏱️ STAGE 9 - Prototypes: \(String(format: "%.2f", t9End.timeIntervalSince(t9) * 1000)) ms")
         }
 
         // STAGE 10: Reorganize prototypes
@@ -538,7 +538,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t10End = Date()
         if debugMode {
-            print("⏱️ STAGE 10 - Reorganize: \(String(format: "%.2f", t10End.timeIntervalSince(t10) * 1000)) ms")
+            logDebug("⏱️ STAGE 10 - Reorganize: \(String(format: "%.2f", t10End.timeIntervalSince(t10) * 1000)) ms")
         }
 
         // STAGE 11: Filter - must touch primary bbox, drop if much larger
@@ -550,8 +550,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let pBottom = primary.y + primary.h * 0.5
         
         if debugMode {
-            print("   📦 PRIMARY: center=(\(Int(primary.x)),\(Int(primary.y))) size=\(Int(primary.w))x\(Int(primary.h))")
-            print("      edges: L=\(Int(pLeft)) R=\(Int(pRight)) T=\(Int(pTop)) B=\(Int(pBottom))")
+            logDebug("   📦 PRIMARY: center=(\(Int(primary.x)),\(Int(primary.y))) size=\(Int(primary.w))x\(Int(primary.h))")
+            logDebug("      edges: L=\(Int(pLeft)) R=\(Int(pRight)) T=\(Int(pTop)) B=\(Int(pBottom))")
         }
         
         var kept2: [UnionDet] = [primary]
@@ -571,7 +571,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             if !overlaps {
                 if debugMode {
-                    print("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] NO TOUCH")
+                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] NO TOUCH")
                 }
                 continue
             }
@@ -580,23 +580,23 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             if tooLarge {
                 if debugMode {
-                    print("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] TOO LARGE")
+                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] TOO LARGE")
                 }
             } else {
                 kept2.append(d)
                 if debugMode {
-                    print("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%]")
+                    logDebug("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%]")
                 }
             }
         }
         
         let t11End = Date()
         if debugMode {
-            print("⏱️ STAGE 11 - Filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms, kept=\(kept2.count)")
+            logDebug("⏱️ STAGE 11 - Filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms, kept=\(kept2.count)")
         }
         
         if kept2.isEmpty {
-            if debugMode { print("⚠️ No detections after filter") }
+            if debugMode { logDebug("⚠️ No detections after filter") }
             DispatchQueue.main.async {
                 self.maskImageView.image = nil
                 self.isProcessing = false
@@ -634,8 +634,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t12End = Date()
         if debugMode {
-            print("⏱️ STAGE 12 - Union bbox: \(String(format: "%.2f", t12End.timeIntervalSince(t12) * 1000)) ms")
-            print("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
+            logDebug("⏱️ STAGE 12 - Union bbox: \(String(format: "%.2f", t12End.timeIntervalSince(t12) * 1000)) ms")
+            logDebug("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
         }
 
         // STAGE 13: Batched GEMM
@@ -690,7 +690,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t13End = Date()
         if debugMode {
-            print("⏱️ STAGE 13 - GEMM: \(String(format: "%.2f", t13End.timeIntervalSince(t13) * 1000)) ms")
+            logDebug("⏱️ STAGE 13 - GEMM: \(String(format: "%.2f", t13End.timeIntervalSince(t13) * 1000)) ms")
         }
 
         // STAGE 14: Threshold
@@ -707,7 +707,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t14End = Date()
         if debugMode {
-            print("⏱️ STAGE 14 - Threshold: \(String(format: "%.2f", t14End.timeIntervalSince(t14) * 1000)) ms, positive: \(positiveCount)")
+            logDebug("⏱️ STAGE 14 - Threshold: \(String(format: "%.2f", t14End.timeIntervalSince(t14) * 1000)) ms, positive: \(positiveCount)")
         }
 
         // STAGE 15: Upscale
@@ -720,7 +720,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t15End = Date()
         if debugMode {
-            print("⏱️ STAGE 15 - Upscale: \(String(format: "%.2f", t15End.timeIntervalSince(t15) * 1000)) ms")
+            logDebug("⏱️ STAGE 15 - Upscale: \(String(format: "%.2f", t15End.timeIntervalSince(t15) * 1000)) ms")
         }
 
         // STAGE 15b: Morph close
@@ -798,7 +798,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t15bEnd = Date()
         if debugMode {
-            print("⏱️ STAGE 15b - Morph: \(String(format: "%.2f", t15bEnd.timeIntervalSince(t15b) * 1000)) ms")
+            logDebug("⏱️ STAGE 15b - Morph: \(String(format: "%.2f", t15bEnd.timeIntervalSince(t15b) * 1000)) ms")
         }
 
         // STAGE 16: Composite
@@ -854,7 +854,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         
         let t16End = Date()
         if debugMode {
-            print("⏱️ STAGE 16 - Composite: \(String(format: "%.2f", t16End.timeIntervalSince(t16) * 1000)) ms, opaque: \(totalSet)")
+            logDebug("⏱️ STAGE 16 - Composite: \(String(format: "%.2f", t16End.timeIntervalSince(t16) * 1000)) ms, opaque: \(totalSet)")
         }
 
         // STAGE 17: Finalize
@@ -978,9 +978,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let frameEnd = Date()
         
         if debugMode {
-            print("⏱️ STAGE 17 - Finalize: \(String(format: "%.2f", t17End.timeIntervalSince(t17) * 1000)) ms")
-            print("⏱️ FRAME TOTAL: \(String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)) ms")
-            print("⏱️ ═══════════════════════════════════════════\n")
+            logDebug("⏱️ STAGE 17 - Finalize: \(String(format: "%.2f", t17End.timeIntervalSince(t17) * 1000)) ms")
+            logDebug("⏱️ FRAME TOTAL: \(String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)) ms")
+            logDebug("⏱️ ═══════════════════════════════════════════\n")
         }
         
         if totalSet > 0 { finishFirstDetectionIfNeeded() }

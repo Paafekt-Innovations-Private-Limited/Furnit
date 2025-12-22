@@ -7,7 +7,7 @@ struct HomeView: View {
     @State private var debugInfo: String = "Initializing..."
     
     init() {
-        print("🔵 HomeView init called")
+        logDebug("🔵 HomeView init called")
     }
     
     var body: some View {
@@ -31,13 +31,13 @@ struct HomeView: View {
                 }
         }
         .onAppear {
-            print("🔵 HomeView body called")
-            print("🔵 modelManager.models.count: \(modelManager.models.count)")
-            print("🟢 ============ HomeView onAppear ============")
+            logDebug("🔵 HomeView body called")
+            logDebug("🔵 modelManager.models.count: \(modelManager.models.count)")
+            logDebug("🟢 ============ HomeView onAppear ============")
             checkEverything()
         }
         .onChange(of: modelManager.models) { _, newValue in
-            print("🟡 Models changed! New count: \(newValue.count)")
+            logDebug("🟡 Models changed! New count: \(newValue.count)")
             debugInfo = "Models changed: \(newValue.count) models"
         }
     }
@@ -127,16 +127,16 @@ struct HomeView: View {
     }
     
     private func modelRow(for model: USDZModel, at index: Int) -> some View {
-        let _ = print("🔵 Creating row for model \(index): \(model.displayName)")
+        let _ = logDebug("🔵 Creating row for model \(index): \(model.displayName)")
         
         return Group {
             if let modelURL = getModelURL(for: model) {
-                let _ = print("✅ Found URL for model: \(model.displayName)")
+                let _ = logDebug("✅ Found URL for model: \(model.displayName)")
                 NavigationLink(destination: ModelViewerView(model: model)) {
                     ModelRowView(model: model)
                 }
             } else {
-                let _ = print("❌ No URL found for model: \(model.displayName)")
+                let _ = logDebug("❌ No URL found for model: \(model.displayName)")
                 ModelRowView(model: model)
                     .opacity(0.5)
                     .overlay(
@@ -149,27 +149,27 @@ struct HomeView: View {
     }
     
     private func checkEverything() {
-        print("🟢 Starting comprehensive check...")
+        logDebug("🟢 Starting comprehensive check...")
         
         // 1. Check model manager
-        print("🟢 1. Model Manager Check:")
-        print("   - Manager exists: true")
-        print("   - Models array: \(modelManager.models)")
-        print("   - Models count: \(modelManager.models.count)")
+        logDebug("🟢 1. Model Manager Check:")
+        logDebug("   - Manager exists: true")
+        logDebug("   - Models array: \(modelManager.models)")
+        logDebug("   - Models count: \(modelManager.models.count)")
         
         if !modelManager.models.isEmpty {
-            print("   - Models details:")
+            logDebug("   - Models details:")
             for (index, model) in modelManager.models.enumerated() {
-                print("     [\(index)] displayName: \(model.displayName)")
+                logDebug("     [\(index)] displayName: \(model.displayName)")
             }
         }
         
         // 2. Check bundle for USDZ files
-        print("🟢 2. Bundle Resources Check:")
+        logDebug("🟢 2. Bundle Resources Check:")
         checkBundleResources()
         
         // 3. Check specific paths
-        print("🟢 3. Specific Paths Check:")
+        logDebug("🟢 3. Specific Paths Check:")
         let testPaths = [
             "room.usdz",
             "Room.usdz",
@@ -184,24 +184,24 @@ struct HomeView: View {
         
         for path in testPaths {
             if let url = Bundle.main.url(forResource: path.replacingOccurrences(of: ".usdz", with: ""), withExtension: "usdz") {
-                print("   ✅ Found: \(path) at \(url)")
+                logDebug("   ✅ Found: \(path) at \(url)")
             } else {
-                print("   ❌ Not found: \(path)")
+                logDebug("   ❌ Not found: \(path)")
             }
         }
         
         // 4. Check Documents directory
-        print("🟢 4. Documents Directory Check:")
+        logDebug("🟢 4. Documents Directory Check:")
         if let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
             do {
                 let items = try FileManager.default.contentsOfDirectory(at: documentsPath, includingPropertiesForKeys: nil)
                 let usdzFiles = items.filter { $0.pathExtension == "usdz" }
-                print("   USDZ files in Documents: \(usdzFiles.count)")
+                logDebug("   USDZ files in Documents: \(usdzFiles.count)")
                 for file in usdzFiles {
-                    print("   - \(file.lastPathComponent)")
+                    logDebug("   - \(file.lastPathComponent)")
                 }
             } catch {
-                print("   Error reading Documents: \(error)")
+                logDebug("   Error reading Documents: \(error)")
             }
         }
         
@@ -209,42 +209,42 @@ struct HomeView: View {
     }
     
     private func checkBundleResources() {
-        print("🔍 Checking Bundle Resources...")
+        logDebug("🔍 Checking Bundle Resources...")
         
         if let resourcePath = Bundle.main.resourcePath {
             do {
                 let items = try FileManager.default.contentsOfDirectory(atPath: resourcePath)
                 let usdzFiles = items.filter { $0.hasSuffix(".usdz") || $0.hasSuffix(".USDZ") }
-                print("   Total items in bundle: \(items.count)")
-                print("   USDZ files found: \(usdzFiles.count)")
+                logDebug("   Total items in bundle: \(items.count)")
+                logDebug("   USDZ files found: \(usdzFiles.count)")
                 for file in usdzFiles {
-                    print("   - \(file)")
+                    logDebug("   - \(file)")
                 }
                 
                 debugInfo = "Bundle: \(usdzFiles.count) USDZ files"
             } catch {
-                print("   ❌ Error reading bundle: \(error)")
+                logDebug("   ❌ Error reading bundle: \(error)")
                 debugInfo = "Bundle error: \(error.localizedDescription)"
             }
         } else {
-            print("   ❌ No resource path found")
+            logDebug("   ❌ No resource path found")
             debugInfo = "No resource path"
         }
     }
     
     private func checkModelManagerState() {
-        print("🔍 Checking Model Manager State...")
-        print("   Manager: \(String(describing: modelManager))")
-        print("   Models: \(modelManager.models)")
+        logDebug("🔍 Checking Model Manager State...")
+        logDebug("   Manager: \(String(describing: modelManager))")
+        logDebug("   Models: \(modelManager.models)")
         
         let count = modelManager.models.count
-        print("   Forced count check: \(count)")
+        logDebug("   Forced count check: \(count)")
         
         debugInfo = "Manager state: \(count) models"
     }
     
     private func tryManualModelCreation() {
-        print("🔍 Trying Manual Model Creation...")
+        logDebug("🔍 Trying Manual Model Creation...")
         
         if let resourcePath = Bundle.main.resourcePath {
             do {
@@ -252,41 +252,41 @@ struct HomeView: View {
                 let usdzFiles = items.filter { $0.hasSuffix(".usdz") }
                 
                 if let firstUSDZ = usdzFiles.first {
-                    print("   Found USDZ: \(firstUSDZ)")
+                    logDebug("   Found USDZ: \(firstUSDZ)")
                     if let url = Bundle.main.url(forResource: firstUSDZ.replacingOccurrences(of: ".usdz", with: ""), withExtension: "usdz") {
-                        print("   ✅ Successfully created URL: \(url)")
+                        logDebug("   ✅ Successfully created URL: \(url)")
                         debugInfo = "Manual: Found \(firstUSDZ)"
                     }
                 } else {
-                    print("   ❌ No USDZ files to test")
+                    logDebug("   ❌ No USDZ files to test")
                     debugInfo = "Manual: No USDZ files"
                 }
             } catch {
-                print("   ❌ Error: \(error)")
+                logDebug("   ❌ Error: \(error)")
                 debugInfo = "Manual error: \(error.localizedDescription)"
             }
         }
     }
     
     private func getModelURL(for model: USDZModel) -> URL? {
-        print("🔵 getModelURL called for: \(model.displayName)")
+        logDebug("🔵 getModelURL called for: \(model.displayName)")
         
         if let url = Bundle.main.url(forResource: model.displayName, withExtension: "usdz") {
-            print("   ✅ Found with .usdz extension")
+            logDebug("   ✅ Found with .usdz extension")
             return url
         }
         
         if let url = Bundle.main.url(forResource: model.displayName, withExtension: nil) {
-            print("   ✅ Found without extension")
+            logDebug("   ✅ Found without extension")
             return url
         }
         
         if let url = Bundle.main.url(forResource: model.displayName.lowercased(), withExtension: "usdz") {
-            print("   ✅ Found with lowercase")
+            logDebug("   ✅ Found with lowercase")
             return url
         }
         
-        print("   ❌ No URL found for model: \(model.displayName)")
+        logDebug("   ❌ No URL found for model: \(model.displayName)")
         return nil
     }
 }
@@ -296,7 +296,7 @@ struct ModelRowView: View {
     
     init(model: USDZModel) {
         self.model = model
-        print("🔵 ModelRowView init for: \(model.displayName)")
+        logDebug("🔵 ModelRowView init for: \(model.displayName)")
     }
     
     var body: some View {

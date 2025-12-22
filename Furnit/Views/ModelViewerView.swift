@@ -479,7 +479,7 @@ struct ModelViewerView: View {
     private func saveUIImageToPhotos(_ image: UIImage) {
         let saveBlock = {
             UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-            print("✅ Saved image to Photos via UIImageWriteToSavedPhotosAlbum")
+            logDebug("✅ Saved image to Photos via UIImageWriteToSavedPhotosAlbum")
         }
         if #available(iOS 14, *) {
             let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
@@ -487,19 +487,19 @@ struct ModelViewerView: View {
             case .authorized, .limited:
                 saveBlock()
             case .denied, .restricted:
-                print("❌ Photos add-only access denied or restricted")
+                logDebug("❌ Photos add-only access denied or restricted")
             case .notDetermined:
                 PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
                     DispatchQueue.main.async {
                         if newStatus == .authorized || newStatus == .limited {
                             saveBlock()
                         } else {
-                            print("❌ Photos add-only access not granted")
+                            logDebug("❌ Photos add-only access not granted")
                         }
                     }
                 }
             @unknown default:
-                print("❌ Unknown Photos authorization status")
+                logDebug("❌ Unknown Photos authorization status")
             }
         } else {
             // Fallback for iOS < 14
@@ -508,19 +508,19 @@ struct ModelViewerView: View {
             case .authorized, .limited:
                 saveBlock()
             case .denied, .restricted:
-                print("❌ Photos access denied or restricted")
+                logDebug("❌ Photos access denied or restricted")
             case .notDetermined:
                 PHPhotoLibrary.requestAuthorization { newStatus in
                     DispatchQueue.main.async {
                         if newStatus == .authorized || newStatus == .limited {
                             saveBlock()
                         } else {
-                            print("❌ Photos access not granted")
+                            logDebug("❌ Photos access not granted")
                         }
                     }
                 }
             @unknown default:
-                print("❌ Unknown Photos authorization status (legacy)")
+                logDebug("❌ Unknown Photos authorization status (legacy)")
             }
         }
     }
@@ -557,7 +557,7 @@ struct ModelViewerView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
             guard let uiImage = captureAppWindowImage() else {
                 isCapturingSnapshot = false
-                print("❌ Failed to capture app window image")
+                logDebug("❌ Failed to capture app window image")
                 return
             }
             self.saveUIImageToPhotos(uiImage)
@@ -589,7 +589,7 @@ struct ModelViewerView: View {
     
     private func loadModelOnce() {
         guard mlModel == nil else {
-            print("✅ ML Model already loaded")
+            logDebug("✅ ML Model already loaded")
             return
         }
 
@@ -602,40 +602,40 @@ struct ModelViewerView: View {
             // ("yoloe-11s-seg-pf", "mlmodelc")
         ]
 
-        print("🔍 Looking for ML Model (preferring .mlpackage):", candidateNames.map { "\($0.0).\($0.1)" }.joined(separator: ", "))
+        logDebug("🔍 Looking for ML Model (preferring .mlpackage):", candidateNames.map { "\($0.0).\($0.1)" }.joined(separator: ", "))
 
         var loaded: MLModel? = nil
 
         for (name, ext) in candidateNames {
             if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                print("📦 Found model file at: \(url.lastPathComponent)")
+                logDebug("📦 Found model file at: \(url.lastPathComponent)")
                 do {
                     let config = MLModelConfiguration()
                     // Use CPU-only to avoid ANE "No memory object bound to port" crashes
                     config.computeUnits = .cpuOnly
                     let model = try MLModel(contentsOf: url, configuration: config)
                     loaded = model
-                    print("✅ Loaded MLModel '\(name).\(ext)' with computeUnits=\(config.computeUnits)")
+                    logDebug("✅ Loaded MLModel '\(name).\(ext)' with computeUnits=\(config.computeUnits)")
 
                     // Log input constraint to verify shape & dtype (Float16 vs Float32)
                     let inputs = model.modelDescription.inputDescriptionsByName
                     if let img = inputs["image"] {
                         if let mac = img.multiArrayConstraint {
                             let shp = mac.shape.map { $0.intValue }
-                            print("📥 Model 'image' MultiArray constraint: shape=\(shp) dataType=\(mac.dataType)")
+                            logDebug("📥 Model 'image' MultiArray constraint: shape=\(shp) dataType=\(mac.dataType)")
                             if mac.dataType == .float32 {
-                                print("⚠️ Model expects Float32 input — higher memory usage. Consider exporting an FP16 model to reduce memory.")
+                                logDebug("⚠️ Model expects Float32 input — higher memory usage. Consider exporting an FP16 model to reduce memory.")
                             }
                         } else if let ic = img.imageConstraint {
-                            print("📥 Model 'image' Image constraint: \(ic.pixelsWide)x\(ic.pixelsHigh) pixelFormat=\(ic.pixelFormatType)")
+                            logDebug("📥 Model 'image' Image constraint: \(ic.pixelsWide)x\(ic.pixelsHigh) pixelFormat=\(ic.pixelFormatType)")
                         } else {
-                            print("ℹ️ No detailed constraint for 'image' input")
+                            logDebug("ℹ️ No detailed constraint for 'image' input")
                         }
                     }
 
                     break
                 } catch {
-                    print("❌ Failed to load \(name).\(ext):", error)
+                    logDebug("❌ Failed to load \(name).\(ext):", error)
                     continue
                 }
             }
@@ -644,12 +644,12 @@ struct ModelViewerView: View {
         if let model = loaded {
             self.mlModel = model
         } else {
-            print("❌ No matching model found in bundle (tried candidates above)")
+            logDebug("❌ No matching model found in bundle (tried candidates above)")
             // List bundle contents to help debug
             if let bundleContents = try? FileManager.default.contentsOfDirectory(atPath: Bundle.main.bundlePath) {
-                print("📁 Bundle contents (mlmodel/mlpackage only):")
+                logDebug("📁 Bundle contents (mlmodel/mlpackage only):")
                 bundleContents.filter { $0.contains("mlmodel") || $0.contains("mlpackage") }.forEach { file in
-                    print("   - \(file)")
+                    logDebug("   - \(file)")
                 }
             }
         }

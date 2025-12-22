@@ -169,13 +169,13 @@ class QualitySettings: ObservableObject {
     // Save quality setting to UserDefaults
     private func saveQuality() {
         UserDefaults.standard.set(selectedQuality.rawValue, forKey: qualityKey)
-        print("💾 Saved quality setting: \(selectedQuality.displayName)")
+        logDebug("💾 Saved quality setting: \(selectedQuality.displayName)")
     }
 
     // Save movement speed setting to UserDefaults
     private func saveMovementSpeed() {
         UserDefaults.standard.set(selectedMovementSpeed.rawValue, forKey: movementSpeedKey)
-        print("💾 Saved movement speed setting: \(selectedMovementSpeed.displayName)")
+        logDebug("💾 Saved movement speed setting: \(selectedMovementSpeed.displayName)")
     }
     
     // Get all available quality options for UI
@@ -191,18 +191,18 @@ class QualitySettings: ObservableObject {
     // Attempt to select a quality (only works if available)
     func selectQuality(_ quality: AssetQuality) {
         guard quality.isAvailable else {
-            print("⚠️ Attempted to select unavailable quality: \(quality.displayName)")
+            logDebug("⚠️ Attempted to select unavailable quality: \(quality.displayName)")
             return
         }
 
         selectedQuality = quality
-        print("🎨 Quality changed to: \(quality.displayName)")
+        logDebug("🎨 Quality changed to: \(quality.displayName)")
     }
 
     // Select movement speed
     func selectMovementSpeed(_ speed: MovementSpeed) {
         selectedMovementSpeed = speed
-        print("🏃 Movement speed changed to: \(speed.displayName)")
+        logDebug("🏃 Movement speed changed to: \(speed.displayName)")
     }
 
     // Check if a specific movement speed is selected

@@ -53,14 +53,14 @@ class RealityKitGestureHandlers {
     // Set object placement manager for object manipulation
     func setObjectPlacementManager(_ manager: RealityKitObjectPlacementManager) {
         self.objectPlacementManager = manager
-        print("🎯 Object placement manager set for manipulation handling")
+        logDebug("🎯 Object placement manager set for manipulation handling")
     }
 
     // Set camera references for direct camera control in non-AR mode
     func setCameraReferences(camera: PerspectiveCamera, cameraAnchor: AnchorEntity) {
         self.cameraEntity = camera
         self.cameraAnchor = cameraAnchor
-        print("📷 Camera references set for direct camera control")
+        logDebug("📷 Camera references set for direct camera control")
     }
     
     // Set up gesture recognizers for camera control
@@ -113,13 +113,13 @@ class RealityKitGestureHandlers {
         // Set up gesture priorities to prevent conflicts
         setupGesturePriorities()
 
-        print("🎮 RealityKit gesture recognizers set up with intuitive controls")
-        print("   Single finger: drag=look around (horizontal+vertical rotation)")
-        print("   Two fingers: drag=position, pinch=zoom, rotate=turn")
-        print("   Long press: select object for manipulation")
-        print("   During manipulation: horizontal swipe=rotate object")
-        print("   Joystick: forward/backward/left/right movement")
-        print("   Note: Very small single finger movements adjust height")
+        logDebug("🎮 RealityKit gesture recognizers set up with intuitive controls")
+        logDebug("   Single finger: drag=look around (horizontal+vertical rotation)")
+        logDebug("   Two fingers: drag=position, pinch=zoom, rotate=turn")
+        logDebug("   Long press: select object for manipulation")
+        logDebug("   During manipulation: horizontal swipe=rotate object")
+        logDebug("   Joystick: forward/backward/left/right movement")
+        logDebug("   Note: Very small single finger movements adjust height")
     }
     
     // Set up gesture priorities to prevent conflicts
@@ -127,7 +127,7 @@ class RealityKitGestureHandlers {
         // Object manipulation pan should be disabled when not manipulating
         objectManipulationPanGesture?.isEnabled = false
 
-        print("🎯 Gesture priorities configured - object manipulation initially disabled")
+        logDebug("🎯 Gesture priorities configured - object manipulation initially disabled")
     }
 
     // MARK: - Object Manipulation Gesture Handlers
@@ -137,7 +137,7 @@ class RealityKitGestureHandlers {
         guard gesture.state == .began else { return }
 
         guard let arView = arView else {
-            print("⚠️ Long press gesture: no ARView available")
+            logDebug("⚠️ Long press gesture: no ARView available")
             return
         }
 
@@ -152,13 +152,13 @@ class RealityKitGestureHandlers {
 
                 // Enable object manipulation gestures, disable camera gestures
                 enableObjectManipulationMode(true)
-                print("🎯 Long press successful - object selected for manipulation")
-                print("📳 Haptic feedback triggered for object selection")
+                logDebug("🎯 Long press successful - object selected for manipulation")
+                logDebug("📳 Haptic feedback triggered for object selection")
             } else {
-                print("📍 Long press found no objects to manipulate")
+                logDebug("📍 Long press found no objects to manipulate")
             }
         } else {
-            print("⚠️ No object placement manager available for long press handling")
+            logDebug("⚠️ No object placement manager available for long press handling")
         }
     }
 
@@ -170,7 +170,7 @@ class RealityKitGestureHandlers {
             // Only log warnings if gesture is enabled (unexpected behavior)
             // If gesture is disabled, this is expected during mode transitions
             if gesture.isEnabled {
-                print("⚠️ Object manipulation pan called but no object is being manipulated")
+                logDebug("⚠️ Object manipulation pan called but no object is being manipulated")
             }
             return
         }
@@ -179,7 +179,7 @@ class RealityKitGestureHandlers {
 
         switch gesture.state {
         case .began:
-            print("🔄 Started object rotation gesture")
+            logDebug("🔄 Started object rotation gesture")
 
         case .changed:
             // Handle horizontal swipe for object rotation
@@ -189,7 +189,7 @@ class RealityKitGestureHandlers {
 
         case .ended, .cancelled:
             // Keep manipulation mode active - user must explicitly cancel via buttons
-            print("🔄 Object manipulation gesture ended - staying in manipulation mode")
+            logDebug("🔄 Object manipulation gesture ended - staying in manipulation mode")
 
         default:
             break
@@ -201,7 +201,7 @@ class RealityKitGestureHandlers {
         // Cancel any active object manipulation gestures
         if let objectPan = objectManipulationPanGesture {
             if objectPan.state == .changed || objectPan.state == .began {
-                print("🔄 Resetting active object manipulation gesture state")
+                logDebug("🔄 Resetting active object manipulation gesture state")
                 objectPan.isEnabled = false
                 // Small delay to ensure state is properly reset
                 DispatchQueue.main.async {
@@ -215,7 +215,7 @@ class RealityKitGestureHandlers {
             gesture?.isEnabled = gesture?.isEnabled ?? true // Refresh state
         }
 
-        print("🔧 Gesture states reset for clean transitions")
+        logDebug("🔧 Gesture states reset for clean transitions")
     }
 
     // Enable/disable object manipulation mode
@@ -227,8 +227,8 @@ class RealityKitGestureHandlers {
             doublePanGesture?.isEnabled = false // Disable camera movement during object manipulation
             pinchGesture?.isEnabled = false     // Disable camera zoom during object manipulation
 
-            print("🎯 Object manipulation mode: ENABLED")
-            print("   Camera gestures: DISABLED")
+            logDebug("🎯 Object manipulation mode: ENABLED")
+            logDebug("   Camera gestures: DISABLED")
         } else {
             // Disabling object manipulation - clean transition back to camera control
             resetGestureStates()
@@ -240,9 +240,9 @@ class RealityKitGestureHandlers {
                 self.doublePanGesture?.isEnabled = true  // Re-enable camera movement
                 self.pinchGesture?.isEnabled = true      // Re-enable camera zoom
 
-                print("🎯 Object manipulation mode: DISABLED")
-                print("   Camera gestures: RE-ENABLED")
-                print("🎮 Camera rotation should now work normally")
+                logDebug("🎯 Object manipulation mode: DISABLED")
+                logDebug("   Camera gestures: RE-ENABLED")
+                logDebug("🎮 Camera rotation should now work normally")
             }
         }
     }
@@ -254,18 +254,18 @@ class RealityKitGestureHandlers {
         placementManager.endObjectManipulation()
         enableObjectManipulationMode(false)
 
-        print("❌ Object manipulation cancelled by user")
+        logDebug("❌ Object manipulation cancelled by user")
     }
 
     // Public method to delete selected object (called by Delete button)
     @MainActor func deleteSelectedObject() {
         guard let placementManager = objectPlacementManager,
               let selectedObject = placementManager.selectedObject else {
-            print("⚠️ No object selected for deletion")
+            logDebug("⚠️ No object selected for deletion")
             return
         }
 
-        print("🗑️ Gesture handler: Starting object deletion...")
+        logDebug("🗑️ Gesture handler: Starting object deletion...")
 
         // End manipulation mode FIRST to clean up gesture state
         placementManager.endObjectManipulation()
@@ -275,15 +275,15 @@ class RealityKitGestureHandlers {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             // Remove the object from the placement manager
             placementManager.removeObject(selectedObject.id)
-            print("🗑️ Gesture handler: Object deletion completed")
+            logDebug("🗑️ Gesture handler: Object deletion completed")
         }
     }
 
     // Handle pan gesture with intuitive controls: drag to look around (horizontal + vertical rotation)
     @objc private func handlePanGesture(_ gesture: UIPanGestureRecognizer) {
-        // print("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
+        // logDebug("🚨 PAN GESTURE CALLED - State: \(gesture.state.rawValue)")
         guard let arView = arView, let cameraAnchor = cameraAnchor else {
-            print("⚠️ Pan gesture guard failed - arView: \(arView != nil), cameraAnchor: \(cameraAnchor != nil)")
+            logDebug("⚠️ Pan gesture guard failed - arView: \(arView != nil), cameraAnchor: \(cameraAnchor != nil)")
             return
         }
 
@@ -297,7 +297,7 @@ class RealityKitGestureHandlers {
             lastPanTranslation = translation
 
         case .changed:
-            // print("🔥 CAMERA GESTURE CHANGED STATE - translation: \(translation)")
+            // logDebug("🔥 CAMERA GESTURE CHANGED STATE - translation: \(translation)")
 
             // Calculate incremental rotation delta since last update
             let deltaTranslation = CGPoint(
@@ -331,7 +331,7 @@ class RealityKitGestureHandlers {
             newTransform.scale = initialCameraTransform.scale
             cameraAnchor.transform = newTransform
 
-            // print("📷 Accumulated rotation: Yaw=\(accumulatedYaw), Pitch=\(accumulatedPitch)")
+            // logDebug("📷 Accumulated rotation: Yaw=\(accumulatedYaw), Pitch=\(accumulatedPitch)")
 
             // Update last translation for next incremental calculation
             lastPanTranslation = translation
@@ -389,7 +389,7 @@ class RealityKitGestureHandlers {
             newTransform.translation = newPosition
             cameraAnchor.transform = newTransform
 
-            // print("📷 Two-finger camera movement: (\(deltaX), \(deltaY))")
+            // logDebug("📷 Two-finger camera movement: (\(deltaX), \(deltaY))")
 
         case .ended, .cancelled:
             initialCameraTransform = cameraAnchor.transform
@@ -437,7 +437,7 @@ class RealityKitGestureHandlers {
             newTransform.translation = newPosition
             cameraAnchor.transform = newTransform
 
-            // print("📷 Camera zoom: \(zoomFactor)")
+            // logDebug("📷 Camera zoom: \(zoomFactor)")
 
         case .ended, .cancelled:
             initialCameraTransform = cameraAnchor.transform
@@ -467,7 +467,7 @@ class RealityKitGestureHandlers {
             newTransform.rotation = rotationQuat * initialCameraTransform.rotation
             cameraAnchor.transform = newTransform
 
-            // print("📷 Camera rotation gesture: \(rotation) radians")
+            // logDebug("📷 Camera rotation gesture: \(rotation) radians")
 
         case .ended, .cancelled:
             initialCameraTransform = cameraAnchor.transform
@@ -493,7 +493,7 @@ class RealityKitGestureHandlers {
         // Update initial transform after reset
         initialCameraTransform = cameraAnchor.transform
 
-        print("📷 Camera reset to default position and orientation with cleared rotation state")
+        logDebug("📷 Camera reset to default position and orientation with cleared rotation state")
     }
     
     // Enable/disable gestures based on AR state
@@ -504,7 +504,7 @@ class RealityKitGestureHandlers {
             gestureRecognizer.isEnabled = enabled
         }
         
-        print("🎮 Gestures \(enabled ? "enabled" : "disabled")")
+        logDebug("🎮 Gestures \(enabled ? "enabled" : "disabled")")
     }
     
 }

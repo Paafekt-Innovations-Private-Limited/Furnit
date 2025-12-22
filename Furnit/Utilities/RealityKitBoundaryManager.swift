@@ -36,19 +36,19 @@ class RealityKitBoundaryManager {
             if let existingBounds = roomBounds {
                 let existingSize = existingBounds.max - existingBounds.min
                 let sizeRatio = (newRoomSize.x * newRoomSize.y * newRoomSize.z) / (existingSize.x * existingSize.y * existingSize.z)
-                print("ℹ️ [BoundaryManager] Previous bounds exist. Accepting new bounds regardless of size ratio (Option A). Size ratio: \(sizeRatio)")
+                logDebug("ℹ️ [BoundaryManager] Previous bounds exist. Accepting new bounds regardless of size ratio (Option A). Size ratio: \(sizeRatio)")
             }
             
             roomBounds = newBounds
-            print("🏠 Room bounds calculated: min(\(minBounds)), max(\(maxBounds))")
-            print("   Room dimensions: \(newRoomSize.x) x \(newRoomSize.y) x \(newRoomSize.z)")
+            logDebug("🏠 Room bounds calculated: min(\(minBounds)), max(\(maxBounds))")
+            logDebug("   Room dimensions: \(newRoomSize.x) x \(newRoomSize.y) x \(newRoomSize.z)")
             
             // Log if this is an update vs initial calculation
             if roomBounds != nil {
-                print("   ✅ Bounds validated and accepted")
+                logDebug("   ✅ Bounds validated and accepted")
             }
         } else {
-            print("⚠️ No geometry found for boundary calculation")
+            logDebug("⚠️ No geometry found for boundary calculation")
             // Set default room bounds only if no bounds exist yet
             if roomBounds == nil {
                 roomBounds = (
@@ -97,9 +97,9 @@ class RealityKitBoundaryManager {
             hasGeometry = true
             
             // Debug log for troubleshooting
-            print("🔍 Entity bounds: \(entity.name)")
-            print("   Local bounds: min(\(bounds.min)), max(\(bounds.max))")
-            print("   Transformed: min(\(SIMD3<Float>(minBounds.x, minBounds.y, minBounds.z))), max(\(SIMD3<Float>(maxBounds.x, maxBounds.y, maxBounds.z)))")
+            logDebug("🔍 Entity bounds: \(entity.name)")
+            logDebug("   Local bounds: min(\(bounds.min)), max(\(bounds.max))")
+            logDebug("   Transformed: min(\(SIMD3<Float>(minBounds.x, minBounds.y, minBounds.z))), max(\(SIMD3<Float>(maxBounds.x, maxBounds.y, maxBounds.z)))")
         }
         
         // Recursively check children
@@ -141,7 +141,7 @@ class RealityKitBoundaryManager {
         
         // Debug logging when position is constrained
         if constrainedPosition.x != position.x || constrainedPosition.z != position.z {
-            print("🚧 Camera position constrained: \(position) -> \(constrainedPosition)")
+            logDebug("🚧 Camera position constrained: \(position) -> \(constrainedPosition)")
         }
         
         return constrainedPosition
@@ -209,10 +209,10 @@ class RealityKitBoundaryManager {
     // Returns a tuple with camera position and look-at target
     // STRATEGY: Position camera at BACK-LEFT corner for every room
     func getOptimalCameraPosition() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
-        print("🎯🎯🎯 [BoundaryManager] === BACK-LEFT CORNER CAMERA CALCULATION ===")
+        logDebug("🎯🎯🎯 [BoundaryManager] === BACK-LEFT CORNER CAMERA CALCULATION ===")
 
         guard let bounds = roomBounds else {
-            print("   ⚠️ NO BOUNDS - using default position")
+            logDebug("   ⚠️ NO BOUNDS - using default position")
             let defaultPosition = SIMD3<Float>(0, 1.5, 3)
             let defaultLookAt = SIMD3<Float>(0, 1.4, 0)
             return (position: defaultPosition, lookAt: defaultLookAt)
@@ -221,12 +221,12 @@ class RealityKitBoundaryManager {
         let roomSize = getRoomDimensions()
         let roomCenter = getRoomCenter()
 
-        print("   📦 Room bounds:")
-        print("      MIN: X=\(bounds.min.x), Y=\(bounds.min.y), Z=\(bounds.min.z)")
-        print("      MAX: X=\(bounds.max.x), Y=\(bounds.max.y), Z=\(bounds.max.z)")
-        print("   📏 Room size: \(roomSize.x)m x \(roomSize.y)m x \(roomSize.z)m")
-        print("   🎯 Room center: X=\(roomCenter.x), Y=\(roomCenter.y), Z=\(roomCenter.z)")
-        print("   🧱 Boundary padding: \(boundaryPadding)m")
+        logDebug("   📦 Room bounds:")
+        logDebug("      MIN: X=\(bounds.min.x), Y=\(bounds.min.y), Z=\(bounds.min.z)")
+        logDebug("      MAX: X=\(bounds.max.x), Y=\(bounds.max.y), Z=\(bounds.max.z)")
+        logDebug("   📏 Room size: \(roomSize.x)m x \(roomSize.y)m x \(roomSize.z)m")
+        logDebug("   🎯 Room center: X=\(roomCenter.x), Y=\(roomCenter.y), Z=\(roomCenter.z)")
+        logDebug("   🧱 Boundary padding: \(boundaryPadding)m")
 
         // Camera positioning strategy: INSIDE the room near back wall corner, looking toward front wall
         // Position camera INSIDE room at back wall corner, looking at front wall
@@ -239,10 +239,10 @@ class RealityKitBoundaryManager {
         let camX = bounds.min.x + wallPadding  // Near left wall
         let camZ = bounds.max.z - wallPadding  // Near back wall
         
-        print("   📐 BACK-CORNER positioning (inside room at back wall):")
-        print("   📐 Camera X: \(bounds.min.x) + \(wallPadding) = \(camX) (NEAR LEFT WALL)")
-        print("   📐 Camera Y: \(roomCenter.y) (CENTER HEIGHT)")
-        print("   📐 Camera Z: \(bounds.max.z) - \(wallPadding) = \(camZ) (NEAR BACK WALL)")
+        logDebug("   📐 BACK-CORNER positioning (inside room at back wall):")
+        logDebug("   📐 Camera X: \(bounds.min.x) + \(wallPadding) = \(camX) (NEAR LEFT WALL)")
+        logDebug("   📐 Camera Y: \(roomCenter.y) (CENTER HEIGHT)")
+        logDebug("   📐 Camera Z: \(bounds.max.z) - \(wallPadding) = \(camZ) (NEAR BACK WALL)")
 
         let cameraPosition = SIMD3<Float>(camX, cameraHeight, camZ)
 
@@ -252,17 +252,17 @@ class RealityKitBoundaryManager {
         let lookZ = bounds.min.z  // FRONT wall (MIN Z) where photo is
         let lookAtPosition = SIMD3<Float>(lookX, lookY, lookZ)
 
-        print("   📐 Looking at FRONT/PHOTO wall:")
-        print("   📐 LookAt X: \(roomCenter.x) (CENTER)")
-        print("   📐 LookAt Y: \(roomCenter.y) (CENTER HEIGHT)")
-        print("   📐 LookAt Z: \(bounds.min.z) = \(lookZ) (FRONT/PHOTO wall)")
+        logDebug("   📐 Looking at FRONT/PHOTO wall:")
+        logDebug("   📐 LookAt X: \(roomCenter.x) (CENTER)")
+        logDebug("   📐 LookAt Y: \(roomCenter.y) (CENTER HEIGHT)")
+        logDebug("   📐 LookAt Z: \(bounds.min.z) = \(lookZ) (FRONT/PHOTO wall)")
 
-        print("   📷 FINAL CAMERA POSITION:")
-        print("      X=\(cameraPosition.x), Y=\(cameraPosition.y), Z=\(cameraPosition.z)")
-        print("   👁️ LOOK-AT POSITION:")
-        print("      X=\(lookAtPosition.x), Y=\(lookAtPosition.y), Z=\(lookAtPosition.z)")
-        print("   ✅ Strategy: BACK-LEFT CORNER (against walls) → looking toward front center")
-        print("🎯🎯🎯 [BoundaryManager] === END CALCULATION ===")
+        logDebug("   📷 FINAL CAMERA POSITION:")
+        logDebug("      X=\(cameraPosition.x), Y=\(cameraPosition.y), Z=\(cameraPosition.z)")
+        logDebug("   👁️ LOOK-AT POSITION:")
+        logDebug("      X=\(lookAtPosition.x), Y=\(lookAtPosition.y), Z=\(lookAtPosition.z)")
+        logDebug("   ✅ Strategy: BACK-LEFT CORNER (against walls) → looking toward front center")
+        logDebug("🎯🎯🎯 [BoundaryManager] === END CALCULATION ===")
 
         return (position: cameraPosition, lookAt: lookAtPosition)
     }
@@ -270,7 +270,7 @@ class RealityKitBoundaryManager {
     // Reset boundary calculations
     func reset() {
         roomBounds = nil
-        print("🔄 Boundary manager reset")
+        logDebug("🔄 Boundary manager reset")
     }
 }
 

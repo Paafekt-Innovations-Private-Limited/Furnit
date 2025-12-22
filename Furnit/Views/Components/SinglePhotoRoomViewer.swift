@@ -15,10 +15,10 @@ struct RoomBoundaryDetectionView: View {
     // GPU-accelerated CIContext for image processing
     private static let ciContext: CIContext = {
         if let device = MTLCreateSystemDefaultDevice() {
-            print("🚀 [BoundaryView] Using Metal GPU for image processing")
+            logDebug("🚀 [BoundaryView] Using Metal GPU for image processing")
             return CIContext(mtlDevice: device, options: [.useSoftwareRenderer: false])
         }
-        print("⚠️ [BoundaryView] Metal not available, using CPU")
+        logDebug("⚠️ [BoundaryView] Metal not available, using CPU")
         return CIContext(options: [.useSoftwareRenderer: true])
     }()
     @State private var scale: CGFloat = 1.0
@@ -126,10 +126,10 @@ struct RoomBoundaryDetectionView: View {
                                 boundaries.vanishingY = vanishingY
 
                                 savedBoundaries = boundaries
-                                print("✅ Saved adjusted boundaries:")
-                                print("   Floor: \(floorY), Ceiling: \(ceilingY)")
-                                print("   Left: \(leftX), Right: \(rightX)")
-                                print("   VP: (\(vanishingX), \(vanishingY))")
+                                logDebug("✅ Saved adjusted boundaries:")
+                                logDebug("   Floor: \(floorY), Ceiling: \(ceilingY)")
+                                logDebug("   Left: \(leftX), Right: \(rightX)")
+                                logDebug("   VP: (\(vanishingX), \(vanishingY))")
 
                                 // Dismiss sheet directly (go to 3D view)
                                 dismiss()
@@ -241,7 +241,7 @@ struct RoomBoundaryDetectionView: View {
             // ✅ Fix image orientation ONCE on appear to prevent 90° tilt
             if fixedImage == nil {
                 fixedImage = originalImage.fixedOrientation()
-                print("🔧 [BoundaryView] Fixed image orientation on appear")
+                logDebug("🔧 [BoundaryView] Fixed image orientation on appear")
             }
             generateFinalImage()
         }
@@ -267,7 +267,7 @@ struct RoomBoundaryDetectionView: View {
 
         let workingImage: UIImage
         if scaleFactor < 1.0 {
-            print("🚀 [BoundaryView] Downscaling \(Int(originalWidth))x\(Int(originalHeight)) → \(Int(originalWidth * scaleFactor))x\(Int(originalHeight * scaleFactor))")
+            logDebug("🚀 [BoundaryView] Downscaling \(Int(originalWidth))x\(Int(originalHeight)) → \(Int(originalWidth * scaleFactor))x\(Int(originalHeight * scaleFactor))")
             workingImage = downscaleWithAccelerate(sourceImage, scale: scaleFactor) ?? sourceImage
         } else {
             workingImage = sourceImage
@@ -403,7 +403,7 @@ struct RoomBoundaryDetectionView: View {
         var sourceBuffer = vImage_Buffer()
         var error = vImageBuffer_InitWithCGImage(&sourceBuffer, &format, nil, cgImage, vImage_Flags(kvImageNoFlags))
         guard error == kvImageNoError else {
-            print("❌ vImage source buffer init failed: \(error)")
+            logDebug("❌ vImage source buffer init failed: \(error)")
             return nil
         }
         defer { free(sourceBuffer.data) }
@@ -411,7 +411,7 @@ struct RoomBoundaryDetectionView: View {
         var destBuffer = vImage_Buffer()
         error = vImageBuffer_Init(&destBuffer, vImagePixelCount(newHeight), vImagePixelCount(newWidth), 32, vImage_Flags(kvImageNoFlags))
         guard error == kvImageNoError else {
-            print("❌ vImage dest buffer init failed: \(error)")
+            logDebug("❌ vImage dest buffer init failed: \(error)")
             return nil
         }
         defer { free(destBuffer.data) }
@@ -419,16 +419,16 @@ struct RoomBoundaryDetectionView: View {
         // High-quality Lanczos scaling
         error = vImageScale_ARGB8888(&sourceBuffer, &destBuffer, nil, vImage_Flags(kvImageHighQualityResampling))
         guard error == kvImageNoError else {
-            print("❌ vImage scale failed: \(error)")
+            logDebug("❌ vImage scale failed: \(error)")
             return nil
         }
 
         guard let scaledCGImage = vImageCreateCGImageFromBuffer(&destBuffer, &format, nil, nil, vImage_Flags(kvImageNoFlags), &error)?.takeRetainedValue() else {
-            print("❌ vImage CGImage creation failed: \(error)")
+            logDebug("❌ vImage CGImage creation failed: \(error)")
             return nil
         }
 
-        print("✅ [vImage] Downscaled to \(newWidth)x\(newHeight)")
+        logDebug("✅ [vImage] Downscaled to \(newWidth)x\(newHeight)")
         return UIImage(cgImage: scaledCGImage)
     }
 }
@@ -722,10 +722,10 @@ struct SinglePhotoRoomView: View {
                     .frame(maxHeight: 300)
                     .cornerRadius(12)
                     .padding()
-                    .onAppear { print("🖼️ [View] Displaying selected image") }
+                    .onAppear { logDebug("🖼️ [View] Displaying selected image") }
                 
                 Button("Show Room Boundaries") {
-                    print("🏠 [View] Room boundaries button tapped")
+                    logDebug("🏠 [View] Room boundaries button tapped")
                     showRoomBoundaries = true
                 }
                 .buttonStyle(.borderedProminent)
@@ -745,7 +745,7 @@ struct SinglePhotoRoomView: View {
                     
                     // Option 1: Photo Selection (Existing)
                     Button(action: {
-                        print("🖼️ [View] Select photo button tapped")
+                        logDebug("🖼️ [View] Select photo button tapped")
                         showImagePicker = true
                     }) {
                         VStack(spacing: 16) {
@@ -776,7 +776,7 @@ struct SinglePhotoRoomView: View {
                     Button(action: {
                         if #available(iOS 16.0, *) {
                             if RoomCaptureSession.isSupported {
-                                print("📷 [View] 3D Room Scan button tapped")
+                                logDebug("📷 [View] 3D Room Scan button tapped")
                                 show3DScanOption = true
                             } else {
                                 showUnsupportedAlert = true
@@ -824,7 +824,7 @@ struct SinglePhotoRoomView: View {
                         .foregroundColor(.secondary)
                 }
                 .padding()
-                .onAppear { print("⏳ [View] Processing view appeared") }
+                .onAppear { logDebug("⏳ [View] Processing view appeared") }
             }
             
             if let dimensions = reconstructor.estimatedDimensions {
@@ -837,7 +837,7 @@ struct SinglePhotoRoomView: View {
                         Text("Width: \(String(format: "%.1f", adjustedWidth))m")
                         Slider(value: $adjustedWidth, in: 2...8, step: 0.1)
                             .onChange(of: adjustedWidth) { oldValue, newValue in
-                                print("📏 [View] Width adjusted: \(oldValue) -> \(newValue)")
+                                logDebug("📏 [View] Width adjusted: \(oldValue) -> \(newValue)")
                             }
                     }
                     
@@ -846,7 +846,7 @@ struct SinglePhotoRoomView: View {
                         Text("Depth: \(String(format: "%.1f", adjustedDepth))m")
                         Slider(value: $adjustedDepth, in: 2...8, step: 0.1)
                             .onChange(of: adjustedDepth) { oldValue, newValue in
-                                print("📏 [View] Depth adjusted: \(oldValue) -> \(newValue)")
+                                logDebug("📏 [View] Depth adjusted: \(oldValue) -> \(newValue)")
                             }
                     }
                     
@@ -855,7 +855,7 @@ struct SinglePhotoRoomView: View {
                         Text("Height: \(String(format: "%.1f", adjustedHeight))m")
                         Slider(value: $adjustedHeight, in: 2.2...4, step: 0.1)
                             .onChange(of: adjustedHeight) { oldValue, newValue in
-                                print("📏 [View] Height adjusted: \(oldValue) -> \(newValue)")
+                                logDebug("📏 [View] Height adjusted: \(oldValue) -> \(newValue)")
                             }
                     }
                     
@@ -871,10 +871,10 @@ struct SinglePhotoRoomView: View {
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(12)
                 .padding()
-                .onAppear { print("📊 [View] Dimensions view appeared") }
+                .onAppear { logDebug("📊 [View] Dimensions view appeared") }
                 
                 Button("Rebuild with Adjusted Dimensions") {
-                    print("🔄 [View] Rebuild button tapped")
+                    logDebug("🔄 [View] Rebuild button tapped")
                     rebuildRoom()
                 }
                 .buttonStyle(.borderedProminent)
@@ -888,7 +888,7 @@ struct SinglePhotoRoomView: View {
                 .buttonStyle(.borderedProminent)
                 .padding()
                 .onAppear {
-                    print("🎯 [View] View 3D Room button appeared")
+                    logDebug("🎯 [View] View 3D Room button appeared")
                 }
             }
             
@@ -899,20 +899,20 @@ struct SinglePhotoRoomView: View {
         .sheet(isPresented: $showImagePicker) {
             PhotoPickerView(selectedImage: $selectedImage)
                 .onDisappear {
-                    print("📱 [View] Image picker dismissed")
+                    logDebug("📱 [View] Image picker dismissed")
                     if let image = selectedImage {
-                        print("✅ [View] Image selected, starting processing...")
+                        logDebug("✅ [View] Image selected, starting processing...")
                         Task {
                             await reconstructor.processPhoto(image)
                             if let dims = reconstructor.estimatedDimensions {
                                 adjustedWidth = dims.width
                                 adjustedDepth = dims.depth
                                 adjustedHeight = dims.height
-                                print("📏 [View] Sliders updated with estimated dimensions")
+                                logDebug("📏 [View] Sliders updated with estimated dimensions")
                             }
                         }
                     } else {
-                        print("⚠️ [View] No image selected")
+                        logDebug("⚠️ [View] No image selected")
                     }
                 }
         }
@@ -929,28 +929,28 @@ struct SinglePhotoRoomView: View {
                 NavigationView {
                     RoomCaptureView(
                         onSaveComplete: {
-                            print("🎯 [SinglePhotoRoomViewer] onSaveComplete callback triggered!")
-                            print("   - Current show3DScanOption: \(show3DScanOption)")
+                            logDebug("🎯 [SinglePhotoRoomViewer] onSaveComplete callback triggered!")
+                            logDebug("   - Current show3DScanOption: \(show3DScanOption)")
                             
                             // Set to false to dismiss the fullScreenCover
                             show3DScanOption = false
                             
-                            print("   - Updated show3DScanOption: \(show3DScanOption)")
-                            print("   - View should dismiss now")
+                            logDebug("   - Updated show3DScanOption: \(show3DScanOption)")
+                            logDebug("   - View should dismiss now")
                         }
                     )
                     .navigationBarItems(
                         leading: Button("Cancel") {
-                            print("❌ [SinglePhotoRoomViewer] Cancel button pressed")
+                            logDebug("❌ [SinglePhotoRoomViewer] Cancel button pressed")
                             show3DScanOption = false
                         }
                     )
                 }
                 .onAppear {
-                    print("🔷 [SinglePhotoRoomViewer] RoomCaptureView appeared")
+                    logDebug("🔷 [SinglePhotoRoomViewer] RoomCaptureView appeared")
                 }
                 .onDisappear {
-                    print("🔶 [SinglePhotoRoomViewer] RoomCaptureView disappeared")
+                    logDebug("🔶 [SinglePhotoRoomViewer] RoomCaptureView disappeared")
                 }
             }
         }
@@ -961,7 +961,7 @@ struct SinglePhotoRoomView: View {
             Text("3D Room Scanning requires an iPhone or iPad with LiDAR sensor (iPhone 12 Pro or later, iPad Pro 2020 or later).")
         }
         .onAppear {
-            print("👁️ [View] SinglePhotoRoomView appeared")
+            logDebug("👁️ [View] SinglePhotoRoomView appeared")
             adjustedWidth = reconstructor.estimatedDimensions?.width ?? 4.0
             adjustedDepth = reconstructor.estimatedDimensions?.depth ?? 4.0
             adjustedHeight = reconstructor.estimatedDimensions?.height ?? 2.8
@@ -969,7 +969,7 @@ struct SinglePhotoRoomView: View {
         // ✅ Watch for boundary changes and rebuild automatically, then navigate to viewer
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
             if let boundaries = newValue, let image = selectedImage {
-                print("🔄 [View] Boundaries adjusted, rebuilding room...")
+                logDebug("🔄 [View] Boundaries adjusted, rebuilding room...")
                 Task {
                     await reconstructor.processPhotoWithBoundaries(image, boundaries: boundaries)
                     // Auto-navigate to 3D viewer (save screen) once room is ready
@@ -995,13 +995,13 @@ struct SinglePhotoRoomView: View {
     }
     
     private func rebuildRoom() {
-        print("🔄 [View] Rebuilding room with adjusted dimensions")
+        logDebug("🔄 [View] Rebuilding room with adjusted dimensions")
         var updatedDimensions = reconstructor.estimatedDimensions ?? SinglePhotoRoomReconstructor.RoomDimensions()
         updatedDimensions.width = adjustedWidth
         updatedDimensions.depth = adjustedDepth
         updatedDimensions.height = adjustedHeight
         
-        print("   - New dimensions: W:\(adjustedWidth) D:\(adjustedDepth) H:\(adjustedHeight)")
+        logDebug("   - New dimensions: W:\(adjustedWidth) D:\(adjustedDepth) H:\(adjustedHeight)")
         
         Task {
             await MainActor.run {
@@ -1052,7 +1052,7 @@ struct PhotoPickerView: UIViewControllerRepresentable {
     @Environment(\.dismiss) var dismiss
     
     func makeUIViewController(context: Context) -> UIImagePickerController {
-        print("📱 [PhotoPicker] Creating UIImagePickerController")
+        logDebug("📱 [PhotoPicker] Creating UIImagePickerController")
         let picker = UIImagePickerController()
         picker.sourceType = .photoLibrary
         picker.delegate = context.coordinator
@@ -1068,22 +1068,22 @@ struct PhotoPickerView: UIViewControllerRepresentable {
         
         init(_ parent: PhotoPickerView) {
             self.parent = parent
-            print("📱 [PhotoPicker] Coordinator initialized")
+            logDebug("📱 [PhotoPicker] Coordinator initialized")
         }
         
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            print("📱 [PhotoPicker] Image picked from library")
+            logDebug("📱 [PhotoPicker] Image picked from library")
             if let image = info[.originalImage] as? UIImage {
-                print("✅ [PhotoPicker] Got UIImage: \(image.size)")
+                logDebug("✅ [PhotoPicker] Got UIImage: \(image.size)")
                 parent.selectedImage = image
             } else {
-                print("❌ [PhotoPicker] Failed to get UIImage")
+                logDebug("❌ [PhotoPicker] Failed to get UIImage")
             }
             parent.dismiss()
         }
         
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            print("❌ [PhotoPicker] User cancelled")
+            logDebug("❌ [PhotoPicker] User cancelled")
             parent.dismiss()
         }
     }
@@ -1114,8 +1114,8 @@ struct SceneKitViewer: View {
                 options: [.allowsCameraControl, .autoenablesDefaultLighting]
             )
             .onAppear {
-                print("🎬 [Viewer] SceneKit viewer appeared")
-                print("   - Scene nodes: \(scene.rootNode.childNodes.count)")
+                logDebug("🎬 [Viewer] SceneKit viewer appeared")
+                logDebug("   - Scene nodes: \(scene.rootNode.childNodes.count)")
                 setupCamera()
             }
             .onDisappear {
@@ -1146,7 +1146,7 @@ struct SceneKitViewer: View {
                     .padding(.bottom, 100) // Move above joystick
                 }
                 .onAppear {
-                    print("ℹ️ [Viewer] Controls hint displayed")
+                    logDebug("ℹ️ [Viewer] Controls hint displayed")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                         withAnimation { showControls = false }
                     }
@@ -1160,7 +1160,7 @@ struct SceneKitViewer: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     showControls.toggle()
-                    print("ℹ️ [Viewer] Controls hint toggled: \(showControls)")
+                    logDebug("ℹ️ [Viewer] Controls hint toggled: \(showControls)")
                 } label: {
                     Image(systemName: "questionmark.circle")
                 }
@@ -1281,7 +1281,7 @@ struct SceneKitViewer: View {
         }
         
         let savedName = roomName  // ✅ Capture the name BEFORE clearing
-        print("💾 [Viewer] Starting room save process: \(savedName)")
+        logDebug("💾 [Viewer] Starting room save process: \(savedName)")
         
         withAnimation(.easeIn(duration: 0.3)) {
             isSavingRoom = true
@@ -1301,9 +1301,9 @@ struct SceneKitViewer: View {
             }
             
             if self.saveProgress >= 0.3 && self.saveProgress < 0.32 {
-                print("📦 [Viewer] Preparing model...")
+                logDebug("📦 [Viewer] Preparing model...")
             } else if self.saveProgress >= 0.6 && !saveStarted {
-                print("📄 [Viewer] Exporting USDZ...")
+                logDebug("📄 [Viewer] Exporting USDZ...")
                 saveStarted = true
                 
                 // ✅ Actually save the room with completion handler
@@ -1312,11 +1312,11 @@ struct SceneKitViewer: View {
                         saveCompleted = true
                         saveSuccess = success
                         saveError = error
-                        print(success ? "✅ [Viewer] Room saved successfully" : "❌ [Viewer] Failed to save: \(error ?? "unknown")")
+                        logDebug(success ? "✅ [Viewer] Room saved successfully" : "❌ [Viewer] Failed to save: \(error ?? "unknown")")
                     }
                 }
             } else if self.saveProgress >= 0.9 && self.saveProgress < 0.92 {
-                print("💾 [Viewer] Finalizing...")
+                logDebug("💾 [Viewer] Finalizing...")
             }
             
             // ✅ Only finish when BOTH progress complete AND save completed
@@ -1334,11 +1334,11 @@ struct SceneKitViewer: View {
                         self.saveAlertMessage = "Room '\(savedName)' saved successfully!"
                         self.showSaveAlert = true
                         self.roomName = ""
-                        print("✅ [Viewer] Save complete!")
+                        logDebug("✅ [Viewer] Save complete!")
                     } else {
                         self.saveAlertMessage = "Failed to save room: \(saveError ?? "Unknown error")"
                         self.showSaveAlert = true
-                        print("❌ [Viewer] Save failed!")
+                        logDebug("❌ [Viewer] Save failed!")
                     }
                 }
             }
@@ -1355,12 +1355,12 @@ struct SceneKitViewer: View {
         }
 
         roomName = ""
-        print("❌ [Viewer] Room save cancelled")
+        logDebug("❌ [Viewer] Room save cancelled")
     }
 
     // ✅ Setup camera position like vintage room (outside, looking at front wall)
     private func setupCamera() {
-        print("📷 [SceneKitViewer] Setting up camera position...")
+        logDebug("📷 [SceneKitViewer] Setting up camera position...")
 
         // Calculate scene bounds
         var minBounds = SCNVector3(Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude)
@@ -1391,9 +1391,9 @@ struct SceneKitViewer: View {
             (minBounds.z + maxBounds.z) / 2
         )
 
-        print("   📦 Room bounds: min(\(minBounds)), max(\(maxBounds))")
-        print("   📏 Room size: \(roomSize.x) x \(roomSize.y) x \(roomSize.z)")
-        print("   🎯 Room center: \(roomCenter)")
+        logDebug("   📦 Room bounds: min(\(minBounds)), max(\(maxBounds))")
+        logDebug("   📏 Room size: \(roomSize.x) x \(roomSize.y) x \(roomSize.z)")
+        logDebug("   🎯 Room center: \(roomCenter)")
 
         // ✅ Camera positioning: OUTSIDE the room (beyond max Z), looking at FRONT wall (min Z)
         // Same strategy as RealityKitBoundaryManager.getOptimalCameraPosition()
@@ -1405,8 +1405,8 @@ struct SceneKitViewer: View {
         let lookAtY = roomCenter.y  // Center height
         let lookAtZ = minBounds.z   // FRONT wall (where photo is)
 
-        print("   📷 Camera position: (\(camX), \(camY), \(camZ))")
-        print("   👁️ Looking at: (\(lookAtX), \(lookAtY), \(lookAtZ))")
+        logDebug("   📷 Camera position: (\(camX), \(camY), \(camZ))")
+        logDebug("   👁️ Looking at: (\(lookAtX), \(lookAtY), \(lookAtZ))")
 
         // Create camera node
         let camera = SCNCamera()
@@ -1426,6 +1426,6 @@ struct SceneKitViewer: View {
         // ✅ Register with GlobalCameraController for joystick movement
         GlobalCameraController.shared.registerSceneKitCamera(camNode)
 
-        print("   ✅ Camera setup complete and registered with GlobalCameraController")
+        logDebug("   ✅ Camera setup complete and registered with GlobalCameraController")
     }
 }

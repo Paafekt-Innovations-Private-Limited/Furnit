@@ -134,7 +134,7 @@ class Stable3DAPIClient: ObservableObject {
         configuration.timeoutIntervalForResource = 300.0 // 5 minutes for downloads
         self.urlSession = URLSession(configuration: configuration)
         
-        print("🌐 Stable3DAPIClient initialized with base URL: \(baseURL)")
+        logDebug("🌐 Stable3DAPIClient initialized with base URL: \(baseURL)")
     }
     
     // Check API health and availability
@@ -143,7 +143,7 @@ class Stable3DAPIClient: ObservableObject {
             throw APIError.invalidURL
         }
         
-        print("🏥 Checking API health at: \(url)")
+        logDebug("🏥 Checking API health at: \(url)")
         
         do {
             let (data, response) = try await urlSession.data(from: url)
@@ -157,7 +157,7 @@ class Stable3DAPIClient: ObservableObject {
             }
             
             let healthResponse = try JSONDecoder().decode(HealthResponse.self, from: data)
-            print("✅ API health check successful: \(healthResponse)")
+            logDebug("✅ API health check successful: \(healthResponse)")
             return healthResponse
             
         } catch let error as APIError {
@@ -178,9 +178,9 @@ class Stable3DAPIClient: ObservableObject {
             throw APIError.invalidImageData
         }
         
-        print("📤 Submitting image for 3D generation")
-        print("   Image size: \(image.size)")
-        print("   Data size: \(imageData.count) bytes")
+        logDebug("📤 Submitting image for 3D generation")
+        logDebug("   Image size: \(image.size)")
+        logDebug("   Data size: \(imageData.count) bytes")
         
         // Create multipart form data request
         var request = URLRequest(url: url)
@@ -213,9 +213,9 @@ class Stable3DAPIClient: ObservableObject {
             
             if httpResponse.statusCode == 200 || httpResponse.statusCode == 202 {
                 let generateResponse = try JSONDecoder().decode(GenerateResponse.self, from: data)
-                print("✅ 3D generation job submitted successfully")
-                print("   Job ID: \(generateResponse.jobId)")
-                print("   Message: \(generateResponse.message)")
+                logDebug("✅ 3D generation job submitted successfully")
+                logDebug("   Job ID: \(generateResponse.jobId)")
+                logDebug("   Message: \(generateResponse.message)")
                 return generateResponse
                 
             } else {
@@ -245,7 +245,7 @@ class Stable3DAPIClient: ObservableObject {
             throw APIError.invalidURL
         }
         
-        print("🔍 Checking status for job: \(jobId)")
+        logDebug("🔍 Checking status for job: \(jobId)")
         
         do {
             let (data, response) = try await urlSession.data(from: url)
@@ -258,27 +258,27 @@ class Stable3DAPIClient: ObservableObject {
             case 200:
                 // Log raw response for debugging
                 if let responseString = String(data: data, encoding: .utf8) {
-                    print("🔍 Raw status response: \(responseString)")
+                    logDebug("🔍 Raw status response: \(responseString)")
                 }
                 
                 do {
                     let statusResponse = try JSONDecoder().decode(StatusResponse.self, from: data)
-                    print("📊 Job status: \(statusResponse.status)")
+                    logDebug("📊 Job status: \(statusResponse.status)")
                     if let progress = statusResponse.progress {
-                        print("   Progress: \(Int(progress * 100))%")
+                        logDebug("   Progress: \(Int(progress * 100))%")
                     }
                     return statusResponse
                 } catch {
-                    print("⚠️ Failed to decode status response: \(error)")
-                    print("📄 Response data: \(String(data: data, encoding: .utf8) ?? "Unable to decode")")
+                    logDebug("⚠️ Failed to decode status response: \(error)")
+                    logDebug("📄 Response data: \(String(data: data, encoding: .utf8) ?? "Unable to decode")")
                     
                     // Try to parse manually as fallback
                     if let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        print("🔍 Parsed JSON object: \(jsonObject)")
+                        logDebug("🔍 Parsed JSON object: \(jsonObject)")
                         
                         // Try to extract status manually
                         if let status = jsonObject["status"] as? String {
-                            print("📊 Manually extracted status: \(status)")
+                            logDebug("📊 Manually extracted status: \(status)")
                             
                             // Create manual StatusResponse
                             let manualResponse = ManualStatusResponse(
@@ -321,7 +321,7 @@ class Stable3DAPIClient: ObservableObject {
             throw APIError.invalidURL
         }
         
-        print("⬇️ Downloading 3D model for job: \(jobId)")
+        logDebug("⬇️ Downloading 3D model for job: \(jobId)")
         
         do {
             let (data, response) = try await urlSession.data(from: url)
@@ -332,20 +332,20 @@ class Stable3DAPIClient: ObservableObject {
             
             switch httpResponse.statusCode {
             case 200:
-                print("✅ 3D model downloaded successfully")
-                print("   File size: \(data.count) bytes")
+                logDebug("✅ 3D model downloaded successfully")
+                logDebug("   File size: \(data.count) bytes")
                 
                 // Verify we got USDZ data by checking file signature
                 if data.count >= 8 {
                     let magicBytes = data.prefix(8)
                     let magicString = String(data: magicBytes, encoding: .ascii) ?? ""
-                    print("   File format signature: \(magicString.prefix(4))")
+                    logDebug("   File format signature: \(magicString.prefix(4))")
                     
                     // USDZ files start with "PK" (ZIP archive) since USDZ is a ZIP container
                     if magicBytes.starts(with: [0x50, 0x4B]) {
-                        print("   ✅ USDZ file format confirmed (ZIP container)")
+                        logDebug("   ✅ USDZ file format confirmed (ZIP container)")
                     } else {
-                        print("   ⚠️ Unexpected file format - expected USDZ")
+                        logDebug("   ⚠️ Unexpected file format - expected USDZ")
                     }
                 }
                 
@@ -370,7 +370,7 @@ class Stable3DAPIClient: ObservableObject {
         let delays: [TimeInterval] = [2.0, 5.0, 8.0] // Incremental polling delays
         var delayIndex = 0
         
-        print("🔄 Starting incremental polling for job: \(jobId)")
+        logDebug("🔄 Starting incremental polling for job: \(jobId)")
         
         while true {
             do {
@@ -381,7 +381,7 @@ class Stable3DAPIClient: ObservableObject {
                 
                 switch jobStatus {
                 case .completed:
-                    print("✅ Job completed successfully")
+                    logDebug("✅ Job completed successfully")
                     return status
                     
                 case .failed:
@@ -391,7 +391,7 @@ class Stable3DAPIClient: ObservableObject {
                 case .pending, .processing, .unknown:
                     // Continue polling with incremental delay
                     let currentDelay = delays[min(delayIndex, delays.count - 1)]
-                    print("⏳ Job still \(status.status), waiting \(currentDelay)s before next check")
+                    logDebug("⏳ Job still \(status.status), waiting \(currentDelay)s before next check")
                     
                     try await Task.sleep(nanoseconds: UInt64(currentDelay * 1_000_000_000))
                     delayIndex += 1
@@ -399,7 +399,7 @@ class Stable3DAPIClient: ObservableObject {
                 }
                 
             } catch {
-                print("⚠️ Error during polling: \(error)")
+                logDebug("⚠️ Error during polling: \(error)")
                 throw error
             }
         }

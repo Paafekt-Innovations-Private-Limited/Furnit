@@ -32,7 +32,7 @@ class QRCodeDetectionService: ObservableObject {
             await MainActor.run {
                 errorMessage = "Failed to convert UIImage to CGImage"
             }
-            print("❌ QR Detection: Failed to convert UIImage to CGImage")
+            logDebug("❌ QR Detection: Failed to convert UIImage to CGImage")
             return QRDetectionResult(hasQRCode: false, extractedURL: nil, qrCodeString: nil)
         }
 
@@ -42,13 +42,13 @@ class QRCodeDetectionService: ObservableObject {
                 Task { @MainActor in
                     if let error = error {
                         self?.errorMessage = "QR detection failed: \(error.localizedDescription)"
-                        print("❌ QR Detection error: \(error.localizedDescription)")
+                        logDebug("❌ QR Detection error: \(error.localizedDescription)")
                         continuation.resume(returning: QRDetectionResult(hasQRCode: false, extractedURL: nil, qrCodeString: nil))
                         return
                     }
 
                     guard let observations = request.results as? [VNBarcodeObservation] else {
-                        print("📱 QR Detection: No QR codes found in image")
+                        logDebug("📱 QR Detection: No QR codes found in image")
                         continuation.resume(returning: QRDetectionResult(hasQRCode: false, extractedURL: nil, qrCodeString: nil))
                         return
                     }
@@ -58,11 +58,11 @@ class QRCodeDetectionService: ObservableObject {
                         if observation.symbology == .qr,
                            let qrCodeString = observation.payloadStringValue {
 
-                            print("🔍 QR Code detected: \(qrCodeString)")
+                            logDebug("🔍 QR Code detected: \(qrCodeString)")
 
                             // Try to extract URL from QR code
                             if let url = self?.extractURL(from: qrCodeString) {
-                                print("✅ Valid URL extracted from QR code: \(url)")
+                                logDebug("✅ Valid URL extracted from QR code: \(url)")
                                 continuation.resume(returning: QRDetectionResult(
                                     hasQRCode: true,
                                     extractedURL: url,
@@ -70,7 +70,7 @@ class QRCodeDetectionService: ObservableObject {
                                 ))
                                 return
                             } else {
-                                print("⚠️ QR code found but no valid URL extracted")
+                                logDebug("⚠️ QR code found but no valid URL extracted")
                                 continuation.resume(returning: QRDetectionResult(
                                     hasQRCode: true,
                                     extractedURL: nil,
@@ -81,7 +81,7 @@ class QRCodeDetectionService: ObservableObject {
                         }
                     }
 
-                    print("📱 QR Detection: No QR codes found in image")
+                    logDebug("📱 QR Detection: No QR codes found in image")
                     continuation.resume(returning: QRDetectionResult(hasQRCode: false, extractedURL: nil, qrCodeString: nil))
                 }
             }
@@ -98,7 +98,7 @@ class QRCodeDetectionService: ObservableObject {
                 } catch {
                     Task { @MainActor in
                         self.errorMessage = "QR detection failed: \(error.localizedDescription)"
-                        print("❌ QR Detection error: \(error.localizedDescription)")
+                        logDebug("❌ QR Detection error: \(error.localizedDescription)")
                     }
                     continuation.resume(returning: QRDetectionResult(hasQRCode: false, extractedURL: nil, qrCodeString: nil))
                 }
@@ -125,7 +125,7 @@ class QRCodeDetectionService: ObservableObject {
             return URL(string: qrString)
         }
 
-        print("⚠️ Could not extract valid URL from QR code: \(qrString)")
+        logDebug("⚠️ Could not extract valid URL from QR code: \(qrString)")
         return nil
     }
 
@@ -134,24 +134,24 @@ class QRCodeDetectionService: ObservableObject {
         let supportedExtensions = ["usdz", "glb", "gltf", "obj", "dae"]
         let pathExtension = url.pathExtension.lowercased()
 
-        print("🔍 URL validation: \(url.absoluteString)")
-        print("   Extension: \(pathExtension)")
+        logDebug("🔍 URL validation: \(url.absoluteString)")
+        logDebug("   Extension: \(pathExtension)")
 
         // First check: URL extension validation
         if supportedExtensions.contains(pathExtension) && !pathExtension.isEmpty {
-            print("   ✅ Valid 3D asset extension found")
+            logDebug("   ✅ Valid 3D asset extension found")
             return true
         }
 
         // Second check: HTTP HEAD request to check Content-Type
-        print("   🌐 No extension found, checking HTTP headers...")
+        logDebug("   🌐 No extension found, checking HTTP headers...")
         let isValidByHeaders = await checkContentTypeHeaders(url)
         if isValidByHeaders {
-            print("   ✅ Valid 3D asset MIME type found in headers")
+            logDebug("   ✅ Valid 3D asset MIME type found in headers")
             return true
         }
 
-        print("   ❌ No valid 3D asset indicators found")
+        logDebug("   ❌ No valid 3D asset indicators found")
         return false
     }
 
@@ -166,18 +166,18 @@ class QRCodeDetectionService: ObservableObject {
             let (_, response) = try await URLSession.shared.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("   ⚠️ Invalid HTTP response")
+                logDebug("   ⚠️ Invalid HTTP response")
                 return false
             }
 
             guard httpResponse.statusCode == 200 else {
-                print("   ⚠️ HTTP error: \(httpResponse.statusCode)")
+                logDebug("   ⚠️ HTTP error: \(httpResponse.statusCode)")
                 return false
             }
 
             // Check Content-Type header for 3D asset MIME types
             let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
-            print("   Content-Type: \(contentType)")
+            logDebug("   Content-Type: \(contentType)")
 
             let supported3DMimeTypes = [
                 "model/vnd.usdz+zip",           // USDZ files
@@ -191,14 +191,14 @@ class QRCodeDetectionService: ObservableObject {
 
             for mimeType in supported3DMimeTypes {
                 if contentType.contains(mimeType) {
-                    print("   🎯 Found supported MIME type: \(mimeType)")
+                    logDebug("   🎯 Found supported MIME type: \(mimeType)")
                     return true
                 }
             }
 
             // Check Content-Disposition header for filename hints
             if let contentDisposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition") {
-                print("   Content-Disposition: \(contentDisposition)")
+                logDebug("   Content-Disposition: \(contentDisposition)")
 
                 // Extract filename from Content-Disposition header
                 let filenamePattern = #"filename[^;=\n]*=((['"]).*?\2|[^;\n]*)"#
@@ -208,10 +208,10 @@ class QRCodeDetectionService: ObservableObject {
 
                     let filename = String(contentDisposition[filenameRange]).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
                     let fileExtension = (filename as NSString).pathExtension.lowercased()
-                    print("   Filename from header: \(filename), Extension: \(fileExtension)")
+                    logDebug("   Filename from header: \(filename), Extension: \(fileExtension)")
 
                     if ["usdz", "glb", "gltf", "obj", "dae"].contains(fileExtension) {
-                        print("   🎯 Found supported extension in filename: \(fileExtension)")
+                        logDebug("   🎯 Found supported extension in filename: \(fileExtension)")
                         return true
                     }
                 }
@@ -220,7 +220,7 @@ class QRCodeDetectionService: ObservableObject {
             return false
 
         } catch {
-            print("   ⚠️ HTTP HEAD request failed: \(error.localizedDescription)")
+            logDebug("   ⚠️ HTTP HEAD request failed: \(error.localizedDescription)")
             return false
         }
     }

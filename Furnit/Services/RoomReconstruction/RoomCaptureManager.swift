@@ -21,42 +21,42 @@ class RoomCaptureManager: ObservableObject {
     private var hasReceivedFinalData = false
     
     init() {
-        print("📂 [RoomCaptureManager] Initialized")
+        logDebug("📂 [RoomCaptureManager] Initialized")
         _ = checkDeviceSupport()
     }
     
     // MARK: - Device Support Check
     func checkDeviceSupport() -> Bool {
         let isSupported = RoomCaptureSession.isSupported
-        print("📱 [RoomCaptureManager] Device support: \(isSupported ? "✅ Supported" : "❌ Not supported")")
+        logDebug("📱 [RoomCaptureManager] Device support: \(isSupported ? "✅ Supported" : "❌ Not supported")")
         return isSupported
     }
     
     // MARK: - Initialize Session
     func initializeSession(from captureView: RoomCaptureSession?) {
         guard captureSession == nil else {
-            print("⚠️ [RoomCaptureManager] Session already initialized")
+            logDebug("⚠️ [RoomCaptureManager] Session already initialized")
             return
         }
         
         self.captureSession = captureView
         self.isSessionInitialized = true
-        print("✅ [RoomCaptureManager] Session initialized from capture view")
+        logDebug("✅ [RoomCaptureManager] Session initialized from capture view")
         
         if isSessionRunning && captureSession != nil {
-            print("🚀 [RoomCaptureManager] Auto-starting session that was waiting")
+            logDebug("🚀 [RoomCaptureManager] Auto-starting session that was waiting")
         }
     }
     
     // MARK: - Start Capture Session
     func startCaptureSession() -> RoomCaptureSession? {
         guard checkDeviceSupport() else {
-            print("❌ [RoomCaptureManager] Device doesn't support RoomPlan")
+            logDebug("❌ [RoomCaptureManager] Device doesn't support RoomPlan")
             statusMessage = "RoomPlan not supported on this device"
             return nil
         }
         
-        print("🚀 [RoomCaptureManager] Preparing to start room capture session")
+        logDebug("🚀 [RoomCaptureManager] Preparing to start room capture session")
         
         // Reset flags
         hasReceivedFinalData = false
@@ -71,10 +71,10 @@ class RoomCaptureManager: ObservableObject {
     
     // MARK: - Stop Capture Session (Fixed - no unnecessary try)
     func stopCaptureSession() {
-        print("🛑 [RoomCaptureManager] Stopping capture session")
+        logDebug("🛑 [RoomCaptureManager] Stopping capture session")
         
         guard let session = captureSession else {
-            print("⚠️ [RoomCaptureManager] No session to stop")
+            logDebug("⚠️ [RoomCaptureManager] No session to stop")
             return
         }
         
@@ -88,11 +88,11 @@ class RoomCaptureManager: ObservableObject {
         
         // Check if we already have room data
         if let currentRoom = self.capturedRoom {
-            print("📦 [RoomCaptureManager] Already have room data: \(currentRoom.walls.count) walls")
+            logDebug("📦 [RoomCaptureManager] Already have room data: \(currentRoom.walls.count) walls")
         }
         
         // Now stop the session
-        print("⏸️ [RoomCaptureManager] Calling session.stop() - delegate should receive final data")
+        logDebug("⏸️ [RoomCaptureManager] Calling session.stop() - delegate should receive final data")
         session.stop()
         
         // If we have a room but delegate doesn't fire, process it anyway
@@ -100,7 +100,7 @@ class RoomCaptureManager: ObservableObject {
             guard let self = self else { return }
             
             if let room = self.capturedRoom, self.finalScene == nil {
-                print("🔧 [RoomCaptureManager] Forcing room processing after stop")
+                logDebug("🔧 [RoomCaptureManager] Forcing room processing after stop")
                 Task {
                     await self.processCapturedRoom(room)
                 }
@@ -110,22 +110,22 @@ class RoomCaptureManager: ObservableObject {
     
     // MARK: - Force Process Current Data
     func forceProcessCurrentData() {
-        print("⚠️ [RoomCaptureManager] Forcing processing of current data")
+        logDebug("⚠️ [RoomCaptureManager] Forcing processing of current data")
         
         if let room = capturedRoom {
-            print("📦 [RoomCaptureManager] Processing existing captured room")
+            logDebug("📦 [RoomCaptureManager] Processing existing captured room")
             Task {
                 await processCapturedRoom(room)
             }
         } else {
-            print("❌ [RoomCaptureManager] No room data to process")
+            logDebug("❌ [RoomCaptureManager] No room data to process")
             statusMessage = "No room data captured"
         }
     }
     
     // MARK: - Cleanup Session
     func cleanupSession() {
-        print("🧹 [RoomCaptureManager] Cleaning up session resources")
+        logDebug("🧹 [RoomCaptureManager] Cleaning up session resources")
         
         if let session = captureSession {
             session.delegate = nil
@@ -133,7 +133,7 @@ class RoomCaptureManager: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 self?.captureSession = nil
                 self?.isSessionInitialized = false
-                print("✅ [RoomCaptureManager] Session resources cleaned up")
+                logDebug("✅ [RoomCaptureManager] Session resources cleaned up")
             }
         }
         
@@ -156,12 +156,12 @@ class RoomCaptureManager: ObservableObject {
     
     // MARK: - Process Captured Room (Called by Delegate)
     func processCapturedRoom(_ room: CapturedRoom) async {
-        print("🏠 [RoomCaptureManager] Processing captured room")
-        print("   - Walls: \(room.walls.count)")
-        print("   - Objects: \(room.objects.count)")
-        print("   - Doors: \(room.doors.count)")
-        print("   - Windows: \(room.windows.count)")
-        print("   - Openings: \(room.openings.count)")
+        logDebug("🏠 [RoomCaptureManager] Processing captured room")
+        logDebug("   - Walls: \(room.walls.count)")
+        logDebug("   - Objects: \(room.objects.count)")
+        logDebug("   - Doors: \(room.doors.count)")
+        logDebug("   - Windows: \(room.windows.count)")
+        logDebug("   - Openings: \(room.openings.count)")
         
         // Mark that we received final data
         hasReceivedFinalData = true
@@ -177,7 +177,7 @@ class RoomCaptureManager: ObservableObject {
         if room.walls.count > 0 || room.objects.count > 0 {
             await exportToUSDZ(room)
         } else {
-            print("⚠️ [RoomCaptureManager] Room has no content, skipping export")
+            logDebug("⚠️ [RoomCaptureManager] Room has no content, skipping export")
             await MainActor.run {
                 self.statusMessage = "No room content captured"
                 self.isProcessing = false
@@ -187,7 +187,7 @@ class RoomCaptureManager: ObservableObject {
     
     // MARK: - Export to USDZ
     private func exportToUSDZ(_ room: CapturedRoom) async {
-        print("📦 [RoomCaptureManager] Exporting room to USDZ")
+        logDebug("📦 [RoomCaptureManager] Exporting room to USDZ")
         
         await MainActor.run {
             self.exportProgress = 0.2
@@ -201,13 +201,13 @@ class RoomCaptureManager: ObservableObject {
             // Create directory if it doesn't exist
             if !FileManager.default.fileExists(atPath: tempFolder.path) {
                 try FileManager.default.createDirectory(at: tempFolder, withIntermediateDirectories: true)
-                print("✅ [RoomCaptureManager] Created TempScans directory")
+                logDebug("✅ [RoomCaptureManager] Created TempScans directory")
             }
             
             let fileName = "RoomScan_\(UUID().uuidString).usdz"
             let exportURL = tempFolder.appendingPathComponent(fileName)
             
-            print("   - Export path: \(exportURL.path)")
+            logDebug("   - Export path: \(exportURL.path)")
             
             await MainActor.run {
                 self.exportProgress = 0.5
@@ -217,12 +217,12 @@ class RoomCaptureManager: ObservableObject {
             // Export room to USDZ
             try await room.export(to: exportURL, exportOptions: .model)
             
-            print("✅ [RoomCaptureManager] Room exported successfully")
+            logDebug("✅ [RoomCaptureManager] Room exported successfully")
             
             // Check file size
             if let attributes = try? FileManager.default.attributesOfItem(atPath: exportURL.path),
                let fileSize = attributes[.size] as? Int {
-                print("   - File size: \(fileSize) bytes")
+                logDebug("   - File size: \(fileSize) bytes")
             }
             
             await MainActor.run {
@@ -233,8 +233,8 @@ class RoomCaptureManager: ObservableObject {
             }
             
         } catch {
-            print("❌ [RoomCaptureManager] Export failed: \(error.localizedDescription)")
-            print("   - Error details: \(error)")
+            logDebug("❌ [RoomCaptureManager] Export failed: \(error.localizedDescription)")
+            logDebug("   - Error details: \(error)")
             await MainActor.run {
                 self.statusMessage = "Export failed: \(error.localizedDescription)"
                 self.isProcessing = false
@@ -245,16 +245,16 @@ class RoomCaptureManager: ObservableObject {
     // MARK: - Save Room to Library
     func saveRoomToLibrary(name: String, completion: @escaping (Bool, String?) -> Void) {
         guard let sceneURL = finalScene else {
-            print("❌ [RoomCaptureManager] No scene available to save")
+            logDebug("❌ [RoomCaptureManager] No scene available to save")
             completion(false, "No room scan available")
             return
         }
         
-        print("💾 [RoomCaptureManager] Saving room to library: \(name)")
+        logDebug("💾 [RoomCaptureManager] Saving room to library: \(name)")
         
         // Verify source file exists
         guard FileManager.default.fileExists(atPath: sceneURL.path) else {
-            print("❌ [RoomCaptureManager] Source file no longer exists at: \(sceneURL.path)")
+            logDebug("❌ [RoomCaptureManager] Source file no longer exists at: \(sceneURL.path)")
             completion(false, "Source file was deleted")
             return
         }
@@ -266,7 +266,7 @@ class RoomCaptureManager: ObservableObject {
             // Create SavedRooms directory if it doesn't exist
             if !FileManager.default.fileExists(atPath: roomsFolder.path) {
                 try FileManager.default.createDirectory(at: roomsFolder, withIntermediateDirectories: true)
-                print("✅ [RoomCaptureManager] Created SavedRooms directory")
+                logDebug("✅ [RoomCaptureManager] Created SavedRooms directory")
             }
             
             let permanentURL = roomsFolder.appendingPathComponent("\(name).usdz")
@@ -281,12 +281,12 @@ class RoomCaptureManager: ObservableObject {
             
             // Verify copy succeeded
             guard FileManager.default.fileExists(atPath: permanentURL.path) else {
-                print("❌ [RoomCaptureManager] Copy failed - file not found at destination")
+                logDebug("❌ [RoomCaptureManager] Copy failed - file not found at destination")
                 completion(false, "Failed to copy file to permanent storage")
                 return
             }
             
-            print("✅ [RoomCaptureManager] Successfully copied to: \(permanentURL.path)")
+            logDebug("✅ [RoomCaptureManager] Successfully copied to: \(permanentURL.path)")
             
             // Save metadata to UserDefaults
             var savedRooms = UserDefaults.standard.dictionary(forKey: "SavedRooms") as? [String: [String: Any]] ?? [:]
@@ -300,13 +300,13 @@ class RoomCaptureManager: ObservableObject {
             
             // Clean up temp file
             try? FileManager.default.removeItem(at: sceneURL)
-            print("🧹 [RoomCaptureManager] Cleaned up temp file")
+            logDebug("🧹 [RoomCaptureManager] Cleaned up temp file")
             
-            print("✅ [RoomCaptureManager] Room saved successfully")
+            logDebug("✅ [RoomCaptureManager] Room saved successfully")
             completion(true, nil)
             
         } catch {
-            print("❌ [RoomCaptureManager] Save failed: \(error.localizedDescription)")
+            logDebug("❌ [RoomCaptureManager] Save failed: \(error.localizedDescription)")
             completion(false, error.localizedDescription)
         }
     }
@@ -347,10 +347,10 @@ class RoomCaptureManager: ObservableObject {
         let roomDepth = maxZ - minZ
         let roomHeight = maxY - minY
         
-        print("📏 [RoomCaptureManager] Room dimensions:")
-        print("   - Width: \(roomWidth)m")
-        print("   - Depth: \(roomDepth)m")
-        print("   - Height: \(roomHeight)m")
+        logDebug("📏 [RoomCaptureManager] Room dimensions:")
+        logDebug("   - Width: \(roomWidth)m")
+        logDebug("   - Depth: \(roomDepth)m")
+        logDebug("   - Height: \(roomHeight)m")
         
         return (roomWidth, roomDepth, roomHeight)
     }
@@ -388,21 +388,21 @@ class RoomCaptureManager: ObservableObject {
     
     // MARK: - Manual Capture Current State (Fixed - no unnecessary try)
     func manuallyCaptureCurrent() {
-        print("🔧 [RoomCaptureManager] Manually capturing current state")
+        logDebug("🔧 [RoomCaptureManager] Manually capturing current state")
         
         guard captureSession != nil else {
-            print("❌ No session available")
+            logDebug("❌ No session available")
             return
         }
         
         // Check if we have a captured room already (no try needed)
         if let room = capturedRoom {
-            print("✅ Using existing room: \(room.walls.count) walls, \(room.objects.count) objects")
+            logDebug("✅ Using existing room: \(room.walls.count) walls, \(room.objects.count) objects")
             Task {
                 await processCapturedRoom(room)
             }
         } else {
-            print("❌ No room data available")
+            logDebug("❌ No room data available")
         }
     }
     
@@ -434,18 +434,18 @@ class RoomCaptureManager: ObservableObject {
         guard let savedRooms = UserDefaults.standard.dictionary(forKey: "SavedRooms") as? [String: [String: Any]],
               let roomData = savedRooms[name],
               let filePath = roomData["filePath"] as? String else {
-            print("❌ [RoomCaptureManager] Room '\(name)' not found in saved rooms")
+            logDebug("❌ [RoomCaptureManager] Room '\(name)' not found in saved rooms")
             return nil
         }
         
         let url = URL(fileURLWithPath: filePath)
         
         guard FileManager.default.fileExists(atPath: url.path) else {
-            print("❌ [RoomCaptureManager] File no longer exists at: \(filePath)")
+            logDebug("❌ [RoomCaptureManager] File no longer exists at: \(filePath)")
             return nil
         }
         
-        print("✅ [RoomCaptureManager] Loaded room: \(name) from \(filePath)")
+        logDebug("✅ [RoomCaptureManager] Loaded room: \(name) from \(filePath)")
         return url
     }
     
@@ -455,7 +455,7 @@ class RoomCaptureManager: ObservableObject {
         
         guard let roomData = savedRooms[name],
               let filePath = roomData["filePath"] as? String else {
-            print("❌ [RoomCaptureManager] Room '\(name)' not found")
+            logDebug("❌ [RoomCaptureManager] Room '\(name)' not found")
             return false
         }
         
@@ -463,16 +463,16 @@ class RoomCaptureManager: ObservableObject {
         let url = URL(fileURLWithPath: filePath)
         do {
             try FileManager.default.removeItem(at: url)
-            print("✅ [RoomCaptureManager] Deleted file: \(filePath)")
+            logDebug("✅ [RoomCaptureManager] Deleted file: \(filePath)")
         } catch {
-            print("⚠️ [RoomCaptureManager] Could not delete file: \(error)")
+            logDebug("⚠️ [RoomCaptureManager] Could not delete file: \(error)")
         }
         
         // Remove from UserDefaults
         savedRooms.removeValue(forKey: name)
         UserDefaults.standard.set(savedRooms, forKey: "SavedRooms")
         
-        print("✅ [RoomCaptureManager] Removed room '\(name)' from saved rooms")
+        logDebug("✅ [RoomCaptureManager] Removed room '\(name)' from saved rooms")
         return true
     }
 }

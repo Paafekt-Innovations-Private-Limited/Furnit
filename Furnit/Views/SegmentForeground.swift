@@ -306,7 +306,7 @@ struct SegmentForeground: View {
             }
         }
         .onAppear {
-            print("🎨 [SegmentForeground] Starting scene detection...")
+            logDebug("🎨 [SegmentForeground] Starting scene detection...")
             
             // Stage 1: Camera initialization (0-30%)
             loadingProgress = 0.0
@@ -384,7 +384,7 @@ struct SegmentForeground: View {
             }
         }
         .onDisappear {
-            print("👋 [SegmentForeground] Stopping...")
+            logDebug("👋 [SegmentForeground] Stopping...")
             camera.stopSession()
         }
     }
@@ -397,7 +397,7 @@ struct SegmentForeground: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             // Capture screenshot of the entire view (3D room + furniture overlay)
             guard let screenshot = self.captureScreenshot() else {
-                print("⚠️ Failed to capture screenshot")
+                logDebug("⚠️ Failed to capture screenshot")
                 self.isCapturingScreenshot = false
                 return
             }
@@ -415,7 +415,7 @@ struct SegmentForeground: View {
                         }) { success, error in
                             DispatchQueue.main.async {
                                 if success {
-                                    print("✅ Screenshot saved to Photos!")
+                                    logDebug("✅ Screenshot saved to Photos!")
                                     
                                     withAnimation(.spring()) {
                                         self.showingSaveSuccess = true
@@ -434,7 +434,7 @@ struct SegmentForeground: View {
                                         }
                                     }
                                 } else {
-                                    print("❌ Failed to save: \(error?.localizedDescription ?? "unknown error")")
+                                    logDebug("❌ Failed to save: \(error?.localizedDescription ?? "unknown error")")
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                         self.isShowingCamera = false
                                     }
@@ -442,7 +442,7 @@ struct SegmentForeground: View {
                             }
                         }
                     } else {
-                        print("⚠️ Photos access denied")
+                        logDebug("⚠️ Photos access denied")
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             self.isShowingCamera = false
                         }
@@ -456,7 +456,7 @@ struct SegmentForeground: View {
     private func captureScreenshot() -> UIImage? {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first(where: { $0.isKeyWindow }) else {
-            print("⚠️ Could not find key window")
+            logDebug("⚠️ Could not find key window")
             return nil
         }
         
@@ -465,7 +465,7 @@ struct SegmentForeground: View {
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         
-        print("📸 [Screenshot] Captured: \(Int(screenshot.size.width))x\(Int(screenshot.size.height))")
+        logDebug("📸 [Screenshot] Captured: \(Int(screenshot.size.width))x\(Int(screenshot.size.height))")
         return screenshot
     }
 }
@@ -621,18 +621,18 @@ class ForegroundCameraModel: NSObject, ObservableObject {
     
     override init() {
         super.init()
-        print("🎨 [ForegroundCameraModel] Initializing...")
+        logDebug("🎨 [ForegroundCameraModel] Initializing...")
         checkCameraAuthorization()
         loadU2NetModel()
     }
     
     func startExamining() {
-        print("🔒 [ForegroundCameraModel] Capturing scene...")
+        logDebug("🔒 [ForegroundCameraModel] Capturing scene...")
         shouldStartExaminingOnNextFrame = true
     }
     
     func finishExamining() {
-        print("🔓 [ForegroundCameraModel] Returning to live view...")
+        logDebug("🔓 [ForegroundCameraModel] Returning to live view...")
         DispatchQueue.main.async {
             self.isExamining = false
             self.userGuidanceHint = nil
@@ -671,15 +671,15 @@ class ForegroundCameraModel: NSObject, ObservableObject {
                     do {
                         let model = try MLModel(contentsOf: modelURL)
                         u2netModel = try VNCoreMLModel(for: model)
-                        print("✅ [ForegroundCameraModel] U2-Net loaded: \(name)")
+                        logDebug("✅ [ForegroundCameraModel] U2-Net loaded: \(name)")
                         return
                     } catch {
-                        print("⚠️ [ForegroundCameraModel] Failed to load \(name).\(ext): \(error)")
+                        logDebug("⚠️ [ForegroundCameraModel] Failed to load \(name).\(ext): \(error)")
                     }
                 }
             }
         }
-        print("⚠️ [ForegroundCameraModel] No U2-Net model loaded")
+        logDebug("⚠️ [ForegroundCameraModel] No U2-Net model loaded")
     }
     
     private func setupCamera() {
@@ -713,7 +713,7 @@ class ForegroundCameraModel: NSObject, ObservableObject {
             
             session.commitConfiguration()
         } catch {
-            print("❌ [ForegroundCameraModel] Camera setup failed")
+            logDebug("❌ [ForegroundCameraModel] Camera setup failed")
         }
     }
     
@@ -762,18 +762,18 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         
         // Handle examination mode (freeze frame)
         if shouldStartExaminingOnNextFrame {
-            print("📋 [ForegroundCameraModel] Locking current frame...")
+            logDebug("📋 [ForegroundCameraModel] Locking current frame...")
             
             if let copiedMask = copyPixelBuffer(u2netMask) {
                 lockedMask = copiedMask
-                print("✅ Locked mask")
+                logDebug("✅ Locked mask")
             } else {
                 lockedMask = u2netMask
             }
             
             if let currentSegmented = segmentedImage {
                 lockedSegmentedImage = currentSegmented
-                print("✅ Locked segmented image")
+                logDebug("✅ Locked segmented image")
             }
             
             shouldStartExaminingOnNextFrame = false
@@ -837,7 +837,7 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         guard let model = u2netModel else { return }
         let request = VNCoreMLRequest(model: model) { [weak self] request, error in
             if let error = error {
-                print("❌ [ForegroundCameraModel] U2-Net error: \(error)")
+                logDebug("❌ [ForegroundCameraModel] U2-Net error: \(error)")
                 return
             }
             if let results = request.results as? [VNPixelBufferObservation],
@@ -850,7 +850,7 @@ class ForegroundCameraModel: NSObject, ObservableObject {
         do {
             try handler.perform([request])
         } catch {
-            print("❌ [ForegroundCameraModel] U2-Net handler error: \(error)")
+            logDebug("❌ [ForegroundCameraModel] U2-Net handler error: \(error)")
         }
     }
     

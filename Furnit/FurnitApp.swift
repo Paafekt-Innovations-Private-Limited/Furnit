@@ -11,7 +11,7 @@ class AppCheckProviderFactory: NSObject, FirebaseAppCheck.AppCheckProviderFactor
         // Use debug provider for simulator/development
         // Check Xcode console for: "App Check debug token: XXXX"
         // Add this token to Firebase Console → App Check → Apps → Manage debug tokens
-        print("🔐 [AppCheck] Using DEBUG provider - check console for debug token")
+        AppLogger.debug("Using DEBUG provider - check console for debug token", category: AppLogger.appCheck)
         return AppCheckDebugProvider(app: app)
         #else
         // Use App Attest for production (real devices)

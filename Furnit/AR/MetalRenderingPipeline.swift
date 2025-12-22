@@ -19,7 +19,7 @@ class MetalRenderingPipeline {
     init?() {
         // Get the default Metal device
         guard let device = MTLCreateSystemDefaultDevice() else {
-            print("❌ Failed to create Metal device")
+            logDebug("❌ Failed to create Metal device")
             return nil
         }
         
@@ -27,14 +27,14 @@ class MetalRenderingPipeline {
         
         // Create command queue
         guard let commandQueue = device.makeCommandQueue() else {
-            print("❌ Failed to create Metal command queue")
+            logDebug("❌ Failed to create Metal command queue")
             return nil
         }
         self.commandQueue = commandQueue
         
         // Load shader library
         guard let library = device.makeDefaultLibrary() else {
-            print("❌ Failed to create Metal library")
+            logDebug("❌ Failed to create Metal library")
             return nil
         }
         self.library = library
@@ -42,7 +42,7 @@ class MetalRenderingPipeline {
         // Create texture cache
         let result = CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &textureCache)
         guard result == kCVReturnSuccess, textureCache != nil else {
-            print("❌ Failed to create Metal texture cache")
+            logDebug("❌ Failed to create Metal texture cache")
             return nil
         }
         
@@ -54,7 +54,7 @@ class MetalRenderingPipeline {
         do {
             // Create segmentation refinement pipeline
             guard let segmentationFunction = library.makeFunction(name: "refineSegmentationMask") else {
-                print("❌ Failed to find refineSegmentationMask function")
+                logDebug("❌ Failed to find refineSegmentationMask function")
                 return
             }
             
@@ -62,23 +62,23 @@ class MetalRenderingPipeline {
             
             // Create alpha blending pipeline
             guard let blendingFunction = library.makeFunction(name: "applyAlphaBlending") else {
-                print("❌ Failed to find applyAlphaBlending function")
+                logDebug("❌ Failed to find applyAlphaBlending function")
                 return
             }
             
             alphaBlendingPipeline = try device.makeComputePipelineState(function: blendingFunction)
             
-            print("✅ Metal compute pipelines created successfully")
+            logDebug("✅ Metal compute pipelines created successfully")
             
         } catch {
-            print("❌ Failed to create compute pipelines: \(error)")
+            logDebug("❌ Failed to create compute pipelines: \(error)")
         }
     }
     
     // Refine segmentation mask using Metal shaders for better quality
     func refineSegmentationMask(_ inputTexture: MTLTexture) -> MTLTexture? {
         guard let pipeline = segmentationRefinementPipeline else {
-            print("❌ Segmentation refinement pipeline not available")
+            logDebug("❌ Segmentation refinement pipeline not available")
             return nil
         }
         
@@ -92,14 +92,14 @@ class MetalRenderingPipeline {
         textureDescriptor.usage = [.shaderRead, .shaderWrite]
         
         guard let outputTexture = device.makeTexture(descriptor: textureDescriptor) else {
-            print("❌ Failed to create output texture")
+            logDebug("❌ Failed to create output texture")
             return nil
         }
         
         // Create command buffer and encoder
         guard let commandBuffer = commandQueue.makeCommandBuffer(),
               let encoder = commandBuffer.makeComputeCommandEncoder() else {
-            print("❌ Failed to create command buffer or encoder")
+            logDebug("❌ Failed to create command buffer or encoder")
             return nil
         }
         
@@ -129,7 +129,7 @@ class MetalRenderingPipeline {
     // Apply alpha blending with segmentation mask
     func applyAlphaBlending(originalTexture: MTLTexture, maskTexture: MTLTexture) -> MTLTexture? {
         guard let pipeline = alphaBlendingPipeline else {
-            print("❌ Alpha blending pipeline not available")
+            logDebug("❌ Alpha blending pipeline not available")
             return nil
         }
         
@@ -143,14 +143,14 @@ class MetalRenderingPipeline {
         textureDescriptor.usage = [.shaderRead, .shaderWrite]
         
         guard let outputTexture = device.makeTexture(descriptor: textureDescriptor) else {
-            print("❌ Failed to create output texture")
+            logDebug("❌ Failed to create output texture")
             return nil
         }
         
         // Create command buffer and encoder
         guard let commandBuffer = commandQueue.makeCommandBuffer(),
               let encoder = commandBuffer.makeComputeCommandEncoder() else {
-            print("❌ Failed to create command buffer or encoder")
+            logDebug("❌ Failed to create command buffer or encoder")
             return nil
         }
         
@@ -181,7 +181,7 @@ class MetalRenderingPipeline {
     // Convert UIImage to Metal texture
     func createTexture(from image: UIImage) -> MTLTexture? {
         guard let cgImage = image.cgImage else {
-            print("❌ Failed to get CGImage from UIImage")
+            logDebug("❌ Failed to get CGImage from UIImage")
             return nil
         }
         
@@ -198,7 +198,7 @@ class MetalRenderingPipeline {
         textureDescriptor.usage = [.shaderRead, .shaderWrite]
         
         guard let texture = device.makeTexture(descriptor: textureDescriptor) else {
-            print("❌ Failed to create Metal texture")
+            logDebug("❌ Failed to create Metal texture")
             return nil
         }
         
@@ -214,7 +214,7 @@ class MetalRenderingPipeline {
                                      bytesPerRow: bytesPerRow,
                                      space: colorSpace,
                                      bitmapInfo: bitmapInfo.rawValue) else {
-            print("❌ Failed to create bitmap context")
+            logDebug("❌ Failed to create bitmap context")
             return nil
         }
         
@@ -222,7 +222,7 @@ class MetalRenderingPipeline {
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         
         guard let pixelData = context.data else {
-            print("❌ Failed to get pixel data from context")
+            logDebug("❌ Failed to get pixel data from context")
             return nil
         }
         
@@ -260,7 +260,7 @@ class MetalRenderingPipeline {
                                      space: colorSpace,
                                      bitmapInfo: bitmapInfo.rawValue),
               let cgImage = context.makeImage() else {
-            print("❌ Failed to create CGImage from texture")
+            logDebug("❌ Failed to create CGImage from texture")
             return nil
         }
         
@@ -272,20 +272,20 @@ class MetalRenderingPipeline {
         // Convert images to Metal textures
         guard let originalTexture = createTexture(from: originalImage),
               let maskTexture = createTexture(from: maskImage) else {
-            print("❌ Failed to create input textures")
+            logDebug("❌ Failed to create input textures")
             return nil
         }
         
         // Refine the segmentation mask
         guard let refinedMask = refineSegmentationMask(maskTexture) else {
-            print("❌ Failed to refine segmentation mask")
+            logDebug("❌ Failed to refine segmentation mask")
             return nil
         }
         
         // Apply alpha blending
         guard let blendedTexture = applyAlphaBlending(originalTexture: originalTexture, 
                                                      maskTexture: refinedMask) else {
-            print("❌ Failed to apply alpha blending")
+            logDebug("❌ Failed to apply alpha blending")
             return nil
         }
         

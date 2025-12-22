@@ -75,7 +75,7 @@ struct RoomCaptureView: View {
         roomCaptureObserver = captureManager.$capturedRoom
             .sink { newValue in
                 if newValue != nil {
-                    print("🏠 [RoomCaptureView] Room captured successfully")
+                    logDebug("🏠 [RoomCaptureView] Room captured successfully")
                     viewState.hasScannedContent = true
                 }
             }
@@ -89,7 +89,7 @@ struct RoomCaptureView: View {
                 captureManager: captureManager,
                 onSessionReady: {
                     viewState.sessionReady = true
-                    print("📹 [RoomCaptureView] Session is ready!")
+                    logDebug("📹 [RoomCaptureView] Session is ready!")
                 },
                 onContentDetected: {
                     viewState.hasScannedContent = true
@@ -97,7 +97,7 @@ struct RoomCaptureView: View {
                 onError: { error in
                     viewState.errorMessage = error
                     viewState.showErrorAlert = true
-                    print("❌ [RoomCaptureView] Error: \(error)")
+                    logDebug("❌ [RoomCaptureView] Error: \(error)")
                 }
             )
             .ignoresSafeArea()
@@ -121,7 +121,7 @@ struct RoomCaptureView: View {
                     withAnimation {
                         viewState.showInstructions = false
                         _ = captureManager.startCaptureSession()
-                        print("🚀 [RoomCaptureView] User started scanning")
+                        logDebug("🚀 [RoomCaptureView] User started scanning")
                     }
                 }
             )
@@ -168,7 +168,7 @@ struct RoomCaptureView: View {
     
     // MARK: - Action Handlers
     private func handleOnAppear() {
-        print("🎬 [RoomCaptureView] View appeared, starting capture setup...")
+        logDebug("🎬 [RoomCaptureView] View appeared, starting capture setup...")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             viewState.scanningStarted = true
         }
@@ -177,13 +177,13 @@ struct RoomCaptureView: View {
     private func handleOnDisappear() {
         if !viewState.waitingForDelegate && !viewState.isProcessingDone {
             captureManager.cleanupSession()
-            print("🧹 [RoomCaptureView] Cleaned up resources on disappear")
+            logDebug("🧹 [RoomCaptureView] Cleaned up resources on disappear")
         }
         roomCaptureObserver?.cancel()
     }
     
     private func handleFinalSceneChange(_ newValue: URL?) {
-        print("📄 [RoomCaptureView] finalScene changed: \(newValue != nil ? "Scene ready" : "nil")")
+        logDebug("📄 [RoomCaptureView] finalScene changed: \(newValue != nil ? "Scene ready" : "nil")")
         if newValue != nil {
             viewState.waitingForDelegate = false
             // ✅ CRITICAL FIX: Keep isProcessingDone as true to prevent view reset
@@ -198,17 +198,17 @@ struct RoomCaptureView: View {
     
     // MARK: - Handle Done Pressed (with Extended Timeout and Force Processing)
     private func handleDonePressed() {
-        print("✅ [RoomCaptureView] Done button pressed")
+        logDebug("✅ [RoomCaptureView] Done button pressed")
         
         // If we already have a finalScene and user cancelled save, just show the dialog again
         if viewState.isProcessingDone && captureManager.finalScene != nil && !viewState.showSaveDialog {
-            print("📝 [RoomCaptureView] Showing save dialog again after cancel")
+            logDebug("📝 [RoomCaptureView] Showing save dialog again after cancel")
             viewState.showSaveDialog = true
             return
         }
         
         guard viewState.hasScannedContent else {
-            print("⚠️ [RoomCaptureView] No content scanned yet")
+            logDebug("⚠️ [RoomCaptureView] No content scanned yet")
             viewState.errorMessage = "Please scan your room before pressing Done"
             viewState.showErrorAlert = true
             return
@@ -219,21 +219,21 @@ struct RoomCaptureView: View {
         
         // Stop the capture session
         captureManager.stopCaptureSession()
-        print("⏸️ [RoomCaptureView] Capture session stopped, waiting for processing...")
+        logDebug("⏸️ [RoomCaptureView] Capture session stopped, waiting for processing...")
         
         // First check: Quick check after 2 seconds
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             if captureManager.capturedRoom != nil {
-                print("✅ [RoomCaptureView] Room data received quickly")
+                logDebug("✅ [RoomCaptureView] Room data received quickly")
             } else {
-                print("⏳ [RoomCaptureView] Still waiting for room data...")
+                logDebug("⏳ [RoomCaptureView] Still waiting for room data...")
             }
         }
         
         // Second check: Try to force process after 5 seconds if we have any data
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
             if captureManager.finalScene == nil && captureManager.capturedRoom != nil {
-                print("⚠️ [RoomCaptureView] Have room data but no scene, forcing processing...")
+                logDebug("⚠️ [RoomCaptureView] Have room data but no scene, forcing processing...")
                 captureManager.forceProcessCurrentData()
             }
         }
@@ -242,11 +242,11 @@ struct RoomCaptureView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
             // Check if we still don't have processed data
             if captureManager.finalScene == nil {
-                print("⏱️ [RoomCaptureView] Timeout after 15 seconds")
+                logDebug("⏱️ [RoomCaptureView] Timeout after 15 seconds")
                 
                 // Check if we at least have captured room data
                 if captureManager.capturedRoom != nil {
-                    print("📦 [RoomCaptureView] Have room data, attempting force processing...")
+                    logDebug("📦 [RoomCaptureView] Have room data, attempting force processing...")
                     captureManager.forceProcessCurrentData()
                     
                     // Give it 2 more seconds to process
@@ -266,7 +266,7 @@ struct RoomCaptureView: View {
                     }
                 } else {
                     // No room data at all
-                    print("❌ [RoomCaptureView] No room data received at all")
+                    logDebug("❌ [RoomCaptureView] No room data received at all")
                     
                     viewState.errorMessage = "Room scanning failed to capture data. Please ensure:\n• Good lighting in the room\n• Slow, steady movements\n• Capturing multiple walls"
                     viewState.showErrorAlert = true
@@ -279,13 +279,13 @@ struct RoomCaptureView: View {
                     captureManager.cleanupSession()
                 }
             } else {
-                print("✅ [RoomCaptureView] Processing completed successfully")
+                logDebug("✅ [RoomCaptureView] Processing completed successfully")
             }
         }
     }
     
     private func resetAndRetry() {
-        print("🔄 [RoomCaptureView] Resetting for retry...")
+        logDebug("🔄 [RoomCaptureView] Resetting for retry...")
         
         viewState = RoomCaptureViewState()
         captureManager.cleanupSession()
@@ -299,7 +299,7 @@ struct RoomCaptureView: View {
     private func handleSaveRoom() {
         guard !viewState.roomName.isEmpty else { return }
         
-        print("💾 [RoomCaptureView] Saving room: \(viewState.roomName)")
+        logDebug("💾 [RoomCaptureView] Saving room: \(viewState.roomName)")
         let savedName = viewState.roomName
         
         viewState.showSaveDialog = false
@@ -309,16 +309,16 @@ struct RoomCaptureView: View {
         captureManager.saveRoomToLibrary(name: savedName) { success, error in
             DispatchQueue.main.async {
                 if success {
-                    print("✅ [RoomCaptureView] Room saved successfully")
+                    logDebug("✅ [RoomCaptureView] Room saved successfully")
                     self.captureManager.cleanupSession()
                     
                     // ONLY use ONE dismissal method!
                     if self.onSaveComplete != nil {
-                        print("📱 Using parent's onSaveComplete")
+                        logDebug("📱 Using parent's onSaveComplete")
                         self.onSaveComplete!()
                         // DON'T call performCompleteDismiss here!
                     } else {
-                        print("⚠️ No parent callback, using fallback")
+                        logDebug("⚠️ No parent callback, using fallback")
                         self.dismiss()
                     }
                 } else {
@@ -333,7 +333,7 @@ struct RoomCaptureView: View {
     
     // MARK: - Fixed Cancel Save Handler
     private func handleCancelSave() {
-        print("❌ [RoomCaptureView] User cancelled save")
+        logDebug("❌ [RoomCaptureView] User cancelled save")
         
         // Close the save dialog
         viewState.showSaveDialog = false
@@ -361,20 +361,20 @@ struct RoomCaptureView: View {
     }
     
     private func performCompleteDismiss() {
-        print("🚪 [RoomCaptureView] Performing complete dismiss")
+        logDebug("🚪 [RoomCaptureView] Performing complete dismiss")
         
         // Clean up first
         captureManager.cleanupSession()
         
         // Check if we have a parent callback FIRST
         if let complete = onSaveComplete {
-            print("📱 [RoomCaptureView] Using parent callback for dismissal")
+            logDebug("📱 [RoomCaptureView] Using parent callback for dismissal")
             complete()
             return  // Don't try other dismiss methods
         }
         
         // Only try these if no parent callback
-        print("⚠️ [RoomCaptureView] No parent callback, using environment dismiss")
+        logDebug("⚠️ [RoomCaptureView] No parent callback, using environment dismiss")
         
         // Try environment dismiss
         dismiss()
@@ -841,7 +841,7 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
     var onError: ((String) -> Void)?
     
     func makeUIView(context: Context) -> RoomPlan.RoomCaptureView {
-        print("🎥 [RoomCaptureViewRepresentable] Creating capture view...")
+        logDebug("🎥 [RoomCaptureViewRepresentable] Creating capture view...")
         
         let captureView = RoomPlan.RoomCaptureView()
         captureView.delegate = context.coordinator
@@ -849,7 +849,7 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
         captureManager.initializeSession(from: captureView.captureSession)
         captureView.captureSession.delegate = context.coordinator
         
-        print("📹 [RoomCaptureViewRepresentable] Capture view created and delegates set")
+        logDebug("📹 [RoomCaptureViewRepresentable] Capture view created and delegates set")
         
         DispatchQueue.main.async {
             onSessionReady?()
@@ -860,23 +860,23 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
     
     func updateUIView(_ uiView: RoomPlan.RoomCaptureView, context: Context) {
         if captureManager.isSessionRunning && !context.coordinator.hasStartedSession {
-            print("🚀 [RoomCaptureViewRepresentable] Starting capture session...")
+            logDebug("🚀 [RoomCaptureViewRepresentable] Starting capture session...")
             
             var configuration = RoomCaptureSession.Configuration()
             configuration.isCoachingEnabled = true
             
             uiView.captureSession.run(configuration: configuration)
             context.coordinator.hasStartedSession = true
-            print("✅ [RoomCaptureViewRepresentable] Session started successfully")
+            logDebug("✅ [RoomCaptureViewRepresentable] Session started successfully")
         }
     }
     
     static func dismantleUIView(_ uiView: RoomPlan.RoomCaptureView, coordinator: Coordinator) {
-        print("🧹 [RoomCaptureViewRepresentable] Dismantling view...")
+        logDebug("🧹 [RoomCaptureViewRepresentable] Dismantling view...")
         uiView.captureSession.delegate = nil
         uiView.delegate = nil
         uiView.captureSession.stop()
-        print("✅ [RoomCaptureViewRepresentable] View dismantled")
+        logDebug("✅ [RoomCaptureViewRepresentable] View dismantled")
     }
     
     func makeCoordinator() -> Coordinator {
@@ -908,7 +908,7 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
             self.onContentDetected = onContentDetected
             self.onError = onError
             super.init()
-            print("🎯 [Coordinator] Initialized with workaround")
+            logDebug("🎯 [Coordinator] Initialized with workaround")
         }
         
         required init?(coder: NSCoder) {
@@ -920,45 +920,45 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
         }
         
         deinit {
-            print("💀 [Coordinator] Deinitializing...")
+            logDebug("💀 [Coordinator] Deinitializing...")
             captureManager.captureSession?.delegate = nil
         }
         
         // MARK: - RoomCaptureViewDelegate
         
         func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
-            print("📊 [Coordinator] shouldPresent called - error: \(error?.localizedDescription ?? "none")")
+            logDebug("📊 [Coordinator] shouldPresent called - error: \(error?.localizedDescription ?? "none")")
             
             if let error = error {
-                print("❌ [Coordinator] Processing error: \(error.localizedDescription)")
+                logDebug("❌ [Coordinator] Processing error: \(error.localizedDescription)")
                 onError?("Room processing error: \(error.localizedDescription)")
                 return false
             }
             
-            print("✅ [Coordinator] Room data accepted for processing")
+            logDebug("✅ [Coordinator] Room data accepted for processing")
             return true
         }
         
         func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
-            print("🏁 [Coordinator] didPresent called - THIS IS GOOD!")
-            print("   - Walls: \(processedResult.walls.count)")
-            print("   - Objects: \(processedResult.objects.count)")
-            print("   - Has error: \(error != nil)")
+            logDebug("🏁 [Coordinator] didPresent called - THIS IS GOOD!")
+            logDebug("   - Walls: \(processedResult.walls.count)")
+            logDebug("   - Objects: \(processedResult.objects.count)")
+            logDebug("   - Has error: \(error != nil)")
             
             didReceiveFinalData = true
             
             if let error = error {
-                print("❌ [Coordinator] Final processing error: \(error.localizedDescription)")
+                logDebug("❌ [Coordinator] Final processing error: \(error.localizedDescription)")
                 onError?("Failed to process room: \(error.localizedDescription)")
             } else {
-                print("🎉 [Coordinator] Successfully captured room via delegate")
+                logDebug("🎉 [Coordinator] Successfully captured room via delegate")
                 
                 // Save the final room
                 lastCapturedRoom = processedResult
                 
                 Task { @MainActor in
                     await captureManager.processCapturedRoom(processedResult)
-                    print("✅ [Coordinator] Room processing completed")
+                    logDebug("✅ [Coordinator] Room processing completed")
                 }
             }
         }
@@ -971,7 +971,7 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
             // WORKAROUND: Save every good room update
             if room.walls.count > 0 || room.objects.count > 0 {
                 lastCapturedRoom = room
-                print("💾 [Update #\(updateCount)] Saved room: W:\(room.walls.count) O:\(room.objects.count)")
+                logDebug("💾 [Update #\(updateCount)] Saved room: W:\(room.walls.count) O:\(room.objects.count)")
             }
             
             DispatchQueue.main.async {
@@ -982,7 +982,7 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
                 if !self.hasDetectedContent && (wallCount > 0 || objectCount > 0) {
                     self.hasDetectedContent = true
                     self.onContentDetected?()
-                    print("🎯 [Coordinator] Content detected for the first time")
+                    logDebug("🎯 [Coordinator] Content detected for the first time")
                 }
                 
                 if wallCount > 0 || objectCount > 0 {
@@ -1027,7 +1027,7 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
         }
         
         func captureSession(_ session: RoomCaptureSession, didStartWith configuration: RoomCaptureSession.Configuration) {
-            print("🎬 [Coordinator] Session started with configuration")
+            logDebug("🎬 [Coordinator] Session started with configuration")
             didReceiveFinalData = false
             updateCount = 0
             
@@ -1037,14 +1037,14 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
         }
         
         func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData?, error: Error?) {
-            print("🏁 [Coordinator] Session ended")
-            print("   - Has data: \(data != nil)")
-            print("   - Has error: \(error != nil)")
-            print("   - Updates received: \(updateCount)")
-            print("   - Last room saved: \(lastCapturedRoom != nil)")
+            logDebug("🏁 [Coordinator] Session ended")
+            logDebug("   - Has data: \(data != nil)")
+            logDebug("   - Has error: \(error != nil)")
+            logDebug("   - Updates received: \(updateCount)")
+            logDebug("   - Last room saved: \(lastCapturedRoom != nil)")
             
             if let error = error {
-                print("❌ [Coordinator] Session ended with error: \(error)")
+                logDebug("❌ [Coordinator] Session ended with error: \(error)")
                 onError?("Session error: \(error.localizedDescription)")
             }
             
@@ -1053,21 +1053,21 @@ struct RoomCaptureViewRepresentable: UIViewRepresentable {
                 guard let self = self else { return }
                 
                 if !self.didReceiveFinalData {
-                    print("⚠️ [Coordinator] didPresent was never called - using workaround")
+                    logDebug("⚠️ [Coordinator] didPresent was never called - using workaround")
                     
                     if let savedRoom = self.lastCapturedRoom {
-                        print("🔧 [Coordinator] Using last saved room: W:\(savedRoom.walls.count) O:\(savedRoom.objects.count)")
+                        logDebug("🔧 [Coordinator] Using last saved room: W:\(savedRoom.walls.count) O:\(savedRoom.objects.count)")
                         
                         Task { @MainActor in
                             await self.captureManager.processCapturedRoom(savedRoom)
-                            print("✅ [Coordinator] Processed saved room data")
+                            logDebug("✅ [Coordinator] Processed saved room data")
                         }
                     } else {
-                        print("❌ [Coordinator] No saved room data available")
+                        logDebug("❌ [Coordinator] No saved room data available")
                         self.onError?("No room data was captured. Please try scanning again.")
                     }
                 } else {
-                    print("✅ [Coordinator] didPresent was called, no workaround needed")
+                    logDebug("✅ [Coordinator] didPresent was called, no workaround needed")
                 }
             }
         }

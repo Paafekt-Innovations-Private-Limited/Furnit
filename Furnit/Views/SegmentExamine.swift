@@ -236,24 +236,24 @@ final class SegmentExamineModel: NSObject, ObservableObject {
     
     // LOAD FASTSAM-X MODEL (PRIMARY)
     private func loadFastSAMModel() {
-        print("🔍 Searching for FastSAM-X model...")
+        logDebug("🔍 Searching for FastSAM-X model...")
         let modelNames = ["FastSAM-x", "FastSAM-X", "fastsam-x", "FastSAMx", "FastSAM_x", "FastSAMX", "fastsam", "FastSAM"]
         for name in modelNames {
             for ext in ["mlmodelc", "mlpackage"] {
                 if let modelURL = Bundle.main.url(forResource: name, withExtension: ext) {
-                    print("📁 Found model file: \(name).\(ext)")
+                    logDebug("📁 Found model file: \(name).\(ext)")
                     do {
                         let model = try MLModel(contentsOf: modelURL)
                         fastsamModel = try VNCoreMLModel(for: model)
-                        print("✅ FastSAM-X loaded successfully: \(name) [PRIMARY]")
+                        logDebug("✅ FastSAM-X loaded successfully: \(name) [PRIMARY]")
                         return
                     } catch {
-                        print("❌ Failed to load \(name).\(ext): \(error.localizedDescription)")
+                        logDebug("❌ Failed to load \(name).\(ext): \(error.localizedDescription)")
                     }
                 }
             }
         }
-        print("❌ CRITICAL: No FastSAM-X model found in bundle! (will run support-only)")
+        logDebug("❌ CRITICAL: No FastSAM-X model found in bundle! (will run support-only)")
     }
     
     // LOAD U2-NET MODEL (SUPPORT)
@@ -265,15 +265,15 @@ final class SegmentExamineModel: NSObject, ObservableObject {
                     do {
                         let model = try MLModel(contentsOf: modelURL)
                         u2netModel = try VNCoreMLModel(for: model)
-                        print("✅ U2-Net loaded: \(name) [SUPPORT]")
+                        logDebug("✅ U2-Net loaded: \(name) [SUPPORT]")
                         return
                     } catch {
-                        print("⚠️ Failed to load \(name).\(ext): \(error)")
+                        logDebug("⚠️ Failed to load \(name).\(ext): \(error)")
                     }
                 }
             }
         }
-        print("⚠️ No U2-Net model loaded - will run FastSAM-X only")
+        logDebug("⚠️ No U2-Net model loaded - will run FastSAM-X only")
     }
     
     private func setupCamera() {
@@ -297,9 +297,9 @@ final class SegmentExamineModel: NSObject, ObservableObject {
                 }
             }
             session.commitConfiguration()
-            print("✅ Camera configured [FastSAM-X PRIMARY]")
+            logDebug("✅ Camera configured [FastSAM-X PRIMARY]")
         } catch {
-            print("❌ Camera setup failed: \(error)")
+            logDebug("❌ Camera setup failed: \(error)")
         }
     }
     
@@ -307,7 +307,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
         if !session.isRunning {
             DispatchQueue.global(qos: .background).async {
                 self.session.startRunning()
-                print("✅ Camera session started [FastSAM-X PRIMARY]")
+                logDebug("✅ Camera session started [FastSAM-X PRIMARY]")
             }
         }
     }
@@ -315,7 +315,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
     func stopSession() {
         if session.isRunning {
             session.stopRunning()
-            print("🛑 Camera session stopped")
+            logDebug("🛑 Camera session stopped")
         }
     }
     
@@ -329,7 +329,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
         lastProcessTime = now
         
         if isFirstFrame {
-            print("\n🎬 === STARTING SEGMENTATION PIPELINE ===")
+            logDebug("\n🎬 === STARTING SEGMENTATION PIPELINE ===")
             DispatchQueue.main.async {
                 self.isProcessingStarted = true
                 self.processingProgress = 0.0
@@ -394,7 +394,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
                     self.isProcessingStarted = false
                 }
             }
-            print("🎬 === SEGMENTATION COMPLETE ===\n")
+            logDebug("🎬 === SEGMENTATION COMPLETE ===\n")
             isFirstFrame = false
         }
         
@@ -405,18 +405,18 @@ final class SegmentExamineModel: NSObject, ObservableObject {
 
     private func runFastSAMSync(pixelBuffer: CVPixelBuffer) {
         guard let model = fastsamModel else {
-            print("❌ FastSAM-X model is nil")
+            logDebug("❌ FastSAM-X model is nil")
             return
         }
         
         let request = VNCoreMLRequest(model: model) { [weak self] request, error in
             guard let self = self else { return }
             if let error = error {
-                print("❌ FastSAM-X error: \(error.localizedDescription)")
+                logDebug("❌ FastSAM-X error: \(error.localizedDescription)")
                 return
             }
             guard let results = request.results as? [VNCoreMLFeatureValueObservation] else {
-                print("⚠️ FastSAM-X results are unexpected type")
+                logDebug("⚠️ FastSAM-X results are unexpected type")
                 return
             }
             var proto: MLMultiArray? = nil  // [1,32,160,160]
@@ -426,25 +426,25 @@ final class SegmentExamineModel: NSObject, ObservableObject {
                 else if r.featureName == "var_1550" { dets = r.featureValue.multiArrayValue }
             }
             guard let protoMA = proto, let detsMA = dets else {
-                print("❌ FastSAM-X missing expected outputs (p / var_1550)")
+                logDebug("❌ FastSAM-X missing expected outputs (p / var_1550)")
                 return
             }
             guard let best = self.pickBestDetection(from: detsMA, objThresh: 0.25) else {
-                print("⚠️ No detection passed threshold")
+                logDebug("⚠️ No detection passed threshold")
                 return
             }
             if let maskBuffer = self.buildMaskFromProto(protoMA, coeffs: best.coeffs, thresh: 0.5) {
                 self.fastsamMask = maskBuffer
                 let pixelCount = self.countWhitePixels(in: maskBuffer)
-                print("🎯 FastSAM-X mask pixels: \(pixelCount)")
+                logDebug("🎯 FastSAM-X mask pixels: \(pixelCount)")
             } else {
-                print("❌ Failed to build mask from prototypes")
+                logDebug("❌ Failed to build mask from prototypes")
             }
         }
         request.imageCropAndScaleOption = .scaleFill
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
         do { try handler.perform([request]) }
-        catch { print("❌ FastSAM-X handler error: \(error.localizedDescription)") }
+        catch { logDebug("❌ FastSAM-X handler error: \(error.localizedDescription)") }
     }
     
     private struct FastSAMDetection {
@@ -456,7 +456,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
         guard detsMA.shape.count == 3,
               detsMA.shape[0].intValue == 1,
               detsMA.shape[1].intValue == 37 else {
-            print("❌ Unexpected dets shape: \(detsMA.shape)")
+            logDebug("❌ Unexpected dets shape: \(detsMA.shape)")
             return nil
         }
         // let C = detsMA.shape[1].intValue  // 37  <-- removed (unused)
@@ -486,7 +486,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
         guard protoMA.shape.count == 4,
               protoMA.shape[0].intValue == 1,
               protoMA.shape[1].intValue == 32 else {
-            print("❌ Unexpected proto shape: \(protoMA.shape)")
+            logDebug("❌ Unexpected proto shape: \(protoMA.shape)")
             return nil
         }
         let K = 32
@@ -534,20 +534,20 @@ final class SegmentExamineModel: NSObject, ObservableObject {
         guard let model = u2netModel else { return }
         let request = VNCoreMLRequest(model: model) { [weak self] request, error in
             if let error = error {
-                print("❌ U2-Net error: \(error)")
+                logDebug("❌ U2-Net error: \(error)")
                 return
             }
             if let results = request.results as? [VNPixelBufferObservation],
                let maskBuffer = results.first?.pixelBuffer {
                 self?.u2netMask = maskBuffer
                 let pixelCount = self?.countWhitePixels(in: maskBuffer) ?? 0
-                print("🔧 U2-Net support: \(pixelCount) pixels")
+                logDebug("🔧 U2-Net support: \(pixelCount) pixels")
             }
         }
         request.imageCropAndScaleOption = .scaleFill
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
         do { try handler.perform([request]) }
-        catch { print("❌ U2-Net handler error: \(error)") }
+        catch { logDebug("❌ U2-Net handler error: \(error)") }
     }
     
     // MARK: - Temporal smoothing / Canny / Combining / Utilities
@@ -588,7 +588,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
             context.render(edgeImage, to: buffer)
             cannyEdges = buffer
             let edgeCount = countWhitePixels(in: buffer)
-            print("🔲 Canny edges: \(edgeCount) pixels")
+            logDebug("🔲 Canny edges: \(edgeCount) pixels")
         }
     }
     
@@ -629,7 +629,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
                 }
             }
         }
-        print("🔲 Added \(addedFromCanny) pixels from Canny edges")
+        logDebug("🔲 Added \(addedFromCanny) pixels from Canny edges")
         return morphologicalClosing(result, iterations: 3) ?? result
     }
     
@@ -671,7 +671,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
                 }
             }
         }
-        print("🔲➕ Final: Added \(addedFromCanny) pixels from Canny edges")
+        logDebug("🔲➕ Final: Added \(addedFromCanny) pixels from Canny edges")
         return morphologicalClosing(result, iterations: 4) ?? result
     }
     
@@ -719,7 +719,7 @@ final class SegmentExamineModel: NSObject, ObservableObject {
                 }
             }
         }
-        print("🔀 Combined: FastSAM=\(fastsamPixelCount)px, U2-Net added=\(addedFromU2Net)px")
+        logDebug("🔀 Combined: FastSAM=\(fastsamPixelCount)px, U2-Net added=\(addedFromU2Net)px")
         return morphologicalClosing(result, iterations: 5) ?? result
     }
     

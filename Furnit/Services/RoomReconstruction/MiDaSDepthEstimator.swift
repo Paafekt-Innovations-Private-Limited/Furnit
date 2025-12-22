@@ -8,43 +8,43 @@ class MiDaSDepthEstimator {
     private var model: VNCoreMLModel?
     
     init() {
-        print("🧠 [DepthEstimator] Initializing")
+        logDebug("🧠 [DepthEstimator] Initializing")
         loadModel()
     }
     
     private func loadModel() {
-        print("📦 [DepthEstimator] Attempting to load MiDaS model")
-        print("⚠️ [DepthEstimator] MiDaS model not available, will use fallback")
+        logDebug("📦 [DepthEstimator] Attempting to load MiDaS model")
+        logDebug("⚠️ [DepthEstimator] MiDaS model not available, will use fallback")
     }
     
     func estimateDepth(from image: UIImage) async -> CIImage? {
-        print("🔬 [DepthEstimator] Estimating depth from image")
+        logDebug("🔬 [DepthEstimator] Estimating depth from image")
         guard let cgImage = image.cgImage else {
-            print("❌ [DepthEstimator] Failed to get CGImage")
+            logDebug("❌ [DepthEstimator] Failed to get CGImage")
             return nil
         }
         
         let ciImage = CIImage(cgImage: cgImage)
         
         if model != nil {
-            print("   - Using MiDaS model")
+            logDebug("   - Using MiDaS model")
             return nil
         }
         
-        print("   - Using synthetic depth map (fallback)")
+        logDebug("   - Using synthetic depth map (fallback)")
         return generateSyntheticDepthMap(from: ciImage)
     }
     
     private func generateSyntheticDepthMap(from image: CIImage) -> CIImage {
-        print("🎨 [DepthEstimator] Generating synthetic depth map")
+        logDebug("🎨 [DepthEstimator] Generating synthetic depth map")
         
         guard let grayscale = CIFilter(name: "CIPhotoEffectMono")?.apply(image: image),
               let edges = CIFilter(name: "CIEdges")?.apply(image: grayscale, intensity: 2.0) else {
-            print("⚠️ [DepthEstimator] Filter failed, returning original")
+            logDebug("⚠️ [DepthEstimator] Filter failed, returning original")
             return image
         }
         
-        print("✅ [DepthEstimator] Synthetic depth map created")
+        logDebug("✅ [DepthEstimator] Synthetic depth map created")
         return edges
     }
 }

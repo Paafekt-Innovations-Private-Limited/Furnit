@@ -21,9 +21,9 @@ class AppStateManager: ObservableObject {
         self.appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         self.buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
         
-        print("🚀 AppStateManager initialized")
-        print("   App Version: \(appVersion) (\(buildNumber))")
-        print("   Quality Setting: \(qualitySettings.selectedQuality.displayName)")
+        logDebug("🚀 AppStateManager initialized")
+        logDebug("   App Version: \(appVersion) (\(buildNumber))")
+        logDebug("   Quality Setting: \(qualitySettings.selectedQuality.displayName)")
     }
     
     // Convenience method to get current quality
@@ -71,7 +71,7 @@ class AppStateManager: ObservableObject {
     func resetAllSettings() {
         qualitySettings.resetToDefault()
         UserDefaults.standard.removeObject(forKey: hasLaunchedKey)
-        print("🔄 All settings reset to defaults")
+        logDebug("🔄 All settings reset to defaults")
     }
 }
 

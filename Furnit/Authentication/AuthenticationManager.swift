@@ -91,14 +91,8 @@ class AuthenticationManager: ObservableObject {
 
                 if let error = error {
                     let nsError = error as NSError
-                    let detailedError = """
-                    ❌ OTP Error:
-                    - Code: \(nsError.code)
-                    - Domain: \(nsError.domain)
-                    - Description: \(nsError.localizedDescription)
-                    - UserInfo: \(nsError.userInfo)
-                    """
-                    print(detailedError)
+                    // Log error for crash reporting (production)
+                    AppLogger.authError("OTP Error - Code: \(nsError.code), Domain: \(nsError.domain), Description: \(nsError.localizedDescription)")
 
                     // Show user-friendly message
                     var userMessage = error.localizedDescription
@@ -114,7 +108,7 @@ class AuthenticationManager: ObservableObject {
                 }
 
                 self?.verificationID = verificationID
-                print("📱 OTP sent to \(formattedPhone)")
+                AppLogger.authDebug("OTP sent to \(formattedPhone)")
                 completion(true, nil)
             }
         }
@@ -164,7 +158,7 @@ class AuthenticationManager: ObservableObject {
                     }
 
                     self?.errorMessage = errorMsg
-                    print("❌ OTP verify error: \(error.localizedDescription)")
+                    AppLogger.authError("OTP verify error: \(error.localizedDescription)")
                     completion(false, errorMsg)
                     return
                 }
@@ -174,7 +168,7 @@ class AuthenticationManager: ObservableObject {
                     self?.resetOTPAttempts()
 
                     self?.loginUser(name: name, phoneNumber: phoneNumber, userId: user.uid)
-                    print("✅ Firebase auth successful: \(user.uid)")
+                    AppLogger.authDebug("Firebase auth successful: \(user.uid)")
                     completion(true, nil)
                 }
             }
@@ -194,7 +188,7 @@ class AuthenticationManager: ObservableObject {
         currentUser = User(id: userId, name: name, phoneNumber: phoneNumber)
         isAuthenticated = true
 
-        print("✅ User logged in: \(name) - \(phoneNumber)")
+        AppLogger.authDebug("User logged in: \(name)")
     }
 
     func logout() {
@@ -207,9 +201,9 @@ class AuthenticationManager: ObservableObject {
         // Sign out from Firebase
         do {
             try Auth.auth().signOut()
-            print("✅ Firebase sign out successful")
+            AppLogger.authDebug("Firebase sign out successful")
         } catch {
-            print("❌ Firebase sign out error: \(error.localizedDescription)")
+            AppLogger.authError("Firebase sign out error: \(error.localizedDescription)")
         }
 
         // Update state
@@ -217,7 +211,7 @@ class AuthenticationManager: ObservableObject {
         isAuthenticated = false
         verificationID = nil
 
-        print("👋 User logged out")
+        AppLogger.authDebug("User logged out")
     }
 
     // MARK: - Anti-Bot Protection
@@ -253,7 +247,7 @@ class AuthenticationManager: ObservableObject {
         if attempts >= maxOTPAttempts {
             let lockoutUntil = Date().addingTimeInterval(lockoutDurationMinutes * 60)
             userDefaults.set(lockoutUntil, forKey: otpLockoutKey)
-            print("🔒 Account locked for \(lockoutDurationMinutes) minutes due to too many failed attempts")
+            AppLogger.warning("Account locked for \(lockoutDurationMinutes) minutes due to too many failed attempts", category: AppLogger.auth)
         }
     }
 

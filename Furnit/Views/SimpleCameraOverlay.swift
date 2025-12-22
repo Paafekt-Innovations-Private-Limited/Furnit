@@ -348,7 +348,7 @@ struct SimpleCameraOverlay: View {
                     }) { success, error in
                         DispatchQueue.main.async {
                             if success {
-                                print("✅ Furniture saved to Photos!")
+                                logDebug("✅ Furniture saved to Photos!")
                                 
                                 // Show success message
                                 withAnimation(.spring()) {
@@ -370,7 +370,7 @@ struct SimpleCameraOverlay: View {
                                     }
                                 }
                             } else {
-                                print("❌ Failed to save: \(error?.localizedDescription ?? "unknown error")")
+                                logDebug("❌ Failed to save: \(error?.localizedDescription ?? "unknown error")")
                                 // Still close camera even if save failed
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                                     self.isShowingCamera = false
@@ -379,7 +379,7 @@ struct SimpleCameraOverlay: View {
                         }
                     }
                 } else {
-                    print("⚠️ Photos access denied")
+                    logDebug("⚠️ Photos access denied")
                     // Still close camera even if permission denied
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         self.isShowingCamera = false
@@ -462,12 +462,12 @@ class U2NetCameraModel: NSObject, ObservableObject {
     }
     
     func startExamining() {
-        print("🔍 User started EXAMINING")
+        logDebug("🔍 User started EXAMINING")
         shouldStartExaminingOnNextFrame = true
     }
     
     func finishExamining() {
-        print("✅ User finished EXAMINING")
+        logDebug("✅ User finished EXAMINING")
         DispatchQueue.main.async {
             self.isExamining = false
             self.userGuidanceHint = nil
@@ -504,15 +504,15 @@ class U2NetCameraModel: NSObject, ObservableObject {
                     do {
                         let model = try MLModel(contentsOf: modelURL)
                         u2netModel = try VNCoreMLModel(for: model)
-                        print("✅ U2-Net loaded: \(name)")
+                        logDebug("✅ U2-Net loaded: \(name)")
                         return
                     } catch {
-                        print("⚠️ Failed to load \(name).\(ext): \(error)")
+                        logDebug("⚠️ Failed to load \(name).\(ext): \(error)")
                     }
                 }
             }
         }
-        print("⚠️ No U2-Net model loaded")
+        logDebug("⚠️ No U2-Net model loaded")
     }
     
     private func setupCamera() {
@@ -546,7 +546,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
             
             session.commitConfiguration()
         } catch {
-            print("❌ Camera setup failed")
+            logDebug("❌ Camera setup failed")
         }
     }
     
@@ -584,13 +584,13 @@ class U2NetCameraModel: NSObject, ObservableObject {
         var maskToUse = u2netMask
         
         if shouldStartExaminingOnNextFrame {
-            print("📋 Creating COPY of U2-Net mask...")
+            logDebug("📋 Creating COPY of U2-Net mask...")
             
             if let copiedMask = copyPixelBuffer(u2netMask) {
                 lockedMask = copiedMask
-                print("✅ Locked COPY of mask (won't be overwritten)")
+                logDebug("✅ Locked COPY of mask (won't be overwritten)")
             } else {
-                print("⚠️ Failed to copy mask, using reference")
+                logDebug("⚠️ Failed to copy mask, using reference")
                 lockedMask = u2netMask
             }
             
@@ -777,7 +777,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
                 self.u2netCoverageRect = rect
             }
             
-            print("🔍 U2-Net coverage: \(minX),\(minY) → \(maxX),\(maxY) (\(maskWidth)x\(maskHeight))")
+            logDebug("🔍 U2-Net coverage: \(minX),\(minY) → \(maxX),\(maxY) (\(maskWidth)x\(maskHeight))")
         }
     }
     
@@ -786,7 +786,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
         
         let request = VNCoreMLRequest(model: model) { [weak self] request, error in
             if let error = error {
-                print("❌ U2-Net error: \(error)")
+                logDebug("❌ U2-Net error: \(error)")
                 return
             }
             
@@ -802,7 +802,7 @@ class U2NetCameraModel: NSObject, ObservableObject {
         do {
             try handler.perform([request])
         } catch {
-            print("❌ U2-Net handler error: \(error)")
+            logDebug("❌ U2-Net handler error: \(error)")
         }
     }
     

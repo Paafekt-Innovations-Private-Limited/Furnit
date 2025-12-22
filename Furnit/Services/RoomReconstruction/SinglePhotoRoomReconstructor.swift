@@ -29,7 +29,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     private let maxImageDimension: CGFloat = 1600
 
     init() {
-        print("🏗️ [Reconstructor] Initialized")
+        logDebug("🏗️ [Reconstructor] Initialized")
     }
 
     // ✅ vImage-accelerated downscaling (GPU/NEON SIMD)
@@ -70,13 +70,13 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             return image
         }
 
-        print("🚀 [Reconstructor] Downscaled \(Int(image.size.width))x\(Int(image.size.height)) → \(newWidth)x\(newHeight)")
+        logDebug("🚀 [Reconstructor] Downscaled \(Int(image.size.width))x\(Int(image.size.height)) → \(newWidth)x\(newHeight)")
         return UIImage(cgImage: scaledCGImage)
     }
     
     // MARK: - Helper Methods
     private func updateProgress(_ value: Float, _ message: String) async {
-        print("📊 [Reconstructor] Progress: \(Int(value * 100))% - \(message)")
+        logDebug("📊 [Reconstructor] Progress: \(Int(value * 100))% - \(message)")
         await MainActor.run {
             self.progress = value
             self.statusMessage = message
@@ -84,7 +84,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     }
     
     private func setError(_ message: String) async {
-        print("❌ [Reconstructor] ERROR: \(message)")
+        logDebug("❌ [Reconstructor] ERROR: \(message)")
         await MainActor.run {
             self.isProcessing = false
             self.statusMessage = message
@@ -93,9 +93,9 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     
     // MARK: - Main Processing Pipeline
     func processPhoto(_ image: UIImage) async {
-        print("🚀 [Reconstructor] ========== STARTING PHOTO PROCESSING ==========")
-        print("📸 [Reconstructor] Image size: \(image.size)")
-        print("📸 [Reconstructor] Image scale: \(image.scale)")
+        logDebug("🚀 [Reconstructor] ========== STARTING PHOTO PROCESSING ==========")
+        logDebug("📸 [Reconstructor] Image size: \(image.size)")
+        logDebug("📸 [Reconstructor] Image scale: \(image.scale)")
         
         await MainActor.run {
             isProcessing = true
@@ -105,39 +105,39 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         
         // ✅ Fix image orientation FIRST
         let orientedImage = image.fixedOrientation()
-        print("✅ [Reconstructor] Image orientation fixed")
+        logDebug("✅ [Reconstructor] Image orientation fixed")
 
         // ✅ OPTIMIZATION: Downscale large images to prevent memory crashes
         let fixedImage = downscaleIfNeeded(orientedImage)
 
         // Step 1: Generate depth map
         await updateProgress(0.2, "Extracting depth information...")
-        print("🔍 [Reconstructor] Step 1: Starting depth estimation")
+        logDebug("🔍 [Reconstructor] Step 1: Starting depth estimation")
         
         guard let depthMap = await depthEstimator.estimateDepth(from: fixedImage) else{
             await setError("Failed to estimate depth")
             return
         }
-        print("✅ [Reconstructor] Step 1: Depth map created - extent: \(depthMap.extent)")
+        logDebug("✅ [Reconstructor] Step 1: Depth map created - extent: \(depthMap.extent)")
         
         // Step 2: Detect room structure
         await updateProgress(0.4, "Finding walls and corners...")
-        print("🔍 [Reconstructor] Step 2: Starting room structure analysis")
+        logDebug("🔍 [Reconstructor] Step 2: Starting room structure analysis")
         let roomStructure = await roomAnalyzer.analyzeRoom(image: fixedImage, depthMap: depthMap)
-        print("✅ [Reconstructor] Step 2: Room structure analyzed")
-        print("   - Wall lines found: \(roomStructure.wallLines.count)")
-        print("   - Floor region: \(roomStructure.floorRegion?.debugDescription ?? "nil")")
-        print("   - Ceiling region: \(roomStructure.ceilingRegion?.debugDescription ?? "nil")")
+        logDebug("✅ [Reconstructor] Step 2: Room structure analyzed")
+        logDebug("   - Wall lines found: \(roomStructure.wallLines.count)")
+        logDebug("   - Floor region: \(roomStructure.floorRegion?.debugDescription ?? "nil")")
+        logDebug("   - Ceiling region: \(roomStructure.ceilingRegion?.debugDescription ?? "nil")")
         
         // Step 3: Estimate dimensions
         await updateProgress(0.6, "Calculating room dimensions...")
-        print("🔍 [Reconstructor] Step 3: Starting dimension estimation")
+        logDebug("🔍 [Reconstructor] Step 3: Starting dimension estimation")
         let dimensions = await estimateDimensions(from: roomStructure, image: fixedImage)
-        print("✅ [Reconstructor] Step 3: Dimensions estimated")
-        print("   - Width: \(dimensions.width)m")
-        print("   - Depth: \(dimensions.depth)m")
-        print("   - Height: \(dimensions.height)m")
-        print("   - Confidence: \(Int(dimensions.confidence * 100))%")
+        logDebug("✅ [Reconstructor] Step 3: Dimensions estimated")
+        logDebug("   - Width: \(dimensions.width)m")
+        logDebug("   - Depth: \(dimensions.depth)m")
+        logDebug("   - Height: \(dimensions.height)m")
+        logDebug("   - Confidence: \(Int(dimensions.confidence * 100))%")
         
         await MainActor.run {
             self.estimatedDimensions = dimensions
@@ -145,7 +145,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         
         // Step 4: Build 3D room
         await updateProgress(0.8, "Building 3D model...")
-        print("🔍 [Reconstructor] Step 4: Starting 3D room construction")
+        logDebug("🔍 [Reconstructor] Step 4: Starting 3D room construction")
         let roomScene = await build3DRoom(
             dimensions: dimensions,
             structure: roomStructure,
@@ -154,10 +154,10 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         )
         
         if let scene = roomScene {
-            print("✅ [Reconstructor] Step 4: 3D room built successfully")
-            print("   - Scene nodes: \(scene.rootNode.childNodes.count)")
+            logDebug("✅ [Reconstructor] Step 4: 3D room built successfully")
+            logDebug("   - Scene nodes: \(scene.rootNode.childNodes.count)")
         } else {
-            print("❌ [Reconstructor] Step 4: Failed to build 3D room")
+            logDebug("❌ [Reconstructor] Step 4: Failed to build 3D room")
         }
         
         await MainActor.run {
@@ -167,16 +167,16 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             self.statusMessage = "Room ready!"
         }
         
-        print("🎉 [Reconstructor] ========== PHOTO PROCESSING COMPLETE ==========")
+        logDebug("🎉 [Reconstructor] ========== PHOTO PROCESSING COMPLETE ==========")
     }
 
     
     // ✅ NEW: Process with Adjusted Boundaries
     func processPhotoWithBoundaries(_ image: UIImage, boundaries: RoomStructure) async {
-        print("🚀 [Reconstructor] ========== PROCESSING WITH ADJUSTED BOUNDARIES ==========")
-        print("   Floor: \(boundaries.floorY), Ceiling: \(boundaries.ceilingY)")
-        print("   Left: \(boundaries.leftX), Right: \(boundaries.rightX)")
-        print("   VP: (\(boundaries.vanishingX), \(boundaries.vanishingY))")
+        logDebug("🚀 [Reconstructor] ========== PROCESSING WITH ADJUSTED BOUNDARIES ==========")
+        logDebug("   Floor: \(boundaries.floorY), Ceiling: \(boundaries.ceilingY)")
+        logDebug("   Left: \(boundaries.leftX), Right: \(boundaries.rightX)")
+        logDebug("   VP: (\(boundaries.vanishingX), \(boundaries.vanishingY))")
         
         await MainActor.run {
             isProcessing = true
@@ -186,7 +186,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         
         // Fix image orientation FIRST
         let orientedImage = image.fixedOrientation()
-        print("✅ [Reconstructor] Image orientation fixed")
+        logDebug("✅ [Reconstructor] Image orientation fixed")
 
         // ✅ OPTIMIZATION: Downscale large images
         let fixedImage = downscaleIfNeeded(orientedImage)
@@ -205,9 +205,9 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         roomStructure.ceilingRegion = CGRect(x: 0, y: 0, width: 1.0, height: boundaries.ceilingY)
         roomStructure.vanishingPoint = CGPoint(x: boundaries.vanishingX, y: boundaries.vanishingY)
         
-        print("✅ [Reconstructor] Using adjusted boundaries:")
-        print("   - Floor region: \(roomStructure.floorRegion!)")
-        print("   - Ceiling region: \(roomStructure.ceilingRegion!)")
+        logDebug("✅ [Reconstructor] Using adjusted boundaries:")
+        logDebug("   - Floor region: \(roomStructure.floorRegion!)")
+        logDebug("   - Ceiling region: \(roomStructure.ceilingRegion!)")
         
         await updateProgress(0.6, "Calculating dimensions with boundaries...")
         let dimensions = await estimateDimensions(from: roomStructure, image: fixedImage)
@@ -231,66 +231,66 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             self.statusMessage = "Room rebuilt!"
         }
         
-        print("🎉 [Reconstructor] ========== BOUNDARY PROCESSING COMPLETE ==========")
+        logDebug("🎉 [Reconstructor] ========== BOUNDARY PROCESSING COMPLETE ==========")
     }
     
     // MARK: - Dimension Estimation
     private func estimateDimensions(from structure: RoomStructure, image: UIImage) async -> RoomDimensions {
-        print("📏 [DimensionEstimator] Estimating room dimensions")
+        logDebug("📏 [DimensionEstimator] Estimating room dimensions")
         var dimensions = RoomDimensions()
         
         if let doorRect = await detectDoor(in: image) {
-            print("✅ [DimensionEstimator] DOOR DETECTED (best reference)")
-            print("   - Door rect: \(doorRect)")
+            logDebug("✅ [DimensionEstimator] DOOR DETECTED (best reference)")
+            logDebug("   - Door rect: \(doorRect)")
             
             let doorPixelHeight = doorRect.height * image.size.height
             let imageHeight = image.size.height
             
-            print("   - Door pixel height: \(doorPixelHeight)")
-            print("   - Image height: \(imageHeight)")
+            logDebug("   - Door pixel height: \(doorPixelHeight)")
+            logDebug("   - Image height: \(imageHeight)")
             
             let pixelsPerMeter = doorPixelHeight / 2.1
-            print("   - Pixels per meter: \(pixelsPerMeter)")
+            logDebug("   - Pixels per meter: \(pixelsPerMeter)")
             
             dimensions.height = Float(imageHeight / pixelsPerMeter)
             dimensions.width = Float(image.size.width / pixelsPerMeter * 1.2)
             dimensions.depth = dimensions.width
             dimensions.confidence = 0.8
             
-            print("   - Calculated height: \(dimensions.height)m")
-            print("   - Calculated width: \(dimensions.width)m")
-            print("   - Confidence: 80%")
+            logDebug("   - Calculated height: \(dimensions.height)m")
+            logDebug("   - Calculated width: \(dimensions.width)m")
+            logDebug("   - Confidence: 80%")
             
         } else if let personRect = await detectPerson(in: image) {
-            print("✅ [DimensionEstimator] PERSON DETECTED (fallback)")
-            print("   - Person rect: \(personRect)")
+            logDebug("✅ [DimensionEstimator] PERSON DETECTED (fallback)")
+            logDebug("   - Person rect: \(personRect)")
             
             let personPixelHeight = personRect.height * image.size.height
             let pixelsPerMeter = personPixelHeight / 1.7
             
-            print("   - Person pixel height: \(personPixelHeight)")
-            print("   - Pixels per meter: \(pixelsPerMeter)")
+            logDebug("   - Person pixel height: \(personPixelHeight)")
+            logDebug("   - Pixels per meter: \(pixelsPerMeter)")
             
             dimensions.height = Float(image.size.height / pixelsPerMeter * 0.4)
             dimensions.width = Float(image.size.width / pixelsPerMeter * 1.5)
             dimensions.depth = dimensions.width * 0.9
             dimensions.confidence = 0.5
             
-            print("   - Calculated height: \(dimensions.height)m")
-            print("   - Calculated width: \(dimensions.width)m")
-            print("   - Confidence: 50%")
+            logDebug("   - Calculated height: \(dimensions.height)m")
+            logDebug("   - Calculated width: \(dimensions.width)m")
+            logDebug("   - Confidence: 50%")
             
         } else {
-            print("⚠️ [DimensionEstimator] NO REFERENCE FOUND - Using defaults")
+            logDebug("⚠️ [DimensionEstimator] NO REFERENCE FOUND - Using defaults")
             dimensions.width = 4.0
             dimensions.depth = 4.5
             dimensions.height = 2.8
             dimensions.confidence = 0.3
             
-            print("   - Default width: \(dimensions.width)m")
-            print("   - Default depth: \(dimensions.depth)m")
-            print("   - Default height: \(dimensions.height)m")
-            print("   - Confidence: 30%")
+            logDebug("   - Default width: \(dimensions.width)m")
+            logDebug("   - Default depth: \(dimensions.depth)m")
+            logDebug("   - Default height: \(dimensions.height)m")
+            logDebug("   - Confidence: 30%")
         }
         
         let originalWidth = dimensions.width
@@ -302,21 +302,21 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         dimensions.height = min(max(dimensions.height, 2.2), 4.0)
         
         if originalWidth != dimensions.width || originalDepth != dimensions.depth || originalHeight != dimensions.height {
-            print("⚠️ [DimensionEstimator] Dimensions clamped:")
-            print("   - Width: \(originalWidth) -> \(dimensions.width)")
-            print("   - Depth: \(originalDepth) -> \(dimensions.depth)")
-            print("   - Height: \(originalHeight) -> \(dimensions.height)")
+            logDebug("⚠️ [DimensionEstimator] Dimensions clamped:")
+            logDebug("   - Width: \(originalWidth) -> \(dimensions.width)")
+            logDebug("   - Depth: \(originalDepth) -> \(dimensions.depth)")
+            logDebug("   - Height: \(originalHeight) -> \(dimensions.height)")
         }
         
-        print("📏 [DimensionEstimator] Final dimensions: W:\(dimensions.width)m D:\(dimensions.depth)m H:\(dimensions.height)m")
+        logDebug("📏 [DimensionEstimator] Final dimensions: W:\(dimensions.width)m D:\(dimensions.depth)m H:\(dimensions.height)m")
         return dimensions
     }
     
     // MARK: - Object Detection
     private func detectDoor(in image: UIImage) async -> CGRect? {
-        print("🚪 [DoorDetector] Starting door detection")
+        logDebug("🚪 [DoorDetector] Starting door detection")
         guard let cgImage = image.cgImage else {
-            print("❌ [DoorDetector] Failed to get CGImage")
+            logDebug("❌ [DoorDetector] Failed to get CGImage")
             return nil
         }
         
@@ -330,35 +330,35 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         
         do {
             try handler.perform([request])
-            print("✅ [DoorDetector] Vision request performed")
+            logDebug("✅ [DoorDetector] Vision request performed")
         } catch {
-            print("❌ [DoorDetector] Vision request failed: \(error)")
+            logDebug("❌ [DoorDetector] Vision request failed: \(error)")
             return nil
         }
         
         // results is already [VNRectangleObservation]?
         guard let rects = request.results, !rects.isEmpty else {
-            print("⚠️ [DoorDetector] No rectangles detected")
+            logDebug("⚠️ [DoorDetector] No rectangles detected")
             return nil
         }
         
-        print("🚪 [DoorDetector] Found \(rects.count) rectangles")
+        logDebug("🚪 [DoorDetector] Found \(rects.count) rectangles")
         for (index, rect) in rects.enumerated() {
             let aspectRatio = rect.boundingBox.width / rect.boundingBox.height
-            print("   Rectangle \(index): aspect=\(aspectRatio), height=\(rect.boundingBox.height)")
+            logDebug("   Rectangle \(index): aspect=\(aspectRatio), height=\(rect.boundingBox.height)")
             if aspectRatio > 0.35 && aspectRatio < 0.5 && rect.boundingBox.height > 0.3 {
-                print("✅ [DoorDetector] Door-like rectangle found at index \(index)!")
+                logDebug("✅ [DoorDetector] Door-like rectangle found at index \(index)!")
                 return rect.boundingBox
             }
         }
-        print("⚠️ [DoorDetector] No rectangles matched door criteria")
+        logDebug("⚠️ [DoorDetector] No rectangles matched door criteria")
         return nil
     }
     
     private func detectPerson(in image: UIImage) async -> CGRect? {
-        print("👤 [PersonDetector] Starting person detection")
+        logDebug("👤 [PersonDetector] Starting person detection")
         guard let cgImage = image.cgImage else {
-            print("❌ [PersonDetector] Failed to get CGImage")
+            logDebug("❌ [PersonDetector] Failed to get CGImage")
             return nil
         }
         
@@ -367,19 +367,19 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         
         do {
             try handler.perform([request])
-            print("✅ [PersonDetector] Vision request performed")
+            logDebug("✅ [PersonDetector] Vision request performed")
         } catch {
-            print("❌ [PersonDetector] Vision request failed: \(error)")
+            logDebug("❌ [PersonDetector] Vision request failed: \(error)")
             return nil
         }
         
         // results is already [VNHumanObservation]?
         guard let persons = request.results, !persons.isEmpty else {
-            print("⚠️ [PersonDetector] No persons detected")
+            logDebug("⚠️ [PersonDetector] No persons detected")
             return nil
         }
         
-        print("✅ [PersonDetector] Found \(persons.count) person(s)")
+        logDebug("✅ [PersonDetector] Found \(persons.count) person(s)")
         return persons.first!.boundingBox
     }
     
@@ -402,19 +402,19 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         material.isDoubleSided = true
         material.writesToDepthBuffer = true
         
-        print("   ✅ Material configured with self-illumination for USDZ export")
+        logDebug("   ✅ Material configured with self-illumination for USDZ export")
     }
     
     // MARK: - 3D Room Building - WITH PHOTO TEXTURES
     private func build3DRoom(dimensions: RoomDimensions, structure: RoomStructure, originalImage: UIImage, depthMap: CIImage) async -> SCNScene? {
-        print("🏗️ [RoomBuilder] Starting TEXTURED room construction")
-        print("   - Dimensions: W:\(dimensions.width) D:\(dimensions.depth) H:\(dimensions.height)")
+        logDebug("🏗️ [RoomBuilder] Starting TEXTURED room construction")
+        logDebug("   - Dimensions: W:\(dimensions.width) D:\(dimensions.depth) H:\(dimensions.height)")
         
         let scene = SCNScene()
         let roomNode = SCNNode()
         
         // Generate textures from photo
-        print("🎨 [RoomBuilder] Generating textures from photo...")
+        logDebug("🎨 [RoomBuilder] Generating textures from photo...")
         let floorTexture = generateFloorTexture(from: originalImage, structure: structure)
         let ceilingTexture = generateCeilingTexture(from: originalImage, structure: structure) // ✅ Use boundaries
         let frontWallTexture = generateFrontWallTexture(from: originalImage, structure: structure) // ✅ Use boundaries
@@ -423,7 +423,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let backWallColor = generateWallTexture(from: originalImage) // Just color for back
         
         // FLOOR - With texture from photo
-        print("🔨 Creating FLOOR with texture...")
+        logDebug("🔨 Creating FLOOR with texture...")
         let floor = SCNBox(width: CGFloat(dimensions.width),
                            height: 0.01,
                            length: CGFloat(dimensions.depth),
@@ -435,10 +435,10 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let floorNode = SCNNode(geometry: floor)
         floorNode.position = SCNVector3(0, 0, 0)
         roomNode.addChildNode(floorNode)
-        print("✅ FLOOR at y=0")
+        logDebug("✅ FLOOR at y=0")
         
         // CEILING
-        print("🔨 Creating CEILING...")
+        logDebug("🔨 Creating CEILING...")
         let ceiling = SCNBox(width: CGFloat(dimensions.width),
                              height: 0.01,
                              length: CGFloat(dimensions.depth),
@@ -450,10 +450,10 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let ceilingNode = SCNNode(geometry: ceiling)
         ceilingNode.position = SCNVector3(0, Float(dimensions.height), 0)
         roomNode.addChildNode(ceilingNode)
-        print("✅ CEILING at y=\(dimensions.height)")
+        logDebug("✅ CEILING at y=\(dimensions.height)")
         
         // FRONT WALL - With YOUR PHOTO texture
-        print("🔨 Creating FRONT WALL with photo texture...")
+        logDebug("🔨 Creating FRONT WALL with photo texture...")
         let frontWall = SCNBox(width: CGFloat(dimensions.width),
                                height: CGFloat(dimensions.height),
                                length: 0.01,
@@ -465,15 +465,15 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let frontNode = SCNNode(geometry: frontWall)
         frontNode.position = SCNVector3(0, Float(dimensions.height) / 2, -Float(dimensions.depth) / 2)
         roomNode.addChildNode(frontNode)
-        print("✅ FRONT WALL with photo at z=-\(dimensions.depth/2)")
+        logDebug("✅ FRONT WALL with photo at z=-\(dimensions.depth/2)")
         
         // BACK WALL - REMOVED so camera can be positioned outside looking in
         // The camera will be placed at MAX Z looking toward FRONT wall (MIN Z)
-        print("⏭️ BACK WALL SKIPPED - camera will view from outside")
+        logDebug("⏭️ BACK WALL SKIPPED - camera will view from outside")
         _ = backWallColor // Suppress unused variable warning
         
         // LEFT WALL
-        print("🔨 Creating LEFT WALL...")
+        logDebug("🔨 Creating LEFT WALL...")
         let leftWall = SCNBox(width: 0.01,
                               height: CGFloat(dimensions.height),
                               length: CGFloat(dimensions.depth),
@@ -485,10 +485,10 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let leftNode = SCNNode(geometry: leftWall)
         leftNode.position = SCNVector3(-Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
         roomNode.addChildNode(leftNode)
-        print("✅ LEFT WALL at x=-\(dimensions.width/2)")
+        logDebug("✅ LEFT WALL at x=-\(dimensions.width/2)")
         
         // RIGHT WALL
-        print("🔨 Creating RIGHT WALL...")
+        logDebug("🔨 Creating RIGHT WALL...")
         let rightWall = SCNBox(width: 0.01,
                                height: CGFloat(dimensions.height),
                                length: CGFloat(dimensions.depth),
@@ -500,7 +500,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         let rightNode = SCNNode(geometry: rightWall)
         rightNode.position = SCNVector3(Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
         roomNode.addChildNode(rightNode)
-        print("✅ RIGHT WALL at x=+\(dimensions.width/2)")
+        logDebug("✅ RIGHT WALL at x=+\(dimensions.width/2)")
         
         scene.rootNode.addChildNode(roomNode)
         
@@ -511,7 +511,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         cameraNode.position = SCNVector3(0, Float(dimensions.height) * 0.5, 0)
         cameraNode.look(at: SCNVector3(0, Float(dimensions.height) * 0.5, -Float(dimensions.depth) / 2))
         scene.rootNode.addChildNode(cameraNode)
-        print("✅ Camera looking at photo wall")
+        logDebug("✅ Camera looking at photo wall")
         
         // LIGHTING
         let ambientLight = SCNNode()
@@ -529,16 +529,16 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         scene.rootNode.addChildNode(directionalLight)
         
         // ✅ Return scene directly (no file export!)
-        print("✅ Room scene created successfully in memory")
+        logDebug("✅ Room scene created successfully in memory")
         return scene
     }
     
     // MARK: - Texture Generation
     private func generateFloorTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
-        print("🎨 [TextureGen] Generating floor texture")
+        logDebug("🎨 [TextureGen] Generating floor texture")
         
         guard let cgImage = image.cgImage else {
-            print("⚠️ [TextureGen] No CGImage, using solid color")
+            logDebug("⚠️ [TextureGen] No CGImage, using solid color")
             return createSolidColorTexture(color: UIColor(white: 0.85, alpha: 1.0))
         }
         
@@ -557,23 +557,23 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             height: imageHeight - floorYPos
         )
         
-        print("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) F:\(structure.floorY)")
-        print("   - Crop rect: \(cropRect)")
+        logDebug("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) F:\(structure.floorY)")
+        logDebug("   - Crop rect: \(cropRect)")
         
         if let croppedImage = cgImage.cropping(to: cropRect) {
-            print("✅ [TextureGen] Floor texture extracted from boundaries")
+            logDebug("✅ [TextureGen] Floor texture extracted from boundaries")
             return UIImage(cgImage: croppedImage)
         }
         
-        print("⚠️ [TextureGen] Failed to crop, using solid color")
+        logDebug("⚠️ [TextureGen] Failed to crop, using solid color")
         return createSolidColorTexture(color: UIColor(white: 0.85, alpha: 1.0))
     }
     
     private func generateWallTexture(from image: UIImage) -> UIImage {
-        print("🎨 [TextureGen] Generating wall texture")
+        logDebug("🎨 [TextureGen] Generating wall texture")
         
         guard let cgImage = image.cgImage else {
-            print("⚠️ [TextureGen] No CGImage, using solid color")
+            logDebug("⚠️ [TextureGen] No CGImage, using solid color")
             return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
         }
         
@@ -586,20 +586,20 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             height: 100
         )
         
-        print("   - Sampling center region for average color")
-        print("   - Sample rect: \(centerRect)")
+        logDebug("   - Sampling center region for average color")
+        logDebug("   - Sample rect: \(centerRect)")
         
         let averageColor = ciImage.averageColor(in: centerRect) ?? UIColor(white: 0.9, alpha: 1.0)
-        print("✅ [TextureGen] Wall color sampled")
+        logDebug("✅ [TextureGen] Wall color sampled")
         return createSolidColorTexture(color: averageColor)
     }
     
     // ✅ NEW: Extract CEILING texture from adjusted boundaries
     private func generateCeilingTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
-        print("🎨 [TextureGen] Generating CEILING texture from boundaries")
+        logDebug("🎨 [TextureGen] Generating CEILING texture from boundaries")
         
         guard let cgImage = image.cgImage else {
-            print("⚠️ [TextureGen] No CGImage, using white")
+            logDebug("⚠️ [TextureGen] No CGImage, using white")
             return createSolidColorTexture(color: .white)
         }
         
@@ -618,24 +618,24 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             height: ceilingYPos
         )
         
-        print("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) C:\(structure.ceilingY)")
-        print("   - Crop rect: \(cropRect)")
+        logDebug("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) C:\(structure.ceilingY)")
+        logDebug("   - Crop rect: \(cropRect)")
         
         if let croppedImage = cgImage.cropping(to: cropRect) {
-            print("✅ [TextureGen] Ceiling texture extracted from boundaries")
+            logDebug("✅ [TextureGen] Ceiling texture extracted from boundaries")
             return UIImage(cgImage: croppedImage)
         }
         
-        print("⚠️ [TextureGen] Failed to crop, using white")
+        logDebug("⚠️ [TextureGen] Failed to crop, using white")
         return createSolidColorTexture(color: .white)
     }
     
     // ✅ NEW: Extract FRONT wall texture within adjusted boundaries
     private func generateFrontWallTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
-        print("🎨 [TextureGen] Generating FRONT wall texture from boundaries")
+        logDebug("🎨 [TextureGen] Generating FRONT wall texture from boundaries")
         
         guard let cgImage = image.cgImage else {
-            print("⚠️ [TextureGen] No CGImage, using original")
+            logDebug("⚠️ [TextureGen] No CGImage, using original")
             return image
         }
         
@@ -655,24 +655,24 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             height: floorYPos - ceilingYPos
         )
         
-        print("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) C:\(structure.ceilingY) F:\(structure.floorY)")
-        print("   - Crop rect: \(cropRect)")
+        logDebug("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) C:\(structure.ceilingY) F:\(structure.floorY)")
+        logDebug("   - Crop rect: \(cropRect)")
         
         if let croppedImage = cgImage.cropping(to: cropRect) {
-            print("✅ [TextureGen] Front wall texture extracted from boundaries")
+            logDebug("✅ [TextureGen] Front wall texture extracted from boundaries")
             return UIImage(cgImage: croppedImage)
         }
         
-        print("⚠️ [TextureGen] Failed to crop, using original")
+        logDebug("⚠️ [TextureGen] Failed to crop, using original")
         return image
     }
     
     // ✅ NEW: Extract LEFT wall texture from adjusted boundary
     private func generateLeftWallTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
-        print("🎨 [TextureGen] Generating LEFT wall texture from boundary")
+        logDebug("🎨 [TextureGen] Generating LEFT wall texture from boundary")
         
         guard let cgImage = image.cgImage else {
-            print("⚠️ [TextureGen] No CGImage, using solid color")
+            logDebug("⚠️ [TextureGen] No CGImage, using solid color")
             return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
         }
         
@@ -690,24 +690,24 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             height: (structure.floorY - structure.ceilingY) * imageHeight
         )
         
-        print("   - Left boundary: \(structure.leftX)")
-        print("   - Crop rect: \(cropRect)")
+        logDebug("   - Left boundary: \(structure.leftX)")
+        logDebug("   - Crop rect: \(cropRect)")
         
         if let croppedImage = cgImage.cropping(to: cropRect) {
-            print("✅ [TextureGen] Left wall texture extracted")
+            logDebug("✅ [TextureGen] Left wall texture extracted")
             return UIImage(cgImage: croppedImage)
         }
         
-        print("⚠️ [TextureGen] Failed to crop, using solid color")
+        logDebug("⚠️ [TextureGen] Failed to crop, using solid color")
         return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
     }
     
     // ✅ NEW: Extract RIGHT wall texture from adjusted boundary
     private func generateRightWallTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
-        print("🎨 [TextureGen] Generating RIGHT wall texture from boundary")
+        logDebug("🎨 [TextureGen] Generating RIGHT wall texture from boundary")
         
         guard let cgImage = image.cgImage else {
-            print("⚠️ [TextureGen] No CGImage, using solid color")
+            logDebug("⚠️ [TextureGen] No CGImage, using solid color")
             return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
         }
         
@@ -725,15 +725,15 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             height: (structure.floorY - structure.ceilingY) * imageHeight
         )
         
-        print("   - Right boundary: \(structure.rightX)")
-        print("   - Crop rect: \(cropRect)")
+        logDebug("   - Right boundary: \(structure.rightX)")
+        logDebug("   - Crop rect: \(cropRect)")
         
         if let croppedImage = cgImage.cropping(to: cropRect) {
-            print("✅ [TextureGen] Right wall texture extracted")
+            logDebug("✅ [TextureGen] Right wall texture extracted")
             return UIImage(cgImage: croppedImage)
         }
         
-        print("⚠️ [TextureGen] Failed to crop, using solid color")
+        logDebug("⚠️ [TextureGen] Failed to crop, using solid color")
         return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
     }
     

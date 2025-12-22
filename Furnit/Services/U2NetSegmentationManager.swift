@@ -34,15 +34,15 @@ class U2NetSegmentationManager: NSObject, ObservableObject {
         
         if let url = Bundle.main.url(forResource: "U2Net", withExtension: "mlmodelc") {
             modelURL = url
-            print("✅ Found U2Net.mlmodelc")
+            logDebug("✅ Found U2Net.mlmodelc")
         } else if let url = Bundle.main.url(forResource: "U2Net", withExtension: "mlmodel") {
             modelURL = url
-            print("✅ Found U2Net.mlmodel")
+            logDebug("✅ Found U2Net.mlmodel")
         } else {
             errorMessage = "U²-Net model not found. Please add U2Net.mlmodel to your project"
-            print("❌ U²-Net model not found in bundle")
-            print("📦 Please download U2Net.mlmodel and add it to your Xcode project")
-            print("   Download from: https://github.com/john-rocky/CoreML-Models")
+            logDebug("❌ U²-Net model not found in bundle")
+            logDebug("📦 Please download U2Net.mlmodel and add it to your Xcode project")
+            logDebug("   Download from: https://github.com/john-rocky/CoreML-Models")
             return
         }
         
@@ -51,7 +51,7 @@ class U2NetSegmentationManager: NSObject, ObservableObject {
         do {
             // Load CoreML model
             let mlModel = try MLModel(contentsOf: finalURL)
-            print("✅ U²-Net CoreML model loaded")
+            logDebug("✅ U²-Net CoreML model loaded")
             
             // Create Vision wrapper
             let visionModel = try VNCoreMLModel(for: mlModel)
@@ -63,11 +63,11 @@ class U2NetSegmentationManager: NSObject, ObservableObject {
             }
             segmentationRequest?.imageCropAndScaleOption = .scaleFill
             
-            print("✅ U²-Net ready for real-time segmentation")
+            logDebug("✅ U²-Net ready for real-time segmentation")
             
         } catch {
             errorMessage = "Failed to load U²-Net: \(error.localizedDescription)"
-            print("❌ Failed to load U²-Net model: \(error)")
+            logDebug("❌ Failed to load U²-Net model: \(error)")
         }
     }
     
@@ -100,7 +100,7 @@ class U2NetSegmentationManager: NSObject, ObservableObject {
     // Process U²-Net segmentation results
     private func processU2NetResults(request: VNRequest, error: Error?) {
         guard error == nil else {
-            print("❌ U²-Net processing error: \(error!)")
+            logDebug("❌ U²-Net processing error: \(error!)")
             return
         }
         

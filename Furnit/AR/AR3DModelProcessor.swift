@@ -23,13 +23,13 @@ class AR3DModelProcessor: ObservableObject {
     private var modelData: Data?
     
     init() {
-        print("🤖 AR3DModelProcessor initialized")
+        logDebug("🤖 AR3DModelProcessor initialized")
     }
     
     // Set quality settings reference
     func setQualitySettings(_ settings: QualitySettings) {
         qualitySettings = settings
-        print("🎨 Quality settings configured: \(settings.selectedQuality.displayName)")
+        logDebug("🎨 Quality settings configured: \(settings.selectedQuality.displayName)")
     }
     
     // Check if processing should proceed based on quality settings
@@ -64,8 +64,8 @@ class AR3DModelProcessor: ObservableObject {
         // Update processing state
         processingState = .capturing
         
-        print("📤 Starting 3D model generation from captured image")
-        print("   Image size: \(image.size)")
+        logDebug("📤 Starting 3D model generation from captured image")
+        logDebug("   Image size: \(image.size)")
         
         do {
             // Generate 3D model using backend API with status updates
@@ -83,11 +83,11 @@ class AR3DModelProcessor: ObservableObject {
                             self?.processingState = .baking
                         }
                     }
-                    print("📊 Status: \(statusMessage)")
+                    logDebug("📊 Status: \(statusMessage)")
                 }
             }
             
-            print("✅ 3D model data received: \(modelFileData.count) bytes")
+            logDebug("✅ 3D model data received: \(modelFileData.count) bytes")
             
             // Store model data for placement
             modelData = modelFileData
@@ -108,11 +108,11 @@ class AR3DModelProcessor: ObservableObject {
             processingState = .ready
             isProcessing = false
             
-            print("✅ 3D model ready for AR placement")
+            logDebug("✅ 3D model ready for AR placement")
             return processedEntity
             
         } catch {
-            print("⚠️ 3D model generation failed: \(error)")
+            logDebug("⚠️ 3D model generation failed: \(error)")
             errorMessage = error.localizedDescription
             processingState = .error(error.localizedDescription)
             isProcessing = false
@@ -130,14 +130,14 @@ class AR3DModelProcessor: ObservableObject {
             // Write USDZ data to temporary file
             try data.write(to: tempURL, options: [.atomicWrite])
             
-            print("💾 USDZ data written to: \(tempURL)")
-            print("   File exists: \(FileManager.default.fileExists(atPath: tempURL.path))")
-            print("   File size: \(data.count) bytes")
+            logDebug("💾 USDZ data written to: \(tempURL)")
+            logDebug("   File exists: \(FileManager.default.fileExists(atPath: tempURL.path))")
+            logDebug("   File size: \(data.count) bytes")
             
             // Load USDZ model using RealityKit's Entity loading
             let modelEntity = try await Entity.load(contentsOf: tempURL)
             
-            print("✅ USDZ model loaded successfully using RealityKit")
+            logDebug("✅ USDZ model loaded successfully using RealityKit")
             
             // Log entity hierarchy for debugging
             logEntityHierarchy(modelEntity, indent: "")
@@ -150,14 +150,14 @@ class AR3DModelProcessor: ObservableObject {
             return modelEntity
             
         } catch {
-            print("⚠️ Failed to load USDZ model with RealityKit: \(error)")
+            logDebug("⚠️ Failed to load USDZ model with RealityKit: \(error)")
             return nil
         }
     }
     
     // Preprocess the loaded model for AR placement with proper container structure
     private func preprocessModelForAR(_ entity: Entity) -> Entity {
-        print("🔧 Preprocessing 3D model for AR placement (using RealityKit)")
+        logDebug("🔧 Preprocessing 3D model for AR placement (using RealityKit)")
         
         // Create a container entity that will be positioned at the placement point
         let containerEntity = Entity()
@@ -183,28 +183,28 @@ class AR3DModelProcessor: ObservableObject {
             size = SIMD3<Float>(1, 1, 1)
         }
         
-        print("   Original size: \(size)")
-        print("   Original bounding box: min(\(minBound)), max(\(maxBound))")
+        logDebug("   Original size: \(size)")
+        logDebug("   Original bounding box: min(\(minBound)), max(\(maxBound))")
         
         // Intelligent scaling: only scale if model is unreasonably small or large
         let maxDimension = max(size.x, max(size.y, size.z))
-        print("   Max dimension: \(maxDimension) units")
+        logDebug("   Max dimension: \(maxDimension) units")
         
         if maxDimension < 0.1 {
             // Model is tiny (less than 10cm) - likely wrong units, scale up to furniture size
             let targetSize: Float = 1.0  // 1 meter for typical furniture
             let scaleFactor = targetSize / maxDimension
             modelEntity.scale = SIMD3<Float>(scaleFactor, scaleFactor, scaleFactor)
-            print("   Model too small (\(maxDimension)m), scaling up by \(scaleFactor)x")
+            logDebug("   Model too small (\(maxDimension)m), scaling up by \(scaleFactor)x")
         } else if maxDimension > 10.0 {
             // Model is huge (larger than 10 meters) - scale down to reasonable size
             let targetSize: Float = 2.0  // 2 meters max for furniture
             let scaleFactor = targetSize / maxDimension
             modelEntity.scale = SIMD3<Float>(scaleFactor, scaleFactor, scaleFactor)
-            print("   Model too large (\(maxDimension)m), scaling down by \(scaleFactor)x")
+            logDebug("   Model too large (\(maxDimension)m), scaling down by \(scaleFactor)x")
         } else {
             // Model size is reasonable (0.1m to 10m) - use original scale
-            print("   Model size reasonable (\(maxDimension)m), using original scale")
+            logDebug("   Model size reasonable (\(maxDimension)m), using original scale")
         }
         
         // Position model so its bottom sits at the container's origin (Y=0)
@@ -216,7 +216,7 @@ class AR3DModelProcessor: ObservableObject {
             0         // Center depth-wise
         )
         
-        print("   Model positioned with bottom at floor: \(modelEntity.position)")
+        logDebug("   Model positioned with bottom at floor: \(modelEntity.position)")
         
         // Add the model to the container
         containerEntity.addChild(modelEntity)
@@ -235,7 +235,7 @@ class AR3DModelProcessor: ObservableObject {
         // Recursively enhance materials for all child entities
         enhanceMaterialsRecursively(entity)
         
-        print("✨ Enhanced entity hierarchy for AR display")
+        logDebug("✨ Enhanced entity hierarchy for AR display")
     }
     
     // Recursively enhance materials for entity and its children
@@ -281,15 +281,15 @@ class AR3DModelProcessor: ObservableObject {
     
     // Log entity hierarchy for debugging
     private func logEntityHierarchy(_ entity: Entity, indent: String) {
-        print("\(indent)Entity: \(entity.name)")
+        logDebug("\(indent)Entity: \(entity.name)")
         
         if let modelComponent = entity.components[ModelComponent.self] {
-            print("\(indent)  Model: \(type(of: modelComponent.mesh))")
-            print("\(indent)  Materials: \(modelComponent.materials.count)")
+            logDebug("\(indent)  Model: \(type(of: modelComponent.mesh))")
+            logDebug("\(indent)  Materials: \(modelComponent.materials.count)")
         }
         
         if !entity.children.isEmpty {
-            print("\(indent)  Children: \(entity.children.count)")
+            logDebug("\(indent)  Children: \(entity.children.count)")
             for child in entity.children {
                 logEntityHierarchy(child, indent: indent + "    ")
             }
@@ -314,17 +314,17 @@ class AR3DModelProcessor: ObservableObject {
         modelData = nil
         errorMessage = nil
         
-        print("🔄 AR3DModelProcessor reset")
+        logDebug("🔄 AR3DModelProcessor reset")
     }
     
     // Check API health
     func checkAPIHealth() async -> Bool {
         do {
             let health = try await apiClient.checkHealth()
-            print("🏥 API Health: \(health.status)")
+            logDebug("🏥 API Health: \(health.status)")
             return health.status == "healthy" || health.status == "ok"
         } catch {
-            print("⚠️ API Health check failed: \(error)")
+            logDebug("⚠️ API Health check failed: \(error)")
             return false
         }
     }

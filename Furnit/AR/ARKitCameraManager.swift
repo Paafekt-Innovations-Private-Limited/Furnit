@@ -22,7 +22,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
     
     override init() {
         super.init()
-        print("🎯 ARKitCameraManager initialized")
+        logDebug("🎯 ARKitCameraManager initialized")
         setupARSession()
     }
     
@@ -45,19 +45,19 @@ class ARKitCameraManager: NSObject, ObservableObject {
             arConfiguration.frameSemantics = .personSegmentation
         }
         
-        print("🎯 ARKit session configured for camera frame capture")
+        logDebug("🎯 ARKit session configured for camera frame capture")
     }
     
     // MARK: - Session Control
     
     // Start ARKit session for camera frame access
     func startSession() {
-        print("🎯 Starting ARKit camera session...")
+        logDebug("🎯 Starting ARKit camera session...")
         
         // Check ARKit availability and camera permission
         guard ARWorldTrackingConfiguration.isSupported else {
             errorMessage = "ARKit World Tracking not supported on this device"
-            print("⚠️ ARKit World Tracking not supported")
+            logDebug("⚠️ ARKit World Tracking not supported")
             return
         }
         
@@ -68,12 +68,12 @@ class ARKitCameraManager: NSObject, ObservableObject {
         isSessionRunning = true
         errorMessage = nil
         
-        print("✅ ARKit camera session started successfully")
+        logDebug("✅ ARKit camera session started successfully")
     }
     
     // Stop ARKit session when exiting AR mode
     func stopSession() {
-        print("🎯 Stopping ARKit camera session...")
+        logDebug("🎯 Stopping ARKit camera session...")
         
         // Pause the AR session
         arSession.pause()
@@ -86,7 +86,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
         // Update session status
         isSessionRunning = false
         
-        print("✅ ARKit camera session stopped")
+        logDebug("✅ ARKit camera session stopped")
     }
     
     // MARK: - Frame Capture
@@ -95,32 +95,32 @@ class ARKitCameraManager: NSObject, ObservableObject {
     func captureCurrentFrameForAPI() -> UIImage? {
         guard let currentFrame = latestFrame else {
             errorMessage = "No camera frame available - ensure AR session is running"
-            print("⚠️ No current frame available for capture")
+            logDebug("⚠️ No current frame available for capture")
             return nil
         }
         
-        print("📷 Capturing current ARKit camera frame for 3D generation...")
+        logDebug("📷 Capturing current ARKit camera frame for 3D generation...")
         
         // Convert ARFrame's camera image to UIImage without resizing
         guard let rawUIImage = convertPixelBufferToUIImage(currentFrame.capturedImage) else {
             errorMessage = "Failed to convert camera frame to image"
-            print("⚠️ Failed to convert ARFrame to UIImage")
+            logDebug("⚠️ Failed to convert ARFrame to UIImage")
             return nil
         }
         
         // Fix orientation without resizing for backend API
         guard let orientationFixedImage = fixImageOrientation(rawUIImage) else {
             errorMessage = "Failed to fix image orientation"
-            print("⚠️ Failed to fix image orientation")
+            logDebug("⚠️ Failed to fix image orientation")
             return nil
         }
         
         // Store captured image
         capturedImage = orientationFixedImage
         
-        print("✅ ARKit frame captured successfully for 3D generation")
-        print("   Image size: \(orientationFixedImage.size)")
-        print("   Image orientation: \(orientationFixedImage.imageOrientation.rawValue)")
+        logDebug("✅ ARKit frame captured successfully for 3D generation")
+        logDebug("   Image size: \(orientationFixedImage.size)")
+        logDebug("   Image orientation: \(orientationFixedImage.imageOrientation.rawValue)")
         return orientationFixedImage
     }
     
@@ -129,33 +129,33 @@ class ARKitCameraManager: NSObject, ObservableObject {
     func captureCurrentFrame() -> UIImage? {
         guard let currentFrame = latestFrame else {
             errorMessage = "No camera frame available - ensure AR session is running"
-            print("⚠️ No current frame available for capture")
+            logDebug("⚠️ No current frame available for capture")
             return nil
         }
         
-        print("📷 Capturing current ARKit camera frame for segmentation...")
+        logDebug("📷 Capturing current ARKit camera frame for segmentation...")
         
         // Convert ARFrame's camera image to UIImage
         guard let rawUIImage = convertPixelBufferToUIImage(currentFrame.capturedImage) else {
             errorMessage = "Failed to convert camera frame to image"
-            print("⚠️ Failed to convert ARFrame to UIImage")
+            logDebug("⚠️ Failed to convert ARFrame to UIImage")
             return nil
         }
         
         // Preprocess image for DeepLabV3 (resize to 513x513, fix orientation)
         guard let preprocessedImage = preprocessImageForSegmentation(rawUIImage) else {
             errorMessage = "Failed to preprocess image for segmentation"
-            print("⚠️ Failed to preprocess image for DeepLabV3")
+            logDebug("⚠️ Failed to preprocess image for DeepLabV3")
             return nil
         }
         
         // Store processed image
         capturedImage = preprocessedImage
         
-        print("✅ ARKit frame captured and preprocessed successfully")
-        print("   Original size: \(rawUIImage.size)")
-        print("   Processed size: \(preprocessedImage.size)")
-        print("   Processed orientation: \(preprocessedImage.imageOrientation.rawValue)")
+        logDebug("✅ ARKit frame captured and preprocessed successfully")
+        logDebug("   Original size: \(rawUIImage.size)")
+        logDebug("   Processed size: \(preprocessedImage.size)")
+        logDebug("   Processed orientation: \(preprocessedImage.imageOrientation.rawValue)")
         return preprocessedImage
     }
     
@@ -169,7 +169,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
         
         // Convert to CGImage
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
-            print("⚠️ Failed to create CGImage from pixel buffer")
+            logDebug("⚠️ Failed to create CGImage from pixel buffer")
             return nil
         }
         
@@ -195,7 +195,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
         
         // Get the orientation-fixed image
         guard let fixedImage = UIGraphicsGetImageFromCurrentImageContext() else {
-            print("⚠️ Failed to create orientation-fixed image from graphics context")
+            logDebug("⚠️ Failed to create orientation-fixed image from graphics context")
             return nil
         }
         
@@ -216,7 +216,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
         
         // Get the processed image
         guard let processedImage = UIGraphicsGetImageFromCurrentImageContext() else {
-            print("⚠️ Failed to create processed image from graphics context")
+            logDebug("⚠️ Failed to create processed image from graphics context")
             return nil
         }
         
@@ -285,18 +285,18 @@ extension ARKitCameraManager: ARSessionDelegate {
     // Handle session errors
     func session(_ session: ARSession, didFailWithError error: Error) {
         errorMessage = "ARKit session failed: \(error.localizedDescription)"
-        print("⚠️ ARKit session failed: \(error)")
+        logDebug("⚠️ ARKit session failed: \(error)")
     }
     
     // Handle session interruptions
     func sessionWasInterrupted(_ session: ARSession) {
-        print("🎯 ARKit session was interrupted")
+        logDebug("🎯 ARKit session was interrupted")
         // Session will restart automatically when interruption ends
     }
     
     // Handle session interruption end
     func sessionInterruptionEnded(_ session: ARSession) {
-        print("🎯 ARKit session interruption ended")
+        logDebug("🎯 ARKit session interruption ended")
         // Session automatically resumes
     }
 }

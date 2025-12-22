@@ -205,16 +205,16 @@ class ARProcessingStateManager: ObservableObject {
         currentState = newState
         
         // Log state changes for debugging
-        print("🔄 AR State: \(previousState) → \(newState)")
+        logDebug("🔄 AR State: \(previousState) → \(newState)")
         
         // Track processing duration
         if newState.isProcessing && !previousState.isProcessing {
             processingStartTime = Date()
-            print("⏱️ AR processing started")
+            logDebug("⏱️ AR processing started")
         } else if !newState.isProcessing && previousState.isProcessing {
             if let startTime = processingStartTime {
                 let duration = Date().timeIntervalSince(startTime)
-                print("⏱️ AR processing completed in \(String(format: "%.1f", duration))s")
+                logDebug("⏱️ AR processing completed in \(String(format: "%.1f", duration))s")
             }
             processingStartTime = nil
         }

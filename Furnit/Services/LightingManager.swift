@@ -16,13 +16,13 @@ class LightingManager {
     private var lightAnchors: [AnchorEntity] = []
     
     init() {
-        print("💡 LightingManager initialized")
+        logDebug("💡 LightingManager initialized")
     }
     
     func setupARView(_ arView: ARView) {
         self.arView = arView
         setupLighting()
-        print("💡 Lighting setup complete")
+        logDebug("💡 Lighting setup complete")
     }
     
     private func setupLighting() {
@@ -89,7 +89,7 @@ class LightingManager {
             lightAnchors.append(anchor)
         }
         
-        print("💡 Added \(lightAnchors.count) light anchors to scene")
+        logDebug("💡 Added \(lightAnchors.count) light anchors to scene")
     }
     
     func setQuality(_ quality: LightingQuality) {
@@ -113,7 +113,7 @@ class LightingManager {
         // Update environment intensity
         arView.environment.lighting.intensityExponent = 2.0 * intensityMultiplier
         
-        print("💡 Lighting intensity updated: \(intensityMultiplier)x")
+        logDebug("💡 Lighting intensity updated: \(intensityMultiplier)x")
     }
     
     func addObjectSpotlight(for modelEntity: Entity) {
@@ -132,7 +132,7 @@ class LightingManager {
         
         modelEntity.addChild(spotlightEntity)
         
-        print("💡 Added spotlight for object")
+        logDebug("💡 Added spotlight for object")
     }
     
     // Call this when entering camera mode for maximum brightness
@@ -158,6 +158,6 @@ class LightingManager {
         arView.scene.addAnchor(anchor)
         lightAnchors.append(anchor)
         
-        print("💡 MAXIMUM BRIGHTNESS ACTIVATED")
+        logDebug("💡 MAXIMUM BRIGHTNESS ACTIVATED")
     }
 }

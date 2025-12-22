@@ -41,7 +41,7 @@ class RealityKitCameraMovementManager: ObservableObject {
         // displayLink = CADisplayLink(target: self, selector: #selector(updateCameraPosition))
         // displayLink?.add(to: .main, forMode: .common)
 
-        print("🎮 Camera movement manager initialized (displayLink DISABLED - using GlobalCameraController)")
+        logDebug("🎮 Camera movement manager initialized (displayLink DISABLED - using GlobalCameraController)")
     }
     
     deinit {
@@ -52,7 +52,7 @@ class RealityKitCameraMovementManager: ObservableObject {
     // Set the ARView reference for camera manipulation
     func setARView(_ arView: ARView) {
         self.arView = arView
-        print("📱 Camera movement manager ARView set")
+        logDebug("📱 Camera movement manager ARView set")
     }
     
     func setupARView(_ arView: ARView) {
@@ -66,14 +66,14 @@ class RealityKitCameraMovementManager: ObservableObject {
         self.cameraAnchor = anchor
 
         if isNewAnchor {
-            print("🎮 Camera anchor set")
+            logDebug("🎮 Camera anchor set")
         }
     }
 
     // Set boundary manager reference (shared from RealityKitView)
     func setBoundaryManager(_ manager: RealityKitBoundaryManager) {
         self.boundaryManager = manager
-        print("🏠 Camera movement manager using shared boundary manager")
+        logDebug("🏠 Camera movement manager using shared boundary manager")
     }
 
     // Update movement speed from settings
@@ -85,7 +85,7 @@ class RealityKitCameraMovementManager: ObservableObject {
         // Map enum to actual speed values with moderate scaling for smooth movement
         movementSpeed = speed.rawValue * 20.0  // Balanced multiplier for smooth control
         currentSpeed = speed
-        print("🏃 Speed set to \(speed) (\(movementSpeed))")
+        logDebug("🏃 Speed set to \(speed) (\(movementSpeed))")
     }
     
     // Update joystick input from the virtual joystick
@@ -108,8 +108,8 @@ class RealityKitCameraMovementManager: ObservableObject {
 
             // Debug output for significant movements
             if abs(normalizedX) > 0.3 || abs(normalizedY) > 0.3 {
-                print("🕹️ Joystick active: X=\(String(format: "%.2f", normalizedX)), Y=\(String(format: "%.2f", normalizedY))")
-                print("   📍 arView set: \(arView != nil), cameraAnchor set: \(cameraAnchor != nil)")
+                logDebug("🕹️ Joystick active: X=\(String(format: "%.2f", normalizedX)), Y=\(String(format: "%.2f", normalizedY))")
+                logDebug("   📍 arView set: \(arView != nil), cameraAnchor set: \(cameraAnchor != nil)")
             }
         } else {
             targetVelocity = .zero
@@ -124,7 +124,7 @@ class RealityKitCameraMovementManager: ObservableObject {
         // Debug: log if joystick is active but camera refs missing
         let hasInput = joystickOffset.width != 0 || joystickOffset.height != 0
         if hasInput && (arView == nil || cameraAnchor == nil) {
-            print("⚠️ [CameraMove] Joystick active but missing refs - arView:\(arView != nil) cameraAnchor:\(cameraAnchor != nil)")
+            logDebug("⚠️ [CameraMove] Joystick active but missing refs - arView:\(arView != nil) cameraAnchor:\(cameraAnchor != nil)")
         }
 
         guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
@@ -198,7 +198,7 @@ class RealityKitCameraMovementManager: ObservableObject {
             // Debug logging when movement is constrained
             if proposedCameraPosition.x != originalProposedPosition.x ||
                proposedCameraPosition.z != originalProposedPosition.z {
-                print("🚧 Boundary hit - movement constrained")
+                logDebug("🚧 Boundary hit - movement constrained")
             }
         }
         
@@ -235,7 +235,7 @@ class RealityKitCameraMovementManager: ObservableObject {
         targetVelocity = .zero
         currentJoystickOffset = .zero
         
-        print("📷 Camera reset to default position and orientation")
+        logDebug("📷 Camera reset to default position and orientation")
     }
     
     // Enable/disable camera movement
@@ -246,7 +246,7 @@ class RealityKitCameraMovementManager: ObservableObject {
             currentVelocity = .zero
             targetVelocity = .zero
         }
-        print("🎮 Camera movement \(enabled ? "enabled" : "disabled")")
+        logDebug("🎮 Camera movement \(enabled ? "enabled" : "disabled")")
     }
 }
 
