@@ -23,11 +23,13 @@ class AppCheckProviderFactory: NSObject, FirebaseAppCheck.AppCheckProviderFactor
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        // Enable App Check for bot protection (must be before FirebaseApp.configure)
-        let providerFactory = AppCheckProviderFactory()
-        AppCheck.setAppCheckProviderFactory(providerFactory)
-
-        FirebaseApp.configure()
+        // Firebase is now configured in FurnitApp.init() to avoid race condition
+        // Only configure here if not already done (fallback)
+        if FirebaseApp.app() == nil {
+            let providerFactory = AppCheckProviderFactory()
+            AppCheck.setAppCheckProviderFactory(providerFactory)
+            FirebaseApp.configure()
+        }
 
         // Request notification permissions for phone auth
         UNUserNotificationCenter.current().delegate = self
@@ -69,8 +71,21 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 @main
 struct FurnitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    @StateObject private var authManager = AuthenticationManager()
+    @StateObject private var authManager: AuthenticationManager
     @StateObject private var appStateManager = AppStateManager.shared
+
+    init() {
+        // Configure Firebase BEFORE creating AuthenticationManager
+        // This prevents race condition where Auth.auth() is called before Firebase is configured
+        if FirebaseApp.app() == nil {
+            let providerFactory = AppCheckProviderFactory()
+            AppCheck.setAppCheckProviderFactory(providerFactory)
+            FirebaseApp.configure()
+        }
+
+        // Now safe to create AuthenticationManager
+        _authManager = StateObject(wrappedValue: AuthenticationManager())
+    }
 
     var body: some Scene {
         WindowGroup {

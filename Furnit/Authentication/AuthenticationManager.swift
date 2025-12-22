@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import FirebaseCore
 import FirebaseAuth
 
 /// Authentication Manager for Phone + OTP authentication
@@ -36,12 +37,24 @@ class AuthenticationManager: ObservableObject {
     }
 
     init() {
-        checkAuthenticationStatus()
+        // Delay auth check to ensure Firebase is configured
+        DispatchQueue.main.async { [weak self] in
+            self?.checkAuthenticationStatus()
+        }
     }
 
     // MARK: - Check Existing Auth
 
     private func checkAuthenticationStatus() {
+        // Guard: Make sure Firebase is configured
+        guard FirebaseApp.app() != nil else {
+            AppLogger.authError("Firebase not configured yet, retrying...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.checkAuthenticationStatus()
+            }
+            return
+        }
+
         // Check Firebase auth state first
         if let firebaseUser = Auth.auth().currentUser {
             // User is signed in with Firebase
@@ -68,6 +81,16 @@ class AuthenticationManager: ObservableObject {
     func sendOTP(to phoneNumber: String, completion: @escaping (Bool, String?) -> Void) {
         isLoading = true
         errorMessage = nil
+
+        // Guard: Make sure Firebase is configured
+        guard FirebaseApp.app() != nil else {
+            isLoading = false
+            let error = "App is still initializing. Please try again."
+            errorMessage = error
+            AppLogger.authError("sendOTP called before Firebase configured")
+            completion(false, error)
+            return
+        }
 
         // Anti-bot: Check rate limits
         let rateCheck = canRequestOTP()

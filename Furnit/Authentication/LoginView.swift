@@ -129,7 +129,7 @@ struct CountryPickerView: View {
 
 // MARK: - Login View
 struct LoginView: View {
-    @StateObject private var authManager = AuthenticationManager()
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var name = ""
     @State private var phoneNumber = ""
     @State private var selectedCountry = Country.defaultCountry
