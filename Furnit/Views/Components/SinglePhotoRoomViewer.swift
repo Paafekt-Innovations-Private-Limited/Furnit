@@ -114,9 +114,9 @@ struct RoomBoundaryDetectionView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
-                            
-                            Button("Done Adjusting") {
-                                // ✅ SAVE BOUNDARIES HERE
+
+                            Button("Done") {
+                                // Save boundaries and dismiss
                                 var boundaries = RoomStructure()
                                 boundaries.floorY = floorY
                                 boundaries.ceilingY = ceilingY
@@ -124,15 +124,15 @@ struct RoomBoundaryDetectionView: View {
                                 boundaries.rightX = rightX
                                 boundaries.vanishingX = vanishingX
                                 boundaries.vanishingY = vanishingY
-                                
+
                                 savedBoundaries = boundaries
                                 print("✅ Saved adjusted boundaries:")
                                 print("   Floor: \(floorY), Ceiling: \(ceilingY)")
                                 print("   Left: \(leftX), Right: \(rightX)")
                                 print("   VP: (\(vanishingX), \(vanishingY))")
-                                
-                                showAdjustmentMode = false
-                                generateFinalImage()
+
+                                // Dismiss sheet directly (go to 3D view)
+                                dismiss()
                             }
                             .buttonStyle(.borderedProminent)
                         }
@@ -236,11 +236,6 @@ struct RoomBoundaryDetectionView: View {
             }
             .navigationTitle("Room Boundaries")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
         }
         .onAppear {
             // ✅ Fix image orientation ONCE on appear to prevent 90° tilt
@@ -711,7 +706,8 @@ struct SinglePhotoRoomView: View {
     @State private var adjustedWidth: Float = 4.0
     @State private var adjustedDepth: Float = 4.0
     @State private var adjustedHeight: Float = 2.8
-    
+    @State private var navigateToViewer = false
+
     // NEW: State for Option 2 (3D Room Scan)
     @State private var show3DScanOption = false
     @State private var showUnsupportedAlert = false
@@ -970,15 +966,32 @@ struct SinglePhotoRoomView: View {
             adjustedDepth = reconstructor.estimatedDimensions?.depth ?? 4.0
             adjustedHeight = reconstructor.estimatedDimensions?.height ?? 2.8
         }
-        // ✅ NEW: Watch for boundary changes and rebuild automatically
+        // ✅ Watch for boundary changes and rebuild automatically, then navigate to viewer
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
             if let boundaries = newValue, let image = selectedImage {
                 print("🔄 [View] Boundaries adjusted, rebuilding room...")
                 Task {
                     await reconstructor.processPhotoWithBoundaries(image, boundaries: boundaries)
+                    // Auto-navigate to 3D viewer (save screen) once room is ready
+                    if reconstructor.generatedRoomScene != nil {
+                        await MainActor.run {
+                            navigateToViewer = true
+                        }
+                    }
                 }
             }
         }
+        // Hidden NavigationLink for programmatic navigation
+        .background(
+            NavigationLink(
+                destination: Group {
+                    if let scene = reconstructor.generatedRoomScene {
+                        SceneKitViewer(scene: scene)
+                    }
+                },
+                isActive: $navigateToViewer
+            ) { EmptyView() }
+        )
     }
     
     private func rebuildRoom() {

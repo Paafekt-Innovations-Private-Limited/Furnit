@@ -57,7 +57,11 @@ struct OTPVerificationView: View {
                         ForEach(0..<6, id: \.self) { index in
                             OTPDigitField(
                                 digit: $otpDigits[index],
-                                isActive: focusedField == index
+                                isActive: focusedField == index,
+                                isFirstField: index == 0,
+                                onPaste: { pastedCode in
+                                    handlePastedOTP(pastedCode)
+                                }
                             )
                             .focused($focusedField, equals: index)
                             .onChange(of: otpDigits[index]) { oldValue, newValue in
@@ -168,10 +172,26 @@ struct OTPVerificationView: View {
         otpDigits.joined()
     }
 
+    private func handlePastedOTP(_ code: String) {
+        // Distribute pasted OTP across all fields
+        let digits = Array(code.prefix(6))
+        for (index, char) in digits.enumerated() {
+            otpDigits[index] = String(char)
+        }
+        // Move focus to last filled field or end
+        focusedField = min(digits.count, 5)
+
+        // Auto-verify if complete
+        if digits.count >= 6 && !isVerifying {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                verifyOTP()
+            }
+        }
+    }
+
     private func handleOTPInput(at index: Int, oldValue: String, newValue: String) {
-        // Ensure only one digit
+        // Skip if this was handled by paste
         if newValue.count > 1 {
-            otpDigits[index] = String(newValue.suffix(1))
             return
         }
 
@@ -180,9 +200,8 @@ struct OTPVerificationView: View {
             focusedField = index + 1
         }
 
-        // Handle paste
+        // Handle backspace
         if newValue.count == 0 && oldValue.count > 0 {
-            // Backspace pressed
             if index > 0 {
                 focusedField = index - 1
             }
@@ -257,10 +276,20 @@ struct OTPVerificationView: View {
 struct OTPDigitField: View {
     @Binding var digit: String
     let isActive: Bool
+    let isFirstField: Bool
+    var onPaste: ((String) -> Void)?
+
+    init(digit: Binding<String>, isActive: Bool, isFirstField: Bool = false, onPaste: ((String) -> Void)? = nil) {
+        self._digit = digit
+        self.isActive = isActive
+        self.isFirstField = isFirstField
+        self.onPaste = onPaste
+    }
 
     var body: some View {
         TextField("", text: $digit)
             .keyboardType(.numberPad)
+            .textContentType(isFirstField ? .oneTimeCode : .none) // Enable SMS autofill on first field
             .multilineTextAlignment(.center)
             .frame(width: 45, height: 55)
             .background(Color.white.opacity(0.95))
@@ -272,8 +301,13 @@ struct OTPDigitField: View {
             .foregroundColor(.black)
             .font(.title2.bold())
             .onChange(of: digit) { _, newValue in
-                // Only allow digits
-                digit = newValue.filter { $0.isNumber }
+                // Handle paste of full OTP code
+                let filtered = newValue.filter { $0.isNumber }
+                if filtered.count > 1 {
+                    onPaste?(filtered)
+                    return
+                }
+                digit = filtered
             }
     }
 }
