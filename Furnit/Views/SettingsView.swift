@@ -27,21 +27,6 @@ struct SettingsView: View {
                         .font(.footnote)
                 }
                 
-                // Development Section (Debug builds only)
-                #if DEBUG
-                Section {
-                    NavigationLink(destination: FirebaseTestView()) {
-                        HStack {
-                            Image(systemName: "flame")
-                                .foregroundColor(.orange)
-                            Text("Firebase Setup Test")
-                        }
-                    }
-                } header: {
-                    Text("Development Tools")
-                }
-                #endif
-                
                 // App Info Section
                 Section {
                     HStack {
