@@ -1,73 +1,64 @@
 import SwiftUI
 import FirebaseCore
 import FirebaseAuth
-import FirebaseAppCheck
 import UserNotifications
 
-// App Check provider factory for bot protection
-class AppCheckProviderFactory: NSObject, FirebaseAppCheck.AppCheckProviderFactory {
-    func createProvider(with app: FirebaseApp) -> AppCheckProvider? {
-        #if DEBUG
-        // Use debug provider for simulator/development
-        // Check Xcode console for: "App Check debug token: XXXX"
-        // Add this token to Firebase Console → App Check → Apps → Manage debug tokens
-        AppLogger.debug("Using DEBUG provider - check console for debug token", category: AppLogger.appCheck)
-        return AppCheckDebugProvider(app: app)
-        #else
-        // Use App Attest for production (real devices)
-        return AppAttestProvider(app: app)
-        #endif
-    }
-}
-
-class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        // Firebase is now configured in FurnitApp.init() to avoid race condition
-        // Only configure here if not already done (fallback)
+        print("🔥 [AppDelegate] didFinishLaunching START")
+
+        // Configure Firebase here - proper place for swizzling to work
         if FirebaseApp.app() == nil {
-            let providerFactory = AppCheckProviderFactory()
-            AppCheck.setAppCheckProviderFactory(providerFactory)
+            print("🔥 [AppDelegate] Configuring Firebase...")
             FirebaseApp.configure()
+            print("🔥 [AppDelegate] Firebase configured. App: \(FirebaseApp.app()?.name ?? "nil")")
+        } else {
+            print("🔥 [AppDelegate] Firebase already configured")
         }
 
-        // Request notification permissions for phone auth
-        UNUserNotificationCenter.current().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-            if granted {
-                DispatchQueue.main.async {
-                    application.registerForRemoteNotifications()
-                }
-            }
-        }
-
+        // Log Auth settings
+        print("🔥 [AppDelegate] Auth settings: \(String(describing: Auth.auth().settings))")
+        print("🔥 [AppDelegate] didFinishLaunching END")
         return true
     }
 
-    // Handle URL schemes for phone auth (reCAPTCHA)
+    // Handle URL schemes for phone auth (reCAPTCHA callback)
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        if Auth.auth().canHandle(url) {
+        print("🔥 [AppDelegate] open URL called: \(url.absoluteString)")
+        let canHandle = Auth.auth().canHandle(url)
+        print("🔥 [AppDelegate] Auth.canHandle(url) = \(canHandle)")
+        if canHandle {
             return true
         }
         return false
     }
 
-    // Forward APNs token to Firebase
+    // Required by Firebase Auth - forward APNs token
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        print("🔥 [AppDelegate] didRegisterForRemoteNotifications - token received")
+        // Forward to Firebase Auth - use safe method
         Auth.auth().setAPNSToken(deviceToken, type: .unknown)
+        print("🔥 [AppDelegate] APNs token forwarded to Firebase")
     }
 
-    // Forward remote notifications to Firebase Auth
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("🔥 [AppDelegate] didFailToRegisterForRemoteNotifications: \(error.localizedDescription)")
+    }
+
+    // Required by Firebase Auth - forward notifications
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        print("🔥 [AppDelegate] didReceiveRemoteNotification")
         if Auth.auth().canHandleNotification(userInfo) {
+            print("🔥 [AppDelegate] Firebase handled the notification")
             completionHandler(.noData)
             return
         }
+        print("🔥 [AppDelegate] Firebase did NOT handle the notification")
         completionHandler(.noData)
     }
 }
 
-// Option 1: Your current approach (passing as parameter)
 @main
 struct FurnitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
@@ -75,15 +66,7 @@ struct FurnitApp: App {
     @StateObject private var appStateManager = AppStateManager.shared
 
     init() {
-        // Configure Firebase BEFORE creating AuthenticationManager
-        // This prevents race condition where Auth.auth() is called before Firebase is configured
-        if FirebaseApp.app() == nil {
-            let providerFactory = AppCheckProviderFactory()
-            AppCheck.setAppCheckProviderFactory(providerFactory)
-            FirebaseApp.configure()
-        }
-
-        // Now safe to create AuthenticationManager
+        // AuthenticationManager will wait for Firebase to be configured
         _authManager = StateObject(wrappedValue: AuthenticationManager())
     }
 
@@ -99,11 +82,10 @@ struct FurnitApp: App {
 
 struct RootView: View {
     @EnvironmentObject var authManager: AuthenticationManager
-    
+
     var body: some View {
         Group {
             if authManager.isAuthenticated {
-                // This now works - HomeViewWithBottomBar accepts authManager parameter
                 HomeViewWithBottomBar(authManager: authManager)
             } else {
                 LoginView()
@@ -111,28 +93,3 @@ struct RootView: View {
         }
     }
 }
-
-// Option 2: Alternative using @EnvironmentObject (cleaner approach)
-// If you prefer not to pass parameters, you can change HomeViewWithBottomBar to use:
-/*
-struct HomeViewWithBottomBar: View {
-    @EnvironmentObject var authManager: AuthenticationManager
-    @StateObject private var roomManager = RoomManager.shared
-    // ... rest of the view
-}
-
-// Then in RootView, just call it without parameters:
-struct RootView: View {
-    @EnvironmentObject var authManager: AuthenticationManager
-    
-    var body: some View {
-        Group {
-            if authManager.isAuthenticated {
-                HomeViewWithBottomBar()  // No parameter needed
-            } else {
-                LoginView()
-            }
-        }
-    }
-}
-*/
