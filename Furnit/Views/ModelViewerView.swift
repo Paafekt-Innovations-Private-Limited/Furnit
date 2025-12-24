@@ -82,24 +82,6 @@ struct ModelViewerView: View {
                         )
                         .zIndex(9999)
                     }
-
-                    if showingSegmentForeground {
-                        SegmentForeground(
-                            capturedImage: $capturedImage,
-                            isShowingCamera: $showingSegmentForeground
-                        )
-                        .zIndex(9000)
-                    }
-
-                    if showingSegmentFurniture {
-                        SegmentFurniture(
-                            capturedImage: $capturedImage,
-                            isShowingCamera: $showingSegmentFurniture,
-                            roomImage: roomSnapshot
-                        )
-                        .zIndex(9000)
-                    }
-
                     // NEW: SmartyPants overlay
                     if showingSmartyPants {
                         ZStack {
@@ -133,26 +115,6 @@ struct ModelViewerView: View {
                         backButton
                             .allowsHitTesting(true)
                         Spacer()
-                        if showingSegmentFurniture {
-                            Button(action: {
-                                // Use GeometryReader size via a proxy in body; we'll call with screen size
-                                let screen = UIScreen.main.bounds.size
-                                saveSegmentFurnitureSnapshot(screen)
-                            }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "square.and.arrow.down")
-                                        .font(.system(size: 16, weight: .medium))
-                                    Text("Save")
-                                        .font(.system(size: 16, weight: .medium))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(Color.black.opacity(0.7))
-                                .cornerRadius(20)
-                            }
-                            .allowsHitTesting(true)
-                        }
                     }
                     .padding()
                     Spacer()
@@ -522,31 +484,6 @@ struct ModelViewerView: View {
             @unknown default:
                 logDebug("❌ Unknown Photos authorization status (legacy)")
             }
-        }
-    }
-    
-    private func saveSegmentFurnitureSnapshot(_ size: CGSize) {
-        guard let roomSnapshot else { return }
-        // Build a minimal view containing only the room background and the segmentation overlay
-        let snapshotView = ZStack {
-            Image(uiImage: roomSnapshot)
-                .resizable()
-                .scaledToFill()
-                .frame(width: size.width, height: size.height)
-                .clipped()
-            SegmentFurniture(
-                capturedImage: $capturedImage,
-                isShowingCamera: .constant(true),
-                roomImage: roomSnapshot
-            )
-            .frame(width: size.width, height: size.height)
-        }
-
-        let renderer = ImageRenderer(content: snapshotView)
-        renderer.scale = UIScreen.main.scale
-        renderer.proposedSize = .init(width: size.width, height: size.height)
-        if let uiImage = renderer.uiImage {
-            saveUIImageToPhotos(uiImage)
         }
     }
     
