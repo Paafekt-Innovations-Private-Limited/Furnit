@@ -107,14 +107,30 @@ class AuthenticationManager: ObservableObject {
         // Format phone number with country code
         let formattedPhone = formatPhoneForFirebase(phoneNumber)
 
+        // Debug logging
+        print("🔐 [Auth] Starting phone verification for: \(formattedPhone)")
+        print("🔐 [Auth] Firebase App: \(FirebaseApp.app()?.name ?? "nil")")
+        print("🔐 [Auth] Auth instance: \(Auth.auth())")
+        print("🔐 [Auth] Auth settings: \(String(describing: Auth.auth().settings))")
+        print("🔐 [Auth] Auth currentUser: \(String(describing: Auth.auth().currentUser))")
+
+        let provider = PhoneAuthProvider.provider()
+        print("🔐 [Auth] PhoneAuthProvider: \(provider)")
+
         // Firebase Phone Auth
-        PhoneAuthProvider.provider().verifyPhoneNumber(formattedPhone, uiDelegate: nil) { [weak self] verificationID, error in
+        provider.verifyPhoneNumber(formattedPhone, uiDelegate: nil) { [weak self] verificationID, error in
             DispatchQueue.main.async {
                 self?.isLoading = false
 
                 if let error = error {
                     let nsError = error as NSError
-                    // Log error for crash reporting (production)
+                    // Detailed error logging
+                    print("🔐 [Auth] ❌ ERROR DETAILS:")
+                    print("🔐 [Auth]   Code: \(nsError.code)")
+                    print("🔐 [Auth]   Domain: \(nsError.domain)")
+                    print("🔐 [Auth]   Description: \(nsError.localizedDescription)")
+                    print("🔐 [Auth]   UserInfo: \(nsError.userInfo)")
+                    print("🔐 [Auth]   Underlying error: \(String(describing: nsError.userInfo[NSUnderlyingErrorKey]))")
                     AppLogger.authError("OTP Error - Code: \(nsError.code), Domain: \(nsError.domain), Description: \(nsError.localizedDescription)")
 
                     // Show user-friendly message

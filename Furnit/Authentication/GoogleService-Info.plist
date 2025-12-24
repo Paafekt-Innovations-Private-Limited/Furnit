@@ -3,32 +3,28 @@
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>AIzaSyCxsuP_-IyaYJ9kq9_KORnZq5G1XP8kHoc</string>
+	<string>AIzaSyD4154IxE-cDFQk5bdtsAJ-lfPyO-rCflI</string>
 	<key>GCM_SENDER_ID</key>
-	<string>670097085292</string>
+	<string>613415224058</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.pafekt.Furnit2025</string>
 	<key>PROJECT_ID</key>
-	<string>paafekt-prod-5d4d2</string>
+	<string>paafektprod</string>
 	<key>STORAGE_BUCKET</key>
-	<string>paafekt-prod-5d4d2.firebasestorage.app</string>
+	<string>paafektprod.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
-	<false/>
+	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
-	<false/>
+	<false></false>
 	<key>IS_APPINVITE_ENABLED</key>
-	<true/>
+	<true></true>
 	<key>IS_GCM_ENABLED</key>
-	<true/>
+	<true></true>
 	<key>IS_SIGNIN_ENABLED</key>
-	<true/>
+	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:670097085292:ios:54ed858abd6c2d87e2d949</string>
-	<key>CLIENT_ID</key>
-	<string>670097085292-k4c7oi2bkqup11rab1jnfiv7dm8rt1og.apps.googleusercontent.com</string>
-	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.670097085292-k4c7oi2bkqup11rab1jnfiv7dm8rt1og</string>
+	<string>1:613415224058:ios:8c8746877d3a431ca13f43</string>
 </dict>
 </plist>
