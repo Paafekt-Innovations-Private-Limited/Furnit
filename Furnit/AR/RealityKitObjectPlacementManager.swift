@@ -219,10 +219,10 @@ class RealityKitObjectPlacementManager: ObservableObject {
     
     // Detect floor height from scene geometry or use default (always returns a value)
     private func detectFloorHeight() -> Float {
-        guard let scene = scene else {
-            logDebug("🏠 No scene available, using default floor height: 0.0")
-            return 0.0
-        }
+//        guard let scene = scene else {
+//            logDebug("🏠 No scene available, using default floor height: 0.0")
+//            return 0.0
+//        }
 
         // First try: Look for ARKit plane anchors (floor detection)
         if let arView = arView {
