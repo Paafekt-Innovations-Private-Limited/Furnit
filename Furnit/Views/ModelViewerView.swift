@@ -66,22 +66,6 @@ struct ModelViewerView: View {
                     )
                     .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingSmartyPants))
                     .ignoresSafeArea(.all)
-
-                    if showingCameraPreview {
-                        SimpleCameraOverlay(
-                            capturedImage: $capturedImage,
-                            isShowingCamera: $showingCameraPreview
-                        )
-                        .zIndex(9000)
-                    }
-
-                    if showingSegmentExamine {
-                        SegmentExamine(
-                            capturedImage: $capturedImage,
-                            isShowingCamera: $showingSegmentExamine
-                        )
-                        .zIndex(9999)
-                    }
                     // NEW: SmartyPants overlay
                     if showingSmartyPants {
                         ZStack {
