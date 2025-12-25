@@ -29,7 +29,9 @@ struct HomeViewWithBottomBar: View {
         // Just show the Home tab directly without TabView
         HomeTab(authManager: authManager)
             .onAppear {
-                logDebug("🏠 [HomeViewWithBottomBar] Rendering without bottom bar")
+                if AppStateManager.shared.qualitySettings.debugMode {
+                    logDebug("🏠 [HomeViewWithBottomBar] Rendering without bottom bar")
+                }
             }
     }
 }
@@ -103,9 +105,11 @@ struct HomeTab: View {
                         }
                         .listStyle(PlainListStyle())
                         .onAppear {
-                            logDebug("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
-                            for (idx, model) in modelManager.models.enumerated() {
-                                logDebug("   [\(idx)] \(model.displayName) - isSavedRoom: \(model.isSavedRoom)")
+                            if AppStateManager.shared.qualitySettings.debugMode {
+                                logDebug("✅ [HomeTab] Showing list with \(modelManager.models.count) models")
+                                for (idx, model) in modelManager.models.enumerated() {
+                                    logDebug("   [\(idx)] \(model.displayName) - isSavedRoom: \(model.isSavedRoom)")
+                                }
                             }
                         }
                     }
@@ -175,8 +179,10 @@ struct HomeTab: View {
             }
         }
         .onAppear {
-            logDebug("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
-            logDebug("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
+            if AppStateManager.shared.qualitySettings.debugMode {
+                logDebug("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
+                logDebug("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
+            }
         }
     }
     
@@ -347,14 +353,18 @@ struct FavoritesTab: View {
                 }
                 .listStyle(PlainListStyle())
                 .onAppear {
-                    logDebug("❤️ [FavoritesTab] Showing list with \(favoriteModels.count) favorites")
+                    if AppStateManager.shared.qualitySettings.debugMode {
+                        logDebug("❤️ [FavoritesTab] Showing list with \(favoriteModels.count) favorites")
+                    }
                 }
             }
         }
         .navigationTitle("Favorites")
         .navigationBarTitleDisplayMode(.large)
         .onAppear {
-            logDebug("❤️ [FavoritesTab] onAppear - Favorite count: \(favoriteModels.count)")
+            if AppStateManager.shared.qualitySettings.debugMode {
+                logDebug("❤️ [FavoritesTab] onAppear - Favorite count: \(favoriteModels.count)")
+            }
         }
     }
 }
