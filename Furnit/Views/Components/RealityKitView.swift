@@ -109,7 +109,12 @@ struct RealityKitView: UIViewRepresentable {
         
         // ✅ Handle camera reset requests (triggered on view appear)
         if shouldResetCamera {
-            logDebug("🔄 [RealityKitView.updateUIView] CAMERA RESET TRIGGERED")
+            let debugMode = AppStateManager.shared.qualitySettings.debugMode
+            
+            if debugMode {
+                logDebug("🔄 [RealityKitView.updateUIView] CAMERA RESET TRIGGERED")
+            }
+            
             if let cameraAnchor = context.coordinator.cameraAnchor,
                let boundaryManager = context.coordinator.boundaryManager,
                boundaryManager.bounds != nil {
@@ -120,9 +125,13 @@ struct RealityKitView: UIViewRepresentable {
                 let lookRotation = simd_quatf(from: SIMD3<Float>(0, 0, -1), to: lookDirection)
                 cameraAnchor.transform.rotation = lookRotation
 
-                logDebug("📷 [RealityKitView] Camera RESET to optimal position: \(cameraPosition)")
+                if debugMode {
+                    logDebug("📷 [RealityKitView] Camera RESET to optimal position: \(cameraPosition)")
+                }
             } else {
-                logDebug("⚠️ [RealityKitView] Cannot reset camera - missing cameraAnchor or boundaryManager")
+                if debugMode {
+                    logDebug("⚠️ [RealityKitView] Cannot reset camera - missing cameraAnchor or boundaryManager")
+                }
             }
 
             // Clear the flag

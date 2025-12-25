@@ -707,10 +707,6 @@ struct SinglePhotoRoomView: View {
     @State private var adjustedDepth: Float = 4.0
     @State private var adjustedHeight: Float = 2.8
     @State private var navigateToViewer = false
-
-    // NEW: State for Option 2 (3D Room Scan)
-    @State private var show3DScanOption = false
-    @State private var showUnsupportedAlert = false
     
     var body: some View {
         ZStack {
@@ -732,18 +728,17 @@ struct SinglePhotoRoomView: View {
                 .padding()
                 
             } else {
-                // NEW: Show two options instead of just photo picker
+                // Photo Selection
                 VStack(spacing: 20) {
-                    Text("Choose Your Method")
+                    Text("Create a 3D Room")
                         .font(.title2)
                         .fontWeight(.bold)
                         .padding(.top, 40)
                     
-                    Text("Create a 3D room model")
+                    Text("Select a photo to get started")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     
-                    // Option 1: Photo Selection (Existing)
                     Button(action: {
                         logDebug("🖼️ [View] Select photo button tapped")
                         showImagePicker = true
@@ -768,43 +763,6 @@ struct SinglePhotoRoomView: View {
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(Color.orange, lineWidth: 2)
-                        )
-                    }
-                    .padding(.horizontal)
-                    
-                    // Option 2: 3D Room Scan (NEW)
-                    Button(action: {
-                        if #available(iOS 16.0, *) {
-                            if RoomCaptureSession.isSupported {
-                                logDebug("📷 [View] 3D Room Scan button tapped")
-                                show3DScanOption = true
-                            } else {
-                                showUnsupportedAlert = true
-                            }
-                        } else {
-                            showUnsupportedAlert = true
-                        }
-                    }) {
-                        VStack(spacing: 16) {
-                            Image(systemName: "camera.metering.matrix")
-                                .font(.system(size: 50))
-                                .foregroundColor(.blue)
-                            
-                            VStack(spacing: 4) {
-                                Text("3D Room Scan")
-                                    .font(.headline)
-                                Text("Camera scanning with RoomPlan")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(24)
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(16)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.blue, lineWidth: 2)
                         )
                     }
                     .padding(.horizontal)
@@ -922,43 +880,6 @@ struct SinglePhotoRoomView: View {
                 image: selectedImage,
                 savedBoundaries: $adjustedBoundaries
             )
-        }
-        // NEW: Full screen cover for 3D Room Scan
-        .fullScreenCover(isPresented: $show3DScanOption) {
-            if #available(iOS 16.0, *) {
-                NavigationView {
-                    RoomCaptureView(
-                        onSaveComplete: {
-                            logDebug("🎯 [SinglePhotoRoomViewer] onSaveComplete callback triggered!")
-                            logDebug("   - Current show3DScanOption: \(show3DScanOption)")
-                            
-                            // Set to false to dismiss the fullScreenCover
-                            show3DScanOption = false
-                            
-                            logDebug("   - Updated show3DScanOption: \(show3DScanOption)")
-                            logDebug("   - View should dismiss now")
-                        }
-                    )
-                    .navigationBarItems(
-                        leading: Button("Cancel") {
-                            logDebug("❌ [SinglePhotoRoomViewer] Cancel button pressed")
-                            show3DScanOption = false
-                        }
-                    )
-                }
-                .onAppear {
-                    logDebug("🔷 [SinglePhotoRoomViewer] RoomCaptureView appeared")
-                }
-                .onDisappear {
-                    logDebug("🔶 [SinglePhotoRoomViewer] RoomCaptureView disappeared")
-                }
-            }
-        }
-        // NEW: Alert for unsupported devices
-        .alert("Device Not Supported", isPresented: $showUnsupportedAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("3D Room Scanning requires an iPhone or iPad with LiDAR sensor (iPhone 12 Pro or later, iPad Pro 2020 or later).")
         }
         .onAppear {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")

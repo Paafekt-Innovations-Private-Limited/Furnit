@@ -66,6 +66,26 @@ struct Country: Identifiable, Hashable {
     ].sorted { $0.name < $1.name }
 
     static let defaultCountry = allCountries.first { $0.code == "IN" } ?? allCountries[0]
+    
+    // ✅ Detect country based on device locale
+    static func detectCountryFromLocale() -> Country {
+        // Get the device's region code
+        if let regionCode = Locale.current.region?.identifier {
+            logDebug("🌍 [Country] Detected region code: \(regionCode)")
+            
+            // Find matching country in our list
+            if let country = allCountries.first(where: { $0.code == regionCode }) {
+                logDebug("✅ [Country] Auto-selected: \(country.name) (\(country.dialCode))")
+                return country
+            } else {
+                logDebug("⚠️ [Country] Region '\(regionCode)' not in country list, using default")
+            }
+        } else {
+            logDebug("⚠️ [Country] Could not detect region, using default")
+        }
+        
+        return defaultCountry
+    }
 }
 
 // MARK: - Country Picker View
@@ -132,7 +152,7 @@ struct LoginView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @State private var name = ""
     @State private var phoneNumber = ""
-    @State private var selectedCountry = Country.defaultCountry
+    @State private var selectedCountry = Country.detectCountryFromLocale()  // ✅ Auto-detect country
     @State private var showCountryPicker = false
     @State private var showOTPView = false
     @State private var isLoading = false

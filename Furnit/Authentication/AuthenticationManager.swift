@@ -108,14 +108,18 @@ class AuthenticationManager: ObservableObject {
         let formattedPhone = formatPhoneForFirebase(phoneNumber)
 
         // Debug logging
-        print("🔐 [Auth] Starting phone verification for: \(formattedPhone)")
-        print("🔐 [Auth] Firebase App: \(FirebaseApp.app()?.name ?? "nil")")
-        print("🔐 [Auth] Auth instance: \(Auth.auth())")
-        print("🔐 [Auth] Auth settings: \(String(describing: Auth.auth().settings))")
-        print("🔐 [Auth] Auth currentUser: \(String(describing: Auth.auth().currentUser))")
+        if AppStateManager.shared.qualitySettings.debugMode {
+            print("🔐 [Auth] Starting phone verification for: \(formattedPhone)")
+            print("🔐 [Auth] Firebase App: \(FirebaseApp.app()?.name ?? "nil")")
+            print("🔐 [Auth] Auth instance: \(Auth.auth())")
+            print("🔐 [Auth] Auth settings: \(String(describing: Auth.auth().settings))")
+            print("🔐 [Auth] Auth currentUser: \(String(describing: Auth.auth().currentUser))")
+        }
 
         let provider = PhoneAuthProvider.provider()
-        print("🔐 [Auth] PhoneAuthProvider: \(provider)")
+        if AppStateManager.shared.qualitySettings.debugMode {
+            print("🔐 [Auth] PhoneAuthProvider: \(provider)")
+        }
 
         // Firebase Phone Auth
         provider.verifyPhoneNumber(formattedPhone, uiDelegate: nil) { [weak self] verificationID, error in
@@ -124,13 +128,34 @@ class AuthenticationManager: ObservableObject {
 
                 if let error = error {
                     let nsError = error as NSError
-                    // Detailed error logging
-                    print("🔐 [Auth] ❌ ERROR DETAILS:")
-                    print("🔐 [Auth]   Code: \(nsError.code)")
-                    print("🔐 [Auth]   Domain: \(nsError.domain)")
-                    print("🔐 [Auth]   Description: \(nsError.localizedDescription)")
-                    print("🔐 [Auth]   UserInfo: \(nsError.userInfo)")
-                    print("🔐 [Auth]   Underlying error: \(String(describing: nsError.userInfo[NSUnderlyingErrorKey]))")
+                    
+                    // ✅ Detailed error logging - ONLY when debug mode is ON
+                    if AppStateManager.shared.qualitySettings.debugMode {
+                        print("🔐 [Auth] ❌ ERROR DETAILS:")
+                        print("🔐 [Auth]   Code: \(nsError.code)")
+                        print("🔐 [Auth]   Domain: \(nsError.domain)")
+                        print("🔐 [Auth]   Description: \(nsError.localizedDescription)")
+                        print("🔐 [Auth]   UserInfo: \(nsError.userInfo)")
+                        print("🔐 [Auth]   Underlying error: \(String(describing: nsError.userInfo[NSUnderlyingErrorKey]))")
+                        
+                        // ✅ Additional Firebase App Check specific logging
+                        if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+                            print("🔐 [Auth]   --- Underlying Error Details ---")
+                            print("🔐 [Auth]   Underlying Code: \(underlyingError.code)")
+                            print("🔐 [Auth]   Underlying Domain: \(underlyingError.domain)")
+                            print("🔐 [Auth]   Underlying UserInfo: \(underlyingError.userInfo)")
+                            
+                            if let failureReason = underlyingError.userInfo[NSLocalizedFailureReasonErrorKey] as? String {
+                                print("🔐 [Auth]   Failure Reason: \(failureReason)")
+                            }
+                            
+                            if let responseBody = underlyingError.userInfo["FIRAppCheckErrorResponseBodyKey"] as? String {
+                                print("🔐 [Auth]   Response Body: \(responseBody)")
+                            }
+                        }
+                    }
+                    
+                    // Always log basic error info (not debug-mode specific)
                     AppLogger.authError("OTP Error - Code: \(nsError.code), Domain: \(nsError.domain), Description: \(nsError.localizedDescription)")
 
                     // Show user-friendly message

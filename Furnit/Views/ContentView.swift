@@ -189,40 +189,50 @@ struct HomeTab: View {
     
     // MARK: - Model Row with Logging
     private func modelRow(for model: USDZModel, at index: Int) -> some View {
-        let _ = logDebug("📋 [HomeTab.modelRow] ========================================")
-        let _ = logDebug("📋 [HomeTab.modelRow] Creating row for model \(index)")
-        let _ = logDebug("   - Display name: \(model.displayName)")
-        let _ = logDebug("   - File name: \(model.fileName)")
-        let _ = logDebug("   - Is saved room: \(model.isSavedRoom)")
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+        
+        if debugMode {
+            let _ = logDebug("📋 [HomeTab.modelRow] ========================================")
+            let _ = logDebug("📋 [HomeTab.modelRow] Creating row for model \(index)")
+            let _ = logDebug("   - Display name: \(model.displayName)")
+            let _ = logDebug("   - File name: \(model.fileName)")
+            let _ = logDebug("   - Is saved room: \(model.isSavedRoom)")
+        }
         
         return Group {
             if let modelURL = model.temporaryURL {
-                let _ = logDebug("✅ [HomeTab.modelRow] URL found for: \(model.displayName)")
-                let _ = logDebug("   - URL path: \(modelURL.path)")
-                let _ = logDebug("   - File exists: \(FileManager.default.fileExists(atPath: modelURL.path))")
-                
-                let fileInfo: Void = {
-                    if FileManager.default.fileExists(atPath: modelURL.path) {
-                        do {
-                            let attributes = try FileManager.default.attributesOfItem(atPath: modelURL.path)
-                            if let fileSize = attributes[.size] as? UInt64 {
-                                logDebug("   - File size: \(fileSize) bytes (\(fileSize / 1024 / 1024) MB)")
+                if debugMode {
+                    let _ = logDebug("✅ [HomeTab.modelRow] URL found for: \(model.displayName)")
+                    let _ = logDebug("   - URL path: \(modelURL.path)")
+                    let _ = logDebug("   - File exists: \(FileManager.default.fileExists(atPath: modelURL.path))")
+                    
+                    let fileInfo: Void = {
+                        if FileManager.default.fileExists(atPath: modelURL.path) {
+                            do {
+                                let attributes = try FileManager.default.attributesOfItem(atPath: modelURL.path)
+                                if let fileSize = attributes[.size] as? UInt64 {
+                                    logDebug("   - File size: \(fileSize) bytes (\(fileSize / 1024 / 1024) MB)")
+                                }
+                            } catch {
+                                logDebug("   - Error getting file info: \(error)")
                             }
-                        } catch {
-                            logDebug("   - Error getting file info: \(error)")
                         }
-                    }
-                }()
-                let _ = fileInfo
+                    }()
+                    let _ = fileInfo
+                }
                 
                 NavigationLink(destination: ModelViewerView(model: model)) {
                     HomeViewModelRow(model: model)
                 }
                 .onAppear {
-                    let _ = logDebug("👁️ [HomeTab.modelRow] Row appeared for: \(model.displayName)")
+                    if debugMode {
+                        let _ = logDebug("👁️ [HomeTab.modelRow] Row appeared for: \(model.displayName)")
+                    }
                 }
             } else {
-                let _ = logDebug("❌ [HomeTab.modelRow] No URL for: \(model.displayName)")
+                if debugMode {
+                    let _ = logDebug("❌ [HomeTab.modelRow] No URL for: \(model.displayName)")
+                }
                 Text("❌ Model data unavailable: \(model.displayName)")
                     .foregroundColor(.red)
             }

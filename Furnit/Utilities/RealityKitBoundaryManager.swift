@@ -209,10 +209,16 @@ class RealityKitBoundaryManager {
     // Returns a tuple with camera position and look-at target
     // STRATEGY: Position camera at BACK-LEFT corner for every room
     func getOptimalCameraPosition() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
-        logDebug("🎯🎯🎯 [BoundaryManager] === BACK-LEFT CORNER CAMERA CALCULATION ===")
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+        
+        if debugMode {
+            logDebug("🎯🎯🎯 [BoundaryManager] === BACK-LEFT CORNER CAMERA CALCULATION ===")
+        }
 
         guard let bounds = roomBounds else {
-            logDebug("   ⚠️ NO BOUNDS - using default position")
+            if debugMode {
+                logDebug("   ⚠️ NO BOUNDS - using default position")
+            }
             let defaultPosition = SIMD3<Float>(0, 1.5, 3)
             let defaultLookAt = SIMD3<Float>(0, 1.4, 0)
             return (position: defaultPosition, lookAt: defaultLookAt)
@@ -221,12 +227,14 @@ class RealityKitBoundaryManager {
         let roomSize = getRoomDimensions()
         let roomCenter = getRoomCenter()
 
-        logDebug("   📦 Room bounds:")
-        logDebug("      MIN: X=\(bounds.min.x), Y=\(bounds.min.y), Z=\(bounds.min.z)")
-        logDebug("      MAX: X=\(bounds.max.x), Y=\(bounds.max.y), Z=\(bounds.max.z)")
-        logDebug("   📏 Room size: \(roomSize.x)m x \(roomSize.y)m x \(roomSize.z)m")
-        logDebug("   🎯 Room center: X=\(roomCenter.x), Y=\(roomCenter.y), Z=\(roomCenter.z)")
-        logDebug("   🧱 Boundary padding: \(boundaryPadding)m")
+        if debugMode {
+            logDebug("   📦 Room bounds:")
+            logDebug("      MIN: X=\(bounds.min.x), Y=\(bounds.min.y), Z=\(bounds.min.z)")
+            logDebug("      MAX: X=\(bounds.max.x), Y=\(bounds.max.y), Z=\(bounds.max.z)")
+            logDebug("   📏 Room size: \(roomSize.x)m x \(roomSize.y)m x \(roomSize.z)m")
+            logDebug("   🎯 Room center: X=\(roomCenter.x), Y=\(roomCenter.y), Z=\(roomCenter.z)")
+            logDebug("   🧱 Boundary padding: \(boundaryPadding)m")
+        }
 
         // Camera positioning strategy: INSIDE the room near back wall corner, looking toward front wall
         // Position camera INSIDE room at back wall corner, looking at front wall
@@ -239,10 +247,12 @@ class RealityKitBoundaryManager {
         let camX = bounds.min.x + wallPadding  // Near left wall
         let camZ = bounds.max.z - wallPadding  // Near back wall
         
-        logDebug("   📐 BACK-CORNER positioning (inside room at back wall):")
-        logDebug("   📐 Camera X: \(bounds.min.x) + \(wallPadding) = \(camX) (NEAR LEFT WALL)")
-        logDebug("   📐 Camera Y: \(roomCenter.y) (CENTER HEIGHT)")
-        logDebug("   📐 Camera Z: \(bounds.max.z) - \(wallPadding) = \(camZ) (NEAR BACK WALL)")
+        if debugMode {
+            logDebug("   📐 BACK-CORNER positioning (inside room at back wall):")
+            logDebug("   📐 Camera X: \(bounds.min.x) + \(wallPadding) = \(camX) (NEAR LEFT WALL)")
+            logDebug("   📐 Camera Y: \(roomCenter.y) (CENTER HEIGHT)")
+            logDebug("   📐 Camera Z: \(bounds.max.z) - \(wallPadding) = \(camZ) (NEAR BACK WALL)")
+        }
 
         let cameraPosition = SIMD3<Float>(camX, cameraHeight, camZ)
 
@@ -252,17 +262,19 @@ class RealityKitBoundaryManager {
         let lookZ = bounds.min.z  // FRONT wall (MIN Z) where photo is
         let lookAtPosition = SIMD3<Float>(lookX, lookY, lookZ)
 
-        logDebug("   📐 Looking at FRONT/PHOTO wall:")
-        logDebug("   📐 LookAt X: \(roomCenter.x) (CENTER)")
-        logDebug("   📐 LookAt Y: \(roomCenter.y) (CENTER HEIGHT)")
-        logDebug("   📐 LookAt Z: \(bounds.min.z) = \(lookZ) (FRONT/PHOTO wall)")
+        if debugMode {
+            logDebug("   📐 Looking at FRONT/PHOTO wall:")
+            logDebug("   📐 LookAt X: \(roomCenter.x) (CENTER)")
+            logDebug("   📐 LookAt Y: \(roomCenter.y) (CENTER HEIGHT)")
+            logDebug("   📐 LookAt Z: \(bounds.min.z) = \(lookZ) (FRONT/PHOTO wall)")
 
-        logDebug("   📷 FINAL CAMERA POSITION:")
-        logDebug("      X=\(cameraPosition.x), Y=\(cameraPosition.y), Z=\(cameraPosition.z)")
-        logDebug("   👁️ LOOK-AT POSITION:")
-        logDebug("      X=\(lookAtPosition.x), Y=\(lookAtPosition.y), Z=\(lookAtPosition.z)")
-        logDebug("   ✅ Strategy: BACK-LEFT CORNER (against walls) → looking toward front center")
-        logDebug("🎯🎯🎯 [BoundaryManager] === END CALCULATION ===")
+            logDebug("   📷 FINAL CAMERA POSITION:")
+            logDebug("      X=\(cameraPosition.x), Y=\(cameraPosition.y), Z=\(cameraPosition.z)")
+            logDebug("   👁️ LOOK-AT POSITION:")
+            logDebug("      X=\(lookAtPosition.x), Y=\(lookAtPosition.y), Z=\(lookAtPosition.z)")
+            logDebug("   ✅ Strategy: BACK-LEFT CORNER (against walls) → looking toward front center")
+            logDebug("🎯🎯🎯 [BoundaryManager] === END CALCULATION ===")
+        }
 
         return (position: cameraPosition, lookAt: lookAtPosition)
     }

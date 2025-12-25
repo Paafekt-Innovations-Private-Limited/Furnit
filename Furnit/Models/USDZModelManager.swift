@@ -15,10 +15,14 @@ class USDZModelManager: ObservableObject {
     }
     
     init() {
-        logDebug("📦 [USDZModelManager] Initializing...")
+        if AppStateManager.shared.qualitySettings.debugMode {
+            logDebug("📦 [USDZModelManager] Initializing...")
+        }
         createDirectoriesIfNeeded()
         loadModels()
-        logDebug("📦 [USDZModelManager] Initialization complete. Loaded \(models.count) models")
+        if AppStateManager.shared.qualitySettings.debugMode {
+            logDebug("📦 [USDZModelManager] Initialization complete. Loaded \(models.count) models")
+        }
     }
     
     private func createDirectoriesIfNeeded() {
@@ -26,31 +30,45 @@ class USDZModelManager: ObservableObject {
         if !fileManager.fileExists(atPath: modelsDirectory.path) {
             do {
                 try fileManager.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
-                logDebug("✅ [USDZModelManager] Created SavedRooms directory")
+                if AppStateManager.shared.qualitySettings.debugMode {
+                    logDebug("✅ [USDZModelManager] Created SavedRooms directory")
+                }
             } catch {
-                logDebug("❌ [USDZModelManager] Failed to create directory: \(error)")
+                if AppStateManager.shared.qualitySettings.debugMode {
+                    logDebug("❌ [USDZModelManager] Failed to create directory: \(error)")
+                }
             }
         }
     }
     
     private func loadModels() {
-        logDebug("📦 [USDZModelManager] Starting to load models...")
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+        
+        if debugMode {
+            logDebug("📦 [USDZModelManager] Starting to load models...")
+        }
         
         let modelNames = [
             "vintage_living_room",
             "cozy_living_room_baked"
         ]
         
-        logDebug("📦 [USDZModelManager] Loading bundle models: \(modelNames)")
+        if debugMode {
+            logDebug("📦 [USDZModelManager] Loading bundle models: \(modelNames)")
+        }
         
         // Load bundle models
         var bundleModels = modelNames.compactMap { name in
             let model = USDZModel(name: name, fileName: name, isSavedRoom: false)
             if model.dataAsset != nil {
-                logDebug("   ✅ Bundle model loaded: \(name)")
+                if debugMode {
+                    logDebug("   ✅ Bundle model loaded: \(name)")
+                }
                 return model
             } else {
-                logDebug("   ❌ Bundle model failed: \(name)")
+                if debugMode {
+                    logDebug("   ❌ Bundle model failed: \(name)")
+                }
                 return nil
             }
         }
@@ -63,7 +81,9 @@ class USDZModelManager: ObservableObject {
                                                                     includingPropertiesForKeys: [.creationDateKey, .fileSizeKey])
             let usdzFiles = files.filter { $0.pathExtension.lowercased() == "usdz" }
             
-            logDebug("📦 [USDZModelManager] Found \(usdzFiles.count) USDZ files in SavedRooms")
+            if debugMode {
+                logDebug("📦 [USDZModelManager] Found \(usdzFiles.count) USDZ files in SavedRooms")
+            }
             
             // Get files with dates
             var filesWithDates: [(url: URL, date: Date)] = []
@@ -73,36 +93,46 @@ class USDZModelManager: ObservableObject {
                 let size = attrs.fileSize ?? 0
                 filesWithDates.append((url: fileURL, date: date))
                 
-                let fileName = fileURL.deletingPathExtension().lastPathComponent
-                logDebug("   - \(fileName) (created: \(date), size: \(size / 1024) KB)")
+                if debugMode {
+                    let fileName = fileURL.deletingPathExtension().lastPathComponent
+                    logDebug("   - \(fileName) (created: \(date), size: \(size / 1024) KB)")
+                }
             }
             
             // Sort by date - NEWEST FIRST
             filesWithDates.sort { $0.date > $1.date }
             
-            logDebug("📦 [USDZModelManager] Sorted by date (newest first):")
+            if debugMode {
+                logDebug("📦 [USDZModelManager] Sorted by date (newest first):")
+            }
             
             // Create models in sorted order
             for (fileURL, date) in filesWithDates {
                 let fileName = fileURL.deletingPathExtension().lastPathComponent
-                logDebug("   - \(fileName)")
+                if debugMode {
+                    logDebug("   - \(fileName)")
+                }
                 let model = USDZModel(name: fileName, fileName: fileName, isSavedRoom: true)
                 savedRoomModels.append(model)
             }
             
         } catch {
-            logDebug("⚠️ [USDZModelManager] Error reading saved rooms: \(error)")
+            if debugMode {
+                logDebug("⚠️ [USDZModelManager] Error reading saved rooms: \(error)")
+            }
         }
         
         // Combine: saved rooms first (newest at top), then bundle models
         models = savedRoomModels + bundleModels
         
-        logDebug("📦 [USDZModelManager] Loading complete:")
-        logDebug("   - Total models: \(models.count)")
-        logDebug("   - Saved rooms: \(savedRoomModels.count)")
-        logDebug("   - Bundle models: \(bundleModels.count)")
-        if !models.isEmpty {
-            logDebug("   - First 3: \(models.prefix(3).map { $0.fileName }.joined(separator: ", "))")
+        if debugMode {
+            logDebug("📦 [USDZModelManager] Loading complete:")
+            logDebug("   - Total models: \(models.count)")
+            logDebug("   - Saved rooms: \(savedRoomModels.count)")
+            logDebug("   - Bundle models: \(bundleModels.count)")
+            if !models.isEmpty {
+                logDebug("   - First 3: \(models.prefix(3).map { $0.fileName }.joined(separator: ", "))")
+            }
         }
     }
     
@@ -111,23 +141,35 @@ class USDZModelManager: ObservableObject {
     }
     
     func refreshModels() {
-        logDebug("🔄 [USDZModelManager] Refreshing models...")
+        if AppStateManager.shared.qualitySettings.debugMode {
+            logDebug("🔄 [USDZModelManager] Refreshing models...")
+        }
         models.removeAll()
         loadModels()
-        logDebug("✅ [USDZModelManager] Refresh complete. Now have \(models.count) models")
+        if AppStateManager.shared.qualitySettings.debugMode {
+            logDebug("✅ [USDZModelManager] Refresh complete. Now have \(models.count) models")
+        }
     }
     
     // ✅ NEW: Delete model functionality
     func deleteModel(id: UUID) {
-        logDebug("🗑️ [USDZModelManager] Starting delete for model ID: \(id)")
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+        
+        if debugMode {
+            logDebug("🗑️ [USDZModelManager] Starting delete for model ID: \(id)")
+        }
         
         guard let modelIndex = models.firstIndex(where: { $0.id == id }) else {
-            logDebug("❌ [USDZModelManager] Model not found with ID: \(id)")
+            if debugMode {
+                logDebug("❌ [USDZModelManager] Model not found with ID: \(id)")
+            }
             return
         }
         
         let model = models[modelIndex]
-        logDebug("🗑️ [USDZModelManager] Found model: \(model.displayName) (isSavedRoom: \(model.isSavedRoom))")
+        if debugMode {
+            logDebug("🗑️ [USDZModelManager] Found model: \(model.displayName) (isSavedRoom: \(model.isSavedRoom))")
+        }
         
         // Only delete file if it's a saved room (not bundle model)
         if model.isSavedRoom {
@@ -136,24 +178,38 @@ class USDZModelManager: ObservableObject {
             do {
                 if FileManager.default.fileExists(atPath: fileURL.path) {
                     try FileManager.default.removeItem(at: fileURL)
-                    logDebug("✅ [USDZModelManager] File deleted: \(fileURL.lastPathComponent)")
+                    if debugMode {
+                        logDebug("✅ [USDZModelManager] File deleted: \(fileURL.lastPathComponent)")
+                    }
                 } else {
-                    logDebug("⚠️ [USDZModelManager] File not found: \(fileURL.path)")
+                    if debugMode {
+                        logDebug("⚠️ [USDZModelManager] File not found: \(fileURL.path)")
+                    }
                 }
             } catch {
-                logDebug("❌ [USDZModelManager] Failed to delete file: \(error)")
+                if debugMode {
+                    logDebug("❌ [USDZModelManager] Failed to delete file: \(error)")
+                }
             }
         } else {
-            logDebug("⚠️ [USDZModelManager] Skipping file deletion - this is a bundle model")
+            if debugMode {
+                logDebug("⚠️ [USDZModelManager] Skipping file deletion - this is a bundle model")
+            }
         }
         
         // Remove from models array
         models.remove(at: modelIndex)
-        logDebug("✅ [USDZModelManager] Model removed from list. Remaining: \(models.count)")
+        if debugMode {
+            logDebug("✅ [USDZModelManager] Model removed from list. Remaining: \(models.count)")
+        }
     }
     
     func saveRoom(scene: SCNScene, name: String, completion: @escaping (Bool, String?) -> Void) {
-        logDebug("💾 [USDZModelManager] Starting to save room: \(name)")
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+        
+        if debugMode {
+            logDebug("💾 [USDZModelManager] Starting to save room: \(name)")
+        }
         
         let fileName = sanitizeFileName(name)
         let fileURL = modelsDirectory.appendingPathComponent("\(fileName).usdz")
@@ -164,7 +220,9 @@ class USDZModelManager: ObservableObject {
         // Export scene to USDZ
         scene.write(to: fileURL, options: nil, delegate: nil) { progress, error, _ in
             if let error = error {
-                logDebug("❌ [USDZModelManager] Export failed: \(error)")
+                if debugMode {
+                    logDebug("❌ [USDZModelManager] Export failed: \(error)")
+                }
                 DispatchQueue.main.async {
                     completion(false, error.localizedDescription)
                 }
@@ -172,7 +230,9 @@ class USDZModelManager: ObservableObject {
             }
             
             if progress >= 1.0 {
-                logDebug("✅ [USDZModelManager] Export complete: \(fileURL.lastPathComponent)")
+                if debugMode {
+                    logDebug("✅ [USDZModelManager] Export complete: \(fileURL.lastPathComponent)")
+                }
                 
                 // Refresh models list after save
                 DispatchQueue.main.async {
@@ -184,7 +244,11 @@ class USDZModelManager: ObservableObject {
     }
     
     private func addLightingToScene(_ scene: SCNScene) {
-        logDebug("💡 [USDZModelManager] Adding lighting to scene...")
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+        
+        if debugMode {
+            logDebug("💡 [USDZModelManager] Adding lighting to scene...")
+        }
         
         // Remove any existing lights to avoid conflicts
         scene.rootNode.childNodes.filter { $0.light != nil }.forEach { $0.removeFromParentNode() }
@@ -197,7 +261,9 @@ class USDZModelManager: ObservableObject {
         let ambientNode = SCNNode()
         ambientNode.light = ambientLight
         scene.rootNode.addChildNode(ambientNode)
-        logDebug("   ✅ Added ambient light (intensity: 300)")
+        if debugMode {
+            logDebug("   ✅ Added ambient light (intensity: 300)")
+        }
         
         // Add directional light from above (like sun)
         let directionalLight = SCNLight()
@@ -211,7 +277,9 @@ class USDZModelManager: ObservableObject {
         directionalNode.position = SCNVector3(0, 5, 0)
         directionalNode.eulerAngles = SCNVector3(-Float.pi / 3, 0, 0) // Angle downward
         scene.rootNode.addChildNode(directionalNode)
-        logDebug("   ✅ Added directional light (intensity: 800)")
+        if debugMode {
+            logDebug("   ✅ Added directional light (intensity: 800)")
+        }
         
         // Add fill light from front (helps with shadows)
         let fillLight = SCNLight()
@@ -222,9 +290,13 @@ class USDZModelManager: ObservableObject {
         fillNode.light = fillLight
         fillNode.position = SCNVector3(0, 1.5, 3)
         scene.rootNode.addChildNode(fillNode)
-        logDebug("   ✅ Added fill light (intensity: 400)")
+        if debugMode {
+            logDebug("   ✅ Added fill light (intensity: 400)")
+        }
         
-        logDebug("💡 [USDZModelManager] Lighting setup complete")
+        if debugMode {
+            logDebug("💡 [USDZModelManager] Lighting setup complete")
+        }
     }
     
     private func sanitizeFileName(_ name: String) -> String {
