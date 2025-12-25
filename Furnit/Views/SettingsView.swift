@@ -64,6 +64,29 @@ struct SettingsView: View {
                         .font(.footnote)
                 }
 
+                // Developer Settings Section
+                Section {
+                    Toggle(isOn: $appState.qualitySettings.debugMode) {
+                        HStack {
+                            Image(systemName: "ladybug.fill")
+                                .foregroundColor(.purple)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Debug Mode")
+                                    .font(.headline)
+                                Text("Show detection boxes and timing information")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.purple)
+                } header: {
+                    Text("Developer")
+                } footer: {
+                    Text("Enable debug mode to see detailed detection information and performance metrics in the SmartyPants view.")
+                        .font(.footnote)
+                }
+
                 // Account Section
                 Section {
                     if let user = authManager.currentUser {

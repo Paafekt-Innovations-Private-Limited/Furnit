@@ -16,8 +16,9 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     var confidenceThreshold: Float = 0.15
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
-    var debugMode: Bool = false
     var active: Bool = false
+    
+    @ObservedObject private var appState = AppStateManager.shared
 
     func makeUIView(context: Context) -> SmartyPantsContainerView {
         let v = SmartyPantsContainerView()
@@ -25,7 +26,6 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         v.confidenceThreshold = confidenceThreshold
         v.iouThreshold = iouThreshold
         v.useBilinearUpscaling = useBilinearUpscaling
-        v.debugMode = debugMode
         v.setModel(mlModel)
         if active { v.startIfNeeded() }
         return v
@@ -37,7 +37,6 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         uiView.confidenceThreshold = confidenceThreshold
         uiView.iouThreshold = iouThreshold
         uiView.useBilinearUpscaling = useBilinearUpscaling
-        uiView.debugMode = debugMode
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 
@@ -62,7 +61,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var confidenceThreshold: Float = 0.15
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
-    var debugMode: Bool = false
+    
+    // Debug mode - read from settings
+    var debugMode: Bool {
+        return AppStateManager.shared.qualitySettings.debugMode
+    }
     
     // MARK: - Ignored Classes (loaded from blacklist.json)
     private lazy var clsToIgnore: Set<Int> = {

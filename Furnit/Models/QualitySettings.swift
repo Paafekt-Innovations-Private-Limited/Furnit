@@ -142,9 +142,17 @@ class QualitySettings: ObservableObject {
         }
     }
 
+    // Debug mode toggle (published for UI updates)
+    @Published var debugMode: Bool {
+        didSet {
+            saveDebugMode()
+        }
+    }
+
     // UserDefaults keys for persistence
     private let qualityKey = "selected_asset_quality"
     private let movementSpeedKey = "selected_movement_speed"
+    private let debugModeKey = "debug_mode"
     
     // Initialize with saved quality or default to high
     init() {
@@ -164,6 +172,9 @@ class QualitySettings: ObservableObject {
             // Default to normal speed if no saved preference
             self.selectedMovementSpeed = .normal
         }
+
+        // Load debug mode setting, default to false
+        self.debugMode = UserDefaults.standard.bool(forKey: debugModeKey)
     }
     
     // Save quality setting to UserDefaults
@@ -176,6 +187,12 @@ class QualitySettings: ObservableObject {
     private func saveMovementSpeed() {
         UserDefaults.standard.set(selectedMovementSpeed.rawValue, forKey: movementSpeedKey)
         logDebug("💾 Saved movement speed setting: \(selectedMovementSpeed.displayName)")
+    }
+
+    // Save debug mode setting to UserDefaults
+    private func saveDebugMode() {
+        UserDefaults.standard.set(debugMode, forKey: debugModeKey)
+        logDebug("💾 Saved debug mode setting: \(debugMode)")
     }
     
     // Get all available quality options for UI
@@ -214,6 +231,7 @@ class QualitySettings: ObservableObject {
     func resetToDefault() {
         selectedQuality = .high
         selectedMovementSpeed = .normal
+        debugMode = false
     }
 }
 
