@@ -40,10 +40,12 @@ struct HomeViewWithBottomBar: View {
 struct HomeTab: View {
     @ObservedObject var authManager: AuthenticationManager
     @StateObject private var modelManager = USDZModelManager()
+    @StateObject private var limitManager = RoomLimitManager.shared
     @State private var showingSettings = false
     @State private var showingPhotoRoomCreator = false
     @State private var showDeleteAlert = false
     @State private var roomToDelete: USDZModel?
+    @State private var showingLimitAlert = false
     
     var body: some View {
         NavigationStack {
@@ -59,7 +61,7 @@ struct HomeTab: View {
                         
                         // Quick action button for empty state
                         Button(action: {
-                            showingPhotoRoomCreator = true
+                            checkRoomLimitAndCreate()
                         }) {
                             HStack {
                                 Image(systemName: "photo.badge.plus")
@@ -78,6 +80,23 @@ struct HomeTab: View {
                     }
                 } else {
                     VStack(spacing: 0) {
+                        // Room limit banner
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("\(limitManager.remainingRooms()) of \(limitManager.roomLimit) rooms remaining")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                if limitManager.remainingRooms() <= 3 {
+                                    Text("Delete old rooms to create new ones")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                        }
+                        .padding()
+                        .background(limitManager.remainingRooms() <= 3 ? Color.orange.opacity(0.1) : Color(.systemGroupedBackground))
+                        
                         // ✅ Delete hint
                         HStack {
                             Text("💡 Swipe left to delete")
@@ -121,7 +140,7 @@ struct HomeTab: View {
                 // Upload Photo Button
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
-                        showingPhotoRoomCreator = true
+                        checkRoomLimitAndCreate()
                     } label: {
                         Image(systemName: "photo.badge.plus")
                             .font(.title3)
@@ -155,16 +174,24 @@ struct HomeTab: View {
             .onChange(of: showingPhotoRoomCreator) { _, isShowing in
                 if !isShowing {
                     modelManager.refreshModels()
+                    limitManager.updateRoomCount()
                 }
             }
             // Listen for room save completion to dismiss sheet
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("DismissPhotoRoomSheet"))) { _ in
                 showingPhotoRoomCreator = false
+                limitManager.updateRoomCount()
             }
             // Settings Sheet
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
                     .environmentObject(authManager)
+            }
+            // Room Limit Alert
+            .alert("Room Limit Reached", isPresented: $showingLimitAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("You've reached the limit of \(limitManager.roomLimit) rooms. Delete some rooms to create new ones.")
             }
             // ✅ DELETE CONFIRMATION ALERT ADDED HERE
             .alert("Delete Room?", isPresented: $showDeleteAlert) {
@@ -187,6 +214,20 @@ struct HomeTab: View {
                 logDebug("🏠 [HomeTab] onAppear - Models count: \(modelManager.models.count)")
                 logDebug("🏠 [HomeTab] Models: \(modelManager.models.map { "displayName: \($0.displayName), fileName: \($0.fileName)" })")
             }
+            limitManager.updateRoomCount()
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    /// Check room limit before creating a new room
+    private func checkRoomLimitAndCreate() {
+        limitManager.updateRoomCount()
+        
+        if limitManager.canCreateMoreRooms() {
+            showingPhotoRoomCreator = true
+        } else {
+            showingLimitAlert = true
         }
     }
     
@@ -195,6 +236,7 @@ struct HomeTab: View {
         logDebug("🗑️ [HomeTab] Deleting room: \(room.displayName)")
         modelManager.deleteModel(id: room.id)
         roomToDelete = nil
+        limitManager.updateRoomCount()
     }
     
     // MARK: - Model Row with Logging
