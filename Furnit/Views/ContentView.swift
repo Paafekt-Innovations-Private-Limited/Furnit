@@ -157,6 +157,10 @@ struct HomeTab: View {
                     modelManager.refreshModels()
                 }
             }
+            // Listen for room save completion to dismiss sheet
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("DismissPhotoRoomSheet"))) { _ in
+                showingPhotoRoomCreator = false
+            }
             // Settings Sheet
             .sheet(isPresented: $showingSettings) {
                 SettingsView()

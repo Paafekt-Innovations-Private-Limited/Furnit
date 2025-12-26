@@ -1113,7 +1113,8 @@ struct SceneKitViewer: View {
         .alert("Room Save", isPresented: $showSaveAlert) {
             Button("OK", role: .cancel) {
                 if saveAlertMessage.contains("successfully") {
-                    dismiss() // Go back to list after successful save
+                    // Post notification to dismiss the entire photo room sheet
+                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
                 }
             }
         } message: {
