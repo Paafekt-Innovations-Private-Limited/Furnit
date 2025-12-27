@@ -505,8 +505,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             
             guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
             
-            let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-            cblas_scopy(Int32(numClasses), basePtr, Int32(stride), &tempScores, 1)
+                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
+                // Copy the class scores for this anchor into a temporary array.  We avoid
+                // the deprecated BLAS `scopy` routine by performing a simple strided copy.
+                for i in 0..<numClasses {
+                    tempScores[i] = basePtr[i * stride]
+                }
             
             var maxVal: Float = 0
             var maxIdx: vDSP_Length = 0
@@ -517,8 +521,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             guard maxVal > confidenceThreshold, !clsToIgnore.contains(classIdx) else { continue }
             
             var coeffs = [Float](repeating: 0, count: 32)
-            let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-            cblas_scopy(32, coeffBase, Int32(stride), &coeffs, 1)
+                let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
+                // Copy the 32 prototype coefficients for this detection into a contiguous array.
+                for i in 0..<32 {
+                    coeffs[i] = coeffBase[i * stride]
+                }
             
             allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: maxVal, classIdx: classIdx, coeffs: coeffs))
         }
@@ -601,26 +608,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // STAGE 10: Reorganize prototypes
         let t10 = Date()
         
-        // Construct matrix A of size (planeSize x 32) in row-major order.
+        // Construct matrix A of size (planeSize x 32) in row‑major order.
         // Each of the 32 prototype planes has size `planeSize` and is stored contiguously
         // in `planes`.  To reorganize these into a matrix where each row corresponds to a pixel
-        // and each column corresponds to a prototype, copy each plane into the appropriate
-        // column of `A`.  Using cblas_scopy here avoids the overhead of vDSP_vsadd and
-        // preserves the original memory layout.
+        // and each column corresponds to a prototype, manually copy each plane into the appropriate
+        // column of `A`.  A simple nested loop avoids the deprecated BLAS copy routine and
+        // preserves the memory layout without introducing additional dependencies.
         var A = [Float](repeating: 0, count: planeSize * 32)
-        planes.withUnsafeBufferPointer { srcPtr in
-            A.withUnsafeMutableBufferPointer { dstPtr in
-                // Copy each of the 32 prototype planes into the appropriate column of A.
-                // We use cblas_scopy for a strided copy, casting the count and stride
-                // parameters to Int32 as required by the current BLAS interface.  This
-                // avoids manual loops while remaining compatible with the compiler.
-                for k in 0..<32 {
-                    let srcPlaneStart = srcPtr.baseAddress!.advanced(by: k * planeSize)
-                    let dstColStart = dstPtr.baseAddress!.advanced(by: k)
-                    cblas_scopy(Int32(planeSize),
-                                srcPlaneStart, 1,
-                                dstColStart, 32)
-                }
+        for k in 0..<32 {
+            let srcStart = k * planeSize
+            for i in 0..<planeSize {
+                // destination index is (row * numberOfColumns) + column
+                A[i * 32 + k] = planes[srcStart + i]
             }
         }
         
@@ -636,20 +635,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // A is (planeSize x 32) in row-major where each row (pixel) has 32 prototype values.
         // We'll compute logits = A * coeffs (SGEMV) and threshold at 0.
         func logitsForDetection(_ coeffs: [Float]) -> [Float] {
+            // Compute logits = A * coeffs for a single detection.  We avoid the deprecated
+            // BLAS `sgemv` routine by using vDSP_mmul, which performs a general matrix
+            // multiply.  With N = 1, this multiplies the (planeSize × 32) matrix `A`
+            // by a (32 × 1) vector `coeffs` to produce a (planeSize × 1) result.
             var result = [Float](repeating: 0, count: planeSize)
-            var alpha: Float = 1.0
-            var beta: Float = 0.0
-            // cblas_sgemv with row-major: y = alpha*A*x + beta*y
             A.withUnsafeBufferPointer { aPtr in
                 coeffs.withUnsafeBufferPointer { xPtr in
                     result.withUnsafeMutableBufferPointer { yPtr in
-                        cblas_sgemv(CblasRowMajor, CblasNoTrans,
-                                    Int32(planeSize), Int32(32),
-                                    alpha,
-                                    aPtr.baseAddress!, Int32(32),
-                                    xPtr.baseAddress!, 1,
-                                    beta,
-                                    yPtr.baseAddress!, 1)
+                        vDSP_mmul(aPtr.baseAddress!, 1,
+                                   xPtr.baseAddress!, 1,
+                                   yPtr.baseAddress!, 1,
+                                   vDSP_Length(planeSize), 1, vDSP_Length(32))
                     }
                 }
             }
@@ -664,7 +661,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         // Primary mask in prototype space
         let primaryLogits = logitsForDetection(primary.coeffs)
-        let primaryMaskSmall = maskFromLogits(primaryLogits)
+        // We compute the primary logits to filter other detections, but the resulting mask
+        // is not used directly.  Discard the value to avoid an unused variable warning.
+        _ = maskFromLogits(primaryLogits)
 
         // Helper: compute fraction of PRIMARY mask covered by candidate mask (in prototype space)
         func intersectionCoverage(candidateCoeffs: [Float]) -> Float {
@@ -779,10 +778,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             // Stage 13: Compute per-pixel max logits across detections
             var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
 
-            let M = Int32(planeSize)
-            let K = Int32(32)
-            var alpha: Float = 1
-            var beta: Float = 0
+            // Dimensions for matrix multiplication.  PlaneSize corresponds to the number of rows in
+            // `A` and 32 corresponds to the number of columns.  These constants are provided for
+            // clarity but are not used directly when calling vDSP routines.
+            let _ = planeSize
+            let _ = 32
 
             // If list is small, SGEMV + vmax is usually faster than SGEMM + per-pixel reductions.
             let smallN = detections.count <= 8
@@ -791,17 +791,14 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 var tmp = [Float](repeating: 0, count: planeSize)
 
                 for d in detections {
-                    // tmp = A * coeffs  (A is planeSize x 32, row-major, lda = 32)
-                    tmp.withUnsafeMutableBufferPointer { yPtr in
-                        A.withUnsafeBufferPointer { aPtr in
-                            d.coeffs.withUnsafeBufferPointer { xPtr in
-                                cblas_sgemv(CblasRowMajor, CblasNoTrans,
-                                            M, K,
-                                            alpha,
-                                            aPtr.baseAddress!, K,
-                                            xPtr.baseAddress!, 1,
-                                            beta,
-                                            yPtr.baseAddress!, 1)
+                    // Compute tmp = A * coeffs for this detection using vDSP_mmul
+                    A.withUnsafeBufferPointer { aPtr in
+                        d.coeffs.withUnsafeBufferPointer { xPtr in
+                            tmp.withUnsafeMutableBufferPointer { yPtr in
+                                vDSP_mmul(aPtr.baseAddress!, 1,
+                                           xPtr.baseAddress!, 1,
+                                           yPtr.baseAddress!, 1,
+                                           vDSP_Length(planeSize), 1, vDSP_Length(32))
                             }
                         }
                     }
@@ -821,8 +818,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
                 while bStart < detections.count {
                     let bEnd = min(detections.count, bStart + batchSize)
-                    let Bn = bEnd - bStart
-                    let N = Int32(Bn)
+                        let Bn = bEnd - bStart
 
                     // B is K x N in row-major layout as (k major, n minor): B[k*N + j]
                     var B = [Float](repeating: 0, count: 32 * Bn)
@@ -834,18 +830,19 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     // C is M x N (row-major), each row is contiguous length N
                     var C = [Float](repeating: 0, count: planeSize * Bn)
 
-                    A.withUnsafeBufferPointer { aPtr in
-                        B.withUnsafeBufferPointer { bPtr in
-                            C.withUnsafeMutableBufferPointer { cPtr in
-                                cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                                            M, N, K, alpha,
-                                            aPtr.baseAddress!, K,
-                                            bPtr.baseAddress!, N,
-                                            beta,
-                                            cPtr.baseAddress!, N)
+                        A.withUnsafeBufferPointer { aPtr in
+                            B.withUnsafeBufferPointer { bPtr in
+                                C.withUnsafeMutableBufferPointer { cPtr in
+                                    // Compute C = A * B using vDSP_mmul.  A is (planeSize × 32),
+                                    // B is (32 × Bn), and C will be (planeSize × Bn).  All matrices
+                                    // are stored in row‑major order.
+                                    vDSP_mmul(aPtr.baseAddress!, 1,
+                                              bPtr.baseAddress!, 1,
+                                              cPtr.baseAddress!, 1,
+                                              vDSP_Length(planeSize), vDSP_Length(Bn), vDSP_Length(32))
+                                }
                             }
                         }
-                    }
 
                     // Reduce C row-wise into maxLogits (tight loop; N is small-ish, so a simple loop is fine)
                     C.withUnsafeBufferPointer { cPtr in
@@ -880,26 +877,16 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                                        modelInput: 1280, origW: origW, origH: origH,
                                        resizeGain: resizeGain, padX: padX, padY: padY)
 
-            let fullSize = origW * origH
-            var srcBuffer = vImage_Buffer(data: &maskFull, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-            var dilated = [UInt8](repeating: 0, count: fullSize)
-            var dilatedBuffer = vImage_Buffer(data: &dilated, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-            var closed = [UInt8](repeating: 0, count: fullSize)
-            var closedBuffer = vImage_Buffer(data: &closed, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-//            var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
-//            kernel.withUnsafeBufferPointer { kPtr in
-//                vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-//                vImageErode_Planar8(&dilatedBuffer, &closedBuffer, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-//            }
-
-//            return (closed, positiveCount)
-            return (maskFull, positiveCount)
+                // We previously created intermediate buffers for morphological closing (dilation + erosion)
+                // using vImage but they were never used.  Returning the upscaled mask directly avoids
+                // unnecessary allocations and suppresses compilation warnings about unused variables.
+                return (maskFull, positiveCount)
         }
 
 
         // STAGE 13–15b: Build initial mask from kept2 (pre-bbox filter)
         let t13to15b = Date()
-        var build1 = buildFullMask(from: kept2)
+        let build1 = buildFullMask(from: kept2)
         var maskFull = build1.maskFull
         if debugMode {
             logDebug("⏱️ STAGE 13–15b - Build mask (pre-bbox): \(String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)) ms, positive: \(build1.positiveCount)")
@@ -1037,7 +1024,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             // Configure text drawing
             let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
             
-            for (index, d) in kept2.enumerated() {
+            for d in kept2 {
                 let dx1 = Int(round((d.x - d.w * 0.5 - padX) / resizeGain))
                 let dy1 = Int(round((d.y - d.h * 0.5 - padY) / resizeGain))
                 let dx2 = Int(round((d.x + d.w * 0.5 - padX) / resizeGain))
@@ -1045,8 +1032,9 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 
                 let clampedX1 = max(0, dx1)
                 let clampedY1 = max(0, dy1)
-                let clampedW = min(origW - clampedX1, dx2 - dx1)
-                let clampedH = min(origH - clampedY1, dy2 - dy1)
+                // Compute width/height if needed for label alignment (not used here).
+                let _ = min(origW - clampedX1, dx2 - dx1)
+                let _ = min(origH - clampedY1, dy2 - dy1)
                 
                 // Use white color for labels (more neutral)
                 let detectionColor = UIColor.white
@@ -1214,8 +1202,13 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         if proto.dataType == .float16 {
             let src = proto.dataPointer.bindMemory(to: UInt16.self, capacity: total)
             var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(total), rowBytes: total * 2)
-            var dstBuf = vImage_Buffer(data: &rawFloats, height: 1, width: vImagePixelCount(total), rowBytes: total * 4)
-            vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+            // Use withUnsafeMutableBufferPointer to create a destination buffer whose pointer
+            // lifetime is guaranteed for the duration of the conversion.  This avoids passing
+            // an inout expression directly to vImage_Buffer initializers.
+            rawFloats.withUnsafeMutableBufferPointer { dstPtr in
+                var dstBuf = vImage_Buffer(data: dstPtr.baseAddress!, height: 1, width: vImagePixelCount(total), rowBytes: total * 4)
+                vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+            }
         } else if proto.dataType == .float32 {
             memcpy(&rawFloats, proto.dataPointer, total * MemoryLayout<Float>.size)
         }
