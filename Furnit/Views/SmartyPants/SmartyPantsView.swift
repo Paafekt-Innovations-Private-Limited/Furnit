@@ -27,7 +27,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         v.iouThreshold = iouThreshold
         v.useBilinearUpscaling = useBilinearUpscaling
         v.setModel(mlModel)
-        if active { v.startIfNeeded() }
+        // Do not auto-start here; starting is coordinated in updateUIView to respect video-test mode
         return v
     }
 
@@ -37,7 +37,11 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         uiView.confidenceThreshold = confidenceThreshold
         uiView.iouThreshold = iouThreshold
         uiView.useBilinearUpscaling = useBilinearUpscaling
-        if active { uiView.startIfNeeded() } else { uiView.stop() }
+        if active && !(uiView.value(forKey: "isRunningVideoTest") as? Bool ?? false) {
+            uiView.startIfNeeded()
+        } else if !active {
+            uiView.stop()
+        }
     }
 
     static func dismantleUIView(_ uiView: SmartyPantsContainerView, coordinator: ()) {
@@ -62,10 +66,57 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
     
+    private let videoPicker = VideoPicker()
+    private var videoFeeder: VideoFrameFeeder?
+    private var isRunningVideoTest = false
+    
     // Debug mode - read from settings
     var debugMode: Bool {
         return AppStateManager.shared.qualitySettings.debugMode
     }
+    
+    func pickAndRunTestVideo() {
+        logDebug("🎞️ pickAndRunTestVideo() called")
+        // Proactively stop camera before presenting picker to avoid capture contention
+        stop()
+        isRunningVideoTest = true
+        logDebug("🛑 Stopped capture session before presenting picker")
+        guard let vc = self.parentViewController else {
+            logDebug("❌ pickAndRunTestVideo: parentViewController not found — cannot present picker")
+            return
+        }
+
+        videoPicker.onPickedURL = { [weak self] url in
+            guard let self else { return }
+            logDebug("✅ Video picked: \(url.lastPathComponent)")
+            self.startVideoTest(url: url)     // uses AVAssetReader feeder
+        }
+
+        videoPicker.present(from: vc)
+        logDebug("📷 Presenting video picker")
+    }
+
+    func startVideoTest(url: URL) {
+        logDebug("▶️ startVideoTest with URL: \(url.absoluteString)")
+        // Stop camera if running
+        stop()
+        isRunningVideoTest = true
+
+        stopVideoTest()
+        videoFeeder = VideoFrameFeeder(url: url)
+        logDebug("🚚 VideoFrameFeeder created (targetFPS=\(self.videoFeeder?.targetFPS ?? 0))")
+        videoFeeder?.targetFPS = 10 // slower = easier debugging
+        videoFeeder?.onFrame = { [weak self] pb in
+            if self?.debugMode == true { logDebug("🖼️ Received test frame — processing…") }
+            guard let self else { return }
+            self.detectionQueue.async { [weak self] in
+                self?.processFrame(pb) // reuse your existing pipeline
+            }
+        }
+        videoFeeder?.start(loop: true)
+        logDebug("🔁 Video feeder started (loop=true)")
+    }
+
     
     // MARK: - Ignored Classes (loaded from blacklist.json)
     private lazy var clsToIgnore: Set<Int> = {
@@ -207,7 +258,21 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         maskImageView.addGestureRecognizer(panGesture)
         
         setupCamera()
+        NotificationCenter.default.addObserver(self, selector: #selector(handleRunTestVideoNotification), name: Notification.Name("SmartyPantsRunTestVideo"), object: nil)
         if debugMode { logDebug("✅ SmartyPantsContainerView initialized") }
+    }
+    
+    deinit {
+        stopVideoTest()
+        NotificationCenter.default.removeObserver(self, name: Notification.Name("SmartyPantsRunTestVideo"), object: nil)
+    }
+    
+    @objc private func handleRunTestVideoNotification() {
+        logDebug("📥 Received notification: SmartyPantsRunTestVideo — will open video picker")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.pickAndRunTestVideo()
+        }
     }
     
     override func layoutSubviews() {
@@ -236,6 +301,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     }
     
     func startIfNeeded() {
+        guard !isRunningVideoTest else { return }
         hasFirstDetection = false
         setProgress(0.05, text: "Starting camera…")
         requestCameraPermissionAndStart()
@@ -247,6 +313,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                 self.captureSession.stopRunning()
             }
         }
+    }
+    
+    private func stopVideoTest() {
+        videoFeeder?.stop()
+        videoFeeder = nil
+        isRunningVideoTest = false
     }
 
     // MARK: - Camera Setup
@@ -280,15 +352,17 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     private func requestCameraPermissionAndStart() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            if !captureSession.isRunning {
+            if !self.isRunningVideoTest && !self.captureSession.isRunning {
                 DispatchQueue.global(qos: .userInitiated).async {
-                    self.captureSession.startRunning()
+                    if !self.isRunningVideoTest { self.captureSession.startRunning() }
                 }
             }
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 if granted {
-                    DispatchQueue.global(qos: .userInitiated).async { self.captureSession.startRunning() }
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        if !self.isRunningVideoTest { self.captureSession.startRunning() }
+                    }
                 }
             }
         default: break
@@ -1362,6 +1436,14 @@ extension UIView {
             responder = r.next
         }
         return nil
+    }
+}
+
+extension SmartyPantsContainerView {
+    func triggerVideoPicker() {
+        DispatchQueue.main.async { [weak self] in
+            self?.pickAndRunTestVideo()
+        }
     }
 }
 

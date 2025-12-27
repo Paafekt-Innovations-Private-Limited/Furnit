@@ -38,6 +38,8 @@ struct ModelViewerView: View {
     @State private var showFurnitureHint = true
 
     @State private var isCapturingSnapshot = false
+    
+    @State private var runVideoPickerTrigger = false
 
 //    // Edge fill mode for SmartyPants segmentation
 //    @State private var selectedEdgeFillMode: EdgeFillMode = .chairType
@@ -71,6 +73,7 @@ struct ModelViewerView: View {
                         ZStack {
                             SmartyPantsUIView(
                                 capturedImage: $capturedImage,
+                                runVideoPickerTrigger: $runVideoPickerTrigger,
                                 roomImage: roomSnapshot,
                                 mlModel: mlModel,
                                 processInterval: 0.07,
@@ -112,8 +115,89 @@ struct ModelViewerView: View {
                     Spacer()
                     HStack {
                         VStack(spacing: 16) {
-                            smartyPantsButton  // BRAIN ICON AT TOP LEVEL
-                                .allowsHitTesting(true)
+                            VStack(spacing: 14) {
+                                // Video button
+                                Button(action: {
+                                    logDebug("VIDEO FLOW: tap received")
+                                    logDebug("🎬 Video button tapped — will ensure overlay and trigger video picker directly")
+                                    // Ensure SmartyPants overlay is visible so the container view exists
+                                    if !showingSmartyPants {
+                                        // Hide other overlays
+                                        showingCameraPreview = false
+                                        showingSegmentExamine = false
+                                        showingSegmentForeground = false
+                                        showingSegmentFurniture = false
+
+                                        logDebug("VIDEO FLOW: requesting snapshot")
+                                        // Trigger ARView snapshot for consistency with SmartyPants flow
+                                        shouldCaptureARViewSnapshot = true
+
+                                        // Show SmartyPants overlay after snapshot, then trigger picker
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                            logDebug("VIDEO FLOW: showing SmartyPants overlay (not brain)")
+                                            self.showingSmartyPants = true
+                                            logDebug("🧠 SmartyPants overlay shown — triggering video picker")
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                                logDebug("VIDEO FLOW: setting runVideoPickerTrigger = true")
+                                                self.runVideoPickerTrigger = true
+                                            }
+                                        }
+                                    } else {
+                                        logDebug("VIDEO FLOW: overlay already visible — triggering picker now")
+                                        // Overlay already visible — trigger immediately
+                                        self.runVideoPickerTrigger = true
+                                    }
+                                }) {
+                                    Image(systemName: "video")
+                                        .font(.system(size: 22, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .frame(width: 44, height: 44)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.blue)
+                                        )
+                                }
+                                .contentShape(Circle())
+                                .frame(width: 60, height: 60)
+
+                                // Spacer to ensure no hit area overlap
+                                Spacer().frame(height: 6).allowsHitTesting(false)
+
+                                // Brain button
+                                Button(action: {
+                                    logDebug("BRAIN FLOW: tap received")
+                                    // Dismiss hint on first touch
+                                    showFurnitureHint = false
+                                    
+                                    if showingSmartyPants {
+                                        showingSmartyPants = false
+                                    } else {
+                                        logDebug("BRAIN FLOW: requesting snapshot")
+                                        // Trigger ARView snapshot
+                                        shouldCaptureARViewSnapshot = true
+                                        
+                                        // Hide other overlays
+                                        showingCameraPreview = false
+                                        showingSegmentExamine = false
+                                        showingSegmentForeground = false
+                                        showingSegmentFurniture = false
+                                        
+                                        // Wait briefly for snapshot to complete
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                            logDebug("BRAIN FLOW: showing SmartyPants overlay")
+                                            self.showingSmartyPants = true
+                                        }
+                                    }
+                                }) {
+                                    Image(systemName: "brain.head.profile")
+                                        .font(.system(size: 28))
+                                        .foregroundColor(.white)
+                                        .frame(width: 60, height: 60)
+                                        .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+                                }
+                                .contentShape(Circle())
+                                .frame(width: 76, height: 76)
+                            }
                         }
                         .padding(.leading, 16)
                         .padding(.bottom, 20)
@@ -581,6 +665,7 @@ struct ModelViewerView: View {
 
 struct SmartyPantsUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
+    @Binding var runVideoPickerTrigger: Bool
     
     var roomImage: UIImage?
     var mlModel: MLModel?
@@ -598,6 +683,19 @@ struct SmartyPantsUIView: UIViewRepresentable {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
 //        uiView.scoreThreshold = scoreThreshold
+        
+        // If the trigger is set, invoke the video picker and reset the flag
+        if runVideoPickerTrigger {
+            if let container = uiView as? SmartyPantsContainerView {
+                logDebug("🎯 runVideoPickerTrigger observed in representable — calling triggerVideoPicker()")
+                container.triggerVideoPicker()
+            } else {
+                logDebug("⚠️ Unable to cast to SmartyPantsContainerView for triggerVideoPicker")
+            }
+            // Reset trigger to avoid repeated calls
+            DispatchQueue.main.async { self.runVideoPickerTrigger = false }
+        }
+        
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }
