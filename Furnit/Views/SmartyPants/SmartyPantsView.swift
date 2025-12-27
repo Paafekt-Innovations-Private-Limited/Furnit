@@ -601,14 +601,25 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         // STAGE 10: Reorganize prototypes
         let t10 = Date()
         
+        // Construct matrix A of size (planeSize x 32) in row-major order.
+        // Each of the 32 prototype planes has size `planeSize` and is stored contiguously
+        // in `planes`.  To reorganize these into a matrix where each row corresponds to a pixel
+        // and each column corresponds to a prototype, copy each plane into the appropriate
+        // column of `A`.  Using cblas_scopy here avoids the overhead of vDSP_vsadd and
+        // preserves the original memory layout.
         var A = [Float](repeating: 0, count: planeSize * 32)
-        var zero: Float = 0
-        A.withUnsafeMutableBufferPointer { dstPtr in
-            planes.withUnsafeBufferPointer { srcPtr in
+        planes.withUnsafeBufferPointer { srcPtr in
+            A.withUnsafeMutableBufferPointer { dstPtr in
+                // Copy each of the 32 prototype planes into the appropriate column of A.
+                // We use cblas_scopy for a strided copy, casting the count and stride
+                // parameters to Int32 as required by the current BLAS interface.  This
+                // avoids manual loops while remaining compatible with the compiler.
                 for k in 0..<32 {
-                    let srcStart = srcPtr.baseAddress!.advanced(by: k * planeSize)
-                    let dstStart = dstPtr.baseAddress!.advanced(by: k)
-                    vDSP_vsadd(srcStart, 1, &zero, dstStart, 32, vDSP_Length(planeSize))
+                    let srcPlaneStart = srcPtr.baseAddress!.advanced(by: k * planeSize)
+                    let dstColStart = dstPtr.baseAddress!.advanced(by: k)
+                    cblas_scopy(Int32(planeSize),
+                                srcPlaneStart, 1,
+                                dstColStart, 32)
                 }
             }
         }
