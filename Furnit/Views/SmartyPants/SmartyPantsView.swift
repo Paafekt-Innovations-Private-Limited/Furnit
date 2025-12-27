@@ -691,46 +691,95 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         // Helper: Build full-resolution mask from current kept detections
         func buildFullMask(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
-            // Stage 13: Batched GEMM to compute per-pixel max logits for given detections
+            // Stage 13: Compute per-pixel max logits across detections
             var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
-            let batchSize = 64
+
             let M = Int32(planeSize)
             let K = Int32(32)
-            let alpha: Float = 1
-            let beta: Float = 0
-            var bStart = 0
-            while bStart < detections.count {
-                let bEnd = min(detections.count, bStart + batchSize)
-                let Bn = bEnd - bStart
-                let N = Int32(Bn)
-                var B = [Float](repeating: 0, count: 32 * Bn)
-                for j in 0..<Bn {
-                    let coeffs = detections[bStart + j].coeffs
-                    for i in 0..<32 { B[i * Bn + j] = coeffs[i] }
-                }
-                var C = [Float](repeating: 0, count: planeSize * Bn)
-                A.withUnsafeBufferPointer { aPtr in
-                    B.withUnsafeBufferPointer { bPtr in
-                        C.withUnsafeMutableBufferPointer { cPtr in
-                            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                                        M, N, K, alpha,
-                                        aPtr.baseAddress!, K,
-                                        bPtr.baseAddress!, N,
-                                        beta, cPtr.baseAddress!, N)
+            var alpha: Float = 1
+            var beta: Float = 0
+
+            // If list is small, SGEMV + vmax is usually faster than SGEMM + per-pixel reductions.
+            let smallN = detections.count <= 8
+
+            if smallN {
+                var tmp = [Float](repeating: 0, count: planeSize)
+
+                for d in detections {
+                    // tmp = A * coeffs  (A is planeSize x 32, row-major, lda = 32)
+                    tmp.withUnsafeMutableBufferPointer { yPtr in
+                        A.withUnsafeBufferPointer { aPtr in
+                            d.coeffs.withUnsafeBufferPointer { xPtr in
+                                cblas_sgemv(CblasRowMajor, CblasNoTrans,
+                                            M, K,
+                                            alpha,
+                                            aPtr.baseAddress!, K,
+                                            xPtr.baseAddress!, 1,
+                                            beta,
+                                            yPtr.baseAddress!, 1)
+                            }
+                        }
+                    }
+
+                    // maxLogits = max(maxLogits, tmp) (vectorized)
+                    maxLogits.withUnsafeMutableBufferPointer { mPtr in
+                        tmp.withUnsafeBufferPointer { tPtr in
+                            vDSP_vmax(mPtr.baseAddress!, 1, tPtr.baseAddress!, 1,
+                                      mPtr.baseAddress!, 1, vDSP_Length(planeSize))
                         }
                     }
                 }
-                C.withUnsafeBufferPointer { cPtr in
-                    maxLogits.withUnsafeMutableBufferPointer { maxPtr in
-                        for px in 0..<planeSize {
-                            var localMax: Float = 0
-                            vDSP_maxv(cPtr.baseAddress!.advanced(by: px * Bn), 1, &localMax, vDSP_Length(Bn))
-                            if localMax > maxPtr[px] { maxPtr[px] = localMax }
+            } else {
+                // Larger N: keep SGEMM batching (your current approach), but avoid tiny per-pixel vDSP_maxv calls.
+                let batchSize = 64
+                var bStart = 0
+
+                while bStart < detections.count {
+                    let bEnd = min(detections.count, bStart + batchSize)
+                    let Bn = bEnd - bStart
+                    let N = Int32(Bn)
+
+                    // B is K x N in row-major layout as (k major, n minor): B[k*N + j]
+                    var B = [Float](repeating: 0, count: 32 * Bn)
+                    for j in 0..<Bn {
+                        let coeffs = detections[bStart + j].coeffs
+                        for k in 0..<32 { B[k * Bn + j] = coeffs[k] }
+                    }
+
+                    // C is M x N (row-major), each row is contiguous length N
+                    var C = [Float](repeating: 0, count: planeSize * Bn)
+
+                    A.withUnsafeBufferPointer { aPtr in
+                        B.withUnsafeBufferPointer { bPtr in
+                            C.withUnsafeMutableBufferPointer { cPtr in
+                                cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                                            M, N, K, alpha,
+                                            aPtr.baseAddress!, K,
+                                            bPtr.baseAddress!, N,
+                                            beta,
+                                            cPtr.baseAddress!, N)
+                            }
                         }
                     }
+
+                    // Reduce C row-wise into maxLogits (tight loop; N is small-ish, so a simple loop is fine)
+                    C.withUnsafeBufferPointer { cPtr in
+                        maxLogits.withUnsafeMutableBufferPointer { mPtr in
+                            for px in 0..<planeSize {
+                                let row = cPtr.baseAddress!.advanced(by: px * Bn)
+                                var localMax = row[0]
+                                if Bn > 1 {
+                                    for j in 1..<Bn { if row[j] > localMax { localMax = row[j] } }
+                                }
+                                if localMax > mPtr[px] { mPtr[px] = localMax }
+                            }
+                        }
+                    }
+
+                    bStart = bEnd
                 }
-                bStart = bEnd
             }
+
             // Stage 14: Threshold
             var maskSmall = [UInt8](repeating: 0, count: planeSize)
             var positiveCount = 0
@@ -740,24 +789,28 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
                     positiveCount += 1
                 }
             }
-            // Stage 15: Upscale to model and crop back to original image, then Stage 15b: (morph close)
+
+            // Stage 15: Upscale + crop back + morph close (unchanged)
             var maskFull = upscaleMask(maskSmall: maskSmall, pW: pW, pH: pH,
                                        modelInput: 1280, origW: origW, origH: origH,
                                        resizeGain: resizeGain, padX: padX, padY: padY)
-            // Morph close
+
             let fullSize = origW * origH
             var srcBuffer = vImage_Buffer(data: &maskFull, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
             var dilated = [UInt8](repeating: 0, count: fullSize)
             var dilatedBuffer = vImage_Buffer(data: &dilated, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
             var closed = [UInt8](repeating: 0, count: fullSize)
             var closedBuffer = vImage_Buffer(data: &closed, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-            var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
-            kernel.withUnsafeBufferPointer { kernelPtr in
-                vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-                vImageErode_Planar8(&dilatedBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-            }
-            return (closed, positiveCount)
+//            var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
+//            kernel.withUnsafeBufferPointer { kPtr in
+//                vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+//                vImageErode_Planar8(&dilatedBuffer, &closedBuffer, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+//            }
+
+//            return (closed, positiveCount)
+            return (maskFull, positiveCount)
         }
+
 
         // STAGE 13–15b: Build initial mask from kept2 (pre-bbox filter)
         let t13to15b = Date()
@@ -838,10 +891,12 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         setProgress(0.92, text: "Compositing…")
         
         let colorSpace = CGColorSpaceCreateDeviceRGB()
+//        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!//kish
         guard let ctx = CGContext(data: nil, width: origW, height: origH,
                                    bitsPerComponent: 8, bytesPerRow: origW * 4,
                                    space: colorSpace,
                                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+//                                   bitmapInfo: CGImageAlphaInfo.last.rawValue),
               let outBase = ctx.data?.assumingMemoryBound(to: UInt8.self) else {
             isProcessing = false
             return
