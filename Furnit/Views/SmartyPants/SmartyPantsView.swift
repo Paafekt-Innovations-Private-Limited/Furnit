@@ -544,55 +544,91 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             logDebug("⏱️ STAGE 10 - Reorganize: \(String(format: "%.2f", t10End.timeIntervalSince(t10) * 1000)) ms")
         }
 
-        // STAGE 11: Filter - must touch primary bbox, drop if much larger
+        // STAGE 11: Filter - use mask overlap with primary instead of bbox overlap
         let t11 = Date()
-        
+
+        // Build primary logits and mask in prototype space (pW x pH)
+        // A is (planeSize x 32) in row-major where each row (pixel) has 32 prototype values.
+        // We'll compute logits = A * coeffs (SGEMV) and threshold at 0.
+        func logitsForDetection(_ coeffs: [Float]) -> [Float] {
+            var result = [Float](repeating: 0, count: planeSize)
+            var alpha: Float = 1.0
+            var beta: Float = 0.0
+            // cblas_sgemv with row-major: y = alpha*A*x + beta*y
+            A.withUnsafeBufferPointer { aPtr in
+                coeffs.withUnsafeBufferPointer { xPtr in
+                    result.withUnsafeMutableBufferPointer { yPtr in
+                        cblas_sgemv(CblasRowMajor, CblasNoTrans,
+                                    Int32(planeSize), Int32(32),
+                                    alpha,
+                                    aPtr.baseAddress!, Int32(32),
+                                    xPtr.baseAddress!, 1,
+                                    beta,
+                                    yPtr.baseAddress!, 1)
+                    }
+                }
+            }
+            return result
+        }
+
+        func maskFromLogits(_ logits: [Float]) -> [UInt8] {
+            var mask = [UInt8](repeating: 0, count: planeSize)
+            for i in 0..<planeSize { if logits[i] > 0 { mask[i] = 255 } }
+            return mask
+        }
+
+        // Primary mask in prototype space
+        let primaryLogits = logitsForDetection(primary.coeffs)
+        let primaryMaskSmall = maskFromLogits(primaryLogits)
+
+        // Helper: compute fraction of PRIMARY mask covered by candidate mask (in prototype space)
+        func intersectionCoverage(candidateCoeffs: [Float]) -> Float {
+            let candLogits = logitsForDetection(candidateCoeffs)
+            var interCount: Int = 0
+            var primaryCount: Int = 0
+            for i in 0..<planeSize {
+                if primaryLogits[i] > 0 {
+                    primaryCount += 1
+                    if candLogits[i] > 0 { interCount += 1 }
+                }
+            }
+            if primaryCount == 0 { return 0 }
+            return Float(interCount) / Float(primaryCount)
+        }
+
+        // Compute bbox edges for size comparison only (we still keep the too-large guard)
         let pLeft = primary.x - primary.w * 0.5
         let pRight = primary.x + primary.w * 0.5
         let pTop = primary.y - primary.h * 0.5
         let pBottom = primary.y + primary.h * 0.5
-        
+
         if debugMode {
             logDebug("   📦 PRIMARY: center=(\(Int(primary.x)),\(Int(primary.y))) size=\(Int(primary.w))x\(Int(primary.h))")
             logDebug("      edges: L=\(Int(pLeft)) R=\(Int(pRight)) T=\(Int(pTop)) B=\(Int(pBottom))")
         }
-        
+
         var kept2: [UnionDet] = [primary]
-//        for (i, d) in afterNMS.enumerated() {
+        let threshold = AppStateManager.shared.qualitySettings.maskOverlapThreshold
+
         for (i, d) in allDets.enumerated() {
             if i == primaryIdx { continue }
-            
-            let dLeft = d.x - d.w * 0.5
-            let dRight = d.x + d.w * 0.5
-            let dTop = d.y - d.h * 0.5
-            let dBottom = d.y + d.h * 0.5
-            
+
             let wPct = Int(d.w / primary.w * 100)
             let hPct = Int(d.h / primary.h * 100)
-            
-            let interW = max(0.0 as Float, min(dRight, pRight) - max(dLeft, pLeft))
-            
-            let interH = max(0.0 as Float, min(dBottom, pBottom) - max(dTop, pTop))
-            
-            // replaced code starts
-            let interArea = interW * interH
-            let candidateArea = max(1.0 as Float, d.w * d.h)
-            let coverageOfCandidate = interArea / candidateArea
 
-            let threshold = AppStateManager.shared.qualitySettings.detectionCoverageThreshold
+            // Mask-based overlap: fraction of PRIMARY mask pixels that are also in candidate mask
+            let coverageOfCandidate = intersectionCoverage(candidateCoeffs: d.coeffs)
 
             if coverageOfCandidate < threshold {
                 if debugMode {
                     let pct = String(format: "%.2f", coverageOfCandidate * 100)
                     let thresholdPct = String(format: "%.2f", threshold * 100)
-                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] INSIDE < \(thresholdPct)% (\(pct)%)")
+                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] PRIMARY COVERED < \(thresholdPct)% (\(pct)%)")
                 }
                 continue
             }
-            // replaced code ends
-            
+
             let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
-            
             if tooLarge {
                 if debugMode {
                     logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] TOO LARGE")
@@ -600,11 +636,11 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             } else {
                 kept2.append(d)
                 if debugMode {
-                    logDebug("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%]")
+                    logDebug("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] (primary coverage ok)")
                 }
             }
         }
-        
+
         let t11End = Date()
         if debugMode {
             logDebug("⏱️ STAGE 11 - Filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms, kept=\(kept2.count)")
@@ -653,167 +689,148 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             logDebug("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
         }
 
-        // STAGE 13: Batched GEMM
-        let t13 = Date()
-        setProgress(0.75, text: "Computing mask…")
-        
-        var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
-        
-        let batchSize = 64
-        let M = Int32(planeSize)
-        let K = Int32(32)
-        let alpha: Float = 1
-        let beta: Float = 0
-        
-        var bStart = 0
-        while bStart < kept2.count {
-            let bEnd = min(kept2.count, bStart + batchSize)
-            let Bn = bEnd - bStart
-            let N = Int32(Bn)
-            
-            var B = [Float](repeating: 0, count: 32 * Bn)
-            for j in 0..<Bn {
-                let coeffs = kept2[bStart + j].coeffs
-                for i in 0..<32 { B[i * Bn + j] = coeffs[i] }
-            }
-            
-            var C = [Float](repeating: 0, count: planeSize * Bn)
-            
-            A.withUnsafeBufferPointer { aPtr in
-                B.withUnsafeBufferPointer { bPtr in
-                    C.withUnsafeMutableBufferPointer { cPtr in
-                        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                                    M, N, K, alpha,
-                                    aPtr.baseAddress!, K,
-                                    bPtr.baseAddress!, N,
-                                    beta, cPtr.baseAddress!, N)
+        // Helper: Build full-resolution mask from current kept detections
+        func buildFullMask(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
+            // Stage 13: Batched GEMM to compute per-pixel max logits for given detections
+            var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
+            let batchSize = 64
+            let M = Int32(planeSize)
+            let K = Int32(32)
+            let alpha: Float = 1
+            let beta: Float = 0
+            var bStart = 0
+            while bStart < detections.count {
+                let bEnd = min(detections.count, bStart + batchSize)
+                let Bn = bEnd - bStart
+                let N = Int32(Bn)
+                var B = [Float](repeating: 0, count: 32 * Bn)
+                for j in 0..<Bn {
+                    let coeffs = detections[bStart + j].coeffs
+                    for i in 0..<32 { B[i * Bn + j] = coeffs[i] }
+                }
+                var C = [Float](repeating: 0, count: planeSize * Bn)
+                A.withUnsafeBufferPointer { aPtr in
+                    B.withUnsafeBufferPointer { bPtr in
+                        C.withUnsafeMutableBufferPointer { cPtr in
+                            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                                        M, N, K, alpha,
+                                        aPtr.baseAddress!, K,
+                                        bPtr.baseAddress!, N,
+                                        beta, cPtr.baseAddress!, N)
+                        }
                     }
                 }
-            }
-            
-            C.withUnsafeBufferPointer { cPtr in
-                maxLogits.withUnsafeMutableBufferPointer { maxPtr in
-                    for px in 0..<planeSize {
-                        var localMax: Float = 0
-                        vDSP_maxv(cPtr.baseAddress!.advanced(by: px * Bn), 1, &localMax, vDSP_Length(Bn))
-                        if localMax > maxPtr[px] { maxPtr[px] = localMax }
+                C.withUnsafeBufferPointer { cPtr in
+                    maxLogits.withUnsafeMutableBufferPointer { maxPtr in
+                        for px in 0..<planeSize {
+                            var localMax: Float = 0
+                            vDSP_maxv(cPtr.baseAddress!.advanced(by: px * Bn), 1, &localMax, vDSP_Length(Bn))
+                            if localMax > maxPtr[px] { maxPtr[px] = localMax }
+                        }
                     }
                 }
+                bStart = bEnd
             }
-            bStart = bEnd
-        }
-        
-        let t13End = Date()
-        if debugMode {
-            logDebug("⏱️ STAGE 13 - GEMM: \(String(format: "%.2f", t13End.timeIntervalSince(t13) * 1000)) ms")
+            // Stage 14: Threshold
+            var maskSmall = [UInt8](repeating: 0, count: planeSize)
+            var positiveCount = 0
+            for i in 0..<planeSize {
+                if maxLogits[i] > 0.0 {
+                    maskSmall[i] = 255
+                    positiveCount += 1
+                }
+            }
+            // Stage 15: Upscale to model and crop back to original image, then Stage 15b: (morph close)
+            var maskFull = upscaleMask(maskSmall: maskSmall, pW: pW, pH: pH,
+                                       modelInput: 1280, origW: origW, origH: origH,
+                                       resizeGain: resizeGain, padX: padX, padY: padY)
+            // Morph close
+            let fullSize = origW * origH
+            var srcBuffer = vImage_Buffer(data: &maskFull, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
+            var dilated = [UInt8](repeating: 0, count: fullSize)
+            var dilatedBuffer = vImage_Buffer(data: &dilated, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
+            var closed = [UInt8](repeating: 0, count: fullSize)
+            var closedBuffer = vImage_Buffer(data: &closed, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
+            var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
+            kernel.withUnsafeBufferPointer { kernelPtr in
+                vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+                vImageErode_Planar8(&dilatedBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
+            }
+            return (closed, positiveCount)
         }
 
-        // STAGE 14: Threshold
-        let t14 = Date()
-        
-        var maskSmall = [UInt8](repeating: 0, count: planeSize)
-        var positiveCount = 0
-        for i in 0..<planeSize {
-            if maxLogits[i] > 0.0 {
-                maskSmall[i] = 255
-                positiveCount += 1
+        // STAGE 13–15b: Build initial mask from kept2 (pre-bbox filter)
+        let t13to15b = Date()
+        var build1 = buildFullMask(from: kept2)
+        var maskFull = build1.maskFull
+        if debugMode {
+            logDebug("⏱️ STAGE 13–15b - Build mask (pre-bbox): \(String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)) ms, positive: \(build1.positiveCount)")
+        }
+
+        // STAGE 15c: Filter detections by final mask coverage (bbox within mask)
+        // Keep detections whose bbox area is sufficiently covered by the final maskFull.
+        // Threshold is read from quality settings: bboxInMaskThreshold.
+        let t15c = Date()
+        let bboxCoverageThreshold = AppStateManager.shared.qualitySettings.bboxInMaskThreshold
+
+        func bboxFromDetectionInImageSpace(_ d: UnionDet) -> (x1: Int, y1: Int, x2: Int, y2: Int) {
+            let dx1 = Int(round((d.x - d.w * 0.5 - padX) / resizeGain))
+            let dy1 = Int(round((d.y - d.h * 0.5 - padY) / resizeGain))
+            let dx2 = Int(round((d.x + d.w * 0.5 - padX) / resizeGain))
+            let dy2 = Int(round((d.y + d.h * 0.5 - padY) / resizeGain))
+            let clampedX1 = max(0, min(origW - 1, dx1))
+            let clampedY1 = max(0, min(origH - 1, dy1))
+            let clampedX2 = max(0, min(origW, dx2))
+            let clampedY2 = max(0, min(origH, dy2))
+            return (clampedX1, clampedY1, clampedX2, clampedY2)
+        }
+
+        func coverageOfBBoxInMask(_ bbox: (x1: Int, y1: Int, x2: Int, y2: Int)) -> Float {
+            let x1 = bbox.x1, y1 = bbox.y1, x2 = bbox.x2, y2 = bbox.y2
+            let w = max(0, x2 - x1)
+            let h = max(0, y2 - y1)
+            if w == 0 || h == 0 { return 0 }
+            var covered = 0
+            let area = w * h
+            // Sample every pixel; if performance becomes an issue, stride sampling can be introduced.
+            for yy in y1..<y2 {
+                let row = yy * origW
+                for xx in x1..<x2 {
+                    if maskFull[row + xx] > 0 { covered += 1 }
+                }
+            }
+            return Float(covered) / Float(area)
+        }
+
+        var keptAfterMask: [UnionDet] = []
+        keptAfterMask.reserveCapacity(kept2.count)
+        for (i, d) in kept2.enumerated() {
+            let bbox = bboxFromDetectionInImageSpace(d)
+            let cov = coverageOfBBoxInMask(bbox)
+            if cov >= bboxCoverageThreshold {
+                keptAfterMask.append(d)
+                if debugMode {
+                    let pct = String(format: "%.2f", cov * 100)
+                    logDebug("   ✅ [\(i)] BBOX in final mask: \(pct)% >= \(Int(bboxCoverageThreshold*100))%")
+                }
+            } else if debugMode {
+                let pct = String(format: "%.2f", cov * 100)
+                logDebug("   ❌ [\(i)] BBOX in final mask: \(pct)% < \(Int(bboxCoverageThreshold*100))%")
             }
         }
-        
-        let t14End = Date()
+        kept2 = keptAfterMask
+
+        let t15cEnd = Date()
         if debugMode {
-            logDebug("⏱️ STAGE 14 - Threshold: \(String(format: "%.2f", t14End.timeIntervalSince(t14) * 1000)) ms, positive: \(positiveCount)")
+            logDebug("⏱️ STAGE 15c - BBox-in-mask filter: \(String(format: "%.2f", t15cEnd.timeIntervalSince(t15c) * 1000)) ms, kept=\(kept2.count)")
         }
 
-        // STAGE 15: Upscale
-        let t15 = Date()
-        setProgress(0.85, text: "Upscaling…")
-        
-        var maskFull = upscaleMask(maskSmall: maskSmall, pW: pW, pH: pH,
-                                    modelInput: 1280, origW: origW, origH: origH,
-                                    resizeGain: resizeGain, padX: padX, padY: padY)
-        
-        let t15End = Date()
+        // Rebuild final mask from survivors (collated)
+        let tRebuild = Date()
+        let build2 = buildFullMask(from: kept2)
+        maskFull = build2.maskFull
         if debugMode {
-            logDebug("⏱️ STAGE 15 - Upscale: \(String(format: "%.2f", t15End.timeIntervalSince(t15) * 1000)) ms")
-        }
-
-        // STAGE 15b: Morph close
-        let t15b = Date()
-        let fullSize = origW * origH
-        
-        var srcBuffer = vImage_Buffer(data: &maskFull, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-        var dilated = [UInt8](repeating: 0, count: fullSize)
-        var dilatedBuffer = vImage_Buffer(data: &dilated, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-        var closed = [UInt8](repeating: 0, count: fullSize)
-        var closedBuffer = vImage_Buffer(data: &closed, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-        
-        var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
-        // STAGE 15b: Morph close
-        kernel.withUnsafeBufferPointer { kernelPtr in
-            // First: dilate the source into an intermediate buffer
-            vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-
-            // Second: Anti-aliasing pass (replaces Gaussian blur) using vImageTentConvolve_Planar8
-            // This smooths jagged edges without the heavier Gaussian kernel.
-            // (Original Gaussian blur is commented out below for reference.)
-
-            // --- Begin anti-aliasing ---
-            var antialiased = [UInt8](repeating: 0, count: fullSize)
-            var antialiasedBuffer = vImage_Buffer(data: &antialiased, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-            vImageTentConvolve_Planar8(&dilatedBuffer,
-                                       &antialiasedBuffer,
-                                       nil,
-                                       0,
-                                       0,
-                                       3,
-                                       3,
-                                       0,
-                                       vImage_Flags(kvImageEdgeExtend))
-            // --- End anti-aliasing ---
-
-            // Third: erode the anti-aliased result
-            vImageErode_Planar8(&antialiasedBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-
-            /*
-            // Second: Gaussian blur (SIMD-optimized via vImageConvolve_Planar8 with 5x5 Gaussian kernel)
-            // 5x5 integer Gaussian kernel, sum (divisor) = 256
-            var gaussianKernel: [Int16] = [
-                1,  4,  6,  4, 1,
-                4, 16, 24, 16, 4,
-                6, 24, 36, 24, 6,
-                4, 16, 24, 16, 4,
-                1,  4,  6,  4, 1
-            ]
-            let divisor: Int32 = 256
-
-            var blurred = [UInt8](repeating: 0, count: fullSize)
-            var blurredBuffer = vImage_Buffer(data: &blurred, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-
-            // Use edge extension to avoid introducing dark borders
-            vImageConvolve_Planar8(&dilatedBuffer,
-                                   &blurredBuffer,
-                                   nil,
-                                   0,
-                                   0,
-                                   &gaussianKernel,
-                                   5,
-                                   5,
-                                   divisor,
-                                   0,
-                                   vImage_Flags(kvImageEdgeExtend))
-
-            // Third: erode the blurred result
-            vImageErode_Planar8(&blurredBuffer, &closedBuffer, 0, 0, kernelPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-            */
-        
-
-        }
-        maskFull = closed
-        
-        let t15bEnd = Date()
-        if debugMode {
-            logDebug("⏱️ STAGE 15b - Morph: \(String(format: "%.2f", t15bEnd.timeIntervalSince(t15b) * 1000)) ms")
+            logDebug("⏱️ REBUILD - Final mask from survivors: \(String(format: "%.2f", Date().timeIntervalSince(tRebuild) * 1000)) ms, positive: \(build2.positiveCount)")
         }
 
         // STAGE 16: Composite
@@ -1292,5 +1309,4 @@ extension UIView {
         return nil
     }
 }
-
 
