@@ -149,10 +149,18 @@ class QualitySettings: ObservableObject {
         }
     }
 
+    // Detection coverage threshold (published for UI updates)
+    @Published var detectionCoverageThreshold: Float {
+        didSet {
+            saveCoverageThreshold()
+        }
+    }
+
     // UserDefaults keys for persistence
     private let qualityKey = "selected_asset_quality"
     private let movementSpeedKey = "selected_movement_speed"
     private let debugModeKey = "debug_mode"
+    private let coverageThresholdKey = "detection_coverage_threshold"
     
     // Initialize with saved quality or default to high
     init() {
@@ -175,6 +183,10 @@ class QualitySettings: ObservableObject {
 
         // Load debug mode setting, default to false
         self.debugMode = UserDefaults.standard.bool(forKey: debugModeKey)
+
+        // Load coverage threshold setting, default to 0.30
+        let savedThreshold = UserDefaults.standard.float(forKey: coverageThresholdKey)
+        self.detectionCoverageThreshold = savedThreshold > 0 ? savedThreshold : 0.30
     }
     
     // Save quality setting to UserDefaults
@@ -193,6 +205,12 @@ class QualitySettings: ObservableObject {
     private func saveDebugMode() {
         UserDefaults.standard.set(debugMode, forKey: debugModeKey)
         logDebug("💾 Saved debug mode setting: \(debugMode)")
+    }
+
+    // Save coverage threshold setting to UserDefaults
+    private func saveCoverageThreshold() {
+        UserDefaults.standard.set(detectionCoverageThreshold, forKey: coverageThresholdKey)
+        logDebug("💾 Saved coverage threshold setting: \(detectionCoverageThreshold)")
     }
     
     // Get all available quality options for UI
@@ -232,6 +250,7 @@ class QualitySettings: ObservableObject {
         selectedQuality = .high
         selectedMovementSpeed = .normal
         debugMode = false
+        detectionCoverageThreshold = 0.30
     }
 }
 

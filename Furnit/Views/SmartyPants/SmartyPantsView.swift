@@ -570,14 +570,26 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let wPct = Int(d.w / primary.w * 100)
             let hPct = Int(d.h / primary.h * 100)
             
-            let overlaps = dRight >= pLeft && dLeft <= pRight && dBottom >= pTop && dTop <= pBottom
+            let interW = max(0.0 as Float, min(dRight, pRight) - max(dLeft, pLeft))
             
-            if !overlaps {
+            let interH = max(0.0 as Float, min(dBottom, pBottom) - max(dTop, pTop))
+            
+            // replaced code starts
+            let interArea = interW * interH
+            let candidateArea = max(1.0 as Float, d.w * d.h)
+            let coverageOfCandidate = interArea / candidateArea
+
+            let threshold = AppStateManager.shared.qualitySettings.detectionCoverageThreshold
+
+            if coverageOfCandidate < threshold {
                 if debugMode {
-                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] NO TOUCH")
+                    let pct = String(format: "%.2f", coverageOfCandidate * 100)
+                    let thresholdPct = String(format: "%.2f", threshold * 100)
+                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] INSIDE < \(thresholdPct)% (\(pct)%)")
                 }
                 continue
             }
+            // replaced code ends
             
             let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
             
@@ -1280,4 +1292,5 @@ extension UIView {
         return nil
     }
 }
+
 

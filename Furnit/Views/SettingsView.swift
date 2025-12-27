@@ -80,10 +80,51 @@ struct SettingsView: View {
                         }
                     }
                     .tint(.purple)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "slider.horizontal.3")
+                                .foregroundColor(.purple)
+                            Text("Detection Coverage Threshold")
+                                .font(.headline)
+                        }
+                        
+                        HStack {
+                            Text("0.0")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Slider(
+                                value: $appState.qualitySettings.detectionCoverageThreshold,
+                                in: 0.0...1.0,
+                                step: 0.05
+                            )
+                            .tint(.purple)
+                            
+                            Text("1.0")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        HStack {
+                            Text("Current value:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(String(format: "%.2f", appState.qualitySettings.detectionCoverageThreshold))
+                                .font(.caption)
+                                .foregroundColor(.purple)
+                                .fontWeight(.medium)
+                        }
+                        
+                        Text("Controls how much overlap is required for detections to be merged. Lower values merge more objects.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 4)
                 } header: {
                     Text("Developer")
                 } footer: {
-                    Text("Enable debug mode to see detailed detection information and performance metrics in the SmartyPants view.")
+                    Text("Enable debug mode to see detailed detection information and performance metrics in the SmartyPants view. Adjust coverage threshold to control detection sensitivity.")
                         .font(.footnote)
                 }
 
