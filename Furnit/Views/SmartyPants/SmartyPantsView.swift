@@ -661,11 +661,18 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         // Primary mask in prototype space
         let primaryLogits = logitsForDetection(primary.coeffs)
-        // We compute the primary logits to filter other detections, but the resulting mask
-        // is not used directly.  Discard the value to avoid an unused variable warning.
-        _ = maskFromLogits(primaryLogits)
+        // Build the primary mask in prototype space and keep it for centre-in-mask testing.
+        let primaryMaskSmall = maskFromLogits(primaryLogits)
 
+        // Compute content width and height in the 1280×1280 input after padding.  The content region is centered,
+        // so its width/height is the input size minus twice the padding.  We clamp to a minimum of 1 to avoid
+        // division-by-zero when the padding fills the entire image.
+        let contentW = max(1.0, 1280.0 - 2.0 * Double(padX))
+        let contentH = max(1.0, 1280.0 - 2.0 * Double(padY))
+
+        #if false
         // Helper: compute fraction of PRIMARY mask covered by candidate mask (in prototype space)
+        // This function is now unused because we filter by checking the candidate centre against the primary mask.
         func intersectionCoverage(candidateCoeffs: [Float]) -> Float {
             let candLogits = logitsForDetection(candidateCoeffs)
             var interCount: Int = 0
@@ -679,6 +686,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             if primaryCount == 0 { return 0 }
             return Float(interCount) / Float(primaryCount)
         }
+        #endif
 
         // Compute bbox edges for size comparison only (we still keep the too-large guard)
         let pLeft = primary.x - primary.w * 0.5
@@ -692,7 +700,6 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
 
         var kept2: [UnionDet] = [primary]
-        let threshold = AppStateManager.shared.qualitySettings.maskOverlapThreshold
 
         for (i, d) in allDets.enumerated() {
             if i == primaryIdx { continue }
@@ -700,14 +707,21 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             let wPct = Int(d.w / primary.w * 100)
             let hPct = Int(d.h / primary.h * 100)
 
-            // Mask-based overlap: fraction of PRIMARY mask pixels that are also in candidate mask
-            let coverageOfCandidate = intersectionCoverage(candidateCoeffs: d.coeffs)
+            // Map the candidate's centre into the prototype mask.  Convert model-space coordinates (0–1280) to
+            // content-space (0–contentW/H) by subtracting padX/padY, then normalise to [0,1], then scale to pW/pH.
+            let cxContent = Double(d.x) - Double(padX)
+            let cyContent = Double(d.y) - Double(padY)
+            let normX = max(0.0, min(1.0, cxContent / contentW))
+            let normY = max(0.0, min(1.0, cyContent / contentH))
+            let colSmall = Int(round(normX * Double(pW - 1)))
+            let rowSmall = Int(round(normY * Double(pH - 1)))
+            let indexSmall = rowSmall * pW + colSmall
+            let centerInMask = primaryMaskSmall[indexSmall] > 0
 
-            if coverageOfCandidate < threshold {
+            // Skip detections whose centre lies outside the primary mask.
+            if !centerInMask {
                 if debugMode {
-                    let pct = String(format: "%.2f", coverageOfCandidate * 100)
-                    let thresholdPct = String(format: "%.2f", threshold * 100)
-                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] PRIMARY COVERED < \(thresholdPct)% (\(pct)%)")
+                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] CENTER OUTSIDE PRIMARY MASK")
                 }
                 continue
             }
@@ -720,7 +734,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             } else {
                 kept2.append(d)
                 if debugMode {
-                    logDebug("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] (primary coverage ok)")
+                    logDebug("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] CENTER IN PRIMARY MASK")
                 }
             }
         }
@@ -775,102 +789,65 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
 
         // Helper: Build full-resolution mask from current kept detections
         func buildFullMask(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
-            // Stage 13: Compute per-pixel max logits across detections
-            var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
-
-            // Dimensions for matrix multiplication.  PlaneSize corresponds to the number of rows in
-            // `A` and 32 corresponds to the number of columns.  These constants are provided for
-            // clarity but are not used directly when calling vDSP routines.
-            let _ = planeSize
-            let _ = 32
-
-            // If list is small, SGEMV + vmax is usually faster than SGEMM + per-pixel reductions.
-            let smallN = detections.count <= 8
-
-            if smallN {
-                var tmp = [Float](repeating: 0, count: planeSize)
-
-                for d in detections {
-                    // Compute tmp = A * coeffs for this detection using vDSP_mmul
-                    A.withUnsafeBufferPointer { aPtr in
-                        d.coeffs.withUnsafeBufferPointer { xPtr in
-                            tmp.withUnsafeMutableBufferPointer { yPtr in
-                                vDSP_mmul(aPtr.baseAddress!, 1,
-                                           xPtr.baseAddress!, 1,
-                                           yPtr.baseAddress!, 1,
-                                           vDSP_Length(planeSize), 1, vDSP_Length(32))
-                            }
-                        }
-                    }
-
-                    // maxLogits = max(maxLogits, tmp) (vectorized)
-                    maxLogits.withUnsafeMutableBufferPointer { mPtr in
-                        tmp.withUnsafeBufferPointer { tPtr in
-                            vDSP_vmax(mPtr.baseAddress!, 1, tPtr.baseAddress!, 1,
-                                      mPtr.baseAddress!, 1, vDSP_Length(planeSize))
-                        }
-                    }
-                }
-            } else {
-                // Larger N: keep SGEMM batching (your current approach), but avoid tiny per-pixel vDSP_maxv calls.
-                let batchSize = 64
-                var bStart = 0
-
-                while bStart < detections.count {
-                    let bEnd = min(detections.count, bStart + batchSize)
-                        let Bn = bEnd - bStart
-
-                    // B is K x N in row-major layout as (k major, n minor): B[k*N + j]
-                    var B = [Float](repeating: 0, count: 32 * Bn)
-                    for j in 0..<Bn {
-                        let coeffs = detections[bStart + j].coeffs
-                        for k in 0..<32 { B[k * Bn + j] = coeffs[k] }
-                    }
-
-                    // C is M x N (row-major), each row is contiguous length N
-                    var C = [Float](repeating: 0, count: planeSize * Bn)
-
-                        A.withUnsafeBufferPointer { aPtr in
-                            B.withUnsafeBufferPointer { bPtr in
-                                C.withUnsafeMutableBufferPointer { cPtr in
-                                    // Compute C = A * B using vDSP_mmul.  A is (planeSize × 32),
-                                    // B is (32 × Bn), and C will be (planeSize × Bn).  All matrices
-                                    // are stored in row‑major order.
-                                    vDSP_mmul(aPtr.baseAddress!, 1,
-                                              bPtr.baseAddress!, 1,
-                                              cPtr.baseAddress!, 1,
-                                              vDSP_Length(planeSize), vDSP_Length(Bn), vDSP_Length(32))
-                                }
-                            }
-                        }
-
-                    // Reduce C row-wise into maxLogits (tight loop; N is small-ish, so a simple loop is fine)
-                    C.withUnsafeBufferPointer { cPtr in
-                        maxLogits.withUnsafeMutableBufferPointer { mPtr in
-                            for px in 0..<planeSize {
-                                let row = cPtr.baseAddress!.advanced(by: px * Bn)
-                                var localMax = row[0]
-                                if Bn > 1 {
-                                    for j in 1..<Bn { if row[j] > localMax { localMax = row[j] } }
-                                }
-                                if localMax > mPtr[px] { mPtr[px] = localMax }
-                            }
-                        }
-                    }
-
-                    bStart = bEnd
-                }
-            }
-
-            // Stage 14: Threshold
+            // Stage 13: Build a binary union mask across all detections by generating
+            // per-detection raw masks and updating only the pixels within each detection’s
+            // bounding box.  This avoids scanning the entire prototype space for every
+            // detection and is inspired by the two‑stage cutout logic.
             var maskSmall = [UInt8](repeating: 0, count: planeSize)
             var positiveCount = 0
-            for i in 0..<planeSize {
-                if maxLogits[i] > 0.0 {
-                    maskSmall[i] = 255
-                    positiveCount += 1
+
+            // Precompute scaling factors from model coordinates (0–1280) to prototype
+            // coordinates (0–pW / pH).  These approximate the mapping from the
+            // 1280×1280 input space to the prototype resolution.
+            let scaleXProto = Double(pW) / 1280.0
+            let scaleYProto = Double(pH) / 1280.0
+
+            // Temporary buffer for per‑detection raw masks
+            var tmpRaw = [Float](repeating: 0, count: planeSize)
+
+            for det in detections {
+                // Compute raw mask logits for this detection: tmpRaw = A × det.coeffs
+                A.withUnsafeBufferPointer { aPtr in
+                    det.coeffs.withUnsafeBufferPointer { coeffPtr in
+                        tmpRaw.withUnsafeMutableBufferPointer { rPtr in
+                            vDSP_mmul(aPtr.baseAddress!, 1,
+                                      coeffPtr.baseAddress!, 1,
+                                      rPtr.baseAddress!, 1,
+                                      vDSP_Length(planeSize), 1, vDSP_Length(32))
+                        }
+                    }
+                }
+
+                // Determine the bounding box of this detection in prototype space.
+                let x1 = Double(det.x - det.w * 0.5)
+                let x2 = Double(det.x + det.w * 0.5)
+                let y1 = Double(det.y - det.h * 0.5)
+                let y2 = Double(det.y + det.h * 0.5)
+                var mx1 = Int(floor(x1 * scaleXProto))
+                var mx2 = Int(ceil(x2 * scaleXProto))
+                var my1 = Int(floor(y1 * scaleYProto))
+                var my2 = Int(ceil(y2 * scaleYProto))
+                if mx1 < 0 { mx1 = 0 }
+                if my1 < 0 { my1 = 0 }
+                if mx2 > pW { mx2 = pW }
+                if my2 > pH { my2 = pH }
+                if mx2 > mx1 && my2 > my1 {
+                    for py in my1..<my2 {
+                        let rowOffset = py * pW
+                        for px in mx1..<mx2 {
+                            let idx = rowOffset + px
+                            if tmpRaw[idx] > 0.0 {
+                                if maskSmall[idx] == 0 {
+                                    maskSmall[idx] = 255
+                                    positiveCount += 1
+                                }
+                            }
+                        }
+                    }
                 }
             }
+
+            // Stage 14 is no longer needed: maskSmall already holds the binary union mask
 
             // Stage 15: Upscale + crop back + morph close (unchanged)
             let maskFull = upscaleMask(maskSmall: maskSmall, pW: pW, pH: pH,
@@ -1450,4 +1427,5 @@ extension SmartyPantsContainerView {
         }
     }
 }
+
 
