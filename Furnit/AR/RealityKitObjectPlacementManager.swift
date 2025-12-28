@@ -89,8 +89,8 @@ class RealityKitObjectPlacementManager: ObservableObject {
         
         // Look for a hit within acceptable distance
         for result in raycastResults {
-            let hitPosition = SIMD3<Float>(result.worldTransform.columns.3.x, 
-                                         result.worldTransform.columns.3.y, 
+            let hitPosition = SIMD3<Float>(result.worldTransform.columns.3.x,
+                                         result.worldTransform.columns.3.y,
                                          result.worldTransform.columns.3.z)
             let distance = simd_length(hitPosition - cameraPosition)
             
@@ -698,7 +698,7 @@ class RealityKitObjectPlacementManager: ObservableObject {
             logDebug("🔍 Inspecting PhysicallyBasedMaterial \(index) on entity '\(entityName)'")
 
             // First check if the material has a good texture - if so, preserve it completely
-            if let baseTexture = pbrMaterial.baseColor.texture {
+            if pbrMaterial.baseColor.texture != nil {
                 logDebug("   🖼️ Found texture - preserving PBR material as-is (no conversion needed)")
                 logDebug("   ✅ Material has texture, skipping all modifications")
                 return nil // Keep original PBR material unchanged
@@ -724,9 +724,8 @@ class RealityKitObjectPlacementManager: ObservableObject {
                 return nil // Keep original PBR material unchanged
             }
 
-        } else if let simpleMaterial = material as? SimpleMaterial {
+        } else if material is SimpleMaterial {
             logDebug("🔍 Inspecting SimpleMaterial \(index) on entity '\(entityName)'")
-
             // SimpleMaterials from RealityKit are typically well-formed
             // Only apply fixes if there are obvious issues
             logDebug("   ✅ SimpleMaterial appears healthy")
@@ -934,8 +933,12 @@ class RealityKitObjectPlacementManager: ObservableObject {
 
     // Hit test to find which placed object was touched
     private func hitTestPlacedObjects(at screenPoint: CGPoint, in arView: ARView) -> RealityKitPlacedObject? {
-        // Convert screen point to world ray for hit testing
-        let raycastResults = arView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .any)
+        // Convert screen point to world ray for hit testing. We discard the
+        // returned results because the subsequent hit-testing uses a custom
+        // bounding-box approach.  Assigning to `_` avoids an unused-variable
+        // warning while still invoking the raycast method if needed for
+        // internal ARKit state.
+        _ = arView.raycast(from: screenPoint, allowing: .existingPlaneGeometry, alignment: .any)
 
         // Check each placed object to see if the ray intersects with it
         for placedObject in placedObjects {

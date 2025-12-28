@@ -902,17 +902,17 @@ struct SinglePhotoRoomView: View {
                 }
             }
         }
-        // Hidden NavigationLink for programmatic navigation
-        .background(
-            NavigationLink(
-                destination: Group {
-                    if let scene = reconstructor.generatedRoomScene {
-                        SceneKitViewer(scene: scene)
-                    }
-                },
-                isActive: $navigateToViewer
-            ) { EmptyView() }
-        )
+        // Programmatic navigation using the modern API (iOS 16+).  When
+        // `navigateToViewer` is set to true, a destination is pushed onto
+        // the navigation stack.  We wrap the destination in a `Group` to
+        // handle the optional room scene gracefully.
+        .navigationDestination(isPresented: $navigateToViewer) {
+            Group {
+                if let scene = reconstructor.generatedRoomScene {
+                    SceneKitViewer(scene: scene)
+                }
+            }
+        }
     }
     
     private func rebuildRoom() {

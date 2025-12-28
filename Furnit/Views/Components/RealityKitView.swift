@@ -342,8 +342,9 @@ struct RealityKitView: UIViewRepresentable {
         
         Task { @MainActor in
             do {
-                logDebug("🎨 [RealityKitView.loadModel] Calling Entity.load(contentsOf:)...")
-                let modelEntity = try await Entity.load(contentsOf: modelURL)
+                // Use the async initializer of ModelEntity to load the model without blocking
+                logDebug("🎨 [RealityKitView.loadModel] Loading model asynchronously using ModelEntity(contentsOf:)")
+                let modelEntity = try await ModelEntity(contentsOf: modelURL)
                 
                 logDebug("✅ [RealityKitView.loadModel] Entity loaded successfully!")
                 logDebug("   - Entity name: '\(modelEntity.name)'")
@@ -374,6 +375,7 @@ struct RealityKitView: UIViewRepresentable {
                 
                 // Check for lights in the scene
                 logDebug("🎨 [RealityKitView.loadModel] Checking for lights in scene...")
+                #if false
                 var lightCount = 0
                 
                 func countLights(in entity: Entity) {
@@ -396,6 +398,10 @@ struct RealityKitView: UIViewRepresentable {
                 }
                 
                 countLights(in: modelEntity)
+                logDebug("   - Total lights found in model: \(lightCount)")
+                #endif
+                // Use helper method to count lights in the model entity
+                let lightCount = self.countLights(in: modelEntity)
                 logDebug("   - Total lights found in model: \(lightCount)")
                 
                 if lightCount == 0 {
@@ -696,6 +702,31 @@ struct RealityKitView: UIViewRepresentable {
         for child in entity.children {
             ensureModelHasMaterials(child)
         }
+    }
+
+    /// Recursively count the number of light components in an entity hierarchy.
+    /// - Parameter entity: The root entity to inspect.
+    /// - Returns: The total number of `PointLightComponent`, `DirectionalLightComponent`, or `SpotLightComponent` present in the entity and its descendants.
+    ///
+    /// This helper is annotated with `@MainActor` because RealityKit entity properties such as
+    /// `components` and `children` are actor-isolated. By executing on the main actor, we can
+    /// safely traverse the entity tree without triggering concurrency violations.
+    @MainActor
+    private func countLights(in entity: Entity) -> Int {
+        var total = 0
+        if entity.components[PointLightComponent.self] != nil {
+            total += 1
+        }
+        if entity.components[DirectionalLightComponent.self] != nil {
+            total += 1
+        }
+        if entity.components[SpotLightComponent.self] != nil {
+            total += 1
+        }
+        for child in entity.children {
+            total += countLights(in: child)
+        }
+        return total
     }
 }
 

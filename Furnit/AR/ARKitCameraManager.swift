@@ -4,7 +4,6 @@ import SwiftUI
 
 // ARKit-based camera manager for furniture detection
 // Uses ARSession to provide continuous camera frames without continuation leaks
-@MainActor
 class ARKitCameraManager: NSObject, ObservableObject {
     // Published properties for UI updates
     @Published var isSessionRunning = false
@@ -51,6 +50,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
     // MARK: - Session Control
     
     // Start ARKit session for camera frame access
+    @MainActor
     func startSession() {
         logDebug("🎯 Starting ARKit camera session...")
         
@@ -72,6 +72,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
     }
     
     // Stop ARKit session when exiting AR mode
+    @MainActor
     func stopSession() {
         logDebug("🎯 Stopping ARKit camera session...")
         
@@ -92,6 +93,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
     // MARK: - Frame Capture
     
     // Capture current camera frame for backend API (full resolution)
+    @MainActor
     func captureCurrentFrameForAPI() -> UIImage? {
         guard let currentFrame = latestFrame else {
             errorMessage = "No camera frame available - ensure AR session is running"
@@ -126,6 +128,7 @@ class ARKitCameraManager: NSObject, ObservableObject {
     
     // Capture current camera frame for furniture segmentation (legacy for DeepLabV3)
     // This is synchronous and doesn't use continuations - no more leaks!
+    @MainActor
     func captureCurrentFrame() -> UIImage? {
         guard let currentFrame = latestFrame else {
             errorMessage = "No camera frame available - ensure AR session is running"
@@ -234,31 +237,31 @@ class ARKitCameraManager: NSObject, ObservableObject {
     }
     
     // MARK: - Async Frame Capture (Alternative Method)
-    
-    // Async version that waits for next frame if needed
+
+    // Async version that waits for the next frame if needed.  Runs on the
+    // main actor to safely access `latestFrame` and update state without
+    // passing non-Sendable values across concurrency boundaries.  This
+    // implementation waits for up to ~100ms for a new frame by sleeping
+    // cooperatively.  It avoids the use of `DispatchQueue.asyncAfter`,
+    // which otherwise requires `@Sendable` closures and prohibits
+    // capturing non-Sendable types like `CVPixelBuffer`.
+    @MainActor
     func captureNextFrame() async -> UIImage? {
         // If we have a recent frame, use it immediately
         if let currentFrame = latestFrame {
             return convertPixelBufferToUIImage(currentFrame.capturedImage)
         }
-        
-        // Otherwise wait briefly for next frame
-        return await withCheckedContinuation { continuation in
-            // Set up one-time frame capture
-            var captureCompleted = false
-            
-            frameProcessingQueue.asyncAfter(deadline: .now() + 0.1) {
-                guard !captureCompleted else { return }
-                captureCompleted = true
-                
-                if let frame = self.latestFrame,
-                   let image = self.convertPixelBufferToUIImage(frame.capturedImage) {
-                    continuation.resume(returning: image)
-                } else {
-                    continuation.resume(returning: nil)
-                }
+
+        // Otherwise wait briefly for a new frame.  Sleep in 50ms increments
+        // and check for a frame each time.  We ignore cancellation errors
+        // because this is an opportunistic capture.
+        for _ in 0..<2 {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            if let newFrame = latestFrame {
+                return convertPixelBufferToUIImage(newFrame.capturedImage)
             }
         }
+        return nil
     }
 }
 
@@ -270,16 +273,9 @@ extension ARKitCameraManager: ARSessionDelegate {
         // Store latest frame for on-demand capture
         latestFrame = frame
         
-        // Optionally update preview image for UI (throttled to avoid performance issues)
-        if currentFrameImage == nil {
-            frameProcessingQueue.async {
-                if let previewImage = self.convertPixelBufferToUIImage(frame.capturedImage) {
-                    Task { @MainActor in
-                        self.currentFrameImage = previewImage
-                    }
-                }
-            }
-        }
+        // We intentionally avoid updating `currentFrameImage` here to prevent
+        // cross-actor violations when capturing `CVPixelBuffer` or `UIImage`.
+        // Preview updates can be handled elsewhere on the main actor if needed.
     }
     
     // Handle session errors

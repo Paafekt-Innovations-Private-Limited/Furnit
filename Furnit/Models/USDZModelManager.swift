@@ -58,7 +58,7 @@ class USDZModelManager: ObservableObject {
         }
         
         // Load bundle models
-        var bundleModels = modelNames.compactMap { name in
+        let bundleModels = modelNames.compactMap { name in
             let model = USDZModel(name: name, fileName: name, isSavedRoom: false)
             if model.dataAsset != nil {
                 if debugMode {
@@ -107,7 +107,7 @@ class USDZModelManager: ObservableObject {
             }
             
             // Create models in sorted order
-            for (fileURL, date) in filesWithDates {
+            for (fileURL, _) in filesWithDates {
                 let fileName = fileURL.deletingPathExtension().lastPathComponent
                 if debugMode {
                     logDebug("   - \(fileName)")
