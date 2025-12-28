@@ -499,44 +499,49 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         let t6 = Date()
         setProgress(0.55, text: "Extracting detections…")
         
-        let stride = numAnchors
-        let coeffOffset = 4 + numClasses
-        var tempScores = [Float](repeating: 0, count: numClasses)
+        // OPTIMIZATION: Transpose tensor from [numFeatures, numAnchors] to [numAnchors, numFeatures]
+        // This converts strided memory access (stride=8400) to contiguous access (stride=1)
+        let t6_transpose = Date()
+        let transposed = transposeDetectionTensor(detBuf, rows: numFeatures, cols: numAnchors)
+        if debugMode {
+            logDebug("   ⚡ Transpose: \(String(format: "%.2f", Date().timeIntervalSince(t6_transpose) * 1000)) ms")
+        }
         
+        let coeffOffset = 4 + numClasses
         var allDets: [UnionDet] = []
         allDets.reserveCapacity(512)
         
-        for anchor in 0..<numAnchors {
-            let x = detBuf[0 * stride + anchor]
-            let y = detBuf[1 * stride + anchor]
-            let w = detBuf[2 * stride + anchor]
-            let h = detBuf[3 * stride + anchor]
+        // Now iterate with contiguous memory access
+        transposed.withUnsafeBufferPointer { transBuffer in
+            guard let transPtr = transBuffer.baseAddress else { return }
             
-            guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
-            
-                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-                // Copy the class scores for this anchor into a temporary array.  We avoid
-                // the deprecated BLAS `scopy` routine by performing a simple strided copy.
-                for i in 0..<numClasses {
-                    tempScores[i] = basePtr[i * stride]
-                }
-            
-            var maxVal: Float = 0
-            var maxIdx: vDSP_Length = 0
-            vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
-            
-            let classIdx = Int(maxIdx)
-            
-            guard maxVal > confidenceThreshold, !clsToIgnore.contains(classIdx) else { continue }
-            
-            var coeffs = [Float](repeating: 0, count: 32)
-                let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-                // Copy the 32 prototype coefficients for this detection into a contiguous array.
-                for i in 0..<32 {
-                    coeffs[i] = coeffBase[i * stride]
-                }
-            
-            allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: maxVal, classIdx: classIdx, coeffs: coeffs))
+            for anchor in 0..<numAnchors {
+                let offset = anchor * numFeatures
+                let anchorPtr = transPtr.advanced(by: offset)
+                
+                let x = anchorPtr[0]
+                let y = anchorPtr[1]
+                let w = anchorPtr[2]
+                let h = anchorPtr[3]
+                
+                guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
+                
+                // Find max class score (now contiguous memory!)
+                let classPtr = anchorPtr.advanced(by: 4)
+                var maxVal: Float = 0
+                var maxIdx: vDSP_Length = 0
+                vDSP_maxvi(classPtr, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
+                
+                let classIdx = Int(maxIdx)
+                
+                guard maxVal > confidenceThreshold, !clsToIgnore.contains(classIdx) else { continue }
+                
+                // Copy mask coefficients (contiguous)
+                let coeffPtr = anchorPtr.advanced(by: coeffOffset)
+                let coeffs = Array(UnsafeBufferPointer(start: coeffPtr, count: 32))
+                
+                allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: maxVal, classIdx: classIdx, coeffs: coeffs))
+            }
         }
         
         let t6End = Date()
@@ -1178,6 +1183,40 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
         }
         
         if totalSet > 0 { finishFirstDetectionIfNeeded() }
+    }
+
+    // MARK: - Tensor Transpose (Performance Optimization)
+    /// Transposes detection tensor from [rows, cols] to [cols, rows] for contiguous memory access
+    /// This converts strided access (stride=8400) to sequential access (stride=1)
+    /// Example: [116, 8400] → [8400, 116]
+    private func transposeDetectionTensor(_ src: UnsafePointer<Float>, rows: Int, cols: Int) -> [Float] {
+        var dst = [Float](repeating: 0, count: rows * cols)
+        
+        dst.withUnsafeMutableBufferPointer { dstPtr in
+            guard let dstBase = dstPtr.baseAddress else { return }
+            
+            // Manual transpose using blocking for cache efficiency
+            // Process in 32x32 blocks to stay in L1 cache
+            let blockSize = 32
+            
+            for rowBlock in stride(from: 0, to: rows, by: blockSize) {
+                for colBlock in stride(from: 0, to: cols, by: blockSize) {
+                    let rowEnd = min(rowBlock + blockSize, rows)
+                    let colEnd = min(colBlock + blockSize, cols)
+                    
+                    // Transpose the block
+                    for r in rowBlock..<rowEnd {
+                        let srcRowStart = r * cols
+                        for c in colBlock..<colEnd {
+                            // dst[col, row] = src[row, col]
+                            dstBase[c * rows + r] = src[srcRowStart + c]
+                        }
+                    }
+                }
+            }
+        }
+        
+        return dst
     }
 
     // MARK: - NMS
