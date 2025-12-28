@@ -873,7 +873,7 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
             }
 
             // Stage 15: Upscale + crop back + morph close (unchanged)
-            var maskFull = upscaleMask(maskSmall: maskSmall, pW: pW, pH: pH,
+            let maskFull = upscaleMask(maskSmall: maskSmall, pW: pW, pH: pH,
                                        modelInput: 1280, origW: origW, origH: origH,
                                        resizeGain: resizeGain, padX: padX, padY: padY)
 

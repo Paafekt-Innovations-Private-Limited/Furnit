@@ -573,15 +573,21 @@ struct ModelViewerView: View {
     }
     
     private func captureAppWindowImage() -> UIImage? {
-        // Prefer the key window from the active scene
+        // Prefer the windows from the active window scenes.  Avoid using
+        // `UIApplication.shared.windows`, which was deprecated in iOS 15.  We
+        // instead collect windows from all connected scenes and search for
+        // the key window.  If none exists, we use the first available window.
         let windows: [UIWindow] = {
-            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                return scene.windows
-            }
-            // Fallback for older APIs
-            return UIApplication.shared.windows
+            // Gather windows from all connected scenes
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            let sceneWindows = scenes.flatMap { $0.windows }
+            // Fallback: if no scenes produce windows (unlikely on modern iOS),
+            // return an empty array.
+            return sceneWindows
         }()
-        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return nil }
+        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else {
+            return nil
+        }
         let format = UIGraphicsImageRendererFormat()
         format.scale = UIScreen.main.scale
         let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
@@ -684,15 +690,13 @@ struct SmartyPantsUIView: UIViewRepresentable {
         uiView.processInterval = processInterval
 //        uiView.scoreThreshold = scoreThreshold
         
-        // If the trigger is set, invoke the video picker and reset the flag
+        // If the trigger is set, invoke the video picker and reset the flag.  No
+        // conditional cast is needed because `uiView` is already a
+        // `SmartyPantsContainerView`.
         if runVideoPickerTrigger {
-            if let container = uiView as? SmartyPantsContainerView {
-                logDebug("🎯 runVideoPickerTrigger observed in representable — calling triggerVideoPicker()")
-                container.triggerVideoPicker()
-            } else {
-                logDebug("⚠️ Unable to cast to SmartyPantsContainerView for triggerVideoPicker")
-            }
-            // Reset trigger to avoid repeated calls
+            logDebug("🎯 runVideoPickerTrigger observed in representable — calling triggerVideoPicker()")
+            uiView.triggerVideoPicker()
+            // Reset trigger to avoid repeated calls on the next update cycle.
             DispatchQueue.main.async { self.runVideoPickerTrigger = false }
         }
         
