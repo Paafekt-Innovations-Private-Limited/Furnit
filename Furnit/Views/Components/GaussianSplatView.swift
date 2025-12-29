@@ -107,8 +107,8 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: - Camera State
 
-        /// Camera yaw angle (horizontal rotation around Y-axis)
-        private var cameraYaw: Float = 0
+        /// Camera yaw angle - initialized to π to face the scene (ml-sharp convention)
+        private var cameraYaw: Float = .pi
 
         /// Camera pitch angle (vertical rotation around X-axis)
         private var cameraPitch: Float = 0
@@ -249,9 +249,10 @@ struct GaussianSplatView: UIViewRepresentable {
         private var viewport: SplatRenderer.ViewportDescriptor {
             let aspectRatio = Float(drawableSize.width / drawableSize.height)
 
-            // Perspective projection matrix (right-handed)
+            // Apply zoom by adjusting FOV (smaller FOV = zoom in, larger = zoom out)
+            let zoomedFovy = fovy / cameraZoom
             let projectionMatrix = matrixPerspectiveRightHand(
-                fovyRadians: fovy,
+                fovyRadians: zoomedFovy,
                 aspectRatio: aspectRatio,
                 nearZ: 0.1,
                 farZ: 100.0
