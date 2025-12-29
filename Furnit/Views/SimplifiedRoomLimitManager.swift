@@ -29,16 +29,19 @@ class RoomLimitManager: ObservableObject {
     
     /// Update the current room count
     func updateRoomCount() {
-        // Count saved rooms (excluding bundle models)
+        // Count saved rooms (excluding bundle models) - both USDZ and PLY files
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let modelsDirectory = documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
-        
+
+        // Supported file extensions
+        let supportedExtensions = ["usdz", "ply"]
+
         do {
             let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory,
                                                                     includingPropertiesForKeys: nil)
-            let usdzFiles = files.filter { $0.pathExtension.lowercased() == "usdz" }
-            roomCount = usdzFiles.count
-            
+            let modelFiles = files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
+            roomCount = modelFiles.count
+
             if AppStateManager.shared.qualitySettings.debugMode {
                 logDebug("📊 [RoomLimitManager] Updated room count: \(roomCount)/\(roomLimit)")
             }

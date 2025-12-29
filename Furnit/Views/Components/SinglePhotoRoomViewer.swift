@@ -699,6 +699,7 @@ import RoomPlan
 
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
+    @StateObject private var generationService = Room3DGenerationService()
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var showRoomBoundaries = false
@@ -707,6 +708,9 @@ struct SinglePhotoRoomView: View {
     @State private var adjustedDepth: Float = 4.0
     @State private var adjustedHeight: Float = 2.8
     @State private var navigateToViewer = false
+    @State private var showGenerationSuccess = false
+    @State private var generatedPLYURL: URL?
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         ZStack {
@@ -852,6 +856,33 @@ struct SinglePhotoRoomView: View {
             
             Spacer()
         }
+
+            // Progress overlay for API generation
+            if case .uploading = generationService.status {
+                GenerationProgressOverlay(
+                    status: generationService.status,
+                    uploadProgress: generationService.uploadProgress,
+                    downloadProgress: generationService.downloadProgress,
+                    statusMessage: generationService.statusMessage,
+                    onCancel: { generationService.cancelGeneration() }
+                )
+            } else if case .processing = generationService.status {
+                GenerationProgressOverlay(
+                    status: generationService.status,
+                    uploadProgress: generationService.uploadProgress,
+                    downloadProgress: generationService.downloadProgress,
+                    statusMessage: generationService.statusMessage,
+                    onCancel: { generationService.cancelGeneration() }
+                )
+            } else if case .downloading = generationService.status {
+                GenerationProgressOverlay(
+                    status: generationService.status,
+                    uploadProgress: generationService.uploadProgress,
+                    downloadProgress: generationService.downloadProgress,
+                    statusMessage: generationService.statusMessage,
+                    onCancel: { generationService.cancelGeneration() }
+                )
+            }
     }
         .navigationTitle("Photo to 3D Room")
         .sheet(isPresented: $showImagePicker) {
@@ -859,14 +890,16 @@ struct SinglePhotoRoomView: View {
                 .onDisappear {
                     logDebug("📱 [View] Image picker dismissed")
                     if let image = selectedImage {
-                        logDebug("✅ [View] Image selected, starting processing...")
+                        logDebug("✅ [View] Image selected, starting API generation...")
+                        // Use API-based generation instead of local processing
                         Task {
-                            await reconstructor.processPhoto(image)
-                            if let dims = reconstructor.estimatedDimensions {
-                                adjustedWidth = dims.width
-                                adjustedDepth = dims.depth
-                                adjustedHeight = dims.height
-                                logDebug("📏 [View] Sliders updated with estimated dimensions")
+                            do {
+                                let fileURL = try await generationService.generateRoom(from: image)
+                                logDebug("✅ [View] PLY file generated: \(fileURL.path)")
+                                generatedPLYURL = fileURL
+                                showGenerationSuccess = true
+                            } catch {
+                                logDebug("❌ [View] Generation failed: \(error)")
                             }
                         }
                     } else {
@@ -911,6 +944,51 @@ struct SinglePhotoRoomView: View {
                 if let scene = reconstructor.generatedRoomScene {
                     SceneKitViewer(scene: scene)
                 }
+            }
+        }
+        // Success alert for API-generated PLY file
+        .alert("3D Model Generated", isPresented: $showGenerationSuccess) {
+            Button("Done") {
+                // Dismiss the sheet and notify home to refresh
+                NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+            }
+        } message: {
+            if let url = generatedPLYURL {
+                let fileName = url.lastPathComponent
+                Text("Successfully downloaded \(fileName). View it in your models list.")
+            } else {
+                Text("Your 3D model has been saved successfully.")
+            }
+        }
+        // Handle generation errors
+        .alert("Generation Failed", isPresented: Binding(
+            get: {
+                if case .failed = generationService.status { return true }
+                return false
+            },
+            set: { _ in }
+        )) {
+            Button("OK", role: .cancel) {
+                selectedImage = nil
+            }
+            Button("Retry") {
+                if let image = selectedImage {
+                    Task {
+                        do {
+                            let fileURL = try await generationService.generateRoom(from: image)
+                            generatedPLYURL = fileURL
+                            showGenerationSuccess = true
+                        } catch {
+                            logDebug("❌ [View] Retry failed: \(error)")
+                        }
+                    }
+                }
+            }
+        } message: {
+            if case .failed(let errorMessage) = generationService.status {
+                Text(errorMessage)
+            } else {
+                Text("An error occurred while generating your 3D model.")
             }
         }
     }
