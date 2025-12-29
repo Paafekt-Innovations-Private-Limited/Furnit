@@ -18,6 +18,9 @@ struct GaussianSplatView: UIViewRepresentable {
     /// Binding to report loading errors
     @Binding var loadError: String?
 
+    /// Binding to control zoom level from parent view
+    @Binding var zoomLevel: Float
+
     // MARK: - Constants
 
     /// Maximum number of simultaneous render operations
@@ -83,7 +86,7 @@ struct GaussianSplatView: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(isLoading: $isLoading, loadError: $loadError)
+        Coordinator(isLoading: $isLoading, loadError: $loadError, zoomLevel: $zoomLevel)
     }
 
     // MARK: - Coordinator
@@ -116,8 +119,8 @@ struct GaussianSplatView: UIViewRepresentable {
         /// Camera position offset from centroid (for movement)
         private var cameraOffset: SIMD3<Float> = .zero
 
-        /// Camera distance multiplier for zoom
-        private var cameraZoom: Float = 1.0
+        /// Zoom level binding from parent view
+        @Binding var zoomLevel: Float
 
         // MARK: - Camera Constants
 
@@ -140,9 +143,10 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: - Initialization
 
-        init(isLoading: Binding<Bool>, loadError: Binding<String?>) {
+        init(isLoading: Binding<Bool>, loadError: Binding<String?>, zoomLevel: Binding<Float>) {
             self._isLoading = isLoading
             self._loadError = loadError
+            self._zoomLevel = zoomLevel
             super.init()
         }
 
@@ -250,7 +254,7 @@ struct GaussianSplatView: UIViewRepresentable {
             let aspectRatio = Float(drawableSize.width / drawableSize.height)
 
             // Apply zoom by adjusting FOV (smaller FOV = zoom in, larger = zoom out)
-            let zoomedFovy = fovy / cameraZoom
+            let zoomedFovy = fovy / zoomLevel
             let projectionMatrix = matrixPerspectiveRightHand(
                 fovyRadians: zoomedFovy,
                 aspectRatio: aspectRatio,
@@ -271,7 +275,7 @@ struct GaussianSplatView: UIViewRepresentable {
                 translationMatrix = matrix4x4Translation(-cameraPos.x, -cameraPos.y, -cameraPos.z)
             } else {
                 // Exterior mode: camera outside looking at origin
-                translationMatrix = matrix4x4Translation(0.0, 0.0, exteriorCameraZ * cameraZoom)
+                translationMatrix = matrix4x4Translation(0.0, 0.0, exteriorCameraZ * zoomLevel)
             }
 
             // Calibration flip - turns model rightside-up (common for 3DGS PLY files)
@@ -355,11 +359,12 @@ struct GaussianSplatView: UIViewRepresentable {
 
         /// Handle pinch gesture for zoom
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
-            // Adjust zoom level
-            cameraZoom /= Float(gesture.scale)
+            // Adjust zoom level via binding (syncs with slider)
+            var newZoom = zoomLevel / Float(gesture.scale)
 
-            // Clamp zoom range (allow closer zoom for room viewing)
-            cameraZoom = max(0.1, min(10.0, cameraZoom))
+            // Clamp zoom range to match slider bounds
+            newZoom = max(0.5, min(3.0, newZoom))
+            zoomLevel = newZoom
 
             gesture.scale = 1.0
         }
@@ -372,6 +377,7 @@ struct GaussianSplatView: UIViewRepresentable {
     GaussianSplatView(
         plyURL: URL(fileURLWithPath: "/tmp/test.ply"),
         isLoading: .constant(true),
-        loadError: .constant(nil)
+        loadError: .constant(nil),
+        zoomLevel: .constant(1.0)
     )
 }

@@ -20,6 +20,9 @@ struct GaussianSplatViewerView: View {
     /// Controls visibility of UI overlay
     @State private var showControls = true
 
+    /// Zoom level for the 3D scene (1.0 = default, higher = zoomed in)
+    @State private var zoomLevel: Float = 1.0
+
     /// Environment dismiss action
     @Environment(\.dismiss) private var dismiss
 
@@ -35,7 +38,8 @@ struct GaussianSplatViewerView: View {
                 GaussianSplatView(
                     plyURL: url,
                     isLoading: $isLoading,
-                    loadError: $loadError
+                    loadError: $loadError,
+                    zoomLevel: $zoomLevel
                 )
                 .ignoresSafeArea()
                 .onTapGesture {
@@ -212,7 +216,7 @@ struct GaussianSplatViewerView: View {
             Spacer()
 
             // Bottom hint for controls
-            Text("Drag to rotate • Pinch to zoom • Tap to toggle UI")
+            Text("Drag to rotate • Slide to zoom • Tap to toggle UI")
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.7))
                 .padding(.horizontal, 16)
@@ -223,6 +227,38 @@ struct GaussianSplatViewerView: View {
                 )
                 .padding(.bottom, 32)
         }
+        .overlay(alignment: .trailing) {
+            // Vertical zoom slider on right edge
+            zoomSlider
+        }
+    }
+
+    /// Vertical zoom slider control
+    private var zoomSlider: some View {
+        VStack(spacing: 8) {
+            // Zoom in icon (top = higher zoom)
+            Image(systemName: "plus.magnifyingglass")
+                .font(.system(size: 14))
+                .foregroundColor(.white.opacity(0.7))
+
+            // Rotated slider for vertical orientation
+            Slider(value: $zoomLevel, in: 0.5...3.0)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 120)
+                .tint(.white.opacity(0.8))
+
+            // Zoom out icon (bottom = lower zoom)
+            Image(systemName: "minus.magnifyingglass")
+                .font(.system(size: 14))
+                .foregroundColor(.white.opacity(0.7))
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+        )
+        .padding(.trailing, 12)
     }
 }
 
