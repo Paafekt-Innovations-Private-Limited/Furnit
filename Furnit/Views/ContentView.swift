@@ -285,14 +285,9 @@ struct HomeTab: View {
                     let _ = fileInfo
                 }
 
-                // Handle PLY files differently - show snackbar instead of navigating
+                // Handle PLY files - navigate to Gaussian splat viewer
                 if model.fileType == .ply {
-                    Button(action: {
-                        selectedModelForInfo = model
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            showingFileInfoSnackbar = true
-                        }
-                    }) {
+                    NavigationLink(destination: GaussianSplatViewerView(model: model)) {
                         HomeViewModelRow(model: model)
                     }
                     .onAppear {
@@ -604,16 +599,10 @@ struct HomeViewModelRow: View {
 
             Spacer()
 
-            // Different indicator for PLY files (tap for info) vs USDZ (chevron for navigation)
-            if model.fileType == .ply {
-                Image(systemName: "info.circle")
-                    .foregroundColor(.purple.opacity(0.6))
-                    .font(.caption)
-            } else {
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.secondary)
-                    .font(.caption)
-            }
+            // Navigation chevron - both PLY and USDZ are now viewable
+            Image(systemName: "chevron.right")
+                .foregroundColor(.secondary)
+                .font(.caption)
         }
         .padding(.vertical, 4)
     }

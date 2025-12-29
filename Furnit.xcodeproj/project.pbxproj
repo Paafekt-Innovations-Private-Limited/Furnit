@@ -10,6 +10,9 @@
 		613061F92EF8AFF1001EB3AF /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 613061F82EF8AFF1001EB3AF /* FirebaseAppCheck */; };
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
+		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
+		61MS00032F01000000000002 /* PLYIO in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00022F01000000000002 /* PLYIO */; };
+		61MS00052F01000000000003 /* SplatIO in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00042F01000000000003 /* SplatIO */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +49,9 @@
 				61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */,
 				613061F92EF8AFF1001EB3AF /* FirebaseAppCheck in Frameworks */,
 				61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */,
+				61MS00012F01000000000001 /* MetalSplatter in Frameworks */,
+				61MS00032F01000000000002 /* PLYIO in Frameworks */,
+				61MS00052F01000000000003 /* SplatIO in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,6 +106,9 @@
 				61A6AB682EF71F5B00D05B9D /* FirebaseAuth */,
 				61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */,
 				613061F82EF8AFF1001EB3AF /* FirebaseAppCheck */,
+				61MS00002F01000000000001 /* MetalSplatter */,
+				61MS00022F01000000000002 /* PLYIO */,
+				61MS00042F01000000000003 /* SplatIO */,
 			);
 			productName = Furnit;
 			productReference = 045F5BD92E6D302900C5585D /* Furnit.app */;
@@ -131,6 +140,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				61A6AB672EF71F5B00D05B9D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				61MS00062F01000000000004 /* XCRemoteSwiftPackageReference "MetalSplatter" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 045F5BDA2E6D302900C5585D /* Products */;
@@ -384,6 +394,14 @@
 				minimumVersion = 12.7.0;
 			};
 		};
+		61MS00062F01000000000004 /* XCRemoteSwiftPackageReference "MetalSplatter" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/psramaswamy/MetalSplatter.git";
+			requirement = {
+				kind = branch;
+				branch = main;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -401,6 +419,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 61A6AB672EF71F5B00D05B9D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseCore;
+		};
+		61MS00002F01000000000001 /* MetalSplatter */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 61MS00062F01000000000004 /* XCRemoteSwiftPackageReference "MetalSplatter" */;
+			productName = MetalSplatter;
+		};
+		61MS00022F01000000000002 /* PLYIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 61MS00062F01000000000004 /* XCRemoteSwiftPackageReference "MetalSplatter" */;
+			productName = PLYIO;
+		};
+		61MS00042F01000000000003 /* SplatIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 61MS00062F01000000000004 /* XCRemoteSwiftPackageReference "MetalSplatter" */;
+			productName = SplatIO;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
