@@ -5,6 +5,11 @@ struct SettingsView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @Environment(\.dismiss) private var dismiss
     @State private var showLogoutConfirmation = false
+    
+    // Single Photo Room Dimensions
+    @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
+    @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
+    @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
 
     var body: some View {
         NavigationView {
@@ -61,6 +66,56 @@ struct SettingsView: View {
                     Text("Movement Speed")
                 } footer: {
                     Text("Controls how fast the camera moves when using the joystick. Choose the speed that feels most comfortable for you.")
+                        .font(.footnote)
+                }
+                
+                // Single Photo Room Dimensions Section
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Width slider
+                        HStack {
+                            Image(systemName: "arrow.left.and.right")
+                                .foregroundColor(.blue)
+                                .frame(width: 24)
+                            Text("Width: \(String(format: "%.1f", roomWidth))m")
+                                .font(.headline)
+                        }
+                        Slider(value: $roomWidth, in: 2...8, step: 0.1)
+                            .tint(.blue)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Depth slider
+                        HStack {
+                            Image(systemName: "arrow.up.and.down")
+                                .foregroundColor(.green)
+                                .frame(width: 24)
+                            Text("Depth: \(String(format: "%.1f", roomDepth))m")
+                                .font(.headline)
+                        }
+                        Slider(value: $roomDepth, in: 2...8, step: 0.1)
+                            .tint(.green)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Height slider
+                        HStack {
+                            Image(systemName: "arrow.up.to.line")
+                                .foregroundColor(.orange)
+                                .frame(width: 24)
+                            Text("Height: \(String(format: "%.1f", roomHeight))m")
+                                .font(.headline)
+                        }
+                        Slider(value: $roomHeight, in: 2.2...4, step: 0.1)
+                            .tint(.orange)
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("Single Photo Room Dimensions")
+                } footer: {
+                    Text("Adjust the default dimensions for rooms created from single photos. These values will be used as starting points when detecting room boundaries.")
                         .font(.footnote)
                 }
 

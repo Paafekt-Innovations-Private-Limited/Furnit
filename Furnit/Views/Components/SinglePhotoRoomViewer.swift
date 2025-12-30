@@ -6,25 +6,7 @@ import Accelerate
 struct RoomBoundaryDetectionView: View {
     let originalImage: UIImage
     @Binding var savedBoundaries: RoomStructure?
-    @State private var detectedBoundariesImage: UIImage?
 
-    // ✅ Fix image orientation ONCE to prevent 90° tilt
-    @State private var fixedImage: UIImage?
-    private var displayImage: UIImage { fixedImage ?? originalImage }
-
-    // GPU-accelerated CIContext for image processing
-    private static let ciContext: CIContext = {
-        if let device = MTLCreateSystemDefaultDevice() {
-            logDebug("🚀 [BoundaryView] Using Metal GPU for image processing")
-            return CIContext(mtlDevice: device, options: [.useSoftwareRenderer: false])
-        }
-        logDebug("⚠️ [BoundaryView] Metal not available, using CPU")
-        return CIContext(options: [.useSoftwareRenderer: true])
-    }()
-    @State private var scale: CGFloat = 1.0
-    @State private var lastScale: CGFloat = 1.0
-    @State private var offset: CGSize = .zero
-    @State private var lastOffset: CGSize = .zero
     @Environment(\.dismiss) var dismiss
     
     // Boundary positions (as percentages of image dimensions)
@@ -35,50 +17,48 @@ struct RoomBoundaryDetectionView: View {
     @State private var vanishingX: CGFloat = 0.5
     @State private var vanishingY: CGFloat = 0.45
     
-    @State private var showAdjustmentMode = false
-    
     // Custom magenta color
     private let magentaColor = Color(red: 1.0, green: 0.0, blue: 1.0)
     
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                if showAdjustmentMode {
-                    // Interactive adjustment view
-                    GeometryReader { geometry in
-                        ZStack {
-                            // Background image (orientation-fixed)
-                            Image(uiImage: displayImage)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: geometry.size.width)
-
-                            // Overlay with draggable boundaries
-                            BoundaryLinesCanvas(
-                                imageSize: displayImage.size,
-                                floorY: floorY,
-                                ceilingY: ceilingY,
-                                leftX: leftX,
-                                rightX: rightX,
-                                vanishingX: vanishingX,
-                                vanishingY: vanishingY
-                            )
+                // Interactive adjustment view - image is already fixed
+                GeometryReader { geometry in
+                    ZStack {
+                        // Background image
+                        Image(uiImage: originalImage)
+                            .resizable()
+                            .scaledToFit()
                             .frame(width: geometry.size.width)
-                            
-                            // Draggable handles
-                            DraggableHandlesOverlay(
-                                geometry: geometry,
-                                imageSize: displayImage.size,
-                                floorY: $floorY,
-                                ceilingY: $ceilingY,
-                                leftX: $leftX,
-                                rightX: $rightX,
-                                vanishingX: $vanishingX,
-                                vanishingY: $vanishingY,
-                                magentaColor: magentaColor
-                            )
-                        }
+                            .background(Color.red) // ✅ Debug: should not see red if image loads
+
+                        // Overlay with draggable boundaries
+                        BoundaryLinesCanvas(
+                            imageSize: originalImage.size,
+                            floorY: floorY,
+                            ceilingY: ceilingY,
+                            leftX: leftX,
+                            rightX: rightX,
+                            vanishingX: vanishingX,
+                            vanishingY: vanishingY
+                        )
+                        .frame(width: geometry.size.width)
+                        
+                        // Draggable handles
+                        DraggableHandlesOverlay(
+                            geometry: geometry,
+                            imageSize: originalImage.size,
+                            floorY: $floorY,
+                            ceilingY: $ceilingY,
+                            leftX: $leftX,
+                            rightX: $rightX,
+                            vanishingX: $vanishingX,
+                            vanishingY: $vanishingY,
+                            magentaColor: magentaColor
+                        )
                     }
+                }
                     
                     // Adjustment instructions
                     VStack(spacing: 12) {
@@ -114,149 +94,46 @@ struct RoomBoundaryDetectionView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
-
-                            Button("Done") {
-                                // Save boundaries and dismiss
-                                var boundaries = RoomStructure()
-                                boundaries.floorY = floorY
-                                boundaries.ceilingY = ceilingY
-                                boundaries.leftX = leftX
-                                boundaries.rightX = rightX
-                                boundaries.vanishingX = vanishingX
-                                boundaries.vanishingY = vanishingY
-
-                                savedBoundaries = boundaries
-                                logDebug("✅ Saved adjusted boundaries:")
-                                logDebug("   Floor: \(floorY), Ceiling: \(ceilingY)")
-                                logDebug("   Left: \(leftX), Right: \(rightX)")
-                                logDebug("   VP: (\(vanishingX), \(vanishingY))")
-
-                                // Dismiss sheet directly (go to 3D view)
-                                dismiss()
-                            }
-                            .buttonStyle(.borderedProminent)
                         }
                         .padding(.bottom, 8)
                     }
                     .background(.ultraThinMaterial)
-                    
-                } else if let boundariesImage = detectedBoundariesImage {
-                    // View mode with zoom controls
-                    GeometryReader { geometry in
-                        ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                            Image(uiImage: boundariesImage)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: geometry.size.width)
-                                .scaleEffect(scale)
-                                .offset(offset)
-                                .gesture(
-                                    MagnificationGesture()
-                                        .onChanged { value in
-                                            let delta = value / lastScale
-                                            lastScale = value
-                                            scale *= delta
-                                        }
-                                        .onEnded { _ in
-                                            lastScale = 1.0
-                                            scale = min(max(scale, 0.5), 5.0)
-                                        }
-                                )
-                                .gesture(
-                                    DragGesture()
-                                        .onChanged { value in
-                                            offset = CGSize(
-                                                width: lastOffset.width + value.translation.width,
-                                                height: lastOffset.height + value.translation.height
-                                            )
-                                        }
-                                        .onEnded { _ in
-                                            lastOffset = offset
-                                        }
-                                )
-                        }
-                    }
-                    
-                    // Zoom controls
-                    HStack(spacing: 20) {
-                        Button(action: {
-                            withAnimation { scale = max(0.5, scale - 0.5) }
-                        }) {
-                            Image(systemName: "minus.magnifyingglass")
-                                .font(.title2)
-                                .padding()
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .clipShape(Circle())
-                        }
-                        
-                        Button("Adjust Boundaries") {
-                            showAdjustmentMode = true
-                        }
-                        .font(.headline)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Color.orange)
-                        .foregroundColor(.white)
-                        .cornerRadius(20)
-                        
-                        Button(action: {
-                            withAnimation {
-                                scale = 1.0
-                                offset = .zero
-                                lastOffset = .zero
-                            }
-                        }) {
-                            Text("Reset")
-                                .font(.headline)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 10)
-                                .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(20)
-                        }
-                        
-                        Button(action: {
-                            withAnimation { scale = min(5.0, scale + 0.5) }
-                        }) {
-                            Image(systemName: "plus.magnifyingglass")
-                                .font(.title2)
-                                .padding()
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .clipShape(Circle())
-                        }
-                    }
-                    .padding()
-                    
-                } else {
-                    ProgressView("Detecting room boundaries...")
-                        .padding()
-                }
             }
             .navigationTitle("Room Boundaries")
             .navigationBarTitleDisplayMode(.inline)
-        }
-        .onAppear {
-            // ✅ Fix image orientation ONCE on appear to prevent 90° tilt
-            if fixedImage == nil {
-                fixedImage = originalImage.fixedOrientation()
-                logDebug("🔧 [BoundaryView] Fixed image orientation on appear")
+            .onAppear {
+                logDebug("🖼️ [BoundaryView] View appeared with image size: \(originalImage.size)")
+                logDebug("   Image scale: \(originalImage.scale), orientation: \(originalImage.imageOrientation.rawValue)")
             }
-            generateFinalImage()
-        }
-    }
-    
-    func generateFinalImage() {
-        Task {
-            let result = await drawBoundariesOnImage()
-            await MainActor.run { detectedBoundariesImage = result }
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Done") {
+                        // Save boundaries and dismiss
+                        var boundaries = RoomStructure()
+                        boundaries.floorY = floorY
+                        boundaries.ceilingY = ceilingY
+                        boundaries.leftX = leftX
+                        boundaries.rightX = rightX
+                        boundaries.vanishingX = vanishingX
+                        boundaries.vanishingY = vanishingY
+
+                        savedBoundaries = boundaries
+                        logDebug("✅ Saved adjusted boundaries:")
+                        logDebug("   Floor: \(floorY), Ceiling: \(ceilingY)")
+                        logDebug("   Left: \(leftX), Right: \(rightX)")
+                        logDebug("   VP: (\(vanishingX), \(vanishingY))")
+
+                        // Dismiss sheet directly (go to 3D view)
+                        dismiss()
+                    }
+                }
+            }
         }
     }
     
     func drawBoundariesOnImage() async -> UIImage {
-        // ✅ Use displayImage (orientation-fixed) instead of originalImage
-        let sourceImage = displayImage
+        // Use originalImage (already orientation-fixed)
+        let sourceImage = originalImage
 
         // ✅ OPTIMIZATION: Downscale large images to prevent memory crashes
         // Using vImage from Accelerate framework for GPU/NEON acceleration
@@ -282,102 +159,102 @@ struct RoomBoundaryDetectionView: View {
             return renderer.image { context in
                 // Draw working image (downscaled if needed)
                 workingImage.draw(at: .zero)
-            
-            let cgContext = context.cgContext
-            
-            // Draw floor boundary in GREEN
-            cgContext.setStrokeColor(UIColor.green.cgColor)
-            cgContext.setLineWidth(15.0)
-            let floorYPos = floorY * height
-            cgContext.move(to: CGPoint(x: 0, y: floorYPos))
-            cgContext.addLine(to: CGPoint(x: width, y: floorYPos))
-            cgContext.strokePath()
-            
-            let floorLabel = "FLOOR"
-            let floorAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.boldSystemFont(ofSize: 60),
-                .foregroundColor: UIColor.green,
-                .strokeColor: UIColor.black,
-                .strokeWidth: -4.0
-            ]
-            floorLabel.draw(at: CGPoint(x: 50, y: floorYPos - 80), withAttributes: floorAttrs)
-            
-            // Draw ceiling boundary in CYAN
-            cgContext.setStrokeColor(UIColor.cyan.cgColor)
-            cgContext.setLineWidth(15.0)
-            let ceilingYPos = ceilingY * height
-            cgContext.move(to: CGPoint(x: 0, y: ceilingYPos))
-            cgContext.addLine(to: CGPoint(x: width, y: ceilingYPos))
-            cgContext.strokePath()
-            
-            let ceilingLabel = "CEILING"
-            let ceilingAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.boldSystemFont(ofSize: 60),
-                .foregroundColor: UIColor.cyan,
-                .strokeColor: UIColor.black,
-                .strokeWidth: -4.0
-            ]
-            ceilingLabel.draw(at: CGPoint(x: 50, y: ceilingYPos + 30), withAttributes: ceilingAttrs)
-            
-            // Draw left wall in RED
-            cgContext.setStrokeColor(UIColor.red.cgColor)
-            cgContext.setLineWidth(12.0)
-            let leftXPos = leftX * width
-            cgContext.move(to: CGPoint(x: leftXPos, y: 0))
-            cgContext.addLine(to: CGPoint(x: leftXPos, y: height))
-            cgContext.strokePath()
-            
-            let leftLabel = "LEFT"
-            let leftAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.boldSystemFont(ofSize: 50),
-                .foregroundColor: UIColor.red,
-                .strokeColor: UIColor.white,
-                .strokeWidth: -3.0
-            ]
-            leftLabel.draw(at: CGPoint(x: leftXPos + 30, y: height / 2), withAttributes: leftAttrs)
-            
-            // Draw right wall in YELLOW
-            cgContext.setStrokeColor(UIColor.yellow.cgColor)
-            cgContext.setLineWidth(12.0)
-            let rightXPos = rightX * width
-            cgContext.move(to: CGPoint(x: rightXPos, y: 0))
-            cgContext.addLine(to: CGPoint(x: rightXPos, y: height))
-            cgContext.strokePath()
-            
-            let rightLabel = "RIGHT"
-            let rightAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.boldSystemFont(ofSize: 50),
-                .foregroundColor: UIColor.yellow,
-                .strokeColor: UIColor.black,
-                .strokeWidth: -3.0
-            ]
-            rightLabel.draw(at: CGPoint(x: rightXPos - 150, y: height / 2), withAttributes: rightAttrs)
-            
-            // Draw vanishing point in MAGENTA
-            cgContext.setFillColor(UIColor.magenta.cgColor)
-            let vpX = vanishingX * width
-            let vpY = vanishingY * height
-            let vpRadius: CGFloat = 40
-            let vpRect = CGRect(x: vpX - vpRadius, y: vpY - vpRadius, width: vpRadius * 2, height: vpRadius * 2)
-            cgContext.fillEllipse(in: vpRect)
-            
-            // Crosshair
-            cgContext.setStrokeColor(UIColor.white.cgColor)
-            cgContext.setLineWidth(5.0)
-            cgContext.move(to: CGPoint(x: vpX - 80, y: vpY))
-            cgContext.addLine(to: CGPoint(x: vpX + 80, y: vpY))
-            cgContext.move(to: CGPoint(x: vpX, y: vpY - 80))
-            cgContext.addLine(to: CGPoint(x: vpX, y: vpY + 80))
-            cgContext.strokePath()
-            
-            let vpLabel = "VP"
-            let vpAttrs: [NSAttributedString.Key: Any] = [
-                .font: UIFont.boldSystemFont(ofSize: 40),
-                .foregroundColor: UIColor.magenta,
-                .strokeColor: UIColor.white,
-                .strokeWidth: -3.0
-            ]
-            vpLabel.draw(at: CGPoint(x: vpX - 30, y: vpY - 100), withAttributes: vpAttrs)
+                
+                let cgContext = context.cgContext
+                
+                // Draw floor boundary in GREEN
+                cgContext.setStrokeColor(UIColor.green.cgColor)
+                cgContext.setLineWidth(15.0)
+                let floorYPos = floorY * height
+                cgContext.move(to: CGPoint(x: 0, y: floorYPos))
+                cgContext.addLine(to: CGPoint(x: width, y: floorYPos))
+                cgContext.strokePath()
+                
+                let floorLabel = "FLOOR"
+                let floorAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.boldSystemFont(ofSize: 60),
+                    .foregroundColor: UIColor.green,
+                    .strokeColor: UIColor.black,
+                    .strokeWidth: -4.0
+                ]
+                floorLabel.draw(at: CGPoint(x: 50, y: floorYPos - 80), withAttributes: floorAttrs)
+                
+                // Draw ceiling boundary in CYAN
+                cgContext.setStrokeColor(UIColor.cyan.cgColor)
+                cgContext.setLineWidth(15.0)
+                let ceilingYPos = ceilingY * height
+                cgContext.move(to: CGPoint(x: 0, y: ceilingYPos))
+                cgContext.addLine(to: CGPoint(x: width, y: ceilingYPos))
+                cgContext.strokePath()
+                
+                let ceilingLabel = "CEILING"
+                let ceilingAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.boldSystemFont(ofSize: 60),
+                    .foregroundColor: UIColor.cyan,
+                    .strokeColor: UIColor.black,
+                    .strokeWidth: -4.0
+                ]
+                ceilingLabel.draw(at: CGPoint(x: 50, y: ceilingYPos + 30), withAttributes: ceilingAttrs)
+                
+                // Draw left wall in RED
+                cgContext.setStrokeColor(UIColor.red.cgColor)
+                cgContext.setLineWidth(12.0)
+                let leftXPos = leftX * width
+                cgContext.move(to: CGPoint(x: leftXPos, y: 0))
+                cgContext.addLine(to: CGPoint(x: leftXPos, y: height))
+                cgContext.strokePath()
+                
+                let leftLabel = "LEFT"
+                let leftAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.boldSystemFont(ofSize: 50),
+                    .foregroundColor: UIColor.red,
+                    .strokeColor: UIColor.white,
+                    .strokeWidth: -3.0
+                ]
+                leftLabel.draw(at: CGPoint(x: leftXPos + 30, y: height / 2), withAttributes: leftAttrs)
+                
+                // Draw right wall in YELLOW
+                cgContext.setStrokeColor(UIColor.yellow.cgColor)
+                cgContext.setLineWidth(12.0)
+                let rightXPos = rightX * width
+                cgContext.move(to: CGPoint(x: rightXPos, y: 0))
+                cgContext.addLine(to: CGPoint(x: rightXPos, y: height))
+                cgContext.strokePath()
+                
+                let rightLabel = "RIGHT"
+                let rightAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.boldSystemFont(ofSize: 50),
+                    .foregroundColor: UIColor.yellow,
+                    .strokeColor: UIColor.black,
+                    .strokeWidth: -3.0
+                ]
+                rightLabel.draw(at: CGPoint(x: rightXPos - 150, y: height / 2), withAttributes: rightAttrs)
+                
+                // Draw vanishing point in MAGENTA
+                cgContext.setFillColor(UIColor.magenta.cgColor)
+                let vpX = vanishingX * width
+                let vpY = vanishingY * height
+                let vpRadius: CGFloat = 40
+                let vpRect = CGRect(x: vpX - vpRadius, y: vpY - vpRadius, width: vpRadius * 2, height: vpRadius * 2)
+                cgContext.fillEllipse(in: vpRect)
+                
+                // Crosshair
+                cgContext.setStrokeColor(UIColor.white.cgColor)
+                cgContext.setLineWidth(5.0)
+                cgContext.move(to: CGPoint(x: vpX - 80, y: vpY))
+                cgContext.addLine(to: CGPoint(x: vpX + 80, y: vpY))
+                cgContext.move(to: CGPoint(x: vpX, y: vpY - 80))
+                cgContext.addLine(to: CGPoint(x: vpX, y: vpY + 80))
+                cgContext.strokePath()
+                
+                let vpLabel = "VP"
+                let vpAttrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.boldSystemFont(ofSize: 40),
+                    .foregroundColor: UIColor.magenta,
+                    .strokeColor: UIColor.white,
+                    .strokeWidth: -3.0
+                ]
+                vpLabel.draw(at: CGPoint(x: vpX - 30, y: vpY - 100), withAttributes: vpAttrs)
             }
         } // autoreleasepool
     }
@@ -701,197 +578,111 @@ struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
-    @State private var showRoomBoundaries = false
     @State private var adjustedBoundaries: RoomStructure?
-    @State private var adjustedWidth: Float = 4.0
-    @State private var adjustedDepth: Float = 4.0
-    @State private var adjustedHeight: Float = 2.8
     @State private var navigateToViewer = false
+    @State private var fixedImage: UIImage? // ✅ Store fixed image separately
+    
+    // Identifiable wrapper for reliable sheet(item:) presentation
+    @State private var fixedImageItem: IdentifiedImage?
+
+    struct IdentifiedImage: Identifiable {
+        let id = UUID()
+        let image: UIImage
+    }
+    
+    // Read dimensions from settings
+    @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
+    @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
+    @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
     
     var body: some View {
-        ZStack {
-            VStack {
-            if let image = selectedImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 300)
-                    .cornerRadius(12)
-                    .padding()
-                    .onAppear { logDebug("🖼️ [View] Displaying selected image") }
-                
-                Button("Show Room Boundaries") {
-                    logDebug("🏠 [View] Room boundaries button tapped")
-                    showRoomBoundaries = true
-                }
-                .buttonStyle(.borderedProminent)
-                .padding()
-                
-            } else {
-                // Photo Selection
-                VStack(spacing: 20) {
-                    Text("Create a 3D Room")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .padding(.top, 40)
-                    
-                    Text("Select a photo to get started")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    
-                    Button(action: {
-                        logDebug("🖼️ [View] Select photo button tapped")
-                        showImagePicker = true
-                    }) {
-                        VStack(spacing: 16) {
-                            Image(systemName: "photo.on.rectangle")
-                                .font(.system(size: 50))
-                                .foregroundColor(.orange)
-                            
-                            VStack(spacing: 4) {
-                                Text("Quick Photo")
-                                    .font(.headline)
-                                Text("Single photo capture")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(24)
-                        .background(Color.orange.opacity(0.1))
-                        .cornerRadius(16)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.orange, lineWidth: 2)
-                        )
-                    }
-                    .padding(.horizontal)
-                    
-                    Spacer()
-                }
-            }
+        // ✅ Simple photo selection screen only
+        VStack(spacing: 20) {
+            Text("Create a 3D Room")
+                .font(.title2)
+                .fontWeight(.bold)
+                .padding(.top, 40)
             
-            if reconstructor.isProcessing {
-                VStack {
-                    ProgressView(value: reconstructor.progress)
-                        .progressViewStyle(LinearProgressViewStyle())
-                        .padding(.horizontal)
-                    
-                    Text(reconstructor.statusMessage)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding()
-                .onAppear { logDebug("⏳ [View] Processing view appeared") }
-            }
+            Text("Select a photo to get started")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
             
-            if let dimensions = reconstructor.estimatedDimensions {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Estimated Dimensions")
-                        .font(.headline)
+            Button(action: {
+                logDebug("🖼️ [View] Select photo button tapped")
+                showImagePicker = true
+            }) {
+                VStack(spacing: 16) {
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: 50))
+                        .foregroundColor(.orange)
                     
-                    HStack {
-                        Image(systemName: "arrow.left.and.right")
-                        Text("Width: \(String(format: "%.1f", adjustedWidth))m")
-                        Slider(value: $adjustedWidth, in: 2...8, step: 0.1)
-                            .onChange(of: adjustedWidth) { oldValue, newValue in
-                                logDebug("📏 [View] Width adjusted: \(oldValue) -> \(newValue)")
-                            }
+                    VStack(spacing: 4) {
+                        Text("Quick Photo")
+                            .font(.headline)
+                        Text("Single photo capture")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
-                    
-                    HStack {
-                        Image(systemName: "arrow.up.and.down")
-                        Text("Depth: \(String(format: "%.1f", adjustedDepth))m")
-                        Slider(value: $adjustedDepth, in: 2...8, step: 0.1)
-                            .onChange(of: adjustedDepth) { oldValue, newValue in
-                                logDebug("📏 [View] Depth adjusted: \(oldValue) -> \(newValue)")
-                            }
-                    }
-                    
-                    HStack {
-                        Image(systemName: "arrow.up.to.line")
-                        Text("Height: \(String(format: "%.1f", adjustedHeight))m")
-                        Slider(value: $adjustedHeight, in: 2.2...4, step: 0.1)
-                            .onChange(of: adjustedHeight) { oldValue, newValue in
-                                logDebug("📏 [View] Height adjusted: \(oldValue) -> \(newValue)")
-                            }
-                    }
-                    
-                    Text("Confidence: \(Int(dimensions.confidence * 100))%")
-                        .font(.caption)
-                        .foregroundColor(confidenceColor(dimensions.confidence))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(confidenceColor(dimensions.confidence).opacity(0.1))
-                        .cornerRadius(6)
                 }
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(12)
-                .padding()
-                .onAppear { logDebug("📊 [View] Dimensions view appeared") }
-                
-                Button("Rebuild with Adjusted Dimensions") {
-                    logDebug("🔄 [View] Rebuild button tapped")
-                    rebuildRoom()
-                }
-                .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity)
+                .padding(24)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.orange, lineWidth: 2)
+                )
             }
-            
-            // ✅ CHANGED: Using scene instead of URL
-            if let roomScene = reconstructor.generatedRoomScene {
-                NavigationLink(destination: SceneKitViewer(scene: roomScene)) {
-                    Label("View 3D Room", systemImage: "eye.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .padding()
-                .onAppear {
-                    logDebug("🎯 [View] View 3D Room button appeared")
-                }
-            }
+            .padding(.horizontal)
             
             Spacer()
         }
-    }
         .navigationTitle("Photo to 3D Room")
         .sheet(isPresented: $showImagePicker) {
             PhotoPickerView(selectedImage: $selectedImage)
-                .onDisappear {
-                    logDebug("📱 [View] Image picker dismissed")
-                    if let image = selectedImage {
-                        logDebug("✅ [View] Image selected, starting processing...")
-                        Task {
-                            await reconstructor.processPhoto(image)
-                            if let dims = reconstructor.estimatedDimensions {
-                                adjustedWidth = dims.width
-                                adjustedDepth = dims.depth
-                                adjustedHeight = dims.height
-                                logDebug("📏 [View] Sliders updated with estimated dimensions")
-                            }
-                        }
-                    } else {
-                        logDebug("⚠️ [View] No image selected")
-                    }
-                }
         }
-        // Room boundaries sheet: always returns a View via wrapper
-        .sheet(isPresented: $showRoomBoundaries) {
-            RoomBoundarySheetView(
-                image: selectedImage,
+        .onChange(of: selectedImage) { oldValue, newValue in
+            guard let image = newValue else { return }
+            logDebug("✅ [View] Image selected, preparing boundary sheet...")
+            // Capture image and dismiss picker first
+            fixedImage = image
+            // Ensure the picker is dismissed before presenting another sheet
+            if showImagePicker {
+                showImagePicker = false
+            }
+            // Present boundary sheet on next runloop after dismissal
+            DispatchQueue.main.async {
+                fixedImageItem = IdentifiedImage(image: image)
+            }
+        }
+        .sheet(item: $fixedImageItem) { item in
+            RoomBoundaryDetectionView(
+                originalImage: item.image,
                 savedBoundaries: $adjustedBoundaries
             )
+            .onAppear {
+                logDebug("✅ [Sheet] Opening RoomBoundaryDetectionView with image: \(item.image.size)")
+            }
         }
         .onAppear {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")
-            adjustedWidth = reconstructor.estimatedDimensions?.width ?? 4.0
-            adjustedDepth = reconstructor.estimatedDimensions?.depth ?? 4.0
-            adjustedHeight = reconstructor.estimatedDimensions?.height ?? 2.8
+            // Dimensions are now managed by @AppStorage
         }
         // ✅ Watch for boundary changes and rebuild automatically, then navigate to viewer
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
-            if let boundaries = newValue, let image = selectedImage {
+            if let boundaries = newValue, let image = fixedImage {
                 logDebug("🔄 [View] Boundaries adjusted, rebuilding room...")
                 Task {
+                    // Use dimensions from settings
+                    var updatedDimensions = reconstructor.estimatedDimensions ?? SinglePhotoRoomReconstructor.RoomDimensions()
+                    updatedDimensions.width = Float(roomWidth)
+                    updatedDimensions.depth = Float(roomDepth)
+                    updatedDimensions.height = Float(roomHeight)
+                    
+                    await MainActor.run {
+                        reconstructor.estimatedDimensions = updatedDimensions
+                    }
+                    
                     await reconstructor.processPhotoWithBoundaries(image, boundaries: boundaries)
                     // Auto-navigate to 3D viewer (save screen) once room is ready
                     if reconstructor.generatedRoomScene != nil {
@@ -915,54 +706,11 @@ struct SinglePhotoRoomView: View {
         }
     }
     
-    private func rebuildRoom() {
-        logDebug("🔄 [View] Rebuilding room with adjusted dimensions")
-        var updatedDimensions = reconstructor.estimatedDimensions ?? SinglePhotoRoomReconstructor.RoomDimensions()
-        updatedDimensions.width = adjustedWidth
-        updatedDimensions.depth = adjustedDepth
-        updatedDimensions.height = adjustedHeight
-        
-        logDebug("   - New dimensions: W:\(adjustedWidth) D:\(adjustedDepth) H:\(adjustedHeight)")
-        
-        Task {
-            await MainActor.run {
-                reconstructor.estimatedDimensions = updatedDimensions
-            }
-            
-            if let image = selectedImage {
-                if let boundaries = adjustedBoundaries {
-                    await reconstructor.processPhotoWithBoundaries(image, boundaries: boundaries)
-                } else {
-                    await reconstructor.processPhoto(image)
-                }
-            }
-        }
-    }
-    
     private func confidenceColor(_ confidence: Float) -> Color {
         switch confidence {
         case 0.7...1.0: return .green
         case 0.4..<0.7: return .orange
         default: return .red
-        }
-    }
-}
-
-// Wrapper view to guarantee the sheet always returns a View
-private struct RoomBoundarySheetView: View {
-    let image: UIImage?
-    @Binding var savedBoundaries: RoomStructure?
-    
-    var body: some View {
-        Group {
-            if let image {
-                RoomBoundaryDetectionView(
-                    originalImage: image,
-                    savedBoundaries: $savedBoundaries
-                )
-            } else {
-                EmptyView()
-            }
         }
     }
 }
@@ -1351,3 +1099,4 @@ struct SceneKitViewer: View {
         logDebug("   ✅ Camera setup complete and registered with GlobalCameraController")
     }
 }
+
