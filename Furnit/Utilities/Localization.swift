@@ -161,4 +161,40 @@ enum L10n {
         static let walls = "boundary.walls".localized
         static let vanish = "boundary.vanish".localized
     }
+
+    // MARK: Photo Room
+    enum PhotoRoom {
+        static let title = "photoRoom.title".localized
+        static let createTitle = "photoRoom.createTitle".localized
+        static let createSubtitle = "photoRoom.createSubtitle".localized
+        static let quickPhoto = "photoRoom.quickPhoto".localized
+        static let quickPhotoSubtitle = "photoRoom.quickPhotoSubtitle".localized
+    }
+
+    // MARK: Room Viewer
+    enum RoomViewer {
+        static let title = "roomViewer.title".localized
+        static let controls = "roomViewer.controls".localized
+        static let saveRoom = "roomViewer.saveRoom".localized
+        static let roomName = "roomViewer.roomName".localized
+        static let enterName = "roomViewer.enterName".localized
+        static let savingRoom = "roomViewer.savingRoom".localized
+        static let preparingModel = "roomViewer.preparingModel".localized
+        static let exportingUSDZ = "roomViewer.exportingUSDZ".localized
+        static let savingToLibrary = "roomViewer.savingToLibrary".localized
+        static let almostDone = "roomViewer.almostDone".localized
+        static func saveSuccess(_ name: String) -> String {
+            "roomViewer.saveSuccess".localized(name)
+        }
+        static func saveFailed(_ error: String) -> String {
+            "roomViewer.saveFailed".localized(error)
+        }
+        static let roomSaveTitle = "roomViewer.roomSaveTitle".localized
+    }
+
+    // MARK: Model Viewer
+    enum Viewer {
+        static let furniture = "viewer.furniture".localized
+        static let capture = "viewer.capture".localized
+    }
 }

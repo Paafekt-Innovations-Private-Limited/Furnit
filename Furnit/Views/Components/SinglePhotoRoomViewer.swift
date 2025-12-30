@@ -62,28 +62,28 @@ struct RoomBoundaryDetectionView: View {
                     
                     // Adjustment instructions
                     VStack(spacing: 12) {
-                        Text("Drag the circles to adjust boundaries")
+                        Text(L10n.Boundary.instructions)
                             .font(.headline)
                             .padding(.top, 8)
-                        
+
                         HStack(spacing: 16) {
-                            Label("Floor", systemImage: "arrow.down")
+                            Label(L10n.Boundary.floor, systemImage: "arrow.down")
                                 .foregroundColor(.green)
                                 .font(.caption)
-                            Label("Ceiling", systemImage: "arrow.up")
+                            Label(L10n.Boundary.ceiling, systemImage: "arrow.up")
                                 .foregroundColor(.cyan)
                                 .font(.caption)
-                            Label("Walls", systemImage: "arrow.left.and.right")
+                            Label(L10n.Boundary.walls, systemImage: "arrow.left.and.right")
                                 .foregroundColor(.red)
                                 .font(.caption)
-                            Label("Vanish", systemImage: "scope")
+                            Label(L10n.Boundary.vanish, systemImage: "scope")
                                 .foregroundColor(magentaColor)
                                 .font(.caption)
                         }
                         .padding(.horizontal)
-                        
+
                         HStack(spacing: 20) {
-                            Button("Reset") {
+                            Button(L10n.Common.reset) {
                                 withAnimation {
                                     floorY = 0.85
                                     ceilingY = 0.15
@@ -95,7 +95,7 @@ struct RoomBoundaryDetectionView: View {
                             }
                             .buttonStyle(.bordered)
 
-                            Button("Done") {
+                            Button(L10n.Common.done) {
                                 var boundaries = RoomStructure()
                                 boundaries.floorY = floorY
                                 boundaries.ceilingY = ceilingY
@@ -118,7 +118,7 @@ struct RoomBoundaryDetectionView: View {
                     }
                     .background(.ultraThinMaterial)
             }
-            .navigationTitle("Room Boundaries")
+            .navigationTitle(L10n.Boundary.title)
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 logDebug("🖼️ [BoundaryView] View appeared with image size: \(originalImage.size)")
@@ -126,7 +126,7 @@ struct RoomBoundaryDetectionView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Back") {
+                    Button(L10n.Common.back) {
                         // Dismiss without saving changes
                         dismiss()
                     }
@@ -602,15 +602,15 @@ struct SinglePhotoRoomView: View {
     var body: some View {
         // ✅ Simple photo selection screen only
         VStack(spacing: 20) {
-            Text("Create a 3D Room")
+            Text(L10n.PhotoRoom.createTitle)
                 .font(.title2)
                 .fontWeight(.bold)
                 .padding(.top, 40)
-            
-            Text("Select a photo to get started")
+
+            Text(L10n.PhotoRoom.createSubtitle)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-            
+
             Button(action: {
                 logDebug("🖼️ [View] Select photo button tapped")
                 showImagePicker = true
@@ -619,11 +619,11 @@ struct SinglePhotoRoomView: View {
                     Image(systemName: "photo.on.rectangle")
                         .font(.system(size: 50))
                         .foregroundColor(.orange)
-                    
+
                     VStack(spacing: 4) {
-                        Text("Quick Photo")
+                        Text(L10n.PhotoRoom.quickPhoto)
                             .font(.headline)
-                        Text("Single photo capture")
+                        Text(L10n.PhotoRoom.quickPhotoSubtitle)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -638,10 +638,10 @@ struct SinglePhotoRoomView: View {
                 )
             }
             .padding(.horizontal)
-            
+
             Spacer()
         }
-        .navigationTitle("Photo to 3D Room")
+        .navigationTitle(L10n.PhotoRoom.title)
         .sheet(isPresented: $showImagePicker) {
             PhotoPickerView(selectedImage: $selectedImage)
         }
@@ -776,6 +776,7 @@ struct SceneKitViewer: View {
     @State private var savingTimer: Timer?
     @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
+    @State private var saveWasSuccessful = false
     @State private var showRoomNameInput = false
     @State private var roomName = ""
 
@@ -809,7 +810,7 @@ struct SceneKitViewer: View {
                     Spacer()
                     HStack {
                         Image(systemName: "hand.draw")
-                        Text("Use joystick to move • Pinch to zoom")
+                        Text(L10n.RoomViewer.controls)
                             .font(.caption)
                     }
                     .padding(8)
@@ -826,7 +827,7 @@ struct SceneKitViewer: View {
                 }
             }
         }
-        .navigationTitle("3D Room View")
+        .navigationTitle(L10n.RoomViewer.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             // Help button
@@ -838,7 +839,7 @@ struct SceneKitViewer: View {
                     Image(systemName: "questionmark.circle")
                 }
             }
-            
+
             // Save Room button
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -849,22 +850,22 @@ struct SceneKitViewer: View {
             }
         }
         // Room name input alert
-        .alert("Save Room", isPresented: $showRoomNameInput) {
-            TextField("Room Name", text: $roomName)
-            Button("Cancel", role: .cancel) {
+        .alert(L10n.RoomViewer.saveRoom, isPresented: $showRoomNameInput) {
+            TextField(L10n.RoomViewer.roomName, text: $roomName)
+            Button(L10n.Common.cancel, role: .cancel) {
                 roomName = ""
             }
-            Button("Save") {
+            Button(L10n.Common.save) {
                 startSavingRoom()
             }
             .disabled(roomName.isEmpty)
         } message: {
-            Text("Enter a name for your room")
+            Text(L10n.RoomViewer.enterName)
         }
         // Save result alert
-        .alert("Room Save", isPresented: $showSaveAlert) {
-            Button("OK", role: .cancel) {
-                if saveAlertMessage.contains("successfully") {
+        .alert(L10n.RoomViewer.roomSaveTitle, isPresented: $showSaveAlert) {
+            Button(L10n.Common.ok, role: .cancel) {
+                if saveWasSuccessful {
                     // Post notification to dismiss the entire photo room sheet
                     NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
                 }
@@ -895,11 +896,11 @@ struct SceneKitViewer: View {
                 }
                 
                 VStack(spacing: 12) {
-                    Text("Saving Room")
+                    Text(L10n.RoomViewer.savingRoom)
                         .font(.title2)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
-                    
+
                     Text(saveProgressMessage)
                         .font(.subheadline)
                         .foregroundColor(.gray)
@@ -922,7 +923,7 @@ struct SceneKitViewer: View {
                 Button(action: {
                     cancelSavingRoom()
                 }) {
-                    Text("Cancel")
+                    Text(L10n.Common.cancel)
                         .font(.body)
                         .foregroundColor(.white)
                         .padding(.horizontal, 32)
@@ -938,13 +939,13 @@ struct SceneKitViewer: View {
     
     private var saveProgressMessage: String {
         if saveProgress < 0.3 {
-            return "Preparing room model..."
+            return L10n.RoomViewer.preparingModel
         } else if saveProgress < 0.6 {
-            return "Exporting to USDZ format..."
+            return L10n.RoomViewer.exportingUSDZ
         } else if saveProgress < 0.9 {
-            return "Saving to library..."
+            return L10n.RoomViewer.savingToLibrary
         } else {
-            return "Almost done..."
+            return L10n.RoomViewer.almostDone
         }
     }
     
@@ -1005,12 +1006,14 @@ struct SceneKitViewer: View {
                 // Show result based on actual save status
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     if saveSuccess {
-                        self.saveAlertMessage = "Room '\(savedName)' saved successfully!"
+                        self.saveAlertMessage = L10n.RoomViewer.saveSuccess(savedName)
+                        self.saveWasSuccessful = true
                         self.showSaveAlert = true
                         self.roomName = ""
                         logDebug("✅ [Viewer] Save complete!")
                     } else {
-                        self.saveAlertMessage = "Failed to save room: \(saveError ?? "Unknown error")"
+                        self.saveAlertMessage = L10n.RoomViewer.saveFailed(saveError ?? "Unknown error")
+                        self.saveWasSuccessful = false
                         self.showSaveAlert = true
                         logDebug("❌ [Viewer] Save failed!")
                     }

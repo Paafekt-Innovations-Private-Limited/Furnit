@@ -182,6 +182,28 @@
 "smartypants.buildingMask" = "Building mask...";
 "smartypants.compositing" = "Compositing...";
 
+// MARK: - Single Photo Room
+"photoRoom.title" = "Photo to 3D Room";
+"photoRoom.createTitle" = "Create a 3D Room";
+"photoRoom.createSubtitle" = "Select a photo to get started";
+"photoRoom.quickPhoto" = "Quick Photo";
+"photoRoom.quickPhotoSubtitle" = "Single photo capture";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "3D Room View";
+"roomViewer.controls" = "Use joystick to move • Pinch to zoom";
+"roomViewer.saveRoom" = "Save Room";
+"roomViewer.roomName" = "Room Name";
+"roomViewer.enterName" = "Enter a name for your room";
+"roomViewer.savingRoom" = "Saving Room";
+"roomViewer.preparingModel" = "Preparing room model...";
+"roomViewer.exportingUSDZ" = "Exporting to USDZ format...";
+"roomViewer.savingToLibrary" = "Saving to library...";
+"roomViewer.almostDone" = "Almost done...";
+"roomViewer.saveSuccess" = "Room '%@' saved successfully!";
+"roomViewer.saveFailed" = "Failed to save room: %@";
+"roomViewer.roomSaveTitle" = "Room Save";
+
 // MARK: - Accessibility
 "accessibility.settings" = "Settings";
 "accessibility.help" = "Help";
