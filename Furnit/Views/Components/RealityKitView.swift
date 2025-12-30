@@ -571,6 +571,7 @@ struct RealityKitView: UIViewRepresentable {
                 logDebug("   - Error description: \(error.localizedDescription)")
                 logDebug("   - Model URL: \(modelURL.path)")
                 logDebug("🎨 [RealityKitView.loadModel] ========================================")
+                CrashReporter.shared.report(error, context: "Loading 3D Model")
             }
         }
     }

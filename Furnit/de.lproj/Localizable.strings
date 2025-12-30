@@ -225,6 +225,12 @@
 "roomViewer.saveFailed" = "Raum konnte nicht gespeichert werden: %@";
 "roomViewer.roomSaveTitle" = "Raum speichern";
 
+// MARK: - Crash Report
+"crashReport.submitReport" = "Bericht senden";
+"crashReport.emailNotConfigured" = "E-Mail nicht verfügbar";
+"crashReport.emailNotConfiguredMessage" = "E-Mail ist auf diesem Gerät nicht konfiguriert. Sie können die Fehlerdetails kopieren und manuell an support@paafekt.com senden";
+"crashReport.copyDetails" = "Details kopieren";
+
 // MARK: - Accessibility
 "accessibility.settings" = "Einstellungen";
 "accessibility.help" = "Hilfe";

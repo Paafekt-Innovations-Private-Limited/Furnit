@@ -325,6 +325,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
         } catch {
             if debugMode { logDebug("⚠️ Metal pipeline setup failed: \(error.localizedDescription)") }
+            CrashReporter.shared.report(error, context: "Metal Pipeline Setup")
         }
     }
     
