@@ -1133,6 +1133,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         enc.setBytes(&resizeGain_f, length: MemoryLayout<Float>.size, index: 8)
                         enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 9)
                         enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 10)
+                        var bx1_u = UInt32(bx1)
+                        var by1_u = UInt32(by1)
+                        var bx2_u = UInt32(bx2)
+                        var by2_u = UInt32(by2)
+                        enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 11)
+                        enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 12)
+                        enc.setBytes(&bx2_u, length: MemoryLayout<UInt32>.size, index: 13)
+                        enc.setBytes(&by2_u, length: MemoryLayout<UInt32>.size, index: 14)
 
                         let w = fused.threadExecutionWidth
                         let h = max(1, fused.maxTotalThreadsPerThreadgroup / w)
@@ -1193,11 +1201,26 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
             let outBase = ctx.data!.assumingMemoryBound(to: UInt8.self)
             let origBase = CVPixelBufferGetBaseAddress(pixelBuffer)!.assumingMemoryBound(to: UInt8.self)
-            for i in 0..<(origW * origH) {
-                let b = i << 2
-                if maskFull[i] > 0 {
-                    outBase[b] = origBase[b]; outBase[b+1] = origBase[b+1]; outBase[b+2] = origBase[b+2]; outBase[b+3] = 255
-                } else { outBase[b+3] = 0 }
+            for y in 0..<origH {
+                let outRow = y * origW * 4
+                let origRow = y * CVPixelBufferGetBytesPerRow(pixelBuffer)
+                for x in 0..<origW {
+                    let outIdx = outRow + x * 4
+                    if x < bx1 || x >= bx2 || y < by1 || y >= by2 {
+                        outBase[outIdx+3] = 0
+                        continue
+                    }
+                    let m = maskFull[y * origW + x]
+                    if m > 0 {
+                        let origIdx = origRow + x * 4
+                        outBase[outIdx+0] = origBase[origIdx+0]
+                        outBase[outIdx+1] = origBase[origIdx+1]
+                        outBase[outIdx+2] = origBase[origIdx+2]
+                        outBase[outIdx+3] = 255
+                    } else {
+                        outBase[outIdx+3] = 0
+                    }
+                }
             }
             CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
             composedImage = ctx.makeImage()

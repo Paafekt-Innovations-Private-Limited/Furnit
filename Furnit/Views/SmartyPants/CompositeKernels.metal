@@ -49,24 +49,38 @@ kernel void sp_maxMaskFromPrototypes(const device float *planes   [[buffer(0)]],
 //  i8: resizeGain (float)
 //  i9: padX (float)
 //  i10: padY (float)
+//  i11: bx1 (uint32)
+//  i12: by1 (uint32)
+//  i13: bx2 (uint32)
+//  i14: by2 (uint32)
 // Textures:
 //  t0: source BGRA8 camera frame (origW x origH)
 //  t1: output BGRA8
 kernel void sp_maxMaskAndComposite(texture2d<float, access::read>  src   [[texture(0)]],
-                                texture2d<float, access::write> outTex [[texture(1)]],
-                                constant float *planes [[buffer(0)]],
-                                constant float *coeffs [[buffer(1)]],
-                                constant uint &pW [[buffer(2)]],
-                                constant uint &pH [[buffer(3)]],
-                                constant uint &detCount [[buffer(4)]],
-                                constant uint &origW [[buffer(5)]],
-                                constant uint &origH [[buffer(6)]],
-                                constant uint &modelInput [[buffer(7)]],
-                                constant float &resizeGain [[buffer(8)]],
-                                constant float &padX [[buffer(9)]],
-                                constant float &padY [[buffer(10)]],
-                                uint2 gid [[thread_position_in_grid]]) {
+                                    texture2d<float, access::write> outTex [[texture(1)]],
+                                    constant float *planes [[buffer(0)]],
+                                    constant float *coeffs [[buffer(1)]],
+                                    constant uint &pW [[buffer(2)]],
+                                    constant uint &pH [[buffer(3)]],
+                                    constant uint &detCount [[buffer(4)]],
+                                    constant uint &origW [[buffer(5)]],
+                                    constant uint &origH [[buffer(6)]],
+                                    constant uint &modelInput [[buffer(7)]],
+                                    constant float &resizeGain [[buffer(8)]],
+                                    constant float &padX [[buffer(9)]],
+                                    constant float &padY [[buffer(10)]],
+                                    constant uint &bx1 [[buffer(11)]],
+                                    constant uint &by1 [[buffer(12)]],
+                                    constant uint &bx2 [[buffer(13)]],
+                                    constant uint &by2 [[buffer(14)]],
+                                    uint2 gid [[thread_position_in_grid]]) {
     if (gid.x >= origW || gid.y >= origH) return;
+
+    // Outside union bbox? Make transparent and early out
+    if (gid.x < bx1 || gid.x >= bx2 || gid.y < by1 || gid.y >= by2) {
+        outTex.write(float4(0.0, 0.0, 0.0, 0.0), gid);
+        return;
+    }
 
     // Map output pixel to model space (1280x1280) then to prototype space (pW x pH)
     float x_model = (float(gid.x) * resizeGain) + padX;
