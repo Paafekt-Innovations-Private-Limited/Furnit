@@ -222,6 +222,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
+    private let frameLock = NSLock() // Protects lastProcessTime and isProcessing for early-exit checks
+
+    /// Thread-safe reset of isProcessing flag
+    private func resetProcessingFlag() {
+        frameLock.lock()
+        isProcessing = false
+        frameLock.unlock()
+    }
     
     // MARK: Class Names (loaded from classes.json)
     internal lazy var classNames: [Int: String] = {
@@ -407,23 +415,36 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     // MARK: - Capture Delegate
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        // Early exit check BEFORE dispatching to avoid queuing frames unnecessarily
+        let now = Date()
+        frameLock.lock()
+        let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval && !isProcessing
+        if shouldProcess {
+            isProcessing = true
+            lastProcessTime = now
+        }
+        frameLock.unlock()
+
+        guard shouldProcess else { return }
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            resetProcessingFlag()
+            return
+        }
         detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer) }
     }
 
     // MARK: - Main Processing Pipeline
     private func processFrame(_ pixelBuffer: CVPixelBuffer) {
         let frameStart = Date()
-        
-        guard let model = mlModel else { return }
-        let now = Date()
-        guard now.timeIntervalSince(lastProcessTime) >= processInterval, !isProcessing else { return }
-        lastProcessTime = now
-        isProcessing = true
+
+        guard let model = mlModel else {
+            resetProcessingFlag()
+            return
+        }
 
         if debugMode {
             logDebug("\n⏱️ ═══════════════════════════════════════════")
-            logDebug("⏱️ FRAME START @ \(String(format: "%.3f", now.timeIntervalSince1970))")
+            logDebug("⏱️ FRAME START @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
 
@@ -433,7 +454,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         guard let sq = resizeToSquare(pixelBuffer, size: 1280) else {
             if debugMode { logDebug("❌ STAGE 1 FAILED: Resize to square") }
-            isProcessing = false
+            resetProcessingFlag()
             return
         }
         let resizeGain = sq.gain
@@ -451,7 +472,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         guard let inputArray = pixelBufferToMLMultiArray(sq.buffer) else {
             if debugMode { logDebug("❌ STAGE 2 FAILED: MLMultiArray conversion") }
-            isProcessing = false
+            resetProcessingFlag()
             return
         }
         
@@ -470,7 +491,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]),
               let output = try? model.prediction(from: inputProvider, options: mlOptions) else {
             if debugMode { logDebug("❌ STAGE 3 FAILED: Model inference") }
-            isProcessing = false
+            resetProcessingFlag()
             return
         }
         
@@ -485,7 +506,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         guard let detArray = output.featureValue(for: "var_2497")?.multiArrayValue,
               let protoArray = output.featureValue(for: "p")?.multiArrayValue else {
             if debugMode { logDebug("❌ STAGE 4 FAILED: Missing output tensors") }
-            isProcessing = false
+            resetProcessingFlag()
             return
         }
         
@@ -495,7 +516,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
             if debugMode { logDebug("❌ STAGE 4 FAILED: Invalid tensor dims") }
-            isProcessing = false
+            resetProcessingFlag()
             return
         }
         
@@ -570,10 +591,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         if allDets.isEmpty {
             if debugMode { logDebug("⚠️ No detections found") }
-            DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.isProcessing = false
-            }
+            DispatchQueue.main.async { self.maskImageView.image = nil }
+            resetProcessingFlag()
             return
         }
 
@@ -612,10 +631,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         if primaryIdx < 0 {
             if debugMode { logDebug("   ⚠️ No detection with conf > 0.5") }
-            DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.isProcessing = false
-            }
+            DispatchQueue.main.async { self.maskImageView.image = nil }
+            resetProcessingFlag()
             return
         }
         
@@ -633,7 +650,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         guard let protoInfo = parsePrototypes(protoArray) else {
             if debugMode { logDebug("❌ STAGE 9 FAILED: Parse prototypes") }
-            isProcessing = false
+            resetProcessingFlag()
             return
         }
         let planes = protoInfo.planes
@@ -774,10 +791,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         if kept2.isEmpty {
             if debugMode { logDebug("⚠️ No detections after filter") }
-            DispatchQueue.main.async {
-                self.maskImageView.image = nil
-                self.isProcessing = false
-            }
+            DispatchQueue.main.async { self.maskImageView.image = nil }
+            resetProcessingFlag()
             return
         }
 
@@ -1320,8 +1335,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Present result
         DispatchQueue.main.async {
             if let cgImg = composedImage { self.maskImageView.image = UIImage(cgImage: cgImg) }
-            self.isProcessing = false
         }
+        resetProcessingFlag()
 
         // Trigger first-detection UI dismissal based on mask having any positive pixels
         let hasMask = maskFull.contains(where: { $0 > 0 })
