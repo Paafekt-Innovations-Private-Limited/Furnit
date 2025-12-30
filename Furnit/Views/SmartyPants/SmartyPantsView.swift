@@ -496,7 +496,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         } else if detArray.dataType == .float16 {
             let src = detArray.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
             var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 2)
-            var dstBuf = vImage_Buffer(data: detBuf, height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
+            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
             vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
         }
         
@@ -895,11 +895,21 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                                        resizeGain: resizeGain, padX: padX, padY: padY)
 
             let fullSize = origW * origH
-            var srcBuffer = vImage_Buffer(data: &maskFull, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-            var dilated = [UInt8](repeating: 0, count: fullSize)
-            var dilatedBuffer = vImage_Buffer(data: &dilated, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-            var closed = [UInt8](repeating: 0, count: fullSize)
-            var closedBuffer = vImage_Buffer(data: &closed, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
+            // Prepare vImage buffers safely using withUnsafeMutableBufferPointer to ensure the pointers outlive the init calls
+            maskFull.withUnsafeMutableBufferPointer { maskPtr in
+                var srcBuffer = vImage_Buffer(data: maskPtr.baseAddress, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
+                var dilated = [UInt8](repeating: 0, count: fullSize)
+                dilated.withUnsafeMutableBufferPointer { dilPtr in
+                    var dilatedBuffer = vImage_Buffer(data: dilPtr.baseAddress, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
+                    var closed = [UInt8](repeating: 0, count: fullSize)
+                    closed.withUnsafeMutableBufferPointer { clsPtr in
+                        var closedBuffer = vImage_Buffer(data: clsPtr.baseAddress, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
+                        // Morphology is currently disabled; if re-enabled, operate using srcBuffer/dilatedBuffer/closedBuffer here
+                        _ = (srcBuffer, dilatedBuffer, closedBuffer)
+                    }
+                }
+            }
+
 //            var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
 //            kernel.withUnsafeBufferPointer { kPtr in
 //                vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
@@ -1381,8 +1391,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if proto.dataType == .float16 {
             let src = proto.dataPointer.bindMemory(to: UInt16.self, capacity: total)
             var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(total), rowBytes: total * 2)
-            var dstBuf = vImage_Buffer(data: &rawFloats, height: 1, width: vImagePixelCount(total), rowBytes: total * 4)
-            vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+            rawFloats.withUnsafeMutableBufferPointer { dstPtr in
+                var dstBuf = vImage_Buffer(data: dstPtr.baseAddress, height: 1, width: vImagePixelCount(total), rowBytes: total * 4)
+                vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+            }
         } else if proto.dataType == .float32 {
             memcpy(&rawFloats, proto.dataPointer, total * MemoryLayout<Float>.size)
         }
