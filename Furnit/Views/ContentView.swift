@@ -118,7 +118,7 @@ struct HomeTab: View {
                                             roomToDelete = model
                                             showDeleteAlert = true
                                         } label: {
-                                            Label("Delete", systemImage: "trash")
+                                            Label(L10n.Common.delete, systemImage: "trash")
                                         }
                                     }
                             }
@@ -176,7 +176,7 @@ struct HomeTab: View {
                 NavigationStack {
                     SinglePhotoRoomView()
                         .navigationBarItems(
-                            trailing: Button("Done") {
+                            trailing: Button(L10n.Common.done) {
                                 showingPhotoRoomCreator = false
                             }
                         )
