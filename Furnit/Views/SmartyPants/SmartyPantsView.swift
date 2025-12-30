@@ -115,8 +115,8 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.15
-    var iouThreshold: Float = 0.5
+    var confidenceThreshold: Float = 0.1
+    var iouThreshold: Float = 0.7
     var useBilinearUpscaling: Bool = false
     
     // Debug mode - read from settings
@@ -558,20 +558,29 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // STAGE 7: Apply NMS
-//        let t7 = Date()
-//        let afterNMS = applyNMS(allDets)
-//        let t7End = Date()
-//        if debugMode {
-//            logDebug("⏱️ STAGE 7 - NMS: \(String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)) ms, kept: \(afterNMS.count)")
-//        }
+        let t7 = Date()
+        // Build boxes and scores from allDets in model space (center x,y with w,h)
+        let boxes: [CGRect] = allDets.map { d in
+            CGRect(x: CGFloat(d.x - d.w * 0.5),
+                   y: CGFloat(d.y - d.h * 0.5),
+                   width: CGFloat(d.w),
+                   height: CGFloat(d.h))
+        }
+        let scores: [Float] = allDets.map { $0.confidence }
+        let keptIdx = applyNMS(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
+        let afterNMS: [UnionDet] = keptIdx.map { allDets[$0] }
+        let t7End = Date()
+        if debugMode {
+            let nmsMs = String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)
+            logDebug("⏱️ STAGE 7 - NMS: \(nmsMs) ms, kept: \(afterNMS.count)")
+        }
 
         // STAGE 8: Find primary (conf > 0.5, largest area)
         let t8 = Date()
         
         var primaryIdx = -1
         var maxArea: Float = 0
-//        for (i, d) in afterNMS.enumerated() {
-        for (i, d) in allDets.enumerated() {
+        for (i, d) in afterNMS.enumerated() {
             if d.confidence > 0.5 {
                 let area = d.w * d.h
                 if area > maxArea {
@@ -590,11 +599,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
         
-//        let primary = afterNMS[primaryIdx]
-        let primary = allDets[primaryIdx]
+        let primary = afterNMS[primaryIdx]
         let t8End = Date()
         if debugMode {
-            logDebug("⏱️ STAGE 8 - Primary: \(String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)) ms")
+            let primaryMs = String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)
+            logDebug("⏱️ STAGE 8 - Primary: \(primaryMs) ms")
             logDebug("   🎯 PRIMARY[\(primaryIdx)]: \u{001B}[1m\(className(primary.classIdx))\u{001B}[0m conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
         }
 
@@ -614,7 +623,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         let t9End = Date()
         if debugMode {
-            logDebug("⏱️ STAGE 9 - Prototypes: \(String(format: "%.2f", t9End.timeIntervalSince(t9) * 1000)) ms")
+            let protoMs = String(format: "%.2f", t9End.timeIntervalSince(t9) * 1000)
+            logDebug("⏱️ STAGE 9 - Prototypes: \(protoMs) ms")
         }
 
         // STAGE 10: Reorganize prototypes
@@ -634,7 +644,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         let t10End = Date()
         if debugMode {
-            logDebug("⏱️ STAGE 10 - Reorganize: \(String(format: "%.2f", t10End.timeIntervalSince(t10) * 1000)) ms")
+            let reorgMs = String(format: "%.2f", t10End.timeIntervalSince(t10) * 1000)
+            logDebug("⏱️ STAGE 10 - Reorganize: \(reorgMs) ms")
         }
 
         // STAGE 11: Filter - use mask overlap with primary instead of bbox overlap
@@ -708,7 +719,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         var kept2: [UnionDet] = [primary]
         let threshold = AppStateManager.shared.qualitySettings.maskOverlapThreshold
 
-        for (i, d) in allDets.enumerated() {
+        for (i, d) in afterNMS.enumerated() {
             if i == primaryIdx { continue }
 
             let wPct = Int(d.w / primary.w * 100)
@@ -741,7 +752,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         let t11End = Date()
         if debugMode {
-            logDebug("⏱️ STAGE 11 - Filter: \(String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)) ms, kept=\(kept2.count)")
+            let filterMs = String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)
+            logDebug("⏱️ STAGE 11 - Filter: \(filterMs) ms, kept=\(kept2.count)")
         }
         
         if kept2.isEmpty {
@@ -783,7 +795,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         let t12End = Date()
         if debugMode {
-            logDebug("⏱️ STAGE 12 - Union bbox: \(String(format: "%.2f", t12End.timeIntervalSince(t12) * 1000)) ms")
+            let unionMs = String(format: "%.2f", t12End.timeIntervalSince(t12) * 1000)
+            logDebug("⏱️ STAGE 12 - Union bbox: \(unionMs) ms")
             logDebug("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
         }
 
@@ -942,7 +955,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let build1 = buildFullMaskMetal(from: kept2)
         let maskFull = build1.maskFull
         if debugMode {
-            logDebug("⏱️ STAGE 13–15b - Build mask (pre-bbox): \(String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)) ms, positive: \(build1.positiveCount)")
+            let buildPreMs = String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)
+            logDebug("⏱️ STAGE 13–15b - Build mask (pre-bbox): \(buildPreMs) ms, positive: \(build1.positiveCount)")
         }
 
         // Prepare flattened coeffs for fused GPU path
@@ -1308,29 +1322,30 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let frameEnd = Date()
         
         if debugMode {
-            logDebug("⏱️ STAGE 17 - Finalize: \(String(format: "%.2f", t17End.timeIntervalSince(t17) * 1000)) ms")
-            logDebug("⏱️ FRAME TOTAL: \(String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)) ms")
+            let finalizeMs = String(format: "%.2f", t17End.timeIntervalSince(t17) * 1000)
+            let frameTotalMs = String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)
+            logDebug("⏱️ STAGE 17 - Finalize: \(finalizeMs) ms")
+            logDebug("⏱️ FRAME TOTAL: \(frameTotalMs) ms")
             logDebug("⏱️ ═══════════════════════════════════════════\n")
         }
     }
 
     // MARK: - NMS
-    private func applyNMS(_ dets: [UnionDet]) -> [UnionDet] {
-        guard !dets.isEmpty else { return [] }
-        let sorted = dets.sorted { $0.confidence > $1.confidence }
-        var kept: [UnionDet] = []
+    func applyNMS(boxes: [CGRect], scores: [Float], iouThreshold: Float) -> [Int] {
+        var indices = scores.enumerated().sorted(by: { $0.element > $1.element }).map { $0.offset }
+        var keep = [Int]()
         
-        for d in sorted {
-            var dominated = false
-            for k in kept {
-                if iou(d, k) > iouThreshold {
-                    dominated = true
-                    break
-                }
+        while !indices.isEmpty {
+            let current = indices.removeFirst()
+            keep.append(current)
+            
+            indices.removeAll { next in
+                let intersection = boxes[current].intersection(boxes[next])
+                let iou = intersection.area / (boxes[current].area + boxes[next].area - intersection.area)
+                return iou > CGFloat(iouThreshold)
             }
-            if !dominated { kept.append(d) }
         }
-        return kept
+        return keep
     }
     
     private func iou(_ a: UnionDet, _ b: UnionDet) -> Float {
@@ -1608,5 +1623,9 @@ extension UIView {
         }
         return nil
     }
+}
+
+extension CGRect {
+    var area: CGFloat { width * height }
 }
 
