@@ -645,8 +645,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // We'll compute logits = A * coeffs (SGEMV) and threshold at 0.
         func logitsForDetection(_ coeffs: [Float]) -> [Float] {
             var result = [Float](repeating: 0, count: planeSize)
-            var alpha: Float = 1.0
-            var beta: Float = 0.0
+            let alpha: Float = 1.0
+            let beta: Float = 0.0
             // cblas_sgemv with row-major: y = alpha*A*x + beta*y
             A.withUnsafeBufferPointer { aPtr in
                 coeffs.withUnsafeBufferPointer { xPtr in
@@ -672,7 +672,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         // Primary mask in prototype space
         let primaryLogits = logitsForDetection(primary.coeffs)
-        let primaryMaskSmall = maskFromLogits(primaryLogits)
 
         // PERF: Precompute indices of primary mask pixels (in prototype space) once.
         // This keeps Stage 11 from scanning the entire plane for every candidate.
@@ -795,8 +794,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
             let M = Int32(planeSize)
             let K = Int32(32)
-            var alpha: Float = 1
-            var beta: Float = 0
+            let alpha: Float = 1
+            let beta: Float = 0
 
             // If list is small, SGEMV + vmax is usually faster than SGEMM + per-pixel reductions.
             let smallN = detections.count <= 8
@@ -879,7 +878,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
             }
 
-            // Stage 14: Threshold
+            // Stage 14: Threshold -> build maskSmall and positive count
             var maskSmall = [UInt8](repeating: 0, count: planeSize)
             var positiveCount = 0
             for i in 0..<planeSize {
@@ -889,34 +888,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
             }
 
-            // Stage 15: Upscale + crop back + morph close (unchanged)
-            var maskFull = upscaleMask(maskSmall: maskSmall, pW: pW, pH: pH,
-                                       modelInput: 1280, origW: origW, origH: origH,
-                                       resizeGain: resizeGain, padX: padX, padY: padY)
+            // Stage 15: Upscale + crop back (morphology disabled)
+            let maskFull = upscaleMask(maskSmall: maskSmall,
+                                       pW: pW, pH: pH,
+                                       modelInput: 1280,
+                                       origW: origW, origH: origH,
+                                       resizeGain: resizeGain,
+                                       padX: padX, padY: padY)
 
-            let fullSize = origW * origH
-            // Prepare vImage buffers safely using withUnsafeMutableBufferPointer to ensure the pointers outlive the init calls
-            maskFull.withUnsafeMutableBufferPointer { maskPtr in
-                var srcBuffer = vImage_Buffer(data: maskPtr.baseAddress, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-                var dilated = [UInt8](repeating: 0, count: fullSize)
-                dilated.withUnsafeMutableBufferPointer { dilPtr in
-                    var dilatedBuffer = vImage_Buffer(data: dilPtr.baseAddress, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-                    var closed = [UInt8](repeating: 0, count: fullSize)
-                    closed.withUnsafeMutableBufferPointer { clsPtr in
-                        var closedBuffer = vImage_Buffer(data: clsPtr.baseAddress, height: vImagePixelCount(origH), width: vImagePixelCount(origW), rowBytes: origW)
-                        // Morphology is currently disabled; if re-enabled, operate using srcBuffer/dilatedBuffer/closedBuffer here
-                        _ = (srcBuffer, dilatedBuffer, closedBuffer)
-                    }
-                }
-            }
-
-//            var kernel: [UInt8] = [1,1,1, 1,1,1, 1,1,1]
-//            kernel.withUnsafeBufferPointer { kPtr in
-//                vImageDilate_Planar8(&srcBuffer, &dilatedBuffer, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-//                vImageErode_Planar8(&dilatedBuffer, &closedBuffer, 0, 0, kPtr.baseAddress!, 3, 3, vImage_Flags(kvImageNoFlags))
-//            }
-
-//            return (closed, positiveCount)
             return (maskFull, positiveCount)
         }
 
@@ -960,8 +939,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         // STAGE 13–15b: Build initial mask from kept2 (pre-bbox filter)
         let t13to15b = Date()
-        var build1 = buildFullMaskMetal(from: kept2)
-        var maskFull = build1.maskFull
+        let build1 = buildFullMaskMetal(from: kept2)
+        let maskFull = build1.maskFull
         if debugMode {
             logDebug("⏱️ STAGE 13–15b - Build mask (pre-bbox): \(String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)) ms, positive: \(build1.positiveCount)")
         }
@@ -978,7 +957,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 15c: Filter detections by final mask coverage (bbox within mask)
         // Keep detections whose bbox area is sufficiently covered by the final maskFull.
         // Threshold is read from quality settings: bboxInMaskThreshold.
-        let t15c = Date()
+//        let t15c = Date()
 //        let bboxCoverageThreshold = AppStateManager.shared.qualitySettings.bboxInMaskThreshold
 //        let build1DetCount = kept2.count
 
@@ -1077,7 +1056,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 //        }
 
         // STAGE 16: Composite
-        let t16 = Date()
+//        let t16 = Date()
         setProgress(0.92, text: "Compositing…")
 
         // --- 4. COMPOSITING (Fused when available) ---
@@ -1246,7 +1225,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let bytesPerRow = origW * 4
         var overlayBuffer = [UInt8](repeating: 0, count: origH * bytesPerRow)
-        var ctx: CGContext? = CGContext(data: &overlayBuffer, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        let ctx: CGContext? = CGContext(data: &overlayBuffer, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
 
         if let base = composedImage {
             // Draw the composed image as the background
