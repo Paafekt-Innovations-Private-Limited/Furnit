@@ -121,47 +121,6 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding(.vertical, 4)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "rectangle.dashed")
-                                .foregroundColor(.cyan)
-                            Text("BBox Coverage Threshold")
-                                .font(.headline)
-                        }
-                        
-                        HStack {
-                            Text("0.0")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            Slider(
-                                value: $appState.qualitySettings.bboxInMaskThreshold,
-                                in: 0.0...1.0,
-                                step: 0.05
-                            )
-                            .tint(.cyan)
-                            
-                            Text("1.0")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        HStack {
-                            Text("Current value:")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text(String(format: "%.2f", appState.qualitySettings.bboxInMaskThreshold))
-                                .font(.caption)
-                                .foregroundColor(.cyan)
-                                .fontWeight(.medium)
-                        }
-                        
-                        Text("Controls how much of a detection's bounding box must be covered by the final mask. Lower values include more edge cases.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 4)
                 } header: {
                     Text("Developer")
                 } footer: {
