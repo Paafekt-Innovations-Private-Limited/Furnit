@@ -94,6 +94,25 @@ struct RoomBoundaryDetectionView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
+
+                            Button("Done") {
+                                var boundaries = RoomStructure()
+                                boundaries.floorY = floorY
+                                boundaries.ceilingY = ceilingY
+                                boundaries.leftX = leftX
+                                boundaries.rightX = rightX
+                                boundaries.vanishingX = vanishingX
+                                boundaries.vanishingY = vanishingY
+
+                                savedBoundaries = boundaries
+                                logDebug("✅ Saved adjusted boundaries:")
+                                logDebug("   Floor: \(floorY), Ceiling: \(ceilingY)")
+                                logDebug("   Left: \(leftX), Right: \(rightX)")
+                                logDebug("   VP: (\(vanishingX), \(vanishingY))")
+
+                                dismiss()
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
                         .padding(.bottom, 8)
                     }
@@ -107,23 +126,8 @@ struct RoomBoundaryDetectionView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") {
-                        // Save boundaries and dismiss
-                        var boundaries = RoomStructure()
-                        boundaries.floorY = floorY
-                        boundaries.ceilingY = ceilingY
-                        boundaries.leftX = leftX
-                        boundaries.rightX = rightX
-                        boundaries.vanishingX = vanishingX
-                        boundaries.vanishingY = vanishingY
-
-                        savedBoundaries = boundaries
-                        logDebug("✅ Saved adjusted boundaries:")
-                        logDebug("   Floor: \(floorY), Ceiling: \(ceilingY)")
-                        logDebug("   Left: \(leftX), Right: \(rightX)")
-                        logDebug("   VP: (\(vanishingX), \(vanishingY))")
-
-                        // Dismiss sheet directly (go to 3D view)
+                    Button("Back") {
+                        // Dismiss without saving changes
                         dismiss()
                     }
                 }
