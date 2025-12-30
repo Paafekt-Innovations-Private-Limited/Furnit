@@ -46,6 +46,7 @@ struct HomeTab: View {
     @State private var showDeleteAlert = false
     @State private var roomToDelete: USDZModel?
     @State private var showingLimitAlert = false
+    @State private var showingHelp = false
     
     var body: some View {
         NavigationStack {
@@ -148,6 +149,17 @@ struct HomeTab: View {
                     .accessibilityLabel("Create room from photo")
                 }
                 
+                // Help Button
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingHelp = true
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                            .font(.title3)
+                    }
+                    .accessibilityLabel("Help")
+                }
+
                 // Settings Button
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -186,6 +198,17 @@ struct HomeTab: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
                     .environmentObject(authManager)
+            }
+            // Help Sheet
+            .sheet(isPresented: $showingHelp) {
+                NavigationStack {
+                    SupportView()
+                        .navigationBarItems(
+                            trailing: Button("Done") {
+                                showingHelp = false
+                            }
+                        )
+                }
             }
             // Room Limit Alert
             .alert("Room Limit Reached", isPresented: $showingLimitAlert) {
@@ -651,11 +674,239 @@ struct AboutView: View {
     }
 }
 
+// MARK: - FAQ Item Model
+struct FAQItem: Identifiable {
+    let id = UUID()
+    let question: String
+    let answer: String
+}
+
+// MARK: - FAQ Section Model
+struct FAQSection: Identifiable {
+    let id = UUID()
+    let title: String
+    let icon: String
+    let items: [FAQItem]
+}
+
+// MARK: - Help & Support View
 struct SupportView: View {
+    @State private var expandedFAQs: Set<UUID> = []
+    @State private var supportMessage: String = ""
+    @State private var showMailComposer = false
+    @State private var showCopiedAlert = false
+
+    private let faqSections: [FAQSection] = [
+        FAQSection(
+            title: "Room Creation",
+            icon: "camera.fill",
+            items: [
+                FAQItem(
+                    question: "How do I create a 3D room?",
+                    answer: "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. The app will automatically generate a 3D model from your photo."
+                ),
+                FAQItem(
+                    question: "What kind of photos work best?",
+                    answer: "For best results, take photos in good lighting with the camera held level. Try to capture the entire room including floors, walls, and ceiling edges. Avoid blurry or dark photos."
+                ),
+                FAQItem(
+                    question: "Why is my room generation failing?",
+                    answer: "Room generation may fail if the photo is too dark, blurry, or doesn't show enough room features. Try taking a new photo with better lighting and a wider angle."
+                ),
+                FAQItem(
+                    question: "How many rooms can I create?",
+                    answer: "You can create up to 10 rooms. Delete older rooms to make space for new ones. The room count is shown at the top of your home screen."
+                )
+            ]
+        ),
+        FAQSection(
+            title: "Furniture Segmentation",
+            icon: "square.on.square.dashed",
+            items: [
+                FAQItem(
+                    question: "What is furniture segmentation?",
+                    answer: "Furniture segmentation uses AI to identify and separate furniture items in your photos, allowing you to see how each piece would fit in your 3D room."
+                ),
+                FAQItem(
+                    question: "How do I segment furniture from a photo?",
+                    answer: "When viewing your 3D room, tap on the furniture icon to access the segmentation feature. Select a photo containing furniture, and the app will automatically detect and extract the furniture items."
+                ),
+                FAQItem(
+                    question: "Why isn't my furniture being detected?",
+                    answer: "Furniture detection works best with clear, well-lit photos where furniture is clearly visible. Make sure the furniture isn't partially hidden or blending with the background."
+                ),
+                FAQItem(
+                    question: "Can I segment multiple furniture pieces?",
+                    answer: "Yes! The AI can detect multiple furniture pieces in a single photo. Each detected item will be shown separately so you can choose which ones to use."
+                )
+            ]
+        ),
+        FAQSection(
+            title: "3D Room & Fitment",
+            icon: "cube.fill",
+            items: [
+                FAQItem(
+                    question: "How do I view my 3D room?",
+                    answer: "Tap on any room in your home screen to open the 3D viewer. You can rotate, zoom, and pan around the room using touch gestures."
+                ),
+                FAQItem(
+                    question: "How do I place furniture in my room?",
+                    answer: "After segmenting furniture, tap on the furniture piece to add it to your room. You can then drag to position it, pinch to resize, and rotate to adjust its orientation."
+                ),
+                FAQItem(
+                    question: "Can I use a sample room instead of my own?",
+                    answer: "Yes! The app provides sample rooms for you to experiment with. Access them from the Explore section to try out furniture placement without creating your own room first."
+                ),
+                FAQItem(
+                    question: "How accurate is the 3D model?",
+                    answer: "The 3D model provides a good approximation of your room's layout. For best accuracy, ensure your original photo captures the room dimensions clearly with visible corners and edges."
+                ),
+                FAQItem(
+                    question: "Can I adjust room dimensions?",
+                    answer: "Yes, go to Settings and look for Room Dimensions options where you can fine-tune the size and proportions of your generated room."
+                )
+            ]
+        )
+    ]
+
     var body: some View {
-        Text("Help & Support")
-            .navigationTitle("Support")
-            .navigationBarTitleDisplayMode(.inline)
+        List {
+            // FAQ Sections
+            ForEach(faqSections) { section in
+                Section {
+                    ForEach(section.items) { item in
+                        FAQRowView(item: item, isExpanded: expandedFAQs.contains(item.id)) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                if expandedFAQs.contains(item.id) {
+                                    expandedFAQs.remove(item.id)
+                                } else {
+                                    expandedFAQs.insert(item.id)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Label(section.title, systemImage: section.icon)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        .textCase(nil)
+                }
+            }
+
+            // Contact Support Section
+            Section {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Can't find what you're looking for?")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
+                    Text("Contact our support team and we'll get back to you as soon as possible.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    // Email support button
+                    Button(action: {
+                        openMailComposer()
+                    }) {
+                        HStack {
+                            Image(systemName: "envelope.fill")
+                                .font(.title3)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Email Support")
+                                    .font(.headline)
+                                Text("support@paafekt.com")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color.green.opacity(0.1))
+                        .foregroundColor(.green)
+                        .cornerRadius(12)
+                    }
+
+                    // Copy email button
+                    Button(action: {
+                        UIPasteboard.general.string = "support@paafekt.com"
+                        showCopiedAlert = true
+                    }) {
+                        HStack {
+                            Image(systemName: "doc.on.doc")
+                            Text("Copy Email Address")
+                                .font(.subheadline)
+                        }
+                        .foregroundColor(.blue)
+                    }
+                }
+                .padding(.vertical, 8)
+            } header: {
+                Label("Contact Support", systemImage: "headphones")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .textCase(nil)
+            }
+        }
+        .navigationTitle("Help & Support")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Email Copied", isPresented: $showCopiedAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("support@paafekt.com has been copied to your clipboard.")
+        }
+    }
+
+    private func openMailComposer() {
+        let email = "support@paafekt.com"
+        let subject = "Furnit App Support"
+        let body = "Hi Furnit Support Team,\n\nI need help with:\n\n"
+
+        let urlString = "mailto:\(email)?subject=\(subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&body=\(body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+
+        if let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
+        }
+    }
+}
+
+// MARK: - FAQ Row View
+struct FAQRowView: View {
+    let item: FAQItem
+    let isExpanded: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onTap) {
+                HStack {
+                    Text(item.question)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.leading)
+
+                    Spacer()
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            if isExpanded {
+                Text(item.answer)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 
