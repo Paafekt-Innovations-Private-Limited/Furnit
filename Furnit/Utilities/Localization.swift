@@ -1,0 +1,164 @@
+import Foundation
+import SwiftUI
+
+// MARK: - String Localization Extension
+extension String {
+    /// Returns the localized version of this string key
+    var localized: String {
+        NSLocalizedString(self, comment: "")
+    }
+
+    /// Returns the localized version with format arguments
+    func localized(_ args: CVarArg...) -> String {
+        String(format: NSLocalizedString(self, comment: ""), arguments: args)
+    }
+}
+
+// MARK: - Localized String Keys
+/// Centralized localization keys for type-safe access
+enum L10n {
+    // MARK: App General
+    enum App {
+        static let name = "app.name".localized
+        static let tagline = "app.tagline".localized
+        static let version = "app.version".localized
+        static let developer = "app.developer".localized
+    }
+
+    // MARK: Common Actions
+    enum Common {
+        static let done = "common.done".localized
+        static let cancel = "common.cancel".localized
+        static let ok = "common.ok".localized
+        static let back = "common.back".localized
+        static let reset = "common.reset".localized
+        static let delete = "common.delete".localized
+        static let error = "common.error".localized
+        static let save = "common.save".localized
+        static let close = "common.close".localized
+    }
+
+    // MARK: Login
+    enum Login {
+        static let yourName = "login.yourName".localized
+        static let enterName = "login.enterName".localized
+        static let phoneNumber = "login.phoneNumber".localized
+        static let phonePlaceholder = "login.phonePlaceholder".localized
+        static let sendOTP = "login.sendOTP".localized
+        static let sending = "login.sending".localized
+        static let otpHint = "login.otpHint".localized
+        static let validationError = "login.validationError".localized
+        static let sendFailed = "login.sendFailed".localized
+    }
+
+    // MARK: Country Picker
+    enum Country {
+        static let selectTitle = "country.selectTitle".localized
+        static let searchPlaceholder = "country.searchPlaceholder".localized
+    }
+
+    // MARK: OTP
+    enum OTP {
+        static let title = "otp.title".localized
+        static let subtitle = "otp.subtitle".localized
+        static let verify = "otp.verify".localized
+        static let verifying = "otp.verifying".localized
+        static let resend = "otp.resend".localized
+        static func resendIn(_ seconds: Int) -> String {
+            "otp.resendIn".localized(seconds)
+        }
+        static let invalidError = "otp.invalidError".localized
+        static let resendFailed = "otp.resendFailed".localized
+    }
+
+    // MARK: Home
+    enum Home {
+        static let title = "home.title".localized
+        static let noModels = "home.noModels".localized
+        static let noModelsDescription = "home.noModelsDescription".localized
+        static let createRoom = "home.createRoom".localized
+        static func roomsRemaining(_ remaining: Int, _ total: Int) -> String {
+            "home.roomsRemaining".localized(remaining, total)
+        }
+        static let deleteHint = "home.deleteHint".localized
+        static let swipeHint = "home.swipeHint".localized
+        static let roomModel = "home.roomModel".localized
+    }
+
+    // MARK: Room Limit
+    enum RoomLimit {
+        static let title = "roomLimit.title".localized
+        static func message(_ limit: Int) -> String {
+            "roomLimit.message".localized(limit)
+        }
+    }
+
+    // MARK: Delete Room
+    enum DeleteRoom {
+        static let title = "deleteRoom.title".localized
+        static func message(_ name: String) -> String {
+            "deleteRoom.message".localized(name)
+        }
+    }
+
+    // MARK: Settings
+    enum Settings {
+        static let title = "settings.title".localized
+        static let quality = "settings.quality".localized
+        static let qualityFooter = "settings.qualityFooter".localized
+        static let appInfo = "settings.appInfo".localized
+        static let currentQuality = "settings.currentQuality".localized
+        static let movementSpeed = "settings.movementSpeed".localized
+        static let movementSpeedFooter = "settings.movementSpeedFooter".localized
+        static let roomDimensions = "settings.roomDimensions".localized
+        static let roomDimensionsFooter = "settings.roomDimensionsFooter".localized
+        static func width(_ value: Double) -> String {
+            "settings.width".localized(value)
+        }
+        static func depth(_ value: Double) -> String {
+            "settings.depth".localized(value)
+        }
+        static func height(_ value: Double) -> String {
+            "settings.height".localized(value)
+        }
+        static let developer = "settings.developer".localized
+        static let developerFooter = "settings.developerFooter".localized
+        static let debugMode = "settings.debugMode".localized
+        static let debugModeDescription = "settings.debugModeDescription".localized
+        static let maskOverlapThreshold = "settings.maskOverlapThreshold".localized
+        static let maskOverlapDescription = "settings.maskOverlapDescription".localized
+        static let currentValue = "settings.currentValue".localized
+        static let account = "settings.account".localized
+        static let loggedInAs = "settings.loggedInAs".localized
+    }
+
+    // MARK: Help & Support
+    enum Help {
+        static let title = "help.title".localized
+        static let cantFind = "help.cantFind".localized
+        static let contactDescription = "help.contactDescription".localized
+        static let contactSupport = "help.contactSupport".localized
+        static let emailSupport = "help.emailSupport".localized
+        static let copyEmail = "help.copyEmail".localized
+        static let emailCopied = "help.emailCopied".localized
+        static let emailCopiedMessage = "help.emailCopiedMessage".localized
+    }
+
+    // MARK: Profile
+    enum Profile {
+        static let title = "profile.title".localized
+        static let logout = "profile.logout".localized
+        static let logoutConfirmTitle = "profile.logoutConfirmTitle".localized
+        static let logoutConfirmMessage = "profile.logoutConfirmMessage".localized
+    }
+
+    // MARK: Boundary
+    enum Boundary {
+        static let title = "boundary.title".localized
+        static let instructions = "boundary.instructions".localized
+        static let floor = "boundary.floor".localized
+        static let ceiling = "boundary.ceiling".localized
+        static let walls = "boundary.walls".localized
+        static let vanish = "boundary.vanish".localized
+    }
+}

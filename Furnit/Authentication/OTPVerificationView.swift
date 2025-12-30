@@ -37,12 +37,12 @@ struct OTPVerificationView: View {
                         .foregroundColor(.white)
                         .shadow(radius: 10)
 
-                    Text("Verify OTP")
+                    Text(L10n.OTP.title)
                         .font(.largeTitle)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
 
-                    Text("Enter the code sent to")
+                    Text(L10n.OTP.subtitle)
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.9))
 
@@ -81,7 +81,7 @@ struct OTPVerificationView: View {
                             } else {
                                 Image(systemName: "checkmark.shield.fill")
                             }
-                            Text(isVerifying ? "Verifying..." : "Verify")
+                            Text(isVerifying ? L10n.OTP.verifying : L10n.OTP.verify)
                                 .fontWeight(.semibold)
                         }
                         .foregroundColor(.white)
@@ -106,13 +106,13 @@ struct OTPVerificationView: View {
                                     } else {
                                         Image(systemName: "arrow.clockwise")
                                     }
-                                    Text(isResending ? "Sending..." : "Resend OTP")
+                                    Text(isResending ? L10n.Login.sending : L10n.OTP.resend)
                                 }
                                 .foregroundColor(.white)
                             }
                             .disabled(isResending)
                         } else {
-                            Text("Resend in \(resendTimer)s")
+                            Text(L10n.OTP.resendIn(resendTimer))
                                 .foregroundColor(.white.opacity(0.7))
                                 .font(.caption)
                         }
@@ -138,7 +138,7 @@ struct OTPVerificationView: View {
             Button(action: { dismiss() }) {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
-                    Text("Back")
+                    Text(L10n.Common.back)
                 }
                 .foregroundColor(.white)
                 .padding(.horizontal, 16)
@@ -154,8 +154,8 @@ struct OTPVerificationView: View {
             focusedField = 0
             startResendTimer()
         }
-        .alert("Error", isPresented: $showError) {
-            Button("OK", role: .cancel) { }
+        .alert(L10n.Common.error, isPresented: $showError) {
+            Button(L10n.Common.ok, role: .cancel) { }
         } message: {
             Text(errorMessage)
         }
@@ -227,7 +227,7 @@ struct OTPVerificationView: View {
                 navigateToHome = true
             } else {
                 // Error - wrong OTP
-                errorMessage = error ?? "Invalid OTP. Please try again."
+                errorMessage = error ?? L10n.OTP.invalidError
                 showError = true
                 isVerifying = false
 
@@ -254,7 +254,7 @@ struct OTPVerificationView: View {
                 let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                 impactFeedback.impactOccurred()
             } else {
-                errorMessage = error ?? "Failed to resend OTP."
+                errorMessage = error ?? L10n.OTP.resendFailed
                 showError = true
             }
         }

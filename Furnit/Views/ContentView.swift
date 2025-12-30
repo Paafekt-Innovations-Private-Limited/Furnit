@@ -55,18 +55,18 @@ struct HomeTab: View {
                     // Empty state with upload suggestion
                     VStack(spacing: 20) {
                         ContentUnavailableView(
-                            "No 3D Models Found",
+                            L10n.Home.noModels,
                             systemImage: "cube.transparent",
-                            description: Text("Create your first room from a photo!")
+                            description: Text(L10n.Home.noModelsDescription)
                         )
-                        
+
                         // Quick action button for empty state
                         Button(action: {
                             checkRoomLimitAndCreate()
                         }) {
                             HStack {
                                 Image(systemName: "photo.badge.plus")
-                                Text("Create Room from Photo")
+                                Text(L10n.Home.createRoom)
                             }
                             .font(.headline)
                             .foregroundColor(.white)
@@ -84,11 +84,11 @@ struct HomeTab: View {
                         // Room limit banner
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("\(limitManager.remainingRooms()) of \(limitManager.roomLimit) rooms remaining")
+                                Text(L10n.Home.roomsRemaining(limitManager.remainingRooms(), limitManager.roomLimit))
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
                                 if limitManager.remainingRooms() <= 3 {
-                                    Text("Delete old rooms to create new ones")
+                                    Text(L10n.Home.deleteHint)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -97,10 +97,10 @@ struct HomeTab: View {
                         }
                         .padding()
                         .background(limitManager.remainingRooms() <= 3 ? Color.orange.opacity(0.1) : Color(.systemGroupedBackground))
-                        
-                        // ✅ Delete hint
+
+                        // Delete hint
                         HStack {
-                            Text("💡 Swipe left to delete")
+                            Text("💡 \(L10n.Home.swipeHint)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -135,7 +135,7 @@ struct HomeTab: View {
                     }
                 }
             }
-            .navigationTitle("3D Room Models")
+            .navigationTitle(L10n.Home.title)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 // Upload Photo Button
@@ -146,7 +146,7 @@ struct HomeTab: View {
                         Image(systemName: "photo.badge.plus")
                             .font(.title3)
                     }
-                    .accessibilityLabel("Create room from photo")
+                    .accessibilityLabel("accessibility.createRoom".localized)
                 }
                 
                 // Help Button
@@ -157,7 +157,7 @@ struct HomeTab: View {
                         Image(systemName: "questionmark.circle")
                             .font(.title3)
                     }
-                    .accessibilityLabel("Help")
+                    .accessibilityLabel("accessibility.help".localized)
                 }
 
                 // Settings Button
@@ -168,7 +168,7 @@ struct HomeTab: View {
                         Image(systemName: "gearshape")
                             .font(.title3)
                     }
-                    .accessibilityLabel("Settings")
+                    .accessibilityLabel("accessibility.settings".localized)
                 }
             }
             // Photo Room Creator Sheet
@@ -204,31 +204,31 @@ struct HomeTab: View {
                 NavigationStack {
                     SupportView()
                         .navigationBarItems(
-                            trailing: Button("Done") {
+                            trailing: Button(L10n.Common.done) {
                                 showingHelp = false
                             }
                         )
                 }
             }
             // Room Limit Alert
-            .alert("Room Limit Reached", isPresented: $showingLimitAlert) {
-                Button("OK", role: .cancel) { }
+            .alert(L10n.RoomLimit.title, isPresented: $showingLimitAlert) {
+                Button(L10n.Common.ok, role: .cancel) { }
             } message: {
-                Text("You've reached the limit of \(limitManager.roomLimit) rooms. Delete some rooms to create new ones.")
+                Text(L10n.RoomLimit.message(limitManager.roomLimit))
             }
-            // ✅ DELETE CONFIRMATION ALERT ADDED HERE
-            .alert("Delete Room?", isPresented: $showDeleteAlert) {
-                Button("Cancel", role: .cancel) {
+            // Delete confirmation alert
+            .alert(L10n.DeleteRoom.title, isPresented: $showDeleteAlert) {
+                Button(L10n.Common.cancel, role: .cancel) {
                     roomToDelete = nil
                 }
-                Button("Delete", role: .destructive) {
+                Button(L10n.Common.delete, role: .destructive) {
                     if let room = roomToDelete {
                         deleteRoom(room)
                     }
                 }
             } message: {
                 if let room = roomToDelete {
-                    Text("Are you sure you want to delete '\(room.displayName)'? This action cannot be undone.")
+                    Text(L10n.DeleteRoom.message(room.displayName))
                 }
             }
         }
@@ -568,7 +568,7 @@ struct HomeViewModelRow: View {
                     .font(.headline)
                     .foregroundColor(.primary)
                 
-                Text("3D Room Model")
+                Text(L10n.Home.roomModel)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -696,78 +696,41 @@ struct SupportView: View {
     @State private var showMailComposer = false
     @State private var showCopiedAlert = false
 
-    private let faqSections: [FAQSection] = [
-        FAQSection(
-            title: "Room Creation",
-            icon: "camera.fill",
-            items: [
-                FAQItem(
-                    question: "How do I create a 3D room?",
-                    answer: "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. The app will automatically generate a 3D model from your photo."
-                ),
-                FAQItem(
-                    question: "What kind of photos work best?",
-                    answer: "For best results, take photos in good lighting with the camera held level. Try to capture the entire room including floors, walls, and ceiling edges. Avoid blurry or dark photos."
-                ),
-                FAQItem(
-                    question: "Why is my room generation failing?",
-                    answer: "Room generation may fail if the photo is too dark, blurry, or doesn't show enough room features. Try taking a new photo with better lighting and a wider angle."
-                ),
-                FAQItem(
-                    question: "How many rooms can I create?",
-                    answer: "You can create up to 10 rooms. Delete older rooms to make space for new ones. The room count is shown at the top of your home screen."
-                )
-            ]
-        ),
-        FAQSection(
-            title: "Furniture Segmentation",
-            icon: "square.on.square.dashed",
-            items: [
-                FAQItem(
-                    question: "What is furniture segmentation?",
-                    answer: "Furniture segmentation uses AI to identify and separate furniture items in your photos, allowing you to see how each piece would fit in your 3D room."
-                ),
-                FAQItem(
-                    question: "How do I segment furniture from a photo?",
-                    answer: "When viewing your 3D room, tap on the furniture icon to access the segmentation feature. Select a photo containing furniture, and the app will automatically detect and extract the furniture items."
-                ),
-                FAQItem(
-                    question: "Why isn't my furniture being detected?",
-                    answer: "Furniture detection works best with clear, well-lit photos where furniture is clearly visible. Make sure the furniture isn't partially hidden or blending with the background."
-                ),
-                FAQItem(
-                    question: "Can I segment multiple furniture pieces?",
-                    answer: "Yes! The AI can detect multiple furniture pieces in a single photo. Each detected item will be shown separately so you can choose which ones to use."
-                )
-            ]
-        ),
-        FAQSection(
-            title: "3D Room & Fitment",
-            icon: "cube.fill",
-            items: [
-                FAQItem(
-                    question: "How do I view my 3D room?",
-                    answer: "Tap on any room in your home screen to open the 3D viewer. You can rotate, zoom, and pan around the room using touch gestures."
-                ),
-                FAQItem(
-                    question: "How do I place furniture in my room?",
-                    answer: "After segmenting furniture, tap on the furniture piece to add it to your room. You can then drag to position it, pinch to resize, and rotate to adjust its orientation."
-                ),
-                FAQItem(
-                    question: "Can I use a sample room instead of my own?",
-                    answer: "Yes! The app provides sample rooms for you to experiment with. Access them from the Explore section to try out furniture placement without creating your own room first."
-                ),
-                FAQItem(
-                    question: "How accurate is the 3D model?",
-                    answer: "The 3D model provides a good approximation of your room's layout. For best accuracy, ensure your original photo captures the room dimensions clearly with visible corners and edges."
-                ),
-                FAQItem(
-                    question: "Can I adjust room dimensions?",
-                    answer: "Yes, go to Settings and look for Room Dimensions options where you can fine-tune the size and proportions of your generated room."
-                )
-            ]
-        )
-    ]
+    private var faqSections: [FAQSection] {
+        [
+            FAQSection(
+                title: "faq.roomCreation".localized,
+                icon: "camera.fill",
+                items: [
+                    FAQItem(question: "faq.howToCreate".localized, answer: "faq.howToCreateAnswer".localized),
+                    FAQItem(question: "faq.bestPhotos".localized, answer: "faq.bestPhotosAnswer".localized),
+                    FAQItem(question: "faq.generationFailing".localized, answer: "faq.generationFailingAnswer".localized),
+                    FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.furnitureSegmentation".localized,
+                icon: "square.on.square.dashed",
+                items: [
+                    FAQItem(question: "faq.whatIsSegmentation".localized, answer: "faq.whatIsSegmentationAnswer".localized),
+                    FAQItem(question: "faq.howToSegment".localized, answer: "faq.howToSegmentAnswer".localized),
+                    FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized),
+                    FAQItem(question: "faq.multiplePieces".localized, answer: "faq.multiplePiecesAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.roomFitment".localized,
+                icon: "cube.fill",
+                items: [
+                    FAQItem(question: "faq.howToView".localized, answer: "faq.howToViewAnswer".localized),
+                    FAQItem(question: "faq.howToPlace".localized, answer: "faq.howToPlaceAnswer".localized),
+                    FAQItem(question: "faq.sampleRoom".localized, answer: "faq.sampleRoomAnswer".localized),
+                    FAQItem(question: "faq.accuracy".localized, answer: "faq.accuracyAnswer".localized),
+                    FAQItem(question: "faq.adjustDimensions".localized, answer: "faq.adjustDimensionsAnswer".localized)
+                ]
+            )
+        ]
+    }
 
     var body: some View {
         List {
@@ -796,11 +759,11 @@ struct SupportView: View {
             // Contact Support Section
             Section {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Can't find what you're looking for?")
+                    Text(L10n.Help.cantFind)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
 
-                    Text("Contact our support team and we'll get back to you as soon as possible.")
+                    Text(L10n.Help.contactDescription)
                         .font(.caption)
                         .foregroundColor(.secondary)
 
@@ -812,7 +775,7 @@ struct SupportView: View {
                             Image(systemName: "envelope.fill")
                                 .font(.title3)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Email Support")
+                                Text(L10n.Help.emailSupport)
                                     .font(.headline)
                                 Text("support@paafekt.com")
                                     .font(.caption)
@@ -836,7 +799,7 @@ struct SupportView: View {
                     }) {
                         HStack {
                             Image(systemName: "doc.on.doc")
-                            Text("Copy Email Address")
+                            Text(L10n.Help.copyEmail)
                                 .font(.subheadline)
                         }
                         .foregroundColor(.blue)
@@ -844,18 +807,18 @@ struct SupportView: View {
                 }
                 .padding(.vertical, 8)
             } header: {
-                Label("Contact Support", systemImage: "headphones")
+                Label(L10n.Help.contactSupport, systemImage: "headphones")
                     .font(.headline)
                     .foregroundColor(.primary)
                     .textCase(nil)
             }
         }
-        .navigationTitle("Help & Support")
+        .navigationTitle(L10n.Help.title)
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Email Copied", isPresented: $showCopiedAlert) {
-            Button("OK", role: .cancel) { }
+        .alert(L10n.Help.emailCopied, isPresented: $showCopiedAlert) {
+            Button(L10n.Common.ok, role: .cancel) { }
         } message: {
-            Text("support@paafekt.com has been copied to your clipboard.")
+            Text(L10n.Help.emailCopiedMessage)
         }
     }
 
