@@ -15,7 +15,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // ✅ Configure Firebase logging level based on debug mode
         if debugMode {
             // Debug mode ON: Show all Firebase logs
-            FirebaseConfiguration.shared.setLoggerLevel(.debug)
+            FirebaseConfiguration.shared.setLoggerLevel(.error)
             print("🔥 [AppDelegate] Firebase logging: DEBUG (all logs enabled)")
         } else {
             // Debug mode OFF: Only show errors
