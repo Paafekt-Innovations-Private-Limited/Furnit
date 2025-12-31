@@ -97,14 +97,17 @@ struct RealityKitView: UIViewRepresentable {
         configureRenderingQuality(arView: uiView, quality: currentQuality)
 
         // Update movement speed if settings changed (only when actually different)
+        // ✅ FIXED: Defer to avoid "Publishing changes from within view updates" warning
         let currentMovementSpeed = appState.currentMovementSpeed
-        switch currentMovementSpeed {
-        case .slow:
-            cameraMovementManager.setSpeed(.slow)
-        case .normal:
-            cameraMovementManager.setSpeed(.normal)
-        case .fast:
-            cameraMovementManager.setSpeed(.fast)
+        DispatchQueue.main.async { [weak cameraMovementManager] in
+            switch currentMovementSpeed {
+            case .slow:
+                cameraMovementManager?.setSpeed(.slow)
+            case .normal:
+                cameraMovementManager?.setSpeed(.normal)
+            case .fast:
+                cameraMovementManager?.setSpeed(.fast)
+            }
         }
         
         // ✅ Handle camera reset requests (triggered on view appear)
@@ -476,13 +479,17 @@ struct RealityKitView: UIViewRepresentable {
                 self.cameraMovementManager.setBoundaryManager(boundaryManager)
                 
                 // Set initial movement speed from settings
-                switch appState.currentMovementSpeed {
-                case .slow:
-                    self.cameraMovementManager.setSpeed(.slow)
-                case .normal:
-                    self.cameraMovementManager.setSpeed(.normal)
-                case .fast:
-                    self.cameraMovementManager.setSpeed(.fast)
+                // ✅ FIXED: Defer to avoid "Publishing changes from within view updates" warning
+                let initialSpeed = appState.currentMovementSpeed
+                DispatchQueue.main.async { [weak cameraMovementManager = self.cameraMovementManager] in
+                    switch initialSpeed {
+                    case .slow:
+                        cameraMovementManager?.setSpeed(.slow)
+                    case .normal:
+                        cameraMovementManager?.setSpeed(.normal)
+                    case .fast:
+                        cameraMovementManager?.setSpeed(.fast)
+                    }
                 }
                 
                 // Position custom camera inside the room bounds
