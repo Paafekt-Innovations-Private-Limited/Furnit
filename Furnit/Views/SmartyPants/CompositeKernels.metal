@@ -2,14 +2,16 @@
 using namespace metal;
 
 // Composite mask over camera texture, output to output texture
+// Note: Source is BGRA (s.r=B, s.g=G, s.b=R), output needs RGBA for CGContext
 kernel void sp_compositeMask(texture2d<float, access::read>  src   [[texture(0)]],
                           texture2d<float, access::read>  mask  [[texture(1)]],
                           texture2d<float, access::write> out   [[texture(2)]],
                           uint2 gid [[thread_position_in_grid]]) {
     if (gid.x >= out.get_width() || gid.y >= out.get_height()) return;
-    float4 s = src.read(gid);
+    float4 s = src.read(gid);  // BGRA: s.r=Blue, s.g=Green, s.b=Red
     float  m = mask.read(gid).r; // R8Unorm -> normalized float in [0,1]
-    float4 outCol = float4(s.r, s.g, s.b, m);
+    // Swap B and R for correct RGB output
+    float4 outCol = float4(s.b, s.g, s.r, m);  // R, G, B, A
     out.write(outCol, gid);
 }
 
@@ -111,10 +113,11 @@ kernel void sp_maxMaskAndComposite(texture2d<float, access::read>  src   [[textu
     }
 
     // Threshold at 0 and composite
+    // Note: Source is BGRA (s.r=B, s.g=G, s.b=R), output needs RGBA
     float4 out = float4(0.0, 0.0, 0.0, 0.0);
     if (maxLogit > 0.0f) {
         float4 s = src.read(uint2(gid.x, gid.y));
-        out = float4(s.r, s.g, s.b, 1.0);
+        out = float4(s.b, s.g, s.r, 1.0);  // Swap B and R for correct RGB output
     }
     outTex.write(out, gid);
 }
