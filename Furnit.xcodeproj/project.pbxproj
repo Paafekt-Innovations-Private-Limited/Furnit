@@ -139,6 +139,7 @@
 				te,
 				ml,
 				bn,
+				ar,
 			);
 			mainGroup = 045F5BD02E6D302900C5585D;
 			minimizedProjectReferenceProxies = 1;

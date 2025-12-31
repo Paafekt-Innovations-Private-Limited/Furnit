@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  Arabic (العربية) localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "مستكشف الغرف ثلاثي الأبعاد";
+"app.version" = "الإصدار";
+"app.developer" = "فريق Furnit";
+
+// MARK: - Common Actions
+"common.done" = "تم";
+"common.cancel" = "إلغاء";
+"common.ok" = "حسناً";
+"common.back" = "رجوع";
+"common.reset" = "إعادة تعيين";
+"common.delete" = "حذف";
+"common.error" = "خطأ";
+"common.save" = "حفظ";
+"common.close" = "إغلاق";
+
+// MARK: - Login View
+"login.yourName" = "اسمك";
+"login.enterName" = "أدخل اسمك";
+"login.phoneNumber" = "رقم الهاتف";
+"login.phonePlaceholder" = "رقم الهاتف";
+"login.sendOTP" = "إرسال الرمز";
+"login.sending" = "جارٍ الإرسال...";
+"login.otpHint" = "سيتم إرسال الرمز عبر رسالة نصية";
+"login.validationError" = "يرجى إدخال اسم ورقم هاتف صالحين";
+"login.sendFailed" = "فشل إرسال الرمز. يرجى المحاولة مرة أخرى.";
+
+// MARK: - Country Picker
+"country.selectTitle" = "اختر الدولة";
+"country.searchPlaceholder" = "ابحث عن دولة أو رمز";
+
+// MARK: - OTP Verification
+"otp.title" = "تحقق من الرمز";
+"otp.subtitle" = "أدخل الرمز المرسل إلى";
+"otp.verify" = "تحقق";
+"otp.verifying" = "جارٍ التحقق...";
+"otp.resend" = "إعادة إرسال الرمز";
+"otp.resendIn" = "إعادة الإرسال خلال %d ثانية";
+"otp.invalidError" = "رمز غير صالح. يرجى المحاولة مرة أخرى.";
+"otp.resendFailed" = "فشل إعادة إرسال الرمز.";
+
+// MARK: - Home View
+"home.title" = "نماذج الغرف ثلاثية الأبعاد";
+"home.noModels" = "لم يتم العثور على نماذج ثلاثية الأبعاد";
+"home.noModelsDescription" = "أنشئ غرفتك الأولى من صورة!";
+"home.createRoom" = "إنشاء غرفة من صورة";
+"home.roomsRemaining" = "%d/%d غرف متبقية";
+"home.deleteHint" = "احذف الغرف القديمة لإنشاء غرف جديدة";
+"home.swipeHint" = "اسحب لليسار للحذف";
+"home.roomModel" = "نموذج غرفة ثلاثي الأبعاد";
+
+// MARK: - Room Limit
+"roomLimit.title" = "تم الوصول إلى حد الغرف";
+"roomLimit.message" = "لقد وصلت إلى حد %d غرف. احذف بعضها لإنشاء غرف جديدة.";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "حذف الغرفة؟";
+"deleteRoom.message" = "هل أنت متأكد من حذف '%@'؟ لا يمكن التراجع عن هذا الإجراء.";
+
+// MARK: - Explore View
+"explore.title" = "استكشاف";
+"explore.search" = "ابحث عن غرف...";
+"explore.noResults" = "لا توجد نتائج";
+"explore.noResultsDescription" = "جرب كلمة بحث أخرى";
+"explore.all" = "الكل";
+"explore.livingRoom" = "غرفة المعيشة";
+"explore.bedroom" = "غرفة النوم";
+"explore.kitchen" = "المطبخ";
+"explore.office" = "المكتب";
+
+// MARK: - Favorites View
+"favorites.title" = "المفضلة";
+"favorites.empty" = "لا توجد مفضلات";
+"favorites.emptyDescription" = "اضغط على القلب في الغرف لإضافتها هنا";
+
+// MARK: - Profile View
+"profile.title" = "الملف الشخصي";
+"profile.editProfile" = "تعديل الملف الشخصي";
+"profile.notifications" = "الإشعارات";
+"profile.privacy" = "الخصوصية";
+"profile.general" = "عام";
+"profile.about" = "حول";
+"profile.helpSupport" = "المساعدة والدعم";
+"profile.logout" = "تسجيل الخروج";
+"profile.logoutConfirmTitle" = "تسجيل الخروج";
+"profile.logoutConfirmMessage" = "هل أنت متأكد من تسجيل الخروج؟";
+
+// MARK: - Settings View
+"settings.title" = "الإعدادات";
+"settings.quality" = "جودة الموارد ثلاثية الأبعاد";
+"settings.qualityFooter" = "تؤثر الجودة على تفاصيل العرض والأداء. قد تؤثر الجودة العالية على عمر البطارية.";
+"settings.appInfo" = "معلومات التطبيق";
+"settings.currentQuality" = "الجودة الحالية";
+"settings.movementSpeed" = "سرعة الحركة";
+"settings.movementSpeedFooter" = "يتحكم في سرعة حركة الكاميرا باستخدام عصا التحكم. اختر السرعة المناسبة لك.";
+"settings.roomDimensions" = "أبعاد غرفة الصورة الواحدة";
+"settings.roomDimensionsFooter" = "اضبط الأبعاد الافتراضية للغرف المنشأة من صور فردية. ستكون هذه نقاط البداية عند اكتشاف حدود الغرفة.";
+"settings.width" = "العرض: %.1f م";
+"settings.depth" = "العمق: %.1f م";
+"settings.height" = "الارتفاع: %.1f م";
+"settings.developer" = "المطور";
+"settings.developerFooter" = "فعّل وضع التصحيح لرؤية معلومات الكشف التفصيلية ومقاييس الأداء. اضبط العتبات للتحكم في حساسية الكشف وسلوك التصفية.";
+"settings.debugMode" = "وضع التصحيح";
+"settings.debugModeDescription" = "عرض مربعات الكشف ومعلومات التوقيت";
+"settings.maskOverlapThreshold" = "عتبة تداخل القناع";
+"settings.maskOverlapDescription" = "يتحكم في تداخل القناع المطلوب لدمج الكشوفات. القيم الأقل تدمج المزيد من الكائنات المتشابهة.";
+"settings.currentValue" = "القيمة الحالية:";
+"settings.account" = "الحساب";
+"settings.loggedInAs" = "مسجل الدخول كـ";
+
+// MARK: - Quality Options
+"quality.standard" = "قياسي";
+"quality.standard.description" = "جودة أساسية لأداء أسرع";
+"quality.high" = "عالي";
+"quality.high.description" = "جودة محسنة مع تفاصيل أكثر";
+"quality.best" = "الأفضل";
+"quality.best.description" = "جودة متميزة مع أقصى التفاصيل";
+"quality.best.unavailable" = "للحصول على أفضل جودة، قم بزيارة متاجرنا الشريكة";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "بطيء";
+"speed.slow.description" = "تحكم دقيق للاستكشاف التفصيلي";
+"speed.normal" = "عادي";
+"speed.normal.description" = "سرعة متوازنة للتنقل المريح";
+"speed.fast" = "سريع";
+"speed.fast.description" = "حركة سريعة للاستكشاف النشط";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "المساعدة والدعم";
+"help.cantFind" = "لم تجد ما تبحث عنه؟";
+"help.contactDescription" = "تواصل مع فريق الدعم وسنرد عليك قريباً.";
+"help.contactSupport" = "اتصل بالدعم";
+"help.emailSupport" = "دعم البريد الإلكتروني";
+"help.copyEmail" = "نسخ عنوان البريد الإلكتروني";
+"help.emailCopied" = "تم نسخ البريد الإلكتروني";
+"help.emailCopiedMessage" = "تم نسخ support@paafekt.com إلى الحافظة.";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "إنشاء الغرفة";
+"faq.howToCreate" = "كيف أنشئ غرفة ثلاثية الأبعاد؟";
+"faq.howToCreateAnswer" = "اضغط على أيقونة الصورة في الزاوية العلوية اليسرى من الشاشة الرئيسية، ثم التقط أو اختر صورة لغرفتك. سيقوم التطبيق تلقائياً بإنشاء نموذج ثلاثي الأبعاد من صورتك.";
+"faq.bestPhotos" = "ما نوع الصور التي تعمل بشكل أفضل؟";
+"faq.bestPhotosAnswer" = "للحصول على أفضل النتائج، التقط الصور في إضاءة جيدة مع إمساك الجهاز بثبات. حاول التقاط الغرفة بالكامل بما في ذلك الأرضيات والجدران وحواف السقف. تجنب الصور الضبابية أو المظلمة.";
+"faq.generationFailing" = "لماذا يفشل إنشاء غرفتي؟";
+"faq.generationFailingAnswer" = "قد يفشل إنشاء الغرفة إذا كانت الصورة مظلمة جداً أو ضبابية أو لا تُظهر ميزات كافية للغرفة. جرب التقاط صورة جديدة بإضاءة أفضل وزاوية أوسع.";
+"faq.howManyRooms" = "كم عدد الغرف التي يمكنني إنشاؤها؟";
+"faq.howManyRoomsAnswer" = "يمكنك إنشاء حتى 10 غرف. احذف الغرف القديمة لإفساح المجال. يُعرض عدد الغرف في أعلى شاشتك الرئيسية.";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "تجزئة الأثاث";
+"faq.whatIsSegmentation" = "ما هي تجزئة الأثاث؟";
+"faq.whatIsSegmentationAnswer" = "تستخدم تجزئة الأثاث الذكاء الاصطناعي لتحديد وفصل الأثاث في صورك، مما يتيح لك رؤية كيف ستتناسب كل قطعة في غرفتك ثلاثية الأبعاد.";
+"faq.howToSegment" = "كيف أجزئ الأثاث من صورة؟";
+"faq.howToSegmentAnswer" = "عند عرض غرفتك ثلاثية الأبعاد، اضغط على أيقونة الأثاث للوصول إلى ميزة التجزئة. اختر صورة تحتوي على أثاث، وسيقوم التطبيق تلقائياً باكتشاف واستخراج قطع الأثاث.";
+"faq.notDetected" = "لماذا لم يتم اكتشاف أثاثي؟";
+"faq.notDetectedAnswer" = "يعمل اكتشاف الأثاث بشكل أفضل مع الصور الواضحة والمضاءة جيداً حيث يكون الأثاث مرئياً بوضوح. تأكد من أن الأثاث غير مخفي جزئياً أو متمازج مع الخلفية.";
+"faq.multiplePieces" = "هل يمكنني تجزئة قطع أثاث متعددة؟";
+"faq.multiplePiecesAnswer" = "نعم! يمكن للذكاء الاصطناعي اكتشاف قطع أثاث متعددة في صورة واحدة. سيتم عرض كل قطعة مكتشفة بشكل منفصل لتختار أيها تستخدم.";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "الغرفة ثلاثية الأبعاد والتركيب";
+"faq.howToView" = "كيف أعرض غرفتي ثلاثية الأبعاد؟";
+"faq.howToViewAnswer" = "اضغط على أي غرفة في الشاشة الرئيسية لفتح العارض ثلاثي الأبعاد. يمكنك تدوير الغرفة وتكبيرها وتحريكها باستخدام إيماءات اللمس.";
+"faq.howToPlace" = "كيف أضع الأثاث في غرفتي؟";
+"faq.howToPlaceAnswer" = "بعد تجزئة الأثاث، اضغط على قطعة لإضافتها إلى غرفتك. يمكنك بعد ذلك سحبها للتموضع، وقرصها لتغيير الحجم، وتدويرها لضبط الاتجاه.";
+"faq.sampleRoom" = "هل يمكنني استخدام غرفة نموذجية بدلاً من غرفتي؟";
+"faq.sampleRoomAnswer" = "نعم! يوفر التطبيق غرف نموذجية للتجربة. يمكنك الوصول إليها من قسم الاستكشاف لتجربة وضع الأثاث دون إنشاء غرفتك الخاصة أولاً.";
+"faq.accuracy" = "ما مدى دقة النموذج ثلاثي الأبعاد؟";
+"faq.accuracyAnswer" = "يوفر النموذج ثلاثي الأبعاد تقريباً جيداً لتخطيط غرفتك. للحصول على أفضل دقة، تأكد من أن صورتك الأصلية تلتقط أبعاد الغرفة بوضوح مع زوايا وحواف مرئية.";
+"faq.adjustDimensions" = "هل يمكنني ضبط أبعاد الغرفة؟";
+"faq.adjustDimensionsAnswer" = "نعم، انتقل إلى الإعدادات وابحث عن خيارات أبعاد الغرفة حيث يمكنك ضبط حجم ونسب الغرفة المنشأة بدقة.";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "حدود الغرفة";
+"boundary.instructions" = "اسحب الدوائر لضبط الحدود";
+"boundary.floor" = "الأرضية";
+"boundary.ceiling" = "السقف";
+"boundary.walls" = "الجدران";
+"boundary.vanish" = "نقطة التلاشي";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "إضافة أثاث";
+"viewer.capture" = "التقاط";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "جارٍ تشغيل الكاميرا...";
+"smartypants.resizing" = "جارٍ تغيير الحجم...";
+"smartypants.preprocessing" = "جارٍ المعالجة المسبقة...";
+"smartypants.runningModel" = "جارٍ تشغيل النموذج...";
+"smartypants.extracting" = "جارٍ استخراج الكشوفات...";
+"smartypants.buildingMask" = "جارٍ بناء القناع...";
+"smartypants.compositing" = "جارٍ التركيب...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "صورة إلى غرفة ثلاثية الأبعاد";
+"photoRoom.createTitle" = "إنشاء غرفة ثلاثية الأبعاد";
+"photoRoom.createSubtitle" = "اختر صورة للبدء";
+"photoRoom.quickPhoto" = "صورة سريعة";
+"photoRoom.quickPhotoSubtitle" = "التقاط صورة واحدة";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "عرض الغرفة ثلاثي الأبعاد";
+"roomViewer.controls" = "استخدم عصا التحكم للتحرك • اقرص للتكبير";
+"roomViewer.saveRoom" = "حفظ الغرفة";
+"roomViewer.roomName" = "اسم الغرفة";
+"roomViewer.enterName" = "أدخل اسماً لغرفتك";
+"roomViewer.savingRoom" = "جارٍ حفظ الغرفة";
+"roomViewer.preparingModel" = "جارٍ تحضير نموذج الغرفة...";
+"roomViewer.exportingUSDZ" = "جارٍ التصدير إلى صيغة USDZ...";
+"roomViewer.savingToLibrary" = "جارٍ الحفظ في المكتبة...";
+"roomViewer.almostDone" = "على وشك الانتهاء...";
+"roomViewer.saveSuccess" = "تم حفظ الغرفة '%@' بنجاح!";
+"roomViewer.saveFailed" = "فشل حفظ الغرفة: %@";
+"roomViewer.roomSaveTitle" = "حفظ الغرفة";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "إرسال التقرير";
+"crashReport.emailNotConfigured" = "البريد الإلكتروني غير متاح";
+"crashReport.emailNotConfiguredMessage" = "لم يتم إعداد البريد الإلكتروني على هذا الجهاز. يمكنك نسخ تفاصيل الخطأ وإرسالها يدوياً إلى support@paafekt.com";
+"crashReport.copyDetails" = "نسخ التفاصيل";
+
+// MARK: - Accessibility
+"accessibility.settings" = "الإعدادات";
+"accessibility.help" = "المساعدة";
+"accessibility.createRoom" = "إنشاء غرفة من صورة";
