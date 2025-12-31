@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  Traditional Chinese (繁體中文) localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "3D房間探索器";
+"app.version" = "版本";
+"app.developer" = "Furnit團隊";
+
+// MARK: - Common Actions
+"common.done" = "完成";
+"common.cancel" = "取消";
+"common.ok" = "確定";
+"common.back" = "返回";
+"common.reset" = "重置";
+"common.delete" = "刪除";
+"common.error" = "錯誤";
+"common.save" = "儲存";
+"common.close" = "關閉";
+
+// MARK: - Login View
+"login.yourName" = "你的名字";
+"login.enterName" = "請輸入你的名字";
+"login.phoneNumber" = "手機號碼";
+"login.phonePlaceholder" = "手機號碼";
+"login.sendOTP" = "傳送驗證碼";
+"login.sending" = "傳送中...";
+"login.otpHint" = "驗證碼將透過簡訊傳送";
+"login.validationError" = "請輸入有效的姓名和手機號碼";
+"login.sendFailed" = "傳送驗證碼失敗，請重試。";
+
+// MARK: - Country Picker
+"country.selectTitle" = "選擇國家";
+"country.searchPlaceholder" = "搜尋國家或區碼";
+
+// MARK: - OTP Verification
+"otp.title" = "驗證碼確認";
+"otp.subtitle" = "請輸入傳送到以下號碼的驗證碼";
+"otp.verify" = "驗證";
+"otp.verifying" = "驗證中...";
+"otp.resend" = "重新傳送驗證碼";
+"otp.resendIn" = "%d秒後重新傳送";
+"otp.invalidError" = "驗證碼無效，請重試。";
+"otp.resendFailed" = "重新傳送驗證碼失敗。";
+
+// MARK: - Home View
+"home.title" = "3D房間模型";
+"home.noModels" = "未找到3D模型";
+"home.noModelsDescription" = "從照片建立你的第一個房間！";
+"home.createRoom" = "從照片建立房間";
+"home.roomsRemaining" = "剩餘%d/%d個房間";
+"home.deleteHint" = "刪除舊房間以建立新房間";
+"home.swipeHint" = "向左滑動刪除";
+"home.roomModel" = "3D房間模型";
+
+// MARK: - Room Limit
+"roomLimit.title" = "已達房間上限";
+"roomLimit.message" = "你已達到%d個房間的上限。請刪除一些房間以建立新房間。";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "刪除房間？";
+"deleteRoom.message" = "確定要刪除「%@」嗎？此操作無法復原。";
+
+// MARK: - Explore View
+"explore.title" = "探索";
+"explore.search" = "搜尋房間...";
+"explore.noResults" = "無結果";
+"explore.noResultsDescription" = "請嘗試其他搜尋詞";
+"explore.all" = "全部";
+"explore.livingRoom" = "客廳";
+"explore.bedroom" = "臥室";
+"explore.kitchen" = "廚房";
+"explore.office" = "辦公室";
+
+// MARK: - Favorites View
+"favorites.title" = "收藏";
+"favorites.empty" = "暫無收藏";
+"favorites.emptyDescription" = "點擊房間上的愛心圖示將其加入這裡";
+
+// MARK: - Profile View
+"profile.title" = "個人資料";
+"profile.editProfile" = "編輯資料";
+"profile.notifications" = "通知";
+"profile.privacy" = "隱私";
+"profile.general" = "一般";
+"profile.about" = "關於";
+"profile.helpSupport" = "幫助與支援";
+"profile.logout" = "登出";
+"profile.logoutConfirmTitle" = "登出";
+"profile.logoutConfirmMessage" = "確定要登出嗎？";
+
+// MARK: - Settings View
+"settings.title" = "設定";
+"settings.quality" = "3D資源品質";
+"settings.qualityFooter" = "品質會影響渲染細節和效能。較高的品質可能會影響電池續航。";
+"settings.appInfo" = "應用程式資訊";
+"settings.currentQuality" = "目前品質";
+"settings.movementSpeed" = "移動速度";
+"settings.movementSpeedFooter" = "控制使用搖桿時相機的移動速度。選擇最適合你的速度。";
+"settings.roomDimensions" = "單張照片房間尺寸";
+"settings.roomDimensionsFooter" = "調整從單張照片建立的房間的預設尺寸。這些值將作為偵測房間邊界時的起始點。";
+"settings.width" = "寬度：%.1f公尺";
+"settings.depth" = "深度：%.1f公尺";
+"settings.height" = "高度：%.1f公尺";
+"settings.developer" = "開發者";
+"settings.developerFooter" = "啟用除錯模式以查看詳細的偵測資訊和效能指標。調整閾值以控制偵測靈敏度和篩選行為。";
+"settings.debugMode" = "除錯模式";
+"settings.debugModeDescription" = "顯示偵測框和計時資訊";
+"settings.maskOverlapThreshold" = "遮罩重疊閾值";
+"settings.maskOverlapDescription" = "控制合併偵測所需的遮罩重疊量。較低的值會合併更多相似的物件。";
+"settings.currentValue" = "目前值：";
+"settings.account" = "帳戶";
+"settings.loggedInAs" = "已登入為";
+
+// MARK: - Quality Options
+"quality.standard" = "標準";
+"quality.standard.description" = "基礎品質，效能更快";
+"quality.high" = "高";
+"quality.high.description" = "增強品質，更多細節";
+"quality.best" = "最佳";
+"quality.best.description" = "頂級品質，最大細節";
+"quality.best.unavailable" = "如需最佳品質，請造訪我們的合作商店";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "慢速";
+"speed.slow.description" = "精確控制，適合詳細探索";
+"speed.normal" = "正常";
+"speed.normal.description" = "平衡速度，舒適導航";
+"speed.fast" = "快速";
+"speed.fast.description" = "快速移動，敏捷探索";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "幫助與支援";
+"help.cantFind" = "找不到你需要的內容？";
+"help.contactDescription" = "聯繫我們的支援團隊，我們會盡快回覆你。";
+"help.contactSupport" = "聯繫支援";
+"help.emailSupport" = "電子郵件支援";
+"help.copyEmail" = "複製電子郵件地址";
+"help.emailCopied" = "電子郵件已複製";
+"help.emailCopiedMessage" = "support@paafekt.com 已複製到剪貼簿。";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "房間建立";
+"faq.howToCreate" = "如何建立3D房間？";
+"faq.howToCreateAnswer" = "點擊主畫面左上角的照片圖示，然後拍攝或選擇房間照片。應用程式將自動從照片產生3D模型。";
+"faq.bestPhotos" = "什麼樣的照片效果最好？";
+"faq.bestPhotosAnswer" = "為獲得最佳效果，請在光線充足的環境下拍攝，並保持相機水平。盡量拍攝整個房間，包括地板、牆壁和天花板邊緣。避免模糊或昏暗的照片。";
+"faq.generationFailing" = "為什麼我的房間產生失敗？";
+"faq.generationFailingAnswer" = "如果照片太暗、模糊或沒有顯示足夠的房間特徵，房間產生可能會失敗。請嘗試在更好的光線下以更寬的角度拍攝新照片。";
+"faq.howManyRooms" = "我可以建立多少個房間？";
+"faq.howManyRoomsAnswer" = "你最多可以建立10個房間。刪除舊房間以騰出空間。房間數量顯示在主畫面頂部。";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "傢俱分割";
+"faq.whatIsSegmentation" = "什麼是傢俱分割？";
+"faq.whatIsSegmentationAnswer" = "傢俱分割使用AI識別和分離照片中的傢俱，讓你看到每件傢俱在3D房間中的效果。";
+"faq.howToSegment" = "如何從照片中分割傢俱？";
+"faq.howToSegmentAnswer" = "檢視3D房間時，點擊傢俱圖示存取分割功能。選擇包含傢俱的照片，應用程式將自動偵測並擷取傢俱。";
+"faq.notDetected" = "為什麼我的傢俱沒有被偵測到？";
+"faq.notDetectedAnswer" = "傢俱偵測在清晰、光線充足且傢俱明顯可見的照片中效果最佳。確保傢俱沒有被部分遮擋或與背景融合。";
+"faq.multiplePieces" = "我可以分割多件傢俱嗎？";
+"faq.multiplePiecesAnswer" = "可以！AI可以在單張照片中偵測多件傢俱。每個偵測到的物品將單獨顯示，供你選擇使用。";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "3D房間與佈置";
+"faq.howToView" = "如何檢視我的3D房間？";
+"faq.howToViewAnswer" = "點擊主畫面上的任何房間以開啟3D檢視器。你可以使用觸控手勢旋轉、縮放和平移房間。";
+"faq.howToPlace" = "如何在房間中放置傢俱？";
+"faq.howToPlaceAnswer" = "分割傢俱後，點擊傢俱將其加入房間。然後你可以拖曳定位、捏合調整大小、旋轉調整方向。";
+"faq.sampleRoom" = "我可以使用範例房間嗎？";
+"faq.sampleRoomAnswer" = "可以！應用程式提供範例房間供你體驗。從探索部分存取它們，無需先建立自己的房間即可嘗試傢俱佈置。";
+"faq.accuracy" = "3D模型有多準確？";
+"faq.accuracyAnswer" = "3D模型能很好地近似你的房間佈局。為獲得最佳準確度，請確保原始照片清晰地捕捉房間尺寸，包括可見的角落和邊緣。";
+"faq.adjustDimensions" = "我可以調整房間尺寸嗎？";
+"faq.adjustDimensionsAnswer" = "可以，進入設定並找到房間尺寸選項，你可以微調產生房間的大小和比例。";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "房間邊界";
+"boundary.instructions" = "拖曳圓圈調整邊界";
+"boundary.floor" = "地板";
+"boundary.ceiling" = "天花板";
+"boundary.walls" = "牆壁";
+"boundary.vanish" = "消失點";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "新增傢俱";
+"viewer.capture" = "截圖";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "正在啟動相機...";
+"smartypants.resizing" = "正在調整大小...";
+"smartypants.preprocessing" = "正在預處理...";
+"smartypants.runningModel" = "正在執行模型...";
+"smartypants.extracting" = "正在擷取偵測結果...";
+"smartypants.buildingMask" = "正在建構遮罩...";
+"smartypants.compositing" = "正在合成...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "照片轉3D房間";
+"photoRoom.createTitle" = "建立3D房間";
+"photoRoom.createSubtitle" = "選擇一張照片開始";
+"photoRoom.quickPhoto" = "快速拍照";
+"photoRoom.quickPhotoSubtitle" = "單張照片擷取";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "3D房間視圖";
+"roomViewer.controls" = "使用搖桿移動 • 捏合縮放";
+"roomViewer.saveRoom" = "儲存房間";
+"roomViewer.roomName" = "房間名稱";
+"roomViewer.enterName" = "為你的房間輸入名稱";
+"roomViewer.savingRoom" = "正在儲存房間";
+"roomViewer.preparingModel" = "正在準備房間模型...";
+"roomViewer.exportingUSDZ" = "正在匯出USDZ格式...";
+"roomViewer.savingToLibrary" = "正在儲存到資料庫...";
+"roomViewer.almostDone" = "即將完成...";
+"roomViewer.saveSuccess" = "房間「%@」儲存成功！";
+"roomViewer.saveFailed" = "儲存房間失敗：%@";
+"roomViewer.roomSaveTitle" = "儲存房間";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "提交報告";
+"crashReport.emailNotConfigured" = "電子郵件不可用";
+"crashReport.emailNotConfiguredMessage" = "此裝置未設定電子郵件。你可以複製錯誤詳情並手動傳送到 support@paafekt.com";
+"crashReport.copyDetails" = "複製詳情";
+
+// MARK: - Accessibility
+"accessibility.settings" = "設定";
+"accessibility.help" = "幫助";
+"accessibility.createRoom" = "從照片建立房間";

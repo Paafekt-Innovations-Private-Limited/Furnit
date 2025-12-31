@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  Malayalam (മലയാളം) localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "3D റൂം എക്സ്പ്ലോറർ";
+"app.version" = "പതിപ്പ്";
+"app.developer" = "Furnit ടീം";
+
+// MARK: - Common Actions
+"common.done" = "പൂർത്തിയായി";
+"common.cancel" = "റദ്ദാക്കുക";
+"common.ok" = "ശരി";
+"common.back" = "പിന്നോട്ട്";
+"common.reset" = "റീസെറ്റ്";
+"common.delete" = "ഇല്ലാതാക്കുക";
+"common.error" = "പിശക്";
+"common.save" = "സേവ്";
+"common.close" = "അടയ്ക്കുക";
+
+// MARK: - Login View
+"login.yourName" = "നിങ്ങളുടെ പേര്";
+"login.enterName" = "നിങ്ങളുടെ പേര് നൽകുക";
+"login.phoneNumber" = "ഫോൺ നമ്പർ";
+"login.phonePlaceholder" = "ഫോൺ നമ്പർ";
+"login.sendOTP" = "OTP അയയ്ക്കുക";
+"login.sending" = "അയയ്ക്കുന്നു...";
+"login.otpHint" = "കോഡ് SMS വഴി അയയ്ക്കും";
+"login.validationError" = "സാധുവായ പേരും ഫോൺ നമ്പറും നൽകുക";
+"login.sendFailed" = "കോഡ് അയയ്ക്കൽ പരാജയപ്പെട്ടു. വീണ്ടും ശ്രമിക്കുക.";
+
+// MARK: - Country Picker
+"country.selectTitle" = "രാജ്യം തിരഞ്ഞെടുക്കുക";
+"country.searchPlaceholder" = "രാജ്യം അല്ലെങ്കിൽ കോഡ് തിരയുക";
+
+// MARK: - OTP Verification
+"otp.title" = "കോഡ് പരിശോധിക്കുക";
+"otp.subtitle" = "ഈ നമ്പറിലേക്ക് അയച്ച കോഡ് നൽകുക";
+"otp.verify" = "പരിശോധിക്കുക";
+"otp.verifying" = "പരിശോധിക്കുന്നു...";
+"otp.resend" = "കോഡ് വീണ്ടും അയയ്ക്കുക";
+"otp.resendIn" = "%d സെക്കൻഡിൽ വീണ്ടും അയയ്ക്കുക";
+"otp.invalidError" = "അസാധുവായ കോഡ്. വീണ്ടും ശ്രമിക്കുക.";
+"otp.resendFailed" = "കോഡ് വീണ്ടും അയയ്ക്കൽ പരാജയപ്പെട്ടു.";
+
+// MARK: - Home View
+"home.title" = "3D റൂം മോഡലുകൾ";
+"home.noModels" = "3D മോഡലുകൾ കണ്ടെത്തിയില്ല";
+"home.noModelsDescription" = "ഫോട്ടോയിൽ നിന്ന് നിങ്ങളുടെ ആദ്യ മുറി സൃഷ്ടിക്കുക!";
+"home.createRoom" = "ഫോട്ടോയിൽ നിന്ന് മുറി സൃഷ്ടിക്കുക";
+"home.roomsRemaining" = "%d/%d മുറികൾ ബാക്കി";
+"home.deleteHint" = "പുതിയവ സൃഷ്ടിക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക";
+"home.swipeHint" = "ഇല്ലാതാക്കാൻ ഇടത്തേക്ക് സ്വൈപ്പ് ചെയ്യുക";
+"home.roomModel" = "3D റൂം മോഡൽ";
+
+// MARK: - Room Limit
+"roomLimit.title" = "മുറി പരിധി എത്തി";
+"roomLimit.message" = "നിങ്ങൾ %d മുറികളുടെ പരിധി എത്തി. പുതിയവ സൃഷ്ടിക്കാൻ ചിലത് ഇല്ലാതാക്കുക.";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "മുറി ഇല്ലാതാക്കണോ?";
+"deleteRoom.message" = "'%@' ഇല്ലാതാക്കണമെന്ന് ഉറപ്പാണോ? ഇത് പഴയപടിയാക്കാൻ കഴിയില്ല.";
+
+// MARK: - Explore View
+"explore.title" = "പര്യവേക്ഷണം";
+"explore.search" = "മുറികൾ തിരയുക...";
+"explore.noResults" = "ഫലങ്ങളില്ല";
+"explore.noResultsDescription" = "മറ്റൊരു തിരയൽ പദം ശ്രമിക്കുക";
+"explore.all" = "എല്ലാം";
+"explore.livingRoom" = "ലിവിംഗ് റൂം";
+"explore.bedroom" = "ബെഡ്റൂം";
+"explore.kitchen" = "അടുക്കള";
+"explore.office" = "ഓഫീസ്";
+
+// MARK: - Favorites View
+"favorites.title" = "പ്രിയപ്പെട്ടവ";
+"favorites.empty" = "പ്രിയപ്പെട്ടവയില്ല";
+"favorites.emptyDescription" = "ഇവിടെ ചേർക്കാൻ മുറികളിൽ ഹൃദയം ടാപ്പ് ചെയ്യുക";
+
+// MARK: - Profile View
+"profile.title" = "പ്രൊഫൈൽ";
+"profile.editProfile" = "പ്രൊഫൈൽ എഡിറ്റ് ചെയ്യുക";
+"profile.notifications" = "അറിയിപ്പുകൾ";
+"profile.privacy" = "സ്വകാര്യത";
+"profile.general" = "പൊതുവായ";
+"profile.about" = "കുറിച്ച്";
+"profile.helpSupport" = "സഹായവും പിന്തുണയും";
+"profile.logout" = "ലോഗ് ഔട്ട്";
+"profile.logoutConfirmTitle" = "ലോഗ് ഔട്ട്";
+"profile.logoutConfirmMessage" = "ലോഗ് ഔട്ട് ചെയ്യണമെന്ന് ഉറപ്പാണോ?";
+
+// MARK: - Settings View
+"settings.title" = "ക്രമീകരണങ്ങൾ";
+"settings.quality" = "3D റിസോഴ്സ് ഗുണനിലവാരം";
+"settings.qualityFooter" = "ഗുണനിലവാരം റെൻഡറിംഗ് വിശദാംശങ്ങളെയും പ്രകടനത്തെയും ബാധിക്കുന്നു. ഉയർന്ന ഗുണനിലവാരം ബാറ്ററി ആയുസ്സിനെ ബാധിച്ചേക്കാം.";
+"settings.appInfo" = "ആപ്പ് വിവരങ്ങൾ";
+"settings.currentQuality" = "നിലവിലെ ഗുണനിലവാരം";
+"settings.movementSpeed" = "ചലന വേഗത";
+"settings.movementSpeedFooter" = "ജോയ്സ്റ്റിക്കിലൂടെ ക്യാമറ ചലന വേഗത നിയന്ത്രിക്കുന്നു. നിങ്ങൾക്ക് അനുയോജ്യമായ വേഗത തിരഞ്ഞെടുക്കുക.";
+"settings.roomDimensions" = "സിംഗിൾ ഫോട്ടോ റൂം അളവുകൾ";
+"settings.roomDimensionsFooter" = "സിംഗിൾ ഫോട്ടോകളിൽ നിന്ന് സൃഷ്ടിച്ച മുറികൾക്കുള്ള ഡിഫോൾട്ട് അളവുകൾ ക്രമീകരിക്കുക. മുറി അതിർത്തികൾ കണ്ടെത്തുമ്പോൾ ഇവ ആരംഭ പോയിന്റുകളായി പ്രവർത്തിക്കും.";
+"settings.width" = "വീതി: %.1f മീ";
+"settings.depth" = "ആഴം: %.1f മീ";
+"settings.height" = "ഉയരം: %.1f മീ";
+"settings.developer" = "ഡെവലപ്പർ";
+"settings.developerFooter" = "വിശദമായ കണ്ടെത്തൽ വിവരങ്ങളും പ്രകടന മെട്രിക്സും കാണാൻ ഡീബഗ് മോഡ് പ്രവർത്തനക്ഷമമാക്കുക. കണ്ടെത്തൽ സംവേദനക്ഷമതയും ഫിൽട്ടറിംഗ് സ്വഭാവവും നിയന്ത്രിക്കാൻ പരിധികൾ ക്രമീകരിക്കുക.";
+"settings.debugMode" = "ഡീബഗ് മോഡ്";
+"settings.debugModeDescription" = "കണ്ടെത്തൽ ബോക്സുകളും സമയ വിവരങ്ങളും കാണിക്കുക";
+"settings.maskOverlapThreshold" = "മാസ്ക് ഓവർലാപ്പ് പരിധി";
+"settings.maskOverlapDescription" = "കണ്ടെത്തലുകൾ ലയിപ്പിക്കാൻ ആവശ്യമായ മാസ്ക് ഓവർലാപ്പ് നിയന്ത്രിക്കുന്നു. കുറഞ്ഞ മൂല്യങ്ങൾ കൂടുതൽ സമാന വസ്തുക്കളെ ലയിപ്പിക്കും.";
+"settings.currentValue" = "നിലവിലെ മൂല്യം:";
+"settings.account" = "അക്കൗണ്ട്";
+"settings.loggedInAs" = "ലോഗിൻ ചെയ്തത്";
+
+// MARK: - Quality Options
+"quality.standard" = "സ്റ്റാൻഡേർഡ്";
+"quality.standard.description" = "വേഗതയേറിയ പ്രകടനത്തിനുള്ള അടിസ്ഥാന ഗുണനിലവാരം";
+"quality.high" = "ഹൈ";
+"quality.high.description" = "കൂടുതൽ വിശദാംശങ്ങളുള്ള മെച്ചപ്പെട്ട ഗുണനിലവാരം";
+"quality.best" = "ബെസ്റ്റ്";
+"quality.best.description" = "പരമാവധി വിശദാംശങ്ങളുള്ള പ്രീമിയം ഗുണനിലവാരം";
+"quality.best.unavailable" = "മികച്ച ഗുണനിലവാരത്തിന്, ഞങ്ങളുടെ പങ്കാളി സ്റ്റോറുകൾ സന്ദർശിക്കുക";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "മന്ദഗതി";
+"speed.slow.description" = "വിശദമായ പര്യവേക്ഷണത്തിനുള്ള കൃത്യമായ നിയന്ത്രണം";
+"speed.normal" = "സാധാരണ";
+"speed.normal.description" = "സുഖകരമായ നാവിഗേഷനുള്ള സന്തുലിത വേഗത";
+"speed.fast" = "വേഗത";
+"speed.fast.description" = "ചടുലമായ പര്യവേക്ഷണത്തിനുള്ള ദ്രുത ചലനം";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "സഹായവും പിന്തുണയും";
+"help.cantFind" = "നിങ്ങൾ തിരയുന്നത് കണ്ടെത്താൻ കഴിയുന്നില്ലേ?";
+"help.contactDescription" = "ഞങ്ങളുടെ സപ്പോർട്ട് ടീമിനെ ബന്ധപ്പെടുക, ഞങ്ങൾ ഉടൻ മറുപടി നൽകും.";
+"help.contactSupport" = "പിന്തുണയുമായി ബന്ധപ്പെടുക";
+"help.emailSupport" = "ഇമെയിൽ പിന്തുണ";
+"help.copyEmail" = "ഇമെയിൽ വിലാസം പകർത്തുക";
+"help.emailCopied" = "ഇമെയിൽ പകർത്തി";
+"help.emailCopiedMessage" = "support@paafekt.com നിങ്ങളുടെ ക്ലിപ്പ്ബോർഡിലേക്ക് പകർത്തി.";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "മുറി സൃഷ്ടി";
+"faq.howToCreate" = "3D മുറി എങ്ങനെ സൃഷ്ടിക്കാം?";
+"faq.howToCreateAnswer" = "ഹോം സ്ക്രീനിന്റെ ഇടത് മുകളിലെ കോണിലുള്ള ഫോട്ടോ ഐക്കൺ ടാപ്പ് ചെയ്യുക, തുടർന്ന് നിങ്ങളുടെ മുറിയുടെ ഫോട്ടോ എടുക്കുക അല്ലെങ്കിൽ തിരഞ്ഞെടുക്കുക. ആപ്പ് നിങ്ങളുടെ ഫോട്ടോയിൽ നിന്ന് സ്വയമേവ 3D മോഡൽ സൃഷ്ടിക്കും.";
+"faq.bestPhotos" = "ഏത് തരം ഫോട്ടോകളാണ് നന്നായി പ്രവർത്തിക്കുന്നത്?";
+"faq.bestPhotosAnswer" = "മികച്ച ഫലങ്ങൾക്ക്, നല്ല വെളിച്ചത്തിൽ ഉപകരണം സ്ഥിരമായി പിടിച്ച് ഫോട്ടോകൾ എടുക്കുക. തറ, ചുവരുകൾ, സീലിംഗ് അരികുകൾ എന്നിവയുൾപ്പെടെ മുഴുവൻ മുറിയും പിടിച്ചെടുക്കാൻ ശ്രമിക്കുക. മങ്ങിയ അല്ലെങ്കിൽ ഇരുണ്ട ഫോട്ടോകൾ ഒഴിവാക്കുക.";
+"faq.generationFailing" = "എന്റെ മുറി ജനറേഷൻ എന്തുകൊണ്ട് പരാജയപ്പെടുന്നു?";
+"faq.generationFailingAnswer" = "ഫോട്ടോ വളരെ ഇരുണ്ടതോ, മങ്ങിയതോ, അല്ലെങ്കിൽ മതിയായ മുറി സവിശേഷതകൾ കാണിക്കുന്നില്ലെങ്കിലോ മുറി ജനറേഷൻ പരാജയപ്പെട്ടേക്കാം. മെച്ചപ്പെട്ട വെളിച്ചവും വീതിയേറിയ കോണും ഉപയോഗിച്ച് പുതിയ ഫോട്ടോ എടുക്കാൻ ശ്രമിക്കുക.";
+"faq.howManyRooms" = "എനിക്ക് എത്ര മുറികൾ സൃഷ്ടിക്കാം?";
+"faq.howManyRoomsAnswer" = "നിങ്ങൾക്ക് 10 മുറികൾ വരെ സൃഷ്ടിക്കാം. ഇടം ഉണ്ടാക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക. മുറി എണ്ണം നിങ്ങളുടെ ഹോം സ്ക്രീനിന്റെ മുകളിൽ പ്രദർശിപ്പിക്കും.";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "ഫർണിച്ചർ സെഗ്മെന്റേഷൻ";
+"faq.whatIsSegmentation" = "ഫർണിച്ചർ സെഗ്മെന്റേഷൻ എന്താണ്?";
+"faq.whatIsSegmentationAnswer" = "ഫർണിച്ചർ സെഗ്മെന്റേഷൻ AI ഉപയോഗിച്ച് നിങ്ങളുടെ ഫോട്ടോകളിലെ ഫർണിച്ചർ തിരിച്ചറിയുകയും വേർതിരിക്കുകയും ചെയ്യുന്നു, ഓരോ കഷണവും നിങ്ങളുടെ 3D മുറിയിൽ എങ്ങനെ ചേരുമെന്ന് കാണാൻ അനുവദിക്കുന്നു.";
+"faq.howToSegment" = "ഫോട്ടോയിൽ നിന്ന് ഫർണിച്ചർ എങ്ങനെ സെഗ്മെന്റ് ചെയ്യാം?";
+"faq.howToSegmentAnswer" = "നിങ്ങളുടെ 3D മുറി കാണുമ്പോൾ, സെഗ്മെന്റേഷൻ ഫീച്ചർ ആക്സസ് ചെയ്യാൻ ഫർണിച്ചർ ഐക്കൺ ടാപ്പ് ചെയ്യുക. ഫർണിച്ചർ അടങ്ങിയ ഫോട്ടോ തിരഞ്ഞെടുക്കുക, ആപ്പ് സ്വയമേവ ഫർണിച്ചർ ഇനങ്ങൾ കണ്ടെത്തി വേർതിരിക്കും.";
+"faq.notDetected" = "എന്റെ ഫർണിച്ചർ എന്തുകൊണ്ട് കണ്ടെത്തിയില്ല?";
+"faq.notDetectedAnswer" = "ഫർണിച്ചർ കണ്ടെത്തൽ വ്യക്തമായ, നല്ല വെളിച്ചമുള്ള ഫോട്ടോകളിൽ ഫർണിച്ചർ വ്യക്തമായി കാണുമ്പോൾ നന്നായി പ്രവർത്തിക്കുന്നു. ഫർണിച്ചർ ഭാഗികമായി മൂടപ്പെട്ടിട്ടില്ലെന്നോ പശ്ചാത്തലവുമായി കലർന്നിട്ടില്ലെന്നോ ഉറപ്പാക്കുക.";
+"faq.multiplePieces" = "ഒന്നിലധികം ഫർണിച്ചർ കഷണങ്ങൾ സെഗ്മെന്റ് ചെയ്യാമോ?";
+"faq.multiplePiecesAnswer" = "അതെ! AI ക്ക് ഒരു ഫോട്ടോയിൽ ഒന്നിലധികം ഫർണിച്ചർ കഷണങ്ങൾ കണ്ടെത്താൻ കഴിയും. കണ്ടെത്തിയ ഓരോ ഇനവും പ്രത്യേകമായി പ്രദർശിപ്പിക്കും, ഏത് ഉപയോഗിക്കണമെന്ന് നിങ്ങൾ തിരഞ്ഞെടുക്കുന്നതിന്.";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "3D മുറിയും ഫിറ്റ്മെന്റും";
+"faq.howToView" = "എന്റെ 3D മുറി എങ്ങനെ കാണാം?";
+"faq.howToViewAnswer" = "3D വ്യൂവർ തുറക്കാൻ ഹോം സ്ക്രീനിലെ ഏതെങ്കിലും മുറി ടാപ്പ് ചെയ്യുക. ടച്ച് ജെസ്ച്ചറുകൾ ഉപയോഗിച്ച് മുറി തിരിക്കാനും സൂം ചെയ്യാനും പാൻ ചെയ്യാനും കഴിയും.";
+"faq.howToPlace" = "എന്റെ മുറിയിൽ ഫർണിച്ചർ എങ്ങനെ വയ്ക്കാം?";
+"faq.howToPlaceAnswer" = "ഫർണിച്ചർ സെഗ്മെന്റ് ചെയ്ത ശേഷം, നിങ്ങളുടെ മുറിയിലേക്ക് ചേർക്കാൻ ഒരു കഷണം ടാപ്പ് ചെയ്യുക. തുടർന്ന് സ്ഥാനത്തിന് വലിച്ചിടാനും, വലുപ്പം മാറ്റാൻ പിഞ്ച് ചെയ്യാനും, ദിശ ക്രമീകരിക്കാൻ തിരിക്കാനും കഴിയും.";
+"faq.sampleRoom" = "എന്റേതിന് പകരം സാമ്പിൾ റൂം ഉപയോഗിക്കാമോ?";
+"faq.sampleRoomAnswer" = "അതെ! ആപ്പ് പരീക്ഷിക്കാൻ സാമ്പിൾ റൂമുകൾ നൽകുന്നു. ആദ്യം നിങ്ങളുടെ സ്വന്തം മുറി സൃഷ്ടിക്കാതെ ഫർണിച്ചർ പ്ലേസ്മെന്റ് പരീക്ഷിക്കാൻ എക്സ്പ്ലോർ വിഭാഗത്തിൽ നിന്ന് അവ ആക്സസ് ചെയ്യുക.";
+"faq.accuracy" = "3D മോഡൽ എത്ര കൃത്യമാണ്?";
+"faq.accuracyAnswer" = "3D മോഡൽ നിങ്ങളുടെ മുറി ലേഔട്ടിന്റെ നല്ല ഏകദേശ കണക്ക് നൽകുന്നു. മികച്ച കൃത്യതയ്ക്ക്, നിങ്ങളുടെ യഥാർത്ഥ ഫോട്ടോ കാണാവുന്ന കോണുകളും അരികുകളും ഉള്ള മുറി അളവുകൾ വ്യക്തമായി പിടിച്ചെടുക്കുന്നുവെന്ന് ഉറപ്പാക്കുക.";
+"faq.adjustDimensions" = "മുറി അളവുകൾ ക്രമീകരിക്കാമോ?";
+"faq.adjustDimensionsAnswer" = "അതെ, ക്രമീകരണങ്ങളിലേക്ക് പോയി മുറി അളവ് ഓപ്ഷനുകൾ കണ്ടെത്തുക അവിടെ നിങ്ങൾക്ക് സൃഷ്ടിച്ച മുറിയുടെ വലുപ്പവും അനുപാതങ്ങളും ഫൈൻ-ട്യൂൺ ചെയ്യാം.";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "മുറി അതിർത്തികൾ";
+"boundary.instructions" = "അതിർത്തികൾ ക്രമീകരിക്കാൻ വൃത്തങ്ങൾ വലിച്ചിടുക";
+"boundary.floor" = "തറ";
+"boundary.ceiling" = "സീലിംഗ്";
+"boundary.walls" = "ചുവരുകൾ";
+"boundary.vanish" = "വാനിഷിംഗ് പോയിന്റ്";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "ഫർണിച്ചർ ചേർക്കുക";
+"viewer.capture" = "ക്യാപ്ചർ";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "ക്യാമറ ആരംഭിക്കുന്നു...";
+"smartypants.resizing" = "വലുപ്പം മാറ്റുന്നു...";
+"smartypants.preprocessing" = "പ്രീപ്രോസസിംഗ്...";
+"smartypants.runningModel" = "മോഡൽ പ്രവർത്തിക്കുന്നു...";
+"smartypants.extracting" = "കണ്ടെത്തലുകൾ വേർതിരിക്കുന്നു...";
+"smartypants.buildingMask" = "മാസ്ക് നിർമ്മിക്കുന്നു...";
+"smartypants.compositing" = "സംയോജിപ്പിക്കുന്നു...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "ഫോട്ടോയിൽ നിന്ന് 3D മുറി";
+"photoRoom.createTitle" = "3D മുറി സൃഷ്ടിക്കുക";
+"photoRoom.createSubtitle" = "ആരംഭിക്കാൻ ഫോട്ടോ തിരഞ്ഞെടുക്കുക";
+"photoRoom.quickPhoto" = "ക്വിക്ക് ഫോട്ടോ";
+"photoRoom.quickPhotoSubtitle" = "സിംഗിൾ ഫോട്ടോ ക്യാപ്ചർ";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "3D മുറി കാഴ്ച";
+"roomViewer.controls" = "നീങ്ങാൻ ജോയ്സ്റ്റിക്ക് ഉപയോഗിക്കുക • സൂം ചെയ്യാൻ പിഞ്ച് ചെയ്യുക";
+"roomViewer.saveRoom" = "മുറി സേവ് ചെയ്യുക";
+"roomViewer.roomName" = "മുറി പേര്";
+"roomViewer.enterName" = "നിങ്ങളുടെ മുറിക്ക് പേര് നൽകുക";
+"roomViewer.savingRoom" = "മുറി സേവ് ചെയ്യുന്നു";
+"roomViewer.preparingModel" = "മുറി മോഡൽ തയ്യാറാക്കുന്നു...";
+"roomViewer.exportingUSDZ" = "USDZ ഫോർമാറ്റിലേക്ക് എക്സ്പോർട്ട് ചെയ്യുന്നു...";
+"roomViewer.savingToLibrary" = "ലൈബ്രറിയിലേക്ക് സേവ് ചെയ്യുന്നു...";
+"roomViewer.almostDone" = "ഏതാണ്ട് പൂർത്തിയായി...";
+"roomViewer.saveSuccess" = "മുറി '%@' വിജയകരമായി സേവ് ചെയ്തു!";
+"roomViewer.saveFailed" = "മുറി സേവ് ചെയ്യൽ പരാജയപ്പെട്ടു: %@";
+"roomViewer.roomSaveTitle" = "മുറി സേവ് ചെയ്യുക";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "റിപ്പോർട്ട് സമർപ്പിക്കുക";
+"crashReport.emailNotConfigured" = "ഇമെയിൽ ലഭ്യമല്ല";
+"crashReport.emailNotConfiguredMessage" = "ഈ ഉപകരണത്തിൽ ഇമെയിൽ കോൺഫിഗർ ചെയ്തിട്ടില്ല. നിങ്ങൾക്ക് പിശക് വിശദാംശങ്ങൾ പകർത്തി support@paafekt.com ലേക്ക് മാനുവലായി അയയ്ക്കാം";
+"crashReport.copyDetails" = "വിശദാംശങ്ങൾ പകർത്തുക";
+
+// MARK: - Accessibility
+"accessibility.settings" = "ക്രമീകരണങ്ങൾ";
+"accessibility.help" = "സഹായം";
+"accessibility.createRoom" = "ഫോട്ടോയിൽ നിന്ന് മുറി സൃഷ്ടിക്കുക";

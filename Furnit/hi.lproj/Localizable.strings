@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  Hindi localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "3D कमरा एक्सप्लोरर";
+"app.version" = "संस्करण";
+"app.developer" = "Furnit टीम";
+
+// MARK: - Common Actions
+"common.done" = "हो गया";
+"common.cancel" = "रद्द करें";
+"common.ok" = "ठीक है";
+"common.back" = "वापस";
+"common.reset" = "रीसेट";
+"common.delete" = "हटाएं";
+"common.error" = "त्रुटि";
+"common.save" = "सहेजें";
+"common.close" = "बंद करें";
+
+// MARK: - Login View
+"login.yourName" = "आपका नाम";
+"login.enterName" = "अपना नाम दर्ज करें";
+"login.phoneNumber" = "फोन नंबर";
+"login.phonePlaceholder" = "फोन नंबर";
+"login.sendOTP" = "OTP भेजें";
+"login.sending" = "भेज रहे हैं...";
+"login.otpHint" = "OTP SMS द्वारा भेजा जाएगा";
+"login.validationError" = "कृपया वैध नाम और फोन नंबर दर्ज करें";
+"login.sendFailed" = "OTP भेजने में विफल। कृपया पुनः प्रयास करें।";
+
+// MARK: - Country Picker
+"country.selectTitle" = "देश चुनें";
+"country.searchPlaceholder" = "देश या कोड खोजें";
+
+// MARK: - OTP Verification
+"otp.title" = "OTP सत्यापित करें";
+"otp.subtitle" = "इस नंबर पर भेजा गया कोड दर्ज करें";
+"otp.verify" = "सत्यापित करें";
+"otp.verifying" = "सत्यापित हो रहा है...";
+"otp.resend" = "OTP पुनः भेजें";
+"otp.resendIn" = "%d सेकंड में पुनः भेजें";
+"otp.invalidError" = "अमान्य OTP। कृपया पुनः प्रयास करें।";
+"otp.resendFailed" = "OTP पुनः भेजने में विफल।";
+
+// MARK: - Home View
+"home.title" = "3D कमरा मॉडल";
+"home.noModels" = "कोई 3D मॉडल नहीं मिला";
+"home.noModelsDescription" = "एक फोटो से अपना पहला कमरा बनाएं!";
+"home.createRoom" = "फोटो से कमरा बनाएं";
+"home.roomsRemaining" = "%d में से %d कमरे शेष";
+"home.deleteHint" = "नए बनाने के लिए पुराने कमरे हटाएं";
+"home.swipeHint" = "हटाने के लिए बाएं स्वाइप करें";
+"home.roomModel" = "3D कमरा मॉडल";
+
+// MARK: - Room Limit
+"roomLimit.title" = "कमरे की सीमा पूरी";
+"roomLimit.message" = "आप %d कमरों की सीमा तक पहुंच गए हैं। नए बनाने के लिए कुछ कमरे हटाएं।";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "कमरा हटाएं?";
+"deleteRoom.message" = "क्या आप वाकई '%@' को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।";
+
+// MARK: - Explore View
+"explore.title" = "खोजें";
+"explore.search" = "कमरे खोजें...";
+"explore.noResults" = "कोई परिणाम नहीं";
+"explore.noResultsDescription" = "कोई अन्य खोज शब्द आज़माएं";
+"explore.all" = "सभी";
+"explore.livingRoom" = "लिविंग रूम";
+"explore.bedroom" = "बेडरूम";
+"explore.kitchen" = "किचन";
+"explore.office" = "ऑफिस";
+
+// MARK: - Favorites View
+"favorites.title" = "पसंदीदा";
+"favorites.empty" = "कोई पसंदीदा नहीं";
+"favorites.emptyDescription" = "कमरों पर हार्ट आइकन टैप करके यहां जोड़ें";
+
+// MARK: - Profile View
+"profile.title" = "प्रोफाइल";
+"profile.editProfile" = "प्रोफाइल संपादित करें";
+"profile.notifications" = "सूचनाएं";
+"profile.privacy" = "गोपनीयता";
+"profile.general" = "सामान्य";
+"profile.about" = "के बारे में";
+"profile.helpSupport" = "सहायता और समर्थन";
+"profile.logout" = "लॉग आउट";
+"profile.logoutConfirmTitle" = "लॉग आउट";
+"profile.logoutConfirmMessage" = "क्या आप वाकई लॉग आउट करना चाहते हैं?";
+
+// MARK: - Settings View
+"settings.title" = "सेटिंग्स";
+"settings.quality" = "3D एसेट गुणवत्ता";
+"settings.qualityFooter" = "गुणवत्ता रेंडरिंग विवरण और प्रदर्शन को प्रभावित करती है। उच्च गुणवत्ता बैटरी जीवन को प्रभावित कर सकती है।";
+"settings.appInfo" = "ऐप जानकारी";
+"settings.currentQuality" = "वर्तमान गुणवत्ता";
+"settings.movementSpeed" = "गति की रफ्तार";
+"settings.movementSpeedFooter" = "जॉयस्टिक उपयोग करते समय कैमरा कितनी तेज़ी से चलता है इसे नियंत्रित करता है। अपने लिए सबसे आरामदायक गति चुनें।";
+"settings.roomDimensions" = "सिंगल फोटो कमरे के आयाम";
+"settings.roomDimensionsFooter" = "एकल फोटो से बनाए गए कमरों के लिए डिफ़ॉल्ट आयाम समायोजित करें। ये मान कमरे की सीमाओं का पता लगाते समय प्रारंभिक बिंदुओं के रूप में उपयोग किए जाएंगे।";
+"settings.width" = "चौड़ाई: %.1f मी";
+"settings.depth" = "गहराई: %.1f मी";
+"settings.height" = "ऊंचाई: %.1f मी";
+"settings.developer" = "डेवलपर";
+"settings.developerFooter" = "विस्तृत पहचान जानकारी और प्रदर्शन मेट्रिक्स देखने के लिए डीबग मोड सक्षम करें। पहचान संवेदनशीलता और फ़िल्टरिंग व्यवहार को नियंत्रित करने के लिए थ्रेशोल्ड समायोजित करें।";
+"settings.debugMode" = "डीबग मोड";
+"settings.debugModeDescription" = "पहचान बॉक्स और समय जानकारी दिखाएं";
+"settings.maskOverlapThreshold" = "मास्क ओवरलैप थ्रेशोल्ड";
+"settings.maskOverlapDescription" = "पहचान को मर्ज करने के लिए कितना मास्क ओवरलैप आवश्यक है इसे नियंत्रित करता है। कम मान अधिक समान वस्तुओं को मर्ज करते हैं।";
+"settings.currentValue" = "वर्तमान मान:";
+"settings.account" = "खाता";
+"settings.loggedInAs" = "इस रूप में लॉग इन";
+
+// MARK: - Quality Options
+"quality.standard" = "मानक";
+"quality.standard.description" = "तेज़ प्रदर्शन के लिए बुनियादी गुणवत्ता";
+"quality.high" = "उच्च";
+"quality.high.description" = "बेहतर विवरण के साथ उन्नत गुणवत्ता";
+"quality.best" = "सर्वोत्तम";
+"quality.best.description" = "अधिकतम विवरण के साथ प्रीमियम गुणवत्ता";
+"quality.best.unavailable" = "सर्वोत्तम गुणवत्ता के लिए, कृपया हमारे पार्टनर स्टोर पर जाएं";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "धीमी";
+"speed.slow.description" = "विस्तृत अन्वेषण के लिए सटीक नियंत्रण";
+"speed.normal" = "सामान्य";
+"speed.normal.description" = "आरामदायक नेविगेशन के लिए संतुलित गति";
+"speed.fast" = "तेज़";
+"speed.fast.description" = "त्वरित अन्वेषण के लिए तेज़ गति";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "सहायता और समर्थन";
+"help.cantFind" = "जो खोज रहे हैं वह नहीं मिल रहा?";
+"help.contactDescription" = "हमारी सहायता टीम से संपर्क करें और हम जल्द से जल्द आपसे संपर्क करेंगे।";
+"help.contactSupport" = "सहायता से संपर्क करें";
+"help.emailSupport" = "ईमेल सहायता";
+"help.copyEmail" = "ईमेल पता कॉपी करें";
+"help.emailCopied" = "ईमेल कॉपी हो गया";
+"help.emailCopiedMessage" = "support@paafekt.com आपके क्लिपबोर्ड पर कॉपी हो गया है।";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "कमरा निर्माण";
+"faq.howToCreate" = "3D कमरा कैसे बनाएं?";
+"faq.howToCreateAnswer" = "होम स्क्रीन के ऊपरी-बाएं कोने में फोटो आइकन टैप करें, फिर अपने कमरे की फोटो लें या चुनें। ऐप स्वचालित रूप से आपकी फोटो से 3D मॉडल बनाएगा।";
+"faq.bestPhotos" = "किस तरह की फोटो सबसे अच्छी काम करती हैं?";
+"faq.bestPhotosAnswer" = "सर्वोत्तम परिणामों के लिए, अच्छी रोशनी में कैमरा समतल रखकर फोटो लें। फर्श, दीवारों और छत के किनारों सहित पूरे कमरे को कैप्चर करने का प्रयास करें। धुंधली या अंधेरी फोटो से बचें।";
+"faq.generationFailing" = "मेरा कमरा जनरेशन क्यों विफल हो रहा है?";
+"faq.generationFailingAnswer" = "यदि फोटो बहुत अंधेरी, धुंधली है या पर्याप्त कमरे की विशेषताएं नहीं दिखाती है तो कमरा जनरेशन विफल हो सकता है। बेहतर रोशनी और व्यापक कोण के साथ नई फोटो लेने का प्रयास करें।";
+"faq.howManyRooms" = "मैं कितने कमरे बना सकता हूं?";
+"faq.howManyRoomsAnswer" = "आप 10 कमरे तक बना सकते हैं। नए के लिए जगह बनाने के लिए पुराने कमरे हटाएं। कमरों की संख्या आपकी होम स्क्रीन के शीर्ष पर दिखाई जाती है।";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "फर्नीचर सेगमेंटेशन";
+"faq.whatIsSegmentation" = "फर्नीचर सेगमेंटेशन क्या है?";
+"faq.whatIsSegmentationAnswer" = "फर्नीचर सेगमेंटेशन AI का उपयोग करके आपकी फोटो में फर्नीचर आइटम की पहचान करता है और उन्हें अलग करता है, जिससे आप देख सकते हैं कि प्रत्येक टुकड़ा आपके 3D कमरे में कैसे फिट होगा।";
+"faq.howToSegment" = "फोटो से फर्नीचर कैसे सेगमेंट करें?";
+"faq.howToSegmentAnswer" = "अपना 3D कमरा देखते समय, सेगमेंटेशन फीचर एक्सेस करने के लिए फर्नीचर आइकन टैप करें। फर्नीचर वाली फोटो चुनें, और ऐप स्वचालित रूप से फर्नीचर आइटम का पता लगाएगा और निकालेगा।";
+"faq.notDetected" = "मेरा फर्नीचर क्यों नहीं पहचाना जा रहा?";
+"faq.notDetectedAnswer" = "फर्नीचर पहचान स्पष्ट, अच्छी रोशनी वाली फोटो में सबसे अच्छा काम करती है जहां फर्नीचर स्पष्ट रूप से दिखाई देता है। सुनिश्चित करें कि फर्नीचर आंशिक रूप से छिपा नहीं है या पृष्ठभूमि के साथ मिश्रित नहीं है।";
+"faq.multiplePieces" = "क्या मैं एक से अधिक फर्नीचर पीस सेगमेंट कर सकता हूं?";
+"faq.multiplePiecesAnswer" = "हां! AI एक ही फोटो में कई फर्नीचर पीस का पता लगा सकता है। प्रत्येक पहचाना गया आइटम अलग से दिखाया जाएगा ताकि आप चुन सकें कि कौन से उपयोग करने हैं।";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "3D कमरा और फिटमेंट";
+"faq.howToView" = "अपना 3D कमरा कैसे देखें?";
+"faq.howToViewAnswer" = "3D व्यूअर खोलने के लिए अपनी होम स्क्रीन पर किसी भी कमरे पर टैप करें। आप टच जेस्चर का उपयोग करके घुमा सकते हैं, ज़ूम कर सकते हैं और पैन कर सकते हैं।";
+"faq.howToPlace" = "अपने कमरे में फर्नीचर कैसे रखें?";
+"faq.howToPlaceAnswer" = "फर्नीचर सेगमेंट करने के बाद, इसे अपने कमरे में जोड़ने के लिए फर्नीचर पीस पर टैप करें। फिर आप इसे स्थिति देने के लिए खींच सकते हैं, आकार बदलने के लिए पिंच कर सकते हैं, और इसकी दिशा समायोजित करने के लिए घुमा सकते हैं।";
+"faq.sampleRoom" = "क्या मैं अपने बजाय सैंपल रूम उपयोग कर सकता हूं?";
+"faq.sampleRoomAnswer" = "हां! ऐप प्रयोग करने के लिए सैंपल रूम प्रदान करता है। पहले अपना कमरा बनाए बिना फर्नीचर प्लेसमेंट आज़माने के लिए एक्सप्लोर सेक्शन से उन्हें एक्सेस करें।";
+"faq.accuracy" = "3D मॉडल कितना सटीक है?";
+"faq.accuracyAnswer" = "3D मॉडल आपके कमरे के लेआउट का अच्छा अनुमान प्रदान करता है। सर्वोत्तम सटीकता के लिए, सुनिश्चित करें कि आपकी मूल फोटो दृश्यमान कोनों और किनारों के साथ कमरे के आयामों को स्पष्ट रूप से कैप्चर करती है।";
+"faq.adjustDimensions" = "क्या मैं कमरे के आयाम समायोजित कर सकता हूं?";
+"faq.adjustDimensionsAnswer" = "हां, सेटिंग्स पर जाएं और कमरे के आयाम विकल्प खोजें जहां आप अपने जनरेटेड रूम के आकार और अनुपात को फाइन-ट्यून कर सकते हैं।";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "कमरे की सीमाएं";
+"boundary.instructions" = "सीमाओं को समायोजित करने के लिए सर्कल खींचें";
+"boundary.floor" = "फर्श";
+"boundary.ceiling" = "छत";
+"boundary.walls" = "दीवारें";
+"boundary.vanish" = "वैनिश पॉइंट";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "फर्नीचर जोड़ें";
+"viewer.capture" = "कैप्चर";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "कैमरा शुरू हो रहा है...";
+"smartypants.resizing" = "आकार बदल रहा है...";
+"smartypants.preprocessing" = "प्री-प्रोसेसिंग...";
+"smartypants.runningModel" = "मॉडल चल रहा है...";
+"smartypants.extracting" = "पहचान निकाल रहे हैं...";
+"smartypants.buildingMask" = "मास्क बना रहे हैं...";
+"smartypants.compositing" = "कंपोजिटिंग...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "फोटो से 3D कमरा";
+"photoRoom.createTitle" = "3D कमरा बनाएं";
+"photoRoom.createSubtitle" = "शुरू करने के लिए एक फोटो चुनें";
+"photoRoom.quickPhoto" = "क्विक फोटो";
+"photoRoom.quickPhotoSubtitle" = "सिंगल फोटो कैप्चर";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "3D रूम व्यू";
+"roomViewer.controls" = "चलने के लिए जॉयस्टिक उपयोग करें • ज़ूम के लिए पिंच करें";
+"roomViewer.saveRoom" = "कमरा सहेजें";
+"roomViewer.roomName" = "कमरे का नाम";
+"roomViewer.enterName" = "अपने कमरे के लिए नाम दर्ज करें";
+"roomViewer.savingRoom" = "कमरा सहेज रहे हैं";
+"roomViewer.preparingModel" = "रूम मॉडल तैयार हो रहा है...";
+"roomViewer.exportingUSDZ" = "USDZ फॉर्मेट में एक्सपोर्ट हो रहा है...";
+"roomViewer.savingToLibrary" = "लाइब्रेरी में सहेज रहे हैं...";
+"roomViewer.almostDone" = "लगभग हो गया...";
+"roomViewer.saveSuccess" = "कमरा '%@' सफलतापूर्वक सहेजा गया!";
+"roomViewer.saveFailed" = "कमरा सहेजने में विफल: %@";
+"roomViewer.roomSaveTitle" = "कमरा सहेजें";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "रिपोर्ट सबमिट करें";
+"crashReport.emailNotConfigured" = "ईमेल उपलब्ध नहीं";
+"crashReport.emailNotConfiguredMessage" = "इस डिवाइस पर ईमेल कॉन्फ़िगर नहीं है। आप त्रुटि विवरण कॉपी करके support@paafekt.com पर मैन्युअल रूप से भेज सकते हैं";
+"crashReport.copyDetails" = "विवरण कॉपी करें";
+
+// MARK: - Accessibility
+"accessibility.settings" = "सेटिंग्स";
+"accessibility.help" = "सहायता";
+"accessibility.createRoom" = "फोटो से कमरा बनाएं";

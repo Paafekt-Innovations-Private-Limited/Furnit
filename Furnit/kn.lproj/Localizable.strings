@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  Kannada (ಕನ್ನಡ) localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "3D ಕೊಠಡಿ ಎಕ್ಸ್‌ಪ್ಲೋರರ್";
+"app.version" = "ಆವೃತ್ತಿ";
+"app.developer" = "Furnit ತಂಡ";
+
+// MARK: - Common Actions
+"common.done" = "ಮುಗಿಯಿತು";
+"common.cancel" = "ರದ್ದುಮಾಡು";
+"common.ok" = "ಸರಿ";
+"common.back" = "ಹಿಂದೆ";
+"common.reset" = "ಮರುಹೊಂದಿಸು";
+"common.delete" = "ಅಳಿಸು";
+"common.error" = "ದೋಷ";
+"common.save" = "ಉಳಿಸು";
+"common.close" = "ಮುಚ್ಚು";
+
+// MARK: - Login View
+"login.yourName" = "ನಿಮ್ಮ ಹೆಸರು";
+"login.enterName" = "ನಿಮ್ಮ ಹೆಸರನ್ನು ನಮೂದಿಸಿ";
+"login.phoneNumber" = "ಫೋನ್ ಸಂಖ್ಯೆ";
+"login.phonePlaceholder" = "ಫೋನ್ ಸಂಖ್ಯೆ";
+"login.sendOTP" = "OTP ಕಳುಹಿಸು";
+"login.sending" = "ಕಳುಹಿಸುತ್ತಿದೆ...";
+"login.otpHint" = "ಕೋಡ್ SMS ಮೂಲಕ ಕಳುಹಿಸಲಾಗುವುದು";
+"login.validationError" = "ದಯವಿಟ್ಟು ಮಾನ್ಯ ಹೆಸರು ಮತ್ತು ಫೋನ್ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ";
+"login.sendFailed" = "ಕೋಡ್ ಕಳುಹಿಸಲು ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.";
+
+// MARK: - Country Picker
+"country.selectTitle" = "ದೇಶವನ್ನು ಆಯ್ಕೆಮಾಡಿ";
+"country.searchPlaceholder" = "ದೇಶ ಅಥವಾ ಕೋಡ್ ಹುಡುಕಿ";
+
+// MARK: - OTP Verification
+"otp.title" = "ಕೋಡ್ ಪರಿಶೀಲಿಸಿ";
+"otp.subtitle" = "ಈ ಸಂಖ್ಯೆಗೆ ಕಳುಹಿಸಿದ ಕೋಡ್ ನಮೂದಿಸಿ";
+"otp.verify" = "ಪರಿಶೀಲಿಸು";
+"otp.verifying" = "ಪರಿಶೀಲಿಸುತ್ತಿದೆ...";
+"otp.resend" = "ಕೋಡ್ ಮರುಕಳುಹಿಸು";
+"otp.resendIn" = "%d ಸೆಕೆಂಡುಗಳಲ್ಲಿ ಮರುಕಳುಹಿಸು";
+"otp.invalidError" = "ಅಮಾನ್ಯ ಕೋಡ್. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.";
+"otp.resendFailed" = "ಕೋಡ್ ಮರುಕಳುಹಿಸಲು ವಿಫಲವಾಗಿದೆ.";
+
+// MARK: - Home View
+"home.title" = "3D ಕೊಠಡಿ ಮಾದರಿಗಳು";
+"home.noModels" = "3D ಮಾದರಿಗಳು ಕಂಡುಬಂದಿಲ್ಲ";
+"home.noModelsDescription" = "ಫೋಟೋದಿಂದ ನಿಮ್ಮ ಮೊದಲ ಕೊಠಡಿಯನ್ನು ರಚಿಸಿ!";
+"home.createRoom" = "ಫೋಟೋದಿಂದ ಕೊಠಡಿ ರಚಿಸು";
+"home.roomsRemaining" = "%d/%d ಕೊಠಡಿಗಳು ಉಳಿದಿವೆ";
+"home.deleteHint" = "ಹೊಸದನ್ನು ರಚಿಸಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ";
+"home.swipeHint" = "ಅಳಿಸಲು ಎಡಕ್ಕೆ ಸ್ವೈಪ್ ಮಾಡಿ";
+"home.roomModel" = "3D ಕೊಠಡಿ ಮಾದರಿ";
+
+// MARK: - Room Limit
+"roomLimit.title" = "ಕೊಠಡಿ ಮಿತಿ ತಲುಪಿದೆ";
+"roomLimit.message" = "ನೀವು %d ಕೊಠಡಿಗಳ ಮಿತಿಯನ್ನು ತಲುಪಿದ್ದೀರಿ. ಹೊಸದನ್ನು ರಚಿಸಲು ಕೆಲವನ್ನು ಅಳಿಸಿ.";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "ಕೊಠಡಿ ಅಳಿಸುವುದೇ?";
+"deleteRoom.message" = "'%@' ಅನ್ನು ಅಳಿಸಲು ಖಚಿತವಾಗಿದ್ದೀರಾ? ಇದನ್ನು ಹಿಂತಿರುಗಿಸಲಾಗುವುದಿಲ್ಲ.";
+
+// MARK: - Explore View
+"explore.title" = "ಅನ್ವೇಷಿಸು";
+"explore.search" = "ಕೊಠಡಿಗಳನ್ನು ಹುಡುಕಿ...";
+"explore.noResults" = "ಫಲಿತಾಂಶಗಳಿಲ್ಲ";
+"explore.noResultsDescription" = "ಬೇರೆ ಹುಡುಕಾಟ ಪದವನ್ನು ಪ್ರಯತ್ನಿಸಿ";
+"explore.all" = "ಎಲ್ಲಾ";
+"explore.livingRoom" = "ಲಿವಿಂಗ್ ರೂಮ್";
+"explore.bedroom" = "ಮಲಗುವ ಕೋಣೆ";
+"explore.kitchen" = "ಅಡುಗೆಮನೆ";
+"explore.office" = "ಕಚೇರಿ";
+
+// MARK: - Favorites View
+"favorites.title" = "ಮೆಚ್ಚಿನವುಗಳು";
+"favorites.empty" = "ಮೆಚ್ಚಿನವುಗಳಿಲ್ಲ";
+"favorites.emptyDescription" = "ಇಲ್ಲಿ ಸೇರಿಸಲು ಕೊಠಡಿಗಳಲ್ಲಿ ಹೃದಯವನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ";
+
+// MARK: - Profile View
+"profile.title" = "ಪ್ರೊಫೈಲ್";
+"profile.editProfile" = "ಪ್ರೊಫೈಲ್ ತಿದ್ದು";
+"profile.notifications" = "ಅಧಿಸೂಚನೆಗಳು";
+"profile.privacy" = "ಗೌಪ್ಯತೆ";
+"profile.general" = "ಸಾಮಾನ್ಯ";
+"profile.about" = "ಕುರಿತು";
+"profile.helpSupport" = "ಸಹಾಯ & ಬೆಂಬಲ";
+"profile.logout" = "ಲಾಗ್ ಔಟ್";
+"profile.logoutConfirmTitle" = "ಲಾಗ್ ಔಟ್";
+"profile.logoutConfirmMessage" = "ಲಾಗ್ ಔಟ್ ಮಾಡಲು ಖಚಿತವಾಗಿದ್ದೀರಾ?";
+
+// MARK: - Settings View
+"settings.title" = "ಸೆಟ್ಟಿಂಗ್‌ಗಳು";
+"settings.quality" = "3D ಸಂಪನ್ಮೂಲ ಗುಣಮಟ್ಟ";
+"settings.qualityFooter" = "ಗುಣಮಟ್ಟವು ರೆಂಡರಿಂಗ್ ವಿವರಗಳು ಮತ್ತು ಕಾರ್ಯಕ್ಷಮತೆಯ ಮೇಲೆ ಪರಿಣಾಮ ಬೀರುತ್ತದೆ. ಹೆಚ್ಚಿನ ಗುಣಮಟ್ಟವು ಬ್ಯಾಟರಿ ಜೀವಿತಾವಧಿಯ ಮೇಲೆ ಪರಿಣಾಮ ಬೀರಬಹುದು.";
+"settings.appInfo" = "ಅಪ್ಲಿಕೇಶನ್ ಮಾಹಿತಿ";
+"settings.currentQuality" = "ಪ್ರಸ್ತುತ ಗುಣಮಟ್ಟ";
+"settings.movementSpeed" = "ಚಲನೆಯ ವೇಗ";
+"settings.movementSpeedFooter" = "ಜಾಯ್‌ಸ್ಟಿಕ್‌ನೊಂದಿಗೆ ಕ್ಯಾಮೆರಾ ಚಲನೆಯ ವೇಗವನ್ನು ನಿಯಂತ್ರಿಸುತ್ತದೆ. ನಿಮಗೆ ಸರಿಹೊಂದುವ ವೇಗವನ್ನು ಆಯ್ಕೆಮಾಡಿ.";
+"settings.roomDimensions" = "ಏಕ ಫೋಟೋ ಕೊಠಡಿ ಆಯಾಮಗಳು";
+"settings.roomDimensionsFooter" = "ಏಕ ಫೋಟೋಗಳಿಂದ ರಚಿಸಲಾದ ಕೊಠಡಿಗಳಿಗೆ ಡೀಫಾಲ್ಟ್ ಆಯಾಮಗಳನ್ನು ಹೊಂದಿಸಿ. ಇವು ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ಪತ್ತೆಹಚ್ಚುವಾಗ ಆರಂಭಿಕ ಬಿಂದುಗಳಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತವೆ.";
+"settings.width" = "ಅಗಲ: %.1f ಮೀ";
+"settings.depth" = "ಆಳ: %.1f ಮೀ";
+"settings.height" = "ಎತ್ತರ: %.1f ಮೀ";
+"settings.developer" = "ಡೆವಲಪರ್";
+"settings.developerFooter" = "ವಿವರವಾದ ಪತ್ತೆ ಮಾಹಿತಿ ಮತ್ತು ಕಾರ್ಯಕ್ಷಮತೆ ಮೆಟ್ರಿಕ್ಸ್ ನೋಡಲು ಡೀಬಗ್ ಮೋಡ್ ಸಕ್ರಿಯಗೊಳಿಸಿ. ಪತ್ತೆ ಸೂಕ್ಷ್ಮತೆ ಮತ್ತು ಫಿಲ್ಟರಿಂಗ್ ನಡವಳಿಕೆಯನ್ನು ನಿಯಂತ್ರಿಸಲು ಮಿತಿಗಳನ್ನು ಹೊಂದಿಸಿ.";
+"settings.debugMode" = "ಡೀಬಗ್ ಮೋಡ್";
+"settings.debugModeDescription" = "ಪತ್ತೆ ಬಾಕ್ಸ್‌ಗಳು ಮತ್ತು ಸಮಯ ಮಾಹಿತಿ ತೋರಿಸು";
+"settings.maskOverlapThreshold" = "ಮಾಸ್ಕ್ ಓವರ್‌ಲ್ಯಾಪ್ ಮಿತಿ";
+"settings.maskOverlapDescription" = "ಪತ್ತೆಗಳನ್ನು ವಿಲೀನಗೊಳಿಸಲು ಅಗತ್ಯವಿರುವ ಮಾಸ್ಕ್ ಓವರ್‌ಲ್ಯಾಪ್ ಅನ್ನು ನಿಯಂತ್ರಿಸುತ್ತದೆ. ಕಡಿಮೆ ಮೌಲ್ಯಗಳು ಹೆಚ್ಚು ಹೋಲುವ ವಸ್ತುಗಳನ್ನು ವಿಲೀನಗೊಳಿಸುತ್ತವೆ.";
+"settings.currentValue" = "ಪ್ರಸ್ತುತ ಮೌಲ್ಯ:";
+"settings.account" = "ಖಾತೆ";
+"settings.loggedInAs" = "ಲಾಗಿನ್ ಆಗಿದೆ";
+
+// MARK: - Quality Options
+"quality.standard" = "ಸ್ಟ್ಯಾಂಡರ್ಡ್";
+"quality.standard.description" = "ವೇಗದ ಕಾರ್ಯಕ್ಷಮತೆಗೆ ಮೂಲ ಗುಣಮಟ್ಟ";
+"quality.high" = "ಹೈ";
+"quality.high.description" = "ಹೆಚ್ಚಿನ ವಿವರಗಳೊಂದಿಗೆ ಸುಧಾರಿತ ಗುಣಮಟ್ಟ";
+"quality.best" = "ಅತ್ಯುತ್ತಮ";
+"quality.best.description" = "ಗರಿಷ್ಠ ವಿವರಗಳೊಂದಿಗೆ ಪ್ರೀಮಿಯಂ ಗುಣಮಟ್ಟ";
+"quality.best.unavailable" = "ಅತ್ಯುತ್ತಮ ಗುಣಮಟ್ಟಕ್ಕಾಗಿ, ನಮ್ಮ ಪಾಲುದಾರ ಅಂಗಡಿಗಳಿಗೆ ಭೇಟಿ ನೀಡಿ";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "ನಿಧಾನ";
+"speed.slow.description" = "ವಿವರವಾದ ಅನ್ವೇಷಣೆಗೆ ನಿಖರ ನಿಯಂತ್ರಣ";
+"speed.normal" = "ಸಾಮಾನ್ಯ";
+"speed.normal.description" = "ಆರಾಮದಾಯಕ ನ್ಯಾವಿಗೇಶನ್‌ಗೆ ಸಮತೋಲಿತ ವೇಗ";
+"speed.fast" = "ವೇಗ";
+"speed.fast.description" = "ಚುರುಕಾದ ಅನ್ವೇಷಣೆಗೆ ತ್ವರಿತ ಚಲನೆ";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "ಸಹಾಯ & ಬೆಂಬಲ";
+"help.cantFind" = "ನಿಮಗೆ ಬೇಕಾದ್ದು ಸಿಗಲಿಲ್ಲವೇ?";
+"help.contactDescription" = "ನಮ್ಮ ಬೆಂಬಲ ತಂಡವನ್ನು ಸಂಪರ್ಕಿಸಿ ಮತ್ತು ನಾವು ಶೀಘ್ರದಲ್ಲೇ ಪ್ರತಿಕ್ರಿಯಿಸುತ್ತೇವೆ.";
+"help.contactSupport" = "ಬೆಂಬಲವನ್ನು ಸಂಪರ್ಕಿಸಿ";
+"help.emailSupport" = "ಇಮೇಲ್ ಬೆಂಬಲ";
+"help.copyEmail" = "ಇಮೇಲ್ ವಿಳಾಸ ನಕಲಿಸು";
+"help.emailCopied" = "ಇಮೇಲ್ ನಕಲಿಸಲಾಗಿದೆ";
+"help.emailCopiedMessage" = "support@paafekt.com ನಿಮ್ಮ ಕ್ಲಿಪ್‌ಬೋರ್ಡ್‌ಗೆ ನಕಲಿಸಲಾಗಿದೆ.";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "ಕೊಠಡಿ ರಚನೆ";
+"faq.howToCreate" = "3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ರಚಿಸುವುದು?";
+"faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ ಎಡ ಮೂಲೆಯಲ್ಲಿರುವ ಫೋಟೋ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ಅಪ್ಲಿಕೇಶನ್ ನಿಮ್ಮ ಫೋಟೋದಿಂದ ಸ್ವಯಂಚಾಲಿತವಾಗಿ 3D ಮಾದರಿಯನ್ನು ರಚಿಸುತ್ತದೆ.";
+"faq.bestPhotos" = "ಯಾವ ರೀತಿಯ ಫೋಟೋಗಳು ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತವೆ?";
+"faq.bestPhotosAnswer" = "ಉತ್ತಮ ಫಲಿತಾಂಶಗಳಿಗಾಗಿ, ಉತ್ತಮ ಬೆಳಕಿನಲ್ಲಿ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಫೋಟೋಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳಿ. ನೆಲ, ಗೋಡೆಗಳು ಮತ್ತು ಸೀಲಿಂಗ್ ಅಂಚುಗಳನ್ನು ಒಳಗೊಂಡಂತೆ ಸಂಪೂರ್ಣ ಕೊಠಡಿಯನ್ನು ಸೆರೆಹಿಡಿಯಲು ಪ್ರಯತ್ನಿಸಿ. ಮಸುಕಾದ ಅಥವಾ ಕತ್ತಲೆಯ ಫೋಟೋಗಳನ್ನು ತಪ್ಪಿಸಿ.";
+"faq.generationFailing" = "ನನ್ನ ಕೊಠಡಿ ರಚನೆ ಏಕೆ ವಿಫಲವಾಗುತ್ತಿದೆ?";
+"faq.generationFailingAnswer" = "ಫೋಟೋ ತುಂಬಾ ಕತ್ತಲೆಯಾಗಿದ್ದರೆ, ಮಸುಕಾಗಿದ್ದರೆ, ಅಥವಾ ಸಾಕಷ್ಟು ಕೊಠಡಿ ವೈಶಿಷ್ಟ್ಯಗಳನ್ನು ತೋರಿಸದಿದ್ದರೆ ಕೊಠಡಿ ರಚನೆ ವಿಫಲವಾಗಬಹುದು. ಉತ್ತಮ ಬೆಳಕು ಮತ್ತು ಅಗಲ ಕೋನದೊಂದಿಗೆ ಹೊಸ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಪ್ರಯತ್ನಿಸಿ.";
+"faq.howManyRooms" = "ನಾನು ಎಷ್ಟು ಕೊಠಡಿಗಳನ್ನು ರಚಿಸಬಹುದು?";
+"faq.howManyRoomsAnswer" = "ನೀವು 10 ಕೊಠಡಿಗಳವರೆಗೆ ರಚಿಸಬಹುದು. ಸ್ಥಳ ಮಾಡಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ. ಕೊಠಡಿ ಸಂಖ್ಯೆಯು ನಿಮ್ಮ ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲ್ಭಾಗದಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ.";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ";
+"faq.whatIsSegmentation" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ ಎಂದರೇನು?";
+"faq.whatIsSegmentationAnswer" = "ಪೀಠೋಪಕರಣ ವಿಭಜನೆ AI ಬಳಸಿ ನಿಮ್ಮ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣಗಳನ್ನು ಗುರುತಿಸುತ್ತದೆ ಮತ್ತು ಬೇರ್ಪಡಿಸುತ್ತದೆ, ಪ್ರತಿ ತುಂಡು ನಿಮ್ಮ 3D ಕೊಠಡಿಯಲ್ಲಿ ಹೇಗೆ ಹೊಂದುತ್ತದೆ ಎಂಬುದನ್ನು ನೋಡಲು ಅನುಮತಿಸುತ್ತದೆ.";
+"faq.howToSegment" = "ಫೋಟೋದಿಂದ ಪೀಠೋಪಕರಣಗಳನ್ನು ಹೇಗೆ ವಿಭಜಿಸುವುದು?";
+"faq.howToSegmentAnswer" = "ನಿಮ್ಮ 3D ಕೊಠಡಿಯನ್ನು ವೀಕ್ಷಿಸುವಾಗ, ವಿಭಜನೆ ವೈಶಿಷ್ಟ್ಯವನ್ನು ಪ್ರವೇಶಿಸಲು ಪೀಠೋಪಕರಣ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಪೀಠೋಪಕರಣ ಹೊಂದಿರುವ ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿ, ಮತ್ತು ಅಪ್ಲಿಕೇಶನ್ ಪೀಠೋಪಕರಣ ವಸ್ತುಗಳನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪತ್ತೆಹಚ್ಚಿ ಹೊರತೆಗೆಯುತ್ತದೆ.";
+"faq.notDetected" = "ನನ್ನ ಪೀಠೋಪಕರಣ ಏಕೆ ಪತ್ತೆಯಾಗುತ್ತಿಲ್ಲ?";
+"faq.notDetectedAnswer" = "ಪೀಠೋಪಕರಣ ಪತ್ತೆಯು ಸ್ಪಷ್ಟ, ಉತ್ತಮ ಬೆಳಕಿನ ಫೋಟೋಗಳಲ್ಲಿ ಪೀಠೋಪಕರಣ ಸ್ಪಷ್ಟವಾಗಿ ಗೋಚರಿಸಿದಾಗ ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ. ಪೀಠೋಪಕರಣ ಭಾಗಶಃ ಮುಚ್ಚಲಾಗಿಲ್ಲ ಅಥವಾ ಹಿನ್ನೆಲೆಯೊಂದಿಗೆ ಮಿಶ್ರಣವಾಗಿಲ್ಲ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.";
+"faq.multiplePieces" = "ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ವಿಭಜಿಸಬಹುದೇ?";
+"faq.multiplePiecesAnswer" = "ಹೌದು! AI ಒಂದೇ ಫೋಟೋದಲ್ಲಿ ಅನೇಕ ಪೀಠೋಪಕರಣ ತುಂಡುಗಳನ್ನು ಪತ್ತೆಹಚ್ಚಬಹುದು. ಪ್ರತಿ ಪತ್ತೆಯಾದ ವಸ್ತುವನ್ನು ಪ್ರತ್ಯೇಕವಾಗಿ ಪ್ರದರ್ಶಿಸಲಾಗುತ್ತದೆ ನೀವು ಯಾವುದನ್ನು ಬಳಸಬೇಕೆಂದು ಆಯ್ಕೆ ಮಾಡಲು.";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "3D ಕೊಠಡಿ & ಅಳವಡಿಕೆ";
+"faq.howToView" = "ನನ್ನ 3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ವೀಕ್ಷಿಸುವುದು?";
+"faq.howToViewAnswer" = "3D ವೀಕ್ಷಕವನ್ನು ತೆರೆಯಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಯಾವುದೇ ಕೊಠಡಿಯನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ಟಚ್ ಜೆಸ್ಚರ್‌ಗಳನ್ನು ಬಳಸಿ ಕೊಠಡಿಯನ್ನು ತಿರುಗಿಸಬಹುದು, ಜೂಮ್ ಮಾಡಬಹುದು ಮತ್ತು ಪ್ಯಾನ್ ಮಾಡಬಹುದು.";
+"faq.howToPlace" = "ನನ್ನ ಕೊಠಡಿಯಲ್ಲಿ ಪೀಠೋಪಕರಣ ಹೇಗೆ ಇಡುವುದು?";
+"faq.howToPlaceAnswer" = "ಪೀಠೋಪಕರಣ ವಿಭಜಿಸಿದ ನಂತರ, ನಿಮ್ಮ ಕೊಠಡಿಗೆ ಸೇರಿಸಲು ತುಂಡನ್ನು ಟ್ಯಾಪ್ ಮಾಡಿ. ನಂತರ ಸ್ಥಾನಕ್ಕೆ ಎಳೆಯಬಹುದು, ಗಾತ್ರ ಬದಲಾಯಿಸಲು ಪಿಂಚ್ ಮಾಡಬಹುದು, ಮತ್ತು ದಿಕ್ಕು ಹೊಂದಿಸಲು ತಿರುಗಿಸಬಹುದು.";
+"faq.sampleRoom" = "ನನ್ನದರ ಬದಲು ಮಾದರಿ ಕೊಠಡಿ ಬಳಸಬಹುದೇ?";
+"faq.sampleRoomAnswer" = "ಹೌದು! ಅಪ್ಲಿಕೇಶನ್ ಪ್ರಯೋಗಿಸಲು ಮಾದರಿ ಕೊಠಡಿಗಳನ್ನು ಒದಗಿಸುತ್ತದೆ. ಮೊದಲು ನಿಮ್ಮ ಸ್ವಂತ ಕೊಠಡಿ ರಚಿಸದೆ ಪೀಠೋಪಕರಣ ಇರಿಸುವಿಕೆ ಪ್ರಯತ್ನಿಸಲು ಎಕ್ಸ್‌ಪ್ಲೋರ್ ವಿಭಾಗದಿಂದ ಅವುಗಳನ್ನು ಪ್ರವೇಶಿಸಿ.";
+"faq.accuracy" = "3D ಮಾದರಿ ಎಷ್ಟು ನಿಖರ?";
+"faq.accuracyAnswer" = "3D ಮಾದರಿ ನಿಮ್ಮ ಕೊಠಡಿ ವಿನ್ಯಾಸದ ಉತ್ತಮ ಅಂದಾಜನ್ನು ಒದಗಿಸುತ್ತದೆ. ಉತ್ತಮ ನಿಖರತೆಗಾಗಿ, ನಿಮ್ಮ ಮೂಲ ಫೋಟೋ ಗೋಚರ ಮೂಲೆಗಳು ಮತ್ತು ಅಂಚುಗಳೊಂದಿಗೆ ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಸ್ಪಷ್ಟವಾಗಿ ಸೆರೆಹಿಡಿಯುತ್ತದೆ ಎಂದು ಖಚಿತಪಡಿಸಿಕೊಳ್ಳಿ.";
+"faq.adjustDimensions" = "ಕೊಠಡಿ ಆಯಾಮಗಳನ್ನು ಹೊಂದಿಸಬಹುದೇ?";
+"faq.adjustDimensionsAnswer" = "ಹೌದು, ಸೆಟ್ಟಿಂಗ್‌ಗಳಿಗೆ ಹೋಗಿ ಮತ್ತು ಕೊಠಡಿ ಆಯಾಮ ಆಯ್ಕೆಗಳನ್ನು ಹುಡುಕಿ ಅಲ್ಲಿ ನೀವು ರಚಿಸಿದ ಕೊಠಡಿಯ ಗಾತ್ರ ಮತ್ತು ಅನುಪಾತಗಳನ್ನು ಸರಿಯಾಗಿ ಹೊಂದಿಸಬಹುದು.";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "ಕೊಠಡಿ ಗಡಿಗಳು";
+"boundary.instructions" = "ಗಡಿಗಳನ್ನು ಹೊಂದಿಸಲು ವೃತ್ತಗಳನ್ನು ಎಳೆಯಿರಿ";
+"boundary.floor" = "ನೆಲ";
+"boundary.ceiling" = "ಸೀಲಿಂಗ್";
+"boundary.walls" = "ಗೋಡೆಗಳು";
+"boundary.vanish" = "ಮಾಯವಾಗುವ ಬಿಂದು";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "ಪೀಠೋಪಕರಣ ಸೇರಿಸು";
+"viewer.capture" = "ಸೆರೆಹಿಡಿ";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "ಕ್ಯಾಮೆರಾ ಪ್ರಾರಂಭಿಸುತ್ತಿದೆ...";
+"smartypants.resizing" = "ಗಾತ್ರ ಬದಲಾಯಿಸುತ್ತಿದೆ...";
+"smartypants.preprocessing" = "ಪೂರ್ವ-ಪ್ರಕ್ರಿಯೆ...";
+"smartypants.runningModel" = "ಮಾದರಿ ಚಲಾಯಿಸುತ್ತಿದೆ...";
+"smartypants.extracting" = "ಪತ್ತೆಗಳನ್ನು ಹೊರತೆಗೆಯುತ್ತಿದೆ...";
+"smartypants.buildingMask" = "ಮಾಸ್ಕ್ ನಿರ್ಮಿಸುತ್ತಿದೆ...";
+"smartypants.compositing" = "ಸಂಯೋಜಿಸುತ್ತಿದೆ...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "ಫೋಟೋದಿಂದ 3D ಕೊಠಡಿ";
+"photoRoom.createTitle" = "3D ಕೊಠಡಿ ರಚಿಸು";
+"photoRoom.createSubtitle" = "ಪ್ರಾರಂಭಿಸಲು ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿ";
+"photoRoom.quickPhoto" = "ತ್ವರಿತ ಫೋಟೋ";
+"photoRoom.quickPhotoSubtitle" = "ಏಕ ಫೋಟೋ ಸೆರೆಹಿಡಿ";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "3D ಕೊಠಡಿ ವೀಕ್ಷಣೆ";
+"roomViewer.controls" = "ಚಲಿಸಲು ಜಾಯ್‌ಸ್ಟಿಕ್ ಬಳಸಿ • ಜೂಮ್ ಮಾಡಲು ಪಿಂಚ್ ಮಾಡಿ";
+"roomViewer.saveRoom" = "ಕೊಠಡಿ ಉಳಿಸು";
+"roomViewer.roomName" = "ಕೊಠಡಿ ಹೆಸರು";
+"roomViewer.enterName" = "ನಿಮ್ಮ ಕೊಠಡಿಗೆ ಹೆಸರು ನಮೂದಿಸಿ";
+"roomViewer.savingRoom" = "ಕೊಠಡಿ ಉಳಿಸುತ್ತಿದೆ";
+"roomViewer.preparingModel" = "ಕೊಠಡಿ ಮಾದರಿ ತಯಾರಿಸುತ್ತಿದೆ...";
+"roomViewer.exportingUSDZ" = "USDZ ಸ್ವರೂಪಕ್ಕೆ ರಫ್ತು ಮಾಡುತ್ತಿದೆ...";
+"roomViewer.savingToLibrary" = "ಗ್ರಂಥಾಲಯಕ್ಕೆ ಉಳಿಸುತ್ತಿದೆ...";
+"roomViewer.almostDone" = "ಬಹುತೇಕ ಮುಗಿಯಿತು...";
+"roomViewer.saveSuccess" = "ಕೊಠಡಿ '%@' ಯಶಸ್ವಿಯಾಗಿ ಉಳಿಸಲಾಗಿದೆ!";
+"roomViewer.saveFailed" = "ಕೊಠಡಿ ಉಳಿಸಲು ವಿಫಲವಾಗಿದೆ: %@";
+"roomViewer.roomSaveTitle" = "ಕೊಠಡಿ ಉಳಿಸು";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "ವರದಿ ಸಲ್ಲಿಸು";
+"crashReport.emailNotConfigured" = "ಇಮೇಲ್ ಲಭ್ಯವಿಲ್ಲ";
+"crashReport.emailNotConfiguredMessage" = "ಈ ಸಾಧನದಲ್ಲಿ ಇಮೇಲ್ ಕಾನ್ಫಿಗರ್ ಮಾಡಲಾಗಿಲ್ಲ. ನೀವು ದೋಷ ವಿವರಗಳನ್ನು ನಕಲಿಸಿ support@paafekt.com ಗೆ ಹಸ್ತಚಾಲಿತವಾಗಿ ಕಳುಹಿಸಬಹುದು";
+"crashReport.copyDetails" = "ವಿವರಗಳನ್ನು ನಕಲಿಸು";
+
+// MARK: - Accessibility
+"accessibility.settings" = "ಸೆಟ್ಟಿಂಗ್‌ಗಳು";
+"accessibility.help" = "ಸಹಾಯ";
+"accessibility.createRoom" = "ಫೋಟೋದಿಂದ ಕೊಠಡಿ ರಚಿಸು";

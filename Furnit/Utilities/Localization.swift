@@ -197,4 +197,25 @@ enum L10n {
         static let furniture = "viewer.furniture".localized
         static let capture = "viewer.capture".localized
     }
+
+    // MARK: Quality Options
+    enum Quality {
+        static let standard = "quality.standard".localized
+        static let standardDescription = "quality.standard.description".localized
+        static let high = "quality.high".localized
+        static let highDescription = "quality.high.description".localized
+        static let best = "quality.best".localized
+        static let bestDescription = "quality.best.description".localized
+        static let bestUnavailable = "quality.best.unavailable".localized
+    }
+
+    // MARK: Movement Speed Options
+    enum Speed {
+        static let slow = "speed.slow".localized
+        static let slowDescription = "speed.slow.description".localized
+        static let normal = "speed.normal".localized
+        static let normalDescription = "speed.normal.description".localized
+        static let fast = "speed.fast".localized
+        static let fastDescription = "speed.fast.description".localized
+    }
 }

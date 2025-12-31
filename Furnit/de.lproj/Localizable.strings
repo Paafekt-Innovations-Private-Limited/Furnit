@@ -116,6 +116,23 @@
 "settings.account" = "Konto";
 "settings.loggedInAs" = "Angemeldet als";
 
+// MARK: - Quality Options
+"quality.standard" = "Standard";
+"quality.standard.description" = "Grundqualität für schnellere Leistung";
+"quality.high" = "Hoch";
+"quality.high.description" = "Verbesserte Qualität mit mehr Details";
+"quality.best" = "Beste";
+"quality.best.description" = "Premium-Qualität mit maximalen Details";
+"quality.best.unavailable" = "Für beste Qualität besuchen Sie bitte unsere Partnershops";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "Langsam";
+"speed.slow.description" = "Präzise Steuerung für detaillierte Erkundung";
+"speed.normal" = "Normal";
+"speed.normal.description" = "Ausgewogene Geschwindigkeit für komfortable Navigation";
+"speed.fast" = "Schnell";
+"speed.fast.description" = "Schnelle Bewegung für zügige Erkundung";
+
 // MARK: - Help & Support (FAQ)
 "help.title" = "Hilfe & Support";
 "help.cantFind" = "Können Sie nicht finden, wonach Sie suchen?";

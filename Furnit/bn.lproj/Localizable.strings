@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  Bengali/Bangla (বাংলা) localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "3D রুম এক্সপ্লোরার";
+"app.version" = "সংস্করণ";
+"app.developer" = "Furnit টিম";
+
+// MARK: - Common Actions
+"common.done" = "সম্পন্ন";
+"common.cancel" = "বাতিল";
+"common.ok" = "ঠিক আছে";
+"common.back" = "পিছনে";
+"common.reset" = "রিসেট";
+"common.delete" = "মুছুন";
+"common.error" = "ত্রুটি";
+"common.save" = "সেভ";
+"common.close" = "বন্ধ";
+
+// MARK: - Login View
+"login.yourName" = "আপনার নাম";
+"login.enterName" = "আপনার নাম লিখুন";
+"login.phoneNumber" = "ফোন নম্বর";
+"login.phonePlaceholder" = "ফোন নম্বর";
+"login.sendOTP" = "OTP পাঠান";
+"login.sending" = "পাঠানো হচ্ছে...";
+"login.otpHint" = "কোড SMS এর মাধ্যমে পাঠানো হবে";
+"login.validationError" = "অনুগ্রহ করে বৈধ নাম এবং ফোন নম্বর লিখুন";
+"login.sendFailed" = "কোড পাঠাতে ব্যর্থ। আবার চেষ্টা করুন।";
+
+// MARK: - Country Picker
+"country.selectTitle" = "দেশ নির্বাচন করুন";
+"country.searchPlaceholder" = "দেশ বা কোড খুঁজুন";
+
+// MARK: - OTP Verification
+"otp.title" = "কোড যাচাই করুন";
+"otp.subtitle" = "এই নম্বরে পাঠানো কোড লিখুন";
+"otp.verify" = "যাচাই";
+"otp.verifying" = "যাচাই হচ্ছে...";
+"otp.resend" = "কোড পুনরায় পাঠান";
+"otp.resendIn" = "%d সেকেন্ডে পুনরায় পাঠান";
+"otp.invalidError" = "অবৈধ কোড। আবার চেষ্টা করুন।";
+"otp.resendFailed" = "কোড পুনরায় পাঠাতে ব্যর্থ।";
+
+// MARK: - Home View
+"home.title" = "3D রুম মডেল";
+"home.noModels" = "কোনো 3D মডেল পাওয়া যায়নি";
+"home.noModelsDescription" = "ছবি থেকে আপনার প্রথম রুম তৈরি করুন!";
+"home.createRoom" = "ছবি থেকে রুম তৈরি করুন";
+"home.roomsRemaining" = "%d/%d রুম বাকি";
+"home.deleteHint" = "নতুন তৈরি করতে পুরানো রুম মুছুন";
+"home.swipeHint" = "মুছতে বামে সোয়াইপ করুন";
+"home.roomModel" = "3D রুম মডেল";
+
+// MARK: - Room Limit
+"roomLimit.title" = "রুম সীমা পৌঁছেছে";
+"roomLimit.message" = "আপনি %d রুমের সীমায় পৌঁছেছেন। নতুন তৈরি করতে কিছু মুছুন।";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "রুম মুছবেন?";
+"deleteRoom.message" = "'%@' মুছতে নিশ্চিত? এটি পূর্বাবস্থায় ফেরানো যাবে না।";
+
+// MARK: - Explore View
+"explore.title" = "অন্বেষণ";
+"explore.search" = "রুম খুঁজুন...";
+"explore.noResults" = "কোনো ফলাফল নেই";
+"explore.noResultsDescription" = "অন্য সার্চ শব্দ চেষ্টা করুন";
+"explore.all" = "সব";
+"explore.livingRoom" = "বসার ঘর";
+"explore.bedroom" = "শোবার ঘর";
+"explore.kitchen" = "রান্নাঘর";
+"explore.office" = "অফিস";
+
+// MARK: - Favorites View
+"favorites.title" = "প্রিয়";
+"favorites.empty" = "কোনো প্রিয় নেই";
+"favorites.emptyDescription" = "এখানে যোগ করতে রুমে হার্ট ট্যাপ করুন";
+
+// MARK: - Profile View
+"profile.title" = "প্রোফাইল";
+"profile.editProfile" = "প্রোফাইল সম্পাদনা";
+"profile.notifications" = "বিজ্ঞপ্তি";
+"profile.privacy" = "গোপনীয়তা";
+"profile.general" = "সাধারণ";
+"profile.about" = "সম্পর্কে";
+"profile.helpSupport" = "সাহায্য ও সহায়তা";
+"profile.logout" = "লগ আউট";
+"profile.logoutConfirmTitle" = "লগ আউট";
+"profile.logoutConfirmMessage" = "লগ আউট করতে নিশ্চিত?";
+
+// MARK: - Settings View
+"settings.title" = "সেটিংস";
+"settings.quality" = "3D রিসোর্স কোয়ালিটি";
+"settings.qualityFooter" = "কোয়ালিটি রেন্ডারিং বিবরণ এবং পারফরম্যান্সে প্রভাব ফেলে। উচ্চ কোয়ালিটি ব্যাটারি লাইফে প্রভাব ফেলতে পারে।";
+"settings.appInfo" = "অ্যাপ তথ্য";
+"settings.currentQuality" = "বর্তমান কোয়ালিটি";
+"settings.movementSpeed" = "চলাচলের গতি";
+"settings.movementSpeedFooter" = "জয়স্টিক দিয়ে ক্যামেরা চলাচলের গতি নিয়ন্ত্রণ করে। আপনার জন্য উপযুক্ত গতি বেছে নিন।";
+"settings.roomDimensions" = "একক ছবি রুম মাত্রা";
+"settings.roomDimensionsFooter" = "একক ছবি থেকে তৈরি রুমের ডিফল্ট মাত্রা সামঞ্জস্য করুন। এগুলো রুমের সীমানা শনাক্ত করার সময় শুরুর পয়েন্ট হিসেবে কাজ করবে।";
+"settings.width" = "প্রস্থ: %.1f মি";
+"settings.depth" = "গভীরতা: %.1f মি";
+"settings.height" = "উচ্চতা: %.1f মি";
+"settings.developer" = "ডেভেলপার";
+"settings.developerFooter" = "বিস্তারিত শনাক্তকরণ তথ্য এবং পারফরম্যান্স মেট্রিক্স দেখতে ডিবাগ মোড সক্রিয় করুন। শনাক্তকরণ সংবেদনশীলতা এবং ফিল্টারিং আচরণ নিয়ন্ত্রণ করতে থ্রেশহোল্ড সামঞ্জস্য করুন।";
+"settings.debugMode" = "ডিবাগ মোড";
+"settings.debugModeDescription" = "শনাক্তকরণ বক্স এবং সময় তথ্য দেখান";
+"settings.maskOverlapThreshold" = "মাস্ক ওভারল্যাপ থ্রেশহোল্ড";
+"settings.maskOverlapDescription" = "শনাক্তকরণ একত্রিত করতে প্রয়োজনীয় মাস্ক ওভারল্যাপ নিয়ন্ত্রণ করে। কম মান আরো অনুরূপ বস্তু একত্রিত করবে।";
+"settings.currentValue" = "বর্তমান মান:";
+"settings.account" = "অ্যাকাউন্ট";
+"settings.loggedInAs" = "লগইন করা হয়েছে";
+
+// MARK: - Quality Options
+"quality.standard" = "স্ট্যান্ডার্ড";
+"quality.standard.description" = "দ্রুত পারফরম্যান্সের জন্য মৌলিক কোয়ালিটি";
+"quality.high" = "হাই";
+"quality.high.description" = "আরো বিবরণ সহ উন্নত কোয়ালিটি";
+"quality.best" = "বেস্ট";
+"quality.best.description" = "সর্বাধিক বিবরণ সহ প্রিমিয়াম কোয়ালিটি";
+"quality.best.unavailable" = "সেরা কোয়ালিটির জন্য, আমাদের পার্টনার স্টোর ভিজিট করুন";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "ধীর";
+"speed.slow.description" = "বিস্তারিত অন্বেষণের জন্য সুনির্দিষ্ট নিয়ন্ত্রণ";
+"speed.normal" = "সাধারণ";
+"speed.normal.description" = "আরামদায়ক নেভিগেশনের জন্য সুষম গতি";
+"speed.fast" = "দ্রুত";
+"speed.fast.description" = "চটপটে অন্বেষণের জন্য দ্রুত চলাচল";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "সাহায্য ও সহায়তা";
+"help.cantFind" = "যা খুঁজছেন তা পাচ্ছেন না?";
+"help.contactDescription" = "আমাদের সাপোর্ট টিমের সাথে যোগাযোগ করুন এবং আমরা শীঘ্রই উত্তর দেব।";
+"help.contactSupport" = "সাপোর্টে যোগাযোগ";
+"help.emailSupport" = "ইমেইল সাপোর্ট";
+"help.copyEmail" = "ইমেইল ঠিকানা কপি করুন";
+"help.emailCopied" = "ইমেইল কপি হয়েছে";
+"help.emailCopiedMessage" = "support@paafekt.com আপনার ক্লিপবোর্ডে কপি করা হয়েছে।";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "রুম তৈরি";
+"faq.howToCreate" = "কিভাবে 3D রুম তৈরি করবেন?";
+"faq.howToCreateAnswer" = "হোম স্ক্রিনের উপরের বাম কোণে ফটো আইকনে ট্যাপ করুন, তারপর আপনার রুমের ছবি তুলুন বা নির্বাচন করুন। অ্যাপ স্বয়ংক্রিয়ভাবে আপনার ছবি থেকে 3D মডেল তৈরি করবে।";
+"faq.bestPhotos" = "কোন ধরনের ছবি সবচেয়ে ভালো কাজ করে?";
+"faq.bestPhotosAnswer" = "সেরা ফলাফলের জন্য, ভালো আলোতে ডিভাইস স্থির রেখে ছবি তুলুন। মেঝে, দেয়াল এবং সিলিং প্রান্ত সহ পুরো রুম ক্যাপচার করার চেষ্টা করুন। ঝাপসা বা অন্ধকার ছবি এড়িয়ে চলুন।";
+"faq.generationFailing" = "আমার রুম তৈরি কেন ব্যর্থ হচ্ছে?";
+"faq.generationFailingAnswer" = "ছবি খুব অন্ধকার, ঝাপসা, বা পর্যাপ্ত রুমের বৈশিষ্ট্য না দেখালে রুম তৈরি ব্যর্থ হতে পারে। ভালো আলো এবং প্রশস্ত কোণে নতুন ছবি তোলার চেষ্টা করুন।";
+"faq.howManyRooms" = "কতগুলো রুম তৈরি করতে পারি?";
+"faq.howManyRoomsAnswer" = "আপনি ১০টি পর্যন্ত রুম তৈরি করতে পারেন। জায়গা করতে পুরানো রুম মুছুন। রুম সংখ্যা আপনার হোম স্ক্রিনের শীর্ষে প্রদর্শিত হয়।";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "ফার্নিচার সেগমেন্টেশন";
+"faq.whatIsSegmentation" = "ফার্নিচার সেগমেন্টেশন কী?";
+"faq.whatIsSegmentationAnswer" = "ফার্নিচার সেগমেন্টেশন AI ব্যবহার করে আপনার ছবিতে ফার্নিচার শনাক্ত এবং আলাদা করে, প্রতিটি টুকরো আপনার 3D রুমে কিভাবে মানাবে তা দেখতে দেয়।";
+"faq.howToSegment" = "ছবি থেকে ফার্নিচার কিভাবে সেগমেন্ট করবেন?";
+"faq.howToSegmentAnswer" = "আপনার 3D রুম দেখার সময়, সেগমেন্টেশন ফিচার অ্যাক্সেস করতে ফার্নিচার আইকনে ট্যাপ করুন। ফার্নিচার সম্বলিত ছবি নির্বাচন করুন, এবং অ্যাপ স্বয়ংক্রিয়ভাবে ফার্নিচার আইটেম শনাক্ত ও এক্সট্র্যাক্ট করবে।";
+"faq.notDetected" = "আমার ফার্নিচার কেন শনাক্ত হচ্ছে না?";
+"faq.notDetectedAnswer" = "ফার্নিচার শনাক্তকরণ পরিষ্কার, ভালো আলোযুক্ত ছবিতে ফার্নিচার স্পষ্ট দেখা গেলে সবচেয়ে ভালো কাজ করে। নিশ্চিত করুন ফার্নিচার আংশিকভাবে ঢাকা নেই বা ব্যাকগ্রাউন্ডে মিশে যায়নি।";
+"faq.multiplePieces" = "একাধিক ফার্নিচার সেগমেন্ট করতে পারি?";
+"faq.multiplePiecesAnswer" = "হ্যাঁ! AI একটি ছবিতে একাধিক ফার্নিচার শনাক্ত করতে পারে। প্রতিটি শনাক্ত আইটেম আলাদাভাবে প্রদর্শিত হবে আপনার বেছে নেওয়ার জন্য।";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "3D রুম ও ফিটমেন্ট";
+"faq.howToView" = "আমার 3D রুম কিভাবে দেখব?";
+"faq.howToViewAnswer" = "3D ভিউয়ার খুলতে হোম স্ক্রিনে যেকোনো রুমে ট্যাপ করুন। টাচ জেসচার ব্যবহার করে রুম ঘোরাতে, জুম করতে এবং প্যান করতে পারেন।";
+"faq.howToPlace" = "আমার রুমে ফার্নিচার কিভাবে রাখব?";
+"faq.howToPlaceAnswer" = "ফার্নিচার সেগমেন্ট করার পর, আপনার রুমে যোগ করতে একটি টুকরোতে ট্যাপ করুন। তারপর স্থান নির্ধারণে টেনে আনতে, আকার পরিবর্তনে পিঞ্চ করতে, এবং দিক সামঞ্জস্যে ঘোরাতে পারেন।";
+"faq.sampleRoom" = "আমার পরিবর্তে স্যাম্পল রুম ব্যবহার করতে পারি?";
+"faq.sampleRoomAnswer" = "হ্যাঁ! অ্যাপ পরীক্ষা করার জন্য স্যাম্পল রুম সরবরাহ করে। আপনার নিজের রুম তৈরি না করেই ফার্নিচার প্লেসমেন্ট চেষ্টা করতে এক্সপ্লোর সেকশন থেকে এগুলো অ্যাক্সেস করুন।";
+"faq.accuracy" = "3D মডেল কতটা নির্ভুল?";
+"faq.accuracyAnswer" = "3D মডেল আপনার রুম লেআউটের ভালো আনুমানিক প্রদান করে। সেরা নির্ভুলতার জন্য, নিশ্চিত করুন আপনার মূল ছবি দৃশ্যমান কোণা এবং প্রান্ত সহ রুমের মাত্রা স্পষ্টভাবে ক্যাপচার করে।";
+"faq.adjustDimensions" = "রুমের মাত্রা সামঞ্জস্য করতে পারি?";
+"faq.adjustDimensionsAnswer" = "হ্যাঁ, সেটিংসে যান এবং রুম মাত্রা অপশন খুঁজুন যেখানে আপনি তৈরি রুমের আকার ও অনুপাত সূক্ষ্ম-সুর করতে পারেন।";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "রুম সীমানা";
+"boundary.instructions" = "সীমানা সামঞ্জস্য করতে বৃত্ত টানুন";
+"boundary.floor" = "মেঝে";
+"boundary.ceiling" = "সিলিং";
+"boundary.walls" = "দেয়াল";
+"boundary.vanish" = "ভ্যানিশিং পয়েন্ট";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "ফার্নিচার যোগ করুন";
+"viewer.capture" = "ক্যাপচার";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "ক্যামেরা শুরু হচ্ছে...";
+"smartypants.resizing" = "রিসাইজ হচ্ছে...";
+"smartypants.preprocessing" = "প্রিপ্রসেসিং...";
+"smartypants.runningModel" = "মডেল চলছে...";
+"smartypants.extracting" = "শনাক্তকরণ এক্সট্র্যাক্ট হচ্ছে...";
+"smartypants.buildingMask" = "মাস্ক তৈরি হচ্ছে...";
+"smartypants.compositing" = "কম্পোজিট হচ্ছে...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "ছবি থেকে 3D রুম";
+"photoRoom.createTitle" = "3D রুম তৈরি করুন";
+"photoRoom.createSubtitle" = "শুরু করতে ছবি নির্বাচন করুন";
+"photoRoom.quickPhoto" = "দ্রুত ছবি";
+"photoRoom.quickPhotoSubtitle" = "একক ছবি ক্যাপচার";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "3D রুম ভিউ";
+"roomViewer.controls" = "চলাচলে জয়স্টিক ব্যবহার করুন • জুমে পিঞ্চ করুন";
+"roomViewer.saveRoom" = "রুম সেভ করুন";
+"roomViewer.roomName" = "রুমের নাম";
+"roomViewer.enterName" = "আপনার রুমের নাম দিন";
+"roomViewer.savingRoom" = "রুম সেভ হচ্ছে";
+"roomViewer.preparingModel" = "রুম মডেল তৈরি হচ্ছে...";
+"roomViewer.exportingUSDZ" = "USDZ ফরম্যাটে এক্সপোর্ট হচ্ছে...";
+"roomViewer.savingToLibrary" = "লাইব্রেরিতে সেভ হচ্ছে...";
+"roomViewer.almostDone" = "প্রায় শেষ...";
+"roomViewer.saveSuccess" = "রুম '%@' সফলভাবে সেভ হয়েছে!";
+"roomViewer.saveFailed" = "রুম সেভ ব্যর্থ: %@";
+"roomViewer.roomSaveTitle" = "রুম সেভ করুন";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "রিপোর্ট জমা দিন";
+"crashReport.emailNotConfigured" = "ইমেইল উপলব্ধ নেই";
+"crashReport.emailNotConfiguredMessage" = "এই ডিভাইসে ইমেইল কনফিগার করা নেই। আপনি ত্রুটির বিবরণ কপি করে support@paafekt.com এ ম্যানুয়ালি পাঠাতে পারেন";
+"crashReport.copyDetails" = "বিবরণ কপি করুন";
+
+// MARK: - Accessibility
+"accessibility.settings" = "সেটিংস";
+"accessibility.help" = "সাহায্য";
+"accessibility.createRoom" = "ছবি থেকে রুম তৈরি করুন";

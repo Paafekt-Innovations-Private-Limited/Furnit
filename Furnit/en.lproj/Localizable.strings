@@ -116,6 +116,23 @@
 "settings.account" = "Account";
 "settings.loggedInAs" = "Logged in as";
 
+// MARK: - Quality Options
+"quality.standard" = "Standard";
+"quality.standard.description" = "Basic quality for faster performance";
+"quality.high" = "High";
+"quality.high.description" = "Enhanced quality with better details";
+"quality.best" = "Best";
+"quality.best.description" = "Premium quality with maximum detail";
+"quality.best.unavailable" = "For best quality, please visit our partner stores";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "Slow";
+"speed.slow.description" = "Precise control for detailed exploration";
+"speed.normal" = "Normal";
+"speed.normal.description" = "Balanced speed for comfortable navigation";
+"speed.fast" = "Fast";
+"speed.fast.description" = "Quick movement for faster exploration";
+
 // MARK: - Help & Support (FAQ)
 "help.title" = "Help & Support";
 "help.cantFind" = "Can't find what you're looking for?";
