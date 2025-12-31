@@ -1255,7 +1255,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         let t_comp = Date().timeIntervalSince(compStart) * 1000
-        print("🖼️ [STEP 4] Compositing: \(String(format: "%.2f", t_comp))ms")
+        if debugMode {
+            logDebug("🖼️ [STEP 4] Compositing: \(String(format: "%.2f", t_comp))ms")
+        }
 
         // STAGE 17: Finalize (debug overlays drawn onto composedImage if available)
         let t17 = Date()

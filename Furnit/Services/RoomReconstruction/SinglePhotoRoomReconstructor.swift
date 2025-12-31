@@ -283,7 +283,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         } else {
             logDebug("⚠️ [DimensionEstimator] NO REFERENCE FOUND - Using defaults")
             dimensions.width = 4.0
-            dimensions.depth = 4.5
+            dimensions.depth = 4.0
             dimensions.height = 2.8
             dimensions.confidence = 0.3
             

@@ -25,11 +25,39 @@ class GlobalCameraController {
     private var currentVelocity: SIMD2<Float> = .zero
     private let smoothing: Float = 0.18
 
+    // Battery optimization - track if displayLink is running
+    private var isDisplayLinkActive = false
+
     private init() {
-        // Single display link for all camera movement
+        // Create display link but DON'T start it - wait for camera registration
         displayLink = CADisplayLink(target: self, selector: #selector(update))
+        displayLink?.isPaused = true  // Start paused to save battery
         displayLink?.add(to: .main, forMode: .common)
-        logDebug("🎮 [GlobalCameraController] Initialized with single displayLink")
+        logDebug("🎮 [GlobalCameraController] Initialized (displayLink PAUSED - battery saver)")
+    }
+
+    // MARK: - Battery Optimization
+
+    /// Resume displayLink when a camera is active
+    private func resumeDisplayLink() {
+        guard !isDisplayLinkActive else { return }
+        displayLink?.isPaused = false
+        isDisplayLinkActive = true
+        logDebug("🔋 [GlobalCameraController] DisplayLink RESUMED (camera active)")
+    }
+
+    /// Pause displayLink when no camera is active
+    private func pauseDisplayLink() {
+        guard isDisplayLinkActive else { return }
+        displayLink?.isPaused = true
+        isDisplayLinkActive = false
+        currentVelocity = .zero  // Reset velocity
+        logDebug("🔋 [GlobalCameraController] DisplayLink PAUSED (no camera - saving battery)")
+    }
+
+    /// Check if any camera is registered
+    private var hasCameraRegistered: Bool {
+        return realityKitAnchor != nil || sceneKitCamera != nil
     }
 
     // MARK: - Camera Registration
@@ -40,6 +68,7 @@ class GlobalCameraController {
         realityKitCamera = camera
         self.arView = arView
         sceneKitCamera = nil  // Clear other type
+        resumeDisplayLink()  // Start updates when camera is active
         logDebug("📷 [GlobalCameraController] RealityKit camera registered (anchor + camera entity + ARView)")
     }
 
@@ -47,6 +76,7 @@ class GlobalCameraController {
     func registerSceneKitCamera(_ node: SCNNode) {
         sceneKitCamera = node
         realityKitAnchor = nil  // Clear other type
+        resumeDisplayLink()  // Start updates when camera is active
         logDebug("📷 [GlobalCameraController] SceneKit camera registered")
     }
 
@@ -56,6 +86,8 @@ class GlobalCameraController {
         realityKitCamera = nil
         sceneKitCamera = nil
         arView = nil
+        pauseDisplayLink()  // Stop updates to save battery
+        logDebug("📷 [GlobalCameraController] Camera cleared")
     }
 
     // MARK: - Joystick Input

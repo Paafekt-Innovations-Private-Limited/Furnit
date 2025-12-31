@@ -1,20 +1,28 @@
 import Foundation
 import os.log
 
+// MARK: - Runtime Debug Mode Check
+/// Check if debug mode is enabled in Settings
+/// Reads directly from UserDefaults to avoid circular dependency with AppStateManager
+private func isDebugModeEnabled() -> Bool {
+    // Read directly from UserDefaults (same key as QualitySettings uses)
+    // This avoids triggering AppStateManager.shared initialization
+    return UserDefaults.standard.bool(forKey: "debug_mode")
+}
+
 // MARK: - Global Debug Print Function
-/// Use this instead of print() - only logs in DEBUG builds
+/// Use this instead of print() - only logs when debug mode is enabled in Settings
 /// Named 'logDebug' to avoid conflict with Swift's debugPrint
 @inline(__always)
 func logDebug(_ items: Any..., separator: String = " ", terminator: String = "\n") {
-    #if DEBUG
+    guard isDebugModeEnabled() else { return }
     let output = items.map { "\($0)" }.joined(separator: separator)
     print(output, terminator: terminator)
-    #endif
 }
 
 /// Centralized logging utility using os_log framework
-/// - Debug logs only appear in DEBUG builds
-/// - Error/Critical logs appear in all builds for crash reporting
+/// - Debug/Info logs only appear when debug mode is enabled in Settings
+/// - Error/Critical logs always appear for crash reporting
 enum AppLogger {
 
     // MARK: - Log Categories
@@ -30,35 +38,34 @@ enum AppLogger {
     static let appCheck = Logger(subsystem: subsystem, category: "AppCheck")
     static let general = Logger(subsystem: subsystem, category: "General")
 
-    // MARK: - Debug Logging (only in DEBUG builds)
+    // MARK: - Debug Logging (only when debug mode enabled in Settings)
 
-    /// Debug log - only appears in DEBUG builds
+    /// Debug log - only appears when debug mode is enabled in Settings
     static func debug(_ message: String, category: Logger = general) {
-        #if DEBUG
+        guard isDebugModeEnabled() else { return }
         category.debug("\(message)")
-        #endif
     }
 
-    /// Info log - only appears in DEBUG builds
+    /// Info log - only appears when debug mode is enabled in Settings
     static func info(_ message: String, category: Logger = general) {
-        #if DEBUG
+        guard isDebugModeEnabled() else { return }
         category.info("\(message)")
-        #endif
     }
 
-    // MARK: - Production Logging (always logged)
-
-    /// Warning log - appears in all builds
+    /// Warning log - only appears when debug mode is enabled in Settings
     static func warning(_ message: String, category: Logger = general) {
+        guard isDebugModeEnabled() else { return }
         category.warning("\(message)")
     }
 
-    /// Error log - appears in all builds (for crash reporting)
+    // MARK: - Production Logging (always logged for crash reporting)
+
+    /// Error log - ALWAYS appears (for crash reporting)
     static func error(_ message: String, category: Logger = general) {
         category.error("\(message)")
     }
 
-    /// Critical/Fault log - appears in all builds (for crash reporting)
+    /// Critical/Fault log - ALWAYS appears (for crash reporting)
     static func critical(_ message: String, category: Logger = general) {
         category.critical("\(message)")
     }
