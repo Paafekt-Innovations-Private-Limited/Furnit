@@ -10,25 +10,23 @@ import AVFoundation
 import CoreText
 import MetalKit
 
-// ILP64-safe BLAS helpers (requires ACCELERATE_NEW_LAPACK and ACCELERATE_LAPACK_ILP64)
-#if canImport(Accelerate)
-fileprivate typealias LapackInt = Int32
+// BLAS helpers using C wrapper (BLASWrapper.m) to avoid Swift deprecation warnings
+fileprivate typealias BLASInt = Int32
 
 @inline(__always)
-fileprivate func blas_scopy(_ n: LapackInt, _ x: UnsafePointer<Float>, _ incx: LapackInt, _ y: UnsafeMutablePointer<Float>, _ incy: LapackInt) {
-    cblas_scopy(n, x, incx, y, incy)
+fileprivate func blas_scopy(_ n: BLASInt, _ x: UnsafePointer<Float>, _ incx: BLASInt, _ y: UnsafeMutablePointer<Float>, _ incy: BLASInt) {
+    BlasScopy(n, x, incx, y, incy)
 }
 
 @inline(__always)
-fileprivate func blas_sgemv_rowmajor(m: LapackInt, n: LapackInt, alpha: Float, A: UnsafePointer<Float>, lda: LapackInt, x: UnsafePointer<Float>, incx: LapackInt, beta: Float, y: UnsafeMutablePointer<Float>, incy: LapackInt) {
-    cblas_sgemv(CblasRowMajor, CblasNoTrans, m, n, alpha, A, lda, x, incx, beta, y, incy)
+fileprivate func blas_sgemv_rowmajor(m: BLASInt, n: BLASInt, alpha: Float, A: UnsafePointer<Float>, lda: BLASInt, x: UnsafePointer<Float>, incx: BLASInt, beta: Float, y: UnsafeMutablePointer<Float>, incy: BLASInt) {
+    BlasSgemv(true, false, m, n, alpha, A, lda, x, incx, beta, y, incy)
 }
 
 @inline(__always)
-fileprivate func blas_sgemm_rowmajor(m: LapackInt, n: LapackInt, k: LapackInt, alpha: Float, A: UnsafePointer<Float>, lda: LapackInt, B: UnsafePointer<Float>, ldb: LapackInt, beta: Float, C: UnsafeMutablePointer<Float>, ldc: LapackInt) {
-    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
+fileprivate func blas_sgemm_rowmajor(m: BLASInt, n: BLASInt, k: BLASInt, alpha: Float, A: UnsafePointer<Float>, lda: BLASInt, B: UnsafePointer<Float>, ldb: BLASInt, beta: Float, C: UnsafeMutablePointer<Float>, ldc: BLASInt) {
+    BlasSgemm(true, false, false, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
 }
-#endif
 
 
 // MARK: - Metal Mask Logic (GPU)
@@ -564,7 +562,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
             
             let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-            blas_scopy(LapackInt(numClasses), basePtr, LapackInt(stride), &tempScores, 1)
+            blas_scopy(BLASInt(numClasses), basePtr, BLASInt(stride), &tempScores, 1)
             
             var maxVal: Float = 0
             var maxIdx: vDSP_Length = 0
@@ -576,7 +574,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             
             var coeffs = [Float](repeating: 0, count: 32)
             let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-            blas_scopy(32, coeffBase, LapackInt(stride), &coeffs, 1)
+            blas_scopy(32, coeffBase, BLASInt(stride), &coeffs, 1)
             
             allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: maxVal, classIdx: classIdx, coeffs: coeffs))
         }
@@ -694,11 +692,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             A.withUnsafeBufferPointer { aPtr in
                 coeffs.withUnsafeBufferPointer { xPtr in
                     result.withUnsafeMutableBufferPointer { yPtr in
-                        let m = LapackInt(planeSize)
-                        let n = LapackInt(32)
-                        let lda = LapackInt(32)
-                        let incx: LapackInt = 1
-                        let incy: LapackInt = 1
+                        let m = BLASInt(planeSize)
+                        let n = BLASInt(32)
+                        let lda = BLASInt(32)
+                        let incx: BLASInt = 1
+                        let incy: BLASInt = 1
                         blas_sgemv_rowmajor(m: m, n: n, alpha: 1.0, A: aPtr.baseAddress!, lda: lda, x: xPtr.baseAddress!, incx: incx, beta: 0.0, y: yPtr.baseAddress!, incy: incy)
                     }
                 }
@@ -834,8 +832,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Stage 13: Compute per-pixel max logits across detections
             var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
 
-            let M = LapackInt(planeSize)
-            let K = LapackInt(32)
+            let M = BLASInt(planeSize)
+            let K = BLASInt(32)
             let alpha: Float = 1
             let beta: Float = 0
 
@@ -850,7 +848,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     A.withUnsafeBufferPointer { aPtr in
                         d.coeffs.withUnsafeBufferPointer { xPtr in
                             tmp.withUnsafeMutableBufferPointer { yPtr in
-                                let lda = LapackInt(32)
+                                let lda = BLASInt(32)
                                 blas_sgemv_rowmajor(m: M, n: K, alpha: alpha, A: aPtr.baseAddress!, lda: lda, x: xPtr.baseAddress!, incx: 1, beta: beta, y: yPtr.baseAddress!, incy: 1)
                             }
                         }
@@ -872,7 +870,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 while bStart < detections.count {
                     let bEnd = min(detections.count, bStart + batchSize)
                     let Bn = bEnd - bStart
-                    let N = LapackInt(Bn)
+                    let N = BLASInt(Bn)
 
                     // B is K x N in row-major layout as (k major, n minor): B[k*N + j]
                     var B = [Float](repeating: 0, count: 32 * Bn)
@@ -887,7 +885,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     A.withUnsafeBufferPointer { aPtr in
                         B.withUnsafeBufferPointer { bPtr in
                             C.withUnsafeMutableBufferPointer { cPtr in
-                                let lda = LapackInt(32)
+                                let lda = BLASInt(32)
                                 let ldb = N
                                 let ldc = N
                                 blas_sgemm_rowmajor(m: M, n: N, k: K, alpha: alpha, A: aPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: beta, C: cPtr.baseAddress!, ldc: ldc)
