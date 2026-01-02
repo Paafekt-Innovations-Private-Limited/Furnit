@@ -699,7 +699,7 @@ import RoomPlan
 
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
-    @StateObject private var generationService = Room3DGenerationService()
+    @StateObject private var sharpService = SHARPService()
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var showRoomBoundaries = false
@@ -857,30 +857,14 @@ struct SinglePhotoRoomView: View {
             Spacer()
         }
 
-            // Progress overlay for API generation
-            if case .uploading = generationService.status {
+            // Progress overlay for on-device SHARP generation
+            if case .processing = sharpService.status {
                 GenerationProgressOverlay(
-                    status: generationService.status,
-                    uploadProgress: generationService.uploadProgress,
-                    downloadProgress: generationService.downloadProgress,
-                    statusMessage: generationService.statusMessage,
-                    onCancel: { generationService.cancelGeneration() }
-                )
-            } else if case .processing = generationService.status {
-                GenerationProgressOverlay(
-                    status: generationService.status,
-                    uploadProgress: generationService.uploadProgress,
-                    downloadProgress: generationService.downloadProgress,
-                    statusMessage: generationService.statusMessage,
-                    onCancel: { generationService.cancelGeneration() }
-                )
-            } else if case .downloading = generationService.status {
-                GenerationProgressOverlay(
-                    status: generationService.status,
-                    uploadProgress: generationService.uploadProgress,
-                    downloadProgress: generationService.downloadProgress,
-                    statusMessage: generationService.statusMessage,
-                    onCancel: { generationService.cancelGeneration() }
+                    status: sharpService.status,
+                    uploadProgress: sharpService.progress,
+                    downloadProgress: sharpService.progress,
+                    statusMessage: sharpService.statusMessage,
+                    onCancel: { sharpService.cancelGeneration() }
                 )
             }
     }
@@ -890,11 +874,11 @@ struct SinglePhotoRoomView: View {
                 .onDisappear {
                     logDebug("📱 [View] Image picker dismissed")
                     if let image = selectedImage {
-                        logDebug("✅ [View] Image selected, starting API generation...")
-                        // Use API-based generation instead of local processing
+                        logDebug("✅ [View] Image selected, starting on-device SHARP generation...")
+                        // Use on-device SHARP model for 3D Gaussian generation
                         Task {
                             do {
-                                let fileURL = try await generationService.generateRoom(from: image)
+                                let fileURL = try await sharpService.generateGaussians(from: image)
                                 logDebug("✅ [View] PLY file generated: \(fileURL.path)")
                                 generatedPLYURL = fileURL
                                 showGenerationSuccess = true
@@ -963,7 +947,7 @@ struct SinglePhotoRoomView: View {
         // Handle generation errors
         .alert("Generation Failed", isPresented: Binding(
             get: {
-                if case .failed = generationService.status { return true }
+                if case .failed = sharpService.status { return true }
                 return false
             },
             set: { _ in }
@@ -975,7 +959,7 @@ struct SinglePhotoRoomView: View {
                 if let image = selectedImage {
                     Task {
                         do {
-                            let fileURL = try await generationService.generateRoom(from: image)
+                            let fileURL = try await sharpService.generateGaussians(from: image)
                             generatedPLYURL = fileURL
                             showGenerationSuccess = true
                         } catch {
@@ -985,7 +969,7 @@ struct SinglePhotoRoomView: View {
                 }
             }
         } message: {
-            if case .failed(let errorMessage) = generationService.status {
+            if case .failed(let errorMessage) = sharpService.status {
                 Text(errorMessage)
             } else {
                 Text("An error occurred while generating your 3D model.")
