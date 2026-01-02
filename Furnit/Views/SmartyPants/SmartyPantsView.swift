@@ -485,12 +485,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 3: Model inference
         let t3 = Date()
         setProgress(0.40, text: "Running model…")
-        
-        let mlOptions = MLPredictionOptions()
-        mlOptions.usesCPUOnly = false
-        
+
         guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]),
-              let output = try? model.prediction(from: inputProvider, options: mlOptions) else {
+              let output = try? model.prediction(from: inputProvider) else {
             if debugMode { logDebug("❌ STAGE 3 FAILED: Model inference") }
             resetProcessingFlag()
             return

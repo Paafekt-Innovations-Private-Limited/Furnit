@@ -136,6 +136,23 @@ struct SettingsView: View {
                     }
                     .tint(.purple)
 
+                    // ⚠️ TEMPORARY: Test Crash Report Button
+                    Button(action: {
+                        testCrashReport()
+                    }) {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Test Crash Report")
+                                    .font(.headline)
+                                Text("Trigger a test error to see crash reporting")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Image(systemName: "slider.horizontal.3")
@@ -228,6 +245,24 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+    
+    // ⚠️ TEMPORARY: Function to test crash reporting
+    private func testCrashReport() {
+        // Create a test error
+        enum TestError: Error, LocalizedError {
+            case intentionalTestError
+            
+            var errorDescription: String? {
+                "This is a test error to demonstrate crash reporting functionality."
+            }
+        }
+        
+        // Report the test error
+        CrashReporter.shared.report(
+            TestError.intentionalTestError,
+            context: "Testing Crash Report System"
+        )
     }
 }
 
