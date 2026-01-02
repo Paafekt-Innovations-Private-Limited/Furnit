@@ -19,7 +19,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     
     struct RoomDimensions {
         var width: Float = 4.0
-        var depth: Float = 4.0
+        var depth: Float = 4.5
         var height: Float = 2.8
         var doorHeight: Float = 2.1
         var confidence: Float = 0.6
@@ -283,7 +283,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         } else {
             logDebug("⚠️ [DimensionEstimator] NO REFERENCE FOUND - Using defaults")
             dimensions.width = 4.0
-            dimensions.depth = 4.0
+            dimensions.depth = 4.5
             dimensions.height = 2.8
             dimensions.confidence = 0.3
             
