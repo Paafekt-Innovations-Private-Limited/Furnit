@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		613061F92EF8AFF1001EB3AF /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 613061F82EF8AFF1001EB3AF /* FirebaseAppCheck */; };
+		616512822F09AA51002F55B1 /* SHARP_fp16.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 616512812F09AA51002F55B1 /* SHARP_fp16.mlpackage */; };
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
 		61C7889C2EEF8FDA0082A545 /* yoloe-11l-seg-pf.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 61C7889B2EEF8FDA0082A545 /* yoloe-11l-seg-pf.mlpackage */; };
@@ -15,6 +16,7 @@
 
 /* Begin PBXFileReference section */
 		045F5BD92E6D302900C5585D /* Furnit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Furnit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		616512812F09AA51002F55B1 /* SHARP_fp16.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = SHARP_fp16.mlpackage; sourceTree = "<group>"; };
 		61C7889B2EEF8FDA0082A545 /* yoloe-11l-seg-pf.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-11l-seg-pf.mlpackage"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -59,6 +61,7 @@
 				045F5BDB2E6D302900C5585D /* Furnit */,
 				045F5BDA2E6D302900C5585D /* Products */,
 				61C7889B2EEF8FDA0082A545 /* yoloe-11l-seg-pf.mlpackage */,
+				616512812F09AA51002F55B1 /* SHARP_fp16.mlpackage */,
 				613061F72EF8AFF1001EB3AF /* Frameworks */,
 			);
 			sourceTree = "<group>";
@@ -173,6 +176,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				61C7889C2EEF8FDA0082A545 /* yoloe-11l-seg-pf.mlpackage in Sources */,
+				616512822F09AA51002F55B1 /* SHARP_fp16.mlpackage in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
