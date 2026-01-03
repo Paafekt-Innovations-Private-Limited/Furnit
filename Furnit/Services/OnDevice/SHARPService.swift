@@ -337,11 +337,11 @@ class SHARPService: ObservableObject {
 
     // MARK: - Splat Filtering
 
-    /// Maximum number of splats for mobile rendering
-    private static let maxSplats: Int = 300_000
+    /// Maximum number of splats for mobile rendering (higher = better quality, more memory)
+    private static let maxSplats: Int = 500_000
 
     /// Minimum opacity threshold (0-1) for keeping a splat
-    private static let minOpacity: Float = 0.005
+    private static let minOpacity: Float = 0.01
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
@@ -467,13 +467,14 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
 
-            // Scale - swap Y/Z to match position, convert to log for renderer
+            // Scale - convert to log for renderer, clamp minimum to prevent needle-thin splats
+            let minScale: Float = 0.001
             let rawS0 = filteredParams[offset + 3]
-            let rawS1 = filteredParams[offset + 5]  // Z scale becomes Y
-            let rawS2 = filteredParams[offset + 4]  // Y scale becomes Z
-            var s0 = log(max(rawS0, 1e-7))
-            var s1 = log(max(rawS1, 1e-7))
-            var s2 = log(max(rawS2, 1e-7))
+            let rawS1 = filteredParams[offset + 4]
+            let rawS2 = filteredParams[offset + 5]
+            var s0 = log(max(rawS0, minScale))
+            var s1 = log(max(rawS1, minScale))
+            var s2 = log(max(rawS2, minScale))
             data.append(Data(bytes: &s0, count: 4))
             data.append(Data(bytes: &s1, count: 4))
             data.append(Data(bytes: &s2, count: 4))
@@ -500,14 +501,10 @@ class SHARPService: ObservableObject {
             var opacity = log(clampedOpacity / (1.0 - clampedOpacity))
             data.append(Data(bytes: &opacity, count: 4))
 
-            // Color - convert RGB to SH DC coefficients
-            let SH_C0: Float = 0.28209479177387814
-            let r = filteredParams[offset + 11]
-            let g = filteredParams[offset + 12]
-            let b = filteredParams[offset + 13]
-            var sh0 = (r - 0.5) / SH_C0
-            var sh1 = (g - 0.5) / SH_C0
-            var sh2 = (b - 0.5) / SH_C0
+            // Color - use raw RGB values (MetalSplatter may handle conversion)
+            var sh0 = filteredParams[offset + 11]
+            var sh1 = filteredParams[offset + 12]
+            var sh2 = filteredParams[offset + 13]
             data.append(Data(bytes: &sh0, count: 4))
             data.append(Data(bytes: &sh1, count: 4))
             data.append(Data(bytes: &sh2, count: 4))

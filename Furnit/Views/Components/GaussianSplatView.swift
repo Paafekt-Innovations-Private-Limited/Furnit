@@ -110,8 +110,8 @@ struct GaussianSplatView: UIViewRepresentable {
 
         // MARK: - Camera State
 
-        /// Camera yaw angle - initialized to π to face the scene (ml-sharp convention)
-        private var cameraYaw: Float = .pi
+        /// Camera yaw angle - initialized to 0 to face into the room
+        private var cameraYaw: Float = 0
 
         /// Camera pitch angle (vertical rotation around X-axis)
         private var cameraPitch: Float = 0
@@ -270,8 +270,9 @@ struct GaussianSplatView: UIViewRepresentable {
             // Interior mode: use centroid to position camera inside the room
             let translationMatrix: simd_float4x4
             if let centroid = splatRenderer?.centroid {
-                // Interior mode: camera at splat centroid (inside the room)
-                let cameraPos = centroid + cameraOffset
+                // Interior mode: camera at splat centroid, offset down for eye level
+                let eyeLevelOffset = SIMD3<Float>(0, -0.3, 0)  // Lower camera for better view
+                let cameraPos = centroid + cameraOffset + eyeLevelOffset
                 translationMatrix = matrix4x4Translation(-cameraPos.x, -cameraPos.y, -cameraPos.z)
             } else {
                 // Exterior mode: camera outside looking at origin
