@@ -338,15 +338,36 @@ class SHARPService: ObservableObject {
     // MARK: - Splat Filtering
 
     /// Maximum number of splats for mobile rendering
-    private static let maxSplats: Int = 150_000
+    private static let maxSplats: Int = 300_000
 
     /// Minimum opacity threshold (0-1) for keeping a splat
-    private static let minOpacity: Float = 0.01
+    private static let minOpacity: Float = 0.005
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
         let inputCount = params.count / Self.paramsPerGaussian
         logDebug("SHARP: Filtering \(inputCount) Gaussians...")
+
+        // Debug: sample first few gaussians to see value ranges
+        if inputCount > 0 {
+            let idx = 0
+            let o = idx * Self.paramsPerGaussian
+            logDebug("SHARP DEBUG: Sample Gaussian 0:")
+            logDebug("  pos: (\(params[o+0]), \(params[o+1]), \(params[o+2]))")
+            logDebug("  scale: (\(params[o+3]), \(params[o+4]), \(params[o+5]))")
+            logDebug("  rot: (\(params[o+6]), \(params[o+7]), \(params[o+8]), \(params[o+9]))")
+            logDebug("  opacity: \(params[o+10])")
+            logDebug("  color: (\(params[o+11]), \(params[o+12]), \(params[o+13]))")
+        }
+        if inputCount > 1000 {
+            let idx = 1000
+            let o = idx * Self.paramsPerGaussian
+            logDebug("SHARP DEBUG: Sample Gaussian 1000:")
+            logDebug("  pos: (\(params[o+0]), \(params[o+1]), \(params[o+2]))")
+            logDebug("  scale: (\(params[o+3]), \(params[o+4]), \(params[o+5]))")
+            logDebug("  opacity: \(params[o+10])")
+            logDebug("  color: (\(params[o+11]), \(params[o+12]), \(params[o+13]))")
+        }
 
         // First pass: collect indices of splats above opacity threshold with their opacities
         var validSplats: [(index: Int, opacity: Float)] = []
@@ -432,27 +453,24 @@ class SHARPService: ObservableObject {
         // Write header
         var data = Data(plyContent.utf8)
 
-        // SH_C0 constant for converting RGB to SH DC term
-        let SH_C0: Float = 0.28209479177387814
-
         // Write binary vertex data
         // Each Gaussian: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14 floats
-        // SHARP outputs actual values, PLY format expects transformed values
+        // Using raw SHARP output values directly
         for i in 0..<gaussianCount {
             let offset = i * Self.paramsPerGaussian
 
-            // Position (x, y, z) - use as-is
+            // Position - swap Y and Z for coordinate system conversion (SHARP uses different axes)
             var x = filteredParams[offset + 0]
-            var y = filteredParams[offset + 1]
-            var z = filteredParams[offset + 2]
+            var y = filteredParams[offset + 2]  // Z becomes Y
+            var z = -filteredParams[offset + 1] // -Y becomes Z
             data.append(Data(bytes: &x, count: 4))
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
 
-            // Scale - SHARP outputs actual scale, PLY expects log(scale)
+            // Scale - swap Y/Z to match position, convert to log for renderer
             let rawS0 = filteredParams[offset + 3]
-            let rawS1 = filteredParams[offset + 4]
-            let rawS2 = filteredParams[offset + 5]
+            let rawS1 = filteredParams[offset + 5]  // Z scale becomes Y
+            let rawS2 = filteredParams[offset + 4]  // Y scale becomes Z
             var s0 = log(max(rawS0, 1e-7))
             var s1 = log(max(rawS1, 1e-7))
             var s2 = log(max(rawS2, 1e-7))
@@ -460,23 +478,30 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &s1, count: 4))
             data.append(Data(bytes: &s2, count: 4))
 
-            // Rotation quaternion - use as-is (w, x, y, z)
-            var r0 = filteredParams[offset + 6]
-            var r1 = filteredParams[offset + 7]
-            var r2 = filteredParams[offset + 8]
-            var r3 = filteredParams[offset + 9]
+            // Rotation quaternion - MUST normalize (SHARP outputs unnormalized)
+            let rawR0 = filteredParams[offset + 6]
+            let rawR1 = filteredParams[offset + 7]
+            let rawR2 = filteredParams[offset + 8]
+            let rawR3 = filteredParams[offset + 9]
+            let mag = sqrt(rawR0*rawR0 + rawR1*rawR1 + rawR2*rawR2 + rawR3*rawR3)
+            let invMag = mag > 1e-8 ? 1.0 / mag : 1.0
+            var r0 = rawR0 * invMag
+            var r1 = rawR1 * invMag
+            var r2 = rawR2 * invMag
+            var r3 = rawR3 * invMag
             data.append(Data(bytes: &r0, count: 4))
             data.append(Data(bytes: &r1, count: 4))
             data.append(Data(bytes: &r2, count: 4))
             data.append(Data(bytes: &r3, count: 4))
 
-            // Opacity - SHARP outputs actual opacity [0,1], PLY expects logit (inverse sigmoid)
+            // Opacity - convert to logit (inverse sigmoid) for renderer
             let rawOpacity = filteredParams[offset + 10]
-            let clampedOpacity = min(max(rawOpacity, 1e-6), 1.0 - 1e-6)
-            var opacity = log(clampedOpacity / (1.0 - clampedOpacity))  // logit
+            let clampedOpacity = min(max(rawOpacity, 1e-4), 1.0 - 1e-4)
+            var opacity = log(clampedOpacity / (1.0 - clampedOpacity))
             data.append(Data(bytes: &opacity, count: 4))
 
-            // Color - SHARP outputs RGB [0,1], convert to SH DC coefficients
+            // Color - convert RGB to SH DC coefficients
+            let SH_C0: Float = 0.28209479177387814
             let r = filteredParams[offset + 11]
             let g = filteredParams[offset + 12]
             let b = filteredParams[offset + 13]
