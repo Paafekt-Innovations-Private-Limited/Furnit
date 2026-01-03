@@ -104,7 +104,9 @@ struct RoomBoundaryDetectionView: View {
                                 boundaries.vanishingX = vanishingX
                                 boundaries.vanishingY = vanishingY
 
+                                print("✅✅✅ [RoomBoundary] DONE BUTTON PRESSED! Setting savedBoundaries ✅✅✅")
                                 savedBoundaries = boundaries
+                                print("   savedBoundaries is now: \(String(describing: savedBoundaries))")
                                 logDebug("✅ Saved adjusted boundaries:")
                                 logDebug("   Floor: \(floorY), Ceiling: \(ceilingY)")
                                 logDebug("   Left: \(leftX), Right: \(rightX)")
@@ -675,6 +677,7 @@ struct SinglePhotoRoomView: View {
         // ✅ Watch for boundary changes and rebuild automatically, then navigate to viewer
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
             if let boundaries = newValue, let image = fixedImage {
+                print("🔄🔄🔄 [View] Done pressed - boundaries adjusted, calling processPhotoWithBoundaries 🔄🔄🔄")
                 logDebug("🔄 [View] Boundaries adjusted, rebuilding room...")
                 Task {
                     // Use dimensions from settings
