@@ -108,20 +108,21 @@ class SplatRenderer: NSObject {
     let roomDepth: Float = 4.5
     let roomHeight: Float = 2.8
 
-    // MARK: - Camera State
-    var cameraPosition: SIMD3<Float> = SIMD3(0, 1.4, 4.0)  // In front of room, eye level
-    var cameraTarget: SIMD3<Float> = SIMD3(0, 1.4, 0)      // Look at room center
+    // MARK: - First-Person Camera State
+    var cameraPosition: SIMD3<Float> = SIMD3(0, 1.6, 3.0)  // Inside room, eye level
+    var cameraYaw: Float = Float.pi    // Looking toward front wall (negative Z)
+    var cameraPitch: Float = 0.0       // Level (up/down), clamped
     var cameraUp: SIMD3<Float> = SIMD3(0, 1, 0)
 
-    var fieldOfView: Float = 60.0
+    var fieldOfView: Float = 70.0
     var nearPlane: Float = 0.05
-    var farPlane: Float = 15.0
+    var farPlane: Float = 50.0
 
-    // MARK: - Orbit Camera
-    var orbitDistance: Float = 8.0  // Far enough to see the whole room
-    var orbitAngleX: Float = 0.3    // Slight rotation to see room shape
-    var orbitAngleY: Float = 0.3    // Looking slightly down at the room
-    var cameraTargetOffset: SIMD3<Float> = .zero  // Pan offset for joystick movement
+    // Legacy orbit values (for compatibility with gesture handlers)
+    var orbitDistance: Float = 8.0
+    var orbitAngleX: Float = 0.3
+    var orbitAngleY: Float = 0.3
+    var cameraTargetOffset: SIMD3<Float> = .zero
 
     // MARK: - Background Color
     var backgroundColor: MTLClearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.2, alpha: 1.0)
@@ -517,10 +518,10 @@ class SplatRenderer: NSObject {
         let y = orbitDistance * sin(orbitAngleY) + eyeHeight
         let z = orbitDistance * cos(orbitAngleY) * cos(orbitAngleX)
 
-        cameraPosition = SIMD3(x, y, z)
-        cameraTarget = SIMD3(0, eyeHeight, 0)  // Look at room center
+        let orbitCamPos = SIMD3<Float>(x, y, z)
+        let orbitTarget = SIMD3<Float>(0, eyeHeight, 0)  // Look at room center
 
-        return lookAt(eye: cameraPosition, center: cameraTarget, up: cameraUp)
+        return lookAt(eye: orbitCamPos, center: orbitTarget, up: cameraUp)
     }
 
     private func makeProjectionMatrix(aspectRatio: Float) -> simd_float4x4 {
@@ -599,31 +600,34 @@ class SplatRenderer: NSObject {
 
         switch cameraMode {
         case .sharpDebug:
-            // ORBIT CAMERA: Use orbit angles to rotate around room center
-            // Target is the room center (roughly at height/2) plus joystick pan offset
-            let target = SIMD3<Float>(0, roomHeight * 0.5, 0) + cameraTargetOffset
+            // FIRST-PERSON CAMERA: Position + look direction
+            let eye = cameraPosition
 
-            // Compute eye position from orbit angles and distance
-            let cosY = cos(orbitAngleY)
-            let sinY = sin(orbitAngleY)
-            let cosX = cos(orbitAngleX)
-            let sinX = sin(orbitAngleX)
+            // Calculate look direction from yaw and pitch
+            let cosPitch = cos(cameraPitch)
+            let sinPitch = sin(cameraPitch)
+            let cosYaw = cos(cameraYaw)
+            let sinYaw = sin(cameraYaw)
 
-            let eye = SIMD3<Float>(
-                target.x + orbitDistance * cosY * sinX,
-                target.y + orbitDistance * sinY,
-                target.z + orbitDistance * cosY * cosX
+            // Forward direction based on yaw and pitch
+            let forward = SIMD3<Float>(
+                cosPitch * sinYaw,
+                sinPitch,
+                cosPitch * cosYaw
             )
+
+            // Target is eye + forward direction
+            let target = eye + forward
             let up = SIMD3<Float>(0, 1, 0)
 
             // FOV and near/far for room-scale viewing
-            let fovY: Float = 60.0 * .pi / 180.0
-            let nearZ: Float = 0.1
+            let fovY: Float = 70.0 * .pi / 180.0  // Wider FOV for interior
+            let nearZ: Float = 0.05
             let farZ: Float = 50.0
 
             // Log camera info only once per cloud load
             if !didLogCameraForCurrentCloud {
-                print("ORBIT CAMERA: target=\(target), eye=\(eye), dist=\(orbitDistance), angleX=\(orbitAngleX), angleY=\(orbitAngleY)")
+                print("FPS CAMERA: pos=\(eye), yaw=\(cameraYaw), pitch=\(cameraPitch)")
                 didLogCameraForCurrentCloud = true
             }
 
@@ -692,44 +696,59 @@ class SplatRenderer: NSObject {
         commandBuffer.commit()
     }
 
-    // MARK: - Camera Controls
+    // MARK: - Camera Controls (First-Person Style)
+
+    /// Rotate camera view (LOOK joystick / pan gesture)
     func orbit(deltaX: Float, deltaY: Float) {
-        orbitAngleX += deltaX * 0.01
-        orbitAngleY = max(-Float.pi/2 + 0.1, min(Float.pi/2 - 0.1, orbitAngleY + deltaY * 0.01))
+        let sensitivity: Float = 0.01
+        cameraYaw += deltaX * sensitivity
+        cameraPitch -= deltaY * sensitivity
+
+        // Clamp pitch to avoid flipping
+        cameraPitch = max(-Float.pi * 0.4, min(Float.pi * 0.4, cameraPitch))
     }
 
+    /// Zoom (move camera forward/backward along look direction)
     func zoom(delta: Float) {
-        orbitDistance = max(1.0, min(20.0, orbitDistance - delta * 0.1))
+        let forward = SIMD3<Float>(
+            cos(cameraPitch) * sin(cameraYaw),
+            0,  // Keep Y level for zoom
+            cos(cameraPitch) * cos(cameraYaw)
+        )
+        cameraPosition += forward * delta * 0.15
     }
 
-    /// Pan camera target in world XZ plane (joystick movement)
+    /// Move camera position in world space (MOVE joystick)
     /// deltaX: right/left, deltaZ: forward/back (relative to camera facing direction)
     func pan(deltaX: Float, deltaZ: Float) {
-        // Get camera forward direction projected onto XZ plane
-        let forwardX = sin(orbitAngleX)
-        let forwardZ = cos(orbitAngleX)
+        // Get camera forward direction projected onto XZ plane (ignore pitch for movement)
+        let forwardX = sin(cameraYaw)
+        let forwardZ = cos(cameraYaw)
 
         // Right vector (perpendicular to forward in XZ plane)
-        let rightX = cos(orbitAngleX)
-        let rightZ = -sin(orbitAngleX)
+        let rightX = cos(cameraYaw)
+        let rightZ = -sin(cameraYaw)
 
-        // Move target based on joystick input
-        let speed: Float = 0.05
-        cameraTargetOffset.x += (rightX * deltaX + forwardX * deltaZ) * speed
-        cameraTargetOffset.z += (rightZ * deltaX + forwardZ * deltaZ) * speed
+        // Move camera position based on joystick input
+        let speed: Float = 0.1
+        cameraPosition.x += (rightX * deltaX + forwardX * deltaZ) * speed
+        cameraPosition.z += (rightZ * deltaX + forwardZ * deltaZ) * speed
 
-        // Clamp to reasonable bounds (stay within room area)
-        let maxOffset: Float = 5.0
-        cameraTargetOffset.x = max(-maxOffset, min(maxOffset, cameraTargetOffset.x))
-        cameraTargetOffset.z = max(-maxOffset, min(maxOffset, cameraTargetOffset.z))
+        // Clamp to room bounds (allow movement inside and slightly outside room)
+        let halfWidth = roomWidth * 0.5
+        let halfDepth = roomDepth * 0.5
+        cameraPosition.x = max(-halfWidth - 1.0, min(halfWidth + 1.0, cameraPosition.x))
+        cameraPosition.z = max(-halfDepth - 1.0, min(halfDepth + 3.0, cameraPosition.z))
     }
 
-    /// Reset camera to default position
+    /// Reset camera to default position (inside room, looking at front wall)
     func resetCamera() {
-        orbitDistance = 8.0
-        orbitAngleX = 0.3
-        orbitAngleY = 0.3
-        cameraTargetOffset = .zero
+        cameraPosition = SIMD3<Float>(0, 1.6, roomDepth * 0.4)  // Inside room, eye height
+        cameraYaw = Float.pi      // Looking toward front wall (negative Z direction)
+        cameraPitch = 0.0         // Level
+
+        // Reset log flag
+        didLogCameraForCurrentCloud = false
     }
 }
 
