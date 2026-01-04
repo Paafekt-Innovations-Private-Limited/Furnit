@@ -11,6 +11,9 @@ struct SettingsView: View {
     @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
 
+    // Render mode toggle
+    @AppStorage("roomRenderMode") private var renderMode: String = RoomRenderMode.metalSplat.rawValue
+
     var body: some View {
         NavigationView {
             Form {
@@ -116,6 +119,25 @@ struct SettingsView: View {
                     Text(L10n.Settings.roomDimensions)
                 } footer: {
                     Text(L10n.Settings.roomDimensionsFooter)
+                        .font(.footnote)
+                }
+
+                // Render Mode Section
+                Section {
+                    Picker("Render Mode", selection: $renderMode) {
+                        ForEach(RoomRenderMode.allCases, id: \.rawValue) { mode in
+                            HStack {
+                                Image(systemName: iconForRenderMode(mode))
+                                Text(mode.rawValue)
+                            }
+                            .tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } header: {
+                    Text("Photo Room Renderer")
+                } footer: {
+                    Text("Metal Splats: Gaussian splat rendering from SHARP AI.\nSceneKit Room: Textured box room.\nYOLOE Room: Furniture detection + 3D placement.")
                         .font(.footnote)
                 }
 
@@ -227,6 +249,14 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func iconForRenderMode(_ mode: RoomRenderMode) -> String {
+        switch mode {
+        case .metalSplat: return "cube.transparent"
+        case .sceneKit: return "square.stack.3d.up"
+        case .yoloeRoom: return "brain.head.profile"
         }
     }
 }

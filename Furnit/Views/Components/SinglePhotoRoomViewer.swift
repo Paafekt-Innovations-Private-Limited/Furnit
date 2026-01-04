@@ -1,6 +1,8 @@
 import SwiftUI
 import SceneKit
 import Accelerate
+import CoreML
+import CoreVideo
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
@@ -580,6 +582,13 @@ struct DraggableHandle: View {
 import SwiftUI
 import RoomPlan
 
+// MARK: - Render Mode
+enum RoomRenderMode: String, CaseIterable {
+    case metalSplat = "Metal Splats"
+    case sceneKit = "SceneKit Room"
+    case yoloeRoom = "YOLOE Room"
+}
+
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @State private var selectedImage: UIImage?
@@ -587,7 +596,10 @@ struct SinglePhotoRoomView: View {
     @State private var adjustedBoundaries: RoomStructure?
     @State private var navigateToViewer = false
     @State private var fixedImage: UIImage? // ✅ Store fixed image separately
-    
+
+    // Render mode toggle - default to Metal splats
+    @AppStorage("roomRenderMode") private var renderMode: String = RoomRenderMode.metalSplat.rawValue
+
     // Identifiable wrapper for reliable sheet(item:) presentation
     @State private var fixedImageItem: IdentifiedImage?
 
@@ -595,7 +607,7 @@ struct SinglePhotoRoomView: View {
         let id = UUID()
         let image: UIImage
     }
-    
+
     // Read dimensions from settings
     @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
     @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
@@ -691,8 +703,12 @@ struct SinglePhotoRoomView: View {
                     }
                     
                     await reconstructor.processPhotoWithBoundaries(image, boundaries: boundaries)
-                    // Auto-navigate to 3D viewer (save screen) once room is ready
-                    if reconstructor.generatedRoomScene != nil {
+                    // Auto-navigate to viewer once ready
+                    let useMetalSplats = renderMode == RoomRenderMode.metalSplat.rawValue
+                    let canNavigate = useMetalSplats
+                        ? !reconstructor.rawSplats.isEmpty
+                        : reconstructor.generatedRoomScene != nil
+                    if canNavigate {
                         await MainActor.run {
                             navigateToViewer = true
                         }
@@ -706,7 +722,16 @@ struct SinglePhotoRoomView: View {
         // handle the optional room scene gracefully.
         .navigationDestination(isPresented: $navigateToViewer) {
             Group {
-                if let scene = reconstructor.generatedRoomScene {
+                if renderMode == RoomRenderMode.metalSplat.rawValue {
+                    // Pure Metal splat renderer
+                    StandaloneSplatViewer(splats: reconstructor.rawSplats)
+                } else if renderMode == RoomRenderMode.yoloeRoom.rawValue {
+                    // YOLOE detection-based room
+                    if let image = fixedImage {
+                        YOLOERoomViewer(image: image)
+                    }
+                } else if let scene = reconstructor.generatedRoomScene {
+                    // SceneKit room with planes
                     SceneKitViewer(scene: scene)
                 }
             }
@@ -762,6 +787,462 @@ struct PhotoPickerView: UIViewControllerRepresentable {
             logDebug("❌ [PhotoPicker] User cancelled")
             parent.dismiss()
         }
+    }
+}
+
+// MARK: - YOLOE Room Viewer
+/// Constructs a 3D room from YOLOE furniture detections
+struct YOLOERoomViewer: View {
+    let image: UIImage
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel = YOLOERoomViewModel()
+
+    var body: some View {
+        ZStack {
+            if viewModel.isLoading {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                    Text(viewModel.statusMessage)
+                        .foregroundColor(.secondary)
+                }
+            } else if let scene = viewModel.scene {
+                SceneKitViewer(scene: scene)
+            } else if let error = viewModel.errorMessage {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(.orange)
+                    Text(error)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Try Again") {
+                        viewModel.processImage(image)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: { dismiss() }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
+                }
+            }
+        }
+        .onAppear {
+            viewModel.processImage(image)
+        }
+    }
+}
+
+// MARK: - YOLOE Room ViewModel
+@MainActor
+class YOLOERoomViewModel: ObservableObject {
+    @Published var isLoading = false
+    @Published var statusMessage = "Loading model..."
+    @Published var scene: SCNScene?
+    @Published var errorMessage: String?
+    @Published var detections: [YOLOEDetection] = []
+
+    private var mlModel: MLModel?
+
+    struct YOLOEDetection {
+        let classId: Int
+        let className: String
+        let confidence: Float
+        let bbox: CGRect  // Normalized 0-1
+    }
+
+    // Class names loaded from classes.json
+    private lazy var classNames: [Int: String] = {
+        guard let url = Bundle.main.url(forResource: "classes", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
+            return [:]
+        }
+        var result: [Int: String] = [:]
+        for (key, value) in dict {
+            if let id = Int(key) { result[id] = value }
+        }
+        return result
+    }()
+
+    func processImage(_ image: UIImage) {
+        isLoading = true
+        errorMessage = nil
+        statusMessage = "Loading model..."
+
+        Task {
+            do {
+                // Load model
+                guard let modelUrl = Bundle.main.url(forResource: "yoloe-11l-seg-pf", withExtension: "mlmodelc") else {
+                    throw NSError(domain: "YOLOERoom", code: 1, userInfo: [NSLocalizedDescriptionKey: "Model not found"])
+                }
+
+                let config = MLModelConfiguration()
+                config.computeUnits = .cpuOnly
+                mlModel = try MLModel(contentsOf: modelUrl, configuration: config)
+
+                statusMessage = "Running detection..."
+
+                // Run inference
+                let dets = try runInference(image: image)
+                self.detections = dets
+
+                statusMessage = "Building room..."
+
+                // Build 3D scene
+                let scene = buildScene(from: dets, imageSize: image.size)
+                self.scene = scene
+                self.isLoading = false
+
+                print("YOLOE Room: Found \(dets.count) furniture items")
+
+            } catch {
+                self.errorMessage = error.localizedDescription
+                self.isLoading = false
+            }
+        }
+    }
+
+    private func runInference(image: UIImage) throws -> [YOLOEDetection] {
+        guard let model = mlModel else {
+            throw NSError(domain: "YOLOERoom", code: 2, userInfo: [NSLocalizedDescriptionKey: "Model not loaded"])
+        }
+
+        // Resize to 1280x1280
+        guard let resized = resizeImage(image, to: CGSize(width: 1280, height: 1280)),
+              let pixelBuffer = resized.pixelBuffer() else {
+            throw NSError(domain: "YOLOERoom", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare image"])
+        }
+
+        // Convert to MLMultiArray
+        guard let inputArray = pixelBufferToMLMultiArray(pixelBuffer) else {
+            throw NSError(domain: "YOLOERoom", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to convert image"])
+        }
+
+        // Run inference
+        let inputProvider = try MLDictionaryFeatureProvider(dictionary: ["image": inputArray])
+        let output = try model.prediction(from: inputProvider)
+
+        // Parse detections
+        guard let detArray = output.featureValue(for: "var_2497")?.multiArrayValue else {
+            throw NSError(domain: "YOLOERoom", code: 5, userInfo: [NSLocalizedDescriptionKey: "No detection output"])
+        }
+
+        return parseDetections(detArray, confidenceThreshold: 0.25)
+    }
+
+    private func parseDetections(_ detArray: MLMultiArray, confidenceThreshold: Float) -> [YOLOEDetection] {
+        let numFeatures = detArray.shape[1].intValue
+        let numAnchors = detArray.shape[2].intValue
+        let numClasses = numFeatures - 4 - 32
+
+        guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else { return [] }
+
+        // Copy to float buffer
+        let totalCount = detArray.count
+        var detBuf = [Float](repeating: 0, count: totalCount)
+
+        if detArray.dataType == .float32 {
+            memcpy(&detBuf, detArray.dataPointer, totalCount * MemoryLayout<Float>.size)
+        } else if detArray.dataType == .float16 {
+            let src = detArray.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
+            for i in 0..<totalCount {
+                detBuf[i] = Float(float16ToFloat32(src[i]))
+            }
+        }
+
+        let stride = numAnchors
+        var results: [YOLOEDetection] = []
+
+        for anchor in 0..<numAnchors {
+            let x = detBuf[0 * stride + anchor]
+            let y = detBuf[1 * stride + anchor]
+            let w = detBuf[2 * stride + anchor]
+            let h = detBuf[3 * stride + anchor]
+
+            guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
+
+            // Find max class score
+            var maxScore: Float = 0
+            var maxIdx = 0
+            for c in 0..<numClasses {
+                let score = detBuf[(4 + c) * stride + anchor]
+                if score > maxScore {
+                    maxScore = score
+                    maxIdx = c
+                }
+            }
+
+            guard maxScore > confidenceThreshold else { continue }
+
+            // Normalize bbox to 0-1
+            let bbox = CGRect(
+                x: CGFloat((x - w/2) / 1280),
+                y: CGFloat((y - h/2) / 1280),
+                width: CGFloat(w / 1280),
+                height: CGFloat(h / 1280)
+            )
+
+            let className = classNames[maxIdx] ?? "object_\(maxIdx)"
+            results.append(YOLOEDetection(classId: maxIdx, className: className, confidence: maxScore, bbox: bbox))
+        }
+
+        // Apply simple NMS
+        return applyNMS(results, iouThreshold: 0.5)
+    }
+
+    private func applyNMS(_ detections: [YOLOEDetection], iouThreshold: Float) -> [YOLOEDetection] {
+        var sorted = detections.sorted { $0.confidence > $1.confidence }
+        var kept: [YOLOEDetection] = []
+
+        while !sorted.isEmpty {
+            let current = sorted.removeFirst()
+            kept.append(current)
+
+            sorted.removeAll { det in
+                iou(current.bbox, det.bbox) > CGFloat(iouThreshold)
+            }
+        }
+        return kept
+    }
+
+    private func iou(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        let intersection = a.intersection(b)
+        if intersection.isNull { return 0 }
+        let interArea = intersection.width * intersection.height
+        let unionArea = a.width * a.height + b.width * b.height - interArea
+        return unionArea > 0 ? interArea / unionArea : 0
+    }
+
+    private func buildScene(from detections: [YOLOEDetection], imageSize: CGSize) -> SCNScene {
+        let scene = SCNScene()
+
+        // Room dimensions from settings
+        let roomWidth: Float = Float(UserDefaults.standard.double(forKey: "singlePhotoRoom.width"))
+        let roomDepth: Float = Float(UserDefaults.standard.double(forKey: "singlePhotoRoom.depth"))
+        let roomHeight: Float = Float(UserDefaults.standard.double(forKey: "singlePhotoRoom.height"))
+
+        let w = roomWidth > 0 ? roomWidth : 4.0
+        let d = roomDepth > 0 ? roomDepth : 4.5
+        let h = roomHeight > 0 ? roomHeight : 2.8
+
+        // Add floor
+        let floor = SCNBox(width: CGFloat(w), height: 0.02, length: CGFloat(d), chamferRadius: 0)
+        floor.firstMaterial?.diffuse.contents = UIColor(white: 0.9, alpha: 1)
+        let floorNode = SCNNode(geometry: floor)
+        floorNode.position = SCNVector3(0, 0, 0)
+        scene.rootNode.addChildNode(floorNode)
+
+        // Add walls (back wall)
+        let backWall = SCNBox(width: CGFloat(w), height: CGFloat(h), length: 0.02, chamferRadius: 0)
+        backWall.firstMaterial?.diffuse.contents = UIColor(white: 0.95, alpha: 1)
+        let backNode = SCNNode(geometry: backWall)
+        backNode.position = SCNVector3(0, h/2, -d/2)
+        scene.rootNode.addChildNode(backNode)
+
+        // Left wall
+        let leftWall = SCNBox(width: 0.02, height: CGFloat(h), length: CGFloat(d), chamferRadius: 0)
+        leftWall.firstMaterial?.diffuse.contents = UIColor(white: 0.92, alpha: 1)
+        let leftNode = SCNNode(geometry: leftWall)
+        leftNode.position = SCNVector3(-w/2, h/2, 0)
+        scene.rootNode.addChildNode(leftNode)
+
+        // Right wall
+        let rightWall = SCNBox(width: 0.02, height: CGFloat(h), length: CGFloat(d), chamferRadius: 0)
+        rightWall.firstMaterial?.diffuse.contents = UIColor(white: 0.92, alpha: 1)
+        let rightNode = SCNNode(geometry: rightWall)
+        rightNode.position = SCNVector3(w/2, h/2, 0)
+        scene.rootNode.addChildNode(rightNode)
+
+        // Add furniture boxes from detections
+        let colors: [UIColor] = [.systemBlue, .systemGreen, .systemOrange, .systemPurple, .systemPink, .systemTeal]
+
+        for (i, det) in detections.enumerated() {
+            // Map 2D bbox to 3D position
+            // bbox.x = horizontal position (0=left, 1=right)
+            // bbox.y = vertical position (0=top, 1=bottom)
+            // Items lower in image (higher Y) are CLOSER to camera (positive Z)
+
+            let centerX = Float(det.bbox.midX - 0.5) * w  // Left-right mapping
+
+            // Depth mapping: bottom of image = front of room, top = back
+            // bbox.maxY gives the bottom of the detection (feet of furniture)
+            let depthFactor = Float(det.bbox.maxY)  // 0=top (far), 1=bottom (near)
+            let centerZ = (depthFactor - 0.5) * d  // Maps to [-d/2, +d/2], positive = closer
+
+            // Estimate furniture size from bbox (smaller if further away)
+            let perspectiveScale = 0.5 + depthFactor * 0.5  // Items at bottom appear larger
+            let furnitureWidth = Float(det.bbox.width) * w * 0.6 * perspectiveScale
+            let furnitureDepth = Float(det.bbox.height) * d * 0.4 * perspectiveScale
+            let furnitureHeight = min(furnitureWidth, furnitureDepth) * 0.8 + 0.4  // Heuristic height
+
+            // Create furniture box
+            let box = SCNBox(
+                width: CGFloat(furnitureWidth),
+                height: CGFloat(furnitureHeight),
+                length: CGFloat(furnitureDepth),
+                chamferRadius: 0.02
+            )
+
+            let color = colors[i % colors.count]
+            box.firstMaterial?.diffuse.contents = color.withAlphaComponent(0.7)
+
+            let node = SCNNode(geometry: box)
+            node.position = SCNVector3(centerX, furnitureHeight/2, centerZ)
+            node.name = det.className
+
+            // Add label
+            let text = SCNText(string: det.className, extrusionDepth: 0.01)
+            text.font = UIFont.systemFont(ofSize: 0.1)
+            text.firstMaterial?.diffuse.contents = UIColor.white
+            let textNode = SCNNode(geometry: text)
+            textNode.position = SCNVector3(-furnitureWidth/2, furnitureHeight + 0.05, 0)
+            textNode.scale = SCNVector3(0.5, 0.5, 0.5)
+            node.addChildNode(textNode)
+
+            scene.rootNode.addChildNode(node)
+        }
+
+        // Add lighting
+        let ambientLight = SCNLight()
+        ambientLight.type = .ambient
+        ambientLight.intensity = 500
+        let ambientNode = SCNNode()
+        ambientNode.light = ambientLight
+        scene.rootNode.addChildNode(ambientNode)
+
+        let directionalLight = SCNLight()
+        directionalLight.type = .directional
+        directionalLight.intensity = 800
+        let lightNode = SCNNode()
+        lightNode.light = directionalLight
+        lightNode.position = SCNVector3(0, h, d)
+        lightNode.look(at: SCNVector3(0, 0, 0))
+        scene.rootNode.addChildNode(lightNode)
+
+        // Add camera
+        let camera = SCNCamera()
+        camera.zNear = 0.1
+        camera.zFar = 100
+        camera.fieldOfView = 60
+        let cameraNode = SCNNode()
+        cameraNode.camera = camera
+        cameraNode.position = SCNVector3(0, h * 0.6, d * 1.5)
+        cameraNode.look(at: SCNVector3(0, h * 0.3, 0))
+        scene.rootNode.addChildNode(cameraNode)
+
+        return scene
+    }
+
+    // MARK: - Helper Functions
+
+    private func resizeImage(_ image: UIImage, to size: CGSize) -> UIImage? {
+        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        image.draw(in: CGRect(origin: .zero, size: size))
+        let resized = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        return resized
+    }
+
+    private func pixelBufferToMLMultiArray(_ pixelBuffer: CVPixelBuffer) -> MLMultiArray? {
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        guard width == 1280, height == 1280 else { return nil }
+        guard let array = try? MLMultiArray(shape: [1, 3, 1280, 1280], dataType: .float32) else { return nil }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let src = baseAddress.assumingMemoryBound(to: UInt8.self)
+        let pixelCount = width * height
+
+        let rPtr = array.dataPointer.assumingMemoryBound(to: Float32.self)
+        let gPtr = rPtr.advanced(by: pixelCount)
+        let bPtr = gPtr.advanced(by: pixelCount)
+
+        for y in 0..<height {
+            let row = src.advanced(by: y * bytesPerRow)
+            for x in 0..<width {
+                let pixel = row.advanced(by: x * 4)
+                let idx = y * width + x
+                rPtr[idx] = Float32(pixel[2]) / 255.0  // R
+                gPtr[idx] = Float32(pixel[1]) / 255.0  // G
+                bPtr[idx] = Float32(pixel[0]) / 255.0  // B
+            }
+        }
+        return array
+    }
+
+    private func float16ToFloat32(_ value: UInt16) -> Float {
+        let sign = (value & 0x8000) >> 15
+        let exp = (value & 0x7C00) >> 10
+        let frac = value & 0x03FF
+
+        if exp == 0 {
+            if frac == 0 { return sign == 0 ? 0.0 : -0.0 }
+            // Subnormal
+            var f = Float(frac) / 1024.0
+            f *= pow(2.0, -14.0)
+            return sign == 0 ? f : -f
+        } else if exp == 31 {
+            if frac == 0 { return sign == 0 ? .infinity : -.infinity }
+            return .nan
+        }
+
+        let f = (1.0 + Float(frac) / 1024.0) * pow(2.0, Float(Int(exp) - 15))
+        return sign == 0 ? f : -f
+    }
+}
+
+// MARK: - UIImage Extension for PixelBuffer
+extension UIImage {
+    func pixelBuffer() -> CVPixelBuffer? {
+        let width = Int(size.width)
+        let height = Int(size.height)
+
+        var pixelBuffer: CVPixelBuffer?
+        let attrs: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+        ]
+
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width, height,
+            kCVPixelFormatType_32BGRA,
+            attrs as CFDictionary,
+            &pixelBuffer
+        )
+
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else { return nil }
+
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+
+        guard let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer),
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        ) else { return nil }
+
+        guard let cgImage = self.cgImage else { return nil }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        return buffer
     }
 }
 

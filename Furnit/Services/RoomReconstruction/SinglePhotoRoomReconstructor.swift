@@ -14,6 +14,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     @Published var estimatedDimensions: RoomDimensions?
     @Published var generatedRoomScene: SCNScene? // ✅ CHANGED: from URL to SCNScene
     @Published var splatCount: Int = 0  // Track splat count
+    @Published var rawSplats: [GaussianSplat] = []  // Raw splats for Metal renderer
 
     // MARK: - Dependencies
     private let depthEstimator = DepthEstimator()
@@ -27,6 +28,12 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         var depth: Float = 4.5
         var height: Float = 2.8
         var confidence: Float = 0.3
+    }
+
+    // MARK: - Room Build Mode
+    enum RoomBuildMode {
+        case fullPlanes           // Layer-1: all 5 planes (floor, ceiling, front, left, right)
+        case frontWallPlusSplats  // Hybrid: only front wall plane, SHARP handles the rest
     }
 
     // MARK: - Gaussian Splat Representation
@@ -172,19 +179,22 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             dimensions: dimensions,
             structure: roomStructure,
             originalImage: fixedImage,
-            depthMap: depthMap
+            depthMap: depthMap,
+            mode: .fullPlanes  // ✅ Build floor + 4 walls + ceiling
         )
 
         logDebug("✅ [Reconstructor] Step 4: 3D room built (SceneKit scene created)")
 
         if let roomScene = roomScene {
-            // Add Gaussian splats AFTER room is built
+            // 🚫 DISABLED: Don't render splats as balls - just use textured planes
+            /*
             if splatService.isModelLoaded && !splatService.isModelLoading {
                 await updateProgress(0.9, "Adding detail with Gaussian splats...")
                 await addSplatsToScene(roomScene, image: fixedImage, boundaries: roomStructure, dimensions: dimensions)
             } else {
                 logDebug("⚠️ [Reconstructor] SHARP model not loaded yet, skipping splats for now")
             }
+            */
         } else {
             logDebug("❌ [Reconstructor] Step 4: Failed to build 3D room")
         }
@@ -263,6 +273,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
 
             await MainActor.run {
                 self.splatCount = splatsForScene.count
+                self.rawSplats = splatsForScene  // Store for Metal renderer
             }
 
             // Generate foreground mask from splats to remove furniture from wall texture
@@ -285,17 +296,21 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             structure: roomStructure,
             originalImage: fixedImage,
             depthMap: depthMap,
-            foregroundMask: foregroundMask  // Pass mask to remove furniture from wall
+            foregroundMask: foregroundMask,  // ✅ Pass SHARP mask for texture inpainting
+            mode: .fullPlanes                // ✅ Build floor + 4 walls + ceiling
         )
 
         if let scene = roomScene {
             logDebug("✅ [Reconstructor] Room scene created successfully in memory")
 
-            // Add splats to scene (already generated above)
+            // 🚫 DISABLED: Don't render splats as balls - just use textured planes
+            // Splats are only used for mask generation, not visual rendering
+            /*
             if !splatsForScene.isEmpty {
                 await updateProgress(0.85, "Adding Gaussian splats...")
                 await addSplatsToSceneFromCache(scene, splats: splatsForScene, boundaries: boundaries, dimensions: dimensions)
             }
+            */
         }
 
         await MainActor.run {
@@ -515,9 +530,11 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         structure: RoomStructure,
         originalImage: UIImage,
         depthMap: CIImage,
-        foregroundMask: CGImage? = nil
+        foregroundMask: CGImage? = nil,
+        mode: RoomBuildMode = .fullPlanes
     ) async -> SCNScene? {
         logDebug("🏗️ [RoomBuilder] Starting TEXTURED room construction")
+        logDebug("   - Mode: \(mode == .fullPlanes ? "fullPlanes (5 walls)" : "frontWallPlusSplats (front wall only + SHARP)")")
         logDebug("   - Dimensions: W:\(dimensions.width) D:\(dimensions.depth) H:\(dimensions.height)")
         logDebug("   - Foreground mask: \(foregroundMask != nil ? "provided (furniture will be removed from ALL surfaces)" : "none")")
 
@@ -548,35 +565,39 @@ class SinglePhotoRoomReconstructor: ObservableObject {
 
         let wallColor = sampleWallColor(from: originalImage) ?? UIColor(white: 0.92, alpha: 1.0)
 
-        // FLOOR - With texture from photo
-        logDebug("🔨 Creating FLOOR with texture...")
-        let floor = SCNBox(width: CGFloat(dimensions.width),
-                           height: 0.01,
-                           length: CGFloat(dimensions.depth),
-                           chamferRadius: 0)
-        let floorMaterial = SCNMaterial()
-        configureMaterialForUSDZExport(floorMaterial, texture: floorTexture)
-        floor.materials = [floorMaterial]
+        // FLOOR - With texture from photo (skip in frontWallPlusSplats mode)
+        if mode == .fullPlanes {
+            logDebug("🔨 Creating FLOOR with texture...")
+            let floor = SCNBox(width: CGFloat(dimensions.width),
+                               height: 0.01,
+                               length: CGFloat(dimensions.depth),
+                               chamferRadius: 0)
+            let floorMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(floorMaterial, texture: floorTexture)
+            floor.materials = [floorMaterial]
 
-        let floorNode = SCNNode(geometry: floor)
-        floorNode.position = SCNVector3(0, 0, 0)
-        roomNode.addChildNode(floorNode)
-        logDebug("✅ FLOOR at y=0")
+            let floorNode = SCNNode(geometry: floor)
+            floorNode.position = SCNVector3(0, 0, 0)
+            roomNode.addChildNode(floorNode)
+            logDebug("✅ FLOOR at y=0")
+        }
 
-        // CEILING - With texture from photo
-        logDebug("🔨 Creating CEILING...")
-        let ceiling = SCNBox(width: CGFloat(dimensions.width),
-                             height: 0.01,
-                             length: CGFloat(dimensions.depth),
-                             chamferRadius: 0)
-        let ceilingMaterial = SCNMaterial()
-        configureMaterialForUSDZExport(ceilingMaterial, texture: ceilingTexture)
-        ceiling.materials = [ceilingMaterial]
+        // CEILING - With texture from photo (skip in frontWallPlusSplats mode)
+        if mode == .fullPlanes {
+            logDebug("🔨 Creating CEILING...")
+            let ceiling = SCNBox(width: CGFloat(dimensions.width),
+                                 height: 0.01,
+                                 length: CGFloat(dimensions.depth),
+                                 chamferRadius: 0)
+            let ceilingMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(ceilingMaterial, texture: ceilingTexture)
+            ceiling.materials = [ceilingMaterial]
 
-        let ceilingNode = SCNNode(geometry: ceiling)
-        ceilingNode.position = SCNVector3(0, dimensions.height, 0)
-        roomNode.addChildNode(ceilingNode)
-        logDebug("✅ CEILING at y=\(dimensions.height)")
+            let ceilingNode = SCNNode(geometry: ceiling)
+            ceilingNode.position = SCNVector3(0, dimensions.height, 0)
+            roomNode.addChildNode(ceilingNode)
+            logDebug("✅ CEILING at y=\(dimensions.height)")
+        }
 
         // FRONT WALL - With YOUR PHOTO texture
         logDebug("🔨 Creating FRONT WALL with photo texture...")
@@ -593,37 +614,41 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         roomNode.addChildNode(frontNode)
         logDebug("✅ FRONT WALL with photo at z=-\(dimensions.depth/2)")
 
-        // LEFT WALL - With texture from left strip of image
-        logDebug("🔨 Creating LEFT WALL...")
-        let leftWall = SCNBox(width: CGFloat(dimensions.depth),
-                              height: CGFloat(dimensions.height),
-                              length: 0.01,
-                              chamferRadius: 0)
-        let leftMaterial = SCNMaterial()
-        configureMaterialForUSDZExport(leftMaterial, texture: leftWallTexture)
-        leftWall.materials = [leftMaterial]
+        // LEFT WALL - With texture from left strip of image (skip in frontWallPlusSplats mode)
+        if mode == .fullPlanes {
+            logDebug("🔨 Creating LEFT WALL...")
+            let leftWall = SCNBox(width: CGFloat(dimensions.depth),
+                                  height: CGFloat(dimensions.height),
+                                  length: 0.01,
+                                  chamferRadius: 0)
+            let leftMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(leftMaterial, texture: leftWallTexture)
+            leftWall.materials = [leftMaterial]
 
-        let leftWallNode = SCNNode(geometry: leftWall)
-        leftWallNode.position = SCNVector3(-Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
-        leftWallNode.eulerAngles = SCNVector3(0, Float.pi / 2, 0)
-        roomNode.addChildNode(leftWallNode)
-        logDebug("✅ LEFT WALL at x=-\(dimensions.width/2)")
+            let leftWallNode = SCNNode(geometry: leftWall)
+            leftWallNode.position = SCNVector3(-Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
+            leftWallNode.eulerAngles = SCNVector3(0, Float.pi / 2, 0)
+            roomNode.addChildNode(leftWallNode)
+            logDebug("✅ LEFT WALL at x=-\(dimensions.width/2)")
+        }
 
-        // RIGHT WALL - With texture from right strip of image
-        logDebug("🔨 Creating RIGHT WALL...")
-        let rightWall = SCNBox(width: CGFloat(dimensions.depth),
-                               height: CGFloat(dimensions.height),
-                               length: 0.01,
-                               chamferRadius: 0)
-        let rightMaterial = SCNMaterial()
-        configureMaterialForUSDZExport(rightMaterial, texture: rightWallTexture)
-        rightWall.materials = [rightMaterial]
+        // RIGHT WALL - With texture from right strip of image (skip in frontWallPlusSplats mode)
+        if mode == .fullPlanes {
+            logDebug("🔨 Creating RIGHT WALL...")
+            let rightWall = SCNBox(width: CGFloat(dimensions.depth),
+                                   height: CGFloat(dimensions.height),
+                                   length: 0.01,
+                                   chamferRadius: 0)
+            let rightMaterial = SCNMaterial()
+            configureMaterialForUSDZExport(rightMaterial, texture: rightWallTexture)
+            rightWall.materials = [rightMaterial]
 
-        let rightWallNode = SCNNode(geometry: rightWall)
-        rightWallNode.position = SCNVector3(Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
-        rightWallNode.eulerAngles = SCNVector3(0, -Float.pi / 2, 0)
-        roomNode.addChildNode(rightWallNode)
-        logDebug("✅ RIGHT WALL at x=+\(dimensions.width/2)")
+            let rightWallNode = SCNNode(geometry: rightWall)
+            rightWallNode.position = SCNVector3(Float(dimensions.width) / 2, Float(dimensions.height) / 2, 0)
+            rightWallNode.eulerAngles = SCNVector3(0, -Float.pi / 2, 0)
+            roomNode.addChildNode(rightWallNode)
+            logDebug("✅ RIGHT WALL at x=+\(dimensions.width/2)")
+        }
 
         // Basic lighting so room is visible in SceneKit
         let ambientLight = SCNLight()
@@ -1845,8 +1870,10 @@ final class SHARPSplatService {
         // Compute scene statistics for UV normalization
         let stats = computeSharpStats(from: splats)
 
-        // DEBUG: Set to false for actual colors, true for magenta debug
-        let debugVisibility = false
+        // Color mode: .sharpRadiance = rainbow colors, .neutralWhite = geometry debug, .magenta = visibility debug
+        enum SplatColorMode { case sharpRadiance, neutralWhite, magenta }
+        let colorMode: SplatColorMode = .neutralWhite  // 🔧 Change to see geometry without rainbow
+
         let sphereRadius: CGFloat = 0.02  // 2cm spheres
 
         var placedCount = 0
@@ -1862,12 +1889,17 @@ final class SHARPSplatService {
             let sphere = SCNSphere(radius: sphereRadius)
             let material = SCNMaterial()
 
-            if debugVisibility {
+            switch colorMode {
+            case .magenta:
                 // DEBUG: Bright magenta to spot against room
                 material.diffuse.contents = UIColor.magenta
                 material.transparency = 0.7
-            } else {
-                // Use actual SHARP colors
+            case .neutralWhite:
+                // Neutral white - shows geometry without distracting rainbow
+                material.diffuse.contents = UIColor.white
+                material.transparency = CGFloat(1.0 - min(max(splat.opacity, 0.1), 0.8))
+            case .sharpRadiance:
+                // Use actual SHARP colors (rainbow)
                 material.diffuse.contents = UIColor(
                     red: CGFloat(splat.color.x),
                     green: CGFloat(splat.color.y),
