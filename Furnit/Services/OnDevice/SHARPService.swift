@@ -96,9 +96,9 @@ class SHARPService: ObservableObject {
             let config = MLModelConfiguration()
             config.computeUnits = .cpuOnly  // CPU-only to avoid GPU/ANE memory issues
 
-            // Use the Xcode auto-generated SHARP model class with async loading
+            // Use the Xcode auto-generated SHARP_fp16 model class with async loading
             logDebug("SHARP: Loading via auto-generated model class (async)...")
-            let sharpModel = try await SHARP.load(configuration: config)
+            let sharpModel = try await SHARP_fp16.load(configuration: config)
             model = sharpModel.model
             logDebug("SHARP: Model loaded successfully")
 
@@ -122,6 +122,8 @@ class SHARPService: ObservableObject {
         }
 
         guard model != nil else {
+            status = .failed("SHARP model failed to load. Check device memory.")
+            statusMessage = "Model load failed"
             throw GenerationError.serverError("SHARP model failed to load. Check device memory.")
         }
 
@@ -130,29 +132,37 @@ class SHARPService: ObservableObject {
         statusMessage = "Preprocessing image..."
         progress = 0.0
 
-        // Step 1: Preprocess image
-        progress = 0.1
-        let inputArray = try await preprocessImage(image)
-        logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
+        do {
+            // Step 1: Preprocess image
+            progress = 0.1
+            let inputBuffer = try await preprocessImage(image)
+            logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
 
-        // Step 2: Run inference
-        statusMessage = "Generating 3D Gaussians..."
-        progress = 0.2
-        let gaussianParams = try await runInference(inputArray)
-        logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
+            // Step 2: Run inference
+            statusMessage = "Generating 3D Gaussians..."
+            progress = 0.2
+            let gaussianParams = try await runInference(inputBuffer)
+            logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
 
-        // Step 3: Write PLY file
-        statusMessage = "Saving model..."
-        progress = 0.8
-        let plyURL = try await writePLY(gaussianParams)
-        logDebug("SHARP: Saved PLY to \(plyURL.path)")
+            // Step 3: Write PLY file
+            statusMessage = "Saving model..."
+            progress = 0.8
+            let plyURL = try await writePLY(gaussianParams)
+            logDebug("SHARP: Saved PLY to \(plyURL.path)")
 
-        // Complete
-        progress = 1.0
-        status = .completed(fileURL: plyURL)
-        statusMessage = "Complete!"
+            // Complete
+            progress = 1.0
+            status = .completed(fileURL: plyURL)
+            statusMessage = "Complete!"
 
-        return plyURL
+            return plyURL
+        } catch {
+            // Update status on failure so UI can show error
+            status = .failed(error.localizedDescription)
+            statusMessage = "Generation failed"
+            logDebug("SHARP: Generation failed: \(error)")
+            throw error
+        }
     }
 
     /// Cancel current generation (if any)
@@ -165,173 +175,194 @@ class SHARPService: ObservableObject {
 
     /// Preprocess image for SHARP model input
     /// - Parameter image: Source UIImage
-    /// - Returns: MLMultiArray with shape [1, 3, 1536, 1536]
-    private func preprocessImage(_ image: UIImage) async throws -> MLMultiArray {
+    /// - Returns: CVPixelBuffer sized to 1536x1536 (model expects Image type)
+    private func preprocessImage(_ image: UIImage) async throws -> CVPixelBuffer {
         guard let cgImage = image.cgImage else {
             throw GenerationError.invalidImage
         }
 
-        // Use Metal for fast image scaling if available
-        if let device = metalDevice, let commandQueue = commandQueue, let scaler = imageScaler {
-            return try await preprocessWithMetal(cgImage, device: device, commandQueue: commandQueue, scaler: scaler)
-        } else {
-            return try preprocessWithCPU(cgImage)
-        }
-    }
-
-    /// Metal-accelerated image preprocessing
-    private func preprocessWithMetal(
-        _ cgImage: CGImage,
-        device: MTLDevice,
-        commandQueue: MTLCommandQueue,
-        scaler: MPSImageBilinearScale
-    ) async throws -> MLMultiArray {
         let size = Self.inputSize
 
-        // Create source texture from CGImage
-        let textureLoader = MTKTextureLoader(device: device)
-        let sourceTexture = try await textureLoader.newTexture(cgImage: cgImage, options: [
-            .textureUsage: MTLTextureUsage.shaderRead.rawValue,
-            .textureStorageMode: MTLStorageMode.shared.rawValue
-        ])
+        // Create CVPixelBuffer for CoreML Image input
+        var pixelBuffer: CVPixelBuffer?
+        let attrs = [
+            kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue!,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue!,
+            kCVPixelBufferMetalCompatibilityKey: kCFBooleanTrue!
+        ] as CFDictionary
 
-        // Create destination texture
-        let destDescriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm,
-            width: size,
-            height: size,
-            mipmapped: false
-        )
-        destDescriptor.usage = [.shaderRead, .shaderWrite]
-        destDescriptor.storageMode = .shared
-
-        guard let destTexture = device.makeTexture(descriptor: destDescriptor) else {
-            throw GenerationError.serverError("Failed to create Metal texture")
-        }
-
-        // Scale image using MPS
-        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
-            throw GenerationError.serverError("Failed to create command buffer")
-        }
-
-        scaler.encode(commandBuffer: commandBuffer, sourceTexture: sourceTexture, destinationTexture: destTexture)
-        commandBuffer.commit()
-        await commandBuffer.completed()
-
-        // Read back pixel data
-        var pixelData = [UInt8](repeating: 0, count: size * size * 4)
-        destTexture.getBytes(
-            &pixelData,
-            bytesPerRow: size * 4,
-            from: MTLRegion(origin: MTLOrigin(x: 0, y: 0, z: 0), size: MTLSize(width: size, height: size, depth: 1)),
-            mipmapLevel: 0
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            size,
+            size,
+            kCVPixelFormatType_32BGRA,
+            attrs,
+            &pixelBuffer
         )
 
-        // Convert to MLMultiArray [1, 3, H, W] with float values in [0, 1]
-        return try createMLMultiArray(from: pixelData, size: size)
-    }
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            throw GenerationError.serverError("Failed to create pixel buffer")
+        }
 
-    /// CPU fallback for image preprocessing using Accelerate
-    private func preprocessWithCPU(_ cgImage: CGImage) throws -> MLMultiArray {
-        let size = Self.inputSize
-
-        // Create bitmap context for resizing
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        var pixelData = [UInt8](repeating: 0, count: size * size * 4)
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
 
         guard let context = CGContext(
-            data: &pixelData,
+            data: CVPixelBufferGetBaseAddress(buffer),
             width: size,
             height: size,
             bitsPerComponent: 8,
-            bytesPerRow: size * 4,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
         ) else {
-            throw GenerationError.invalidImage
+            throw GenerationError.serverError("Failed to create graphics context")
         }
 
-        // Draw resized image
+        // Draw resized image into pixel buffer
         context.interpolationQuality = .high
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
 
-        return try createMLMultiArray(from: pixelData, size: size)
-    }
-
-    /// Convert pixel data to MLMultiArray using vDSP for fast memory operations
-    private func createMLMultiArray(from pixelData: [UInt8], size: Int) throws -> MLMultiArray {
-        let array = try MLMultiArray(shape: [1, 3, NSNumber(value: size), NSNumber(value: size)], dataType: .float32)
-        let pixelCount = size * size
-        let ptr = array.dataPointer.bindMemory(to: Float.self, capacity: 3 * pixelCount)
-
-        // Process one channel at a time to minimize memory usage
-        // Write directly to MLMultiArray without intermediate arrays
-        pixelData.withUnsafeBufferPointer { srcBuffer in
-            let src = srcBuffer.baseAddress!
-
-            // Red channel (stride 4 from offset 0)
-            for i in 0..<pixelCount {
-                ptr[i] = Float(src[i * 4]) / 255.0
-            }
-
-            // Green channel (stride 4 from offset 1)
-            let gPtr = ptr.advanced(by: pixelCount)
-            for i in 0..<pixelCount {
-                gPtr[i] = Float(src[i * 4 + 1]) / 255.0
-            }
-
-            // Blue channel (stride 4 from offset 2)
-            let bPtr = ptr.advanced(by: 2 * pixelCount)
-            for i in 0..<pixelCount {
-                bPtr[i] = Float(src[i * 4 + 2]) / 255.0
-            }
-        }
-
-        return array
+        return buffer
     }
 
     // MARK: - Model Inference
 
     /// Run SHARP model inference
-    private func runInference(_ input: MLMultiArray) async throws -> [Float] {
+    /// SHARP_fp16 outputs 5 separate arrays that we combine into interleaved format
+    private func runInference(_ input: CVPixelBuffer) async throws -> [Float] {
         guard let model = model else {
             throw GenerationError.serverError("Model not loaded")
         }
 
         logDebug("SHARP: Running inference...")
 
-        // Create feature provider
-        let inputFeatures = try MLDictionaryFeatureProvider(dictionary: ["image": input])
+        // Create feature provider with CVPixelBuffer as Image type
+        let imageFeature = MLFeatureValue(pixelBuffer: input)
+        let inputFeatures = try MLDictionaryFeatureProvider(dictionary: ["image": imageFeature])
 
         // Run prediction
         let output = try await model.prediction(from: inputFeatures)
 
-        logDebug("SHARP: Inference complete, extracting output...")
+        logDebug("SHARP: Inference complete, extracting outputs...")
 
-        // Extract Gaussian parameters
-        guard let gaussians = output.featureValue(for: "gaussians")?.multiArrayValue else {
-            throw GenerationError.serverError("Invalid model output")
+        // SHARP_fp16 outputs separate arrays:
+        // - var_5420: positions (1 × N × 3)
+        // - var_5424: scales (1 × N × 3)
+        // - var_5412: rotations (1 × N × 4)
+        // - var_5415: colors (1 × N × 3)
+        // - var_5416: opacity (1 × N)
+        guard let positions = output.featureValue(for: "var_5420")?.multiArrayValue,
+              let scales = output.featureValue(for: "var_5424")?.multiArrayValue,
+              let rotations = output.featureValue(for: "var_5412")?.multiArrayValue,
+              let colors = output.featureValue(for: "var_5415")?.multiArrayValue,
+              let opacities = output.featureValue(for: "var_5416")?.multiArrayValue else {
+            // Log available features for debugging
+            let availableFeatures = output.featureNames.joined(separator: ", ")
+            logDebug("SHARP: Available features: \(availableFeatures)")
+            throw GenerationError.serverError("Invalid model output - missing features")
         }
 
-        // Model outputs Float16 - convert to Float32 for PLY writing
-        let count = gaussians.count
-        var result = [Float](repeating: 0, count: count)
+        // Debug: log actual shapes and data types to verify layout
+        logDebug("SHARP: Output shapes and types:")
+        logDebug("  positions: \(positions.shape) strides: \(positions.strides) dtype: \(positions.dataType.rawValue)")
+        logDebug("  scales: \(scales.shape) strides: \(scales.strides) dtype: \(scales.dataType.rawValue)")
+        logDebug("  rotations: \(rotations.shape) strides: \(rotations.strides) dtype: \(rotations.dataType.rawValue)")
+        logDebug("  colors: \(colors.shape) strides: \(colors.strides) dtype: \(colors.dataType.rawValue)")
+        logDebug("  opacities: \(opacities.shape) strides: \(opacities.strides) dtype: \(opacities.dataType.rawValue)")
+        // MLMultiArrayDataType: 65552 = float16, 65568 = float32
 
-        // Check data type and convert accordingly
-        if gaussians.dataType == .float16 {
-            let srcPtr = gaussians.dataPointer.bindMemory(to: Float16.self, capacity: count)
-            for i in 0..<count {
-                result[i] = Float(srcPtr[i])
+        // Get gaussian count from positions array (shape: 1 × N × 3)
+        let gaussianCount = positions.shape[1].intValue
+        logDebug("SHARP: Found \(gaussianCount) gaussians")
+
+        // Combine into interleaved format: pos(3) + scale(3) + rot(4) + opacity(1) + color(3) = 14
+        var result = [Float](repeating: 0, count: gaussianCount * Self.paramsPerGaussian)
+
+        // Check if Float16 or Float32
+        let isFloat16 = positions.dataType == .float16
+        logDebug("SHARP: Data type is \(isFloat16 ? "Float16" : "Float32")")
+
+        // Debug: sample first gaussian values using subscript (safe, respects strides)
+        logDebug("SHARP: Sample gaussian 0 (via subscript):")
+        logDebug("  pos: (\(positions[[0,0,0] as [NSNumber]]), \(positions[[0,0,1] as [NSNumber]]), \(positions[[0,0,2] as [NSNumber]]))")
+        logDebug("  scale: (\(scales[[0,0,0] as [NSNumber]]), \(scales[[0,0,1] as [NSNumber]]), \(scales[[0,0,2] as [NSNumber]]))")
+        logDebug("  rot: (\(rotations[[0,0,0] as [NSNumber]]), \(rotations[[0,0,1] as [NSNumber]]), \(rotations[[0,0,2] as [NSNumber]]), \(rotations[[0,0,3] as [NSNumber]]))")
+        logDebug("  color: (\(colors[[0,0,0] as [NSNumber]]), \(colors[[0,0,1] as [NSNumber]]), \(colors[[0,0,2] as [NSNumber]]))")
+        logDebug("  opacity: \(opacities[[0,0] as [NSNumber]])")
+
+        // Get strides for proper indexing (strides are in element counts, not bytes)
+        let posStrides = positions.strides.map { $0.intValue }
+        let scaleStrides = scales.strides.map { $0.intValue }
+        let rotStrides = rotations.strides.map { $0.intValue }
+        let colorStrides = colors.strides.map { $0.intValue }
+        let opacityStrides = opacities.strides.map { $0.intValue }
+
+        logDebug("SHARP: Using strides - pos:\(posStrides) scale:\(scaleStrides) rot:\(rotStrides) color:\(colorStrides) opacity:\(opacityStrides)")
+
+        // Interleave data using stride-aware indexing
+        if isFloat16 {
+            let posPtr = positions.dataPointer.bindMemory(to: Float16.self, capacity: positions.count)
+            let scalePtr = scales.dataPointer.bindMemory(to: Float16.self, capacity: scales.count)
+            let rotPtr = rotations.dataPointer.bindMemory(to: Float16.self, capacity: rotations.count)
+            let colorPtr = colors.dataPointer.bindMemory(to: Float16.self, capacity: colors.count)
+            let opacityPtr = opacities.dataPointer.bindMemory(to: Float16.self, capacity: opacities.count)
+
+            for i in 0..<gaussianCount {
+                let offset = i * Self.paramsPerGaussian
+                let posBase = i * posStrides[1]
+                let scaleBase = i * scaleStrides[1]
+                let rotBase = i * rotStrides[1]
+                let colorBase = i * colorStrides[1]
+
+                result[offset + 0] = Float(posPtr[posBase + 0 * posStrides[2]])
+                result[offset + 1] = Float(posPtr[posBase + 1 * posStrides[2]])
+                result[offset + 2] = Float(posPtr[posBase + 2 * posStrides[2]])
+                result[offset + 3] = Float(scalePtr[scaleBase + 0 * scaleStrides[2]])
+                result[offset + 4] = Float(scalePtr[scaleBase + 1 * scaleStrides[2]])
+                result[offset + 5] = Float(scalePtr[scaleBase + 2 * scaleStrides[2]])
+                result[offset + 6] = Float(rotPtr[rotBase + 0 * rotStrides[2]])
+                result[offset + 7] = Float(rotPtr[rotBase + 1 * rotStrides[2]])
+                result[offset + 8] = Float(rotPtr[rotBase + 2 * rotStrides[2]])
+                result[offset + 9] = Float(rotPtr[rotBase + 3 * rotStrides[2]])
+                result[offset + 10] = Float(opacityPtr[i * opacityStrides[1]])
+                result[offset + 11] = Float(colorPtr[colorBase + 0 * colorStrides[2]])
+                result[offset + 12] = Float(colorPtr[colorBase + 1 * colorStrides[2]])
+                result[offset + 13] = Float(colorPtr[colorBase + 2 * colorStrides[2]])
             }
         } else {
-            // Float32 fallback
-            let srcPtr = gaussians.dataPointer.bindMemory(to: Float.self, capacity: count)
-            result.withUnsafeMutableBufferPointer { destPtr in
-                vDSP_mmov(srcPtr, destPtr.baseAddress!, vDSP_Length(count), 1, 1, 1)
+            // Float32
+            let posPtr = positions.dataPointer.bindMemory(to: Float.self, capacity: positions.count)
+            let scalePtr = scales.dataPointer.bindMemory(to: Float.self, capacity: scales.count)
+            let rotPtr = rotations.dataPointer.bindMemory(to: Float.self, capacity: rotations.count)
+            let colorPtr = colors.dataPointer.bindMemory(to: Float.self, capacity: colors.count)
+            let opacityPtr = opacities.dataPointer.bindMemory(to: Float.self, capacity: opacities.count)
+
+            for i in 0..<gaussianCount {
+                let offset = i * Self.paramsPerGaussian
+                let posBase = i * posStrides[1]
+                let scaleBase = i * scaleStrides[1]
+                let rotBase = i * rotStrides[1]
+                let colorBase = i * colorStrides[1]
+
+                result[offset + 0] = posPtr[posBase + 0 * posStrides[2]]
+                result[offset + 1] = posPtr[posBase + 1 * posStrides[2]]
+                result[offset + 2] = posPtr[posBase + 2 * posStrides[2]]
+                result[offset + 3] = scalePtr[scaleBase + 0 * scaleStrides[2]]
+                result[offset + 4] = scalePtr[scaleBase + 1 * scaleStrides[2]]
+                result[offset + 5] = scalePtr[scaleBase + 2 * scaleStrides[2]]
+                result[offset + 6] = rotPtr[rotBase + 0 * rotStrides[2]]
+                result[offset + 7] = rotPtr[rotBase + 1 * rotStrides[2]]
+                result[offset + 8] = rotPtr[rotBase + 2 * rotStrides[2]]
+                result[offset + 9] = rotPtr[rotBase + 3 * rotStrides[2]]
+                result[offset + 10] = opacityPtr[i * opacityStrides[1]]
+                result[offset + 11] = colorPtr[colorBase + 0 * colorStrides[2]]
+                result[offset + 12] = colorPtr[colorBase + 1 * colorStrides[2]]
+                result[offset + 13] = colorPtr[colorBase + 2 * colorStrides[2]]
             }
         }
 
-        logDebug("SHARP: Extracted \(count) values")
+        logDebug("SHARP: Extracted \(result.count) values (\(gaussianCount) gaussians × 14 params)")
         return result
     }
 
@@ -428,7 +459,7 @@ class SHARPService: ObservableObject {
         let fileName = "Room_\(timestamp).ply"
         let fileURL = modelsDirectory.appendingPathComponent(fileName)
 
-        // Build PLY content
+        // Build PLY content - use uchar red/green/blue for proper color display
         let plyContent = """
         ply
         format binary_little_endian 1.0
@@ -444,9 +475,9 @@ class SHARPService: ObservableObject {
         property float rot_2
         property float rot_3
         property float opacity
-        property float f_dc_0
-        property float f_dc_1
-        property float f_dc_2
+        property uchar red
+        property uchar green
+        property uchar blue
         end_header\n
         """
 
@@ -501,13 +532,25 @@ class SHARPService: ObservableObject {
             var opacity = log(clampedOpacity / (1.0 - clampedOpacity))
             data.append(Data(bytes: &opacity, count: 4))
 
-            // Color - use raw RGB values (MetalSplatter may handle conversion)
-            var sh0 = filteredParams[offset + 11]
-            var sh1 = filteredParams[offset + 12]
-            var sh2 = filteredParams[offset + 13]
-            data.append(Data(bytes: &sh0, count: 4))
-            data.append(Data(bytes: &sh1, count: 4))
-            data.append(Data(bytes: &sh2, count: 4))
+            // Color - convert linear [0,1] to sRGB [0,255] with gamma
+            let rawR = filteredParams[offset + 11]
+            let rawG = filteredParams[offset + 12]
+            let rawB = filteredParams[offset + 13]
+
+            // Apply gamma correction (linear to sRGB) and slight brightness boost
+            let gamma: Float = 1.0 / 2.2
+            let brightness: Float = 1.1
+            let r = pow(min(max(rawR * brightness, 0), 1), gamma)
+            let g = pow(min(max(rawG * brightness, 0), 1), gamma)
+            let b = pow(min(max(rawB * brightness, 0), 1), gamma)
+
+            // Convert to 0-255 uchar
+            var red = UInt8(min(max(Int(r * 255), 0), 255))
+            var green = UInt8(min(max(Int(g * 255), 0), 255))
+            var blue = UInt8(min(max(Int(b * 255), 0), 255))
+            data.append(Data(bytes: &red, count: 1))
+            data.append(Data(bytes: &green, count: 1))
+            data.append(Data(bytes: &blue, count: 1))
         }
 
         // Write file

@@ -710,6 +710,7 @@ struct SinglePhotoRoomView: View {
     @State private var navigateToViewer = false
     @State private var showGenerationSuccess = false
     @State private var generatedPLYURL: URL?
+    @State private var navigateToSplatViewer = false
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -880,8 +881,10 @@ struct SinglePhotoRoomView: View {
                             do {
                                 let fileURL = try await sharpService.generateGaussians(from: image)
                                 logDebug("✅ [View] PLY file generated: \(fileURL.path)")
-                                generatedPLYURL = fileURL
-                                showGenerationSuccess = true
+                                await MainActor.run {
+                                    generatedPLYURL = fileURL
+                                    navigateToSplatViewer = true  // Navigate to splat viewer
+                                }
                             } catch {
                                 logDebug("❌ [View] Generation failed: \(error)")
                             }
@@ -927,6 +930,14 @@ struct SinglePhotoRoomView: View {
             Group {
                 if let scene = reconstructor.generatedRoomScene {
                     SceneKitViewer(scene: scene)
+                }
+            }
+        }
+        // Navigate to SharpRoomView when PLY is generated
+        .navigationDestination(isPresented: $navigateToSplatViewer) {
+            Group {
+                if let plyURL = generatedPLYURL {
+                    SharpRoomView(plyURL: plyURL)
                 }
             }
         }

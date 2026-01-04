@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		613061F92EF8AFF1001EB3AF /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 613061F82EF8AFF1001EB3AF /* FirebaseAppCheck */; };
-		6165113D2F088233002F55B1 /* SHARP.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 6165113C2F088233002F55B1 /* SHARP.mlpackage */; };
+		616513CB2F0AEBFC002F55B1 /* SHARP_fp16.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 616513CA2F0AEBFC002F55B1 /* SHARP_fp16.mlpackage */; };
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
 		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
@@ -18,7 +18,7 @@
 
 /* Begin PBXFileReference section */
 		045F5BD92E6D302900C5585D /* Furnit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Furnit.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		6165113C2F088233002F55B1 /* SHARP.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = SHARP.mlpackage; sourceTree = "<group>"; };
+		616513CA2F0AEBFC002F55B1 /* SHARP_fp16.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = SHARP_fp16.mlpackage; sourceTree = "<group>"; };
 		61C7889B2EEF8FDA0082A545 /* yoloe-11l-seg-pf.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-11l-seg-pf.mlpackage"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -66,7 +66,7 @@
 				045F5BDB2E6D302900C5585D /* Furnit */,
 				045F5BDA2E6D302900C5585D /* Products */,
 				61C7889B2EEF8FDA0082A545 /* yoloe-11l-seg-pf.mlpackage */,
-				6165113C2F088233002F55B1 /* SHARP.mlpackage */,
+				616513CA2F0AEBFC002F55B1 /* SHARP_fp16.mlpackage */,
 				613061F72EF8AFF1001EB3AF /* Frameworks */,
 			);
 			sourceTree = "<group>";
@@ -170,7 +170,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6165113D2F088233002F55B1 /* SHARP.mlpackage in Sources */,
+				616513CB2F0AEBFC002F55B1 /* SHARP_fp16.mlpackage in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
