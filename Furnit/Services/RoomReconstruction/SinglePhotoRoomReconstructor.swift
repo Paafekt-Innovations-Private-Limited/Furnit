@@ -14,7 +14,8 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     @Published var estimatedDimensions: RoomDimensions?
     @Published var generatedRoomScene: SCNScene? // ✅ CHANGED: from URL to SCNScene
     @Published var splatCount: Int = 0  // Track splat count
-    @Published var rawSplats: [GaussianSplat] = []  // Raw splats for Metal renderer
+    @Published var rawSplats: [GaussianSplat] = []  // Furniture-band splats for mask generation
+    @Published var rawSplatsFullRoom: [GaussianSplat] = []  // Full-room splats for splat viewer
 
     // MARK: - Dependencies
     private let depthEstimator = DepthEstimator()
@@ -36,6 +37,16 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         case frontWallPlusSplats  // Hybrid: only front wall plane, SHARP handles the rest
     }
 
+    // MARK: - Surface Classification
+    enum SurfaceID: UInt8 {
+        case none = 0       // Unclassified / outlier
+        case floor = 1
+        case ceiling = 2
+        case frontWall = 3
+        case leftWall = 4
+        case rightWall = 5
+    }
+
     // MARK: - Gaussian Splat Representation
     struct GaussianSplat {
         var position: SIMD3<Float>      // Normalized [0, 1] in SHARP space
@@ -43,6 +54,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         var quaternion: SIMD4<Float>    // Orientation as quaternion
         var color: SIMD3<Float>         // Linear RGB in [0, 1]
         var opacity: Float              // [0, 1]
+        var surfaceId: SurfaceID = .none  // Which room surface this splat belongs to
     }
 
     // MARK: - SHARP Splat Service
@@ -264,17 +276,28 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             await updateProgress(0.55, "Analyzing foreground objects...")
             logDebug("🔷 [Reconstructor] Running SHARP to generate foreground mask...")
 
-            // Generate splats (includes all processing)
+            // Generate splats for mask (furnitureBand mode - default)
             splatsForScene = await splatService.generateForegroundSplats(
                 from: fixedImage,
                 boundaries: boundaries,
-                roomDimensions: (width: dimensions.width, depth: dimensions.depth, height: dimensions.height)
+                roomDimensions: (width: dimensions.width, depth: dimensions.depth, height: dimensions.height),
+                mode: .furnitureBand
+            )
+
+            // Generate full-room splats for the splat viewer
+            let fullRoomSplats = await splatService.generateForegroundSplats(
+                from: fixedImage,
+                boundaries: boundaries,
+                roomDimensions: (width: dimensions.width, depth: dimensions.depth, height: dimensions.height),
+                mode: .fullRoomCloud
             )
 
             await MainActor.run {
-                self.splatCount = splatsForScene.count
-                self.rawSplats = splatsForScene  // Store for Metal renderer
+                self.splatCount = fullRoomSplats.count  // Report full count
+                self.rawSplats = splatsForScene  // Furniture-band for mask
+                self.rawSplatsFullRoom = fullRoomSplats  // Full room for viewer
             }
+            logDebug("🔷 [Reconstructor] Generated \(splatsForScene.count) furniture splats, \(fullRoomSplats.count) full-room splats")
 
             // Generate foreground mask from splats to remove furniture from wall texture
             if !splatsForScene.isEmpty {
@@ -872,6 +895,18 @@ class DepthEstimator {
     }
 }
 
+// MARK: - SHARP output modes
+
+/// Controls how SHARP splats are filtered for different use cases
+enum SHARPSplatMode {
+    /// Current behaviour: focus on furniture near the floor,
+    /// drop curtains / high Y and far-depth "walls" - for mask/inpaint pipeline
+    case furnitureBand
+
+    /// Keep *all* room splats (no Y / depth culling) for a pure "room cloud" viewer
+    case fullRoomCloud
+}
+
 // MARK: - SHARPSplatService
 final class SHARPSplatService {
     private(set) var sharpModel: MLModel?
@@ -981,13 +1016,16 @@ final class SHARPSplatService {
 
     /// Generate Gaussian splats for foreground objects in the room.
     /// This is where we interpret SHARP outputs and map them into room space.
+    /// - Parameter mode: `.fullRoomCloud` for pure splat viewer (default), `.furnitureBand` for mask/inpaint
     func generateForegroundSplats(
         from image: UIImage,
         boundaries: RoomStructure,
         roomDimensions: (width: Float, depth: Float, height: Float),
+        mode: SHARPSplatMode = .fullRoomCloud,
         depthThreshold: Float = 0.7
     ) async -> [SinglePhotoRoomReconstructor.GaussianSplat] {
-        print("🔷🔷🔷 [SHARPSplatService] generateForegroundSplats called 🔷🔷🔷")
+        let isFullRoomCloud = (mode == .fullRoomCloud)
+        print("🔷🔷🔷 [SHARPSplatService] generateForegroundSplats called (mode=\(mode)) 🔷🔷🔷")
 
         guard let model = sharpModel else {
             print("❌ [SHARPSplatService] Model not loaded")
@@ -1046,7 +1084,7 @@ final class SHARPSplatService {
             print("🔷 [SHARPSplatService] Memory after inference: \(getMemoryUsage()) MB")
 
             // Parse output in autoreleasepool to free buffers
-            return autoreleasepool { parseModelOutput(output, roomDimensions: roomDimensions, boundaries: boundaries) }
+            return autoreleasepool { parseModelOutput(output, roomDimensions: roomDimensions, boundaries: boundaries, isFullRoomCloud: isFullRoomCloud) }
 
         } catch {
             print("❌ [SHARPSplatService] Error during prediction: \(error)")
@@ -1065,7 +1103,8 @@ final class SHARPSplatService {
     private func parseModelOutput(
         _ output: MLFeatureProvider,
         roomDimensions: (width: Float, depth: Float, height: Float),
-        boundaries: RoomStructure
+        boundaries: RoomStructure,
+        isFullRoomCloud: Bool
     ) -> [SinglePhotoRoomReconstructor.GaussianSplat] {
         let featureNames = Array(output.featureNames)
         print("🔷 [SHARPSplatService] Output features: \(featureNames)")
@@ -1371,8 +1410,12 @@ final class SHARPSplatService {
         print("🔷 [SHARPSplatService] Cached normalization stats for mask generation")
 
         // Filter using room boundaries and depth-biased scoring
-        let filtered = filterForegroundSplats(splats: splats, depthThreshold: 0.7, boundaries: boundaries)
-        print("🔷 [SHARPSplatService] Kept \(filtered.count) foreground splats")
+        let filtered = filterForegroundSplats(splats: splats, depthThreshold: 0.7, boundaries: boundaries, isFullRoomCloud: isFullRoomCloud)
+        if isFullRoomCloud {
+            print("🔷 [SHARPSplatService] Full-room cloud: \(filtered.count) splats")
+        } else {
+            print("🔷 [SHARPSplatService] Kept \(filtered.count) foreground splats")
+        }
 
         return filtered
     }
@@ -1404,7 +1447,8 @@ final class SHARPSplatService {
     private func filterForegroundSplats(
         splats: [SinglePhotoRoomReconstructor.GaussianSplat],
         depthThreshold: Float,
-        boundaries: RoomStructure? = nil
+        boundaries: RoomStructure? = nil,
+        isFullRoomCloud: Bool = false
     ) -> [SinglePhotoRoomReconstructor.GaussianSplat] {
         guard !splats.isEmpty else { return [] }
 
@@ -1422,6 +1466,7 @@ final class SHARPSplatService {
         let zRange = max(zMax - zMin, 1e-6)
 
         // Room-aware filter using actual boundaries
+        // In fullRoomCloud mode, we keep everything inside the room band
         func isRoomForeground(u: Float, v: Float) -> Bool {
             guard let b = boundaries else { return true }
 
@@ -1438,12 +1483,14 @@ final class SHARPSplatService {
             // Kill floor (anything below floor line)
             if v > floorY - floorMargin { return false }
 
-            // Kill ceiling band
-            if v < ceilingY + ceilingMargin { return false }
+            // Kill ceiling band - only in furniture mode
+            if !isFullRoomCloud && v < ceilingY + ceilingMargin { return false }
 
-            // Kill side walls
-            if u < leftX + marginX { return false }
-            if u > rightX - marginX { return false }
+            // Kill side walls - only in furniture mode
+            if !isFullRoomCloud {
+                if u < leftX + marginX { return false }
+                if u > rightX - marginX { return false }
+            }
 
             return true
         }
@@ -1462,10 +1509,10 @@ final class SHARPSplatService {
             let v = (splat.position.y - yMin) / yRange
             let zNorm = (splat.position.z - zMin) / zRange
 
-            // Skip low opacity splats
+            // Skip low opacity splats (always enforce - even in fullRoomCloud)
             if splat.opacity < 0.05 { continue }
 
-            // Room-aware filter: kill floor, ceiling, side walls
+            // Room-aware filter: in fullRoomCloud mode, keeps most splats
             if !isRoomForeground(u: u, v: v) { continue }
 
             // Score: opacity × (0.5 + 0.5 × depth)
@@ -1476,13 +1523,69 @@ final class SHARPSplatService {
             scoredSplats.append(ScoredSplat(splat: splat, score: score))
         }
 
-        print("🔷 [SHARPSplatService] After room-aware filter: \(scoredSplats.count) candidates")
-        if let b = boundaries {
-            print("   Boundaries: floor=\(b.floorY), ceil=\(b.ceilingY), L=\(b.leftX), R=\(b.rightX)")
+        if isFullRoomCloud {
+            print("🔷 [SHARPSplatService] Full-room mode: \(scoredSplats.count) candidates (no ceiling/wall culling)")
+        } else {
+            print("🔷 [SHARPSplatService] After room-aware filter: \(scoredSplats.count) candidates")
+            if let b = boundaries {
+                print("   Boundaries: floor=\(b.floorY), ceil=\(b.ceilingY), L=\(b.leftX), R=\(b.rightX)")
+            }
         }
 
-        // Thin the cloud in depth - keep ~60% of depth range around median
-        // Wider band to include furniture closer to camera (like the chair)
+        // Thin the cloud in depth - skip in fullRoomCloud mode
+        if isFullRoomCloud {
+            // Classify each splat by surface using 3D world positions (not 2D image boundaries)
+            // This gives us proper room geometry: floor/ceiling based on Y, walls based on X/Z
+            let sorted = scoredSplats.sorted { $0.score > $1.score }
+
+            // 3D surface classification helper - uses normalized world positions
+            // margin = how thick the "shell" of each surface is (12% of range)
+            let margin: Float = 0.12
+
+            func classifySurface3D(xNorm: Float, yNorm: Float, zNorm: Float) -> SinglePhotoRoomReconstructor.SurfaceID {
+                // SHARP coordinates: Y is vertical (0=bottom, 1=top in normalized space)
+                // Check floor/ceiling first (horizontal surfaces)
+                if yNorm < margin {
+                    return .floor      // Bottom of the space
+                }
+                if yNorm > (1.0 - margin) {
+                    return .ceiling    // Top of the space
+                }
+                // Then check walls (vertical surfaces)
+                if zNorm < margin {
+                    return .frontWall  // Front (closest to camera, small Z)
+                }
+                if xNorm < margin {
+                    return .leftWall   // Left side
+                }
+                if xNorm > (1.0 - margin) {
+                    return .rightWall  // Right side
+                }
+                // Interior points - assign to front wall as default
+                return .frontWall
+            }
+
+            var surfaceCounts: [SinglePhotoRoomReconstructor.SurfaceID: Int] = [:]
+
+            let classified: [SinglePhotoRoomReconstructor.GaussianSplat] = sorted.map { scored in
+                var splat = scored.splat
+
+                // Normalize to [0,1] in SHARP 3D space
+                let xNorm = (splat.position.x - xMin) / xRange
+                let yNorm = (splat.position.y - yMin) / yRange
+                let zNorm = (splat.position.z - zMin) / zRange
+
+                splat.surfaceId = classifySurface3D(xNorm: xNorm, yNorm: yNorm, zNorm: zNorm)
+                surfaceCounts[splat.surfaceId, default: 0] += 1
+                return splat
+            }
+
+            print("🔷 [SHARPSplatService] Full-room mode (3D classifier): \(classified.count) splats")
+            print("   Surface counts: floor=\(surfaceCounts[.floor] ?? 0), ceiling=\(surfaceCounts[.ceiling] ?? 0), front=\(surfaceCounts[.frontWall] ?? 0), left=\(surfaceCounts[.leftWall] ?? 0), right=\(surfaceCounts[.rightWall] ?? 0)")
+            return classified
+        }
+
+        // Normal furniture mode: thin the cloud in depth
         let zValues = scoredSplats.map { ($0.splat.position.z - zMin) / zRange }.sorted()
         guard !zValues.isEmpty else { return [] }
 

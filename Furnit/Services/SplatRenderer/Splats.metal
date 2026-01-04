@@ -111,3 +111,29 @@ fragment half4 splat_fragment_gaussian(VSOut in [[stage_in]],
     half3 rgb = half3(in.color.rgb) * half(alpha);
     return half4(rgb, half(alpha));
 }
+
+// MARK: - Line Vertex/Fragment Shaders (for room wireframe)
+
+struct LineVertex {
+    float3 position [[attribute(0)]];
+    float3 color    [[attribute(1)]];
+};
+
+struct LineVSOut {
+    float4 position [[position]];
+    float3 color;
+};
+
+vertex LineVSOut line_vertex(LineVertex v [[stage_in]],
+                              constant CameraUniforms &camera [[buffer(1)]]) {
+    LineVSOut out;
+    float4 worldPos = float4(v.position, 1.0);
+    float4 viewPos = camera.viewMatrix * worldPos;
+    out.position = camera.projectionMatrix * viewPos;
+    out.color = v.color;
+    return out;
+}
+
+fragment half4 line_fragment(LineVSOut in [[stage_in]]) {
+    return half4(half3(in.color), 1.0);
+}

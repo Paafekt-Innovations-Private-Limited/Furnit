@@ -11,6 +11,7 @@ struct Splat {
     var quat: SIMD4<Float>       // Rotation quaternion
     var color: SIMD3<Float>      // RGB in [0,1]
     var opacity: Float           // Alpha in [0,1]
+    var surfaceId: SinglePhotoRoomReconstructor.SurfaceID = .none  // Room surface classification
 }
 
 // MARK: - SplatVertex (Metal-compatible vertex format)
@@ -33,6 +34,22 @@ extension Splat {
         self.quat = gaussianSplat.quaternion
         self.color = gaussianSplat.color
         self.opacity = gaussianSplat.opacity
+        self.surfaceId = gaussianSplat.surfaceId
+    }
+}
+
+// MARK: - Surface Debug Tinting
+extension Splat {
+    /// Returns a debug tint color based on surfaceId for visual debugging
+    static func debugTintForSurface(_ surfaceId: SinglePhotoRoomReconstructor.SurfaceID) -> SIMD3<Float> {
+        switch surfaceId {
+        case .floor:     return SIMD3<Float>(0.9, 0.3, 0.3)  // Red-ish
+        case .ceiling:   return SIMD3<Float>(0.3, 0.9, 0.9)  // Cyan
+        case .frontWall: return SIMD3<Float>(0.9, 0.9, 0.3)  // Yellow
+        case .leftWall:  return SIMD3<Float>(0.3, 0.6, 0.9)  // Blue
+        case .rightWall: return SIMD3<Float>(0.9, 0.4, 0.9)  // Magenta
+        case .none:      return SIMD3<Float>(0.5, 0.5, 0.5)  // Gray
+        }
     }
 }
 
@@ -184,12 +201,72 @@ extension Array where Element == Splat {
             print("DEBUG: Culled \(culledBigRadius) giant radius splats (>\(debugMaxRadius))")
             print("DEBUG: After radius filter: \(radiusFiltered.count) splats")
 
-            // Sort by opacity (highest first) and take top N
+            // Balanced per-surface sampling - ensures we get splats from all room surfaces
+            // not just the most opaque ones (which might all be from one surface)
             let maxDebugSplats = Swift.min(debugMaxSplats, radiusFiltered.count)
-            let sorted = radiusFiltered.sorted { $0.gs.opacity > $1.gs.opacity }
-            let topSplats = sorted.prefix(maxDebugSplats)
 
-            print("DEBUG: Taking top \(topSplats.count) splats by opacity")
+            // Group splats by surface
+            var buckets: [SinglePhotoRoomReconstructor.SurfaceID: [(gs: SinglePhotoRoomReconstructor.GaussianSplat, normY: Float, normZ: Float)]] = [:]
+            for item in radiusFiltered {
+                let surface = item.gs.surfaceId
+                buckets[surface, default: []].append(item)
+            }
+
+            // Sort each bucket by opacity (highest first)
+            for key in buckets.keys {
+                buckets[key]!.sort { $0.gs.opacity > $1.gs.opacity }
+            }
+
+            // Log bucket sizes before sampling
+            print("DEBUG: Surface buckets before sampling:")
+            for (surface, items) in buckets.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                print("   \(surface): \(items.count) splats")
+            }
+
+            // Per-surface quotas - prioritize visible surfaces
+            typealias SplatItem = (gs: SinglePhotoRoomReconstructor.GaussianSplat, normY: Float, normZ: Float)
+            var selectedItems: [SplatItem] = []
+            selectedItems.reserveCapacity(maxDebugSplats)
+
+            // Quotas per surface
+            let quotas: [(SinglePhotoRoomReconstructor.SurfaceID, Int)] = [
+                (.floor, 5000),
+                (.frontWall, 5000),
+                (.leftWall, 2500),
+                (.rightWall, 2500),
+                (.ceiling, 3000)
+            ]
+
+            // First pass: take quota from each surface
+            for (surface, quota) in quotas {
+                if let arr = buckets[surface], !arr.isEmpty {
+                    let n = Swift.min(quota, arr.count)
+                    selectedItems.append(contentsOf: arr.prefix(n))
+                    let remaining: [SplatItem] = Swift.Array(arr.dropFirst(n))
+                    buckets[surface] = remaining
+                }
+            }
+
+            // Second pass: fill the rest from whatever is left, by opacity
+            if selectedItems.count < maxDebugSplats {
+                var leftovers: [SplatItem] = []
+                for arr in buckets.values {
+                    leftovers.append(contentsOf: arr)
+                }
+                leftovers.sort { $0.gs.opacity > $1.gs.opacity }
+                let remaining = maxDebugSplats - selectedItems.count
+                selectedItems.append(contentsOf: leftovers.prefix(remaining))
+            }
+
+            let topSplats = selectedItems.prefix(maxDebugSplats)
+
+            // Log final selection by surface
+            var finalCounts: [SinglePhotoRoomReconstructor.SurfaceID: Int] = [:]
+            for item in topSplats {
+                finalCounts[item.gs.surfaceId, default: 0] += 1
+            }
+            print("DEBUG: Taking \(topSplats.count) splats with balanced sampling:")
+            print("   floor=\(finalCounts[.floor] ?? 0), ceiling=\(finalCounts[.ceiling] ?? 0), front=\(finalCounts[.frontWall] ?? 0), left=\(finalCounts[.leftWall] ?? 0), right=\(finalCounts[.rightWall] ?? 0)")
 
             var result: [Splat] = []
             result.reserveCapacity(topSplats.count)
@@ -208,13 +285,14 @@ extension Array where Element == Splat {
                         scale: SIMD3<Float>(debugRadius, debugRadius, debugRadius),
                         quat: gs.quaternion,
                         color: gs.color,
-                        opacity: Swift.min(Swift.max(gs.opacity, 0.0), 1.0)
+                        opacity: Swift.min(Swift.max(gs.opacity, 0.0), 1.0),
+                        surfaceId: gs.surfaceId
                     )
                 )
 
                 // Log first 10 splats
                 if i < 10 {
-                    print("DEBUG splat[\(i)]: pos=\(worldPos), radius=\(debugRadius), opacity=\(gs.opacity), color=\(gs.color)")
+                    print("DEBUG splat[\(i)]: pos=\(worldPos), radius=\(debugRadius), opacity=\(gs.opacity), surface=\(gs.surfaceId)")
                 }
             }
 
@@ -401,7 +479,8 @@ extension Array where Element == Splat {
                     scale: worldScale,
                     quat: gs.quaternion,
                     color: gs.color,
-                    opacity: Swift.min(Swift.max(gs.opacity, 0.0), 1.0)
+                    opacity: Swift.min(Swift.max(gs.opacity, 0.0), 1.0),
+                    surfaceId: gs.surfaceId
                 )
             )
         }
@@ -483,30 +562,43 @@ extension Array where Element == Splat {
 
         let range = maxPos - minPos + SIMD3<Float>(repeating: 1e-6)
 
-        print("Input position range: min=\(minPos), max=\(maxPos)")
-        print("Range: \(range)")
+        print("Input SHARP position range: min=\(minPos), max=\(maxPos)")
+        print("Extent: \(range)")
 
-        // Debug: print first few splats
-        print("First 5 splats before vertex conversion:")
-        for (i, s) in self.prefix(5).enumerated() {
-            print("[\(i)] pos=\(s.position), scale=\(s.scale), color=\(s.color), opacity=\(s.opacity)")
-        }
+        // -------- Map SHARP cube → room box --------
+        // X: [-width/2, +width/2]
+        // Y: [0, height] (0=floor, height=ceiling)
+        // Z: [-depth/2, +depth/2] (front = negative Z)
+        let halfWidth  = roomWidth  * 0.5
+        let halfDepth  = roomDepth  * 0.5
 
-        // DEBUG: Use splat positions directly (they're already centered around origin from fromSHARP)
-        // Bigger radius for visibility
-        let minR: Float = 0.15
-        let maxR: Float = 0.5
+        // Radius parameters
+        let minR: Float = 0.08
+        let maxR: Float = 0.25
         let radiusScale: Float = 0.02
 
-        print("DEBUG: Using direct positions (centered at origin), no squash/slab")
-        print("Radius params: minR=\(minR), maxR=\(maxR), radiusScale=\(radiusScale)")
+        // DEBUG: Set to true to tint splats by surface ID for visual debugging
+        let debugTintBySurface = true
 
-        // Pack into SIMD4 format - positions already in world space from fromSHARP
+        print("Mapping SHARP → room space:")
+        print("  X: normalized → [-\(halfWidth), +\(halfWidth)]")
+        print("  Y: normalized → [0, \(roomHeight)]")
+        print("  Z: normalized → [-\(halfDepth), +\(halfDepth)] (front=negative)")
+
+        var roomCenter = SIMD3<Float>(repeating: 0)
+
+        // Pack into SIMD4 format - map SHARP positions to room coordinates
         for s in self.prefix(count) {
-            // Use position directly (already centered around origin)
-            let worldX = s.position.x
-            let worldY = s.position.y
-            let worldZ = s.position.z
+            // Normalize to 0..1 in SHARP cube
+            let normalized = (s.position - minPos) / range
+
+            // Map to room coordinates
+            let worldX = (normalized.x - 0.5) * roomWidth      // center at 0
+            let worldY = normalized.y * roomHeight              // 0=floor, height=ceiling
+            let worldZ = (normalized.z - 0.5) * roomDepth * -1  // front = negative Z
+
+            let worldPos = SIMD3<Float>(worldX, worldY, worldZ)
+            roomCenter += worldPos
 
             // Radius: clamp raw scale and map to visible range
             let rawScale = Swift.max(s.scale.x, Swift.max(s.scale.y, s.scale.z))
@@ -516,32 +608,42 @@ extension Array where Element == Splat {
 
             let posR = SIMD4<Float>(worldX, worldY, worldZ, radius)
 
+            // Use debug tint or original color based on flag
+            let finalColor: SIMD3<Float>
+            if debugTintBySurface {
+                finalColor = Splat.debugTintForSurface(s.surfaceId)
+            } else {
+                finalColor = s.color
+            }
+
             // Pack color (rgb) + opacity (a) into SIMD4, clamped to [0,1]
             let colA = SIMD4<Float>(
-                Swift.max(0, Swift.min(1, s.color.x)),
-                Swift.max(0, Swift.min(1, s.color.y)),
-                Swift.max(0, Swift.min(1, s.color.z)),
+                Swift.max(0, Swift.min(1, finalColor.x)),
+                Swift.max(0, Swift.min(1, finalColor.y)),
+                Swift.max(0, Swift.min(1, finalColor.z)),
                 Swift.max(0, Swift.min(1, s.opacity))
             )
 
             vertices.append(SplatVertex(positionRadius: posR, colorOpacity: colA))
         }
 
+        // Compute room-space center
+        roomCenter = roomCenter / Float(vertices.count)
+
         // Debug: print first few packed vertices
-        print("First 10 packed vertices:")
+        print("First 10 packed vertices (room-space):")
         for i in 0..<Swift.min(10, vertices.count) {
             let v = vertices[i]
-            print("[\(i)] pos=(\(v.positionRadius.x), \(v.positionRadius.y), \(v.positionRadius.z)) radius=\(v.positionRadius.w) color=(\(v.colorOpacity.x), \(v.colorOpacity.y), \(v.colorOpacity.z)) opacity=\(v.colorOpacity.w)")
+            print("[\(i)] pos=(\(v.positionRadius.x), \(v.positionRadius.y), \(v.positionRadius.z)) radius=\(v.positionRadius.w) surface tint=(\(v.colorOpacity.x), \(v.colorOpacity.y), \(v.colorOpacity.z))")
         }
 
-        // 🧪 BIG RED DEBUG SPOT at center of mass (avgPos, not bounding-box center)
+        // 🧪 BIG RED DEBUG SPOT at room-space center
         let debugCenterSplat = SplatVertex(
-            positionRadius: SIMD4<Float>(avgPos.x, avgPos.y, avgPos.z, 0.6),
+            positionRadius: SIMD4<Float>(roomCenter.x, roomCenter.y, roomCenter.z, 0.3),
             colorOpacity: SIMD4<Float>(1.0, 0.0, 0.0, 1.0)     // bright red, full opacity
         )
         vertices.append(debugCenterSplat)
-        print("DEBUG: Added BIG RED center splat at avgPos=\(avgPos) with radius 0.6")
-        print("DEBUG: (bounding-box center was \((minPos + maxPos) * 0.5))")
+        print("DEBUG: Added BIG RED center splat at room-space center=\(roomCenter) with radius 0.3")
 
         // Log final vertex stats
         let allX = vertices.map { $0.positionRadius.x }
@@ -551,11 +653,11 @@ extension Array where Element == Splat {
         let allOpacity = vertices.map { $0.colorOpacity.w }
 
         print("""
-        VERTEX BUFFER STATS:
+        VERTEX BUFFER STATS (room-space):
           count = \(vertices.count)
-          X: [\(allX.min() ?? 0), \(allX.max() ?? 0)]
-          Y: [\(allY.min() ?? 0), \(allY.max() ?? 0)]
-          Z: [\(allZ.min() ?? 0), \(allZ.max() ?? 0)]
+          X: [\(allX.min() ?? 0), \(allX.max() ?? 0)] (room width: \(roomWidth))
+          Y: [\(allY.min() ?? 0), \(allY.max() ?? 0)] (room height: \(roomHeight))
+          Z: [\(allZ.min() ?? 0), \(allZ.max() ?? 0)] (room depth: \(roomDepth))
           radius: [\(allR.min() ?? 0), \(allR.max() ?? 0)]
           opacity: [\(allOpacity.min() ?? 0), \(allOpacity.max() ?? 0)]
         """)
@@ -570,9 +672,11 @@ extension Array where Element == Splat {
             return nil
         }
 
-        // Create CloudBounds from the actual vertex positions (not input splats)
-        let finalBounds = CloudBounds(min: minPos, max: maxPos, averageCenter: avgPos)
-        print("Cloud bounds for camera: averageCenter=\(finalBounds.averageCenter), boxCenter=\(finalBounds.boxCenter), radius=\(finalBounds.radius)")
+        // Create CloudBounds from ROOM-SPACE vertex positions (not SHARP coords)
+        let roomMinPos = SIMD3<Float>(allX.min() ?? 0, allY.min() ?? 0, allZ.min() ?? 0)
+        let roomMaxPos = SIMD3<Float>(allX.max() ?? 0, allY.max() ?? 0, allZ.max() ?? 0)
+        let finalBounds = CloudBounds(min: roomMinPos, max: roomMaxPos, averageCenter: roomCenter)
+        print("Cloud bounds (room-space): center=\(finalBounds.averageCenter), radius=\(finalBounds.radius)")
 
         print("========== makeVertexBuffer END ==========")
         return (buffer, vertices.count, finalBounds)

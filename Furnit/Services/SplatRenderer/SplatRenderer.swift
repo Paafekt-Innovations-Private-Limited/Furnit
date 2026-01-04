@@ -69,6 +69,11 @@ class SplatRenderer: NSObject {
     private var vertexBuffer: MTLBuffer?
     private var splatCount: Int = 0
 
+    // MARK: - Room Wireframe
+    private var roomWireframeBuffer: MTLBuffer?
+    private var roomWireframeVertexCount: Int = 0
+    private var linePipelineState: MTLRenderPipelineState?
+
     // MARK: - Room Dimensions (should match settings)
     let roomWidth: Float = 4.0
     let roomDepth: Float = 4.5
@@ -84,9 +89,9 @@ class SplatRenderer: NSObject {
     var farPlane: Float = 15.0
 
     // MARK: - Orbit Camera
-    var orbitDistance: Float = 4.0  // Closer to see detail
-    var orbitAngleX: Float = 0.0
-    var orbitAngleY: Float = 0.15   // Slight upward tilt
+    var orbitDistance: Float = 8.0  // Far enough to see the whole room
+    var orbitAngleX: Float = 0.3    // Slight rotation to see room shape
+    var orbitAngleY: Float = 0.3    // Looking slightly down at the room
 
     // MARK: - Background Color
     var backgroundColor: MTLClearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.2, alpha: 1.0)
@@ -106,6 +111,8 @@ class SplatRenderer: NSObject {
         setupPipeline()
         setupDebugPipeline()
         setupDepthState()
+        setupLinePipeline()
+        buildRoomWireframe()
     }
 
     // MARK: - Vertex Descriptor
@@ -207,6 +214,93 @@ class SplatRenderer: NSObject {
         depthDescriptor.isDepthWriteEnabled = false
         depthState = device.makeDepthStencilState(descriptor: depthDescriptor)
         print("DEBUG: Depth state created with depthWrite=false")
+    }
+
+    // MARK: - Line Pipeline for Room Wireframe
+    private func setupLinePipeline() {
+        guard let library = device.makeDefaultLibrary() else {
+            print("Failed to load Metal library for line pipeline")
+            return
+        }
+
+        // Use simple shaders for lines (or create dedicated ones)
+        guard let vertexFunction = library.makeFunction(name: "line_vertex"),
+              let fragmentFunction = library.makeFunction(name: "line_fragment") else {
+            print("Line shader functions not found - wireframe disabled")
+            return
+        }
+
+        let pipelineDescriptor = MTLRenderPipelineDescriptor()
+        pipelineDescriptor.vertexFunction = vertexFunction
+        pipelineDescriptor.fragmentFunction = fragmentFunction
+
+        // Simple vertex descriptor for lines: position (float3) + color (float3)
+        let vd = MTLVertexDescriptor()
+        vd.attributes[0].format = .float3
+        vd.attributes[0].offset = 0
+        vd.attributes[0].bufferIndex = 0
+        vd.attributes[1].format = .float3
+        vd.attributes[1].offset = MemoryLayout<SIMD3<Float>>.stride
+        vd.attributes[1].bufferIndex = 0
+        vd.layouts[0].stride = MemoryLayout<SIMD3<Float>>.stride * 2
+        vd.layouts[0].stepFunction = .perVertex
+        pipelineDescriptor.vertexDescriptor = vd
+
+        pipelineDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        pipelineDescriptor.depthAttachmentPixelFormat = .depth32Float
+
+        do {
+            linePipelineState = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
+            print("Line pipeline created successfully")
+        } catch {
+            print("Failed to create line pipeline: \(error)")
+        }
+    }
+
+    // MARK: - Room Wireframe
+    private func buildRoomWireframe() {
+        let hw = roomWidth * 0.5   // half width
+        let hd = roomDepth * 0.5   // half depth
+        let h = roomHeight
+
+        // 8 corners of the room box
+        let c0 = SIMD3<Float>(-hw, 0,  -hd) // floor front left
+        let c1 = SIMD3<Float>( hw, 0,  -hd) // floor front right
+        let c2 = SIMD3<Float>( hw, 0,   hd) // floor back right
+        let c3 = SIMD3<Float>(-hw, 0,   hd) // floor back left
+        let c4 = SIMD3<Float>(-hw, h,  -hd) // ceiling front left
+        let c5 = SIMD3<Float>( hw, h,  -hd) // ceiling front right
+        let c6 = SIMD3<Float>( hw, h,   hd) // ceiling back right
+        let c7 = SIMD3<Float>(-hw, h,   hd) // ceiling back left
+
+        // 12 edges as line segments (pairs of vertices)
+        let edges: [(SIMD3<Float>, SIMD3<Float>)] = [
+            // Floor rectangle
+            (c0, c1), (c1, c2), (c2, c3), (c3, c0),
+            // Ceiling rectangle
+            (c4, c5), (c5, c6), (c6, c7), (c7, c4),
+            // Vertical edges
+            (c0, c4), (c1, c5), (c2, c6), (c3, c7)
+        ]
+
+        // Build vertex buffer: position + color for each vertex
+        struct LineVertex {
+            var position: SIMD3<Float>
+            var color: SIMD3<Float>
+        }
+
+        var vertices: [LineVertex] = []
+        let lineColor = SIMD3<Float>(0.7, 0.7, 0.7)  // Light grey
+
+        for (a, b) in edges {
+            vertices.append(LineVertex(position: a, color: lineColor))
+            vertices.append(LineVertex(position: b, color: lineColor))
+        }
+
+        roomWireframeVertexCount = vertices.count
+        let length = vertices.count * MemoryLayout<LineVertex>.stride
+        roomWireframeBuffer = device.makeBuffer(bytes: vertices, length: length, options: [.storageModeShared])
+        print("Room wireframe: \(vertices.count) vertices, \(roomWidth)×\(roomDepth)×\(roomHeight)m")
     }
 
     // MARK: - Load Splats
@@ -336,38 +430,31 @@ class SplatRenderer: NSObject {
 
         switch cameraMode {
         case .sharpDebug:
-            // Auto-frame the SHARP cloud using its actual bounds
-            // Use averageCenter (center of mass) for camera target, not bounding-box center
-            let bounds = cloudBounds ?? CloudBounds(
-                min: SIMD3<Float>(-1, -1, -1),
-                max: SIMD3<Float>(1, 1, 1),
-                averageCenter: SIMD3<Float>(0, 0, 0)
+            // ORBIT CAMERA: Use orbit angles to rotate around room center
+            // Target is the room center (roughly at height/2)
+            let target = SIMD3<Float>(0, roomHeight * 0.5, 0)
+
+            // Compute eye position from orbit angles and distance
+            let cosY = cos(orbitAngleY)
+            let sinY = sin(orbitAngleY)
+            let cosX = cos(orbitAngleX)
+            let sinX = sin(orbitAngleX)
+
+            let eye = SIMD3<Float>(
+                target.x + orbitDistance * cosY * sinX,
+                target.y + orbitDistance * sinY,
+                target.z + orbitDistance * cosY * cosX
             )
-
-            let center = bounds.averageCenter  // Center of mass, not bounding-box center
-            let radius = max(bounds.radius, 0.001)
-
-            // FOV and distance calculation
-            let fovDeg: Float = 36.0
-            let fovY = fovDeg * .pi / 180.0
-
-            // Distance so the whole cloud fits in view
-            // Multiply by 0.7 to get closer - fills more of the viewport
-            let baseDist = radius / tan(fovY * 0.5)
-            let distance = baseDist * 0.7
-
-            // Put camera on +Z axis looking at the cloud center
-            let eye = center + SIMD3<Float>(0, 0, distance)
-            let target = center
             let up = SIMD3<Float>(0, 1, 0)
 
-            // Near/far planes that encompass the cloud (generous margins)
-            let nearZ = max(0.01, distance - radius * 3)
-            let farZ = distance + radius * 3
+            // FOV and near/far for room-scale viewing
+            let fovY: Float = 60.0 * .pi / 180.0
+            let nearZ: Float = 0.1
+            let farZ: Float = 50.0
 
             // Log camera info only once per cloud load
             if !didLogCameraForCurrentCloud {
-                print("AUTO-FRAME CAMERA: center=\(center), radius=\(radius), eye=\(eye), dist=\(distance)")
+                print("ORBIT CAMERA: target=\(target), eye=\(eye), dist=\(orbitDistance), angleX=\(orbitAngleX), angleY=\(orbitAngleY)")
                 didLogCameraForCurrentCloud = true
             }
 
@@ -392,12 +479,26 @@ class SplatRenderer: NSObject {
 
         // Don't log every frame - splat count is logged once when loaded
 
-        // Draw as points
+        // Draw splats as points
         encoder.drawPrimitives(
             type: .point,
             vertexStart: 0,
             vertexCount: splatCount
         )
+
+        // Draw room wireframe (if available)
+        if let linePipeline = linePipelineState,
+           let wireframeBuffer = roomWireframeBuffer,
+           roomWireframeVertexCount > 0 {
+            encoder.setRenderPipelineState(linePipeline)
+            encoder.setVertexBuffer(wireframeBuffer, offset: 0, index: 0)
+            // Uniforms are already set at buffer index 1
+            encoder.drawPrimitives(
+                type: .line,
+                vertexStart: 0,
+                vertexCount: roomWireframeVertexCount
+            )
+        }
 
         encoder.endEncoding()
 

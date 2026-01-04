@@ -706,7 +706,7 @@ struct SinglePhotoRoomView: View {
                     // Auto-navigate to viewer once ready
                     let useMetalSplats = renderMode == RoomRenderMode.metalSplat.rawValue
                     let canNavigate = useMetalSplats
-                        ? !reconstructor.rawSplats.isEmpty
+                        ? !reconstructor.rawSplatsFullRoom.isEmpty
                         : reconstructor.generatedRoomScene != nil
                     if canNavigate {
                         await MainActor.run {
@@ -723,8 +723,8 @@ struct SinglePhotoRoomView: View {
         .navigationDestination(isPresented: $navigateToViewer) {
             Group {
                 if renderMode == RoomRenderMode.metalSplat.rawValue {
-                    // Pure Metal splat renderer
-                    StandaloneSplatViewer(splats: reconstructor.rawSplats)
+                    // Pure Metal splat renderer - use full-room cloud for complete view
+                    StandaloneSplatViewer(splats: reconstructor.rawSplatsFullRoom)
                 } else if renderMode == RoomRenderMode.yoloeRoom.rawValue {
                     // YOLOE detection-based room
                     if let image = fixedImage {
