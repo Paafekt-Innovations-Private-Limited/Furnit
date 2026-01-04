@@ -614,46 +614,53 @@ struct SinglePhotoRoomView: View {
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
     
     var body: some View {
-        // ✅ Simple photo selection screen only
-        VStack(spacing: 20) {
-            Text(L10n.PhotoRoom.createTitle)
-                .font(.title2)
-                .fontWeight(.bold)
-                .padding(.top, 40)
+        ZStack {
+            // ✅ Simple photo selection screen only
+            VStack(spacing: 20) {
+                Text(L10n.PhotoRoom.createTitle)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .padding(.top, 40)
 
-            Text(L10n.PhotoRoom.createSubtitle)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+                Text(L10n.PhotoRoom.createSubtitle)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
 
-            Button(action: {
-                logDebug("🖼️ [View] Select photo button tapped")
-                showImagePicker = true
-            }) {
-                VStack(spacing: 16) {
-                    Image(systemName: "photo.on.rectangle")
-                        .font(.system(size: 50))
-                        .foregroundColor(.orange)
+                Button(action: {
+                    logDebug("🖼️ [View] Select photo button tapped")
+                    showImagePicker = true
+                }) {
+                    VStack(spacing: 16) {
+                        Image(systemName: "photo.on.rectangle")
+                            .font(.system(size: 50))
+                            .foregroundColor(.orange)
 
-                    VStack(spacing: 4) {
-                        Text(L10n.PhotoRoom.quickPhoto)
-                            .font(.headline)
-                        Text(L10n.PhotoRoom.quickPhotoSubtitle)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        VStack(spacing: 4) {
+                            Text(L10n.PhotoRoom.quickPhoto)
+                                .font(.headline)
+                            Text(L10n.PhotoRoom.quickPhotoSubtitle)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(24)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(16)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.orange, lineWidth: 2)
+                    )
                 }
-                .frame(maxWidth: .infinity)
-                .padding(24)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.orange, lineWidth: 2)
-                )
-            }
-            .padding(.horizontal)
+                .padding(.horizontal)
 
-            Spacer()
+                Spacer()
+            }
+
+            // MARK: - Progress Overlay
+            if reconstructor.isProcessing || reconstructor.isModelLoading || reconstructor.isSHARPProcessing {
+                RoomProcessingOverlay(reconstructor: reconstructor)
+            }
         }
         .navigationTitle(L10n.PhotoRoom.title)
         .sheet(isPresented: $showImagePicker) {
@@ -730,7 +737,8 @@ struct SinglePhotoRoomView: View {
                         ceilingTexture: reconstructor.ceilingTexture,
                         frontWallTexture: reconstructor.frontWallTexture,
                         leftWallTexture: reconstructor.leftWallTexture,
-                        rightWallTexture: reconstructor.rightWallTexture
+                        rightWallTexture: reconstructor.rightWallTexture,
+                        reconstructor: reconstructor
                     )
                 } else if renderMode == RoomRenderMode.yoloeRoom.rawValue {
                     // YOLOE detection-based room
@@ -1598,3 +1606,143 @@ struct SceneKitViewer: View {
     }
 }
 
+// MARK: - Room Processing Progress Overlay
+struct RoomProcessingOverlay: View {
+    @ObservedObject var reconstructor: SinglePhotoRoomReconstructor
+
+    var body: some View {
+        ZStack {
+            // Dimmed background
+            Color.black.opacity(0.85)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                // Animated icon
+                ZStack {
+                    Circle()
+                        .fill(Color.orange.opacity(0.2))
+                        .frame(width: 100, height: 100)
+
+                    Image(systemName: iconName)
+                        .font(.system(size: 40))
+                        .foregroundColor(.orange)
+                        .rotationEffect(.degrees(reconstructor.isSHARPProcessing ? 360 : 0))
+                        .animation(
+                            reconstructor.isSHARPProcessing
+                                ? .linear(duration: 2).repeatForever(autoreverses: false)
+                                : .default,
+                            value: reconstructor.isSHARPProcessing
+                        )
+                }
+
+                // Title
+                Text(titleText)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+
+                // Status message
+                Text(statusMessage)
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+
+                // Progress bar
+                VStack(spacing: 8) {
+                    ProgressView(value: progressValue, total: 1.0)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .orange))
+                        .frame(width: 250)
+
+                    Text("\(Int(progressValue * 100))%")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+
+                // Phase indicator
+                HStack(spacing: 16) {
+                    PhaseIndicator(phase: "Model", isActive: reconstructor.isModelLoading, isComplete: !reconstructor.isModelLoading && reconstructor.isProcessing)
+                    PhaseIndicator(phase: "Depth", isActive: reconstructor.isProcessing && reconstructor.progress < 0.4, isComplete: reconstructor.progress >= 0.4)
+                    PhaseIndicator(phase: "SHARP", isActive: reconstructor.isSHARPProcessing, isComplete: reconstructor.sharpProgress >= 1.0)
+                    PhaseIndicator(phase: "Render", isActive: reconstructor.progress > 0.8 && !reconstructor.isSHARPProcessing, isComplete: reconstructor.progress >= 1.0)
+                }
+                .padding(.top, 8)
+            }
+        }
+        .transition(.opacity)
+    }
+
+    private var iconName: String {
+        if reconstructor.isModelLoading {
+            return "cpu"
+        } else if reconstructor.isSHARPProcessing {
+            return "wand.and.stars"
+        } else {
+            return "cube.transparent"
+        }
+    }
+
+    private var titleText: String {
+        if reconstructor.isModelLoading {
+            return "Loading SHARP Model"
+        } else if reconstructor.isSHARPProcessing {
+            return "Generating Splats"
+        } else {
+            return "Building Room"
+        }
+    }
+
+    private var statusMessage: String {
+        if reconstructor.isModelLoading {
+            return reconstructor.modelLoadingMessage.isEmpty ? "Initializing..." : reconstructor.modelLoadingMessage
+        } else if reconstructor.isSHARPProcessing {
+            return reconstructor.sharpProgressMessage.isEmpty ? "Processing..." : reconstructor.sharpProgressMessage
+        } else {
+            return reconstructor.statusMessage
+        }
+    }
+
+    private var progressValue: Float {
+        if reconstructor.isModelLoading {
+            return 0.1 // Indeterminate-ish
+        } else if reconstructor.isSHARPProcessing {
+            // Combine overall progress with SHARP progress
+            return 0.5 + (reconstructor.sharpProgress * 0.4)
+        } else {
+            return reconstructor.progress
+        }
+    }
+}
+
+// MARK: - Phase Indicator
+struct PhaseIndicator: View {
+    let phase: String
+    let isActive: Bool
+    let isComplete: Bool
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Circle()
+                .fill(fillColor)
+                .frame(width: 12, height: 12)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                )
+
+            Text(phase)
+                .font(.caption2)
+                .foregroundColor(isActive ? .orange : (isComplete ? .green : .gray))
+        }
+    }
+
+    private var fillColor: Color {
+        if isComplete {
+            return .green
+        } else if isActive {
+            return .orange
+        } else {
+            return .gray.opacity(0.3)
+        }
+    }
+}

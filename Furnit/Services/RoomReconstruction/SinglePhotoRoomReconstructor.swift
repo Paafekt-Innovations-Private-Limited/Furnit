@@ -24,6 +24,19 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     @Published var leftWallTexture: UIImage?
     @Published var rightWallTexture: UIImage?
 
+    // MARK: - Save State
+    @Published var lastSavedURL: URL?
+    @Published var isSaving = false
+
+    // MARK: - Model Loading Progress
+    @Published var isModelLoading = false
+    @Published var modelLoadingMessage = ""
+
+    // MARK: - SHARP Processing Progress
+    @Published var isSHARPProcessing = false
+    @Published var sharpProgressMessage = ""
+    @Published var sharpProgress: Float = 0.0
+
     // MARK: - Dependencies
     private let depthEstimator = DepthEstimator()
     private let roomAnalyzer = RoomStructureAnalyzer()
@@ -66,6 +79,21 @@ class SinglePhotoRoomReconstructor: ObservableObject {
 
     // MARK: - SHARP Splat Service
     private let splatService = SHARPSplatService()
+
+    // MARK: - Initialization
+    init() {
+        // Connect SHARP service callbacks to update our published properties
+        splatService.onLoadingProgress = { [weak self] message in
+            self?.isModelLoading = self?.splatService.isModelLoading ?? false
+            self?.modelLoadingMessage = message
+        }
+
+        splatService.onInferenceProgress = { [weak self] progress, message in
+            self?.isSHARPProcessing = progress > 0 && progress < 1.0
+            self?.sharpProgress = progress
+            self?.sharpProgressMessage = message
+        }
+    }
 
     // MARK: - Image Downscaling (Performance Critical)
     /// Downscale very large images to avoid huge intermediate buffers.
@@ -441,13 +469,84 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         return dimensions
     }
 
+    // MARK: - Save Room
+
+    /// Save the generated room scene as a USDZ file
+    /// - Returns: URL of the saved file, or nil if save failed
+    @MainActor
+    func saveRoom() async -> URL? {
+        guard let scene = generatedRoomScene else {
+            logDebug("⚠️ [Save] No room scene to save")
+            return nil
+        }
+
+        isSaving = true
+        defer { isSaving = false }
+
+        // Create filename with timestamp
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = formatter.string(from: Date())
+        let filename = "Room_\(timestamp).usdz"
+
+        // Get documents directory
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let fileURL = documentsURL.appendingPathComponent(filename)
+
+        logDebug("💾 [Save] Saving room to: \(fileURL.path)")
+
+        do {
+            // Export as USDZ
+            try scene.write(to: fileURL, options: nil, delegate: nil, progressHandler: nil)
+            logDebug("✅ [Save] Room saved successfully: \(filename)")
+            lastSavedURL = fileURL
+            return fileURL
+        } catch {
+            logDebug("❌ [Save] Failed to save room: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Get the share URL for the last saved room
+    func getShareURL() -> URL? {
+        return lastSavedURL
+    }
+
+    /// List all saved room files
+    func listSavedRooms() -> [URL] {
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        do {
+            let files = try FileManager.default.contentsOfDirectory(at: documentsURL, includingPropertiesForKeys: nil)
+            return files.filter { $0.pathExtension == "usdz" }.sorted { $0.lastPathComponent > $1.lastPathComponent }
+        } catch {
+            logDebug("⚠️ [Save] Failed to list saved rooms: \(error)")
+            return []
+        }
+    }
+
+    /// Delete a saved room file
+    func deleteSavedRoom(at url: URL) -> Bool {
+        do {
+            try FileManager.default.removeItem(at: url)
+            logDebug("🗑️ [Save] Deleted: \(url.lastPathComponent)")
+            if lastSavedURL == url {
+                lastSavedURL = nil
+            }
+            return true
+        } catch {
+            logDebug("❌ [Save] Failed to delete: \(error)")
+            return false
+        }
+    }
+
     // MARK: - 3D Room Construction
 
     /// Inpaint furniture from the entire image using the foreground mask.
     /// Returns a "clean" image with furniture regions filled from nearby pixels.
+    /// Telea-style inpainting using Fast Marching Method (FMM)
+    /// Fills masked regions by propagating colors from boundary pixels inward
     private func inpaintFurnitureOnImage(_ image: UIImage, mask: CGImage) -> UIImage {
-        logDebug("🎨 [Inpaint] Removing furniture from full image...")
-        logDebug("🧪 [Inpaint] Incoming mask size: \(mask.width)x\(mask.height)")
+        logDebug("🎨 [Inpaint-Telea] Removing furniture from full image...")
 
         guard let cgImage = image.cgImage else {
             logDebug("⚠️ [Inpaint] No CGImage, returning original")
@@ -456,103 +555,176 @@ class SinglePhotoRoomReconstructor: ObservableObject {
 
         let width = cgImage.width
         let height = cgImage.height
-        logDebug("🧪 [Inpaint] Target image size: \(width)x\(height)")
 
         // Scale mask to match image size
         guard let scaledMask = scaleImage(mask, to: CGSize(width: width, height: height)) else {
             logDebug("⚠️ [Inpaint] Failed to scale mask, returning original")
             return image
         }
-        logDebug("🧪 [Inpaint] Scaled mask size: \(scaledMask.width)x\(scaledMask.height)")
 
-        // Create context for the result
+        // Create contexts
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: width * 4,
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width * 4,
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            logDebug("⚠️ [Inpaint] Failed to create context, returning original")
-            return image
-        }
+        ) else { return image }
 
-        // Draw the original image
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        // Create mask context
         guard let maskContext = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: width,
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width,
             space: CGColorSpaceCreateDeviceGray(),
             bitmapInfo: CGImageAlphaInfo.none.rawValue
-        ) else {
-            logDebug("⚠️ [Inpaint] Failed to create mask context, returning original")
-            return image
-        }
+        ) else { return image }
+
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         maskContext.draw(scaledMask, in: CGRect(x: 0, y: 0, width: width, height: height))
 
-        guard let imageData = context.data, let maskData = maskContext.data else {
-            logDebug("⚠️ [Inpaint] Failed to get data pointers")
-            return image
-        }
+        guard let imageData = context.data, let maskData = maskContext.data else { return image }
 
         let imagePtr = imageData.bindMemory(to: UInt8.self, capacity: width * height * 4)
         let maskPtr = maskData.bindMemory(to: UInt8.self, capacity: width * height)
 
-        // Count non-zero pixels in the mask AFTER scaling and drawing
-        var maskNonZero = 0
-        var maskAboveThreshold = 0
-        let foregroundThreshold: UInt8 = 32
-        for i in 0..<(width * height) {
-            if maskPtr[i] > 0 { maskNonZero += 1 }
-            if maskPtr[i] >= foregroundThreshold { maskAboveThreshold += 1 }
-        }
-        logDebug("🧪 [Inpaint] Mask in context: \(maskNonZero) non-zero, \(maskAboveThreshold) above threshold \(foregroundThreshold)")
+        // Run Telea-style inpainting
+        teleaInpaint(imagePtr: imagePtr, maskPtr: maskPtr, width: width, height: height, threshold: 32)
 
-        // Simple horizontal inpaint: for masked pixels, copy from nearest unmasked pixel to the left
-        var inpaintedCount = 0
+        guard let result = context.makeImage() else { return image }
+        return UIImage(cgImage: result)
+    }
+
+    /// Telea-style inpainting algorithm
+    /// Uses Fast Marching Method to fill regions from boundary inward
+    private func teleaInpaint(imagePtr: UnsafeMutablePointer<UInt8>,
+                              maskPtr: UnsafeMutablePointer<UInt8>,
+                              width: Int, height: Int, threshold: UInt8) {
+
+        // State: 0 = KNOWN, 1 = BAND (boundary), 2 = INSIDE (to fill)
+        var state = [UInt8](repeating: 0, count: width * height)
+        var dist = [Float](repeating: 0, count: width * height)
+
+        let INF: Float = 1e10
+        let inpaintRadius: Int = 5  // Radius for color sampling
+
+        // Initialize: mark INSIDE pixels (masked) and find initial BAND
+        var bandPixels: [(x: Int, y: Int, dist: Float)] = []
 
         for y in 0..<height {
-            var lastGoodR: UInt8? = nil
-            var lastGoodG: UInt8? = nil
-            var lastGoodB: UInt8? = nil
-
             for x in 0..<width {
-                let maskIdx = y * width + x
-                let imgIdx = maskIdx * 4
-                let maskValue = maskPtr[maskIdx]
-
-                if maskValue < foregroundThreshold {
-                    // Background pixel - save as "good" color
-                    lastGoodR = imagePtr[imgIdx + 0]
-                    lastGoodG = imagePtr[imgIdx + 1]
-                    lastGoodB = imagePtr[imgIdx + 2]
+                let idx = y * width + x
+                if maskPtr[idx] >= threshold {
+                    state[idx] = 2  // INSIDE
+                    dist[idx] = INF
                 } else {
-                    // Foreground pixel - replace with last good color if we have one
-                    if let goodR = lastGoodR, let goodG = lastGoodG, let goodB = lastGoodB {
-                        imagePtr[imgIdx + 0] = goodR
-                        imagePtr[imgIdx + 1] = goodG
-                        imagePtr[imgIdx + 2] = goodB
-                        inpaintedCount += 1
+                    state[idx] = 0  // KNOWN
+                    dist[idx] = 0
+                }
+            }
+        }
+
+        // Find initial BAND: KNOWN pixels adjacent to INSIDE
+        let dx = [-1, 1, 0, 0]
+        let dy = [0, 0, -1, 1]
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let idx = y * width + x
+                if state[idx] == 0 {  // KNOWN
+                    // Check if adjacent to INSIDE
+                    for i in 0..<4 {
+                        let nx = x + dx[i]
+                        let ny = y + dy[i]
+                        if nx >= 0 && nx < width && ny >= 0 && ny < height {
+                            let nidx = ny * width + nx
+                            if state[nidx] == 2 {  // Adjacent to INSIDE
+                                if state[idx] != 1 {
+                                    state[idx] = 1  // BAND
+                                    dist[idx] = 0
+                                    bandPixels.append((x, y, 0))
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        logDebug("✅ [Inpaint] Inpainted \(inpaintedCount) pixels from full image")
+        logDebug("🎨 [Inpaint-Telea] Starting FMM with \(bandPixels.count) band pixels")
 
-        guard let result = context.makeImage() else {
-            return image
+        // Fast Marching: process band pixels in order of distance
+        var inpaintedCount = 0
+
+        while !bandPixels.isEmpty {
+            // Find pixel with minimum distance
+            var minIdx = 0
+            var minDist = bandPixels[0].dist
+            for i in 1..<bandPixels.count {
+                if bandPixels[i].dist < minDist {
+                    minDist = bandPixels[i].dist
+                    minIdx = i
+                }
+            }
+
+            let (px, py, _) = bandPixels[minIdx]
+            bandPixels.remove(at: minIdx)
+
+            let pidx = py * width + px
+            state[pidx] = 0  // Mark as KNOWN
+
+            // Update neighbors
+            for i in 0..<4 {
+                let nx = px + dx[i]
+                let ny = py + dy[i]
+
+                if nx < 0 || nx >= width || ny < 0 || ny >= height { continue }
+
+                let nidx = ny * width + nx
+
+                if state[nidx] == 2 {  // INSIDE - needs inpainting
+                    // Compute color using weighted average of nearby KNOWN pixels
+                    var sumR: Float = 0, sumG: Float = 0, sumB: Float = 0
+                    var sumWeight: Float = 0
+
+                    for ky in max(0, ny - inpaintRadius)..<min(height, ny + inpaintRadius + 1) {
+                        for kx in max(0, nx - inpaintRadius)..<min(width, nx + inpaintRadius + 1) {
+                            let kidx = ky * width + kx
+                            if state[kidx] == 0 {  // KNOWN pixel
+                                let ddx = Float(kx - nx)
+                                let ddy = Float(ky - ny)
+                                let d = sqrt(ddx * ddx + ddy * ddy)
+                                if d < Float(inpaintRadius) && d > 0.1 {
+                                    // Telea weighting: 1/distance, with direction factor
+                                    let weight = 1.0 / (d * d + 0.1)
+
+                                    let kimgIdx = kidx * 4
+                                    sumR += Float(imagePtr[kimgIdx + 0]) * weight
+                                    sumG += Float(imagePtr[kimgIdx + 1]) * weight
+                                    sumB += Float(imagePtr[kimgIdx + 2]) * weight
+                                    sumWeight += weight
+                                }
+                            }
+                        }
+                    }
+
+                    // Set pixel color
+                    let nimgIdx = nidx * 4
+                    if sumWeight > 0 {
+                        imagePtr[nimgIdx + 0] = UInt8(min(255, max(0, sumR / sumWeight)))
+                        imagePtr[nimgIdx + 1] = UInt8(min(255, max(0, sumG / sumWeight)))
+                        imagePtr[nimgIdx + 2] = UInt8(min(255, max(0, sumB / sumWeight)))
+                        inpaintedCount += 1
+                    }
+
+                    // Update distance and add to band
+                    let newDist = dist[pidx] + 1.0
+                    dist[nidx] = newDist
+                    state[nidx] = 1  // BAND
+                    bandPixels.append((nx, ny, newDist))
+                }
+            }
         }
 
-        return UIImage(cgImage: result)
+        logDebug("✅ [Inpaint-Telea] Inpainted \(inpaintedCount) pixels")
     }
 
     private func build3DRoom(
@@ -930,6 +1102,10 @@ final class SHARPSplatService {
     private(set) var isModelLoaded: Bool = false
     private(set) var isModelLoading: Bool = false
 
+    // Progress callbacks
+    var onLoadingProgress: ((String) -> Void)?
+    var onInferenceProgress: ((Float, String) -> Void)?
+
     init() {
         print("🔷🔷🔷 [SHARPSplatService] INIT CALLED 🔷🔷🔷")
         // Load model in background thread
@@ -945,19 +1121,35 @@ final class SHARPSplatService {
         }
     }
 
+    /// Reload the model with progress reporting
+    func reloadModelWithProgress() async {
+        await loadModel()
+    }
+
     private func loadModel() async {
         print("🔷🔷🔷 [SHARPSplatService] loadModel() called on background thread 🔷🔷🔷")
+
+        await MainActor.run {
+            self.isModelLoading = true
+            self.onLoadingProgress?("Searching for SHARP model...")
+        }
 
         // Try different model names - prioritize FP16 version (50% smaller, less memory)
         let modelNames = ["SHARP_fp16", "SHARP_image_input", "SHARP 2", "SHARP", "SHARP_2"]
 
         for modelName in modelNames {
             print("🔷 [SHARPSplatService] Checking for model: \(modelName)...")
+            await MainActor.run {
+                self.onLoadingProgress?("Checking \(modelName)...")
+            }
 
             // 1. Try compiled .mlmodelc in bundle
             if let compiledURL = Bundle.main.url(forResource: modelName, withExtension: "mlmodelc") {
                 print("   ✅ Found \(modelName).mlmodelc in bundle")
                 print("   URL: \(compiledURL)")
+                await MainActor.run {
+                    self.onLoadingProgress?("Loading \(modelName)...")
+                }
 
                 // Try CPU first (most reliable), then GPU, then ANE
                 let computeOptions: [MLComputeUnits] = [.cpuOnly, .cpuAndGPU, .all]
@@ -971,6 +1163,7 @@ final class SHARPSplatService {
                             self.sharpModel = model
                             self.isModelLoaded = true
                             self.isModelLoading = false
+                            self.onLoadingProgress?("SHARP model ready")
                         }
                         print("✅✅✅ [SHARPSplatService] SHARP model loaded with \(computeUnit) ✅✅✅")
                         return
@@ -984,10 +1177,16 @@ final class SHARPSplatService {
             if let modelURL = Bundle.main.url(forResource: modelName, withExtension: "mlpackage") {
                 print("   ✅ Found \(modelName).mlpackage in bundle")
                 print("   URL: \(modelURL)")
+                await MainActor.run {
+                    self.onLoadingProgress?("Compiling \(modelName)...")
+                }
 
                 do {
                     // Compile and load - may take a while
                     let compiledURL = try await MLModel.compileModel(at: modelURL)
+                    await MainActor.run {
+                        self.onLoadingProgress?("Loading compiled model...")
+                    }
                     let config = MLModelConfiguration()
                     config.computeUnits = .all  // Use ANE
                     let model = try MLModel(contentsOf: compiledURL, configuration: config)
@@ -995,6 +1194,7 @@ final class SHARPSplatService {
                         self.sharpModel = model
                         self.isModelLoaded = true
                         self.isModelLoading = false
+                        self.onLoadingProgress?("SHARP model ready")
                     }
                     print("✅✅✅ [SHARPSplatService] SHARP model compiled and loaded ✅✅✅")
                     return
@@ -1009,6 +1209,7 @@ final class SHARPSplatService {
         await MainActor.run {
             self.isModelLoaded = false
             self.isModelLoading = false
+            self.onLoadingProgress?("Model not found")
         }
         print("❌❌❌ [SHARPSplatService] No SHARP model could be loaded ❌❌❌")
     }
@@ -1044,12 +1245,19 @@ final class SHARPSplatService {
         let isFullRoomCloud = (mode == .fullRoomCloud)
         print("🔷🔷🔷 [SHARPSplatService] generateForegroundSplats called (mode=\(mode)) 🔷🔷🔷")
 
+        await MainActor.run {
+            self.onInferenceProgress?(0.0, "Preparing image...")
+        }
+
         guard let model = sharpModel else {
             print("❌ [SHARPSplatService] Model not loaded")
+            await MainActor.run {
+                self.onInferenceProgress?(0.0, "Model not loaded")
+            }
             return []
         }
 
-        // SHARP expects square input; we’ll pad/crop to 1536x1536 (as in Apple’s example)
+        // SHARP expects square input; we'll pad/crop to 1536x1536 (as in Apple's example)
         let maxImageDimension: CGFloat = 1536
 
         // Use model description to decide input type (multiArray or image)
@@ -1058,6 +1266,10 @@ final class SHARPSplatService {
               let inputDesc = modelDescription.inputDescriptionsByName[inputName] else {
             print("❌ [SHARPSplatService] No input features found")
             return []
+        }
+
+        await MainActor.run {
+            self.onInferenceProgress?(0.1, "Converting image...")
         }
 
         do {
@@ -1088,6 +1300,10 @@ final class SHARPSplatService {
 
             guard let inputValue = inputValue else { return [] }
 
+            await MainActor.run {
+                self.onInferenceProgress?(0.2, "Running SHARP inference...")
+            }
+
             print("🔷 [SHARPSplatService] Creating feature provider...")
             let inputFeature = try MLDictionaryFeatureProvider(dictionary: [inputName: inputValue])
 
@@ -1097,14 +1313,27 @@ final class SHARPSplatService {
             // Run prediction
             let output = try await model.prediction(from: inputFeature)
 
+            await MainActor.run {
+                self.onInferenceProgress?(0.7, "Processing splats...")
+            }
+
             print("✅ [SHARPSplatService] Inference completed!")
             print("🔷 [SHARPSplatService] Memory after inference: \(getMemoryUsage()) MB")
 
             // Parse output in autoreleasepool to free buffers
-            return autoreleasepool { parseModelOutput(output, roomDimensions: roomDimensions, boundaries: boundaries, isFullRoomCloud: isFullRoomCloud) }
+            let splats = autoreleasepool { parseModelOutput(output, roomDimensions: roomDimensions, boundaries: boundaries, isFullRoomCloud: isFullRoomCloud) }
+
+            await MainActor.run {
+                self.onInferenceProgress?(1.0, "Generated \(splats.count) splats")
+            }
+
+            return splats
 
         } catch {
             print("❌ [SHARPSplatService] Error during prediction: \(error)")
+            await MainActor.run {
+                self.onInferenceProgress?(0.0, "Inference failed")
+            }
             return []
         }
     }
@@ -2201,32 +2430,135 @@ extension UIImage {
 
 // MARK: - Texture Generation Helpers
 extension SinglePhotoRoomReconstructor {
-    // Generate floor texture from bottom region defined by boundaries
+
+    /// Sample a small patch from image and create a uniform tiled texture
+    /// - Parameters:
+    ///   - image: Source image
+    ///   - sampleRect: Region to sample pattern from (in image coordinates)
+    ///   - outputSize: Desired output texture size
+    ///   - tileSize: Size of pattern tile (smaller = more uniform, larger = more texture)
+    /// - Returns: Uniform tiled texture
+    private func createTiledTextureFromSample(
+        _ cgImage: CGImage,
+        sampleRect: CGRect,
+        outputSize: CGSize,
+        tileSize: CGFloat = 64
+    ) -> UIImage {
+        // 1. Crop sample region
+        guard let sampleCrop = cgImage.cropping(to: sampleRect) else {
+            return createSolidColorTexture(color: .gray)
+        }
+
+        // 2. Extract average color from sample
+        let ciImage = CIImage(cgImage: sampleCrop)
+        let sampleWidth = CGFloat(sampleCrop.width)
+        let sampleHeight = CGFloat(sampleCrop.height)
+
+        // Sample multiple points to get color variation
+        var colors: [(r: CGFloat, g: CGFloat, b: CGFloat)] = []
+
+        // Sample a grid of points
+        let gridSize = 4
+        for gy in 0..<gridSize {
+            for gx in 0..<gridSize {
+                let sampleX = sampleWidth * CGFloat(gx) / CGFloat(gridSize)
+                let sampleY = sampleHeight * CGFloat(gy) / CGFloat(gridSize)
+                let patchSize = min(sampleWidth, sampleHeight) / CGFloat(gridSize)
+                let patchRect = CGRect(x: sampleX, y: sampleY, width: patchSize, height: patchSize)
+
+                if let avgColor = ciImage.averageColor(in: patchRect) {
+                    var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                    avgColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+                    colors.append((r, g, b))
+                }
+            }
+        }
+
+        // Compute overall average and variation
+        guard !colors.isEmpty else {
+            return createSolidColorTexture(color: .gray)
+        }
+
+        let avgR = colors.map { $0.r }.reduce(0, +) / CGFloat(colors.count)
+        let avgG = colors.map { $0.g }.reduce(0, +) / CGFloat(colors.count)
+        let avgB = colors.map { $0.b }.reduce(0, +) / CGFloat(colors.count)
+
+        // 3. Create output texture with slight noise for natural look
+        let outWidth = Int(outputSize.width)
+        let outHeight = Int(outputSize.height)
+
+        guard let context = CGContext(
+            data: nil,
+            width: outWidth,
+            height: outHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: outWidth * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return createSolidColorTexture(color: UIColor(red: avgR, green: avgG, blue: avgB, alpha: 1))
+        }
+
+        guard let data = context.data else {
+            return createSolidColorTexture(color: UIColor(red: avgR, green: avgG, blue: avgB, alpha: 1))
+        }
+
+        let ptr = data.bindMemory(to: UInt8.self, capacity: outWidth * outHeight * 4)
+
+        // Fill with average color + subtle noise for texture
+        let noiseAmount: CGFloat = 0.03  // 3% variation
+
+        for y in 0..<outHeight {
+            for x in 0..<outWidth {
+                let idx = (y * outWidth + x) * 4
+
+                // Add subtle perlin-like noise based on position
+                let noiseX = sin(CGFloat(x) * 0.1) * cos(CGFloat(y) * 0.13)
+                let noiseY = cos(CGFloat(x) * 0.11) * sin(CGFloat(y) * 0.09)
+                let noise = (noiseX + noiseY) * 0.5 * noiseAmount
+
+                let r = min(1, max(0, avgR + noise))
+                let g = min(1, max(0, avgG + noise))
+                let b = min(1, max(0, avgB + noise))
+
+                ptr[idx + 0] = UInt8(r * 255)
+                ptr[idx + 1] = UInt8(g * 255)
+                ptr[idx + 2] = UInt8(b * 255)
+                ptr[idx + 3] = 255
+            }
+        }
+
+        guard let resultImage = context.makeImage() else {
+            return createSolidColorTexture(color: UIColor(red: avgR, green: avgG, blue: avgB, alpha: 1))
+        }
+
+        logDebug("   - Created tiled texture: avg color RGB(\(Int(avgR*255)), \(Int(avgG*255)), \(Int(avgB*255)))")
+        return UIImage(cgImage: resultImage)
+    }
+
+    // Generate floor texture - sample pattern from floor region and tile uniformly
     private func generateFloorTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
-        logDebug("🎨 [TextureGen] Generating floor texture")
+        logDebug("🎨 [TextureGen] Generating FLOOR texture (uniform tiled)")
         guard let cgImage = image.cgImage else { return createSolidColorTexture(color: .lightGray) }
 
         let width = CGFloat(cgImage.width)
         let height = CGFloat(cgImage.height)
 
+        // Sample from center-bottom of floor region (less likely to have furniture)
         let floorMinY = structure.floorY
-        let floorRect = CGRect(
-            x: structure.leftX * width,
-            y: floorMinY * height,
-            width: (structure.rightX - structure.leftX) * width,
-            height: (1.0 - floorMinY) * height
+        let sampleRect = CGRect(
+            x: width * 0.4,  // Center horizontally
+            y: height * (floorMinY + 0.05),  // Just below floor line
+            width: width * 0.2,
+            height: height * 0.1
         )
 
-        logDebug("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) F:\(structure.floorY)")
-        logDebug("   - Crop rect: \(floorRect)")
+        logDebug("   - Sampling floor pattern from: \(sampleRect)")
 
-        if let cropped = cgImage.cropping(to: floorRect) {
-            logDebug("✅ [TextureGen] Floor texture extracted from boundaries")
-            return UIImage(cgImage: cropped)
-        }
+        // Output size matching typical texture resolution
+        let outputSize = CGSize(width: 512, height: 512)
 
-        logDebug("⚠️ [TextureGen] Failed to crop floor, using solid color")
-        return createSolidColorTexture(color: .lightGray)
+        return createTiledTextureFromSample(cgImage, sampleRect: sampleRect, outputSize: outputSize)
     }
 
     private func generateCeilingTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
@@ -2353,41 +2685,10 @@ extension SinglePhotoRoomReconstructor {
         let imagePtr = imageData.bindMemory(to: UInt8.self, capacity: croppedWidth * croppedHeight * 4)
         let maskPtr = maskData.bindMemory(to: UInt8.self, capacity: croppedWidth * croppedHeight)
 
-        // Simple horizontal inpaint: for masked pixels, copy from nearest unmasked pixel to the left
-        // Lower threshold (32 instead of 128) to catch more foreground pixels
-        let foregroundThreshold: UInt8 = 32  // ~0.125, more forgiving
-        var inpaintedCount = 0
-        for y in 0..<croppedHeight {
-            var lastGoodR: UInt8? = nil
-            var lastGoodG: UInt8? = nil
-            var lastGoodB: UInt8? = nil
+        // Use Telea-style inpainting for better quality
+        teleaInpaint(imagePtr: imagePtr, maskPtr: maskPtr, width: croppedWidth, height: croppedHeight, threshold: 32)
 
-            for x in 0..<croppedWidth {
-                let maskIdx = y * croppedWidth + x
-                let imgIdx = maskIdx * 4
-
-                let maskValue = maskPtr[maskIdx]
-
-                if maskValue < foregroundThreshold {
-                    // Background pixel - save as "good" color
-                    lastGoodR = imagePtr[imgIdx + 0]
-                    lastGoodG = imagePtr[imgIdx + 1]
-                    lastGoodB = imagePtr[imgIdx + 2]
-                } else {
-                    // Foreground pixel - replace with last good color if we have one
-                    // If no good color yet (left edge of mask), keep original pixel
-                    if let goodR = lastGoodR, let goodG = lastGoodG, let goodB = lastGoodB {
-                        imagePtr[imgIdx + 0] = goodR
-                        imagePtr[imgIdx + 1] = goodG
-                        imagePtr[imgIdx + 2] = goodB
-                        inpaintedCount += 1
-                    }
-                    // else: keep original pixel - don't fill with arbitrary grey
-                }
-            }
-        }
-
-        logDebug("✅ [TextureGen] Inpainted \(inpaintedCount) foreground pixels")
+        logDebug("✅ [TextureGen] Front wall inpainted with Telea algorithm")
 
         guard let result = context.makeImage() else {
             return UIImage(cgImage: cropped)
@@ -2414,9 +2715,9 @@ extension SinglePhotoRoomReconstructor {
         return context.makeImage()
     }
 
-    // LEFT wall from a vertical strip at leftX
+    // LEFT wall - sample pattern from left edge and tile uniformly
     private func generateLeftWallTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
-        logDebug("🎨 [TextureGen] Generating LEFT wall texture from boundary")
+        logDebug("🎨 [TextureGen] Generating LEFT wall texture (uniform tiled)")
 
         guard let cgImage = image.cgImage else {
             logDebug("⚠️ [TextureGen] No CGImage, using solid color")
@@ -2426,34 +2727,27 @@ extension SinglePhotoRoomReconstructor {
         let imageWidth = CGFloat(cgImage.width)
         let imageHeight = CGFloat(cgImage.height)
 
-        let stripWidth = imageWidth * 0.1
-        let leftXPos = structure.leftX * imageWidth
-
+        // Sample from upper-left corner of the wall region (less likely to have furniture)
         let wallTop = structure.ceilingY * imageHeight
-        let wallBottom = structure.floorY * imageHeight
+        let wallMidY = (structure.ceilingY + structure.floorY) * 0.5 * imageHeight
 
-        let cropRect = CGRect(
-            x: max(leftXPos - stripWidth * 0.5, 0),
-            y: wallTop,
-            width: stripWidth,
-            height: wallBottom - wallTop
+        let sampleRect = CGRect(
+            x: 0,  // Far left edge
+            y: wallTop + (wallMidY - wallTop) * 0.2,  // Upper portion of wall
+            width: imageWidth * 0.08,  // Narrow strip
+            height: (wallMidY - wallTop) * 0.3  // Small vertical section
         )
 
         logDebug("   - Left boundary: \(structure.leftX)")
-        logDebug("   - Crop rect: \(cropRect)")
+        logDebug("   - Sampling from: \(sampleRect)")
 
-        if let croppedImage = cgImage.cropping(to: cropRect) {
-            logDebug("✅ [TextureGen] Left wall texture extracted")
-            return UIImage(cgImage: croppedImage)
-        }
-
-        logDebug("⚠️ [TextureGen] Failed to crop, using solid color")
-        return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
+        let outputSize = CGSize(width: 512, height: 512)
+        return createTiledTextureFromSample(cgImage, sampleRect: sampleRect, outputSize: outputSize)
     }
 
-    // RIGHT wall from a vertical strip at rightX
+    // RIGHT wall - sample pattern from right edge and tile uniformly
     private func generateRightWallTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
-        logDebug("🎨 [TextureGen] Generating RIGHT wall texture from boundary")
+        logDebug("🎨 [TextureGen] Generating RIGHT wall texture (uniform tiled)")
 
         guard let cgImage = image.cgImage else {
             logDebug("⚠️ [TextureGen] No CGImage, using solid color")
@@ -2463,29 +2757,22 @@ extension SinglePhotoRoomReconstructor {
         let imageWidth = CGFloat(cgImage.width)
         let imageHeight = CGFloat(cgImage.height)
 
-        let stripWidth = imageWidth * 0.1
-        let rightXPos = structure.rightX * imageWidth
-
+        // Sample from upper-right corner of the wall region (less likely to have furniture)
         let wallTop = structure.ceilingY * imageHeight
-        let wallBottom = structure.floorY * imageHeight
+        let wallMidY = (structure.ceilingY + structure.floorY) * 0.5 * imageHeight
 
-        let cropRect = CGRect(
-            x: min(rightXPos - stripWidth * 0.5, imageWidth - stripWidth),
-            y: wallTop,
-            width: stripWidth,
-            height: wallBottom - wallTop
+        let sampleRect = CGRect(
+            x: imageWidth * 0.92,  // Far right edge
+            y: wallTop + (wallMidY - wallTop) * 0.2,  // Upper portion of wall
+            width: imageWidth * 0.08,  // Narrow strip
+            height: (wallMidY - wallTop) * 0.3  // Small vertical section
         )
 
         logDebug("   - Right boundary: \(structure.rightX)")
-        logDebug("   - Crop rect: \(cropRect)")
+        logDebug("   - Sampling from: \(sampleRect)")
 
-        if let croppedImage = cgImage.cropping(to: cropRect) {
-            logDebug("✅ [TextureGen] Right wall texture extracted")
-            return UIImage(cgImage: croppedImage)
-        }
-
-        logDebug("⚠️ [TextureGen] Failed to crop, using solid color")
-        return createSolidColorTexture(color: UIColor(white: 0.9, alpha: 1.0))
+        let outputSize = CGSize(width: 512, height: 512)
+        return createTiledTextureFromSample(cgImage, sampleRect: sampleRect, outputSize: outputSize)
     }
 
     private func sampleWallColor(from image: UIImage) -> UIColor? {

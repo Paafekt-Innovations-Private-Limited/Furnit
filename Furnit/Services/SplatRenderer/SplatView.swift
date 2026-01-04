@@ -133,6 +133,9 @@ class SplatViewModel: ObservableObject {
             let metalSplats = [Splat].fromSHARP(splats, targetSize: 4.0)
                 .filtered(minOpacity: 0.05)
 
+            // Estimate USDZ file size based on textures
+            let estimatedSize = self?.estimateUSDZSize(floor: floor, ceiling: ceiling, front: front, left: left, right: right) ?? 0
+
             DispatchQueue.main.async {
                 renderer.loadSplats(metalSplats)
 
@@ -144,8 +147,40 @@ class SplatViewModel: ObservableObject {
                 self?.isProcessing = false
                 self?.isLoading = false
                 self?.texturesNeedUpdate = false
-                self?.statusMessage = "Loaded \(metalSplats.count) splats"
+                self?.statusMessage = "USDZ ~\(self?.formatFileSize(estimatedSize) ?? "?")"
             }
+        }
+    }
+
+    /// Estimate USDZ file size based on textures
+    private func estimateUSDZSize(floor: UIImage?, ceiling: UIImage?, front: UIImage?, left: UIImage?, right: UIImage?) -> Int {
+        var totalBytes = 0
+
+        // Base geometry overhead (~50KB)
+        totalBytes += 50_000
+
+        // Estimate each texture's compressed size (JPEG in USDZ is ~10-15% of raw)
+        let textures = [floor, ceiling, front, left, right]
+        for texture in textures {
+            if let img = texture {
+                // Raw size = width * height * 4 bytes (RGBA)
+                let rawSize = Int(img.size.width * img.size.height * 4)
+                // JPEG compression ratio ~10-12%
+                totalBytes += Int(Double(rawSize) * 0.12)
+            }
+        }
+
+        return totalBytes
+    }
+
+    /// Format bytes to human readable string
+    private func formatFileSize(_ bytes: Int) -> String {
+        if bytes < 1024 {
+            return "\(bytes) B"
+        } else if bytes < 1024 * 1024 {
+            return String(format: "%.1f KB", Double(bytes) / 1024)
+        } else {
+            return String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
         }
     }
 }
@@ -201,9 +236,18 @@ struct StandaloneSplatViewer: View {
     var leftWallTexture: UIImage?
     var rightWallTexture: UIImage?
 
+    // Optional reconstructor for save functionality
+    var reconstructor: SinglePhotoRoomReconstructor?
+
     // Joystick states
     @State private var moveJoystick: CGSize = .zero
     @State private var lookJoystick: CGSize = .zero
+
+    // Save state
+    @State private var showingSaveAlert = false
+    @State private var saveMessage = ""
+    @State private var showingShareSheet = false
+    @State private var savedFileURL: URL?
 
     var body: some View {
         ZStack {
@@ -213,14 +257,41 @@ struct StandaloneSplatViewer: View {
             // Top HUD
             VStack {
                 HStack {
-                    Text("Splats: \(viewModel.splatCount)")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding(8)
-                        .background(Color.black.opacity(0.5))
-                        .cornerRadius(8)
+                    // Room dimensions
+                    if let dims = reconstructor?.estimatedDimensions {
+                        Text(String(format: "%.1f x %.1f x %.1fm", dims.width, dims.depth, dims.height))
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.black.opacity(0.5))
+                            .cornerRadius(8)
+                    }
 
                     Spacer()
+
+                    // Save button
+                    if reconstructor != nil {
+                        Button(action: {
+                            Task {
+                                if let url = await reconstructor?.saveRoom() {
+                                    savedFileURL = url
+                                    saveMessage = "Saved: \(url.lastPathComponent)"
+                                    showingShareSheet = true
+                                } else {
+                                    saveMessage = "Failed to save room"
+                                    showingSaveAlert = true
+                                }
+                            }
+                        }) {
+                            Image(systemName: reconstructor?.isSaving == true ? "arrow.2.circlepath" : "square.and.arrow.down")
+                                .font(.title3)
+                                .foregroundColor(.white)
+                                .padding(8)
+                                .background(Color.blue.opacity(0.7))
+                                .clipShape(Circle())
+                        }
+                        .disabled(reconstructor?.isSaving == true)
+                    }
 
                     // Reset button
                     Button(action: {
@@ -312,6 +383,16 @@ struct StandaloneSplatViewer: View {
             let y = Float(newValue.height / 30.0) * 3.0
             viewModel.renderer?.orbit(deltaX: x, deltaY: y)
         }
+        .alert("Save Room", isPresented: $showingSaveAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(saveMessage)
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            if let url = savedFileURL {
+                ShareSheet(items: [url])
+            }
+        }
     }
 
     private func loadAll() {
@@ -324,4 +405,15 @@ struct StandaloneSplatViewer: View {
         )
         viewModel.loadSplats(splats)
     }
+}
+
+// MARK: - ShareSheet for sharing saved files
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
