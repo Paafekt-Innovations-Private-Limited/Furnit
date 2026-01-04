@@ -239,11 +239,44 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         logDebug("   - Floor region: \(roomStructure.floorRegion!)")
         logDebug("   - Ceiling region: \(roomStructure.ceilingRegion!)")
 
-        await updateProgress(0.6, "Calculating dimensions with boundaries...")
+        await updateProgress(0.5, "Calculating dimensions with boundaries...")
         let dimensions = await estimateDimensions(from: roomStructure, image: fixedImage)
 
         await MainActor.run {
             self.estimatedDimensions = dimensions
+        }
+
+        // ✅ NEW: Run SHARP first to get splats for mask generation
+        var foregroundMask: CGImage? = nil
+        var splatsForScene: [GaussianSplat] = []
+
+        if splatService.isModelLoaded && !splatService.isModelLoading {
+            await updateProgress(0.55, "Analyzing foreground objects...")
+            logDebug("🔷 [Reconstructor] Running SHARP to generate foreground mask...")
+
+            // Generate splats (includes all processing)
+            splatsForScene = await splatService.generateForegroundSplats(
+                from: fixedImage,
+                boundaries: boundaries,
+                roomDimensions: (width: dimensions.width, depth: dimensions.depth, height: dimensions.height)
+            )
+
+            await MainActor.run {
+                self.splatCount = splatsForScene.count
+            }
+
+            // Generate foreground mask from splats to remove furniture from wall texture
+            if !splatsForScene.isEmpty {
+                await updateProgress(0.6, "Creating furniture mask...")
+                foregroundMask = splatService.generateForegroundMask(
+                    from: splatsForScene,
+                    imageSize: fixedImage.size,
+                    boundaries: boundaries
+                )
+                logDebug("🔷 [Reconstructor] Foreground mask generated: \(foregroundMask != nil)")
+            }
+        } else {
+            logDebug("⚠️ [Reconstructor] SHARP model not loaded - no foreground mask")
         }
 
         await updateProgress(0.7, "Building 3D model...")
@@ -251,20 +284,17 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             dimensions: dimensions,
             structure: roomStructure,
             originalImage: fixedImage,
-            depthMap: depthMap
+            depthMap: depthMap,
+            foregroundMask: foregroundMask  // Pass mask to remove furniture from wall
         )
 
         if let scene = roomScene {
             logDebug("✅ [Reconstructor] Room scene created successfully in memory")
 
-            // Add SHARP splats for foreground objects (chair, fan, etc.)
-            if splatService.isModelLoaded && !splatService.isModelLoading {
-                logDebug("🔷🔷🔷 [Reconstructor] Checking splats: enableSplats=true, modelLoaded=true, isLoading=false 🔷🔷🔷")
-                logDebug("🔷🔷🔷 [Reconstructor] Adding splats to scene... 🔷🔷🔷")
-                await updateProgress(0.85, "Adding detail with Gaussian splats...")
-                await addSplatsToScene(scene, image: fixedImage, boundaries: boundaries, dimensions: dimensions)
-            } else {
-                print("⚠️⚠️⚠️ [Reconstructor] SHARP model NOT loaded - skipping splats ⚠️⚠️⚠️")
+            // Add splats to scene (already generated above)
+            if !splatsForScene.isEmpty {
+                await updateProgress(0.85, "Adding Gaussian splats...")
+                await addSplatsToSceneFromCache(scene, splats: splatsForScene, boundaries: boundaries, dimensions: dimensions)
             }
         }
 
@@ -276,6 +306,34 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         }
 
         logDebug("🎉 [Reconstructor] ========== BOUNDARY PROCESSING COMPLETE ==========")
+    }
+
+    // Helper to add pre-generated splats to scene
+    private func addSplatsToSceneFromCache(_ scene: SCNScene, splats: [GaussianSplat], boundaries: RoomStructure, dimensions: RoomDimensions) async {
+        logDebug("🔷 [Reconstructor] Adding \(splats.count) cached splats to scene...")
+
+        let width = dimensions.width
+        let height = dimensions.height
+        let depth = dimensions.depth
+
+        if let roomRoot = scene.rootNode.childNode(withName: "RoomRoot", recursively: false) {
+            if let splatNode = splatService.createPointCloudGeometry(from: splats, roomDimensions: (width, depth, height), boundaries: boundaries) {
+                splatNode.name = "SHARPSplats"
+                roomRoot.addChildNode(splatNode)
+                logDebug("✅ [Reconstructor] Added \(splats.count) splats to scene")
+
+                // DEBUG: Log RoomRoot children hierarchy
+                logDebug("🔍 [DEBUG] RoomRoot children count: \(roomRoot.childNodes.count)")
+                for child in roomRoot.childNodes {
+                    let childCount = child.childNodes.count
+                    logDebug("   - \(child.name ?? "<no name>") (\(childCount) children)")
+                }
+            } else {
+                logDebug("⚠️ [Reconstructor] Failed to create point cloud node from splats")
+            }
+        } else {
+            logDebug("⚠️ [Reconstructor] RoomRoot node not found - cannot attach splats")
+        }
     }
 
     // MARK: - Dimension Estimation
@@ -339,28 +397,154 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     }
 
     // MARK: - 3D Room Construction
+
+    /// Inpaint furniture from the entire image using the foreground mask.
+    /// Returns a "clean" image with furniture regions filled from nearby pixels.
+    private func inpaintFurnitureOnImage(_ image: UIImage, mask: CGImage) -> UIImage {
+        logDebug("🎨 [Inpaint] Removing furniture from full image...")
+        logDebug("🧪 [Inpaint] Incoming mask size: \(mask.width)x\(mask.height)")
+
+        guard let cgImage = image.cgImage else {
+            logDebug("⚠️ [Inpaint] No CGImage, returning original")
+            return image
+        }
+
+        let width = cgImage.width
+        let height = cgImage.height
+        logDebug("🧪 [Inpaint] Target image size: \(width)x\(height)")
+
+        // Scale mask to match image size
+        guard let scaledMask = scaleImage(mask, to: CGSize(width: width, height: height)) else {
+            logDebug("⚠️ [Inpaint] Failed to scale mask, returning original")
+            return image
+        }
+        logDebug("🧪 [Inpaint] Scaled mask size: \(scaledMask.width)x\(scaledMask.height)")
+
+        // Create context for the result
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            logDebug("⚠️ [Inpaint] Failed to create context, returning original")
+            return image
+        }
+
+        // Draw the original image
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        // Create mask context
+        guard let maskContext = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else {
+            logDebug("⚠️ [Inpaint] Failed to create mask context, returning original")
+            return image
+        }
+        maskContext.draw(scaledMask, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        guard let imageData = context.data, let maskData = maskContext.data else {
+            logDebug("⚠️ [Inpaint] Failed to get data pointers")
+            return image
+        }
+
+        let imagePtr = imageData.bindMemory(to: UInt8.self, capacity: width * height * 4)
+        let maskPtr = maskData.bindMemory(to: UInt8.self, capacity: width * height)
+
+        // Count non-zero pixels in the mask AFTER scaling and drawing
+        var maskNonZero = 0
+        var maskAboveThreshold = 0
+        let foregroundThreshold: UInt8 = 32
+        for i in 0..<(width * height) {
+            if maskPtr[i] > 0 { maskNonZero += 1 }
+            if maskPtr[i] >= foregroundThreshold { maskAboveThreshold += 1 }
+        }
+        logDebug("🧪 [Inpaint] Mask in context: \(maskNonZero) non-zero, \(maskAboveThreshold) above threshold \(foregroundThreshold)")
+
+        // Simple horizontal inpaint: for masked pixels, copy from nearest unmasked pixel to the left
+        var inpaintedCount = 0
+
+        for y in 0..<height {
+            var lastGoodR: UInt8? = nil
+            var lastGoodG: UInt8? = nil
+            var lastGoodB: UInt8? = nil
+
+            for x in 0..<width {
+                let maskIdx = y * width + x
+                let imgIdx = maskIdx * 4
+                let maskValue = maskPtr[maskIdx]
+
+                if maskValue < foregroundThreshold {
+                    // Background pixel - save as "good" color
+                    lastGoodR = imagePtr[imgIdx + 0]
+                    lastGoodG = imagePtr[imgIdx + 1]
+                    lastGoodB = imagePtr[imgIdx + 2]
+                } else {
+                    // Foreground pixel - replace with last good color if we have one
+                    if let goodR = lastGoodR, let goodG = lastGoodG, let goodB = lastGoodB {
+                        imagePtr[imgIdx + 0] = goodR
+                        imagePtr[imgIdx + 1] = goodG
+                        imagePtr[imgIdx + 2] = goodB
+                        inpaintedCount += 1
+                    }
+                }
+            }
+        }
+
+        logDebug("✅ [Inpaint] Inpainted \(inpaintedCount) pixels from full image")
+
+        guard let result = context.makeImage() else {
+            return image
+        }
+
+        return UIImage(cgImage: result)
+    }
+
     private func build3DRoom(
         dimensions: RoomDimensions,
         structure: RoomStructure,
         originalImage: UIImage,
-        depthMap: CIImage
+        depthMap: CIImage,
+        foregroundMask: CGImage? = nil
     ) async -> SCNScene? {
         logDebug("🏗️ [RoomBuilder] Starting TEXTURED room construction")
         logDebug("   - Dimensions: W:\(dimensions.width) D:\(dimensions.depth) H:\(dimensions.height)")
+        logDebug("   - Foreground mask: \(foregroundMask != nil ? "provided (furniture will be removed from ALL surfaces)" : "none")")
 
         let scene = SCNScene()
         let roomNode = SCNNode()
         roomNode.name = "RoomRoot"
         scene.rootNode.addChildNode(roomNode)
 
-        // Generate textures from the original image using adjusted boundaries
-        logDebug("🎨 [RoomBuilder] Generating textures from photo...")
+        // Create a "clean" image with furniture removed FIRST
+        // This is used for ALL wall/floor/ceiling textures
+        let cleanImage: UIImage
+        if let mask = foregroundMask {
+            logDebug("🎨 [RoomBuilder] Creating furniture-free base image...")
+            cleanImage = inpaintFurnitureOnImage(originalImage, mask: mask)
+        } else {
+            logDebug("⚠️ [RoomBuilder] No mask, using original image for textures")
+            cleanImage = originalImage
+        }
 
-        let floorTexture = generateFloorTexture(from: originalImage, structure: structure)
-        let ceilingTexture = generateCeilingTexture(from: originalImage, structure: structure)
-        let frontWallTexture = generateFrontWallTexture(from: originalImage, structure: structure)
-        let leftWallTexture = generateLeftWallTexture(from: originalImage, structure: structure)
-        let rightWallTexture = generateRightWallTexture(from: originalImage, structure: structure)
+        // Generate textures from the CLEAN image (furniture already removed)
+        logDebug("🎨 [RoomBuilder] Generating textures from clean image...")
+
+        let floorTexture = generateFloorTexture(from: cleanImage, structure: structure)
+        let ceilingTexture = generateCeilingTexture(from: cleanImage, structure: structure)
+        let frontWallTexture = generateFrontWallTexture(from: cleanImage, structure: structure, foregroundMask: nil)  // No mask needed, already clean
+        let leftWallTexture = generateLeftWallTexture(from: cleanImage, structure: structure)
+        let rightWallTexture = generateRightWallTexture(from: cleanImage, structure: structure)
 
         let wallColor = sampleWallColor(from: originalImage) ?? UIColor(white: 0.92, alpha: 1.0)
 
@@ -489,7 +673,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
 
         // Create a node containing all splats and add to the room root
         if let roomRoot = scene.rootNode.childNode(withName: "RoomRoot", recursively: false) {
-            if let splatNode = splatService.createPointCloudGeometry(from: splats, roomDimensions: (width, depth, height)) {
+            if let splatNode = splatService.createPointCloudGeometry(from: splats, roomDimensions: (width, depth, height), boundaries: boundaries) {
                 splatNode.name = "SHARPSplats"
                 roomRoot.addChildNode(splatNode)
                 logDebug("✅ [Reconstructor] Added \(splats.count) splats to scene")
@@ -751,6 +935,22 @@ final class SHARPSplatService {
         }
         print("❌❌❌ [SHARPSplatService] No SHARP model could be loaded ❌❌❌")
     }
+
+    // MARK: - Normalization Stats (for consistent UV mapping)
+
+    /// Stores the bounding box of ALL splats for consistent UV normalization
+    struct SplatNormalizationStats {
+        let minX: Float, maxX: Float
+        let minY: Float, maxY: Float
+        let minZ: Float, maxZ: Float
+
+        var xRange: Float { max(maxX - minX, 1e-6) }
+        var yRange: Float { max(maxY - minY, 1e-6) }
+        var zRange: Float { max(maxZ - minZ, 1e-6) }
+    }
+
+    /// Cached normalization stats from the most recent SHARP run
+    private var cachedNormStats: SplatNormalizationStats?
 
     // MARK: - Gaussian Splat Generation
 
@@ -1136,6 +1336,14 @@ final class SHARPSplatService {
         print("   Opacity: [\(minOpacity), \(maxOpacity)]")
         print("   Color R: [\(minColorR), \(maxColorR)]")
 
+        // Cache normalization stats from ALL splats for consistent UV mapping
+        cachedNormStats = SplatNormalizationStats(
+            minX: minX, maxX: maxX,
+            minY: minY, maxY: maxY,
+            minZ: minZ, maxZ: maxZ
+        )
+        print("🔷 [SHARPSplatService] Cached normalization stats for mask generation")
+
         // Filter using room boundaries and depth-biased scoring
         let filtered = filterForegroundSplats(splats: splats, depthThreshold: 0.7, boundaries: boundaries)
         print("🔷 [SHARPSplatService] Kept \(filtered.count) foreground splats")
@@ -1247,13 +1455,221 @@ final class SHARPSplatService {
             print("   Boundaries: floor=\(b.floorY), ceil=\(b.ceilingY), L=\(b.leftX), R=\(b.rightX)")
         }
 
-        // Sort by score and keep top N (reduced to thin the spray)
-        let maxSplats = 1000
-        let sorted = scoredSplats.sorted { $0.score > $1.score }
+        // Thin the cloud in depth - keep ~60% of depth range around median
+        // Wider band to include furniture closer to camera (like the chair)
+        let zValues = scoredSplats.map { ($0.splat.position.z - zMin) / zRange }.sorted()
+        guard !zValues.isEmpty else { return [] }
+
+        let medianZNorm = zValues[zValues.count / 2]
+        let thickness: Float = 0.60  // Keep 60% of depth range (was 25%)
+        let zMinKeep = medianZNorm - thickness / 2
+        let zMaxKeep = medianZNorm + thickness / 2
+
+        let depthFiltered = scoredSplats.filter { scored in
+            let zNorm = (scored.splat.position.z - zMin) / zRange
+            return zNorm >= zMinKeep && zNorm <= zMaxKeep
+        }
+
+        print("🔷 [SHARPSplatService] After depth thinning: \(depthFiltered.count) (median Z=\(medianZNorm), range=[\(zMinKeep), \(zMaxKeep)])")
+
+        // Sort by score and keep top N (reduced for lighter dusting)
+        let maxSplats = 800
+        let sorted = depthFiltered.sorted { $0.score > $1.score }
         let result = Array(sorted.prefix(maxSplats).map { $0.splat })
 
         print("🔷 [SHARPSplatService] Returning \(result.count) splats (top by score)")
         return result
+    }
+
+    // MARK: - Foreground Mask Generation
+
+    /// Generate a foreground mask from SHARP splats.
+    /// White = furniture/foreground, Black = background.
+    /// This version is deliberately generous so that layer-1 furniture
+    /// like the chair actually gets removed from the front wall texture.
+    func generateForegroundMask(
+        from splats: [SinglePhotoRoomReconstructor.GaussianSplat],
+        imageSize: CGSize,
+        boundaries: RoomStructure
+    ) -> CGImage? {
+        guard !splats.isEmpty else {
+            print("🔷 [SHARPSplatService] No splats, skipping mask generation")
+            return nil
+        }
+
+        let width  = Int(imageSize.width)
+        let height = Int(imageSize.height)
+
+        // Use cached normalization stats from ALL splats (computed in generateForegroundSplats)
+        // This ensures consistent UV mapping between filtering and mask generation
+        let xMin: Float, xMax: Float, yMin: Float, yMax: Float, xRange: Float, yRange: Float
+
+        if let stats = cachedNormStats {
+            xMin = stats.minX
+            xMax = stats.maxX
+            yMin = stats.minY
+            yMax = stats.maxY
+            xRange = stats.xRange
+            yRange = stats.yRange
+            print("🔷 [SHARPSplatService] Using cached normalization stats for mask")
+            print("   X: [\(xMin), \(xMax)] range=\(xRange)")
+            print("   Y: [\(yMin), \(yMax)] range=\(yRange)")
+        } else {
+            // Fallback: compute from filtered splats (less accurate but better than nothing)
+            print("⚠️ [SHARPSplatService] No cached stats, computing from filtered splats")
+            let xs = splats.map { $0.position.x }
+            let ys = splats.map { $0.position.y }
+            xMin = xs.min() ?? 0
+            xMax = xs.max() ?? 1
+            yMin = ys.min() ?? 0
+            yMax = ys.max() ?? 1
+            xRange = max(xMax - xMin, 1e-6)
+            yRange = max(yMax - yMin, 1e-6)
+        }
+
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else {
+            print("❌ [SHARPSplatService] Failed to create mask context")
+            return nil
+        }
+
+        // Start fully background
+        context.setFillColor(gray: 0, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+        context.setFillColor(gray: 1, alpha: 1)
+
+        let floorY   = Float(boundaries.floorY)
+        let ceilingY = Float(boundaries.ceilingY)
+        let leftX    = Float(boundaries.leftX)
+        let rightX   = Float(boundaries.rightX)
+
+        let splatRadius: CGFloat = 15  // Larger radius to cover more furniture area
+        var foregroundCount = 0
+        var skippedLowOpacity = 0
+
+        print("🔷 [SHARPSplatService] Mapping \(splats.count) splats to mask...")
+        print("   Room band: X=[\(leftX), \(rightX)] Y=[\(ceilingY), \(floorY)]")
+
+        for splat in splats {
+            // 1) Ignore extremely transparent dust
+            if splat.opacity < 0.02 {
+                skippedLowOpacity += 1
+                continue
+            }
+
+            // 2) Normalize SHARP position to [0,1] within the SHARP cluster
+            let clusterX = (splat.position.x - xMin) / xRange
+            let clusterY = (splat.position.y - yMin) / yRange
+
+            // 3) Map cluster [0,1] to IMAGE [0,1] within the room band
+            // This places the SHARP output INTO the visible room area
+            let imgXNorm = leftX + clusterX * (rightX - leftX)
+            let imgYNorm = ceilingY + clusterY * (floorY - ceilingY)
+
+            // Clamp to valid range
+            let clampedX = max(0, min(1, imgXNorm))
+            let clampedY = max(0, min(1, imgYNorm))
+
+            // Convert image-normalized coords → pixel coords
+            let pixelX = CGFloat(clampedX) * CGFloat(width - 1)
+            let pixelY = CGFloat(clampedY) * CGFloat(height - 1)
+
+            let rect = CGRect(
+                x: pixelX - splatRadius,
+                y: pixelY - splatRadius,
+                width: splatRadius * 2,
+                height: splatRadius * 2
+            )
+
+            context.fillEllipse(in: rect)
+            foregroundCount += 1
+        }
+
+        print("🔷 [SHARPSplatService] Foreground mask seeds: \(foregroundCount) (skipped \(skippedLowOpacity) low opacity)")
+
+        // Fallback: if SHARP gave us effectively nothing, assume there is
+        // furniture in the right-bottom "chair band" and mask that out
+        if foregroundCount == 0 {
+            let fbRightStart = max(rightX - 0.22, 0.0)   // last ~22% width
+            let fbBottomStart = min(floorY + 0.02, 1.0)  // just below floor line
+            let fbHeightFrac: Float = 0.28               // ~bottom 28% of image
+
+            let fallbackRect = CGRect(
+                x: CGFloat(fbRightStart)  * CGFloat(width),
+                y: CGFloat(fbBottomStart) * CGFloat(height),
+                width: CGFloat(rightX - fbRightStart) * CGFloat(width),
+                height: CGFloat(fbHeightFrac) * CGFloat(height)
+            ).intersection(CGRect(x: 0, y: 0, width: width, height: height))
+
+            if !fallbackRect.isNull {
+                context.fill(fallbackRect)
+                print("⚠️ [SHARPSplatService] SHARP mask empty – drew fallback right-bottom band: \(fallbackRect)")
+            } else {
+                print("⚠️ [SHARPSplatService] SHARP mask empty and fallback rect was null")
+            }
+        }
+
+        guard let rawMask = context.makeImage() else {
+            print("❌ [SHARPSplatService] Failed to create raw mask image")
+            return nil
+        }
+
+        // Count non-zero pixels in raw mask for debugging
+        if let maskData = context.data {
+            let maskPtr = maskData.bindMemory(to: UInt8.self, capacity: width * height)
+            var nonZeroCount = 0
+            for i in 0..<(width * height) {
+                if maskPtr[i] > 0 { nonZeroCount += 1 }
+            }
+            print("🔍 [SHARPSplatService] Raw mask non-zero pixels: \(nonZeroCount) / \(width * height)")
+        }
+
+        // Smooth → threshold to get a nice soft, binary-ish mask
+        let ciImage = CIImage(cgImage: rawMask)
+
+        // Dilate the mask using a larger blur radius
+        let blurFilter = CIFilter(name: "CIGaussianBlur")
+        blurFilter?.setValue(ciImage, forKey: kCIInputImageKey)
+        blurFilter?.setValue(20.0, forKey: kCIInputRadiusKey)  // Increased from 12 for better dilation
+
+        guard let blurred = blurFilter?.outputImage else {
+            print("⚠️ [SHARPSplatService] Blur failed, returning raw mask")
+            return rawMask
+        }
+
+        // Lower threshold to catch more of the dilated mask
+        let thresholdFilter = CIFilter(name: "CIColorClamp")
+        thresholdFilter?.setValue(blurred, forKey: kCIInputImageKey)
+        thresholdFilter?.setValue(
+            CIVector(x: 0.10, y: 0.10, z: 0.10, w: 1),  // Lowered from 0.25 to catch more
+            forKey: "inputMinComponents"
+        )
+        thresholdFilter?.setValue(
+            CIVector(x: 1, y: 1, z: 1, w: 1),
+            forKey: "inputMaxComponents"
+        )
+
+        guard
+            let final = thresholdFilter?.outputImage,
+            let finalCG = CIContext().createCGImage(
+                final,
+                from: CGRect(x: 0, y: 0, width: width, height: height)
+            )
+        else {
+            print("⚠️ [SHARPSplatService] Threshold failed, returning blurred mask")
+            return rawMask
+        }
+
+        return finalCG
     }
 
     // MARK: - SHARP Scene Statistics
@@ -1294,81 +1710,156 @@ final class SHARPSplatService {
                           rangeX: rangeX, rangeY: rangeY, rangeZ: rangeZ)
     }
 
-    /// Map SHARP position to SceneKit room coordinates
-    /// Normalizes SHARP coords to [0,1] per-axis, then maps to room box with clamping
-    private func mapSharpToRoom(
+    /// Which room plane a splat belongs to based on its image UV
+    private enum RoomPlane {
+        case frontWall, floor, leftWall, rightWall, ceiling, discard
+    }
+
+    /// Classify splat to a room plane based on image UV and boundaries
+    private func classifyPlane(u: Float, v: Float, boundaries: RoomStructure) -> RoomPlane {
+        let floorY = Float(boundaries.floorY)
+        let ceilingY = Float(boundaries.ceilingY)
+        let leftX = Float(boundaries.leftX)
+        let rightX = Float(boundaries.rightX)
+
+        // v is image Y: 0=top, 1=bottom
+        if v >= floorY {
+            return .floor
+        } else if v <= ceilingY {
+            return .ceiling  // could discard these
+        } else {
+            // Middle band: walls
+            if u <= leftX { return .leftWall }
+            if u >= rightX { return .rightWall }
+            return .frontWall  // between left & right → back wall (curtains)
+        }
+    }
+
+    /// Map SHARP position to room plane using UV projection
+    /// Treats SHARP XY as image UV, ignores Z for placement
+    private func mapSharpToRoomPlane(
         _ p: SIMD3<Float>,
         room: (width: Float, depth: Float, height: Float),
-        stats: SharpStats
-    ) -> SIMD3<Float> {
-        // Helper functions
+        stats: SharpStats,
+        boundaries: RoomStructure
+    ) -> SIMD3<Float>? {
         func lerp(_ a: Float, _ b: Float, _ t: Float) -> Float { a + (b - a) * t }
-        func clamp(_ x: Float, _ lo: Float, _ hi: Float) -> Float { max(lo, min(hi, x)) }
 
-        // 1. Normalize SHARP coords to 0...1 (relative position in SHARP cloud)
-        let u = (p.x - stats.minX) / stats.rangeX  // 0...1 across cloud width
-        let v = (p.y - stats.minY) / stats.rangeY  // 0...1 across cloud height
-        let d = (p.z - stats.minZ) / stats.rangeZ  // 0...1 depth (local)
+        // 1. Normalize SHARP XY to 0...1 (image UV)
+        let nx = (p.x - stats.minX) / stats.rangeX
+        let ny = (p.y - stats.minY) / stats.rangeY
 
-        // 2. Map to front-wall-aligned room coords
-        let frontZ: Float = -room.depth / 2                    // front wall position
-        let maxForegroundDepth: Float = room.depth * 0.6       // splats stay in front 60%
+        // Clamp to 0-1
+        let u = max(0, min(1, nx))
+        let v = max(0, min(1, ny))  // v: 0=top, 1=bottom in image space
 
-        var worldX = lerp(-room.width / 2, room.width / 2, u)  // left → right
-        var worldY = lerp(0, room.height, v)                   // floor → ceiling
-        var worldZ = lerp(frontZ + 0.05, frontZ + maxForegroundDepth, d)  // front wall → into room
+        // Room geometry
+        let minX = -room.width / 2
+        let maxX = room.width / 2
+        let floorYWorld: Float = 0.0
+        let ceilYWorld: Float = room.height
+        let frontZ: Float = -room.depth / 2  // front wall Z position
 
-        // 3. Safety clamps - splats NEVER enlarge room bounds
-        worldX = clamp(worldX, -room.width / 2, room.width / 2)
-        worldY = clamp(worldY, 0, room.height)
-        worldZ = clamp(worldZ, frontZ, frontZ + maxForegroundDepth)
+        // Boundary values
+        let floorY = Float(boundaries.floorY)
+        let ceilingY = Float(boundaries.ceilingY)
+        let leftX = Float(boundaries.leftX)
+        let rightX = Float(boundaries.rightX)
 
-        return SIMD3<Float>(worldX, worldY, worldZ)
+        // 2. Classify which plane this splat belongs to
+        let plane = classifyPlane(u: u, v: v, boundaries: boundaries)
+
+        // 3. Project onto the chosen plane (ignore SHARP Z)
+        switch plane {
+        case .frontWall:
+            // Map u across wall width, v across wall height
+            let tX = (u - leftX) / max(rightX - leftX, 0.001)
+            let tY = (v - ceilingY) / max(floorY - ceilingY, 0.001)
+            let worldX = lerp(minX, maxX, tX)
+            let worldY = lerp(ceilYWorld, floorYWorld, tY)  // ceiling→floor as v increases
+            let worldZ = frontZ + 0.03  // tiny offset to avoid z-fighting
+            return SIMD3<Float>(worldX, worldY, worldZ)
+
+        case .floor:
+            // Stick to floor plane, map depth from floorY to bottom of image
+            let tX = (u - leftX) / max(rightX - leftX, 0.001)
+            let tZ = (v - floorY) / max(1.0 - floorY, 0.001)  // 0 at floor line, 1 at image bottom
+            let worldX = lerp(minX, maxX, tX)
+            let worldZ = lerp(frontZ, frontZ + room.depth * 0.5, tZ)  // front → mid room
+            let worldY = floorYWorld + 0.02  // slightly above floor
+            return SIMD3<Float>(worldX, worldY, worldZ)
+
+        case .leftWall, .rightWall, .ceiling:
+            // Discard for now - focus on front wall and floor
+            return nil
+
+        case .discard:
+            return nil
+        }
     }
 
     func createPointCloudGeometry(
         from splats: [SinglePhotoRoomReconstructor.GaussianSplat],
-        roomDimensions: (width: Float, depth: Float, height: Float)
+        roomDimensions: (width: Float, depth: Float, height: Float),
+        boundaries: RoomStructure
     ) -> SCNNode? {
         guard !splats.isEmpty else { return nil }
 
         let parent = SCNNode()
 
-        // Compute scene statistics for proper 3D mapping
+        // Compute scene statistics for UV normalization
         let stats = computeSharpStats(from: splats)
 
-        // DEBUG: Use large bright red spheres for visibility testing
-        let debugVisibility = true
-        let sphereRadius: CGFloat = debugVisibility ? 0.05 : 0.03  // 5cm debug, 3cm normal
+        // DEBUG: Set to false for actual colors, true for magenta debug
+        let debugVisibility = false
+        let sphereRadius: CGFloat = 0.02  // 2cm spheres
+
+        var placedCount = 0
+        var frontWallCount = 0
+        var floorCount = 0
 
         for (index, splat) in splats.enumerated() {
+            // Map using UV → plane projection (ignores SHARP Z for placement)
+            guard let worldPos = mapSharpToRoomPlane(splat.position, room: roomDimensions, stats: stats, boundaries: boundaries) else {
+                continue  // Skip discarded planes (ceiling, side walls)
+            }
+
             let sphere = SCNSphere(radius: sphereRadius)
             let material = SCNMaterial()
 
             if debugVisibility {
                 // DEBUG: Bright magenta to spot against room
                 material.diffuse.contents = UIColor.magenta
+                material.transparency = 0.7
             } else {
+                // Use actual SHARP colors
                 material.diffuse.contents = UIColor(
                     red: CGFloat(splat.color.x),
                     green: CGFloat(splat.color.y),
                     blue: CGFloat(splat.color.z),
-                    alpha: CGFloat(min(max(splat.opacity, 0.05), 1.0))
+                    alpha: 1.0
                 )
+                material.transparency = 0.5  // Semi-transparent so underlying geometry shows
             }
             material.lightingModel = .constant
             material.isDoubleSided = true
+            // Proper depth testing - splats can be occluded by walls/chair
             material.readsFromDepthBuffer = true
             material.writesToDepthBuffer = true
             sphere.materials = [material]
 
             let node = SCNNode(geometry: sphere)
-
-            // Map SHARP 3D camera coords to SceneKit room coords
-            let worldPos = mapSharpToRoom(splat.position, room: roomDimensions, stats: stats)
             node.position = SCNVector3(worldPos.x, worldPos.y, worldPos.z)
-
             parent.addChildNode(node)
+
+            placedCount += 1
+
+            // Track plane distribution
+            if abs(worldPos.z - (-roomDimensions.depth / 2 + 0.03)) < 0.1 {
+                frontWallCount += 1
+            } else {
+                floorCount += 1
+            }
 
             if index == 0 {
                 print("🔷 [SHARPSplatService] First splat:")
@@ -1377,11 +1868,12 @@ final class SHARPSplatService {
             }
         }
 
-        // Render splats in front of wall textures
-        parent.renderingOrder = 10
+        // Default rendering order - splats participate in normal depth testing
+        parent.renderingOrder = 0
 
-        print("✅ [SHARPSplatService] Created point cloud with \(splats.count) points")
-        print("   Rendering order: 10 (splats draw on top of walls)")
+        print("✅ [SHARPSplatService] Created point cloud with \(placedCount) points")
+        print("   Front wall: \(frontWallCount), Floor: \(floorCount)")
+        print("   Rendering order: 0 (normal depth testing)")
         return parent
     }
 
@@ -1576,7 +2068,7 @@ extension SinglePhotoRoomReconstructor {
         return createSolidColorTexture(color: .white)
     }
 
-    private func generateFrontWallTexture(from image: UIImage, structure: RoomStructure) -> UIImage {
+    private func generateFrontWallTexture(from image: UIImage, structure: RoomStructure, foregroundMask: CGImage? = nil) -> UIImage {
         logDebug("🎨 [TextureGen] Generating FRONT wall texture from boundaries")
         guard let cgImage = image.cgImage else { return createSolidColorTexture(color: .white) }
 
@@ -1594,15 +2086,145 @@ extension SinglePhotoRoomReconstructor {
         )
 
         logDebug("   - Boundaries: L:\(structure.leftX) R:\(structure.rightX) C:\(structure.ceilingY) F:\(structure.floorY)")
+        logDebug("   - Foreground mask: \(foregroundMask != nil ? "provided" : "none")")
         logDebug("   - Crop rect: \(wallRect)")
 
-        if let cropped = cgImage.cropping(to: wallRect) {
-            logDebug("✅ [TextureGen] Front wall texture extracted from boundaries")
+        guard let cropped = cgImage.cropping(to: wallRect) else {
+            logDebug("⚠️ [TextureGen] Failed to crop front wall, using solid color")
+            return createSolidColorTexture(color: .white)
+        }
+
+        // If no mask provided, return the simple crop
+        guard let mask = foregroundMask else {
+            logDebug("✅ [TextureGen] Front wall texture extracted (no mask)")
             return UIImage(cgImage: cropped)
         }
 
-        logDebug("⚠️ [TextureGen] Failed to crop front wall, using solid color")
-        return createSolidColorTexture(color: .white)
+        // Apply mask: inpaint foreground regions with nearby background colors
+        logDebug("🎨 [TextureGen] Applying foreground mask to remove furniture...")
+
+        let croppedWidth = cropped.width
+        let croppedHeight = cropped.height
+
+        // First, resize mask to match the original image size (in case it's different)
+        // Then crop it with the same wallRect so mask and image pixels are aligned
+        guard let resizedMask = scaleImage(mask, to: CGSize(width: width, height: height)) else {
+            logDebug("⚠️ [TextureGen] Failed to resize mask to image size")
+            return UIImage(cgImage: cropped)
+        }
+
+        guard let croppedMask = resizedMask.cropping(to: wallRect) else {
+            logDebug("⚠️ [TextureGen] Failed to crop mask with wallRect")
+            return UIImage(cgImage: cropped)
+        }
+
+        logDebug("   - Mask original size: \(mask.width)x\(mask.height)")
+        logDebug("   - Mask resized to: \(Int(width))x\(Int(height))")
+        logDebug("   - Mask cropped to: \(croppedMask.width)x\(croppedMask.height)")
+
+        // Create a new context for the inpainted result
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: croppedWidth,
+            height: croppedHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: croppedWidth * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            logDebug("⚠️ [TextureGen] Failed to create inpaint context")
+            return UIImage(cgImage: cropped)
+        }
+
+        // Draw the original cropped image
+        context.draw(cropped, in: CGRect(x: 0, y: 0, width: croppedWidth, height: croppedHeight))
+
+        // Get pixel data from both
+        guard let imageData = context.data else {
+            return UIImage(cgImage: cropped)
+        }
+
+        // Create context for mask to read its pixels
+        guard let maskContext = CGContext(
+            data: nil,
+            width: croppedWidth,
+            height: croppedHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: croppedWidth,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else {
+            return UIImage(cgImage: cropped)
+        }
+        maskContext.draw(croppedMask, in: CGRect(x: 0, y: 0, width: croppedWidth, height: croppedHeight))
+
+        guard let maskData = maskContext.data else {
+            return UIImage(cgImage: cropped)
+        }
+
+        let imagePtr = imageData.bindMemory(to: UInt8.self, capacity: croppedWidth * croppedHeight * 4)
+        let maskPtr = maskData.bindMemory(to: UInt8.self, capacity: croppedWidth * croppedHeight)
+
+        // Simple horizontal inpaint: for masked pixels, copy from nearest unmasked pixel to the left
+        // Lower threshold (32 instead of 128) to catch more foreground pixels
+        let foregroundThreshold: UInt8 = 32  // ~0.125, more forgiving
+        var inpaintedCount = 0
+        for y in 0..<croppedHeight {
+            var lastGoodR: UInt8? = nil
+            var lastGoodG: UInt8? = nil
+            var lastGoodB: UInt8? = nil
+
+            for x in 0..<croppedWidth {
+                let maskIdx = y * croppedWidth + x
+                let imgIdx = maskIdx * 4
+
+                let maskValue = maskPtr[maskIdx]
+
+                if maskValue < foregroundThreshold {
+                    // Background pixel - save as "good" color
+                    lastGoodR = imagePtr[imgIdx + 0]
+                    lastGoodG = imagePtr[imgIdx + 1]
+                    lastGoodB = imagePtr[imgIdx + 2]
+                } else {
+                    // Foreground pixel - replace with last good color if we have one
+                    // If no good color yet (left edge of mask), keep original pixel
+                    if let goodR = lastGoodR, let goodG = lastGoodG, let goodB = lastGoodB {
+                        imagePtr[imgIdx + 0] = goodR
+                        imagePtr[imgIdx + 1] = goodG
+                        imagePtr[imgIdx + 2] = goodB
+                        inpaintedCount += 1
+                    }
+                    // else: keep original pixel - don't fill with arbitrary grey
+                }
+            }
+        }
+
+        logDebug("✅ [TextureGen] Inpainted \(inpaintedCount) foreground pixels")
+
+        guard let result = context.makeImage() else {
+            return UIImage(cgImage: cropped)
+        }
+
+        return UIImage(cgImage: result)
+    }
+
+    private func scaleImage(_ image: CGImage, to size: CGSize) -> CGImage? {
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        guard let context = CGContext(
+            data: nil,
+            width: Int(size.width),
+            height: Int(size.height),
+            bitsPerComponent: 8,
+            bytesPerRow: Int(size.width),
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else {
+            return nil
+        }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(origin: .zero, size: size))
+        return context.makeImage()
     }
 
     // LEFT wall from a vertical strip at leftX
@@ -1706,9 +2328,10 @@ extension SinglePhotoRoomReconstructor {
         material.emission.intensity = 1.0
 
         material.lightingModel = .constant
-        // Walls act as backdrop - don't block splats
-        material.writesToDepthBuffer = false
-        material.readsFromDepthBuffer = false
+        // Walls participate in normal depth testing
+        // They can occlude splats that are behind them
+        material.writesToDepthBuffer = true
+        material.readsFromDepthBuffer = true
     }
 
     private func createSolidColorTexture(color: UIColor) -> UIImage {
