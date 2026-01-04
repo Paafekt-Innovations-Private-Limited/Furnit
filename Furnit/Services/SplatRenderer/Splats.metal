@@ -137,3 +137,31 @@ vertex LineVSOut line_vertex(LineVertex v [[stage_in]],
 fragment half4 line_fragment(LineVSOut in [[stage_in]]) {
     return half4(half3(in.color), 1.0);
 }
+
+// MARK: - Textured Quad Shaders (for room planes)
+
+struct QuadVertex {
+    float3 position [[attribute(0)]];
+    float2 uv       [[attribute(1)]];
+};
+
+struct QuadVSOut {
+    float4 position [[position]];
+    float2 uv;
+};
+
+vertex QuadVSOut quad_vertex(QuadVertex v [[stage_in]],
+                              constant CameraUniforms &camera [[buffer(1)]]) {
+    QuadVSOut out;
+    float4 worldPos = float4(v.position, 1.0);
+    float4 viewPos = camera.viewMatrix * worldPos;
+    out.position = camera.projectionMatrix * viewPos;
+    out.uv = v.uv;
+    return out;
+}
+
+fragment half4 quad_fragment(QuadVSOut in [[stage_in]],
+                              texture2d<half> tex [[texture(0)]]) {
+    constexpr sampler s(mag_filter::linear, min_filter::linear);
+    return tex.sample(s, in.uv);
+}

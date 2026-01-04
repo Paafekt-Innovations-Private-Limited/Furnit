@@ -593,8 +593,10 @@ extension Array where Element == Splat {
             let normalized = (s.position - minPos) / range
 
             // Map to room coordinates
+            // NOTE: SHARP Y grows downward (0=top, max=bottom), room Y grows upward (0=floor)
+            // So we flip Y: (1 - normY) maps SHARP bottom → room floor
             let worldX = (normalized.x - 0.5) * roomWidth      // center at 0
-            let worldY = normalized.y * roomHeight              // 0=floor, height=ceiling
+            let worldY = (1.0 - normalized.y) * roomHeight     // flip Y: bottom→floor, top→ceiling
             let worldZ = (normalized.z - 0.5) * roomDepth * -1  // front = negative Z
 
             let worldPos = SIMD3<Float>(worldX, worldY, worldZ)

@@ -1,5 +1,6 @@
 import SwiftUI
 import MetalKit
+import UIKit
 
 // MARK: - SplatView (SwiftUI wrapper for Metal splat rendering)
 struct SplatView: UIViewRepresentable {
@@ -86,11 +87,28 @@ class SplatViewModel: ObservableObject {
     var needsUpdate = false
     private var isProcessing = false  // Guard against duplicate dispatch
 
+    // Room textures for Metal renderer
+    var floorTexture: UIImage?
+    var ceilingTexture: UIImage?
+    var frontWallTexture: UIImage?
+    var leftWallTexture: UIImage?
+    var rightWallTexture: UIImage?
+    var texturesNeedUpdate = false
+
     func loadSplats(_ splats: [SinglePhotoRoomReconstructor.GaussianSplat]) {
         pendingSplats = splats
         needsUpdate = true
         splatCount = splats.count
         statusMessage = "Loading \(splats.count) splats..."
+    }
+
+    func loadTextures(floor: UIImage?, ceiling: UIImage?, front: UIImage?, left: UIImage?, right: UIImage?) {
+        floorTexture = floor
+        ceilingTexture = ceiling
+        frontWallTexture = front
+        leftWallTexture = left
+        rightWallTexture = right
+        texturesNeedUpdate = true
     }
 
     func updateRenderer() {
@@ -103,6 +121,13 @@ class SplatViewModel: ObservableObject {
         isLoading = true
         let splats = pendingSplats
 
+        // Capture textures for background thread
+        let floor = floorTexture
+        let ceiling = ceilingTexture
+        let front = frontWallTexture
+        let left = leftWallTexture
+        let right = rightWallTexture
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // Convert to Splat array on background thread
             let metalSplats = [Splat].fromSHARP(splats, targetSize: 4.0)
@@ -110,8 +135,15 @@ class SplatViewModel: ObservableObject {
 
             DispatchQueue.main.async {
                 renderer.loadSplats(metalSplats)
+
+                // Update room textures if available
+                if floor != nil || ceiling != nil || front != nil || left != nil || right != nil {
+                    renderer.updateRoomTextures(floor: floor, ceiling: ceiling, front: front, left: left, right: right)
+                }
+
                 self?.isProcessing = false
                 self?.isLoading = false
+                self?.texturesNeedUpdate = false
                 self?.statusMessage = "Loaded \(metalSplats.count) splats"
             }
         }
@@ -162,6 +194,13 @@ struct StandaloneSplatViewer: View {
     @StateObject private var viewModel = SplatViewModel()
     let splats: [SinglePhotoRoomReconstructor.GaussianSplat]
 
+    // Optional room textures for textured room planes
+    var floorTexture: UIImage?
+    var ceilingTexture: UIImage?
+    var frontWallTexture: UIImage?
+    var leftWallTexture: UIImage?
+    var rightWallTexture: UIImage?
+
     var body: some View {
         ZStack {
             SplatView(viewModel: viewModel)
@@ -176,7 +215,7 @@ struct StandaloneSplatViewer: View {
                     Spacer()
 
                     Button("Reload") {
-                        viewModel.loadSplats(splats)
+                        loadAll()
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -192,7 +231,18 @@ struct StandaloneSplatViewer: View {
         }
         .background(Color.black)
         .onAppear {
-            viewModel.loadSplats(splats)
+            loadAll()
         }
+    }
+
+    private func loadAll() {
+        viewModel.loadTextures(
+            floor: floorTexture,
+            ceiling: ceilingTexture,
+            front: frontWallTexture,
+            left: leftWallTexture,
+            right: rightWallTexture
+        )
+        viewModel.loadSplats(splats)
     }
 }

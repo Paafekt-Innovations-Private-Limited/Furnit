@@ -724,7 +724,14 @@ struct SinglePhotoRoomView: View {
             Group {
                 if renderMode == RoomRenderMode.metalSplat.rawValue {
                     // Pure Metal splat renderer - use full-room cloud for complete view
-                    StandaloneSplatViewer(splats: reconstructor.rawSplatsFullRoom)
+                    StandaloneSplatViewer(
+                        splats: reconstructor.rawSplatsFullRoom,
+                        floorTexture: reconstructor.floorTexture,
+                        ceilingTexture: reconstructor.ceilingTexture,
+                        frontWallTexture: reconstructor.frontWallTexture,
+                        leftWallTexture: reconstructor.leftWallTexture,
+                        rightWallTexture: reconstructor.rightWallTexture
+                    )
                 } else if renderMode == RoomRenderMode.yoloeRoom.rawValue {
                     // YOLOE detection-based room
                     if let image = fixedImage {

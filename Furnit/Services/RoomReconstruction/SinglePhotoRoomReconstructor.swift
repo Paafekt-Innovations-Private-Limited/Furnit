@@ -17,6 +17,13 @@ class SinglePhotoRoomReconstructor: ObservableObject {
     @Published var rawSplats: [GaussianSplat] = []  // Furniture-band splats for mask generation
     @Published var rawSplatsFullRoom: [GaussianSplat] = []  // Full-room splats for splat viewer
 
+    // MARK: - Room Textures (for Metal splat renderer)
+    @Published var floorTexture: UIImage?
+    @Published var ceilingTexture: UIImage?
+    @Published var frontWallTexture: UIImage?
+    @Published var leftWallTexture: UIImage?
+    @Published var rightWallTexture: UIImage?
+
     // MARK: - Dependencies
     private let depthEstimator = DepthEstimator()
     private let roomAnalyzer = RoomStructureAnalyzer()
@@ -580,11 +587,21 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         // Generate textures from the CLEAN image (furniture already removed)
         logDebug("🎨 [RoomBuilder] Generating textures from clean image...")
 
-        let floorTexture = generateFloorTexture(from: cleanImage, structure: structure)
-        let ceilingTexture = generateCeilingTexture(from: cleanImage, structure: structure)
-        let frontWallTexture = generateFrontWallTexture(from: cleanImage, structure: structure, foregroundMask: nil)  // No mask needed, already clean
-        let leftWallTexture = generateLeftWallTexture(from: cleanImage, structure: structure)
-        let rightWallTexture = generateRightWallTexture(from: cleanImage, structure: structure)
+        let floorTex = generateFloorTexture(from: cleanImage, structure: structure)
+        let ceilingTex = generateCeilingTexture(from: cleanImage, structure: structure)
+        let frontWallTex = generateFrontWallTexture(from: cleanImage, structure: structure, foregroundMask: nil)  // No mask needed, already clean
+        let leftWallTex = generateLeftWallTexture(from: cleanImage, structure: structure)
+        let rightWallTex = generateRightWallTexture(from: cleanImage, structure: structure)
+
+        // Store textures for Metal splat renderer
+        await MainActor.run {
+            self.floorTexture = floorTex
+            self.ceilingTexture = ceilingTex
+            self.frontWallTexture = frontWallTex
+            self.leftWallTexture = leftWallTex
+            self.rightWallTexture = rightWallTex
+            logDebug("🎨 [RoomBuilder] Stored textures for Metal renderer")
+        }
 
         let wallColor = sampleWallColor(from: originalImage) ?? UIColor(white: 0.92, alpha: 1.0)
 
@@ -596,7 +613,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                                length: CGFloat(dimensions.depth),
                                chamferRadius: 0)
             let floorMaterial = SCNMaterial()
-            configureMaterialForUSDZExport(floorMaterial, texture: floorTexture)
+            configureMaterialForUSDZExport(floorMaterial, texture: floorTex)
             floor.materials = [floorMaterial]
 
             let floorNode = SCNNode(geometry: floor)
@@ -613,7 +630,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                                  length: CGFloat(dimensions.depth),
                                  chamferRadius: 0)
             let ceilingMaterial = SCNMaterial()
-            configureMaterialForUSDZExport(ceilingMaterial, texture: ceilingTexture)
+            configureMaterialForUSDZExport(ceilingMaterial, texture: ceilingTex)
             ceiling.materials = [ceilingMaterial]
 
             let ceilingNode = SCNNode(geometry: ceiling)
@@ -629,7 +646,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                                length: 0.01,
                                chamferRadius: 0)
         let frontMaterial = SCNMaterial()
-        configureMaterialForUSDZExport(frontMaterial, texture: frontWallTexture)
+        configureMaterialForUSDZExport(frontMaterial, texture: frontWallTex)
         frontWall.materials = [frontMaterial]
 
         let frontNode = SCNNode(geometry: frontWall)
@@ -645,7 +662,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                                   length: 0.01,
                                   chamferRadius: 0)
             let leftMaterial = SCNMaterial()
-            configureMaterialForUSDZExport(leftMaterial, texture: leftWallTexture)
+            configureMaterialForUSDZExport(leftMaterial, texture: leftWallTex)
             leftWall.materials = [leftMaterial]
 
             let leftWallNode = SCNNode(geometry: leftWall)
@@ -663,7 +680,7 @@ class SinglePhotoRoomReconstructor: ObservableObject {
                                    length: 0.01,
                                    chamferRadius: 0)
             let rightMaterial = SCNMaterial()
-            configureMaterialForUSDZExport(rightMaterial, texture: rightWallTexture)
+            configureMaterialForUSDZExport(rightMaterial, texture: rightWallTex)
             rightWall.materials = [rightMaterial]
 
             let rightWallNode = SCNNode(geometry: rightWall)

@@ -2,6 +2,13 @@ import Foundation
 import Metal
 import MetalKit
 import simd
+import UIKit
+
+// MARK: - Room Quad Vertex (for textured room planes)
+struct RoomQuadVertex {
+    var position: SIMD3<Float>
+    var uv: SIMD2<Float>
+}
 
 // MARK: - Camera Uniforms (must match Metal CameraUniforms exactly)
 struct CameraUniforms {
@@ -74,6 +81,28 @@ class SplatRenderer: NSObject {
     private var roomWireframeVertexCount: Int = 0
     private var linePipelineState: MTLRenderPipelineState?
 
+    // MARK: - Room Quad Buffers (textured planes)
+    private var floorVB: MTLBuffer?
+    private var frontVB: MTLBuffer?
+    private var leftVB: MTLBuffer?
+    private var rightVB: MTLBuffer?
+    private var ceilVB: MTLBuffer?
+
+    private var floorVC: Int = 0
+    private var frontVC: Int = 0
+    private var leftVC: Int = 0
+    private var rightVC: Int = 0
+    private var ceilVC: Int = 0
+
+    // MARK: - Room Textures
+    private var floorTex: MTLTexture?
+    private var frontTex: MTLTexture?
+    private var leftTex: MTLTexture?
+    private var rightTex: MTLTexture?
+    private var ceilTex: MTLTexture?
+
+    private var roomQuadPipeline: MTLRenderPipelineState?
+
     // MARK: - Room Dimensions (should match settings)
     let roomWidth: Float = 4.0
     let roomDepth: Float = 4.5
@@ -112,7 +141,9 @@ class SplatRenderer: NSObject {
         setupDebugPipeline()
         setupDepthState()
         setupLinePipeline()
+        setupQuadPipeline()
         buildRoomWireframe()
+        buildRoomQuads()
     }
 
     // MARK: - Vertex Descriptor
@@ -303,6 +334,143 @@ class SplatRenderer: NSObject {
         print("Room wireframe: \(vertices.count) vertices, \(roomWidth)×\(roomDepth)×\(roomHeight)m")
     }
 
+    // MARK: - Room Quads (textured planes)
+    private func buildRoomQuads() {
+        let hw = roomWidth * 0.5   // half width  → X ∈ [-2, +2]
+        let hd = roomDepth * 0.5   // half depth  → Z ∈ [-2.25, +2.25]
+        let h = roomHeight         // height      → Y ∈ [0, 2.8]
+
+        // Helper to build a quad from 4 named corners (proper UV orientation)
+        // topLeft = (0,0), topRight = (1,0), bottomRight = (1,1), bottomLeft = (0,1)
+        @inline(__always)
+        func makeQuad(topLeft: SIMD3<Float>, topRight: SIMD3<Float>,
+                      bottomRight: SIMD3<Float>, bottomLeft: SIMD3<Float>) -> [RoomQuadVertex] {
+            return [
+                // Triangle 1: topLeft → topRight → bottomRight
+                RoomQuadVertex(position: topLeft, uv: SIMD2<Float>(0, 0)),
+                RoomQuadVertex(position: topRight, uv: SIMD2<Float>(1, 0)),
+                RoomQuadVertex(position: bottomRight, uv: SIMD2<Float>(1, 1)),
+                // Triangle 2: topLeft → bottomRight → bottomLeft
+                RoomQuadVertex(position: topLeft, uv: SIMD2<Float>(0, 0)),
+                RoomQuadVertex(position: bottomRight, uv: SIMD2<Float>(1, 1)),
+                RoomQuadVertex(position: bottomLeft, uv: SIMD2<Float>(0, 1)),
+            ]
+        }
+
+        // 8 corners in room-space
+        // Floor corners (y=0)
+        let fl = SIMD3<Float>(-hw, 0, -hd)  // floor front left
+        let fr = SIMD3<Float>( hw, 0, -hd)  // floor front right
+        let br = SIMD3<Float>( hw, 0,  hd)  // floor back right
+        let bl = SIMD3<Float>(-hw, 0,  hd)  // floor back left
+
+        // Ceiling corners (y=h)
+        let cfl = SIMD3<Float>(-hw, h, -hd) // ceiling front left
+        let cfr = SIMD3<Float>( hw, h, -hd) // ceiling front right
+        let cbr = SIMD3<Float>( hw, h,  hd) // ceiling back right
+        let cbl = SIMD3<Float>(-hw, h,  hd) // ceiling back left
+
+        // Front wall (XY plane at z=-hd, viewed from inside room at +Z)
+        // topLeft=cfl, topRight=cfr, bottomRight=fr, bottomLeft=fl
+        let frontVerts = makeQuad(topLeft: cfl, topRight: cfr, bottomRight: fr, bottomLeft: fl)
+        frontVC = frontVerts.count
+        frontVB = device.makeBuffer(bytes: frontVerts,
+                                    length: frontVerts.count * MemoryLayout<RoomQuadVertex>.stride,
+                                    options: .storageModeShared)
+
+        // Floor (XZ plane at y=0, viewed from above)
+        // "top" = back, "bottom" = front in UV space
+        let floorVerts = makeQuad(topLeft: bl, topRight: br, bottomRight: fr, bottomLeft: fl)
+        floorVC = floorVerts.count
+        floorVB = device.makeBuffer(bytes: floorVerts,
+                                    length: floorVerts.count * MemoryLayout<RoomQuadVertex>.stride,
+                                    options: .storageModeShared)
+
+        // Ceiling (XZ plane at y=h, viewed from below)
+        let ceilVerts = makeQuad(topLeft: cfl, topRight: cfr, bottomRight: cbr, bottomLeft: cbl)
+        ceilVC = ceilVerts.count
+        ceilVB = device.makeBuffer(bytes: ceilVerts,
+                                   length: ceilVerts.count * MemoryLayout<RoomQuadVertex>.stride,
+                                   options: .storageModeShared)
+
+        // Left wall (YZ plane at x=-hw, viewed from inside room at +X)
+        // topLeft=cbl, topRight=cfl, bottomRight=fl, bottomLeft=bl
+        let leftVerts = makeQuad(topLeft: cbl, topRight: cfl, bottomRight: fl, bottomLeft: bl)
+        leftVC = leftVerts.count
+        leftVB = device.makeBuffer(bytes: leftVerts,
+                                   length: leftVerts.count * MemoryLayout<RoomQuadVertex>.stride,
+                                   options: .storageModeShared)
+
+        // Right wall (YZ plane at x=+hw, viewed from inside room at -X)
+        // topLeft=cfr, topRight=cbr, bottomRight=br, bottomLeft=fr
+        let rightVerts = makeQuad(topLeft: cfr, topRight: cbr, bottomRight: br, bottomLeft: fr)
+        rightVC = rightVerts.count
+        rightVB = device.makeBuffer(bytes: rightVerts,
+                                    length: rightVerts.count * MemoryLayout<RoomQuadVertex>.stride,
+                                    options: .storageModeShared)
+
+        print("Room quads built: floor=\(floorVC), front=\(frontVC), left=\(leftVC), right=\(rightVC), ceil=\(ceilVC) vertices")
+    }
+
+    // MARK: - Quad Pipeline (textured)
+    private func setupQuadPipeline() {
+        guard let library = device.makeDefaultLibrary() else {
+            print("Failed to load Metal library for quad pipeline")
+            return
+        }
+
+        guard let vertexFunction = library.makeFunction(name: "quad_vertex"),
+              let fragmentFunction = library.makeFunction(name: "quad_fragment") else {
+            print("Quad shader functions not found - textured room disabled")
+            return
+        }
+
+        let pipelineDescriptor = MTLRenderPipelineDescriptor()
+        pipelineDescriptor.vertexFunction = vertexFunction
+        pipelineDescriptor.fragmentFunction = fragmentFunction
+
+        // Vertex descriptor for quads: position (float3) + uv (float2)
+        let vd = MTLVertexDescriptor()
+        vd.attributes[0].format = .float3
+        vd.attributes[0].offset = 0
+        vd.attributes[0].bufferIndex = 0
+        vd.attributes[1].format = .float2
+        vd.attributes[1].offset = MemoryLayout<SIMD3<Float>>.stride
+        vd.attributes[1].bufferIndex = 0
+        vd.layouts[0].stride = MemoryLayout<RoomQuadVertex>.stride
+        vd.layouts[0].stepFunction = .perVertex
+        pipelineDescriptor.vertexDescriptor = vd
+
+        pipelineDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        pipelineDescriptor.depthAttachmentPixelFormat = .depth32Float
+
+        do {
+            roomQuadPipeline = try device.makeRenderPipelineState(descriptor: pipelineDescriptor)
+            print("Quad pipeline created successfully")
+        } catch {
+            print("Failed to create quad pipeline: \(error)")
+        }
+    }
+
+    // MARK: - Update Room Textures
+    /// Call this with the generated room textures from RoomBuilder
+    func updateRoomTextures(floor: UIImage?, ceiling: UIImage?, front: UIImage?, left: UIImage?, right: UIImage?) {
+        let loader = MTKTextureLoader(device: device)
+
+        func tex(_ img: UIImage?) -> MTLTexture? {
+            guard let img = img, let cg = img.cgImage else { return nil }
+            return try? loader.newTexture(cgImage: cg, options: [.SRGB: false])
+        }
+
+        floorTex = tex(floor)
+        ceilTex = tex(ceiling)
+        frontTex = tex(front)
+        leftTex = tex(left)
+        rightTex = tex(right)
+
+        print("Room textures updated: floor=\(floorTex != nil), ceil=\(ceilTex != nil), front=\(frontTex != nil), left=\(leftTex != nil), right=\(rightTex != nil)")
+    }
+
     // MARK: - Load Splats
     func loadSplats(_ splats: [Splat]) {
         guard !splats.isEmpty else {
@@ -473,13 +641,30 @@ class SplatRenderer: NSObject {
             )
         }
 
-        // Bind vertex buffer and uniforms
-        encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
+        // Set uniforms for all pipelines
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<CameraUniforms>.stride, index: 1)
 
-        // Don't log every frame - splat count is logged once when loaded
+        // 1) Draw textured room quads (if textures are loaded)
+        if let quadPipeline = roomQuadPipeline {
+            encoder.setRenderPipelineState(quadPipeline)
 
-        // Draw splats as points
+            func drawQuad(vb: MTLBuffer?, vc: Int, tex: MTLTexture?) {
+                guard let vb = vb, vc > 0, let tex = tex else { return }
+                encoder.setVertexBuffer(vb, offset: 0, index: 0)
+                encoder.setFragmentTexture(tex, index: 0)
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: vc)
+            }
+
+            drawQuad(vb: floorVB, vc: floorVC, tex: floorTex)
+            drawQuad(vb: ceilVB, vc: ceilVC, tex: ceilTex)
+            drawQuad(vb: frontVB, vc: frontVC, tex: frontTex)
+            drawQuad(vb: leftVB, vc: leftVC, tex: leftTex)
+            drawQuad(vb: rightVB, vc: rightVC, tex: rightTex)
+        }
+
+        // 2) Draw splats as points (on top of room geometry)
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
         encoder.drawPrimitives(
             type: .point,
             vertexStart: 0,
