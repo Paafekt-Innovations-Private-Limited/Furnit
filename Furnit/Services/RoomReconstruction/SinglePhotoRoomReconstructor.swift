@@ -1189,7 +1189,7 @@ final class SHARPSplatService {
         print("   Strides - pos:\(posStride) scale:\(scaleStride) quat:\(quatStride) color:\(colorStride) opac:\(opacStride)")
 
         var splats: [SinglePhotoRoomReconstructor.GaussianSplat] = []
-        splats.reserveCapacity(50000)
+        splats.reserveCapacity(count)   // 🔄 use full count
 
         func f16(_ v: UInt16) -> Float {
             return Float(half: v)
@@ -1208,7 +1208,8 @@ final class SHARPSplatService {
         var minColorR: Float = 1.0
         var maxColorR: Float = 0.0
 
-        let sampleCount = min(count, 50_000)
+        // 🔄 process ALL splats, no 50k cap
+        let sampleCount = count
 
         for i in 0..<sampleCount {
             let posIndex = i * posStride
@@ -1472,12 +1473,11 @@ final class SHARPSplatService {
 
         print("🔷 [SHARPSplatService] After depth thinning: \(depthFiltered.count) (median Z=\(medianZNorm), range=[\(zMinKeep), \(zMaxKeep)])")
 
-        // Sort by score and keep top N (reduced for lighter dusting)
-        let maxSplats = 800
+        // 🔴 NO TOP-N CAP: keep all depthFiltered splats, sorted by score
         let sorted = depthFiltered.sorted { $0.score > $1.score }
-        let result = Array(sorted.prefix(maxSplats).map { $0.splat })
+        let result = sorted.map { $0.splat }
 
-        print("🔷 [SHARPSplatService] Returning \(result.count) splats (top by score)")
+        print("🔷 [SHARPSplatService] Returning \(result.count) splats (full set after filters)")
         return result
     }
 
@@ -1503,29 +1503,43 @@ final class SHARPSplatService {
         // Use cached normalization stats from ALL splats (computed in generateForegroundSplats)
         // This ensures consistent UV mapping between filtering and mask generation
         let xMin: Float, xMax: Float, yMin: Float, yMax: Float, xRange: Float, yRange: Float
+        let zMin: Float, zMax: Float, zRange: Float
 
         if let stats = cachedNormStats {
             xMin = stats.minX
             xMax = stats.maxX
             yMin = stats.minY
             yMax = stats.maxY
+            zMin = stats.minZ
+            zMax = stats.maxZ
             xRange = stats.xRange
             yRange = stats.yRange
+            zRange = stats.zRange
             print("🔷 [SHARPSplatService] Using cached normalization stats for mask")
             print("   X: [\(xMin), \(xMax)] range=\(xRange)")
             print("   Y: [\(yMin), \(yMax)] range=\(yRange)")
+            print("   Z: [\(zMin), \(zMax)] range=\(zRange)")
         } else {
             // Fallback: compute from filtered splats (less accurate but better than nothing)
             print("⚠️ [SHARPSplatService] No cached stats, computing from filtered splats")
             let xs = splats.map { $0.position.x }
             let ys = splats.map { $0.position.y }
+            let zs = splats.map { $0.position.z }
             xMin = xs.min() ?? 0
             xMax = xs.max() ?? 1
             yMin = ys.min() ?? 0
             yMax = ys.max() ?? 1
+            zMin = zs.min() ?? 0
+            zMax = zs.max() ?? 1
             xRange = max(xMax - xMin, 1e-6)
             yRange = max(yMax - yMin, 1e-6)
+            zRange = max(zMax - zMin, 1e-6)
         }
+
+        // Compute median Z for depth filtering (furniture is closer to camera than walls)
+        let sortedZ = splats.map { $0.position.z }.sorted()
+        let medianZ = sortedZ.isEmpty ? zMin : sortedZ[sortedZ.count / 2]
+        print("   Median Z: \(medianZ)")
 
         let colorSpace = CGColorSpaceCreateDeviceGray()
         guard let context = CGContext(
@@ -1552,12 +1566,30 @@ final class SHARPSplatService {
         let leftX    = Float(boundaries.leftX)
         let rightX   = Float(boundaries.rightX)
 
-        let splatRadius: CGFloat = 15  // Larger radius to cover more furniture area
+        // 🔧 NEW: much taller furniture band.
+        // We only shave off a small cap at the top, so tall chairs / sofas are fully covered.
+        let roomHeight = floorY - ceilingY
+        let furnitureBandTop = ceilingY + 0.10 * roomHeight  // keep bottom ~90% of the room
+
+        // Slightly larger radius so overlapping splats fill the whole object
+        let splatRadius: CGFloat = 18
         var foregroundCount = 0
         var skippedLowOpacity = 0
+        var skippedHighY = 0
+        let skippedFarDepth = 0  // Depth filtering disabled; kept for logging
+
+        // Depth threshold: keep splats closer to camera than median
+        // Furniture sticks OUT from the wall, so it has smaller Z values
+        let depthThreshold = medianZ - 0.02 * zRange  // Slightly in front of median
+
+        // NOTE: we *do not* enforce an extra depth threshold anymore.
+        // filterForegroundSplats already did depth-based pruning; re-doing it here
+        // was causing the chair back to disappear from the mask.
 
         print("🔷 [SHARPSplatService] Mapping \(splats.count) splats to mask...")
         print("   Room band: X=[\(leftX), \(rightX)] Y=[\(ceilingY), \(floorY)]")
+        print("   Furniture band (bottom ~90%): Y >= \(furnitureBandTop)")
+        print("   Depth threshold (not enforced): Z < \(depthThreshold) (median=\(medianZ))")
 
         for splat in splats {
             // 1) Ignore extremely transparent dust
@@ -1574,6 +1606,22 @@ final class SHARPSplatService {
             // This places the SHARP output INTO the visible room area
             let imgXNorm = leftX + clusterX * (rightX - leftX)
             let imgYNorm = ceilingY + clusterY * (floorY - ceilingY)
+
+            // 4) Y-gating: only drop *very* high stuff (tiny band near ceiling)
+            if imgYNorm < furnitureBandTop {
+                skippedHighY += 1
+                continue
+            }
+
+            // 5) Depth filtering – DISABLED here.
+            // We already used depth when selecting foreground splats.
+            // Leaving this as a commented block for reference:
+            /*
+            if splat.position.z > depthThreshold {
+                skippedFarDepth += 1
+                continue
+            }
+            */
 
             // Clamp to valid range
             let clampedX = max(0, min(1, imgXNorm))
@@ -1594,7 +1642,7 @@ final class SHARPSplatService {
             foregroundCount += 1
         }
 
-        print("🔷 [SHARPSplatService] Foreground mask seeds: \(foregroundCount) (skipped \(skippedLowOpacity) low opacity)")
+        print("🔷 [SHARPSplatService] Foreground mask seeds: \(foregroundCount) (skipped \(skippedLowOpacity) low opacity, \(skippedHighY) high Y/curtains, \(skippedFarDepth) far depth/walls)")
 
         // Fallback: if SHARP gave us effectively nothing, assume there is
         // furniture in the right-bottom "chair band" and mask that out
@@ -1633,43 +1681,30 @@ final class SHARPSplatService {
             print("🔍 [SHARPSplatService] Raw mask non-zero pixels: \(nonZeroCount) / \(width * height)")
         }
 
-        // Smooth → threshold to get a nice soft, binary-ish mask
+        // Apply light blur to thicken/smooth the seed points into a continuous region
         let ciImage = CIImage(cgImage: rawMask)
 
-        // Dilate the mask using a larger blur radius
         let blurFilter = CIFilter(name: "CIGaussianBlur")
         blurFilter?.setValue(ciImage, forKey: kCIInputImageKey)
-        blurFilter?.setValue(20.0, forKey: kCIInputRadiusKey)  // Increased from 12 for better dilation
+        blurFilter?.setValue(5.0, forKey: kCIInputRadiusKey)
 
         guard let blurred = blurFilter?.outputImage else {
             print("⚠️ [SHARPSplatService] Blur failed, returning raw mask")
             return rawMask
         }
 
-        // Lower threshold to catch more of the dilated mask
-        let thresholdFilter = CIFilter(name: "CIColorClamp")
-        thresholdFilter?.setValue(blurred, forKey: kCIInputImageKey)
-        thresholdFilter?.setValue(
-            CIVector(x: 0.10, y: 0.10, z: 0.10, w: 1),  // Lowered from 0.25 to catch more
-            forKey: "inputMinComponents"
-        )
-        thresholdFilter?.setValue(
-            CIVector(x: 1, y: 1, z: 1, w: 1),
-            forKey: "inputMaxComponents"
+        let finalCG = CIContext().createCGImage(
+            blurred,
+            from: CGRect(x: 0, y: 0, width: width, height: height)
         )
 
-        guard
-            let final = thresholdFilter?.outputImage,
-            let finalCG = CIContext().createCGImage(
-                final,
-                from: CGRect(x: 0, y: 0, width: width, height: height)
-            )
-        else {
-            print("⚠️ [SHARPSplatService] Threshold failed, returning blurred mask")
+        if let result = finalCG {
+            print("✅ [SHARPSplatService] Mask smoothed with blur radius 5")
+            return result
+        } else {
+            print("⚠️ [SHARPSplatService] Failed to create blurred mask, returning raw")
             return rawMask
         }
-
-        return finalCG
     }
 
     // MARK: - SHARP Scene Statistics
