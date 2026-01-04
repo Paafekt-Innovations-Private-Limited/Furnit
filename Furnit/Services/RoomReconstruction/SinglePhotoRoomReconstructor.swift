@@ -275,23 +275,23 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             self.estimatedDimensions = dimensions
         }
 
-        // ✅ NEW: Run SHARP first to get splats for mask generation
-        var foregroundMask: CGImage? = nil
+        // ✅ Run SHARP to generate full-room splats (furniture band DISABLED)
+        let foregroundMask: CGImage? = nil  // 🔕 DISABLED: no furniture removal
         var splatsForScene: [GaussianSplat] = []
 
         if splatService.isModelLoaded && !splatService.isModelLoading {
-            await updateProgress(0.55, "Analyzing foreground objects...")
-            logDebug("🔷 [Reconstructor] Running SHARP to generate foreground mask...")
+            await updateProgress(0.55, "Generating room splats...")
+            logDebug("🔷 [Reconstructor] Running SHARP (furniture band DISABLED)...")
 
-            // Generate splats for mask (furnitureBand mode - default)
-            splatsForScene = await splatService.generateForegroundSplats(
-                from: fixedImage,
-                boundaries: boundaries,
-                roomDimensions: (width: dimensions.width, depth: dimensions.depth, height: dimensions.height),
-                mode: .furnitureBand
-            )
+            // 🔕 DISABLED: furniture band splats for mask generation
+            // splatsForScene = await splatService.generateForegroundSplats(
+            //     from: fixedImage,
+            //     boundaries: boundaries,
+            //     roomDimensions: (width: dimensions.width, depth: dimensions.depth, height: dimensions.height),
+            //     mode: .furnitureBand
+            // )
 
-            // Generate full-room splats for the splat viewer
+            // Generate full-room splats for the splat viewer (this is the main cloud)
             let fullRoomSplats = await splatService.generateForegroundSplats(
                 from: fixedImage,
                 boundaries: boundaries,
@@ -300,24 +300,24 @@ class SinglePhotoRoomReconstructor: ObservableObject {
             )
 
             await MainActor.run {
-                self.splatCount = fullRoomSplats.count  // Report full count
-                self.rawSplats = splatsForScene  // Furniture-band for mask
+                self.splatCount = fullRoomSplats.count
+                self.rawSplats = []  // 🔕 No furniture-band splats
                 self.rawSplatsFullRoom = fullRoomSplats  // Full room for viewer
             }
-            logDebug("🔷 [Reconstructor] Generated \(splatsForScene.count) furniture splats, \(fullRoomSplats.count) full-room splats")
+            logDebug("🔷 [Reconstructor] Generated \(fullRoomSplats.count) full-room splats (furniture band disabled)")
 
-            // Generate foreground mask from splats to remove furniture from wall texture
-            if !splatsForScene.isEmpty {
-                await updateProgress(0.6, "Creating furniture mask...")
-                foregroundMask = splatService.generateForegroundMask(
-                    from: splatsForScene,
-                    imageSize: fixedImage.size,
-                    boundaries: boundaries
-                )
-                logDebug("🔷 [Reconstructor] Foreground mask generated: \(foregroundMask != nil)")
-            }
+            // 🔕 DISABLED: furniture mask generation
+            // if !splatsForScene.isEmpty {
+            //     await updateProgress(0.6, "Creating furniture mask...")
+            //     foregroundMask = splatService.generateForegroundMask(
+            //         from: splatsForScene,
+            //         imageSize: fixedImage.size,
+            //         boundaries: boundaries
+            //     )
+            //     logDebug("🔷 [Reconstructor] Foreground mask generated: \(foregroundMask != nil)")
+            // }
         } else {
-            logDebug("⚠️ [Reconstructor] SHARP model not loaded - no foreground mask")
+            logDebug("⚠️ [Reconstructor] SHARP model not loaded - no splats")
         }
 
         await updateProgress(0.7, "Building 3D model...")

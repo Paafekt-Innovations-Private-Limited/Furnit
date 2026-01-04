@@ -121,6 +121,7 @@ class SplatRenderer: NSObject {
     var orbitDistance: Float = 8.0  // Far enough to see the whole room
     var orbitAngleX: Float = 0.3    // Slight rotation to see room shape
     var orbitAngleY: Float = 0.3    // Looking slightly down at the room
+    var cameraTargetOffset: SIMD3<Float> = .zero  // Pan offset for joystick movement
 
     // MARK: - Background Color
     var backgroundColor: MTLClearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.2, alpha: 1.0)
@@ -599,8 +600,8 @@ class SplatRenderer: NSObject {
         switch cameraMode {
         case .sharpDebug:
             // ORBIT CAMERA: Use orbit angles to rotate around room center
-            // Target is the room center (roughly at height/2)
-            let target = SIMD3<Float>(0, roomHeight * 0.5, 0)
+            // Target is the room center (roughly at height/2) plus joystick pan offset
+            let target = SIMD3<Float>(0, roomHeight * 0.5, 0) + cameraTargetOffset
 
             // Compute eye position from orbit angles and distance
             let cosY = cos(orbitAngleY)
@@ -699,6 +700,36 @@ class SplatRenderer: NSObject {
 
     func zoom(delta: Float) {
         orbitDistance = max(1.0, min(20.0, orbitDistance - delta * 0.1))
+    }
+
+    /// Pan camera target in world XZ plane (joystick movement)
+    /// deltaX: right/left, deltaZ: forward/back (relative to camera facing direction)
+    func pan(deltaX: Float, deltaZ: Float) {
+        // Get camera forward direction projected onto XZ plane
+        let forwardX = sin(orbitAngleX)
+        let forwardZ = cos(orbitAngleX)
+
+        // Right vector (perpendicular to forward in XZ plane)
+        let rightX = cos(orbitAngleX)
+        let rightZ = -sin(orbitAngleX)
+
+        // Move target based on joystick input
+        let speed: Float = 0.05
+        cameraTargetOffset.x += (rightX * deltaX + forwardX * deltaZ) * speed
+        cameraTargetOffset.z += (rightZ * deltaX + forwardZ * deltaZ) * speed
+
+        // Clamp to reasonable bounds (stay within room area)
+        let maxOffset: Float = 5.0
+        cameraTargetOffset.x = max(-maxOffset, min(maxOffset, cameraTargetOffset.x))
+        cameraTargetOffset.z = max(-maxOffset, min(maxOffset, cameraTargetOffset.z))
+    }
+
+    /// Reset camera to default position
+    func resetCamera() {
+        orbitDistance = 8.0
+        orbitAngleX = 0.3
+        orbitAngleY = 0.3
+        cameraTargetOffset = .zero
     }
 }
 

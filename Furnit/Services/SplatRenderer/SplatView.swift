@@ -201,37 +201,116 @@ struct StandaloneSplatViewer: View {
     var leftWallTexture: UIImage?
     var rightWallTexture: UIImage?
 
+    // Joystick states
+    @State private var moveJoystick: CGSize = .zero
+    @State private var lookJoystick: CGSize = .zero
+
     var body: some View {
         ZStack {
             SplatView(viewModel: viewModel)
                 .ignoresSafeArea()
 
+            // Top HUD
             VStack {
                 HStack {
                     Text("Splats: \(viewModel.splatCount)")
                         .font(.headline)
                         .foregroundColor(.white)
+                        .padding(8)
+                        .background(Color.black.opacity(0.5))
+                        .cornerRadius(8)
 
                     Spacer()
 
-                    Button("Reload") {
-                        loadAll()
+                    // Reset button
+                    Button(action: {
+                        viewModel.renderer?.resetCamera()
+                    }) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.title3)
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
                     }
-                    .buttonStyle(.borderedProminent)
+
+                    Text(viewModel.statusMessage)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(8)
+                        .background(Color.black.opacity(0.5))
+                        .cornerRadius(8)
                 }
                 .padding()
 
                 Spacer()
 
-                Text(viewModel.statusMessage)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-                    .padding()
+                // Bottom: Joysticks + zoom
+                HStack(alignment: .bottom) {
+                    // Left joystick: Move/Pan
+                    VStack(spacing: 4) {
+                        Text("MOVE")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                        VirtualJoystick(joystickOffset: $moveJoystick)
+                    }
+                    .padding(.leading, 20)
+
+                    Spacer()
+
+                    // Center: Zoom buttons
+                    VStack(spacing: 8) {
+                        Button(action: {
+                            viewModel.renderer?.zoom(delta: 2.0)
+                        }) {
+                            Image(systemName: "plus.magnifyingglass")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(Color.black.opacity(0.5))
+                                .clipShape(Circle())
+                        }
+                        Button(action: {
+                            viewModel.renderer?.zoom(delta: -2.0)
+                        }) {
+                            Image(systemName: "minus.magnifyingglass")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(Color.black.opacity(0.5))
+                                .clipShape(Circle())
+                        }
+                    }
+
+                    Spacer()
+
+                    // Right joystick: Look/Orbit
+                    VStack(spacing: 4) {
+                        Text("LOOK")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.6))
+                        VirtualJoystick(joystickOffset: $lookJoystick)
+                    }
+                    .padding(.trailing, 20)
+                }
+                .padding(.bottom, 30)
             }
         }
         .background(Color.black)
         .onAppear {
             loadAll()
+        }
+        .onChange(of: moveJoystick) { _, newValue in
+            // Normalize to -1...1 range (maxDistance is 30)
+            let x = Float(newValue.width / 30.0)
+            let z = Float(-newValue.height / 30.0)  // Invert Y for natural up=forward
+            viewModel.renderer?.pan(deltaX: x, deltaZ: z)
+        }
+        .onChange(of: lookJoystick) { _, newValue in
+            // Normalize and scale for orbit
+            let x = Float(newValue.width / 30.0) * 3.0
+            let y = Float(newValue.height / 30.0) * 3.0
+            viewModel.renderer?.orbit(deltaX: x, deltaY: y)
         }
     }
 
