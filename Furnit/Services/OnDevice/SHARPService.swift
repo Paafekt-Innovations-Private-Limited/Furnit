@@ -92,13 +92,13 @@ class SHARPService: ObservableObject {
         }
 
         do {
-            // Configure for CPU-only to avoid GPU memory contention with Metal preprocessing
+            // Use all compute units (CPU + GPU + ANE) - let CoreML pick best path
             let config = MLModelConfiguration()
-            config.computeUnits = .cpuOnly  // CPU-only to avoid GPU/ANE memory issues
+            config.computeUnits = .all
 
-            // Use the Xcode auto-generated SHARP_fp16 model class with async loading
-            logDebug("SHARP: Loading via auto-generated model class (async)...")
-            let sharpModel = try await SHARP_fp16.load(configuration: config)
+            // Use the Xcode auto-generated SHARP_fp32_1536 model class with async loading (Float32)
+            logDebug("SHARP: Loading via auto-generated model class (async) - Float32...")
+            let sharpModel = try await SHARP_fp32_1536.load(configuration: config)
             model = sharpModel.model
             logDebug("SHARP: Model loaded successfully")
 
@@ -237,16 +237,54 @@ class SHARPService: ObservableObject {
 
         logDebug("SHARP: Running inference...")
 
+        // Validate input pixel buffer
+        let width = CVPixelBufferGetWidth(input)
+        let height = CVPixelBufferGetHeight(input)
+        let pixelFormat = CVPixelBufferGetPixelFormatType(input)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(input)
+
+        logDebug("SHARP INPUT VALIDATION:")
+        logDebug("  Dimensions: \(width)x\(height) (expected 1536x1536)")
+        logDebug("  Pixel format: \(pixelFormat) (BGRA=1111970369)")
+        logDebug("  Bytes per row: \(bytesPerRow)")
+
+        // Sample pixel values to check for NaN/Inf/range issues
+        CVPixelBufferLockBaseAddress(input, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(input, .readOnly) }
+
+        if let baseAddress = CVPixelBufferGetBaseAddress(input) {
+            let ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
+            let totalBytes = height * bytesPerRow
+
+            // Sample corners and center
+            var minVal: UInt8 = 255
+            var maxVal: UInt8 = 0
+            let samplePoints = [0, totalBytes/4, totalBytes/2, 3*totalBytes/4, totalBytes-4]
+            for offset in samplePoints {
+                if offset >= 0 && offset < totalBytes {
+                    let val = ptr[offset]
+                    minVal = min(minVal, val)
+                    maxVal = max(maxVal, val)
+                }
+            }
+            logDebug("  Pixel value range: \(minVal)-\(maxVal) (expected 0-255)")
+
+            // Log first pixel (BGRA order)
+            if totalBytes >= 4 {
+                logDebug("  First pixel BGRA: (\(ptr[0]), \(ptr[1]), \(ptr[2]), \(ptr[3]))")
+            }
+        }
+
         // Create feature provider with CVPixelBuffer as Image type
         let imageFeature = MLFeatureValue(pixelBuffer: input)
         let inputFeatures = try MLDictionaryFeatureProvider(dictionary: ["image": imageFeature])
 
-        // Run prediction
+        // Run prediction (mlprogram requires async in iOS 16+)
         let output = try await model.prediction(from: inputFeatures)
 
         logDebug("SHARP: Inference complete, extracting outputs...")
 
-        // SHARP_fp16 outputs separate arrays:
+        // SHARP_f32 outputs separate arrays:
         // - var_5420: positions (1 × N × 3)
         // - var_5424: scales (1 × N × 3)
         // - var_5412: rotations (1 × N × 4)
