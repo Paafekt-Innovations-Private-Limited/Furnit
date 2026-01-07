@@ -92,9 +92,9 @@ class SHARPService: ObservableObject {
         }
 
         do {
-            // Use all compute units (CPU + GPU + ANE) - let CoreML pick best path
+            // Use CPU + GPU (try with fresh device state)
             let config = MLModelConfiguration()
-            config.computeUnits = .all
+            config.computeUnits = .cpuAndGPU
 
             // Use the Xcode auto-generated SHARP_fp32_1536 model class with async loading (Float32)
             logDebug("SHARP: Loading via auto-generated model class (async) - Float32...")

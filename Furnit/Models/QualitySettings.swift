@@ -194,9 +194,9 @@ class QualitySettings: ObservableObject {
         // Load debug mode setting, default to false
         self.debugMode = UserDefaults.standard.bool(forKey: debugModeKey)
 
-        // Load mask overlap threshold setting, default to 0.30
+        // Load mask overlap threshold setting, default to 0.55
         let savedMaskThreshold = UserDefaults.standard.float(forKey: maskOverlapThresholdKey)
-        self.maskOverlapThreshold = savedMaskThreshold > 0 ? savedMaskThreshold : 0.30
+        self.maskOverlapThreshold = savedMaskThreshold > 0 ? savedMaskThreshold : 0.55
 
         // Load bbox-in-mask threshold setting, default to 0.30
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)
@@ -270,7 +270,7 @@ class QualitySettings: ObservableObject {
         selectedQuality = .high
         selectedMovementSpeed = .normal
         debugMode = false
-        maskOverlapThreshold = 0.30
+        maskOverlapThreshold = 0.55
         bboxInMaskThreshold = 0.30
     }
 }
