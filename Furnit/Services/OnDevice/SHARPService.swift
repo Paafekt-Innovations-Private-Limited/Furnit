@@ -92,12 +92,12 @@ class SHARPService: ObservableObject {
         }
 
         do {
-            // Use CPU + GPU (try with fresh device state)
+            // Configuration matching mlsharpondevice2 style
             let config = MLModelConfiguration()
-            config.computeUnits = .cpuAndGPU
+            config.computeUnits = .cpuOnly
 
-            // Use the Xcode auto-generated SHARP_fp32_1536 model class with async loading (Float32)
-            logDebug("SHARP: Loading via auto-generated model class (async) - Float32...")
+            // Use FP32 model
+            logDebug("SHARP: Loading via auto-generated model class (async) - FP32...")
             let sharpModel = try await SHARP_fp32_1536.load(configuration: config)
             model = sharpModel.model
             logDebug("SHARP: Model loaded successfully")
