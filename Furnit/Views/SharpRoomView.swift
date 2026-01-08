@@ -46,21 +46,6 @@ struct SharpRoomView: View {
                         .scaleEffect(1.5)
                         .tint(.white)
 
-                    // Animated progress bar
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.white.opacity(0.3))
-                                .frame(height: 6)
-
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.white)
-                                .frame(width: geo.size.width * 0.3, height: 6)
-                                .modifier(ShimmerModifier())
-                        }
-                    }
-                    .frame(width: 150, height: 6)
-
                     Text("Loading 3D room...")
                         .font(.subheadline)
                         .foregroundColor(.white)
@@ -90,7 +75,7 @@ struct SharpRoomView: View {
                 HStack {
                     if splatCount > 0 {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("W: \(String(format: "%.1f", roomWidth))m  H: \(String(format: "%.1f", roomHeight))m  D: \(String(format: "%.1f", roomDepth))m")
+                            Text("Size: \(String(format: "%.1f", roomWidth)) × \(String(format: "%.1f", roomHeight)) × \(String(format: "%.1f", roomDepth))")
                                 .font(.caption.monospacedDigit())
                                 .foregroundColor(.white)
                             Text("\(String(format: "%.1f", memoryMB)) MB")
@@ -216,6 +201,11 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     private var fillPipelineState: MTLRenderPipelineState?
     private var fillDepthState: MTLDepthStencilState?
 
+    // Reference dot (for debugging camera position)
+    private var dotPipelineState: MTLRenderPipelineState?
+    private var dotDepthState: MTLDepthStencilState?
+    private var roomCenter: SIMD3<Float> = .zero
+
     // Camera state
     private var cameraDistance: Float = 3.0
     private var cameraYaw: Float = 0.0
@@ -255,6 +245,9 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
 
         // Setup background fill pipeline
         setupFillPipeline()
+
+        // Setup reference dot pipeline
+        setupDotPipeline()
 
         // Listen for recenter
         NotificationCenter.default.addObserver(self, selector: #selector(recenterCamera), name: NSNotification.Name("RecenterCamera"), object: nil)
@@ -298,6 +291,7 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
 
             if let centroid = renderer?.centroid {
                 cameraTarget = centroid
+                roomCenter = centroid  // Store for reference dot
             }
             if let bounds = renderer?.boundingBox {
                 let size = bounds.max - bounds.min
@@ -305,8 +299,12 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
                 height = size.y
                 depth = size.z
                 let maxDim = max(size.x, max(size.y, size.z))
-                cameraDistance = maxDim * 0.7  // Closer camera to fill viewport
+                cameraDistance = max(maxDim * 2.5, 3.0)  // Good viewing distance, minimum 3.0
                 initialCameraDistance = cameraDistance
+
+                // Store center of bounding box for reference dot
+                roomCenter = (bounds.min + bounds.max) * 0.5
+                print("Room center: \(roomCenter), size: W=\(width) H=\(height) D=\(depth)")
             }
 
             // Calculate memory: PLY file size + GPU buffers (~56 bytes/splat for rendering)
@@ -394,6 +392,100 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
         encoder.endEncoding()
     }
 
+    // MARK: - Reference Dot Pipeline
+
+    private func setupDotPipeline() {
+        let shaderSource = """
+        #include <metal_stdlib>
+        using namespace metal;
+
+        struct DotUniforms {
+            float4x4 mvp;
+            float4 center;   // xyz = position, w unused
+            float4 radius;   // x = radius, yzw unused
+        };
+
+        struct VertexOut {
+            float4 position [[position]];
+            float2 uv;
+        };
+
+        vertex VertexOut dotVertex(uint vid [[vertex_id]], constant DotUniforms& uniforms [[buffer(0)]]) {
+            // Billboard quad vertices
+            float2 corners[6] = {
+                float2(-1, -1), float2(1, -1), float2(-1, 1),
+                float2(-1, 1), float2(1, -1), float2(1, 1)
+            };
+            float2 corner = corners[vid];
+
+            // Create billboard at center position
+            float4 clipPos = uniforms.mvp * float4(uniforms.center.xyz, 1.0);
+            clipPos.xy += corner * uniforms.radius.x * clipPos.w * 0.05;
+
+            VertexOut out;
+            out.position = clipPos;
+            out.uv = corner;
+            return out;
+        }
+
+        fragment float4 dotFragment(VertexOut in [[stage_in]]) {
+            float dist = length(in.uv);
+            if (dist > 1.0) discard_fragment();
+            return float4(1.0, 0.0, 0.0, 1.0);  // Red dot
+        }
+        """
+
+        do {
+            let library = try device.makeLibrary(source: shaderSource, options: nil)
+            let pipelineDesc = MTLRenderPipelineDescriptor()
+            pipelineDesc.vertexFunction = library.makeFunction(name: "dotVertex")
+            pipelineDesc.fragmentFunction = library.makeFunction(name: "dotFragment")
+            pipelineDesc.colorAttachments[0].pixelFormat = mtkView.colorPixelFormat
+            pipelineDesc.depthAttachmentPixelFormat = mtkView.depthStencilPixelFormat
+            dotPipelineState = try device.makeRenderPipelineState(descriptor: pipelineDesc)
+
+            let depthDesc = MTLDepthStencilDescriptor()
+            depthDesc.depthCompareFunction = .greater  // Reverse-Z
+            depthDesc.isDepthWriteEnabled = true
+            dotDepthState = device.makeDepthStencilState(descriptor: depthDesc)
+        } catch {
+            print("Dot pipeline error: \(error)")
+        }
+    }
+
+    private func renderDot(commandBuffer: MTLCommandBuffer, drawable: CAMetalDrawable, depthTexture: MTLTexture?, mvp: simd_float4x4) {
+        guard let pipeline = dotPipelineState,
+              let depthState = dotDepthState,
+              let depthTex = depthTexture else { return }
+
+        let passDesc = MTLRenderPassDescriptor()
+        passDesc.colorAttachments[0].texture = drawable.texture
+        passDesc.colorAttachments[0].loadAction = .load
+        passDesc.colorAttachments[0].storeAction = .store
+        passDesc.depthAttachment.texture = depthTex
+        passDesc.depthAttachment.loadAction = .load
+        passDesc.depthAttachment.storeAction = .store
+
+        struct DotUniforms {
+            var mvp: simd_float4x4      // 64 bytes
+            var center: SIMD4<Float>    // 16 bytes (use float4 for alignment)
+            var radius: SIMD4<Float>    // 16 bytes (pad to match Metal alignment)
+        }
+
+        var uniforms = DotUniforms(
+            mvp: mvp,
+            center: SIMD4<Float>(roomCenter.x, roomCenter.y, roomCenter.z, 0),
+            radius: SIMD4<Float>(1.0, 0, 0, 0)
+        )
+
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else { return }
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setDepthStencilState(depthState)
+        encoder.setVertexBytes(&uniforms, length: MemoryLayout<DotUniforms>.size, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+        encoder.endEncoding()
+    }
+
     // MARK: - MTKViewDelegate
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
@@ -463,6 +555,10 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
         } catch {
             print("Render error: \(error)")
         }
+
+        // Render red reference dot at room center
+        let mvp = projectionMatrix * viewMatrix
+        renderDot(commandBuffer: commandBuffer, drawable: drawable, depthTexture: view.depthStencilTexture, mvp: mvp)
 
         // Fill gray where no splats (reverse-Z depth test)
         renderFill(commandBuffer: commandBuffer, drawable: drawable, depthTexture: view.depthStencilTexture)
@@ -541,22 +637,6 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
             SIMD4<Float>(0, 0, zScale, -1),
             SIMD4<Float>(0, 0, wzScale, 0)
         ))
-    }
-}
-
-// MARK: - Shimmer Animation
-
-struct ShimmerModifier: ViewModifier {
-    @State private var offset: CGFloat = -1
-
-    func body(content: Content) -> some View {
-        content
-            .offset(x: offset * 150)
-            .onAppear {
-                withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
-                    offset = 1
-                }
-            }
     }
 }
 
