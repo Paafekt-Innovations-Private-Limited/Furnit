@@ -16,6 +16,7 @@ struct SharpRoomView: View {
     @State private var roomWidth: Float = 0
     @State private var roomHeight: Float = 0
     @State private var roomDepth: Float = 0
+    @State private var memoryMB: Float = 0
     @State private var isSaving = false
 
     var body: some View {
@@ -23,11 +24,12 @@ struct SharpRoomView: View {
             // MetalSplatter view
             MetalSplatterViewRepresentable(
                 plyURL: plyURL,
-                onLoaded: { count, width, height, depth in
+                onLoaded: { count, width, height, depth, memory in
                     splatCount = count
                     roomWidth = width
                     roomHeight = height
                     roomDepth = depth
+                    memoryMB = memory
                     isLoading = false
                 },
                 onError: { err in
@@ -70,15 +72,30 @@ struct SharpRoomView: View {
                 HStack {
                     if splatCount > 0 {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("W: \(String(format: "%.1f", roomWidth))  H: \(String(format: "%.1f", roomHeight))  D: \(String(format: "%.1f", roomDepth))")
+                            Text("W: \(String(format: "%.1f", roomWidth))m  H: \(String(format: "%.1f", roomHeight))m  D: \(String(format: "%.1f", roomDepth))m")
                                 .font(.caption.monospacedDigit())
                                 .foregroundColor(.white)
+                            Text("\(String(format: "%.1f", memoryMB)) MB")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundColor(.white.opacity(0.7))
                         }
                         .padding(8)
                         .background(Color.black.opacity(0.5))
                         .cornerRadius(8)
                     }
                     Spacer()
+
+                    // Recenter button
+                    Button(action: {
+                        NotificationCenter.default.post(name: NSNotification.Name("RecenterCamera"), object: nil)
+                    }) {
+                        Image(systemName: "viewfinder")
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Circle().fill(Color.gray.opacity(0.8)))
+                    }
+                    .disabled(isLoading)
 
                     // Save room button
                     Button(action: saveRoom) {
@@ -149,7 +166,7 @@ struct SharpRoomView: View {
 
 struct MetalSplatterViewRepresentable: UIViewControllerRepresentable {
     let plyURL: URL
-    let onLoaded: (Int, Float, Float, Float) -> Void  // count, width, height, depth
+    let onLoaded: (Int, Float, Float, Float, Float) -> Void  // count, width, height, depth, memoryMB
     let onError: (String) -> Void
 
     func makeUIViewController(context: Context) -> MetalSplatterViewController {
@@ -169,7 +186,7 @@ struct MetalSplatterViewRepresentable: UIViewControllerRepresentable {
 
 class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     var plyURL: URL?
-    var onLoaded: ((Int, Float, Float, Float) -> Void)?  // count, width, height, depth
+    var onLoaded: ((Int, Float, Float, Float, Float) -> Void)?  // count, width, height, depth, memoryMB
     var onError: ((String) -> Void)?
 
     private var mtkView: MTKView!
@@ -188,6 +205,7 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     private var cameraTarget: SIMD3<Float> = .zero
     private var cameraOffset: SIMD3<Float> = .zero  // Joystick-controlled offset
     private let moveSpeed: Float = 0.05
+    private var initialCameraDistance: Float = 3.0
 
 
     override func viewDidLoad() {
@@ -219,6 +237,9 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
 
         // Setup background fill pipeline
         setupFillPipeline()
+
+        // Listen for recenter
+        NotificationCenter.default.addObserver(self, selector: #selector(recenterCamera), name: NSNotification.Name("RecenterCamera"), object: nil)
 
         // Load PLY and setup renderer
         Task {
@@ -267,11 +288,18 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
                 depth = size.z
                 let maxDim = max(size.x, max(size.y, size.z))
                 cameraDistance = maxDim * 0.7  // Closer camera to fill viewport
+                initialCameraDistance = cameraDistance
+            }
 
+            // Calculate memory: PLY file size + GPU buffers (~56 bytes/splat for rendering)
+            var memoryMB: Float = 0
+            if let fileSize = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64 {
+                let gpuMemory = count * 56  // Approximate GPU buffer size per splat
+                memoryMB = Float(fileSize + UInt64(gpuMemory)) / (1024 * 1024)
             }
 
             await MainActor.run {
-                onLoaded?(count, width, height, depth)
+                onLoaded?(count, width, height, depth, memoryMB)
             }
 
         } catch {
@@ -450,6 +478,13 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
             cameraDistance = max(0.5, min(20.0, cameraDistance))
             gesture.scale = 1.0
         }
+    }
+
+    @objc private func recenterCamera() {
+        cameraYaw = 0
+        cameraPitch = 0
+        cameraOffset = .zero
+        cameraDistance = initialCameraDistance
     }
 
     // MARK: - Camera Math

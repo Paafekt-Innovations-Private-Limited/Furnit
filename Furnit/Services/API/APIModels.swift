@@ -209,9 +209,9 @@ enum ModelFileType: String, Codable {
     var displayName: String {
         switch self {
         case .usdz:
-            return "USDZ Model"
+            return "3D Model"
         case .ply:
-            return "PLY Point Cloud"
+            return "3D Room"
         }
     }
 
