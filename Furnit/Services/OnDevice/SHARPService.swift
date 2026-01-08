@@ -574,10 +574,13 @@ class SHARPService: ObservableObject {
         for i in 0..<gaussianCount {
             let offset = i * Self.paramsPerGaussian
 
-            // Position - flip Y and rotate 180° around Y to face front
-            var x = -filteredParams[offset + 0]  // Negate X
-            var y = -filteredParams[offset + 1]  // Negate Y
-            var z = -filteredParams[offset + 2]  // Negate Z
+            // Position - face front, tilt 90° left, fix mirror
+            let origX = filteredParams[offset + 0]
+            let origY = filteredParams[offset + 1]
+            let origZ = filteredParams[offset + 2]
+            var x = origY         // Y becomes X (90° Z rotation)
+            var y = -origX        // -X becomes Y
+            var z = -origZ        // Z stays negated
             data.append(Data(bytes: &x, count: 4))
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
