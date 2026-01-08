@@ -177,8 +177,9 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     private var commandQueue: MTLCommandQueue!
     private var renderer: SplatRenderer?
 
-    // Average room color for background fill
-    private var averageRoomColor: SIMD3<Float> = SIMD3<Float>(0.85, 0.82, 0.78)  // Default warm beige
+    // Background fill (for areas with no splats)
+    private var fillPipelineState: MTLRenderPipelineState?
+    private var fillDepthState: MTLDepthStencilState?
 
     // Camera state
     private var cameraDistance: Float = 3.0
@@ -216,6 +217,9 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
         let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         mtkView.addGestureRecognizer(pinchGesture)
 
+        // Setup background fill pipeline
+        setupFillPipeline()
+
         // Load PLY and setup renderer
         Task {
             await loadPLY()
@@ -238,6 +242,9 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
                 maxViewCount: 1,
                 maxSimultaneousRenders: 3
             )
+
+            // Set background to light gray immediately
+            renderer?.clearColor = MTLClearColor(red: 0.7, green: 0.7, blue: 0.7, alpha: 1.0)
 
             // Load PLY file directly into the renderer (async)
             try await renderer?.read(from: url)
@@ -263,17 +270,6 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
 
             }
 
-            // Compute average color from PLY for background fill
-            await computeAverageColorFromPLY(url: url)
-
-            // Set renderer's clear color to match room
-            renderer?.clearColor = MTLClearColor(
-                red: Double(averageRoomColor.x),
-                green: Double(averageRoomColor.y),
-                blue: Double(averageRoomColor.z),
-                alpha: 1.0
-            )
-
             await MainActor.run {
                 onLoaded?(count, width, height, depth)
             }
@@ -285,52 +281,71 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
         }
     }
 
-    /// Compute average color from PLY file for background fill
-    private func computeAverageColorFromPLY(url: URL) async {
-        do {
-            let data = try Data(contentsOf: url)
-            guard let headerEnd = data.range(of: Data("end_header\n".utf8)) else { return }
+    // MARK: - Background Fill
 
-            let binaryStart = headerEnd.upperBound
-            let binaryData = data.subdata(in: binaryStart..<data.count)
+    private func setupFillPipeline() {
+        let shaderSource = """
+        #include <metal_stdlib>
+        using namespace metal;
 
-            // Each vertex: 11 floats (44 bytes) + 3 uchars (3 bytes) = 47 bytes
-            let vertexSize = 47
-            let vertexCount = binaryData.count / vertexSize
+        struct VertexOut {
+            float4 position [[position]];
+        };
 
-            guard vertexCount > 0 else { return }
-
-            var totalR: Float = 0
-            var totalG: Float = 0
-            var totalB: Float = 0
-            let sampleStep = max(1, vertexCount / 10000)  // Sample up to 10K splats
-
-            binaryData.withUnsafeBytes { ptr in
-                let basePtr = ptr.baseAddress!
-                var sampledCount = 0
-
-                for i in stride(from: 0, to: vertexCount, by: sampleStep) {
-                    let vertexPtr = basePtr + i * vertexSize
-                    // Colors are at offset 44 (after 11 floats)
-                    let colorPtr = (vertexPtr + 44).assumingMemoryBound(to: UInt8.self)
-                    totalR += Float(colorPtr[0])
-                    totalG += Float(colorPtr[1])
-                    totalB += Float(colorPtr[2])
-                    sampledCount += 1
-                }
-
-                if sampledCount > 0 {
-                    averageRoomColor = SIMD3<Float>(
-                        totalR / Float(sampledCount) / 255.0,
-                        totalG / Float(sampledCount) / 255.0,
-                        totalB / Float(sampledCount) / 255.0
-                    )
-                    print("Average room color: R=\(averageRoomColor.x) G=\(averageRoomColor.y) B=\(averageRoomColor.z)")
-                }
-            }
-        } catch {
-            print("Failed to compute average color: \(error)")
+        vertex VertexOut fillVertex(uint vid [[vertex_id]]) {
+            float2 positions[3] = {
+                float2(-1, -1),
+                float2( 3, -1),
+                float2(-1,  3)
+            };
+            VertexOut out;
+            out.position = float4(positions[vid], 0.00001, 1.0);  // Just above far plane (reverse-Z: far=0)
+            return out;
         }
+
+        fragment float4 fillFragment() {
+            return float4(0.7, 0.7, 0.7, 1.0);  // Light gray
+        }
+        """
+
+        do {
+            let library = try device.makeLibrary(source: shaderSource, options: nil)
+            let pipelineDesc = MTLRenderPipelineDescriptor()
+            pipelineDesc.vertexFunction = library.makeFunction(name: "fillVertex")
+            pipelineDesc.fragmentFunction = library.makeFunction(name: "fillFragment")
+            pipelineDesc.colorAttachments[0].pixelFormat = mtkView.colorPixelFormat
+            pipelineDesc.depthAttachmentPixelFormat = mtkView.depthStencilPixelFormat
+            fillPipelineState = try device.makeRenderPipelineState(descriptor: pipelineDesc)
+
+            // Reverse-Z: splats have depth > 0, empty areas have depth = 0
+            // Fill where depth <= 0.00001 (empty far plane areas)
+            let depthDesc = MTLDepthStencilDescriptor()
+            depthDesc.depthCompareFunction = .greater  // Pass if new > existing (0.00001 > 0.0)
+            depthDesc.isDepthWriteEnabled = false
+            fillDepthState = device.makeDepthStencilState(descriptor: depthDesc)
+        } catch {
+            print("Fill pipeline error: \(error)")
+        }
+    }
+
+    private func renderFill(commandBuffer: MTLCommandBuffer, drawable: CAMetalDrawable, depthTexture: MTLTexture?) {
+        guard let pipeline = fillPipelineState,
+              let depthState = fillDepthState,
+              let depthTex = depthTexture else { return }
+
+        let passDesc = MTLRenderPassDescriptor()
+        passDesc.colorAttachments[0].texture = drawable.texture
+        passDesc.colorAttachments[0].loadAction = .load
+        passDesc.colorAttachments[0].storeAction = .store
+        passDesc.depthAttachment.texture = depthTex
+        passDesc.depthAttachment.loadAction = .load
+        passDesc.depthAttachment.storeAction = .dontCare
+
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else { return }
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setDepthStencilState(depthState)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
     }
 
     // MARK: - MTKViewDelegate
@@ -402,6 +417,9 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
         } catch {
             print("Render error: \(error)")
         }
+
+        // Fill gray where no splats (reverse-Z depth test)
+        renderFill(commandBuffer: commandBuffer, drawable: drawable, depthTexture: view.depthStencilTexture)
 
         commandBuffer.present(drawable)
         commandBuffer.commit()
