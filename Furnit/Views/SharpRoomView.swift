@@ -1,5 +1,6 @@
 import SwiftUI
 import MetalKit
+import Photos
 
 // Note: Add MetalSplatter package via Xcode:
 // File > Add Package Dependencies > https://github.com/scier/MetalSplatter.git
@@ -16,6 +17,7 @@ struct SharpRoomView: View {
     @State private var roomWidth: Float = 0
     @State private var roomHeight: Float = 0
     @State private var roomDepth: Float = 0
+    @State private var isSaving = false
 
     var body: some View {
         ZStack {
@@ -78,26 +80,58 @@ struct SharpRoomView: View {
                         .cornerRadius(8)
                     }
                     Spacer()
+
+                    // Save button
+                    Button(action: saveSnapshot) {
+                        Image(systemName: isSaving ? "checkmark.circle.fill" : "square.and.arrow.down")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Circle().fill(Color.blue))
+                    }
+                    .disabled(isSaving || isLoading)
                 }
                 .padding()
                 Spacer()
 
-                // Controls hint
-                HStack {
-                    Image(systemName: "hand.draw")
-                    Text("Drag to rotate, Pinch to zoom")
-                        .font(.caption)
-                }
-                .foregroundColor(.white)
-                .padding(8)
-                .background(Color.black.opacity(0.5))
-                .cornerRadius(8)
-                .padding()
+                // Joystick at bottom center
+                SimpleJoystickOverlay()
             }
         }
         .background(Color.black)
         .navigationTitle("3D Room")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    // MARK: - Save Snapshot
+
+    private func saveSnapshot() {
+        isSaving = true
+
+        // Capture the screen
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            isSaving = false
+            return
+        }
+
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        let image = renderer.image { ctx in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+
+        // Save to Photos
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            DispatchQueue.main.async {
+                if status == .authorized || status == .limited {
+                    UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                    logDebug("Saved snapshot to Photos")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    isSaving = false
+                }
+            }
+        }
     }
 }
 
@@ -138,6 +172,8 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     private var cameraYaw: Float = 0.0
     private var cameraPitch: Float = 0.0
     private var cameraTarget: SIMD3<Float> = .zero
+    private var cameraOffset: SIMD3<Float> = .zero  // Joystick-controlled offset
+    private let moveSpeed: Float = 0.05
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -155,7 +191,7 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
         mtkView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         mtkView.colorPixelFormat = .bgra8Unorm
         mtkView.depthStencilPixelFormat = .depth32Float
-        mtkView.clearColor = MTLClearColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 1.0)
+        mtkView.clearColor = MTLClearColor(red: 0.85, green: 0.85, blue: 0.85, alpha: 1.0)  // Light gray to hide gaps
         mtkView.delegate = self
         view.addSubview(mtkView)
 
@@ -238,9 +274,23 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
 
         let drawableSize = view.drawableSize
 
+        // Process joystick input for camera movement
+        let joystickOffset = GlobalCameraController.shared.joystickOffset
+        if joystickOffset.width != 0 || joystickOffset.height != 0 {
+            let jx = Float(joystickOffset.width) / 30.0
+            let jy = Float(joystickOffset.height) / 30.0
+
+            // Calculate movement in camera-relative directions
+            let forward = SIMD3<Float>(sin(cameraYaw), 0, cos(cameraYaw))
+            let right = SIMD3<Float>(cos(cameraYaw), 0, -sin(cameraYaw))
+
+            cameraOffset += forward * (-jy * moveSpeed) + right * (jx * moveSpeed)
+        }
+
         // Build view matrix from camera state
         let cameraPosition = calculateCameraPosition()
-        let viewMatrix = makeLookAtMatrix(eye: cameraPosition, target: cameraTarget, up: SIMD3<Float>(0, 1, 0))
+        let adjustedTarget = cameraTarget + cameraOffset  // Move target with camera
+        let viewMatrix = makeLookAtMatrix(eye: cameraPosition, target: adjustedTarget, up: SIMD3<Float>(0, 1, 0))
 
         // Build projection matrix
         let aspect = Float(drawableSize.width / drawableSize.height)
@@ -291,7 +341,12 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
 
         cameraYaw += Float(translation.x) * sensitivity
         cameraPitch -= Float(translation.y) * sensitivity
-        cameraPitch = max(-Float.pi * 0.45, min(Float.pi * 0.45, cameraPitch))
+
+        // Limit rotation to avoid viewing angles with artifacts
+        let maxYaw: Float = .pi * 0.25      // ±45 degrees horizontal
+        let maxPitch: Float = .pi * 0.20    // ±36 degrees vertical
+        cameraYaw = max(-maxYaw, min(maxYaw, cameraYaw))
+        cameraPitch = max(-maxPitch, min(maxPitch, cameraPitch))
 
         gesture.setTranslation(.zero, in: gesture.view)
     }
@@ -308,10 +363,11 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     // MARK: - Camera Math
 
     private func calculateCameraPosition() -> SIMD3<Float> {
-        let x = cameraTarget.x + cameraDistance * cos(cameraPitch) * sin(cameraYaw)
-        let y = cameraTarget.y + cameraDistance * sin(cameraPitch)
-        let z = cameraTarget.z + cameraDistance * cos(cameraPitch) * cos(cameraYaw)
-        return SIMD3<Float>(x, y, z)
+        let baseX = cameraTarget.x + cameraDistance * cos(cameraPitch) * sin(cameraYaw)
+        let baseY = cameraTarget.y + cameraDistance * sin(cameraPitch)
+        let baseZ = cameraTarget.z + cameraDistance * cos(cameraPitch) * cos(cameraYaw)
+        // Add joystick-controlled offset
+        return SIMD3<Float>(baseX + cameraOffset.x, baseY, baseZ + cameraOffset.z)
     }
 
     private func makeLookAtMatrix(eye: SIMD3<Float>, target: SIMD3<Float>, up: SIMD3<Float>) -> simd_float4x4 {

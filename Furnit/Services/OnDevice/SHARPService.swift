@@ -46,10 +46,9 @@ class SHARPService: ObservableObject {
 
     // MARK: - File Management
 
-    /// Directory for saving generated PLY files
+    /// Directory for saving generated PLY files (temp - cleaned up on restart)
     private var modelsDirectory: URL {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
+        return FileManager.default.temporaryDirectory.appendingPathComponent("SHARPRooms", isDirectory: true)
     }
 
     // MARK: - Initialization
