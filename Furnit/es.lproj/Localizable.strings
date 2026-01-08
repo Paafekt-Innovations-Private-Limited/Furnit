@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  Spanish (Spain) localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "Explorador de habitaciones 3D";
+"app.version" = "Versión";
+"app.developer" = "Equipo Furnit";
+
+// MARK: - Common Actions
+"common.done" = "Hecho";
+"common.cancel" = "Cancelar";
+"common.ok" = "Aceptar";
+"common.back" = "Atrás";
+"common.reset" = "Restablecer";
+"common.delete" = "Eliminar";
+"common.error" = "Error";
+"common.save" = "Guardar";
+"common.close" = "Cerrar";
+
+// MARK: - Login View
+"login.yourName" = "Tu nombre";
+"login.enterName" = "Introduce tu nombre";
+"login.phoneNumber" = "Número de teléfono";
+"login.phonePlaceholder" = "Número de teléfono";
+"login.sendOTP" = "Enviar código";
+"login.sending" = "Enviando...";
+"login.otpHint" = "El código se enviará por SMS";
+"login.validationError" = "Por favor, introduce un nombre y número de teléfono válidos";
+"login.sendFailed" = "No se pudo enviar el código. Inténtalo de nuevo.";
+
+// MARK: - Country Picker
+"country.selectTitle" = "Seleccionar país";
+"country.searchPlaceholder" = "Buscar país o código";
+
+// MARK: - OTP Verification
+"otp.title" = "Verificar código";
+"otp.subtitle" = "Introduce el código enviado a";
+"otp.verify" = "Verificar";
+"otp.verifying" = "Verificando...";
+"otp.resend" = "Reenviar código";
+"otp.resendIn" = "Reenviar en %ds";
+"otp.invalidError" = "Código inválido. Inténtalo de nuevo.";
+"otp.resendFailed" = "No se pudo reenviar el código.";
+
+// MARK: - Home View
+"home.title" = "Modelos de habitación 3D";
+"home.noModels" = "No se encontraron modelos 3D";
+"home.noModelsDescription" = "¡Crea tu primera habitación a partir de una foto!";
+"home.createRoom" = "Crear habitación desde foto";
+"home.roomsRemaining" = "%d de %d habitaciones disponibles";
+"home.deleteHint" = "Elimina habitaciones antiguas para crear nuevas";
+"home.swipeHint" = "Desliza a la izquierda para eliminar";
+"home.roomModel" = "Modelo de habitación 3D";
+
+// MARK: - Room Limit
+"roomLimit.title" = "Límite de habitaciones alcanzado";
+"roomLimit.message" = "Has alcanzado el límite de %d habitaciones. Elimina algunas para crear nuevas.";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "¿Eliminar habitación?";
+"deleteRoom.message" = "¿Estás seguro de que quieres eliminar '%@'? Esta acción no se puede deshacer.";
+
+// MARK: - Explore View
+"explore.title" = "Explorar";
+"explore.search" = "Buscar habitaciones...";
+"explore.noResults" = "Sin resultados";
+"explore.noResultsDescription" = "Prueba con otro término de búsqueda";
+"explore.all" = "Todas";
+"explore.livingRoom" = "Salón";
+"explore.bedroom" = "Dormitorio";
+"explore.kitchen" = "Cocina";
+"explore.office" = "Oficina";
+
+// MARK: - Favorites View
+"favorites.title" = "Favoritos";
+"favorites.empty" = "Sin favoritos";
+"favorites.emptyDescription" = "Toca el icono del corazón en las habitaciones para añadirlas aquí";
+
+// MARK: - Profile View
+"profile.title" = "Perfil";
+"profile.editProfile" = "Editar perfil";
+"profile.notifications" = "Notificaciones";
+"profile.privacy" = "Privacidad";
+"profile.general" = "General";
+"profile.about" = "Acerca de";
+"profile.helpSupport" = "Ayuda y soporte";
+"profile.logout" = "Cerrar sesión";
+"profile.logoutConfirmTitle" = "Cerrar sesión";
+"profile.logoutConfirmMessage" = "¿Estás seguro de que quieres cerrar sesión?";
+
+// MARK: - Settings View
+"settings.title" = "Ajustes";
+"settings.quality" = "Calidad de activos 3D";
+"settings.qualityFooter" = "La calidad afecta al detalle de renderizado y al rendimiento. Una calidad más alta puede afectar la duración de la batería.";
+"settings.appInfo" = "Información de la aplicación";
+"settings.currentQuality" = "Calidad actual";
+"settings.movementSpeed" = "Velocidad de movimiento";
+"settings.movementSpeedFooter" = "Controla la velocidad de la cámara al usar el joystick. Elige la velocidad que te resulte más cómoda.";
+"settings.roomDimensions" = "Dimensiones de habitación de foto única";
+"settings.roomDimensionsFooter" = "Ajusta las dimensiones predeterminadas para habitaciones creadas a partir de fotos individuales. Estos valores se usarán como puntos de partida al detectar los límites de la habitación.";
+"settings.width" = "Ancho: %.1fm";
+"settings.depth" = "Profundidad: %.1fm";
+"settings.height" = "Altura: %.1fm";
+"settings.developer" = "Desarrollador";
+"settings.developerFooter" = "Activa el modo de depuración para ver información detallada de detección y métricas de rendimiento. Ajusta los umbrales para controlar la sensibilidad de detección y el comportamiento de filtrado.";
+"settings.debugMode" = "Modo de depuración";
+"settings.debugModeDescription" = "Mostrar cajas de detección e información de tiempo";
+"settings.maskOverlapThreshold" = "Umbral de superposición de máscara";
+"settings.maskOverlapDescription" = "Controla cuánta superposición de máscara se requiere para fusionar detecciones. Valores más bajos fusionan objetos más similares.";
+"settings.currentValue" = "Valor actual:";
+"settings.account" = "Cuenta";
+"settings.loggedInAs" = "Conectado como";
+
+// MARK: - Quality Options
+"quality.standard" = "Estándar";
+"quality.standard.description" = "Calidad básica para mejor rendimiento";
+"quality.high" = "Alta";
+"quality.high.description" = "Calidad mejorada con mejores detalles";
+"quality.best" = "Óptima";
+"quality.best.description" = "Calidad premium con máximo detalle";
+"quality.best.unavailable" = "Para la mejor calidad, visita nuestras tiendas asociadas";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "Lenta";
+"speed.slow.description" = "Control preciso para exploración detallada";
+"speed.normal" = "Normal";
+"speed.normal.description" = "Velocidad equilibrada para navegación cómoda";
+"speed.fast" = "Rápida";
+"speed.fast.description" = "Movimiento rápido para exploración ágil";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "Ayuda y soporte";
+"help.cantFind" = "¿No encuentras lo que buscas?";
+"help.contactDescription" = "Contacta con nuestro equipo de soporte y te responderemos lo antes posible.";
+"help.contactSupport" = "Contactar soporte";
+"help.emailSupport" = "Soporte por email";
+"help.copyEmail" = "Copiar dirección de email";
+"help.emailCopied" = "Email copiado";
+"help.emailCopiedMessage" = "support@paafekt.com se ha copiado al portapapeles.";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "Creación de habitaciones";
+"faq.howToCreate" = "¿Cómo creo una habitación 3D?";
+"faq.howToCreateAnswer" = "Toca el icono de foto en la esquina superior izquierda de la pantalla de inicio, luego toma o selecciona una foto de tu habitación. La aplicación generará automáticamente un modelo 3D a partir de tu foto.";
+"faq.bestPhotos" = "¿Qué tipo de fotos funcionan mejor?";
+"faq.bestPhotosAnswer" = "Para mejores resultados, toma fotos con buena iluminación y la cámara en horizontal. Intenta capturar toda la habitación incluyendo suelos, paredes y bordes del techo. Evita fotos borrosas u oscuras.";
+"faq.generationFailing" = "¿Por qué falla la generación de mi habitación?";
+"faq.generationFailingAnswer" = "La generación de habitación puede fallar si la foto es demasiado oscura, borrosa o no muestra suficientes características de la habitación. Intenta tomar una nueva foto con mejor iluminación y un ángulo más amplio.";
+"faq.howManyRooms" = "¿Cuántas habitaciones puedo crear?";
+"faq.howManyRoomsAnswer" = "Puedes crear hasta 10 habitaciones. Elimina habitaciones antiguas para hacer espacio para nuevas. El recuento de habitaciones se muestra en la parte superior de tu pantalla de inicio.";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "Segmentación de muebles";
+"faq.whatIsSegmentation" = "¿Qué es la segmentación de muebles?";
+"faq.whatIsSegmentationAnswer" = "La segmentación de muebles usa IA para identificar y separar muebles en tus fotos, permitiéndote ver cómo cada pieza encajaría en tu habitación 3D.";
+"faq.howToSegment" = "¿Cómo segmento muebles de una foto?";
+"faq.howToSegmentAnswer" = "Al ver tu habitación 3D, toca el icono de muebles para acceder a la función de segmentación. Selecciona una foto con muebles y la aplicación detectará y extraerá automáticamente los elementos de mobiliario.";
+"faq.notDetected" = "¿Por qué no se detectan mis muebles?";
+"faq.notDetectedAnswer" = "La detección de muebles funciona mejor con fotos claras y bien iluminadas donde los muebles son claramente visibles. Asegúrate de que los muebles no estén parcialmente ocultos o se confundan con el fondo.";
+"faq.multiplePieces" = "¿Puedo segmentar múltiples muebles?";
+"faq.multiplePiecesAnswer" = "¡Sí! La IA puede detectar múltiples muebles en una sola foto. Cada elemento detectado se mostrará por separado para que puedas elegir cuáles usar.";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "Habitación 3D y colocación";
+"faq.howToView" = "¿Cómo veo mi habitación 3D?";
+"faq.howToViewAnswer" = "Toca cualquier habitación en tu pantalla de inicio para abrir el visor 3D. Puedes rotar, hacer zoom y desplazarte por la habitación usando gestos táctiles.";
+"faq.howToPlace" = "¿Cómo coloco muebles en mi habitación?";
+"faq.howToPlaceAnswer" = "Después de segmentar muebles, toca el mueble para añadirlo a tu habitación. Luego puedes arrastrarlo para posicionarlo, pellizcar para cambiar el tamaño y rotar para ajustar su orientación.";
+"faq.sampleRoom" = "¿Puedo usar una habitación de ejemplo en lugar de la mía?";
+"faq.sampleRoomAnswer" = "¡Sí! La aplicación proporciona habitaciones de ejemplo para experimentar. Accede a ellas desde la sección Explorar para probar la colocación de muebles sin crear primero tu propia habitación.";
+"faq.accuracy" = "¿Qué tan preciso es el modelo 3D?";
+"faq.accuracyAnswer" = "El modelo 3D proporciona una buena aproximación del diseño de tu habitación. Para mayor precisión, asegúrate de que tu foto original capture claramente las dimensiones de la habitación con esquinas y bordes visibles.";
+"faq.adjustDimensions" = "¿Puedo ajustar las dimensiones de la habitación?";
+"faq.adjustDimensionsAnswer" = "Sí, ve a Ajustes y busca las opciones de Dimensiones de habitación donde puedes afinar el tamaño y proporciones de tu habitación generada.";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "Límites de habitación";
+"boundary.instructions" = "Arrastra los círculos para ajustar los límites";
+"boundary.floor" = "Suelo";
+"boundary.ceiling" = "Techo";
+"boundary.walls" = "Paredes";
+"boundary.vanish" = "Punto de fuga";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "Añadir muebles";
+"viewer.capture" = "Capturar";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "Iniciando cámara...";
+"smartypants.resizing" = "Redimensionando...";
+"smartypants.preprocessing" = "Preprocesando...";
+"smartypants.runningModel" = "Ejecutando modelo...";
+"smartypants.extracting" = "Extrayendo detecciones...";
+"smartypants.buildingMask" = "Construyendo máscara...";
+"smartypants.compositing" = "Componiendo...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "Foto a habitación 3D";
+"photoRoom.createTitle" = "Crear una habitación 3D";
+"photoRoom.createSubtitle" = "Selecciona una foto para comenzar";
+"photoRoom.quickPhoto" = "Foto rápida";
+"photoRoom.quickPhotoSubtitle" = "Captura de foto única";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "Vista de habitación 3D";
+"roomViewer.controls" = "Usa el joystick para moverte • Pellizca para hacer zoom";
+"roomViewer.saveRoom" = "Guardar habitación";
+"roomViewer.roomName" = "Nombre de habitación";
+"roomViewer.enterName" = "Introduce un nombre para tu habitación";
+"roomViewer.savingRoom" = "Guardando habitación";
+"roomViewer.preparingModel" = "Preparando modelo de habitación...";
+"roomViewer.exportingUSDZ" = "Exportando a formato USDZ...";
+"roomViewer.savingToLibrary" = "Guardando en biblioteca...";
+"roomViewer.almostDone" = "Casi listo...";
+"roomViewer.saveSuccess" = "¡Habitación '%@' guardada correctamente!";
+"roomViewer.saveFailed" = "Error al guardar habitación: %@";
+"roomViewer.roomSaveTitle" = "Guardar habitación";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "Enviar informe";
+"crashReport.emailNotConfigured" = "Email no disponible";
+"crashReport.emailNotConfiguredMessage" = "El email no está configurado en este dispositivo. Puedes copiar los detalles del error y enviarlos manualmente a support@paafekt.com";
+"crashReport.copyDetails" = "Copiar detalles";
+
+// MARK: - Accessibility
+"accessibility.settings" = "Ajustes";
+"accessibility.help" = "Ayuda";
+"accessibility.createRoom" = "Crear habitación desde foto";

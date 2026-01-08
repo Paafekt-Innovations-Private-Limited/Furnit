@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  English (Base) localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "3D Room Explorer";
+"app.version" = "Version";
+"app.developer" = "Furnit Team";
+
+// MARK: - Common Actions
+"common.done" = "Done";
+"common.cancel" = "Cancel";
+"common.ok" = "OK";
+"common.back" = "Back";
+"common.reset" = "Reset";
+"common.delete" = "Delete";
+"common.error" = "Error";
+"common.save" = "Save";
+"common.close" = "Close";
+
+// MARK: - Login View
+"login.yourName" = "Your Name";
+"login.enterName" = "Enter your name";
+"login.phoneNumber" = "Phone Number";
+"login.phonePlaceholder" = "Phone number";
+"login.sendOTP" = "Send OTP";
+"login.sending" = "Sending...";
+"login.otpHint" = "OTP will be sent via SMS";
+"login.validationError" = "Please enter valid name and phone number";
+"login.sendFailed" = "Failed to send OTP. Please try again.";
+
+// MARK: - Country Picker
+"country.selectTitle" = "Select Country";
+"country.searchPlaceholder" = "Search country or code";
+
+// MARK: - OTP Verification
+"otp.title" = "Verify OTP";
+"otp.subtitle" = "Enter the code sent to";
+"otp.verify" = "Verify";
+"otp.verifying" = "Verifying...";
+"otp.resend" = "Resend OTP";
+"otp.resendIn" = "Resend in %ds";
+"otp.invalidError" = "Invalid OTP. Please try again.";
+"otp.resendFailed" = "Failed to resend OTP.";
+
+// MARK: - Home View
+"home.title" = "3D Room Models";
+"home.noModels" = "No 3D Models Found";
+"home.noModelsDescription" = "Create your first room from a photo!";
+"home.createRoom" = "Create Room from Photo";
+"home.roomsRemaining" = "%d of %d rooms remaining";
+"home.deleteHint" = "Delete old rooms to create new ones";
+"home.swipeHint" = "Swipe left to delete";
+"home.roomModel" = "3D Room Model";
+
+// MARK: - Room Limit
+"roomLimit.title" = "Room Limit Reached";
+"roomLimit.message" = "You've reached the limit of %d rooms. Delete some rooms to create new ones.";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "Delete Room?";
+"deleteRoom.message" = "Are you sure you want to delete '%@'? This action cannot be undone.";
+
+// MARK: - Explore View
+"explore.title" = "Explore";
+"explore.search" = "Search rooms...";
+"explore.noResults" = "No Results";
+"explore.noResultsDescription" = "Try a different search term";
+"explore.all" = "All";
+"explore.livingRoom" = "Living Room";
+"explore.bedroom" = "Bedroom";
+"explore.kitchen" = "Kitchen";
+"explore.office" = "Office";
+
+// MARK: - Favorites View
+"favorites.title" = "Favorites";
+"favorites.empty" = "No Favorites";
+"favorites.emptyDescription" = "Tap the heart icon on rooms to add them here";
+
+// MARK: - Profile View
+"profile.title" = "Profile";
+"profile.editProfile" = "Edit Profile";
+"profile.notifications" = "Notifications";
+"profile.privacy" = "Privacy";
+"profile.general" = "General";
+"profile.about" = "About";
+"profile.helpSupport" = "Help & Support";
+"profile.logout" = "Logout";
+"profile.logoutConfirmTitle" = "Logout";
+"profile.logoutConfirmMessage" = "Are you sure you want to logout?";
+
+// MARK: - Settings View
+"settings.title" = "Settings";
+"settings.quality" = "3D Asset Quality";
+"settings.qualityFooter" = "Quality affects rendering detail and performance. Higher quality may impact battery life.";
+"settings.appInfo" = "App Information";
+"settings.currentQuality" = "Current Quality";
+"settings.movementSpeed" = "Movement Speed";
+"settings.movementSpeedFooter" = "Controls how fast the camera moves when using the joystick. Choose the speed that feels most comfortable for you.";
+"settings.roomDimensions" = "Single Photo Room Dimensions";
+"settings.roomDimensionsFooter" = "Adjust the default dimensions for rooms created from single photos. These values will be used as starting points when detecting room boundaries.";
+"settings.width" = "Width: %.1fm";
+"settings.depth" = "Depth: %.1fm";
+"settings.height" = "Height: %.1fm";
+"settings.developer" = "Developer";
+"settings.developerFooter" = "Enable debug mode to see detailed detection information and performance metrics. Adjust thresholds to control detection sensitivity and filtering behavior.";
+"settings.debugMode" = "Debug Mode";
+"settings.debugModeDescription" = "Show detection boxes and timing information";
+"settings.maskOverlapThreshold" = "Mask Overlap Threshold";
+"settings.maskOverlapDescription" = "Controls how much mask overlap is required for detections to be merged. Lower values merge more similar objects.";
+"settings.currentValue" = "Current value:";
+"settings.account" = "Account";
+"settings.loggedInAs" = "Logged in as";
+
+// MARK: - Quality Options
+"quality.standard" = "Standard";
+"quality.standard.description" = "Basic quality for faster performance";
+"quality.high" = "High";
+"quality.high.description" = "Enhanced quality with better details";
+"quality.best" = "Best";
+"quality.best.description" = "Premium quality with maximum detail";
+"quality.best.unavailable" = "For best quality, please visit our partner stores";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "Slow";
+"speed.slow.description" = "Precise control for detailed exploration";
+"speed.normal" = "Normal";
+"speed.normal.description" = "Balanced speed for comfortable navigation";
+"speed.fast" = "Fast";
+"speed.fast.description" = "Quick movement for faster exploration";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "Help & Support";
+"help.cantFind" = "Can't find what you're looking for?";
+"help.contactDescription" = "Contact our support team and we'll get back to you as soon as possible.";
+"help.contactSupport" = "Contact Support";
+"help.emailSupport" = "Email Support";
+"help.copyEmail" = "Copy Email Address";
+"help.emailCopied" = "Email Copied";
+"help.emailCopiedMessage" = "support@paafekt.com has been copied to your clipboard.";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "Room Creation";
+"faq.howToCreate" = "How do I create a 3D room?";
+"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. The app will automatically generate a 3D model from your photo.";
+"faq.bestPhotos" = "What kind of photos work best?";
+"faq.bestPhotosAnswer" = "For best results, take photos in good lighting with the camera held level. Try to capture the entire room including floors, walls, and ceiling edges. Avoid blurry or dark photos.";
+"faq.generationFailing" = "Why is my room generation failing?";
+"faq.generationFailingAnswer" = "Room generation may fail if the photo is too dark, blurry, or doesn't show enough room features. Try taking a new photo with better lighting and a wider angle.";
+"faq.howManyRooms" = "How many rooms can I create?";
+"faq.howManyRoomsAnswer" = "You can create up to 10 rooms. Delete older rooms to make space for new ones. The room count is shown at the top of your home screen.";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "Furniture Segmentation";
+"faq.whatIsSegmentation" = "What is furniture segmentation?";
+"faq.whatIsSegmentationAnswer" = "Furniture segmentation uses AI to identify and separate furniture items in your photos, allowing you to see how each piece would fit in your 3D room.";
+"faq.howToSegment" = "How do I segment furniture from a photo?";
+"faq.howToSegmentAnswer" = "When viewing your 3D room, tap on the furniture icon to access the segmentation feature. Select a photo containing furniture, and the app will automatically detect and extract the furniture items.";
+"faq.notDetected" = "Why isn't my furniture being detected?";
+"faq.notDetectedAnswer" = "Furniture detection works best with clear, well-lit photos where furniture is clearly visible. Make sure the furniture isn't partially hidden or blending with the background.";
+"faq.multiplePieces" = "Can I segment multiple furniture pieces?";
+"faq.multiplePiecesAnswer" = "Yes! The AI can detect multiple furniture pieces in a single photo. Each detected item will be shown separately so you can choose which ones to use.";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "3D Room & Fitment";
+"faq.howToView" = "How do I view my 3D room?";
+"faq.howToViewAnswer" = "Tap on any room in your home screen to open the 3D viewer. You can rotate, zoom, and pan around the room using touch gestures.";
+"faq.howToPlace" = "How do I place furniture in my room?";
+"faq.howToPlaceAnswer" = "After segmenting furniture, tap on the furniture piece to add it to your room. You can then drag to position it, pinch to resize, and rotate to adjust its orientation.";
+"faq.sampleRoom" = "Can I use a sample room instead of my own?";
+"faq.sampleRoomAnswer" = "Yes! The app provides sample rooms for you to experiment with. Access them from the Explore section to try out furniture placement without creating your own room first.";
+"faq.accuracy" = "How accurate is the 3D model?";
+"faq.accuracyAnswer" = "The 3D model provides a good approximation of your room's layout. For best accuracy, ensure your original photo captures the room dimensions clearly with visible corners and edges.";
+"faq.adjustDimensions" = "Can I adjust room dimensions?";
+"faq.adjustDimensionsAnswer" = "Yes, go to Settings and look for Room Dimensions options where you can fine-tune the size and proportions of your generated room.";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "Room Boundaries";
+"boundary.instructions" = "Drag the circles to adjust boundaries";
+"boundary.floor" = "Floor";
+"boundary.ceiling" = "Ceiling";
+"boundary.walls" = "Walls";
+"boundary.vanish" = "Vanish";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "Add Furniture";
+"viewer.capture" = "Capture";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "Starting camera...";
+"smartypants.resizing" = "Resizing...";
+"smartypants.preprocessing" = "Preprocessing...";
+"smartypants.runningModel" = "Running model...";
+"smartypants.extracting" = "Extracting detections...";
+"smartypants.buildingMask" = "Building mask...";
+"smartypants.compositing" = "Compositing...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "Photo to 3D Room";
+"photoRoom.createTitle" = "Create a 3D Room";
+"photoRoom.createSubtitle" = "Select a photo to get started";
+"photoRoom.quickPhoto" = "Quick Photo";
+"photoRoom.quickPhotoSubtitle" = "Single photo capture";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "3D Room View";
+"roomViewer.controls" = "Use joystick to move • Pinch to zoom";
+"roomViewer.saveRoom" = "Save Room";
+"roomViewer.roomName" = "Room Name";
+"roomViewer.enterName" = "Enter a name for your room";
+"roomViewer.savingRoom" = "Saving Room";
+"roomViewer.preparingModel" = "Preparing room model...";
+"roomViewer.exportingUSDZ" = "Exporting to USDZ format...";
+"roomViewer.savingToLibrary" = "Saving to library...";
+"roomViewer.almostDone" = "Almost done...";
+"roomViewer.saveSuccess" = "Room '%@' saved successfully!";
+"roomViewer.saveFailed" = "Failed to save room: %@";
+"roomViewer.roomSaveTitle" = "Room Save";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "Submit Report";
+"crashReport.emailNotConfigured" = "Email Not Available";
+"crashReport.emailNotConfiguredMessage" = "Email is not configured on this device. You can copy the error details and send them manually to support@paafekt.com";
+"crashReport.copyDetails" = "Copy Details";
+
+// MARK: - Accessibility
+"accessibility.settings" = "Settings";
+"accessibility.help" = "Help";
+"accessibility.createRoom" = "Create room from photo";

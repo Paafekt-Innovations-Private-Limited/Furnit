@@ -5,6 +5,11 @@ struct SettingsView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @Environment(\.dismiss) private var dismiss
     @State private var showLogoutConfirmation = false
+    
+    // Single Photo Room Dimensions
+    @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
+    @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
+    @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
 
     var body: some View {
         NavigationView {
@@ -21,29 +26,29 @@ struct SettingsView: View {
                         )
                     }
                 } header: {
-                    Text("3D Asset Quality")
+                    Text(L10n.Settings.quality)
                 } footer: {
-                    Text("Quality affects rendering detail and performance. Higher quality may impact battery life.")
+                    Text(L10n.Settings.qualityFooter)
                         .font(.footnote)
                 }
                 
                 // App Info Section
                 Section {
                     HStack {
-                        Text("Version")
+                        Text(L10n.App.version)
                         Spacer()
                         Text(appState.formattedVersion)
                             .foregroundColor(.secondary)
                     }
-                    
+
                     HStack {
-                        Text("Current Quality")
+                        Text(L10n.Settings.currentQuality)
                         Spacer()
                         Text(appState.currentQuality.displayName)
                             .foregroundColor(.secondary)
                     }
                 } header: {
-                    Text("App Information")
+                    Text(L10n.Settings.appInfo)
                 }
                 
                 // Movement Speed Settings Section
@@ -58,9 +63,59 @@ struct SettingsView: View {
                         )
                     }
                 } header: {
-                    Text("Movement Speed")
+                    Text(L10n.Settings.movementSpeed)
                 } footer: {
-                    Text("Controls how fast the camera moves when using the joystick. Choose the speed that feels most comfortable for you.")
+                    Text(L10n.Settings.movementSpeedFooter)
+                        .font(.footnote)
+                }
+                
+                // Single Photo Room Dimensions Section
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Width slider
+                        HStack {
+                            Image(systemName: "arrow.left.and.right")
+                                .foregroundColor(.blue)
+                                .frame(width: 24)
+                            Text(L10n.Settings.width(roomWidth))
+                                .font(.headline)
+                        }
+                        Slider(value: $roomWidth, in: 2...8, step: 0.1)
+                            .tint(.blue)
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Depth slider
+                        HStack {
+                            Image(systemName: "arrow.up.and.down")
+                                .foregroundColor(.green)
+                                .frame(width: 24)
+                            Text(L10n.Settings.depth(roomDepth))
+                                .font(.headline)
+                        }
+                        Slider(value: $roomDepth, in: 2...8, step: 0.1)
+                            .tint(.green)
+                    }
+                    .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Height slider
+                        HStack {
+                            Image(systemName: "arrow.up.to.line")
+                                .foregroundColor(.orange)
+                                .frame(width: 24)
+                            Text(L10n.Settings.height(roomHeight))
+                                .font(.headline)
+                        }
+                        Slider(value: $roomHeight, in: 2.2...4, step: 0.1)
+                            .tint(.orange)
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text(L10n.Settings.roomDimensions)
+                } footer: {
+                    Text(L10n.Settings.roomDimensionsFooter)
                         .font(.footnote)
                 }
 
@@ -71,9 +126,9 @@ struct SettingsView: View {
                             Image(systemName: "ladybug.fill")
                                 .foregroundColor(.purple)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Debug Mode")
+                                Text(L10n.Settings.debugMode)
                                     .font(.headline)
-                                Text("Show detection boxes and timing information")
+                                Text(L10n.Settings.debugModeDescription)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -85,29 +140,29 @@ struct SettingsView: View {
                         HStack {
                             Image(systemName: "slider.horizontal.3")
                                 .foregroundColor(.orange)
-                            Text("Mask Overlap Threshold")
+                            Text(L10n.Settings.maskOverlapThreshold)
                                 .font(.headline)
                         }
-                        
+
                         HStack {
                             Text("0.0")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            
+
                             Slider(
                                 value: $appState.qualitySettings.maskOverlapThreshold,
                                 in: 0.0...1.0,
                                 step: 0.05
                             )
                             .tint(.orange)
-                            
+
                             Text("1.0")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         HStack {
-                            Text("Current value:")
+                            Text(L10n.Settings.currentValue)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Text(String(format: "%.2f", appState.qualitySettings.maskOverlapThreshold))
@@ -115,57 +170,16 @@ struct SettingsView: View {
                                 .foregroundColor(.orange)
                                 .fontWeight(.medium)
                         }
-                        
-                        Text("Controls how much mask overlap is required for detections to be merged. Lower values merge more similar objects.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 4)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "rectangle.dashed")
-                                .foregroundColor(.cyan)
-                            Text("BBox Coverage Threshold")
-                                .font(.headline)
-                        }
-                        
-                        HStack {
-                            Text("0.0")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            Slider(
-                                value: $appState.qualitySettings.bboxInMaskThreshold,
-                                in: 0.0...1.0,
-                                step: 0.05
-                            )
-                            .tint(.cyan)
-                            
-                            Text("1.0")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        HStack {
-                            Text("Current value:")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text(String(format: "%.2f", appState.qualitySettings.bboxInMaskThreshold))
-                                .font(.caption)
-                                .foregroundColor(.cyan)
-                                .fontWeight(.medium)
-                        }
-                        
-                        Text("Controls how much of a detection's bounding box must be covered by the final mask. Lower values include more edge cases.")
+                        Text(L10n.Settings.maskOverlapDescription)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                     .padding(.vertical, 4)
                 } header: {
-                    Text("Developer")
+                    Text(L10n.Settings.developer)
                 } footer: {
-                    Text("Enable debug mode to see detailed detection information and performance metrics. Adjust thresholds to control detection sensitivity and filtering behavior.")
+                    Text(L10n.Settings.developerFooter)
                         .font(.footnote)
                 }
 
@@ -173,7 +187,7 @@ struct SettingsView: View {
                 Section {
                     if let user = authManager.currentUser {
                         HStack {
-                            Text("Logged in as")
+                            Text(L10n.Settings.loggedInAs)
                             Spacer()
                             Text(user.name)
                                 .foregroundColor(.secondary)
@@ -186,29 +200,29 @@ struct SettingsView: View {
                         HStack {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
                                 .foregroundColor(.red)
-                            Text("Logout")
+                            Text(L10n.Profile.logout)
                                 .foregroundColor(.red)
                         }
                     }
                 } header: {
-                    Text("Account")
+                    Text(L10n.Settings.account)
                 }
             }
-            .navigationTitle("Settings")
-            .alert("Logout", isPresented: $showLogoutConfirmation) {
-                Button("Cancel", role: .cancel) { }
-                Button("Logout", role: .destructive) {
+            .navigationTitle(L10n.Settings.title)
+            .alert(L10n.Profile.logoutConfirmTitle, isPresented: $showLogoutConfirmation) {
+                Button(L10n.Common.cancel, role: .cancel) { }
+                Button(L10n.Profile.logout, role: .destructive) {
                     authManager.logout()
                     dismiss()
                 }
             } message: {
-                Text("Are you sure you want to logout?")
+                Text(L10n.Profile.logoutConfirmMessage)
             }
             .navigationBarTitleDisplayMode(.large)
             .navigationBarBackButtonHidden(false)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
+                    Button(L10n.Common.done) {
                         dismiss()
                     }
                 }

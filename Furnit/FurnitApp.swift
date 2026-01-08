@@ -130,6 +130,7 @@ struct FurnitApp: App {
                 .environmentObject(authManager)
                 .environmentObject(appStateManager)
                 .preferredColorScheme(.dark)
+                .crashReportAlert()
         }
     }
 }

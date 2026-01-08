@@ -9,27 +9,27 @@ enum MovementSpeed: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    // Display names for UI
+    // Display names for UI (localized)
     var displayName: String {
         switch self {
         case .slow:
-            return "Slow"
+            return L10n.Speed.slow
         case .normal:
-            return "Normal"
+            return L10n.Speed.normal
         case .fast:
-            return "Fast"
+            return L10n.Speed.fast
         }
     }
 
-    // Description for each speed level
+    // Description for each speed level (localized)
     var description: String {
         switch self {
         case .slow:
-            return "Precise control for detailed exploration"
+            return L10n.Speed.slowDescription
         case .normal:
-            return "Balanced speed for comfortable navigation"
+            return L10n.Speed.normalDescription
         case .fast:
-            return "Quick movement for faster exploration"
+            return L10n.Speed.fastDescription
         }
     }
 
@@ -61,32 +61,32 @@ enum MovementSpeed: String, CaseIterable, Identifiable {
 // Quality levels for 3D asset rendering
 enum AssetQuality: String, CaseIterable, Identifiable {
     case standard = "standard"
-    case high = "high" 
+    case high = "high"
     case best = "best"
-    
+
     var id: String { rawValue }
-    
-    // Display names for UI
+
+    // Display names for UI (localized)
     var displayName: String {
         switch self {
         case .standard:
-            return "Standard"
+            return L10n.Quality.standard
         case .high:
-            return "High"
+            return L10n.Quality.high
         case .best:
-            return "Best"
+            return L10n.Quality.best
         }
     }
-    
-    // Description for each quality level
+
+    // Description for each quality level (localized)
     var description: String {
         switch self {
         case .standard:
-            return "Basic quality for faster performance"
+            return L10n.Quality.standardDescription
         case .high:
-            return "Enhanced quality with better details"
+            return L10n.Quality.highDescription
         case .best:
-            return "Premium quality with maximum detail"
+            return L10n.Quality.bestDescription
         }
     }
     
@@ -112,11 +112,11 @@ enum AssetQuality: String, CaseIterable, Identifiable {
         }
     }
     
-    // Special message for unavailable quality levels
+    // Special message for unavailable quality levels (localized)
     var unavailableMessage: String? {
         switch self {
         case .best:
-            return "For best quality, please visit our partner stores"
+            return L10n.Quality.bestUnavailable
         default:
             return nil
         }

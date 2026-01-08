@@ -384,22 +384,4 @@ class AuthenticationManager: ObservableObject {
 
         return cleanNumber
     }
-
-    // MARK: - Legacy support (for existing views)
-
-    func sendOTP(to phoneNumber: String) -> String {
-        // Legacy method - triggers Firebase OTP
-        sendOTP(to: phoneNumber) { _, _ in }
-        return ""
-    }
-
-    func verifyOTP(_ inputOTP: String, actualOTP: String) -> Bool {
-        // Legacy method - not used in Firebase flow
-        return false
-    }
-
-    func login(name: String, phoneNumber: String) {
-        // Legacy method for backward compatibility
-        loginUser(name: name, phoneNumber: phoneNumber, userId: UUID().uuidString)
-    }
 }

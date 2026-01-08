@@ -46,6 +46,7 @@ struct HomeTab: View {
     @State private var showDeleteAlert = false
     @State private var roomToDelete: USDZModel?
     @State private var showingLimitAlert = false
+    @State private var showingHelp = false
     @State private var showingFileInfoSnackbar = false
     @State private var selectedModelForInfo: USDZModel?
     
@@ -56,18 +57,18 @@ struct HomeTab: View {
                     // Empty state with upload suggestion
                     VStack(spacing: 20) {
                         ContentUnavailableView(
-                            "No 3D Models Found",
+                            L10n.Home.noModels,
                             systemImage: "cube.transparent",
-                            description: Text("Create your first room from a photo!")
+                            description: Text(L10n.Home.noModelsDescription)
                         )
-                        
+
                         // Quick action button for empty state
                         Button(action: {
                             checkRoomLimitAndCreate()
                         }) {
                             HStack {
                                 Image(systemName: "photo.badge.plus")
-                                Text("Create Room from Photo")
+                                Text(L10n.Home.createRoom)
                             }
                             .font(.headline)
                             .foregroundColor(.white)
@@ -85,11 +86,11 @@ struct HomeTab: View {
                         // Room limit banner
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("\(limitManager.remainingRooms()) of \(limitManager.roomLimit) rooms remaining")
+                                Text(L10n.Home.roomsRemaining(limitManager.remainingRooms(), limitManager.roomLimit))
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
                                 if limitManager.remainingRooms() <= 3 {
-                                    Text("Delete old rooms to create new ones")
+                                    Text(L10n.Home.deleteHint)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -98,10 +99,10 @@ struct HomeTab: View {
                         }
                         .padding()
                         .background(limitManager.remainingRooms() <= 3 ? Color.orange.opacity(0.1) : Color(.systemGroupedBackground))
-                        
-                        // ✅ Delete hint
+
+                        // Delete hint
                         HStack {
-                            Text("💡 Swipe left to delete")
+                            Text("💡 \(L10n.Home.swipeHint)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -119,7 +120,7 @@ struct HomeTab: View {
                                             roomToDelete = model
                                             showDeleteAlert = true
                                         } label: {
-                                            Label("Delete", systemImage: "trash")
+                                            Label(L10n.Common.delete, systemImage: "trash")
                                         }
                                     }
                             }
@@ -136,7 +137,7 @@ struct HomeTab: View {
                     }
                 }
             }
-            .navigationTitle("3D Room Models")
+            .navigationTitle(L10n.Home.title)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 // Upload Photo Button
@@ -147,9 +148,20 @@ struct HomeTab: View {
                         Image(systemName: "photo.badge.plus")
                             .font(.title3)
                     }
-                    .accessibilityLabel("Create room from photo")
+                    .accessibilityLabel("accessibility.createRoom".localized)
                 }
                 
+                // Help Button
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingHelp = true
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                            .font(.title3)
+                    }
+                    .accessibilityLabel("accessibility.help".localized)
+                }
+
                 // Settings Button
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -158,7 +170,7 @@ struct HomeTab: View {
                         Image(systemName: "gearshape")
                             .font(.title3)
                     }
-                    .accessibilityLabel("Settings")
+                    .accessibilityLabel("accessibility.settings".localized)
                 }
             }
             // Photo Room Creator Sheet
@@ -166,7 +178,7 @@ struct HomeTab: View {
                 NavigationStack {
                     SinglePhotoRoomView()
                         .navigationBarItems(
-                            trailing: Button("Done") {
+                            trailing: Button(L10n.Common.done) {
                                 showingPhotoRoomCreator = false
                             }
                         )
@@ -189,25 +201,36 @@ struct HomeTab: View {
                 SettingsView()
                     .environmentObject(authManager)
             }
-            // Room Limit Alert
-            .alert("Room Limit Reached", isPresented: $showingLimitAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("You've reached the limit of \(limitManager.roomLimit) rooms. Delete some rooms to create new ones.")
+            // Help Sheet
+            .sheet(isPresented: $showingHelp) {
+                NavigationStack {
+                    SupportView()
+                        .navigationBarItems(
+                            trailing: Button(L10n.Common.done) {
+                                showingHelp = false
+                            }
+                        )
+                }
             }
-            // ✅ DELETE CONFIRMATION ALERT ADDED HERE
-            .alert("Delete Room?", isPresented: $showDeleteAlert) {
-                Button("Cancel", role: .cancel) {
+            // Room Limit Alert
+            .alert(L10n.RoomLimit.title, isPresented: $showingLimitAlert) {
+                Button(L10n.Common.ok, role: .cancel) { }
+            } message: {
+                Text(L10n.RoomLimit.message(limitManager.roomLimit))
+            }
+            // Delete confirmation alert
+            .alert(L10n.DeleteRoom.title, isPresented: $showDeleteAlert) {
+                Button(L10n.Common.cancel, role: .cancel) {
                     roomToDelete = nil
                 }
-                Button("Delete", role: .destructive) {
+                Button(L10n.Common.delete, role: .destructive) {
                     if let room = roomToDelete {
                         deleteRoom(room)
                     }
                 }
             } message: {
                 if let room = roomToDelete {
-                    Text("Are you sure you want to delete '\(room.displayName)'? This action cannot be undone.")
+                    Text(L10n.DeleteRoom.message(room.displayName))
                 }
             }
         }
@@ -579,6 +602,10 @@ struct HomeViewModelRow: View {
                 Text(model.displayName)
                     .font(.headline)
                     .foregroundColor(.primary)
+                
+                Text(L10n.Home.roomModel)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
 
                 HStack(spacing: 6) {
                     Text(model.subtitleText)
@@ -699,11 +726,202 @@ struct AboutView: View {
     }
 }
 
+// MARK: - FAQ Item Model
+struct FAQItem: Identifiable {
+    let id = UUID()
+    let question: String
+    let answer: String
+}
+
+// MARK: - FAQ Section Model
+struct FAQSection: Identifiable {
+    let id = UUID()
+    let title: String
+    let icon: String
+    let items: [FAQItem]
+}
+
+// MARK: - Help & Support View
 struct SupportView: View {
+    @State private var expandedFAQs: Set<UUID> = []
+    @State private var supportMessage: String = ""
+    @State private var showMailComposer = false
+    @State private var showCopiedAlert = false
+
+    private var faqSections: [FAQSection] {
+        [
+            FAQSection(
+                title: "faq.roomCreation".localized,
+                icon: "camera.fill",
+                items: [
+                    FAQItem(question: "faq.howToCreate".localized, answer: "faq.howToCreateAnswer".localized),
+                    FAQItem(question: "faq.bestPhotos".localized, answer: "faq.bestPhotosAnswer".localized),
+                    FAQItem(question: "faq.generationFailing".localized, answer: "faq.generationFailingAnswer".localized),
+                    FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.furnitureSegmentation".localized,
+                icon: "square.on.square.dashed",
+                items: [
+                    FAQItem(question: "faq.whatIsSegmentation".localized, answer: "faq.whatIsSegmentationAnswer".localized),
+                    FAQItem(question: "faq.howToSegment".localized, answer: "faq.howToSegmentAnswer".localized),
+                    FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized),
+                    FAQItem(question: "faq.multiplePieces".localized, answer: "faq.multiplePiecesAnswer".localized)
+                ]
+            ),
+            FAQSection(
+                title: "faq.roomFitment".localized,
+                icon: "cube.fill",
+                items: [
+                    FAQItem(question: "faq.howToView".localized, answer: "faq.howToViewAnswer".localized),
+                    FAQItem(question: "faq.howToPlace".localized, answer: "faq.howToPlaceAnswer".localized),
+                    FAQItem(question: "faq.sampleRoom".localized, answer: "faq.sampleRoomAnswer".localized),
+                    FAQItem(question: "faq.accuracy".localized, answer: "faq.accuracyAnswer".localized),
+                    FAQItem(question: "faq.adjustDimensions".localized, answer: "faq.adjustDimensionsAnswer".localized)
+                ]
+            )
+        ]
+    }
+
     var body: some View {
-        Text("Help & Support")
-            .navigationTitle("Support")
-            .navigationBarTitleDisplayMode(.inline)
+        List {
+            // FAQ Sections
+            ForEach(faqSections) { section in
+                Section {
+                    ForEach(section.items) { item in
+                        FAQRowView(item: item, isExpanded: expandedFAQs.contains(item.id)) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                if expandedFAQs.contains(item.id) {
+                                    expandedFAQs.remove(item.id)
+                                } else {
+                                    expandedFAQs.insert(item.id)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Label(section.title, systemImage: section.icon)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                        .textCase(nil)
+                }
+            }
+
+            // Contact Support Section
+            Section {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(L10n.Help.cantFind)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+
+                    Text(L10n.Help.contactDescription)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    // Email support button
+                    Button(action: {
+                        openMailComposer()
+                    }) {
+                        HStack {
+                            Image(systemName: "envelope.fill")
+                                .font(.title3)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Help.emailSupport)
+                                    .font(.headline)
+                                Text("support@paafekt.com")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color.green.opacity(0.1))
+                        .foregroundColor(.green)
+                        .cornerRadius(12)
+                    }
+
+                    // Copy email button
+                    Button(action: {
+                        UIPasteboard.general.string = "support@paafekt.com"
+                        showCopiedAlert = true
+                    }) {
+                        HStack {
+                            Image(systemName: "doc.on.doc")
+                            Text(L10n.Help.copyEmail)
+                                .font(.subheadline)
+                        }
+                        .foregroundColor(.blue)
+                    }
+                }
+                .padding(.vertical, 8)
+            } header: {
+                Label(L10n.Help.contactSupport, systemImage: "headphones")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .textCase(nil)
+            }
+        }
+        .navigationTitle(L10n.Help.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .alert(L10n.Help.emailCopied, isPresented: $showCopiedAlert) {
+            Button(L10n.Common.ok, role: .cancel) { }
+        } message: {
+            Text(L10n.Help.emailCopiedMessage)
+        }
+    }
+
+    private func openMailComposer() {
+        let email = "support@paafekt.com"
+        let subject = "Furnit App Support"
+        let body = "Hi Furnit Support Team,\n\nI need help with:\n\n"
+
+        let urlString = "mailto:\(email)?subject=\(subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&body=\(body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+
+        if let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
+        }
+    }
+}
+
+// MARK: - FAQ Row View
+struct FAQRowView: View {
+    let item: FAQItem
+    let isExpanded: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onTap) {
+                HStack {
+                    Text(item.question)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.leading)
+
+                    Spacer()
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            if isExpanded {
+                Text(item.answer)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  Tamil (தமிழ்) localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "3D அறை ஆய்வாளர்";
+"app.version" = "பதிப்பு";
+"app.developer" = "Furnit குழு";
+
+// MARK: - Common Actions
+"common.done" = "முடிந்தது";
+"common.cancel" = "ரத்து";
+"common.ok" = "சரி";
+"common.back" = "பின்";
+"common.reset" = "மீட்டமை";
+"common.delete" = "நீக்கு";
+"common.error" = "பிழை";
+"common.save" = "சேமி";
+"common.close" = "மூடு";
+
+// MARK: - Login View
+"login.yourName" = "உங்கள் பெயர்";
+"login.enterName" = "உங்கள் பெயரை உள்ளிடவும்";
+"login.phoneNumber" = "தொலைபேசி எண்";
+"login.phonePlaceholder" = "தொலைபேசி எண்";
+"login.sendOTP" = "OTP அனுப்பு";
+"login.sending" = "அனுப்புகிறது...";
+"login.otpHint" = "குறியீடு SMS வழியாக அனுப்பப்படும்";
+"login.validationError" = "செல்லுபடியான பெயர் மற்றும் தொலைபேசி எண்ணை உள்ளிடவும்";
+"login.sendFailed" = "குறியீடு அனுப்புவதில் தோல்வி. மீண்டும் முயற்சிக்கவும்.";
+
+// MARK: - Country Picker
+"country.selectTitle" = "நாட்டை தேர்வு செய்";
+"country.searchPlaceholder" = "நாடு அல்லது குறியீட்டை தேடு";
+
+// MARK: - OTP Verification
+"otp.title" = "குறியீட்டை சரிபார்";
+"otp.subtitle" = "இந்த எண்ணுக்கு அனுப்பப்பட்ட குறியீட்டை உள்ளிடவும்";
+"otp.verify" = "சரிபார்";
+"otp.verifying" = "சரிபார்க்கிறது...";
+"otp.resend" = "குறியீட்டை மீண்டும் அனுப்பு";
+"otp.resendIn" = "%d வினாடிகளில் மீண்டும் அனுப்பு";
+"otp.invalidError" = "தவறான குறியீடு. மீண்டும் முயற்சிக்கவும்.";
+"otp.resendFailed" = "குறியீட்டை மீண்டும் அனுப்புவதில் தோல்வி.";
+
+// MARK: - Home View
+"home.title" = "3D அறை மாதிரிகள்";
+"home.noModels" = "3D மாதிரிகள் இல்லை";
+"home.noModelsDescription" = "புகைப்படத்திலிருந்து உங்கள் முதல் அறையை உருவாக்குங்கள்!";
+"home.createRoom" = "புகைப்படத்திலிருந்து அறை உருவாக்கு";
+"home.roomsRemaining" = "%d/%d அறைகள் மீதம்";
+"home.deleteHint" = "புதியவற்றை உருவாக்க பழைய அறைகளை நீக்கவும்";
+"home.swipeHint" = "நீக்க இடது பக்கம் ஸ்வைப் செய்யவும்";
+"home.roomModel" = "3D அறை மாதிரி";
+
+// MARK: - Room Limit
+"roomLimit.title" = "அறை வரம்பு எட்டியது";
+"roomLimit.message" = "%d அறைகள் வரம்பை எட்டிவிட்டீர்கள். புதியவற்றை உருவாக்க சிலவற்றை நீக்கவும்.";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "அறையை நீக்கவா?";
+"deleteRoom.message" = "'%@' ஐ நீக்க விரும்புகிறீர்களா? இதை மாற்ற முடியாது.";
+
+// MARK: - Explore View
+"explore.title" = "ஆராய்";
+"explore.search" = "அறைகளைத் தேடு...";
+"explore.noResults" = "முடிவுகள் இல்லை";
+"explore.noResultsDescription" = "வேறு தேடல் வார்த்தையை முயற்சிக்கவும்";
+"explore.all" = "அனைத்தும்";
+"explore.livingRoom" = "வாழ்க்கை அறை";
+"explore.bedroom" = "படுக்கையறை";
+"explore.kitchen" = "சமையலறை";
+"explore.office" = "அலுவலகம்";
+
+// MARK: - Favorites View
+"favorites.title" = "பிடித்தவை";
+"favorites.empty" = "பிடித்தவை இல்லை";
+"favorites.emptyDescription" = "இங்கே சேர்க்க அறைகளில் இதயத்தை தட்டவும்";
+
+// MARK: - Profile View
+"profile.title" = "சுயவிவரம்";
+"profile.editProfile" = "சுயவிவரத்தை திருத்து";
+"profile.notifications" = "அறிவிப்புகள்";
+"profile.privacy" = "தனியுரிமை";
+"profile.general" = "பொது";
+"profile.about" = "பற்றி";
+"profile.helpSupport" = "உதவி & ஆதரவு";
+"profile.logout" = "வெளியேறு";
+"profile.logoutConfirmTitle" = "வெளியேறு";
+"profile.logoutConfirmMessage" = "வெளியேற விரும்புகிறீர்களா?";
+
+// MARK: - Settings View
+"settings.title" = "அமைப்புகள்";
+"settings.quality" = "3D ஆதாரத் தரம்";
+"settings.qualityFooter" = "தரம் ரெண்டரிங் விவரங்கள் மற்றும் செயல்திறனை பாதிக்கும். உயர் தரம் பேட்டரி ஆயுளை பாதிக்கலாம்.";
+"settings.appInfo" = "பயன்பாட்டு தகவல்";
+"settings.currentQuality" = "தற்போதைய தரம்";
+"settings.movementSpeed" = "நகர்வு வேகம்";
+"settings.movementSpeedFooter" = "ஜாய்ஸ்டிக் கேமரா நகர்வு வேகத்தை கட்டுப்படுத்துகிறது. உங்களுக்கு ஏற்ற வேகத்தை தேர்வு செய்யவும்.";
+"settings.roomDimensions" = "ஒற்றை புகைப்பட அறை பரிமாணங்கள்";
+"settings.roomDimensionsFooter" = "ஒற்றை புகைப்படங்களிலிருந்து உருவாக்கப்பட்ட அறைகளுக்கான இயல்புநிலை பரிமாணங்களை சரிசெய்யவும். இவை அறை எல்லைகளை கண்டறியும் போது தொடக்க புள்ளிகளாக செயல்படும்.";
+"settings.width" = "அகலம்: %.1f மீ";
+"settings.depth" = "ஆழம்: %.1f மீ";
+"settings.height" = "உயரம்: %.1f மீ";
+"settings.developer" = "டெவலப்பர்";
+"settings.developerFooter" = "விரிவான கண்டறிதல் தகவல் மற்றும் செயல்திறன் அளவீடுகளைக் காண பிழைத்திருத்த பயன்முறையை இயக்கவும். கண்டறிதல் உணர்திறன் மற்றும் வடிகட்டுதல் நடத்தையை கட்டுப்படுத்த வரம்புகளை சரிசெய்யவும்.";
+"settings.debugMode" = "பிழைத்திருத்த பயன்முறை";
+"settings.debugModeDescription" = "கண்டறிதல் பெட்டிகள் மற்றும் நேர தகவலைக் காட்டு";
+"settings.maskOverlapThreshold" = "மாஸ்க் ஒன்றுடன் ஒன்று வரம்பு";
+"settings.maskOverlapDescription" = "கண்டறிதல்களை இணைக்க தேவையான மாஸ்க் ஒன்றுடன் ஒன்று கட்டுப்படுத்துகிறது. குறைந்த மதிப்புகள் ஒத்த பொருட்களை இணைக்கும்.";
+"settings.currentValue" = "தற்போதைய மதிப்பு:";
+"settings.account" = "கணக்கு";
+"settings.loggedInAs" = "உள்நுழைந்தவர்";
+
+// MARK: - Quality Options
+"quality.standard" = "நிலையான";
+"quality.standard.description" = "வேகமான செயல்திறனுக்கான அடிப்படை தரம்";
+"quality.high" = "உயர்";
+"quality.high.description" = "மேம்பட்ட விவரங்களுடன் மேம்பட்ட தரம்";
+"quality.best" = "சிறந்தது";
+"quality.best.description" = "அதிகபட்ச விவரங்களுடன் உயர்தர தரம்";
+"quality.best.unavailable" = "சிறந்த தரத்திற்கு, எங்கள் கூட்டாளர் கடைகளைப் பார்வையிடவும்";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "மெதுவான";
+"speed.slow.description" = "விரிவான ஆய்வுக்கான துல்லியமான கட்டுப்பாடு";
+"speed.normal" = "சாதாரண";
+"speed.normal.description" = "வசதியான வழிசெலுத்தலுக்கான சமநிலை வேகம்";
+"speed.fast" = "வேகமான";
+"speed.fast.description" = "சுறுசுறுப்பான ஆய்வுக்கான விரைவான நகர்வு";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "உதவி & ஆதரவு";
+"help.cantFind" = "நீங்கள் தேடுவது கிடைக்கவில்லையா?";
+"help.contactDescription" = "எங்கள் ஆதரவு குழுவை தொடர்பு கொள்ளுங்கள், விரைவில் பதிலளிப்போம்.";
+"help.contactSupport" = "ஆதரவை தொடர்பு கொள்ள";
+"help.emailSupport" = "மின்னஞ்சல் ஆதரவு";
+"help.copyEmail" = "மின்னஞ்சல் முகவரியை நகலெடு";
+"help.emailCopied" = "மின்னஞ்சல் நகலெடுக்கப்பட்டது";
+"help.emailCopiedMessage" = "support@paafekt.com உங்கள் கிளிப்போர்டில் நகலெடுக்கப்பட்டது.";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "அறை உருவாக்கம்";
+"faq.howToCreate" = "3D அறையை எப்படி உருவாக்குவது?";
+"faq.howToCreateAnswer" = "முகப்பு திரையின் மேல் இடது மூலையில் உள்ள புகைப்பட ஐகானைத் தட்டவும், பின்னர் உங்கள் அறையின் புகைப்படத்தை எடுக்கவும் அல்லது தேர்ந்தெடுக்கவும். பயன்பாடு தானாகவே உங்கள் புகைப்படத்திலிருந்து 3D மாதிரியை உருவாக்கும்.";
+"faq.bestPhotos" = "எந்த வகையான புகைப்படங்கள் சிறப்பாக செயல்படும்?";
+"faq.bestPhotosAnswer" = "சிறந்த முடிவுகளுக்கு, நல்ல வெளிச்சத்தில் சாதனத்தை நிலையாக வைத்து புகைப்படங்கள் எடுக்கவும். தரைகள், சுவர்கள் மற்றும் கூரை விளிம்புகள் உட்பட முழு அறையையும் படம்பிடிக்க முயற்சிக்கவும். மங்கலான அல்லது இருண்ட புகைப்படங்களைத் தவிர்க்கவும்.";
+"faq.generationFailing" = "என் அறை உருவாக்கம் ஏன் தோல்வியடைகிறது?";
+"faq.generationFailingAnswer" = "புகைப்படம் மிகவும் இருட்டாகவோ, மங்கலாகவோ, அல்லது போதுமான அறை அம்சங்களைக் காட்டவில்லை என்றால் அறை உருவாக்கம் தோல்வியடையலாம். சிறந்த வெளிச்சம் மற்றும் அகலமான கோணத்துடன் புதிய புகைப்படம் எடுக்க முயற்சிக்கவும்.";
+"faq.howManyRooms" = "எத்தனை அறைகளை உருவாக்க முடியும்?";
+"faq.howManyRoomsAnswer" = "நீங்கள் 10 அறைகள் வரை உருவாக்கலாம். இடம் உருவாக்க பழைய அறைகளை நீக்கவும். அறை எண்ணிக்கை உங்கள் முகப்பு திரையின் மேலே காட்டப்படும்.";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "தளபாட பிரிப்பு";
+"faq.whatIsSegmentation" = "தளபாட பிரிப்பு என்றால் என்ன?";
+"faq.whatIsSegmentationAnswer" = "தளபாட பிரிப்பு AI ஐப் பயன்படுத்தி உங்கள் புகைப்படங்களில் தளபாடங்களை அடையாளம் கண்டு பிரிக்கிறது, ஒவ்வொரு பொருளும் உங்கள் 3D அறையில் எப்படி பொருந்தும் என்பதைக் காண அனுமதிக்கிறது.";
+"faq.howToSegment" = "புகைப்படத்திலிருந்து தளபாடங்களை எப்படி பிரிப்பது?";
+"faq.howToSegmentAnswer" = "உங்கள் 3D அறையைப் பார்க்கும்போது, பிரிப்பு அம்சத்தை அணுக தளபாட ஐகானைத் தட்டவும். தளபாடங்கள் உள்ள புகைப்படத்தைத் தேர்ந்தெடுக்கவும், பயன்பாடு தானாகவே தளபாட பொருட்களைக் கண்டறிந்து பிரிக்கும்.";
+"faq.notDetected" = "என் தளபாடங்கள் ஏன் கண்டறியப்படவில்லை?";
+"faq.notDetectedAnswer" = "தளபாட கண்டறிதல் தெளிவான, நல்ல வெளிச்சமுள்ள புகைப்படங்களில் தளபாடங்கள் தெளிவாகத் தெரியும்போது சிறப்பாக செயல்படுகிறது. தளபாடங்கள் பகுதியளவு மறைக்கப்படவில்லை அல்லது பின்னணியுடன் கலக்கவில்லை என்பதை உறுதிப்படுத்தவும்.";
+"faq.multiplePieces" = "பல தளபாடங்களை பிரிக்க முடியுமா?";
+"faq.multiplePiecesAnswer" = "ஆம்! AI ஒரு புகைப்படத்தில் பல தளபாடங்களைக் கண்டறிய முடியும். கண்டறியப்பட்ட ஒவ்வொரு பொருளும் தனித்தனியாகக் காட்டப்படும், எதைப் பயன்படுத்த வேண்டும் என்பதை நீங்கள் தேர்வு செய்யலாம்.";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "3D அறை & பொருத்தம்";
+"faq.howToView" = "என் 3D அறையை எப்படி பார்ப்பது?";
+"faq.howToViewAnswer" = "3D பார்வையாளரைத் திறக்க முகப்பு திரையில் எந்த அறையையும் தட்டவும். தொடு சைகைகளைப் பயன்படுத்தி அறையை சுழற்றலாம், பெரிதாக்கலாம் மற்றும் நகர்த்தலாம்.";
+"faq.howToPlace" = "என் அறையில் தளபாடங்களை எப்படி வைப்பது?";
+"faq.howToPlaceAnswer" = "தளபாடங்களைப் பிரித்த பிறகு, உங்கள் அறையில் சேர்க்க ஒரு பொருளைத் தட்டவும். நிலைநிறுத்த இழுக்கலாம், அளவை மாற்ற பிஞ்ச் செய்யலாம், திசையை சரிசெய்ய சுழற்றலாம்.";
+"faq.sampleRoom" = "என்னுடையதற்கு பதிலாக மாதிரி அறையைப் பயன்படுத்த முடியுமா?";
+"faq.sampleRoomAnswer" = "ஆம்! பயன்பாடு பரிசோதிக்க மாதிரி அறைகளை வழங்குகிறது. முதலில் உங்கள் சொந்த அறையை உருவாக்காமல் தளபாட வைப்பை முயற்சிக்க ஆராய் பிரிவிலிருந்து அவற்றை அணுகவும்.";
+"faq.accuracy" = "3D மாதிரி எவ்வளவு துல்லியமானது?";
+"faq.accuracyAnswer" = "3D மாதிரி உங்கள் அறை அமைப்பின் நல்ல தோராயத்தை வழங்குகிறது. சிறந்த துல்லியத்திற்கு, உங்கள் அசல் புகைப்படம் தெரியும் மூலைகள் மற்றும் விளிம்புகளுடன் அறை பரிமாணங்களை தெளிவாகப் படம்பிடிக்கிறது என்பதை உறுதிப்படுத்தவும்.";
+"faq.adjustDimensions" = "அறை பரிமாணங்களை சரிசெய்ய முடியுமா?";
+"faq.adjustDimensionsAnswer" = "ஆம், அமைப்புகளுக்குச் சென்று அறை பரிமாண விருப்பங்களைக் கண்டறியவும், அங்கு உருவாக்கப்பட்ட அறையின் அளவு மற்றும் விகிதாச்சாரங்களை நுணுக்கமாக சரிசெய்யலாம்.";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "அறை எல்லைகள்";
+"boundary.instructions" = "எல்லைகளை சரிசெய்ய வட்டங்களை இழுக்கவும்";
+"boundary.floor" = "தளம்";
+"boundary.ceiling" = "கூரை";
+"boundary.walls" = "சுவர்கள்";
+"boundary.vanish" = "மறையும் புள்ளி";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "தளபாடங்கள் சேர்";
+"viewer.capture" = "படம்பிடி";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "கேமரா தொடங்குகிறது...";
+"smartypants.resizing" = "அளவு மாற்றுகிறது...";
+"smartypants.preprocessing" = "முன்செயலாக்கம்...";
+"smartypants.runningModel" = "மாதிரி இயக்குகிறது...";
+"smartypants.extracting" = "கண்டறிதல்களை பிரிக்கிறது...";
+"smartypants.buildingMask" = "மாஸ்க் உருவாக்குகிறது...";
+"smartypants.compositing" = "இணைக்கிறது...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "புகைப்படத்திலிருந்து 3D அறை";
+"photoRoom.createTitle" = "3D அறை உருவாக்கு";
+"photoRoom.createSubtitle" = "தொடங்க புகைப்படம் தேர்வு செய்யவும்";
+"photoRoom.quickPhoto" = "விரைவு புகைப்படம்";
+"photoRoom.quickPhotoSubtitle" = "ஒற்றை புகைப்பட பிடிப்பு";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "3D அறை காட்சி";
+"roomViewer.controls" = "நகர ஜாய்ஸ்டிக் பயன்படுத்தவும் • பெரிதாக்க பிஞ்ச் செய்யவும்";
+"roomViewer.saveRoom" = "அறையைச் சேமி";
+"roomViewer.roomName" = "அறை பெயர்";
+"roomViewer.enterName" = "உங்கள் அறைக்கு பெயர் உள்ளிடவும்";
+"roomViewer.savingRoom" = "அறையைச் சேமிக்கிறது";
+"roomViewer.preparingModel" = "அறை மாதிரியைத் தயாரிக்கிறது...";
+"roomViewer.exportingUSDZ" = "USDZ வடிவத்தில் ஏற்றுமதி செய்கிறது...";
+"roomViewer.savingToLibrary" = "நூலகத்தில் சேமிக்கிறது...";
+"roomViewer.almostDone" = "கிட்டத்தட்ட முடிந்தது...";
+"roomViewer.saveSuccess" = "அறை '%@' வெற்றிகரமாக சேமிக்கப்பட்டது!";
+"roomViewer.saveFailed" = "அறை சேமிப்பு தோல்வி: %@";
+"roomViewer.roomSaveTitle" = "அறையைச் சேமி";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "அறிக்கை சமர்ப்பி";
+"crashReport.emailNotConfigured" = "மின்னஞ்சல் கிடைக்கவில்லை";
+"crashReport.emailNotConfiguredMessage" = "இந்த சாதனத்தில் மின்னஞ்சல் கட்டமைக்கப்படவில்லை. பிழை விவரங்களை நகலெடுத்து support@paafekt.com க்கு கைமுறையாக அனுப்பலாம்";
+"crashReport.copyDetails" = "விவரங்களை நகலெடு";
+
+// MARK: - Accessibility
+"accessibility.settings" = "அமைப்புகள்";
+"accessibility.help" = "உதவி";
+"accessibility.createRoom" = "புகைப்படத்திலிருந்து அறை உருவாக்கு";

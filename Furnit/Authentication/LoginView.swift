@@ -133,12 +133,12 @@ struct CountryPickerView: View {
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: "Search country or code")
-            .navigationTitle("Select Country")
+            .searchable(text: $searchText, prompt: L10n.Country.searchPlaceholder)
+            .navigationTitle(L10n.Country.selectTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    Button(L10n.Common.cancel) {
                         dismiss()
                     }
                 }
@@ -186,12 +186,12 @@ struct LoginView: View {
                             .foregroundColor(.white)
                             .shadow(radius: 10)
 
-                        Text("Paafekt Beta")
+                        Text(L10n.App.name)
                             .font(.largeTitle)
                             .fontWeight(.bold)
                             .foregroundColor(.white)
 
-                        Text("3D Room Explorer")
+                        Text(L10n.App.tagline)
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.9))
                     }
@@ -200,11 +200,11 @@ struct LoginView: View {
                     VStack(spacing: 20) {
                         // Name Field
                         VStack(alignment: .leading, spacing: 8) {
-                            Label("Your Name", systemImage: "person.fill")
+                            Label(L10n.Login.yourName, systemImage: "person.fill")
                                 .font(.caption)
                                 .foregroundColor(.white.opacity(0.9))
 
-                            TextField("Enter your name", text: $name)
+                            TextField(L10n.Login.enterName, text: $name)
                                 .textFieldStyle(CustomTextFieldStyle())
                                 .focused($nameFieldFocused)
                                 .submitLabel(.next)
@@ -216,7 +216,7 @@ struct LoginView: View {
 
                         // Phone Field with Country Code
                         VStack(alignment: .leading, spacing: 8) {
-                            Label("Phone Number", systemImage: "phone.fill")
+                            Label(L10n.Login.phoneNumber, systemImage: "phone.fill")
                                 .font(.caption)
                                 .foregroundColor(.white.opacity(0.9))
 
@@ -243,7 +243,7 @@ struct LoginView: View {
                                 .disabled(isLoading)
 
                                 // Phone Number Field
-                                TextField("Phone number", text: $phoneNumber)
+                                TextField(L10n.Login.phonePlaceholder, text: $phoneNumber)
                                     .keyboardType(.phonePad)
                                     .focused($phoneFieldFocused)
                                     .padding()
@@ -267,7 +267,7 @@ struct LoginView: View {
                                 } else {
                                     Image(systemName: "paperplane.fill")
                                 }
-                                Text(isLoading ? "Sending..." : "Send OTP")
+                                Text(isLoading ? L10n.Login.sending : L10n.Login.sendOTP)
                                     .fontWeight(.semibold)
                             }
                             .foregroundColor(.white)
@@ -283,7 +283,7 @@ struct LoginView: View {
                         .animation(.easeInOut(duration: 0.2), value: isValidInput)
 
                         // Hint
-                        Text("OTP will be sent via SMS")
+                        Text(L10n.Login.otpHint)
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.7))
                     }
@@ -312,8 +312,8 @@ struct LoginView: View {
             .sheet(isPresented: $showCountryPicker) {
                 CountryPickerView(selectedCountry: $selectedCountry)
             }
-            .alert("Error", isPresented: $showError) {
-                Button("OK", role: .cancel) { }
+            .alert(L10n.Common.error, isPresented: $showError) {
+                Button(L10n.Common.ok, role: .cancel) { }
             } message: {
                 Text(errorMessage)
             }
@@ -332,7 +332,7 @@ struct LoginView: View {
 
     private func sendOTP() {
         guard isValidInput else {
-            errorMessage = "Please enter valid name and phone number"
+            errorMessage = L10n.Login.validationError
             showError = true
             return
         }
@@ -346,7 +346,7 @@ struct LoginView: View {
             if success {
                 showOTPView = true
             } else {
-                errorMessage = error ?? "Failed to send OTP. Please try again."
+                errorMessage = error ?? L10n.Login.sendFailed
                 showError = true
             }
         }

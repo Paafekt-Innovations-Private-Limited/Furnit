@@ -206,6 +206,7 @@ class USDZModelManager: ObservableObject {
                 if debugMode {
                     logDebug("❌ [USDZModelManager] Failed to delete file: \(error)")
                 }
+                CrashReporter.shared.report(error, context: "Deleting Room")
             }
         } else {
             if debugMode {

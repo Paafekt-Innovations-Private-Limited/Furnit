@@ -354,51 +354,6 @@ class RealityKitObjectPlacementManager: ObservableObject {
     
     // Create AR entity from segmented image
     // Segmentation-based methods removed - using backend 3D model generation instead
-    
-    // Add shadow plane beneath AR object for better ground integration
-    // Temporarily disabled due to SimpleMaterial color API complexity
-    private func addShadowPlane(to parentEntity: Entity, size: CGSize) {
-        // TODO: Implement shadow plane with correct RealityKit material API
-        logDebug("🔧 Shadow plane temporarily disabled - material API needs fixing")
-    }
-
-
-
-    // Debug visualizations removed for clean AR experience
-    private func addModelBoundsVisualization(for entity: Entity, at position: SIMD3<Float>) {
-        // Debug visualization removed for clean AR experience
-    }
-
-    private func addMicroScaleDebugMarkers(for entity: Entity, at position: SIMD3<Float>) {
-        // Debug visualization removed for clean AR experience
-    }
-
-    // Get a guaranteed visible position directly in front of camera for testing
-    private func getGuaranteedVisiblePosition() -> SIMD3<Float> {
-        // Get current camera position from ARView
-        guard let arView = arView else {
-            logDebug("⚠️ No ARView available, using default position")
-            return SIMD3<Float>(0, 1, -2) // Default position in front of origin
-        }
-
-        // Get camera transform
-        let cameraTransform = arView.cameraTransform
-        let cameraPosition = cameraTransform.translation
-
-        // Calculate forward direction from camera (negative Z in camera space)
-        let rotationMatrix = cameraTransform.matrix
-        let forwardDirection = -normalize(SIMD3<Float>(
-            rotationMatrix.columns.2.x,
-            rotationMatrix.columns.2.y,
-            rotationMatrix.columns.2.z
-        ))
-
-        // Place object 2 meters in front of camera at eye level
-        let testPosition = cameraPosition + (forwardDirection * 2.0)
-
-        logDebug("🎯 Guaranteed position: \(testPosition)")
-        return testPosition
-    }
 
     // Get bounds description for logging
     private func getEntityBounds(_ entity: Entity) -> String {
@@ -744,30 +699,6 @@ class RealityKitObjectPlacementManager: ObservableObject {
             logDebug("   🌟 Material should now be guaranteed visible")
 
             return fallbackMaterial
-        }
-    }
-
-    // Fix problematic entity scales in hierarchy
-    private func fixEntityScaleHierarchy(_ entity: Entity) {
-        // Check if entity has problematic scale values
-        let currentScale = entity.scale
-        let hasProblematicScale = currentScale.x < 0.001 || currentScale.y < 0.001 || currentScale.z < 0.001 ||
-                                 currentScale.x > 1000 || currentScale.y > 1000 || currentScale.z > 1000
-
-        if hasProblematicScale {
-            logDebug("⚠️ Found problematic scale on entity '\(entity.name.isEmpty ? "unnamed" : entity.name)': \(currentScale)")
-
-            // Reset to reasonable scale - preserve proportions but make visible
-            let scaleFactor: Float = 1.0 / max(currentScale.x, max(currentScale.y, currentScale.z))
-            let correctedScale = currentScale * scaleFactor
-            entity.scale = correctedScale
-
-            logDebug("🔧 Corrected entity scale from \(currentScale) to \(correctedScale)")
-        }
-
-        // Recursively fix child entities
-        for child in entity.children {
-            fixEntityScaleHierarchy(child)
         }
     }
 

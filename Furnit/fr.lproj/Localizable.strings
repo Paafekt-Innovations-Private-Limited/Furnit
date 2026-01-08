@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  French localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "Explorateur de pièces 3D";
+"app.version" = "Version";
+"app.developer" = "Équipe Furnit";
+
+// MARK: - Common Actions
+"common.done" = "Terminé";
+"common.cancel" = "Annuler";
+"common.ok" = "OK";
+"common.back" = "Retour";
+"common.reset" = "Réinitialiser";
+"common.delete" = "Supprimer";
+"common.error" = "Erreur";
+"common.save" = "Enregistrer";
+"common.close" = "Fermer";
+
+// MARK: - Login View
+"login.yourName" = "Votre nom";
+"login.enterName" = "Entrez votre nom";
+"login.phoneNumber" = "Numéro de téléphone";
+"login.phonePlaceholder" = "Numéro de téléphone";
+"login.sendOTP" = "Envoyer le code";
+"login.sending" = "Envoi en cours...";
+"login.otpHint" = "Le code sera envoyé par SMS";
+"login.validationError" = "Veuillez entrer un nom et un numéro de téléphone valides";
+"login.sendFailed" = "Échec de l'envoi du code. Veuillez réessayer.";
+
+// MARK: - Country Picker
+"country.selectTitle" = "Sélectionner un pays";
+"country.searchPlaceholder" = "Rechercher un pays ou un code";
+
+// MARK: - OTP Verification
+"otp.title" = "Vérifier le code";
+"otp.subtitle" = "Entrez le code envoyé au";
+"otp.verify" = "Vérifier";
+"otp.verifying" = "Vérification...";
+"otp.resend" = "Renvoyer le code";
+"otp.resendIn" = "Renvoyer dans %ds";
+"otp.invalidError" = "Code invalide. Veuillez réessayer.";
+"otp.resendFailed" = "Échec du renvoi du code.";
+
+// MARK: - Home View
+"home.title" = "Modèles de pièces 3D";
+"home.noModels" = "Aucun modèle 3D trouvé";
+"home.noModelsDescription" = "Créez votre première pièce à partir d'une photo !";
+"home.createRoom" = "Créer une pièce à partir d'une photo";
+"home.roomsRemaining" = "%d pièces sur %d restantes";
+"home.deleteHint" = "Supprimez d'anciennes pièces pour en créer de nouvelles";
+"home.swipeHint" = "Balayez vers la gauche pour supprimer";
+"home.roomModel" = "Modèle de pièce 3D";
+
+// MARK: - Room Limit
+"roomLimit.title" = "Limite de pièces atteinte";
+"roomLimit.message" = "Vous avez atteint la limite de %d pièces. Supprimez-en pour en créer de nouvelles.";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "Supprimer la pièce ?";
+"deleteRoom.message" = "Êtes-vous sûr de vouloir supprimer '%@' ? Cette action est irréversible.";
+
+// MARK: - Explore View
+"explore.title" = "Explorer";
+"explore.search" = "Rechercher des pièces...";
+"explore.noResults" = "Aucun résultat";
+"explore.noResultsDescription" = "Essayez un autre terme de recherche";
+"explore.all" = "Tout";
+"explore.livingRoom" = "Salon";
+"explore.bedroom" = "Chambre";
+"explore.kitchen" = "Cuisine";
+"explore.office" = "Bureau";
+
+// MARK: - Favorites View
+"favorites.title" = "Favoris";
+"favorites.empty" = "Aucun favori";
+"favorites.emptyDescription" = "Appuyez sur l'icône cœur des pièces pour les ajouter ici";
+
+// MARK: - Profile View
+"profile.title" = "Profil";
+"profile.editProfile" = "Modifier le profil";
+"profile.notifications" = "Notifications";
+"profile.privacy" = "Confidentialité";
+"profile.general" = "Général";
+"profile.about" = "À propos";
+"profile.helpSupport" = "Aide et support";
+"profile.logout" = "Déconnexion";
+"profile.logoutConfirmTitle" = "Déconnexion";
+"profile.logoutConfirmMessage" = "Êtes-vous sûr de vouloir vous déconnecter ?";
+
+// MARK: - Settings View
+"settings.title" = "Paramètres";
+"settings.quality" = "Qualité des ressources 3D";
+"settings.qualityFooter" = "La qualité affecte les détails de rendu et les performances. Une qualité supérieure peut affecter l'autonomie de la batterie.";
+"settings.appInfo" = "Informations sur l'application";
+"settings.currentQuality" = "Qualité actuelle";
+"settings.movementSpeed" = "Vitesse de déplacement";
+"settings.movementSpeedFooter" = "Contrôle la vitesse de déplacement de la caméra avec le joystick. Choisissez la vitesse qui vous convient le mieux.";
+"settings.roomDimensions" = "Dimensions de la pièce photo unique";
+"settings.roomDimensionsFooter" = "Ajustez les dimensions par défaut des pièces créées à partir de photos uniques. Ces valeurs serviront de points de départ lors de la détection des limites de la pièce.";
+"settings.width" = "Largeur : %.1f m";
+"settings.depth" = "Profondeur : %.1f m";
+"settings.height" = "Hauteur : %.1f m";
+"settings.developer" = "Développeur";
+"settings.developerFooter" = "Activez le mode débogage pour voir les informations de détection détaillées et les métriques de performance. Ajustez les seuils pour contrôler la sensibilité de détection et le comportement de filtrage.";
+"settings.debugMode" = "Mode débogage";
+"settings.debugModeDescription" = "Afficher les boîtes de détection et les informations de chronométrage";
+"settings.maskOverlapThreshold" = "Seuil de chevauchement des masques";
+"settings.maskOverlapDescription" = "Contrôle le chevauchement de masque requis pour fusionner les détections. Des valeurs plus basses fusionnent des objets plus similaires.";
+"settings.currentValue" = "Valeur actuelle :";
+"settings.account" = "Compte";
+"settings.loggedInAs" = "Connecté en tant que";
+
+// MARK: - Quality Options
+"quality.standard" = "Standard";
+"quality.standard.description" = "Qualité de base pour des performances plus rapides";
+"quality.high" = "Haute";
+"quality.high.description" = "Qualité améliorée avec plus de détails";
+"quality.best" = "Optimale";
+"quality.best.description" = "Qualité premium avec un maximum de détails";
+"quality.best.unavailable" = "Pour la meilleure qualité, visitez nos magasins partenaires";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "Lente";
+"speed.slow.description" = "Contrôle précis pour une exploration détaillée";
+"speed.normal" = "Normale";
+"speed.normal.description" = "Vitesse équilibrée pour une navigation confortable";
+"speed.fast" = "Rapide";
+"speed.fast.description" = "Mouvement rapide pour une exploration agile";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "Aide et support";
+"help.cantFind" = "Vous ne trouvez pas ce que vous cherchez ?";
+"help.contactDescription" = "Contactez notre équipe de support et nous vous répondrons dès que possible.";
+"help.contactSupport" = "Contacter le support";
+"help.emailSupport" = "Support par e-mail";
+"help.copyEmail" = "Copier l'adresse e-mail";
+"help.emailCopied" = "E-mail copié";
+"help.emailCopiedMessage" = "support@paafekt.com a été copié dans votre presse-papiers.";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "Création de pièce";
+"faq.howToCreate" = "Comment créer une pièce 3D ?";
+"faq.howToCreateAnswer" = "Appuyez sur l'icône photo dans le coin supérieur gauche de l'écran d'accueil, puis prenez ou sélectionnez une photo de votre pièce. L'application générera automatiquement un modèle 3D à partir de votre photo.";
+"faq.bestPhotos" = "Quel type de photos fonctionne le mieux ?";
+"faq.bestPhotosAnswer" = "Pour de meilleurs résultats, prenez des photos dans un bon éclairage avec l'appareil tenu à l'horizontale. Essayez de capturer toute la pièce, y compris les sols, les murs et les bords du plafond. Évitez les photos floues ou sombres.";
+"faq.generationFailing" = "Pourquoi ma génération de pièce échoue-t-elle ?";
+"faq.generationFailingAnswer" = "La génération de pièce peut échouer si la photo est trop sombre, floue ou ne montre pas assez de caractéristiques de la pièce. Essayez de prendre une nouvelle photo avec un meilleur éclairage et un angle plus large.";
+"faq.howManyRooms" = "Combien de pièces puis-je créer ?";
+"faq.howManyRoomsAnswer" = "Vous pouvez créer jusqu'à 10 pièces. Supprimez les anciennes pièces pour faire de la place. Le nombre de pièces s'affiche en haut de votre écran d'accueil.";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "Segmentation de meubles";
+"faq.whatIsSegmentation" = "Qu'est-ce que la segmentation de meubles ?";
+"faq.whatIsSegmentationAnswer" = "La segmentation de meubles utilise l'IA pour identifier et séparer les meubles dans vos photos, vous permettant de voir comment chaque pièce s'intégrerait dans votre pièce 3D.";
+"faq.howToSegment" = "Comment segmenter des meubles à partir d'une photo ?";
+"faq.howToSegmentAnswer" = "En visualisant votre pièce 3D, appuyez sur l'icône meuble pour accéder à la fonction de segmentation. Sélectionnez une photo contenant des meubles, et l'application détectera et extraira automatiquement les éléments de mobilier.";
+"faq.notDetected" = "Pourquoi mes meubles ne sont-ils pas détectés ?";
+"faq.notDetectedAnswer" = "La détection de meubles fonctionne mieux avec des photos claires et bien éclairées où les meubles sont clairement visibles. Assurez-vous que les meubles ne sont pas partiellement cachés ou ne se confondent pas avec l'arrière-plan.";
+"faq.multiplePieces" = "Puis-je segmenter plusieurs meubles ?";
+"faq.multiplePiecesAnswer" = "Oui ! L'IA peut détecter plusieurs meubles dans une seule photo. Chaque élément détecté sera affiché séparément pour que vous puissiez choisir lesquels utiliser.";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "Pièce 3D et aménagement";
+"faq.howToView" = "Comment visualiser ma pièce 3D ?";
+"faq.howToViewAnswer" = "Appuyez sur n'importe quelle pièce de votre écran d'accueil pour ouvrir le visualiseur 3D. Vous pouvez faire pivoter, zoomer et faire défiler la pièce avec des gestes tactiles.";
+"faq.howToPlace" = "Comment placer des meubles dans ma pièce ?";
+"faq.howToPlaceAnswer" = "Après avoir segmenté des meubles, appuyez sur le meuble pour l'ajouter à votre pièce. Vous pouvez ensuite le faire glisser pour le positionner, pincer pour le redimensionner et faire pivoter pour ajuster son orientation.";
+"faq.sampleRoom" = "Puis-je utiliser une pièce exemple au lieu de la mienne ?";
+"faq.sampleRoomAnswer" = "Oui ! L'application propose des pièces exemples pour expérimenter. Accédez-y depuis la section Explorer pour essayer le placement de meubles sans créer d'abord votre propre pièce.";
+"faq.accuracy" = "Quelle est la précision du modèle 3D ?";
+"faq.accuracyAnswer" = "Le modèle 3D fournit une bonne approximation de l'agencement de votre pièce. Pour une meilleure précision, assurez-vous que votre photo originale capture clairement les dimensions de la pièce avec des coins et des bords visibles.";
+"faq.adjustDimensions" = "Puis-je ajuster les dimensions de la pièce ?";
+"faq.adjustDimensionsAnswer" = "Oui, allez dans Paramètres et cherchez les options de dimensions de pièce où vous pouvez affiner la taille et les proportions de votre pièce générée.";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "Limites de la pièce";
+"boundary.instructions" = "Faites glisser les cercles pour ajuster les limites";
+"boundary.floor" = "Sol";
+"boundary.ceiling" = "Plafond";
+"boundary.walls" = "Murs";
+"boundary.vanish" = "Point de fuite";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "Ajouter des meubles";
+"viewer.capture" = "Capturer";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "Démarrage de la caméra...";
+"smartypants.resizing" = "Redimensionnement...";
+"smartypants.preprocessing" = "Prétraitement...";
+"smartypants.runningModel" = "Exécution du modèle...";
+"smartypants.extracting" = "Extraction des détections...";
+"smartypants.buildingMask" = "Construction du masque...";
+"smartypants.compositing" = "Composition...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "Photo vers pièce 3D";
+"photoRoom.createTitle" = "Créer une pièce 3D";
+"photoRoom.createSubtitle" = "Sélectionnez une photo pour commencer";
+"photoRoom.quickPhoto" = "Photo rapide";
+"photoRoom.quickPhotoSubtitle" = "Capture photo unique";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "Vue de la pièce 3D";
+"roomViewer.controls" = "Utilisez le joystick pour vous déplacer • Pincez pour zoomer";
+"roomViewer.saveRoom" = "Enregistrer la pièce";
+"roomViewer.roomName" = "Nom de la pièce";
+"roomViewer.enterName" = "Entrez un nom pour votre pièce";
+"roomViewer.savingRoom" = "Enregistrement de la pièce";
+"roomViewer.preparingModel" = "Préparation du modèle de pièce...";
+"roomViewer.exportingUSDZ" = "Exportation au format USDZ...";
+"roomViewer.savingToLibrary" = "Enregistrement dans la bibliothèque...";
+"roomViewer.almostDone" = "Presque terminé...";
+"roomViewer.saveSuccess" = "Pièce '%@' enregistrée avec succès !";
+"roomViewer.saveFailed" = "Échec de l'enregistrement de la pièce : %@";
+"roomViewer.roomSaveTitle" = "Enregistrer la pièce";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "Soumettre le rapport";
+"crashReport.emailNotConfigured" = "E-mail non disponible";
+"crashReport.emailNotConfiguredMessage" = "L'e-mail n'est pas configuré sur cet appareil. Vous pouvez copier les détails de l'erreur et les envoyer manuellement à support@paafekt.com";
+"crashReport.copyDetails" = "Copier les détails";
+
+// MARK: - Accessibility
+"accessibility.settings" = "Paramètres";
+"accessibility.help" = "Aide";
+"accessibility.createRoom" = "Créer une pièce à partir d'une photo";

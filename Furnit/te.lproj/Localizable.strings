@@ -1,0 +1,233 @@
+/*
+  Localizable.strings
+  Furnit
+
+  Telugu (తెలుగు) localization
+*/
+
+// MARK: - App General
+"app.name" = "Paafekt Beta";
+"app.tagline" = "3D గది ఎక్స్‌ప్లోరర్";
+"app.version" = "వెర్షన్";
+"app.developer" = "Furnit టీమ్";
+
+// MARK: - Common Actions
+"common.done" = "పూర్తయింది";
+"common.cancel" = "రద్దు";
+"common.ok" = "సరే";
+"common.back" = "వెనుకకు";
+"common.reset" = "రీసెట్";
+"common.delete" = "తొలగించు";
+"common.error" = "లోపం";
+"common.save" = "సేవ్";
+"common.close" = "మూసివేయు";
+
+// MARK: - Login View
+"login.yourName" = "మీ పేరు";
+"login.enterName" = "మీ పేరు నమోదు చేయండి";
+"login.phoneNumber" = "ఫోన్ నంబర్";
+"login.phonePlaceholder" = "ఫోన్ నంబర్";
+"login.sendOTP" = "OTP పంపు";
+"login.sending" = "పంపుతోంది...";
+"login.otpHint" = "కోడ్ SMS ద్వారా పంపబడుతుంది";
+"login.validationError" = "దయచేసి చెల్లుబాటు అయ్యే పేరు మరియు ఫోన్ నంబర్ నమోదు చేయండి";
+"login.sendFailed" = "కోడ్ పంపడం విఫలమైంది. దయచేసి మళ్ళీ ప్రయత్నించండి.";
+
+// MARK: - Country Picker
+"country.selectTitle" = "దేశం ఎంచుకోండి";
+"country.searchPlaceholder" = "దేశం లేదా కోడ్ వెతకండి";
+
+// MARK: - OTP Verification
+"otp.title" = "కోడ్ ధృవీకరించండి";
+"otp.subtitle" = "ఈ నంబర్‌కు పంపిన కోడ్ నమోదు చేయండి";
+"otp.verify" = "ధృవీకరించు";
+"otp.verifying" = "ధృవీకరిస్తోంది...";
+"otp.resend" = "కోడ్ మళ్ళీ పంపు";
+"otp.resendIn" = "%d సెకన్లలో మళ్ళీ పంపు";
+"otp.invalidError" = "చెల్లని కోడ్. దయచేసి మళ్ళీ ప్రయత్నించండి.";
+"otp.resendFailed" = "కోడ్ మళ్ళీ పంపడం విఫలమైంది.";
+
+// MARK: - Home View
+"home.title" = "3D గది మోడల్స్";
+"home.noModels" = "3D మోడల్స్ కనుగొనబడలేదు";
+"home.noModelsDescription" = "ఫోటో నుండి మీ మొదటి గదిని సృష్టించండి!";
+"home.createRoom" = "ఫోటో నుండి గది సృష్టించు";
+"home.roomsRemaining" = "%d/%d గదులు మిగిలి ఉన్నాయి";
+"home.deleteHint" = "కొత్తవి సృష్టించడానికి పాత గదులను తొలగించండి";
+"home.swipeHint" = "తొలగించడానికి ఎడమకు స్వైప్ చేయండి";
+"home.roomModel" = "3D గది మోడల్";
+
+// MARK: - Room Limit
+"roomLimit.title" = "గది పరిమితి చేరుకుంది";
+"roomLimit.message" = "మీరు %d గదుల పరిమితికి చేరుకున్నారు. కొత్తవి సృష్టించడానికి కొన్నింటిని తొలగించండి.";
+
+// MARK: - Delete Room
+"deleteRoom.title" = "గది తొలగించాలా?";
+"deleteRoom.message" = "'%@' ని తొలగించాలనుకుంటున్నారా? దీన్ని రద్దు చేయలేరు.";
+
+// MARK: - Explore View
+"explore.title" = "అన్వేషించు";
+"explore.search" = "గదులను వెతకండి...";
+"explore.noResults" = "ఫలితాలు లేవు";
+"explore.noResultsDescription" = "వేరే శోధన పదం ప్రయత్నించండి";
+"explore.all" = "అన్నీ";
+"explore.livingRoom" = "లివింగ్ రూమ్";
+"explore.bedroom" = "బెడ్‌రూమ్";
+"explore.kitchen" = "వంటగది";
+"explore.office" = "ఆఫీస్";
+
+// MARK: - Favorites View
+"favorites.title" = "ఇష్టమైనవి";
+"favorites.empty" = "ఇష్టమైనవి లేవు";
+"favorites.emptyDescription" = "ఇక్కడ జోడించడానికి గదులపై హార్ట్ ట్యాప్ చేయండి";
+
+// MARK: - Profile View
+"profile.title" = "ప్రొఫైల్";
+"profile.editProfile" = "ప్రొఫైల్ సవరించు";
+"profile.notifications" = "నోటిఫికేషన్లు";
+"profile.privacy" = "గోప్యత";
+"profile.general" = "సాధారణ";
+"profile.about" = "గురించి";
+"profile.helpSupport" = "సహాయం & మద్దతు";
+"profile.logout" = "లాగ్ అవుట్";
+"profile.logoutConfirmTitle" = "లాగ్ అవుట్";
+"profile.logoutConfirmMessage" = "లాగ్ అవుట్ చేయాలనుకుంటున్నారా?";
+
+// MARK: - Settings View
+"settings.title" = "సెట్టింగ్స్";
+"settings.quality" = "3D రిసోర్స్ క్వాలిటీ";
+"settings.qualityFooter" = "క్వాలిటీ రెండరింగ్ వివరాలు మరియు పనితీరును ప్రభావితం చేస్తుంది. అధిక క్వాలిటీ బ్యాటరీ జీవితాన్ని ప్రభావితం చేయవచ్చు.";
+"settings.appInfo" = "యాప్ సమాచారం";
+"settings.currentQuality" = "ప్రస్తుత క్వాలిటీ";
+"settings.movementSpeed" = "కదలిక వేగం";
+"settings.movementSpeedFooter" = "జాయ్‌స్టిక్‌తో కెమెరా కదలిక వేగాన్ని నియంత్రిస్తుంది. మీకు సరిపోయే వేగాన్ని ఎంచుకోండి.";
+"settings.roomDimensions" = "సింగిల్ ఫోటో రూమ్ కొలతలు";
+"settings.roomDimensionsFooter" = "సింగిల్ ఫోటోల నుండి సృష్టించిన గదులకు డిఫాల్ట్ కొలతలను సర్దుబాటు చేయండి. ఇవి గది సరిహద్దులను గుర్తించేటప్పుడు ప్రారంభ పాయింట్లుగా పని చేస్తాయి.";
+"settings.width" = "వెడల్పు: %.1f మీ";
+"settings.depth" = "లోతు: %.1f మీ";
+"settings.height" = "ఎత్తు: %.1f మీ";
+"settings.developer" = "డెవలపర్";
+"settings.developerFooter" = "వివరమైన డిటెక్షన్ సమాచారం మరియు పనితీరు మెట్రిక్స్ చూడటానికి డీబగ్ మోడ్ ఎనేబుల్ చేయండి. డిటెక్షన్ సున్నితత్వం మరియు ఫిల్టరింగ్ ప్రవర్తనను నియంత్రించడానికి థ్రెషోల్డ్స్ సర్దుబాటు చేయండి.";
+"settings.debugMode" = "డీబగ్ మోడ్";
+"settings.debugModeDescription" = "డిటెక్షన్ బాక్సులు మరియు టైమింగ్ సమాచారం చూపించు";
+"settings.maskOverlapThreshold" = "మాస్క్ ఓవర్‌ల్యాప్ థ్రెషోల్డ్";
+"settings.maskOverlapDescription" = "డిటెక్షన్లను విలీనం చేయడానికి అవసరమైన మాస్క్ ఓవర్‌ల్యాప్‌ను నియంత్రిస్తుంది. తక్కువ విలువలు మరింత సారూప్య వస్తువులను విలీనం చేస్తాయి.";
+"settings.currentValue" = "ప్రస్తుత విలువ:";
+"settings.account" = "ఖాతా";
+"settings.loggedInAs" = "లాగిన్ అయి ఉన్నది";
+
+// MARK: - Quality Options
+"quality.standard" = "స్టాండర్డ్";
+"quality.standard.description" = "వేగవంతమైన పనితీరు కోసం ప్రాథమిక క్వాలిటీ";
+"quality.high" = "హై";
+"quality.high.description" = "మరింత వివరాలతో మెరుగైన క్వాలిటీ";
+"quality.best" = "బెస్ట్";
+"quality.best.description" = "గరిష్ట వివరాలతో ప్రీమియం క్వాలిటీ";
+"quality.best.unavailable" = "బెస్ట్ క్వాలిటీ కోసం, మా పార్టనర్ స్టోర్లను సందర్శించండి";
+
+// MARK: - Movement Speed Options
+"speed.slow" = "నెమ్మది";
+"speed.slow.description" = "వివరమైన అన్వేషణ కోసం ఖచ్చితమైన నియంత్రణ";
+"speed.normal" = "సాధారణ";
+"speed.normal.description" = "సౌకర్యవంతమైన నావిగేషన్ కోసం సమతుల్య వేగం";
+"speed.fast" = "వేగం";
+"speed.fast.description" = "చురుకైన అన్వేషణ కోసం త్వరిత కదలిక";
+
+// MARK: - Help & Support (FAQ)
+"help.title" = "సహాయం & మద్దతు";
+"help.cantFind" = "మీకు కావలసింది కనుగొనలేదా?";
+"help.contactDescription" = "మా సపోర్ట్ టీమ్‌ను సంప్రదించండి మరియు మేము త్వరలో స్పందిస్తాము.";
+"help.contactSupport" = "మద్దతును సంప్రదించండి";
+"help.emailSupport" = "ఇమెయిల్ మద్దతు";
+"help.copyEmail" = "ఇమెయిల్ చిరునామా కాపీ చేయి";
+"help.emailCopied" = "ఇమెయిల్ కాపీ అయింది";
+"help.emailCopiedMessage" = "support@paafekt.com మీ క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది.";
+
+// FAQ - Room Creation
+"faq.roomCreation" = "గది సృష్టి";
+"faq.howToCreate" = "3D గదిని ఎలా సృష్టించాలి?";
+"faq.howToCreateAnswer" = "హోమ్ స్క్రీన్ ఎడమ ఎగువ మూలలో ఫోటో ఐకాన్ ట్యాప్ చేయండి, తర్వాత మీ గది ఫోటో తీయండి లేదా ఎంచుకోండి. యాప్ మీ ఫోటో నుండి స్వయంచాలకంగా 3D మోడల్ సృష్టిస్తుంది.";
+"faq.bestPhotos" = "ఏ రకమైన ఫోటోలు బాగా పని చేస్తాయి?";
+"faq.bestPhotosAnswer" = "మంచి ఫలితాల కోసం, మంచి వెలుతురులో పరికరాన్ని స్థిరంగా పట్టుకుని ఫోటోలు తీయండి. నేలలు, గోడలు మరియు సీలింగ్ అంచులతో సహా మొత్తం గదిని క్యాప్చర్ చేయడానికి ప్రయత్నించండి. బ్లర్ లేదా చీకటి ఫోటోలను నివారించండి.";
+"faq.generationFailing" = "నా గది జనరేషన్ ఎందుకు విఫలమవుతోంది?";
+"faq.generationFailingAnswer" = "ఫోటో చాలా చీకటిగా, బ్లర్‌గా ఉంటే, లేదా తగినంత గది లక్షణాలు చూపించకపోతే గది జనరేషన్ విఫలం కావచ్చు. మెరుగైన వెలుతురు మరియు విశాల కోణంతో కొత్త ఫోటో తీయడానికి ప్రయత్నించండి.";
+"faq.howManyRooms" = "నేను ఎన్ని గదులు సృష్టించగలను?";
+"faq.howManyRoomsAnswer" = "మీరు 10 గదుల వరకు సృష్టించవచ్చు. స్థలం చేయడానికి పాత గదులను తొలగించండి. గది సంఖ్య మీ హోమ్ స్క్రీన్ పైభాగంలో ప్రదర్శించబడుతుంది.";
+
+// FAQ - Furniture Segmentation
+"faq.furnitureSegmentation" = "ఫర్నిచర్ సెగ్మెంటేషన్";
+"faq.whatIsSegmentation" = "ఫర్నిచర్ సెగ్మెంటేషన్ అంటే ఏమిటి?";
+"faq.whatIsSegmentationAnswer" = "ఫర్నిచర్ సెగ్మెంటేషన్ AI ఉపయోగించి మీ ఫోటోలలో ఫర్నిచర్‌ను గుర్తించి వేరు చేస్తుంది, ప్రతి ముక్క మీ 3D గదిలో ఎలా సరిపోతుందో చూడటానికి అనుమతిస్తుంది.";
+"faq.howToSegment" = "ఫోటో నుండి ఫర్నిచర్‌ను ఎలా సెగ్మెంట్ చేయాలి?";
+"faq.howToSegmentAnswer" = "మీ 3D గదిని చూస్తున్నప్పుడు, సెగ్మెంటేషన్ ఫీచర్‌ను యాక్సెస్ చేయడానికి ఫర్నిచర్ ఐకాన్ ట్యాప్ చేయండి. ఫర్నిచర్ ఉన్న ఫోటో ఎంచుకోండి, మరియు యాప్ స్వయంచాలకంగా ఫర్నిచర్ ఐటెమ్‌లను గుర్తించి ఎక్స్‌ట్రాక్ట్ చేస్తుంది.";
+"faq.notDetected" = "నా ఫర్నిచర్ ఎందుకు గుర్తించబడలేదు?";
+"faq.notDetectedAnswer" = "ఫర్నిచర్ డిటెక్షన్ స్పష్టమైన, మంచి వెలుతురు ఫోటోలలో ఫర్నిచర్ స్పష్టంగా కనిపించినప్పుడు బాగా పని చేస్తుంది. ఫర్నిచర్ పాక్షికంగా కప్పబడలేదని లేదా బ్యాక్‌గ్రౌండ్‌తో కలిసిపోలేదని నిర్ధారించుకోండి.";
+"faq.multiplePieces" = "అనేక ఫర్నిచర్ ముక్కలను సెగ్మెంట్ చేయవచ్చా?";
+"faq.multiplePiecesAnswer" = "అవును! AI ఒకే ఫోటోలో అనేక ఫర్నిచర్ ముక్కలను గుర్తించగలదు. గుర్తించిన ప్రతి ఐటెమ్ విడిగా ప్రదర్శించబడుతుంది, మీరు ఏది ఉపయోగించాలో ఎంచుకోవడానికి.";
+
+// FAQ - 3D Room & Fitment
+"faq.roomFitment" = "3D గది & ఫిట్‌మెంట్";
+"faq.howToView" = "నా 3D గదిని ఎలా చూడాలి?";
+"faq.howToViewAnswer" = "3D వ్యూయర్ తెరవడానికి హోమ్ స్క్రీన్‌లో ఏదైనా గది ట్యాప్ చేయండి. టచ్ జెస్చర్లు ఉపయోగించి గదిని తిప్పవచ్చు, జూమ్ చేయవచ్చు మరియు పాన్ చేయవచ్చు.";
+"faq.howToPlace" = "నా గదిలో ఫర్నిచర్ ఎలా ఉంచాలి?";
+"faq.howToPlaceAnswer" = "ఫర్నిచర్ సెగ్మెంట్ చేసిన తర్వాత, మీ గదికి జోడించడానికి ఒక ముక్క ట్యాప్ చేయండి. తర్వాత స్థానానికి డ్రాగ్ చేయవచ్చు, సైజు మార్చడానికి పించ్ చేయవచ్చు, మరియు దిశ సర్దుబాటు చేయడానికి రొటేట్ చేయవచ్చు.";
+"faq.sampleRoom" = "నాదానికి బదులు శాంపిల్ రూమ్ ఉపయోగించవచ్చా?";
+"faq.sampleRoomAnswer" = "అవును! యాప్ ప్రయోగించడానికి శాంపిల్ రూమ్‌లను అందిస్తుంది. మొదట మీ సొంత గది సృష్టించకుండా ఫర్నిచర్ ప్లేస్‌మెంట్ ప్రయత్నించడానికి ఎక్స్‌ప్లోర్ సెక్షన్ నుండి వాటిని యాక్సెస్ చేయండి.";
+"faq.accuracy" = "3D మోడల్ ఎంత ఖచ్చితమైనది?";
+"faq.accuracyAnswer" = "3D మోడల్ మీ గది లేఅవుట్ యొక్క మంచి అంచనాను అందిస్తుంది. మంచి ఖచ్చితత్వం కోసం, మీ అసలు ఫోటో కనిపించే మూలలు మరియు అంచులతో గది కొలతలను స్పష్టంగా క్యాప్చర్ చేస్తుందని నిర్ధారించుకోండి.";
+"faq.adjustDimensions" = "గది కొలతలను సర్దుబాటు చేయవచ్చా?";
+"faq.adjustDimensionsAnswer" = "అవును, సెట్టింగ్‌లకు వెళ్ళి గది కొలత ఆప్షన్లు కనుగొనండి అక్కడ మీరు సృష్టించిన గది సైజు మరియు నిష్పత్తులను ఫైన్-ట్యూన్ చేయవచ్చు.";
+
+// MARK: - Room Boundary Detection
+"boundary.title" = "గది సరిహద్దులు";
+"boundary.instructions" = "సరిహద్దులను సర్దుబాటు చేయడానికి సర్కిల్‌లను డ్రాగ్ చేయండి";
+"boundary.floor" = "నేల";
+"boundary.ceiling" = "సీలింగ్";
+"boundary.walls" = "గోడలు";
+"boundary.vanish" = "వానిషింగ్ పాయింట్";
+
+// MARK: - Model Viewer
+"viewer.furniture" = "ఫర్నిచర్ జోడించు";
+"viewer.capture" = "క్యాప్చర్";
+
+// MARK: - SmartyPants (Segmentation)
+"smartypants.starting" = "కెమెరా ప్రారంభమవుతోంది...";
+"smartypants.resizing" = "రీసైజింగ్...";
+"smartypants.preprocessing" = "ప్రీప్రాసెసింగ్...";
+"smartypants.runningModel" = "మోడల్ రన్ అవుతోంది...";
+"smartypants.extracting" = "డిటెక్షన్లు ఎక్స్‌ట్రాక్ట్ అవుతోంది...";
+"smartypants.buildingMask" = "మాస్క్ బిల్డింగ్...";
+"smartypants.compositing" = "కంపోజిటింగ్...";
+
+// MARK: - Single Photo Room
+"photoRoom.title" = "ఫోటో నుండి 3D గది";
+"photoRoom.createTitle" = "3D గది సృష్టించు";
+"photoRoom.createSubtitle" = "ప్రారంభించడానికి ఫోటో ఎంచుకోండి";
+"photoRoom.quickPhoto" = "క్విక్ ఫోటో";
+"photoRoom.quickPhotoSubtitle" = "సింగిల్ ఫోటో క్యాప్చర్";
+
+// MARK: - 3D Room Viewer
+"roomViewer.title" = "3D గది వ్యూ";
+"roomViewer.controls" = "కదలడానికి జాయ్‌స్టిక్ ఉపయోగించండి • జూమ్ చేయడానికి పించ్ చేయండి";
+"roomViewer.saveRoom" = "గది సేవ్ చేయి";
+"roomViewer.roomName" = "గది పేరు";
+"roomViewer.enterName" = "మీ గదికి పేరు నమోదు చేయండి";
+"roomViewer.savingRoom" = "గది సేవ్ అవుతోంది";
+"roomViewer.preparingModel" = "గది మోడల్ తయారవుతోంది...";
+"roomViewer.exportingUSDZ" = "USDZ ఫార్మాట్‌కు ఎక్స్‌పోర్ట్ అవుతోంది...";
+"roomViewer.savingToLibrary" = "లైబ్రరీకి సేవ్ అవుతోంది...";
+"roomViewer.almostDone" = "దాదాపు పూర్తయింది...";
+"roomViewer.saveSuccess" = "గది '%@' విజయవంతంగా సేవ్ అయింది!";
+"roomViewer.saveFailed" = "గది సేవ్ చేయడం విఫలమైంది: %@";
+"roomViewer.roomSaveTitle" = "గది సేవ్ చేయి";
+
+// MARK: - Crash Report
+"crashReport.submitReport" = "రిపోర్ట్ సబ్మిట్ చేయి";
+"crashReport.emailNotConfigured" = "ఇమెయిల్ అందుబాటులో లేదు";
+"crashReport.emailNotConfiguredMessage" = "ఈ పరికరంలో ఇమెయిల్ కాన్ఫిగర్ చేయబడలేదు. మీరు ఎర్రర్ వివరాలను కాపీ చేసి support@paafekt.com కు మాన్యువల్‌గా పంపవచ్చు";
+"crashReport.copyDetails" = "వివరాలు కాపీ చేయి";
+
+// MARK: - Accessibility
+"accessibility.settings" = "సెట్టింగ్స్";
+"accessibility.help" = "సహాయం";
+"accessibility.createRoom" = "ఫోటో నుండి గది సృష్టించు";
