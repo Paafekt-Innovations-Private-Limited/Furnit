@@ -1,6 +1,7 @@
 import SwiftUI
 import MetalKit
 import CoreML
+import Photos
 
 // Note: Add MetalSplatter package via Xcode:
 // File > Add Package Dependencies > https://github.com/scier/MetalSplatter.git
@@ -23,6 +24,7 @@ struct SharpRoomView: View {
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
     @State private var mlModel: MLModel? = nil
+    @State private var isCapturingSnapshot = false
 
     var body: some View {
         ZStack {
@@ -75,7 +77,7 @@ struct SharpRoomView: View {
                 .cornerRadius(12)
             }
 
-            // SmartyPants overlay (when active)
+            // SmartyPants overlay (when active) - full screen
             if showingSmartyPants {
                 SmartyPantsUIView(
                     capturedImage: $capturedImage,
@@ -127,10 +129,11 @@ struct SharpRoomView: View {
                 }
             }
 
-            // Brain button (bottom-left)
+            // Bottom buttons (brain left, screenshot right)
             VStack {
                 Spacer()
                 HStack {
+                    // Brain button (bottom-left)
                     Button(action: {
                         if showingSmartyPants {
                             showingSmartyPants = false
@@ -151,9 +154,23 @@ struct SharpRoomView: View {
                     }
                     .disabled(isLoading)
                     .padding(.leading, 16)
-                    .padding(.bottom, 20)
+
                     Spacer()
+
+                    // Screenshot button (bottom-right)
+                    Button(action: {
+                        takeScreenshot()
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(Color.blue).shadow(radius: 5))
+                    }
+                    .disabled(isLoading)
+                    .padding(.trailing, 16)
                 }
+                .padding(.bottom, 20)
             }
             .zIndex(99)
         }
@@ -173,6 +190,66 @@ struct SharpRoomView: View {
         }
         .onAppear {
             loadMLModel()
+        }
+    }
+
+    // MARK: - Screenshot
+
+    private func takeScreenshot() {
+        guard !isCapturingSnapshot else { return }
+        isCapturingSnapshot = true
+
+        DispatchQueue.main.async {
+            guard let image = captureAppWindowImage() else {
+                isCapturingSnapshot = false
+                logDebug("❌ Failed to capture screenshot")
+                return
+            }
+            saveUIImageToPhotos(image)
+            isCapturingSnapshot = false
+        }
+    }
+
+    private func captureAppWindowImage() -> UIImage? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let windows = scenes.flatMap { $0.windows }
+        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else {
+            return nil
+        }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+        let image = renderer.image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        return image
+    }
+
+    private func saveUIImageToPhotos(_ image: UIImage) {
+        let saveBlock = {
+            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+            logDebug("✅ Saved screenshot to Photos")
+        }
+        if #available(iOS 14, *) {
+            let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+            switch status {
+            case .authorized, .limited:
+                saveBlock()
+            case .denied, .restricted:
+                logDebug("❌ Photos access denied")
+            case .notDetermined:
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
+                    DispatchQueue.main.async {
+                        if newStatus == .authorized || newStatus == .limited {
+                            saveBlock()
+                        }
+                    }
+                }
+            @unknown default:
+                break
+            }
+        } else {
+            saveBlock()
         }
     }
 
@@ -270,7 +347,7 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
         mtkView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         mtkView.colorPixelFormat = .bgra8Unorm
         mtkView.depthStencilPixelFormat = .depth32Float
-        mtkView.clearColor = MTLClearColor(red: 0.85, green: 0.85, blue: 0.85, alpha: 1.0)  // Light gray to hide gaps
+        mtkView.clearColor = MTLClearColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)  // Dark background
         mtkView.delegate = self
         view.addSubview(mtkView)
 
@@ -313,8 +390,8 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
                 maxSimultaneousRenders: 3
             )
 
-            // Set background to light gray immediately
-            renderer?.clearColor = MTLClearColor(red: 0.7, green: 0.7, blue: 0.7, alpha: 1.0)
+            // Set background to dark
+            renderer?.clearColor = MTLClearColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
 
             // Load PLY file directly into the renderer (async)
             try await renderer?.read(from: url)
@@ -337,7 +414,7 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
                 height = size.y
                 depth = size.z
                 let maxDim = max(size.x, max(size.y, size.z))
-                cameraDistance = max(maxDim * 2.5, 3.0)  // Good viewing distance, minimum 3.0
+                cameraDistance = max(maxDim * 1.2, 1.5)  // Closer camera to fill more screen
                 initialCameraDistance = cameraDistance
 
                 // Store center of bounding box for reference dot
@@ -386,7 +463,7 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
         }
 
         fragment float4 fillFragment() {
-            return float4(0.7, 0.7, 0.7, 1.0);  // Light gray
+            return float4(0.1, 0.1, 0.1, 1.0);  // Dark background
         }
         """
 
@@ -559,7 +636,7 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
 
         // Build projection matrix
         let aspect = Float(drawableSize.width / drawableSize.height)
-        let fovy: Float = Float.pi / 4.0  // 45 degrees
+        let fovy: Float = Float.pi / 2.5  // 72 degrees - wider FOV to fill screen
         let projectionMatrix = makePerspectiveMatrix(fovy: fovy, aspect: aspect, near: 0.1, far: 100.0)
 
         // Create MTLViewport
