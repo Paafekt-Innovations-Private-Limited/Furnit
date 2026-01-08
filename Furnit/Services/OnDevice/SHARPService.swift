@@ -504,57 +504,12 @@ class SHARPService: ObservableObject {
         return filtered
     }
 
-    // MARK: - Depth Doubling
-
-    /// Double the depth (Z range) of splats to give more 3D separation
-    private func doubleDepth(_ params: inout [Float]) {
-        let count = params.count / Self.paramsPerGaussian
-        guard count > 0 else { return }
-
-        // Find Z range (position Z is at offset 2)
-        var zMin: Float = .greatestFiniteMagnitude
-        var zMax: Float = -.greatestFiniteMagnitude
-        var zSum: Float = 0
-
-        for i in 0..<count {
-            let z = params[i * Self.paramsPerGaussian + 2]
-            zMin = min(zMin, z)
-            zMax = max(zMax, z)
-            zSum += z
-        }
-
-        let zCenter = zSum / Float(count)
-        let depthScale: Float = 6.0  // More depth separation
-
-        logDebug("SHARP: Depth doubling - zMin: \(zMin), zMax: \(zMax), zCenter: \(zCenter)")
-
-        // Scale Z positions away from center
-        for i in 0..<count {
-            let offset = i * Self.paramsPerGaussian + 2
-            let z = params[offset]
-            params[offset] = zCenter + (z - zCenter) * depthScale
-        }
-
-        // Log new range
-        var newZMin: Float = .greatestFiniteMagnitude
-        var newZMax: Float = -.greatestFiniteMagnitude
-        for i in 0..<count {
-            let z = params[i * Self.paramsPerGaussian + 2]
-            newZMin = min(newZMin, z)
-            newZMax = max(newZMax, z)
-        }
-        logDebug("SHARP: After doubling - zMin: \(newZMin), zMax: \(newZMax)")
-    }
-
     // MARK: - PLY Writing
 
     /// Write Gaussian parameters to PLY file
     private func writePLY(_ params: [Float]) async throws -> URL {
         // Filter Gaussians for mobile rendering
-        var filteredParams = filterGaussians(params)
-
-        // Double the depth for more 3D separation
-        doubleDepth(&filteredParams)
+        let filteredParams = filterGaussians(params)
 
         let gaussianCount = filteredParams.count / Self.paramsPerGaussian
 

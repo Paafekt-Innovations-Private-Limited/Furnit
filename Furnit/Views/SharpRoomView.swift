@@ -44,7 +44,25 @@ struct SharpRoomView: View {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.5)
-                    Text("Loading splats...")
+                        .tint(.white)
+
+                    // Animated progress bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.white.opacity(0.3))
+                                .frame(height: 6)
+
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.white)
+                                .frame(width: geo.size.width * 0.3, height: 6)
+                                .modifier(ShimmerModifier())
+                        }
+                    }
+                    .frame(width: 150, height: 6)
+
+                    Text("Loading 3D room...")
+                        .font(.subheadline)
                         .foregroundColor(.white)
                 }
                 .padding(24)
@@ -523,6 +541,22 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
             SIMD4<Float>(0, 0, zScale, -1),
             SIMD4<Float>(0, 0, wzScale, 0)
         ))
+    }
+}
+
+// MARK: - Shimmer Animation
+
+struct ShimmerModifier: ViewModifier {
+    @State private var offset: CGFloat = -1
+
+    func body(content: Content) -> some View {
+        content
+            .offset(x: offset * 150)
+            .onAppear {
+                withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
+                    offset = 1
+                }
+            }
     }
 }
 
