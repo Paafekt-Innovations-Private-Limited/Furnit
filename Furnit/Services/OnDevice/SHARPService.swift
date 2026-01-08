@@ -574,10 +574,10 @@ class SHARPService: ObservableObject {
         for i in 0..<gaussianCount {
             let offset = i * Self.paramsPerGaussian
 
-            // Position - flip Y to correct orientation (SHARP Y is inverted vs renderer)
-            var x = filteredParams[offset + 0]
+            // Position - flip Y and rotate 180° around Y to face front
+            var x = -filteredParams[offset + 0]  // Negate X
             var y = -filteredParams[offset + 1]  // Negate Y
-            var z = filteredParams[offset + 2]
+            var z = -filteredParams[offset + 2]  // Negate Z
             data.append(Data(bytes: &x, count: 4))
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
