@@ -24,6 +24,11 @@ struct SharpRoomView: View {
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
     @State private var mlModel: MLModel? = nil
+    @State private var showRoomNameInput = false
+    @State private var roomName = ""
+    @State private var showSaveAlert = false
+    @State private var saveAlertMessage = ""
+    @State private var saveWasSuccessful = false
 
     var body: some View {
         ZStack {
@@ -182,9 +187,19 @@ struct SharpRoomView: View {
         .navigationTitle("3D Room")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // Save button
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    showRoomNameInput = true
+                }) {
+                    Image(systemName: "square.and.arrow.down")
+                }
+                .disabled(isLoading)
+            }
+
+            // Done button
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Done") {
-                    // Dismiss back to home view
                     NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
                     dismiss()
                 }
@@ -194,6 +209,69 @@ struct SharpRoomView: View {
         }
         .onAppear {
             loadMLModel()
+        }
+        // Room name input alert
+        .alert("Save Room", isPresented: $showRoomNameInput) {
+            TextField("Room Name", text: $roomName)
+            Button("Cancel", role: .cancel) {
+                roomName = ""
+            }
+            Button("Save") {
+                saveRoom()
+            }
+            .disabled(roomName.isEmpty)
+        } message: {
+            Text("Enter a name for your room")
+        }
+        // Save result alert
+        .alert("Room Saved", isPresented: $showSaveAlert) {
+            Button("OK", role: .cancel) {
+                if saveWasSuccessful {
+                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                    dismiss()
+                }
+            }
+        } message: {
+            Text(saveAlertMessage)
+        }
+    }
+
+    // MARK: - Save Room
+
+    private func saveRoom() {
+        guard !roomName.isEmpty else { return }
+
+        let fileManager = FileManager.default
+        let documentsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let savedRoomsDir = documentsDir.appendingPathComponent("SavedRooms", isDirectory: true)
+
+        // Create SavedRooms directory if needed
+        try? fileManager.createDirectory(at: savedRoomsDir, withIntermediateDirectories: true)
+
+        // Create new filename with user's room name
+        let sanitizedName = roomName.replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let newFileName = "\(sanitizedName)_\(timestamp).ply"
+        let destinationURL = savedRoomsDir.appendingPathComponent(newFileName)
+
+        do {
+            // Copy the PLY file to SavedRooms with the new name
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+            }
+            try fileManager.copyItem(at: plyURL, to: destinationURL)
+
+            logDebug("✅ Room saved: \(destinationURL.path)")
+            saveAlertMessage = "'\(roomName)' has been saved successfully."
+            saveWasSuccessful = true
+            showSaveAlert = true
+            roomName = ""
+        } catch {
+            logDebug("❌ Failed to save room: \(error)")
+            saveAlertMessage = "Failed to save room: \(error.localizedDescription)"
+            saveWasSuccessful = false
+            showSaveAlert = true
         }
     }
 
