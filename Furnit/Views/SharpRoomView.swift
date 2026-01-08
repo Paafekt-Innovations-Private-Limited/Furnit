@@ -24,7 +24,6 @@ struct SharpRoomView: View {
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
     @State private var mlModel: MLModel? = nil
-    @State private var isCapturingSnapshot = false
 
     var body: some View {
         ZStack {
@@ -123,13 +122,17 @@ struct SharpRoomView: View {
                     }
                     .padding()
                     Spacer()
-
-                    // Joystick at bottom center
-                    SimpleJoystickOverlay()
                 }
             }
 
-            // Bottom buttons (brain left, screenshot right)
+            // Joystick at bottom center (always visible, above overlay)
+            VStack {
+                Spacer()
+                SimpleJoystickOverlay()
+            }
+            .zIndex(200)
+
+            // Bottom buttons (brain left, screenshot right when SmartyPants active)
             VStack {
                 Spacer()
                 HStack {
@@ -157,22 +160,23 @@ struct SharpRoomView: View {
 
                     Spacer()
 
-                    // Screenshot button (bottom-right)
-                    Button(action: {
-                        takeScreenshot()
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white)
-                            .frame(width: 60, height: 60)
-                            .background(Circle().fill(Color.blue).shadow(radius: 5))
+                    // Screenshot button (bottom-right) - only when SmartyPants active
+                    if showingSmartyPants {
+                        Button(action: {
+                            takeScreenshot()
+                        }) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(Color.blue).shadow(radius: 5))
+                        }
+                        .padding(.trailing, 16)
                     }
-                    .disabled(isLoading)
-                    .padding(.trailing, 16)
                 }
                 .padding(.bottom, 20)
             }
-            .zIndex(99)
+            .zIndex(201)
         }
         .background(Color.black)
         .navigationTitle("3D Room")
@@ -196,61 +200,28 @@ struct SharpRoomView: View {
     // MARK: - Screenshot
 
     private func takeScreenshot() {
-        guard !isCapturingSnapshot else { return }
-        isCapturingSnapshot = true
+        logDebug("📸 Taking screenshot...")
 
-        DispatchQueue.main.async {
-            guard let image = captureAppWindowImage() else {
-                isCapturingSnapshot = false
-                logDebug("❌ Failed to capture screenshot")
-                return
-            }
-            saveUIImageToPhotos(image)
-            isCapturingSnapshot = false
-        }
-    }
-
-    private func captureAppWindowImage() -> UIImage? {
+        // Capture the window
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let windows = scenes.flatMap { $0.windows }
         guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else {
-            return nil
+            logDebug("❌ No window found")
+            return
         }
+
         let format = UIGraphicsImageRendererFormat()
         format.scale = UIScreen.main.scale
         let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
         let image = renderer.image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
-        return image
-    }
 
-    private func saveUIImageToPhotos(_ image: UIImage) {
-        let saveBlock = {
-            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-            logDebug("✅ Saved screenshot to Photos")
-        }
-        if #available(iOS 14, *) {
-            let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
-            switch status {
-            case .authorized, .limited:
-                saveBlock()
-            case .denied, .restricted:
-                logDebug("❌ Photos access denied")
-            case .notDetermined:
-                PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
-                    DispatchQueue.main.async {
-                        if newStatus == .authorized || newStatus == .limited {
-                            saveBlock()
-                        }
-                    }
-                }
-            @unknown default:
-                break
-            }
-        } else {
-            saveBlock()
-        }
+        logDebug("📸 Screenshot captured, saving to Photos...")
+
+        // Save to photos
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+        logDebug("✅ Screenshot saved to Photos")
     }
 
     // MARK: - Load ML Model for SmartyPants
