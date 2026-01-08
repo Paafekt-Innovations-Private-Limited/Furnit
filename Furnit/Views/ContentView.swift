@@ -285,9 +285,9 @@ struct HomeTab: View {
                     let _ = fileInfo
                 }
 
-                // Handle PLY files - navigate to Gaussian splat viewer
+                // Handle PLY files - navigate to SharpRoomView (Gaussian splat viewer)
                 if model.fileType == .ply {
-                    NavigationLink(destination: GaussianSplatViewerView(model: model)) {
+                    NavigationLink(destination: SharpRoomView(plyURL: modelURL)) {
                         HomeViewModelRow(model: model)
                     }
                     .onAppear {

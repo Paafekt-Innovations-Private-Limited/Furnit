@@ -405,9 +405,6 @@ class SHARPService: ObservableObject {
 
     // MARK: - Splat Filtering
 
-    /// Maximum number of splats for mobile rendering (higher = better quality, more memory)
-    private static let maxSplats: Int = 500_000
-
     /// Minimum opacity threshold (0-1) for keeping a splat (higher = less black cloud)
     private static let minOpacity: Float = 0.05
 
@@ -489,16 +486,8 @@ class SHARPService: ObservableObject {
 
         logDebug("SHARP: \(validSplats.count) splats kept (filtered \(edgeFiltered) edge splats)")
 
-        // If still too many, sort by opacity and keep top N
-        var selectedIndices: [Int]
-        if validSplats.count > Self.maxSplats {
-            // Sort by opacity descending and take top maxSplats
-            validSplats.sort { $0.opacity > $1.opacity }
-            selectedIndices = validSplats.prefix(Self.maxSplats).map { $0.index }
-            logDebug("SHARP: Limited to \(Self.maxSplats) highest-opacity splats")
-        } else {
-            selectedIndices = validSplats.map { $0.index }
-        }
+        // Use all valid splats (no cap)
+        let selectedIndices = validSplats.map { $0.index }
 
         // Build filtered output
         var filtered = [Float]()
@@ -635,11 +624,12 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
 
-            // Scale - convert to log for renderer, clamp minimum to prevent needle-thin splats
+            // Scale - convert to log for renderer, boost to fill gaps, clamp minimum
             let minScale: Float = 0.001
-            let rawS0 = filteredParams[offset + 3]
-            let rawS1 = filteredParams[offset + 4]
-            let rawS2 = filteredParams[offset + 5]
+            let scaleBoost: Float = 1.3  // Make splats 30% larger to fill edge gaps
+            let rawS0 = filteredParams[offset + 3] * scaleBoost
+            let rawS1 = filteredParams[offset + 4] * scaleBoost
+            let rawS2 = filteredParams[offset + 5] * scaleBoost
             var s0 = log(max(rawS0, minScale))
             var s1 = log(max(rawS1, minScale))
             var s2 = log(max(rawS2, minScale))

@@ -1,6 +1,5 @@
 import SwiftUI
 import MetalKit
-import Photos
 
 // Note: Add MetalSplatter package via Xcode:
 // File > Add Package Dependencies > https://github.com/scier/MetalSplatter.git
@@ -81,8 +80,8 @@ struct SharpRoomView: View {
                     }
                     Spacer()
 
-                    // Save button
-                    Button(action: saveSnapshot) {
+                    // Save room button
+                    Button(action: saveRoom) {
                         Image(systemName: isSaving ? "checkmark.circle.fill" : "square.and.arrow.down")
                             .font(.system(size: 24))
                             .foregroundColor(.white)
@@ -103,34 +102,45 @@ struct SharpRoomView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    // MARK: - Save Snapshot
+    // MARK: - Save Room
 
-    private func saveSnapshot() {
+    private func saveRoom() {
         isSaving = true
 
-        // Capture the screen
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first else {
+        // Copy PLY from temp to SavedRooms
+        let fileManager = FileManager.default
+        let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let savedRoomsDirectory = documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
+
+        // Ensure SavedRooms directory exists
+        do {
+            try fileManager.createDirectory(at: savedRoomsDirectory, withIntermediateDirectories: true)
+        } catch {
+            logDebug("Failed to create SavedRooms directory: \(error)")
             isSaving = false
             return
         }
 
-        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
-        let image = renderer.image { ctx in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
+        // Copy PLY file to SavedRooms with same filename
+        let destinationURL = savedRoomsDirectory.appendingPathComponent(plyURL.lastPathComponent)
 
-        // Save to Photos
-        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-            DispatchQueue.main.async {
-                if status == .authorized || status == .limited {
-                    UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-                    logDebug("Saved snapshot to Photos")
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    isSaving = false
-                }
+        do {
+            // Remove existing file if present
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
             }
+            try fileManager.copyItem(at: plyURL, to: destinationURL)
+            logDebug("Saved room to: \(destinationURL.path)")
+
+            // Notify model manager to refresh
+            NotificationCenter.default.post(name: NSNotification.Name("RefreshSavedRooms"), object: nil)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                isSaving = false
+            }
+        } catch {
+            logDebug("Failed to save room: \(error)")
+            isSaving = false
         }
     }
 }
@@ -167,6 +177,9 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     private var commandQueue: MTLCommandQueue!
     private var renderer: SplatRenderer?
 
+    // Average room color for background fill
+    private var averageRoomColor: SIMD3<Float> = SIMD3<Float>(0.85, 0.82, 0.78)  // Default warm beige
+
     // Camera state
     private var cameraDistance: Float = 3.0
     private var cameraYaw: Float = 0.0
@@ -174,6 +187,7 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     private var cameraTarget: SIMD3<Float> = .zero
     private var cameraOffset: SIMD3<Float> = .zero  // Joystick-controlled offset
     private let moveSpeed: Float = 0.05
+
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -246,7 +260,19 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
                 depth = size.z
                 let maxDim = max(size.x, max(size.y, size.z))
                 cameraDistance = maxDim * 0.7  // Closer camera to fill viewport
+
             }
+
+            // Compute average color from PLY for background fill
+            await computeAverageColorFromPLY(url: url)
+
+            // Set renderer's clear color to match room
+            renderer?.clearColor = MTLClearColor(
+                red: Double(averageRoomColor.x),
+                green: Double(averageRoomColor.y),
+                blue: Double(averageRoomColor.z),
+                alpha: 1.0
+            )
 
             await MainActor.run {
                 onLoaded?(count, width, height, depth)
@@ -256,6 +282,54 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
             await MainActor.run {
                 onError?("Failed to load PLY: \(error.localizedDescription)")
             }
+        }
+    }
+
+    /// Compute average color from PLY file for background fill
+    private func computeAverageColorFromPLY(url: URL) async {
+        do {
+            let data = try Data(contentsOf: url)
+            guard let headerEnd = data.range(of: Data("end_header\n".utf8)) else { return }
+
+            let binaryStart = headerEnd.upperBound
+            let binaryData = data.subdata(in: binaryStart..<data.count)
+
+            // Each vertex: 11 floats (44 bytes) + 3 uchars (3 bytes) = 47 bytes
+            let vertexSize = 47
+            let vertexCount = binaryData.count / vertexSize
+
+            guard vertexCount > 0 else { return }
+
+            var totalR: Float = 0
+            var totalG: Float = 0
+            var totalB: Float = 0
+            let sampleStep = max(1, vertexCount / 10000)  // Sample up to 10K splats
+
+            binaryData.withUnsafeBytes { ptr in
+                let basePtr = ptr.baseAddress!
+                var sampledCount = 0
+
+                for i in stride(from: 0, to: vertexCount, by: sampleStep) {
+                    let vertexPtr = basePtr + i * vertexSize
+                    // Colors are at offset 44 (after 11 floats)
+                    let colorPtr = (vertexPtr + 44).assumingMemoryBound(to: UInt8.self)
+                    totalR += Float(colorPtr[0])
+                    totalG += Float(colorPtr[1])
+                    totalB += Float(colorPtr[2])
+                    sampledCount += 1
+                }
+
+                if sampledCount > 0 {
+                    averageRoomColor = SIMD3<Float>(
+                        totalR / Float(sampledCount) / 255.0,
+                        totalG / Float(sampledCount) / 255.0,
+                        totalB / Float(sampledCount) / 255.0
+                    )
+                    print("Average room color: R=\(averageRoomColor.x) G=\(averageRoomColor.y) B=\(averageRoomColor.z)")
+                }
+            }
+        } catch {
+            print("Failed to compute average color: \(error)")
         }
     }
 
