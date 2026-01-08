@@ -6,18 +6,47 @@ struct USDZModel: Identifiable, Hashable {
     let name: String
     let fileName: String
     let dataAsset: NSDataAsset?
-    let isSavedRoom: Bool  // ✅ NEW: Track if this is a saved room
-    
+    let isSavedRoom: Bool  // Track if this is a saved room
+    let fileType: ModelFileType  // File type: .usdz or .ply
+    let fileSize: UInt64?  // File size in bytes
+
+    // Standard initializer for USDZ models (backward compatible)
     init(name: String, fileName: String, isSavedRoom: Bool = false) {
         self.name = name
         self.fileName = fileName
         self.isSavedRoom = isSavedRoom
+        self.fileType = .usdz
+        self.fileSize = nil
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
+    }
+
+    // Full initializer with file type and size
+    init(name: String, fileName: String, isSavedRoom: Bool, fileType: ModelFileType, fileSize: UInt64?) {
+        self.name = name
+        self.fileName = fileName
+        self.isSavedRoom = isSavedRoom
+        self.fileType = fileType
+        self.fileSize = fileSize
+        // Only load NSDataAsset for bundle rooms with USDZ type
+        self.dataAsset = (isSavedRoom || fileType == .ply) ? nil : NSDataAsset(name: fileName)
     }
     
     var displayName: String {
         return name.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    /// Formatted file size string (e.g., "45.2 MB")
+    var fileSizeFormatted: String {
+        guard let size = fileSize else { return "Unknown size" }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(size))
+    }
+
+    /// Subtitle text based on file type
+    var subtitleText: String {
+        return fileType.displayName
     }
     
     // ✅ UPDATED: Handle both bundle and saved rooms with debug-mode logging
@@ -43,7 +72,9 @@ struct USDZModel: Identifiable, Hashable {
                 logDebug("🔍 [USDZModel.temporaryURL] SavedRooms directory: \(savedRoomsDir.path)")
             }
             
-            let savedURL = savedRoomsDir.appendingPathComponent("\(fileName).usdz")
+            // Use appropriate file extension based on file type
+            let fileExtension = fileType == .ply ? "ply" : "usdz"
+            let savedURL = savedRoomsDir.appendingPathComponent("\(fileName).\(fileExtension)")
             if debugMode {
                 logDebug("🔍 [USDZModel.temporaryURL] Looking for file at: \(savedURL.path)")
             }
@@ -86,7 +117,7 @@ struct USDZModel: Identifiable, Hashable {
                     do {
                         let files = try FileManager.default.contentsOfDirectory(atPath: savedRoomsDir.path)
                         logDebug("   - Files in SavedRooms directory: \(files)")
-                        logDebug("   - Expected file: \(fileName).usdz")
+                        logDebug("   - Expected file: \(fileName).\(fileExtension)")
                     } catch {
                         logDebug("   - Could not list SavedRooms directory: \(error)")
                     }

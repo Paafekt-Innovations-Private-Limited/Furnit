@@ -47,6 +47,8 @@ struct HomeTab: View {
     @State private var roomToDelete: USDZModel?
     @State private var showingLimitAlert = false
     @State private var showingHelp = false
+    @State private var showingFileInfoSnackbar = false
+    @State private var selectedModelForInfo: USDZModel?
     
     var body: some View {
         NavigationStack {
@@ -239,6 +241,15 @@ struct HomeTab: View {
             }
             limitManager.updateRoomCount()
         }
+        // File info snackbar overlay for PLY files
+        .overlay(alignment: .bottom) {
+            if showingFileInfoSnackbar, let model = selectedModelForInfo {
+                FileInfoSnackbar(
+                    model: model,
+                    isShowing: $showingFileInfoSnackbar
+                )
+            }
+        }
     }
     
     // MARK: - Helper Functions
@@ -265,22 +276,23 @@ struct HomeTab: View {
     // MARK: - Model Row with Logging
     private func modelRow(for model: USDZModel, at index: Int) -> some View {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
-        
+
         if debugMode {
             let _ = logDebug("📋 [HomeTab.modelRow] ========================================")
             let _ = logDebug("📋 [HomeTab.modelRow] Creating row for model \(index)")
             let _ = logDebug("   - Display name: \(model.displayName)")
             let _ = logDebug("   - File name: \(model.fileName)")
             let _ = logDebug("   - Is saved room: \(model.isSavedRoom)")
+            let _ = logDebug("   - File type: \(model.fileType.rawValue)")
         }
-        
+
         return Group {
             if let modelURL = model.temporaryURL {
                 if debugMode {
                     let _ = logDebug("✅ [HomeTab.modelRow] URL found for: \(model.displayName)")
                     let _ = logDebug("   - URL path: \(modelURL.path)")
                     let _ = logDebug("   - File exists: \(FileManager.default.fileExists(atPath: modelURL.path))")
-                    
+
                     let fileInfo: Void = {
                         if FileManager.default.fileExists(atPath: modelURL.path) {
                             do {
@@ -295,13 +307,26 @@ struct HomeTab: View {
                     }()
                     let _ = fileInfo
                 }
-                
-                NavigationLink(destination: ModelViewerView(model: model)) {
-                    HomeViewModelRow(model: model)
-                }
-                .onAppear {
-                    if debugMode {
-                        let _ = logDebug("👁️ [HomeTab.modelRow] Row appeared for: \(model.displayName)")
+
+                // Handle PLY files - navigate to SharpRoomView (Gaussian splat viewer)
+                if model.fileType == .ply {
+                    NavigationLink(destination: SharpRoomView(plyURL: modelURL)) {
+                        HomeViewModelRow(model: model)
+                    }
+                    .onAppear {
+                        if debugMode {
+                            let _ = logDebug("👁️ [HomeTab.modelRow] PLY row appeared for: \(model.displayName)")
+                        }
+                    }
+                } else {
+                    // USDZ files - navigate to viewer
+                    NavigationLink(destination: ModelViewerView(model: model)) {
+                        HomeViewModelRow(model: model)
+                    }
+                    .onAppear {
+                        if debugMode {
+                            let _ = logDebug("👁️ [HomeTab.modelRow] Row appeared for: \(model.displayName)")
+                        }
                     }
                 }
             } else {
@@ -553,16 +578,26 @@ struct ProfileTab: View {
 
 struct HomeViewModelRow: View {
     let model: USDZModel
-    
+
+    // Color based on file type
+    private var iconColor: Color {
+        switch model.fileType {
+        case .usdz:
+            return .green
+        case .ply:
+            return .purple
+        }
+    }
+
     var body: some View {
         HStack {
-            Image(systemName: "cube.fill")
-                .foregroundColor(.green)
+            Image(systemName: model.fileType.iconName)
+                .foregroundColor(iconColor)
                 .font(.title2)
                 .frame(width: 40, height: 40)
-                .background(Color.green.opacity(0.1))
+                .background(iconColor.opacity(0.1))
                 .cornerRadius(8)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(model.displayName)
                     .font(.headline)
@@ -571,10 +606,27 @@ struct HomeViewModelRow: View {
                 Text(L10n.Home.roomModel)
                     .font(.caption)
                     .foregroundColor(.secondary)
+
+                HStack(spacing: 6) {
+                    Text(model.subtitleText)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    // Show file size for saved rooms
+                    if model.isSavedRoom, let _ = model.fileSize {
+                        Text("•")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(model.fileSizeFormatted)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
-            
+
             Spacer()
-            
+
+            // Navigation chevron - both PLY and USDZ are now viewable
             Image(systemName: "chevron.right")
                 .foregroundColor(.secondary)
                 .font(.caption)

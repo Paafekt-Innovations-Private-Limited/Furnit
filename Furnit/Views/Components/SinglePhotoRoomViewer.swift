@@ -580,6 +580,7 @@ import RoomPlan
 
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
+    @StateObject private var sharpService = SHARPService()
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var adjustedBoundaries: RoomStructure?
@@ -598,6 +599,10 @@ struct SinglePhotoRoomView: View {
     @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
     @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
+    @State private var showGenerationSuccess = false
+    @State private var generatedPLYURL: URL?
+    @State private var navigateToSplatViewer = false
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         // ✅ Simple photo selection screen only
@@ -644,6 +649,42 @@ struct SinglePhotoRoomView: View {
         .navigationTitle(L10n.PhotoRoom.title)
         .sheet(isPresented: $showImagePicker) {
             PhotoPickerView(selectedImage: $selectedImage)
+
+            // Progress overlay for on-device SHARP generation
+            if case .processing = sharpService.status {
+                GenerationProgressOverlay(
+                    status: sharpService.status,
+                    uploadProgress: sharpService.progress,
+                    downloadProgress: sharpService.progress,
+                    statusMessage: sharpService.statusMessage,
+                    onCancel: { sharpService.cancelGeneration() }
+                )
+            }
+    }
+        .navigationTitle("Photo to 3D Room")
+        .sheet(isPresented: $showImagePicker) {
+            PhotoPickerView(selectedImage: $selectedImage)
+                .onDisappear {
+                    logDebug("📱 [View] Image picker dismissed")
+                    if let image = selectedImage {
+                        logDebug("✅ [View] Image selected, starting on-device SHARP generation...")
+                        // Use on-device SHARP model for 3D Gaussian generation
+                        Task {
+                            do {
+                                let fileURL = try await sharpService.generateGaussians(from: image)
+                                logDebug("✅ [View] PLY file generated: \(fileURL.path)")
+                                await MainActor.run {
+                                    generatedPLYURL = fileURL
+                                    navigateToSplatViewer = true  // Navigate to splat viewer
+                                }
+                            } catch {
+                                logDebug("❌ [View] Generation failed: \(error)")
+                            }
+                        }
+                    } else {
+                        logDebug("⚠️ [View] No image selected")
+                    }
+                }
         }
         .onChange(of: selectedImage) { oldValue, newValue in
             guard let image = newValue else { return }
@@ -706,6 +747,59 @@ struct SinglePhotoRoomView: View {
                 if let scene = reconstructor.generatedRoomScene {
                     SceneKitViewer(scene: scene)
                 }
+            }
+        }
+        // Navigate to SharpRoomView when PLY is generated
+        .navigationDestination(isPresented: $navigateToSplatViewer) {
+            Group {
+                if let plyURL = generatedPLYURL {
+                    SharpRoomView(plyURL: plyURL)
+                }
+            }
+        }
+        // Success alert for API-generated PLY file
+        .alert("3D Model Generated", isPresented: $showGenerationSuccess) {
+            Button("Done") {
+                // Dismiss the sheet and notify home to refresh
+                NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+            }
+        } message: {
+            if let url = generatedPLYURL {
+                let fileName = url.lastPathComponent
+                Text("Successfully downloaded \(fileName). View it in your models list.")
+            } else {
+                Text("Your 3D model has been saved successfully.")
+            }
+        }
+        // Handle generation errors
+        .alert("Generation Failed", isPresented: Binding(
+            get: {
+                if case .failed = sharpService.status { return true }
+                return false
+            },
+            set: { _ in }
+        )) {
+            Button("OK", role: .cancel) {
+                selectedImage = nil
+            }
+            Button("Retry") {
+                if let image = selectedImage {
+                    Task {
+                        do {
+                            let fileURL = try await sharpService.generateGaussians(from: image)
+                            generatedPLYURL = fileURL
+                            showGenerationSuccess = true
+                        } catch {
+                            logDebug("❌ [View] Retry failed: \(error)")
+                        }
+                    }
+                }
+            }
+        } message: {
+            if case .failed(let errorMessage) = sharpService.status {
+                Text(errorMessage)
+            } else {
+                Text("An error occurred while generating your 3D model.")
             }
         }
     }

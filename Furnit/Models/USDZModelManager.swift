@@ -73,49 +73,63 @@ class USDZModelManager: ObservableObject {
             }
         }
         
-        // Load saved rooms and sort by date
+        // Load saved rooms (both USDZ and PLY) and sort by date
         var savedRoomModels: [USDZModel] = []
-        
+
+        // Supported file extensions
+        let supportedExtensions = ["usdz", "ply"]
+
         do {
             let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory,
                                                                     includingPropertiesForKeys: [.creationDateKey, .fileSizeKey])
-            let usdzFiles = files.filter { $0.pathExtension.lowercased() == "usdz" }
-            
+            let modelFiles = files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
+
             if debugMode {
-                logDebug("📦 [USDZModelManager] Found \(usdzFiles.count) USDZ files in SavedRooms")
+                logDebug("📦 [USDZModelManager] Found \(modelFiles.count) model files in SavedRooms")
             }
-            
-            // Get files with dates
-            var filesWithDates: [(url: URL, date: Date)] = []
-            for fileURL in usdzFiles {
+
+            // Get files with dates and sizes
+            var filesWithDates: [(url: URL, date: Date, size: UInt64)] = []
+            for fileURL in modelFiles {
                 let attrs = try fileURL.resourceValues(forKeys: [.creationDateKey, .fileSizeKey])
                 let date = attrs.creationDate ?? Date.distantPast
-                let size = attrs.fileSize ?? 0
-                filesWithDates.append((url: fileURL, date: date))
-                
+                let size = UInt64(attrs.fileSize ?? 0)
+                filesWithDates.append((url: fileURL, date: date, size: size))
+
                 if debugMode {
                     let fileName = fileURL.deletingPathExtension().lastPathComponent
-                    logDebug("   - \(fileName) (created: \(date), size: \(size / 1024) KB)")
+                    let ext = fileURL.pathExtension.lowercased()
+                    logDebug("   - \(fileName).\(ext) (created: \(date), size: \(size / 1024) KB)")
                 }
             }
-            
+
             // Sort by date - NEWEST FIRST
             filesWithDates.sort { $0.date > $1.date }
-            
+
             if debugMode {
                 logDebug("📦 [USDZModelManager] Sorted by date (newest first):")
             }
-            
-            // Create models in sorted order
-            for (fileURL, _) in filesWithDates {
+
+            // Create models in sorted order with proper file type
+            for (fileURL, _, size) in filesWithDates {
                 let fileName = fileURL.deletingPathExtension().lastPathComponent
+                let ext = fileURL.pathExtension.lowercased()
+                let fileType: ModelFileType = (ext == "ply") ? .ply : .usdz
+
                 if debugMode {
-                    logDebug("   - \(fileName)")
+                    logDebug("   - \(fileName) (\(fileType.rawValue))")
                 }
-                let model = USDZModel(name: fileName, fileName: fileName, isSavedRoom: true)
+
+                let model = USDZModel(
+                    name: fileName,
+                    fileName: fileName,
+                    isSavedRoom: true,
+                    fileType: fileType,
+                    fileSize: size
+                )
                 savedRoomModels.append(model)
             }
-            
+
         } catch {
             if debugMode {
                 logDebug("⚠️ [USDZModelManager] Error reading saved rooms: \(error)")
@@ -173,7 +187,9 @@ class USDZModelManager: ObservableObject {
         
         // Only delete file if it's a saved room (not bundle model)
         if model.isSavedRoom {
-            let fileURL = modelsDirectory.appendingPathComponent("\(model.fileName).usdz")
+            // Use appropriate file extension based on file type
+            let fileExtension = model.fileType == .ply ? "ply" : "usdz"
+            let fileURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension)")
             
             do {
                 if FileManager.default.fileExists(atPath: fileURL.path) {

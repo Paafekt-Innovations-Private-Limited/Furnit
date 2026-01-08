@@ -18,7 +18,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             FirebaseConfiguration.shared.setLoggerLevel(.error)
             print("🔥 [AppDelegate] Firebase logging: DEBUG (all logs enabled)")
         } else {
-            // Debug mode OFF: Only show errors
+            // Debug mode OFF: Suppress all Firebase logs (including AppCheck)
             FirebaseConfiguration.shared.setLoggerLevel(.error)
         }
 
