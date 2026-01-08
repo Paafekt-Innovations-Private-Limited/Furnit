@@ -602,53 +602,151 @@ struct SinglePhotoRoomView: View {
     @State private var showGenerationSuccess = false
     @State private var generatedPLYURL: URL?
     @State private var navigateToSplatViewer = false
+    @State private var showMethodPicker = false  // Show method choice after photo selection
+    @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
-        // ✅ Simple photo selection screen only
-        VStack(spacing: 20) {
-            Text(L10n.PhotoRoom.createTitle)
-                .font(.title2)
-                .fontWeight(.bold)
-                .padding(.top, 40)
+        ZStack {
+            VStack {
+                if let image = selectedImage, showMethodPicker {
+                    // Show image preview and method selection
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxHeight: 250)
+                        .cornerRadius(12)
+                        .padding()
+                        .onAppear { logDebug("🖼️ [View] Displaying selected image with method picker") }
 
-            Text(L10n.PhotoRoom.createSubtitle)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+                    Text("Choose Generation Method")
+                        .font(.headline)
+                        .padding(.top, 8)
 
-            Button(action: {
-                logDebug("🖼️ [View] Select photo button tapped")
-                showImagePicker = true
-            }) {
-                VStack(spacing: 16) {
-                    Image(systemName: "photo.on.rectangle")
-                        .font(.system(size: 50))
-                        .foregroundColor(.orange)
+                    // Method 1: SHARP (AI-powered)
+                    Button(action: {
+                        logDebug("🤖 [View] SHARP method selected")
+                        showMethodPicker = false
+                        startSHARPGeneration(image: image)
+                    }) {
+                        HStack(spacing: 16) {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 30))
+                                .foregroundColor(.purple)
+                                .frame(width: 50)
 
-                    VStack(spacing: 4) {
-                        Text(L10n.PhotoRoom.quickPhoto)
-                            .font(.headline)
-                        Text(L10n.PhotoRoom.quickPhotoSubtitle)
-                            .font(.caption)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("AI 3D Generation")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Text("Automatic • Fast • Recommended")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color.purple.opacity(0.1))
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.purple, lineWidth: 2)
+                        )
+                    }
+                    .padding(.horizontal)
+
+                    // Method 2: Manual Boundaries
+                    Button(action: {
+                        logDebug("🏠 [View] Manual boundaries method selected")
+                        showMethodPicker = false
+                        fixedImageItem = IdentifiedImage(image: image)
+                    }) {
+                        HStack(spacing: 16) {
+                            Image(systemName: "square.resize")
+                                .font(.system(size: 30))
+                                .foregroundColor(.orange)
+                                .frame(width: 50)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Manual Boundaries")
+                                    .font(.headline)
+                                    .foregroundColor(.primary)
+                                Text("Drag to adjust walls • More control")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.orange, lineWidth: 2)
+                        )
+                    }
+                    .padding(.horizontal)
+
+                    // Change photo button
+                    Button("Choose Different Photo") {
+                        selectedImage = nil
+                        showMethodPicker = false
+                        showImagePicker = true
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 16)
+
+                    Spacer()
+
+                } else {
+                    // Photo Selection (initial state)
+                    VStack(spacing: 20) {
+                        Text("Create a 3D Room")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .padding(.top, 40)
+
+                        Text("Select a photo to get started")
+                            .font(.subheadline)
                             .foregroundColor(.secondary)
+
+                        Button(action: {
+                            logDebug("🖼️ [View] Select photo button tapped")
+                            showImagePicker = true
+                        }) {
+                            VStack(spacing: 16) {
+                                Image(systemName: "photo.on.rectangle")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(.green)
+
+                                VStack(spacing: 4) {
+                                    Text("Select Photo")
+                                        .font(.headline)
+                                    Text("From your photo library")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(24)
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(16)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.green, lineWidth: 2)
+                            )
+                        }
+                        .padding(.horizontal)
+
+                        Spacer()
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding(24)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(16)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.orange, lineWidth: 2)
-                )
             }
-            .padding(.horizontal)
-
-            Spacer()
-        }
-        .navigationTitle(L10n.PhotoRoom.title)
-        .sheet(isPresented: $showImagePicker) {
-            PhotoPickerView(selectedImage: $selectedImage)
 
             // Progress overlay for on-device SHARP generation
             if case .processing = sharpService.status {
@@ -660,27 +758,15 @@ struct SinglePhotoRoomView: View {
                     onCancel: { sharpService.cancelGeneration() }
                 )
             }
-    }
+        }
         .navigationTitle("Photo to 3D Room")
         .sheet(isPresented: $showImagePicker) {
             PhotoPickerView(selectedImage: $selectedImage)
                 .onDisappear {
                     logDebug("📱 [View] Image picker dismissed")
-                    if let image = selectedImage {
-                        logDebug("✅ [View] Image selected, starting on-device SHARP generation...")
-                        // Use on-device SHARP model for 3D Gaussian generation
-                        Task {
-                            do {
-                                let fileURL = try await sharpService.generateGaussians(from: image)
-                                logDebug("✅ [View] PLY file generated: \(fileURL.path)")
-                                await MainActor.run {
-                                    generatedPLYURL = fileURL
-                                    navigateToSplatViewer = true  // Navigate to splat viewer
-                                }
-                            } catch {
-                                logDebug("❌ [View] Generation failed: \(error)")
-                            }
-                        }
+                    if selectedImage != nil {
+                        logDebug("✅ [View] Image selected, showing method picker...")
+                        showMethodPicker = true
                     } else {
                         logDebug("⚠️ [View] No image selected")
                     }
@@ -688,17 +774,9 @@ struct SinglePhotoRoomView: View {
         }
         .onChange(of: selectedImage) { oldValue, newValue in
             guard let image = newValue else { return }
-            logDebug("✅ [View] Image selected, preparing boundary sheet...")
-            // Capture image and dismiss picker first
+            logDebug("✅ [View] Image selected")
+            // Store the fixed image for later use
             fixedImage = image
-            // Ensure the picker is dismissed before presenting another sheet
-            if showImagePicker {
-                showImagePicker = false
-            }
-            // Present boundary sheet on next runloop after dismissal
-            DispatchQueue.main.async {
-                fixedImageItem = IdentifiedImage(image: image)
-            }
         }
         .sheet(item: $fixedImageItem) { item in
             RoomBoundaryDetectionView(
@@ -809,6 +887,22 @@ struct SinglePhotoRoomView: View {
         case 0.7...1.0: return .green
         case 0.4..<0.7: return .orange
         default: return .red
+        }
+    }
+
+    private func startSHARPGeneration(image: UIImage) {
+        logDebug("🤖 [View] Starting on-device SHARP generation...")
+        Task {
+            do {
+                let fileURL = try await sharpService.generateGaussians(from: image)
+                logDebug("✅ [View] PLY file generated: \(fileURL.path)")
+                await MainActor.run {
+                    generatedPLYURL = fileURL
+                    navigateToSplatViewer = true
+                }
+            } catch {
+                logDebug("❌ [View] Generation failed: \(error)")
+            }
         }
     }
 }
