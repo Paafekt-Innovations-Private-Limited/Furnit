@@ -1,5 +1,6 @@
 import SwiftUI
 import MetalKit
+import CoreML
 
 // Note: Add MetalSplatter package via Xcode:
 // File > Add Package Dependencies > https://github.com/scier/MetalSplatter.git
@@ -18,10 +19,10 @@ struct SharpRoomView: View {
     @State private var roomHeight: Float = 0
     @State private var roomDepth: Float = 0
     @State private var memoryMB: Float = 0
-    @State private var isSaving = false
     @State private var showingSmartyPants = false
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
+    @State private var mlModel: MLModel? = nil
 
     var body: some View {
         ZStack {
@@ -78,7 +79,10 @@ struct SharpRoomView: View {
             if showingSmartyPants {
                 SmartyPantsUIView(
                     capturedImage: $capturedImage,
-                    roomImage: roomSnapshot
+                    roomImage: roomSnapshot,
+                    mlModel: mlModel,
+                    processInterval: 0.07,
+                    active: true
                 )
                 .ignoresSafeArea()
                 .zIndex(100)
@@ -114,16 +118,6 @@ struct SharpRoomView: View {
                                 .background(Circle().fill(Color.gray.opacity(0.8)))
                         }
                         .disabled(isLoading)
-
-                        // Save room button
-                        Button(action: saveRoom) {
-                            Image(systemName: isSaving ? "checkmark.circle.fill" : "square.and.arrow.down")
-                                .font(.system(size: 24))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Circle().fill(Color.blue))
-                        }
-                        .disabled(isSaving || isLoading)
                     }
                     .padding()
                     Spacer()
@@ -177,49 +171,36 @@ struct SharpRoomView: View {
                 .disabled(isLoading)
             }
         }
-    }
-
-    // MARK: - Save Room
-
-    private func saveRoom() {
-        isSaving = true
-
-        // Copy PLY from temp to SavedRooms
-        let fileManager = FileManager.default
-        let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let savedRoomsDirectory = documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
-
-        // Ensure SavedRooms directory exists
-        do {
-            try fileManager.createDirectory(at: savedRoomsDirectory, withIntermediateDirectories: true)
-        } catch {
-            logDebug("Failed to create SavedRooms directory: \(error)")
-            isSaving = false
-            return
-        }
-
-        // Copy PLY file to SavedRooms with same filename
-        let destinationURL = savedRoomsDirectory.appendingPathComponent(plyURL.lastPathComponent)
-
-        do {
-            // Remove existing file if present
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                try fileManager.removeItem(at: destinationURL)
-            }
-            try fileManager.copyItem(at: plyURL, to: destinationURL)
-            logDebug("Saved room to: \(destinationURL.path)")
-
-            // Notify model manager to refresh
-            NotificationCenter.default.post(name: NSNotification.Name("RefreshSavedRooms"), object: nil)
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                isSaving = false
-            }
-        } catch {
-            logDebug("Failed to save room: \(error)")
-            isSaving = false
+        .onAppear {
+            loadMLModel()
         }
     }
+
+    // MARK: - Load ML Model for SmartyPants
+
+    private func loadMLModel() {
+        guard mlModel == nil else { return }
+
+        let candidateNames = [
+            ("yoloe-11l-seg-pf", "mlmodelc"),
+        ]
+
+        for (name, ext) in candidateNames {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+                do {
+                    let config = MLModelConfiguration()
+                    config.computeUnits = .cpuOnly
+                    let model = try MLModel(contentsOf: url, configuration: config)
+                    self.mlModel = model
+                    logDebug("✅ [SharpRoomView] Loaded MLModel '\(name).\(ext)'")
+                    break
+                } catch {
+                    logDebug("❌ [SharpRoomView] Failed to load \(name).\(ext): \(error)")
+                }
+            }
+        }
+    }
+
 }
 
 // MARK: - MetalSplatter UIViewRepresentable

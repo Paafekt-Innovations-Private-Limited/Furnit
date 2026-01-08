@@ -46,9 +46,10 @@ class SHARPService: ObservableObject {
 
     // MARK: - File Management
 
-    /// Directory for saving generated PLY files (temp - cleaned up on restart)
+    /// Directory for saving generated PLY files (persistent SavedRooms folder)
     private var modelsDirectory: URL {
-        return FileManager.default.temporaryDirectory.appendingPathComponent("SHARPRooms", isDirectory: true)
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
     }
 
     // MARK: - Initialization
@@ -74,9 +75,16 @@ class SHARPService: ObservableObject {
 
     // MARK: - Model Loading
 
+    /// Whether model is currently loading
+    @Published var isLoadingModel: Bool = false
+
     /// Load the SHARP CoreML model
     private func loadModel() async {
         logDebug("SHARP: Loading CoreML model...")
+
+        isLoadingModel = true
+        statusMessage = "Loading AI model..."
+        progress = 0.1
 
         // Check physical memory - INT8 model (~663MB) needs ~2GB available
         let physicalMemory = ProcessInfo.processInfo.physicalMemory
@@ -87,8 +95,13 @@ class SHARPService: ObservableObject {
         if physicalMemory < memoryLimit {
             logDebug("SHARP: Device has insufficient RAM, need 2GB+")
             logDebug("SHARP: Model will not be loaded - use fallback or remote API")
+            isLoadingModel = false
+            statusMessage = "Insufficient memory"
             return
         }
+
+        progress = 0.3
+        statusMessage = "Initializing neural network..."
 
         do {
             // Configuration matching mlsharpondevice2 style
@@ -101,9 +114,15 @@ class SHARPService: ObservableObject {
             model = sharpModel.model
             logDebug("SHARP: Model loaded successfully")
 
+            progress = 1.0
+            statusMessage = "Model ready"
+
         } catch {
             logDebug("SHARP: Failed to load model: \(error)")
+            statusMessage = "Failed to load model"
         }
+
+        isLoadingModel = false
     }
 
     // MARK: - Main Generation API

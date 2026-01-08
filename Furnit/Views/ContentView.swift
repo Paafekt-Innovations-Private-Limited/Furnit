@@ -178,7 +178,7 @@ struct HomeTab: View {
                 NavigationStack {
                     SinglePhotoRoomView()
                         .navigationBarItems(
-                            trailing: Button(L10n.Common.done) {
+                            trailing: Button(L10n.Common.back) {
                                 showingPhotoRoomCreator = false
                             }
                         )

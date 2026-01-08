@@ -748,6 +748,27 @@ struct SinglePhotoRoomView: View {
                 }
             }
 
+            // Progress overlay for model loading
+            if sharpService.isLoadingModel {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .tint(.purple)
+
+                    Text(sharpService.statusMessage)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    ProgressView(value: Double(sharpService.progress))
+                        .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+                        .frame(width: 200)
+                }
+                .padding(32)
+                .background(Color(.systemBackground).opacity(0.95))
+                .cornerRadius(16)
+                .shadow(radius: 10)
+            }
+
             // Progress overlay for on-device SHARP generation
             if case .processing = sharpService.status {
                 GenerationProgressOverlay(
