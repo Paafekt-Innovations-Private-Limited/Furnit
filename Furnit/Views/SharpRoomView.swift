@@ -13,14 +13,20 @@ struct SharpRoomView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var splatCount: Int = 0
+    @State private var roomWidth: Float = 0
+    @State private var roomHeight: Float = 0
+    @State private var roomDepth: Float = 0
 
     var body: some View {
         ZStack {
             // MetalSplatter view
             MetalSplatterViewRepresentable(
                 plyURL: plyURL,
-                onLoaded: { count in
+                onLoaded: { count, width, height, depth in
                     splatCount = count
+                    roomWidth = width
+                    roomHeight = height
+                    roomDepth = depth
                     isLoading = false
                 },
                 onError: { err in
@@ -62,12 +68,14 @@ struct SharpRoomView: View {
             VStack {
                 HStack {
                     if splatCount > 0 {
-                        Text("\(splatCount) splats")
-                            .font(.caption)
-                            .foregroundColor(.white)
-                            .padding(8)
-                            .background(Color.black.opacity(0.5))
-                            .cornerRadius(8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("W: \(String(format: "%.1f", roomWidth))  H: \(String(format: "%.1f", roomHeight))  D: \(String(format: "%.1f", roomDepth))")
+                                .font(.caption.monospacedDigit())
+                                .foregroundColor(.white)
+                        }
+                        .padding(8)
+                        .background(Color.black.opacity(0.5))
+                        .cornerRadius(8)
                     }
                     Spacer()
                 }
@@ -97,7 +105,7 @@ struct SharpRoomView: View {
 
 struct MetalSplatterViewRepresentable: UIViewControllerRepresentable {
     let plyURL: URL
-    let onLoaded: (Int) -> Void
+    let onLoaded: (Int, Float, Float, Float) -> Void  // count, width, height, depth
     let onError: (String) -> Void
 
     func makeUIViewController(context: Context) -> MetalSplatterViewController {
@@ -117,7 +125,7 @@ struct MetalSplatterViewRepresentable: UIViewControllerRepresentable {
 
 class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     var plyURL: URL?
-    var onLoaded: ((Int) -> Void)?
+    var onLoaded: ((Int, Float, Float, Float) -> Void)?  // count, width, height, depth
     var onError: ((String) -> Void)?
 
     private var mtkView: MTKView!
@@ -188,17 +196,24 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
             let count = renderer?.splatCount ?? 0
 
             // Center camera on the splat centroid if available
+            var width: Float = 0
+            var height: Float = 0
+            var depth: Float = 0
+
             if let centroid = renderer?.centroid {
                 cameraTarget = centroid
             }
             if let bounds = renderer?.boundingBox {
                 let size = bounds.max - bounds.min
+                width = size.x
+                height = size.y
+                depth = size.z
                 let maxDim = max(size.x, max(size.y, size.z))
-                cameraDistance = maxDim * 1.5
+                cameraDistance = maxDim * 0.7  // Closer camera to fill viewport
             }
 
             await MainActor.run {
-                onLoaded?(count)
+                onLoaded?(count, width, height, depth)
             }
 
         } catch {

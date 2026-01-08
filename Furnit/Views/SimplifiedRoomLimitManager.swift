@@ -1,15 +1,15 @@
 import Foundation
 
-/// Manages room creation limits (10 room limit only, no payments)
+/// Manages room creation limits (1000 room limit only, no payments)
 @MainActor
 class RoomLimitManager: ObservableObject {
     static let shared = RoomLimitManager()
-    
+
     // MARK: - Published Properties
     @Published var roomCount: Int = 0
-    
+
     // MARK: - Constants
-    let roomLimit = 10
+    let roomLimit = 1000
     
     private init() {
         updateRoomCount()

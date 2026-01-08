@@ -409,8 +409,8 @@ class SHARPService: ObservableObject {
     /// Maximum number of splats for mobile rendering (higher = better quality, more memory)
     private static let maxSplats: Int = 500_000
 
-    /// Minimum opacity threshold (0-1) for keeping a splat
-    private static let minOpacity: Float = 0.01
+    /// Minimum opacity threshold (0-1) for keeping a splat (higher = less black cloud)
+    private static let minOpacity: Float = 0.05
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
@@ -499,7 +499,7 @@ class SHARPService: ObservableObject {
         }
 
         let zCenter = zSum / Float(count)
-        let depthScale: Float = 4.0  // 2x doubled again
+        let depthScale: Float = 6.0  // More depth separation
 
         logDebug("SHARP: Depth doubling - zMin: \(zMin), zMax: \(zMax), zCenter: \(zCenter)")
 
@@ -568,6 +568,14 @@ class SHARPService: ObservableObject {
         // Write header
         var data = Data(plyContent.utf8)
 
+        // Track bounding box for measurements
+        var minX: Float = .greatestFiniteMagnitude
+        var maxX: Float = -.greatestFiniteMagnitude
+        var minY: Float = .greatestFiniteMagnitude
+        var maxY: Float = -.greatestFiniteMagnitude
+        var minZ: Float = .greatestFiniteMagnitude
+        var maxZ: Float = -.greatestFiniteMagnitude
+
         // Write binary vertex data
         // Each Gaussian: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14 floats
         // Using raw SHARP output values directly
@@ -581,6 +589,12 @@ class SHARPService: ObservableObject {
             var x = -origY        // -Y becomes X (flip to fix mirror)
             var y = -origX        // -X becomes Y
             var z = -origZ        // Z negated
+
+            // Track bounding box
+            minX = min(minX, x); maxX = max(maxX, x)
+            minY = min(minY, y); maxY = max(maxY, y)
+            minZ = min(minZ, z); maxZ = max(maxZ, z)
+
             data.append(Data(bytes: &x, count: 4))
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
@@ -647,6 +661,16 @@ class SHARPService: ObservableObject {
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
         let fileSize = attributes[.size] as? UInt64 ?? 0
         logDebug("SHARP: PLY file saved (\(fileSize / 1024) KB)")
+
+        // Log room measurements (SHARP units are roughly meters)
+        let width = maxX - minX
+        let height = maxY - minY
+        let depth = maxZ - minZ
+        logDebug("SHARP: Room measurements:")
+        logDebug("  Width (X):  \(String(format: "%.2f", width)) units (\(minX) to \(maxX))")
+        logDebug("  Height (Y): \(String(format: "%.2f", height)) units (\(minY) to \(maxY))")
+        logDebug("  Depth (Z):  \(String(format: "%.2f", depth)) units (\(minZ) to \(maxZ))")
+        logDebug("  Splats: \(gaussianCount)")
 
         return fileURL
     }
