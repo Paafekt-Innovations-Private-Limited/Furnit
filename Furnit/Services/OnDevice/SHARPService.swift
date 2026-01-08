@@ -412,6 +412,9 @@ class SHARPService: ObservableObject {
     /// Minimum opacity threshold (0-1) for keeping a splat (higher = less black cloud)
     private static let minOpacity: Float = 0.05
 
+    /// Percentile to clip from edges (removes black cloud at corners)
+    private static let edgeClipPercent: Float = 0.02  // Remove outer 2% on each side
+
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
         let inputCount = params.count / Self.paramsPerGaussian
@@ -438,20 +441,54 @@ class SHARPService: ObservableObject {
             logDebug("  color: (\(params[o+11]), \(params[o+12]), \(params[o+13]))")
         }
 
-        // First pass: collect indices of splats above opacity threshold with their opacities
-        var validSplats: [(index: Int, opacity: Float)] = []
-        validSplats.reserveCapacity(inputCount / 4)  // Estimate ~25% will pass
+        // First pass: collect positions to compute clip bounds
+        var xPositions: [Float] = []
+        var yPositions: [Float] = []
+        xPositions.reserveCapacity(inputCount)
+        yPositions.reserveCapacity(inputCount)
 
         for i in 0..<inputCount {
             let offset = i * Self.paramsPerGaussian
-            let opacity = params[offset + 10]  // opacity is at index 10
-
-            if opacity >= Self.minOpacity {
-                validSplats.append((index: i, opacity: opacity))
+            if params[offset + 10] >= Self.minOpacity {  // Only consider visible splats
+                xPositions.append(params[offset + 0])
+                yPositions.append(params[offset + 1])
             }
         }
 
-        logDebug("SHARP: \(validSplats.count) splats above opacity threshold \(Self.minOpacity)")
+        // Compute percentile bounds to clip edge outliers (where black clouds appear)
+        xPositions.sort()
+        yPositions.sort()
+        let lowIdx = Int(Float(xPositions.count) * Self.edgeClipPercent)
+        let highIdx = max(lowIdx, xPositions.count - 1 - lowIdx)
+
+        let xMin = xPositions.isEmpty ? -Float.greatestFiniteMagnitude : xPositions[lowIdx]
+        let xMax = xPositions.isEmpty ? Float.greatestFiniteMagnitude : xPositions[highIdx]
+        let yMin = yPositions.isEmpty ? -Float.greatestFiniteMagnitude : yPositions[lowIdx]
+        let yMax = yPositions.isEmpty ? Float.greatestFiniteMagnitude : yPositions[highIdx]
+
+        logDebug("SHARP: Edge clip bounds X:[\(xMin),\(xMax)] Y:[\(yMin),\(yMax)]")
+
+        // Second pass: collect splats above opacity threshold AND within spatial bounds
+        var validSplats: [(index: Int, opacity: Float)] = []
+        validSplats.reserveCapacity(inputCount / 4)
+        var edgeFiltered = 0
+
+        for i in 0..<inputCount {
+            let offset = i * Self.paramsPerGaussian
+            let opacity = params[offset + 10]
+            let x = params[offset + 0]
+            let y = params[offset + 1]
+
+            if opacity >= Self.minOpacity {
+                if x >= xMin && x <= xMax && y >= yMin && y <= yMax {
+                    validSplats.append((index: i, opacity: opacity))
+                } else {
+                    edgeFiltered += 1
+                }
+            }
+        }
+
+        logDebug("SHARP: \(validSplats.count) splats kept (filtered \(edgeFiltered) edge splats)")
 
         // If still too many, sort by opacity and keep top N
         var selectedIndices: [Int]
