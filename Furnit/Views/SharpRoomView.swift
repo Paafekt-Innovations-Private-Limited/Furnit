@@ -476,13 +476,13 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
 
                 // Store center of bounding box for reference dot
                 roomCenter = (bounds.min + bounds.max) * 0.5
-                print("Room center: \(roomCenter), size: W=\(width) H=\(height) D=\(depth)")
+                logDebug("Room center: \(roomCenter), size: W=\(width) H=\(height) D=\(depth)")
             }
 
-            // Calculate memory: just PLY file size for consistency with list view
+            // Calculate memory: use decimal MB (1000*1000) to match ByteCountFormatter
             var memoryMB: Float = 0
             if let fileSize = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64 {
-                memoryMB = Float(fileSize) / (1024 * 1024)
+                memoryMB = Float(fileSize) / (1000 * 1000)  // Decimal MB for consistency
             }
 
             await MainActor.run {
