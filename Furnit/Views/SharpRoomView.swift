@@ -21,6 +21,9 @@ struct SharpRoomView: View {
     @State private var roomHeight: Float = 0
     @State private var roomDepth: Float = 0
     @State private var memoryMB: Float = 0
+    @State private var wallWidth: Float = 0
+    @State private var wallHeight: Float = 0
+    @State private var measurementConfidence: Float = 0
     @State private var showingSmartyPants = false
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
@@ -36,12 +39,15 @@ struct SharpRoomView: View {
             // MetalSplatter view
             MetalSplatterViewRepresentable(
                 plyURL: plyURL,
-                onLoaded: { count, width, height, depth, memory in
+                onLoaded: { count, width, height, depth, memory, wWidth, wHeight, confidence in
                     splatCount = count
                     roomWidth = width
                     roomHeight = height
                     roomDepth = depth
                     memoryMB = memory
+                    wallWidth = wWidth
+                    wallHeight = wHeight
+                    measurementConfidence = confidence
                     isLoading = false
                 },
                 onError: { err in
@@ -100,16 +106,28 @@ struct SharpRoomView: View {
                 VStack {
                     HStack {
                         if splatCount > 0 {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Size: \(String(format: "%.1f", roomWidth)) × \(String(format: "%.1f", roomHeight)) × \(String(format: "%.1f", roomDepth))")
-                                    .font(.caption.monospacedDigit())
+                            VStack(alignment: .leading, spacing: 4) {
+                                // Wall measurements (primary display)
+                                if wallWidth > 0 && wallHeight > 0 {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "rectangle.portrait")
+                                            .font(.caption2)
+                                        Text("Wall: \(String(format: "%.1f", wallWidth)) × \(String(format: "%.1f", wallHeight))")
+                                            .font(.caption.monospacedDigit().bold())
+                                    }
                                     .foregroundColor(.white)
+                                }
+                                // Room bounding box
+                                Text("Room: \(String(format: "%.1f", roomWidth)) × \(String(format: "%.1f", roomHeight)) × \(String(format: "%.1f", roomDepth))")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundColor(.white.opacity(0.8))
+                                // Memory
                                 Text("\(String(format: "%.1f", memoryMB)) MB")
                                     .font(.caption2.monospacedDigit())
-                                    .foregroundColor(.white.opacity(0.7))
+                                    .foregroundColor(.white.opacity(0.6))
                             }
                             .padding(8)
-                            .background(Color.black.opacity(0.5))
+                            .background(Color.black.opacity(0.6))
                             .cornerRadius(8)
                         }
                         Spacer()
@@ -341,7 +359,8 @@ struct SharpRoomView: View {
 
 struct MetalSplatterViewRepresentable: UIViewControllerRepresentable {
     let plyURL: URL
-    let onLoaded: (Int, Float, Float, Float, Float) -> Void  // count, width, height, depth, memoryMB
+    /// Callback: count, width, height, depth, memoryMB, wallWidth, wallHeight, confidence
+    let onLoaded: (Int, Float, Float, Float, Float, Float, Float, Float) -> Void
     let onError: (String) -> Void
 
     func makeUIViewController(context: Context) -> MetalSplatterViewController {
@@ -361,7 +380,8 @@ struct MetalSplatterViewRepresentable: UIViewControllerRepresentable {
 
 class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     var plyURL: URL?
-    var onLoaded: ((Int, Float, Float, Float, Float) -> Void)?  // count, width, height, depth, memoryMB
+    /// Callback: count, width, height, depth, memoryMB, wallWidth, wallHeight, confidence
+    var onLoaded: ((Int, Float, Float, Float, Float, Float, Float, Float) -> Void)?
     var onError: ((String) -> Void)?
 
     private var mtkView: MTKView!
@@ -384,7 +404,7 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
     private var cameraPitch: Float = 0.0
     private var cameraTarget: SIMD3<Float> = .zero
     private var cameraOffset: SIMD3<Float> = .zero  // Joystick-controlled offset
-    private let moveSpeed: Float = 0.05
+    private let moveSpeed: Float = 0.4  // Fast joystick movement
     private var initialCameraDistance: Float = 3.0
 
 
@@ -470,13 +490,16 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
                 width = size.x
                 height = size.y
                 depth = size.z
-                let maxDim = max(size.x, max(size.y, size.z))
-                cameraDistance = max(maxDim * 1.2, 1.5)  // Closer camera to fill more screen
+
+                // Camera distance - view matrix has 40x scale, move camera way back
+                let maxDim = max(width, height)
+                cameraDistance = maxDim * 16.0  // Way back for full room view
                 initialCameraDistance = cameraDistance
 
                 // Store center of bounding box for reference dot
                 roomCenter = (bounds.min + bounds.max) * 0.5
                 logDebug("Room center: \(roomCenter), size: W=\(width) H=\(height) D=\(depth)")
+                logDebug("Camera distance: \(cameraDistance)")
             }
 
             // Calculate memory: use decimal MB (1000*1000) to match ByteCountFormatter
@@ -485,8 +508,22 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
                 memoryMB = Float(fileSize) / (1000 * 1000)  // Decimal MB for consistency
             }
 
+            // Extract positions and compute wall measurements
+            var wallWidth: Float = 0
+            var wallHeight: Float = 0
+            var confidence: Float = 0
+
+            if let positions = extractPositionsFromPLY(url: url) {
+                if let measurements = RoomMeasurement.measureRoom(positions: positions) {
+                    wallWidth = measurements.frontWallWidth
+                    wallHeight = measurements.frontWallHeight
+                    confidence = measurements.confidence
+                    logDebug("Wall measurements: \(wallWidth) × \(wallHeight) (confidence: \(confidence))")
+                }
+            }
+
             await MainActor.run {
-                onLoaded?(count, width, height, depth, memoryMB)
+                onLoaded?(count, width, height, depth, memoryMB, wallWidth, wallHeight, confidence)
             }
 
         } catch {
@@ -494,6 +531,66 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
                 onError?("Failed to load PLY: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Extract vertex positions from a binary PLY file
+    private func extractPositionsFromPLY(url: URL) -> [(Float, Float, Float)]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+
+        // Find end of header
+        guard let headerEndRange = data.range(of: Data("end_header\n".utf8)) else { return nil }
+        let headerEnd = headerEndRange.upperBound
+
+        // Parse header to get vertex count
+        guard let headerString = String(data: data[..<headerEnd], encoding: .utf8) else { return nil }
+        let lines = headerString.components(separatedBy: "\n")
+
+        var vertexCount = 0
+        for line in lines {
+            if line.hasPrefix("element vertex ") {
+                let parts = line.components(separatedBy: " ")
+                if parts.count >= 3, let count = Int(parts[2]) {
+                    vertexCount = count
+                }
+            }
+        }
+
+        guard vertexCount > 0 else { return nil }
+
+        // Each vertex: 3 floats (pos) + 3 floats (scale) + 4 floats (rot) + 1 float (opacity) + 3 uchars (rgb)
+        // = 11 * 4 + 3 = 47 bytes per vertex
+        let bytesPerVertex = 47
+        let binaryData = data[headerEnd...]
+
+        var positions: [(Float, Float, Float)] = []
+        positions.reserveCapacity(vertexCount)
+
+        for i in 0..<vertexCount {
+            let offset = i * bytesPerVertex
+            guard offset + 12 <= binaryData.count else { break }
+
+            // Read floats safely (handles unaligned data)
+            let absOffset = headerEnd + offset
+            var x: Float = 0
+            var y: Float = 0
+            var z: Float = 0
+
+            // Copy bytes to avoid alignment issues
+            _ = withUnsafeMutableBytes(of: &x) { dest in
+                data.copyBytes(to: dest, from: absOffset..<(absOffset + 4))
+            }
+            _ = withUnsafeMutableBytes(of: &y) { dest in
+                data.copyBytes(to: dest, from: (absOffset + 4)..<(absOffset + 8))
+            }
+            _ = withUnsafeMutableBytes(of: &z) { dest in
+                data.copyBytes(to: dest, from: (absOffset + 8)..<(absOffset + 12))
+            }
+
+            positions.append((x, y, z))
+        }
+
+        logDebug("Extracted \(positions.count) positions from PLY")
+        return positions
     }
 
     // MARK: - Background Fill
@@ -690,10 +787,15 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
         let adjustedTarget = cameraTarget + cameraOffset  // Move target with camera
         let viewMatrix = makeLookAtMatrix(eye: cameraPosition, target: adjustedTarget, up: SIMD3<Float>(0, 1, 0))
 
+        // Scale matrix to make room appear bigger (affects all rooms including existing)
+        let roomDisplayScale: Float = 40.0  // Very big room
+        let scaleMatrix = simd_float4x4(diagonal: SIMD4<Float>(roomDisplayScale, roomDisplayScale, roomDisplayScale, 1.0))
+        let scaledViewMatrix = viewMatrix * scaleMatrix
+
         // Build projection matrix
         let aspect = Float(drawableSize.width / drawableSize.height)
-        let fovy: Float = Float.pi / 2.5  // 72 degrees - wider FOV to fill screen
-        let projectionMatrix = makePerspectiveMatrix(fovy: fovy, aspect: aspect, near: 0.1, far: 100.0)
+        let fovy: Float = Float.pi / 2.5  // 72 degrees
+        let projectionMatrix = makePerspectiveMatrix(fovy: fovy, aspect: aspect, near: 0.01, far: 300.0)
 
         // Create MTLViewport
         let mtlViewport = MTLViewport(
@@ -705,11 +807,11 @@ class MetalSplatterViewController: UIViewController, MTKViewDelegate {
             zfar: 1.0
         )
 
-        // Create viewport descriptor
+        // Create viewport descriptor with scaled view matrix
         let viewport = SplatRenderer.ViewportDescriptor(
             viewport: mtlViewport,
             projectionMatrix: projectionMatrix,
-            viewMatrix: viewMatrix,
+            viewMatrix: scaledViewMatrix,
             screenSize: SIMD2<Int>(Int(drawableSize.width), Int(drawableSize.height))
         )
 

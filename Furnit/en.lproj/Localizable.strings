@@ -146,37 +146,45 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "Room Creation";
 "faq.howToCreate" = "How do I create a 3D room?";
-"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. The app will automatically generate a 3D model from your photo.";
+"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. The app uses on-device AI (SHARP) to generate a 3D Gaussian splat model from your photo.";
 "faq.bestPhotos" = "What kind of photos work best?";
 "faq.bestPhotosAnswer" = "For best results, take photos in good lighting with the camera held level. Try to capture the entire room including floors, walls, and ceiling edges. Avoid blurry or dark photos.";
 "faq.generationFailing" = "Why is my room generation failing?";
 "faq.generationFailingAnswer" = "Room generation may fail if the photo is too dark, blurry, or doesn't show enough room features. Try taking a new photo with better lighting and a wider angle.";
 "faq.howManyRooms" = "How many rooms can I create?";
-"faq.howManyRoomsAnswer" = "You can create up to 10 rooms. Delete older rooms to make space for new ones. The room count is shown at the top of your home screen.";
+"faq.howManyRoomsAnswer" = "You can create up to 1000 rooms. Delete older rooms to make space for new ones. The room count and total storage used are shown at the top of your home screen.";
+"faq.howToSaveRoom" = "How do I save a room?";
+"faq.howToSaveRoomAnswer" = "After generating a 3D room, tap the save icon (download arrow) in the toolbar to save it with a custom name. Rooms that aren't saved will be deleted when you tap Back.";
 
-// FAQ - Furniture Segmentation
-"faq.furnitureSegmentation" = "Furniture Segmentation";
+// FAQ - AI Features
+"faq.aiFeatures" = "AI Features";
+"faq.whatIsBrainIcon" = "What does the brain icon do?";
+"faq.whatIsBrainIconAnswer" = "The brain icon activates SmartyPants - an AI-powered object detection feature. It uses your camera to identify furniture and objects in real-time, showing labels and bounding boxes around detected items.";
+"faq.howToScreenshot" = "How do I take a screenshot?";
+"faq.howToScreenshotAnswer" = "When SmartyPants is active (brain icon is green), a share icon appears on the bottom-right. Tap it to save a screenshot of the view with AI detections to your Photos library.";
 "faq.whatIsSegmentation" = "What is furniture segmentation?";
 "faq.whatIsSegmentationAnswer" = "Furniture segmentation uses AI to identify and separate furniture items in your photos, allowing you to see how each piece would fit in your 3D room.";
 "faq.howToSegment" = "How do I segment furniture from a photo?";
-"faq.howToSegmentAnswer" = "When viewing your 3D room, tap on the furniture icon to access the segmentation feature. Select a photo containing furniture, and the app will automatically detect and extract the furniture items.";
+"faq.howToSegmentAnswer" = "When viewing your 3D room, tap on the brain icon to activate SmartyPants. Point your camera at furniture to see real-time detection with labels.";
 "faq.notDetected" = "Why isn't my furniture being detected?";
-"faq.notDetectedAnswer" = "Furniture detection works best with clear, well-lit photos where furniture is clearly visible. Make sure the furniture isn't partially hidden or blending with the background.";
-"faq.multiplePieces" = "Can I segment multiple furniture pieces?";
-"faq.multiplePiecesAnswer" = "Yes! The AI can detect multiple furniture pieces in a single photo. Each detected item will be shown separately so you can choose which ones to use.";
+"faq.notDetectedAnswer" = "Object detection works best with clear, well-lit environments where furniture is clearly visible. Make sure the object isn't partially hidden or too far from the camera.";
 
-// FAQ - 3D Room & Fitment
-"faq.roomFitment" = "3D Room & Fitment";
+// FAQ - 3D Room Controls
+"faq.roomControls" = "3D Room Controls";
 "faq.howToView" = "How do I view my 3D room?";
-"faq.howToViewAnswer" = "Tap on any room in your home screen to open the 3D viewer. You can rotate, zoom, and pan around the room using touch gestures.";
+"faq.howToViewAnswer" = "Tap on any room in your home screen to open the 3D viewer. Use touch gestures to rotate and zoom, or use the joystick at the bottom to move around inside the room.";
+"faq.howToNavigate" = "How do I navigate inside the room?";
+"faq.howToNavigateAnswer" = "Use the joystick at the bottom center of the screen to move around. Drag it in any direction to fly through the room. Use the recenter button (viewfinder icon) to reset the camera position.";
+"faq.whatIsMemoryDisplay" = "What does the MB number mean?";
+"faq.whatIsMemoryDisplayAnswer" = "The MB (megabytes) shown in rooms indicates the file size. This helps you manage storage. The total storage used by all rooms is shown at the top of the home screen.";
 "faq.howToPlace" = "How do I place furniture in my room?";
 "faq.howToPlaceAnswer" = "After segmenting furniture, tap on the furniture piece to add it to your room. You can then drag to position it, pinch to resize, and rotate to adjust its orientation.";
 "faq.sampleRoom" = "Can I use a sample room instead of my own?";
-"faq.sampleRoomAnswer" = "Yes! The app provides sample rooms for you to experiment with. Access them from the Explore section to try out furniture placement without creating your own room first.";
+"faq.sampleRoomAnswer" = "Yes! The app provides sample rooms (Vintage Living Room, Cozy Living Room) for you to experiment with. Access them from the home screen to try out features without creating your own room first.";
 "faq.accuracy" = "How accurate is the 3D model?";
-"faq.accuracyAnswer" = "The 3D model provides a good approximation of your room's layout. For best accuracy, ensure your original photo captures the room dimensions clearly with visible corners and edges.";
+"faq.accuracyAnswer" = "The 3D model provides a visual approximation of your room's layout. The dimensions shown are relative units from the AI model, not exact real-world measurements.";
 "faq.adjustDimensions" = "Can I adjust room dimensions?";
-"faq.adjustDimensionsAnswer" = "Yes, go to Settings and look for Room Dimensions options where you can fine-tune the size and proportions of your generated room.";
+"faq.adjustDimensionsAnswer" = "For USDZ rooms, go to Settings and look for Room Dimensions options. For AI-generated (PLY) rooms, the dimensions are determined by the AI model.";
 
 // MARK: - Room Boundary Detection
 "boundary.title" = "Room Boundaries";

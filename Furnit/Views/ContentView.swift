@@ -781,25 +781,28 @@ struct SupportView: View {
                     FAQItem(question: "faq.howToCreate".localized, answer: "faq.howToCreateAnswer".localized),
                     FAQItem(question: "faq.bestPhotos".localized, answer: "faq.bestPhotosAnswer".localized),
                     FAQItem(question: "faq.generationFailing".localized, answer: "faq.generationFailingAnswer".localized),
-                    FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized)
+                    FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized),
+                    FAQItem(question: "faq.howToSaveRoom".localized, answer: "faq.howToSaveRoomAnswer".localized)
                 ]
             ),
             FAQSection(
-                title: "faq.furnitureSegmentation".localized,
-                icon: "square.on.square.dashed",
+                title: "faq.aiFeatures".localized,
+                icon: "brain.head.profile",
                 items: [
+                    FAQItem(question: "faq.whatIsBrainIcon".localized, answer: "faq.whatIsBrainIconAnswer".localized),
+                    FAQItem(question: "faq.howToScreenshot".localized, answer: "faq.howToScreenshotAnswer".localized),
                     FAQItem(question: "faq.whatIsSegmentation".localized, answer: "faq.whatIsSegmentationAnswer".localized),
                     FAQItem(question: "faq.howToSegment".localized, answer: "faq.howToSegmentAnswer".localized),
-                    FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized),
-                    FAQItem(question: "faq.multiplePieces".localized, answer: "faq.multiplePiecesAnswer".localized)
+                    FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized)
                 ]
             ),
             FAQSection(
-                title: "faq.roomFitment".localized,
+                title: "faq.roomControls".localized,
                 icon: "cube.fill",
                 items: [
                     FAQItem(question: "faq.howToView".localized, answer: "faq.howToViewAnswer".localized),
-                    FAQItem(question: "faq.howToPlace".localized, answer: "faq.howToPlaceAnswer".localized),
+                    FAQItem(question: "faq.howToNavigate".localized, answer: "faq.howToNavigateAnswer".localized),
+                    FAQItem(question: "faq.whatIsMemoryDisplay".localized, answer: "faq.whatIsMemoryDisplayAnswer".localized),
                     FAQItem(question: "faq.sampleRoom".localized, answer: "faq.sampleRoomAnswer".localized),
                     FAQItem(question: "faq.accuracy".localized, answer: "faq.accuracyAnswer".localized),
                     FAQItem(question: "faq.adjustDimensions".localized, answer: "faq.adjustDimensionsAnswer".localized)

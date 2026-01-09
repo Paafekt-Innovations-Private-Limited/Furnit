@@ -109,7 +109,7 @@ struct GaussianSplatViewerView: View {
                 .font(.subheadline)
                 .foregroundColor(.gray)
 
-            if let fileSize = model.fileSize {
+            if model.fileSize != nil {
                 Text(model.fileSizeFormatted)
                     .font(.caption)
                     .foregroundColor(.gray.opacity(0.8))

@@ -22,6 +22,9 @@ class SHARPService: ObservableObject {
     /// Processing progress (0.0 to 1.0)
     @Published var progress: Float = 0.0
 
+    /// Room measurements from plane detection (available after generation)
+    @Published var roomMeasurements: RoomMeasurements?
+
     // MARK: - Model Configuration
 
     /// Input image size expected by SHARP model
@@ -83,7 +86,7 @@ class SHARPService: ObservableObject {
         logDebug("SHARP: Loading CoreML model...")
 
         isLoadingModel = true
-        statusMessage = "Loading AI model..."
+        statusMessage = "Getting ready..."
         progress = 0.1
 
         // Check physical memory - INT8 model (~663MB) needs ~2GB available
@@ -96,12 +99,12 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Device has insufficient RAM, need 2GB+")
             logDebug("SHARP: Model will not be loaded - use fallback or remote API")
             isLoadingModel = false
-            statusMessage = "Insufficient memory"
+            statusMessage = "Not enough space on device"
             return
         }
 
         progress = 0.3
-        statusMessage = "Initializing neural network..."
+        statusMessage = "Setting things up..."
 
         do {
             // Configuration matching mlsharpondevice2 style
@@ -115,11 +118,11 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Model loaded successfully")
 
             progress = 1.0
-            statusMessage = "Model ready"
+            statusMessage = "Ready!"
 
         } catch {
             logDebug("SHARP: Failed to load model: \(error)")
-            statusMessage = "Failed to load model"
+            statusMessage = "Couldn't get ready"
         }
 
         isLoadingModel = false
@@ -141,13 +144,13 @@ class SHARPService: ObservableObject {
 
         guard model != nil else {
             status = .failed("SHARP model failed to load. Check device memory.")
-            statusMessage = "Model load failed"
+            statusMessage = "Something went wrong"
             throw GenerationError.serverError("SHARP model failed to load. Check device memory.")
         }
 
         // Reset state
         status = .processing
-        statusMessage = "Preprocessing image..."
+        statusMessage = "Preparing your photo..."
         progress = 0.0
 
         do {
@@ -157,13 +160,13 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
 
             // Step 2: Run inference
-            statusMessage = "Generating 3D Gaussians..."
+            statusMessage = "Creating your 3D room..."
             progress = 0.2
             let gaussianParams = try await runInference(inputBuffer)
             logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
 
             // Step 3: Write PLY file
-            statusMessage = "Saving model..."
+            statusMessage = "Almost done..."
             progress = 0.8
             let plyURL = try await writePLY(gaussianParams)
             logDebug("SHARP: Saved PLY to \(plyURL.path)")
@@ -171,13 +174,13 @@ class SHARPService: ObservableObject {
             // Complete
             progress = 1.0
             status = .completed(fileURL: plyURL)
-            statusMessage = "Complete!"
+            statusMessage = "Done!"
 
             return plyURL
         } catch {
             // Update status on failure so UI can show error
             status = .failed(error.localizedDescription)
-            statusMessage = "Generation failed"
+            statusMessage = "Couldn't create room"
             logDebug("SHARP: Generation failed: \(error)")
             throw error
         }
@@ -567,13 +570,15 @@ class SHARPService: ObservableObject {
         // Write header
         var data = Data(plyContent.utf8)
 
-        // Track bounding box for measurements
+        // Track bounding box and positions for measurements
         var minX: Float = .greatestFiniteMagnitude
         var maxX: Float = -.greatestFiniteMagnitude
         var minY: Float = .greatestFiniteMagnitude
         var maxY: Float = -.greatestFiniteMagnitude
         var minZ: Float = .greatestFiniteMagnitude
         var maxZ: Float = -.greatestFiniteMagnitude
+        var positions: [(Float, Float, Float)] = []
+        positions.reserveCapacity(gaussianCount)
 
         // Write binary vertex data
         // Each Gaussian: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14 floats
@@ -589,16 +594,17 @@ class SHARPService: ObservableObject {
             var y = -origX        // -X becomes Y
             var z = -origZ        // Z negated
 
-            // Track bounding box
+            // Track bounding box and collect positions
             minX = min(minX, x); maxX = max(maxX, x)
             minY = min(minY, y); maxY = max(maxY, y)
             minZ = min(minZ, z); maxZ = max(maxZ, z)
+            positions.append((x, y, z))
 
             data.append(Data(bytes: &x, count: 4))
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
 
-            // Scale - convert to log for renderer, boost to fill gaps, clamp minimum
+            // Scale - convert to log for renderer, boost to fill gaps
             let minScale: Float = 0.001
             let scaleBoost: Float = 1.3  // Make splats 30% larger to fill edge gaps
             let rawS0 = filteredParams[offset + 3] * scaleBoost
@@ -666,11 +672,24 @@ class SHARPService: ObservableObject {
         let width = maxX - minX
         let height = maxY - minY
         let depth = maxZ - minZ
-        logDebug("SHARP: Room measurements:")
+        logDebug("SHARP: Room bounding box:")
         logDebug("  Width (X):  \(String(format: "%.2f", width)) units (\(minX) to \(maxX))")
         logDebug("  Height (Y): \(String(format: "%.2f", height)) units (\(minY) to \(maxY))")
         logDebug("  Depth (Z):  \(String(format: "%.2f", depth)) units (\(minZ) to \(maxZ))")
         logDebug("  Splats: \(gaussianCount)")
+
+        // Detect front wall and compute measurements
+        if let measurements = RoomMeasurement.measureRoom(positions: positions) {
+            await MainActor.run {
+                self.roomMeasurements = measurements
+            }
+            logDebug("SHARP: Front wall detected:")
+            logDebug("  Width:  \(String(format: "%.2f", measurements.frontWallWidth)) units")
+            logDebug("  Height: \(String(format: "%.2f", measurements.frontWallHeight)) units")
+            logDebug("  Confidence: \(String(format: "%.0f", measurements.confidence * 100))%")
+        } else {
+            logDebug("SHARP: Could not detect front wall")
+        }
 
         return fileURL
     }
