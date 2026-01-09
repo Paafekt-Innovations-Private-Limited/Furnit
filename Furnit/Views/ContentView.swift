@@ -310,7 +310,7 @@ struct HomeTab: View {
 
                 // Handle PLY files - navigate to SharpRoomView (Gaussian splat viewer)
                 if model.fileType == .ply {
-                    NavigationLink(destination: SharpRoomView(plyURL: modelURL)) {
+                    NavigationLink(destination: SharpRoomView(plyURL: modelURL, isNewRoom: false)) {
                         HomeViewModelRow(model: model)
                     }
                     .onAppear {
@@ -612,8 +612,8 @@ struct HomeViewModelRow: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
 
-                    // Show file size for saved rooms
-                    if model.isSavedRoom, let _ = model.fileSize {
+                    // Show file size for all rooms
+                    if model.hasFileSize {
                         Text("•")
                             .font(.caption)
                             .foregroundColor(.secondary)

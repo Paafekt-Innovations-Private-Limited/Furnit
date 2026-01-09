@@ -38,10 +38,23 @@ struct USDZModel: Identifiable, Hashable {
 
     /// Formatted file size string (e.g., "45.2 MB")
     var fileSizeFormatted: String {
-        guard let size = fileSize else { return "Unknown size" }
+        // Use fileSize if available, otherwise calculate from dataAsset
+        let size: UInt64
+        if let fs = fileSize {
+            size = fs
+        } else if let data = dataAsset?.data {
+            size = UInt64(data.count)
+        } else {
+            return "Unknown size"
+        }
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(size))
+    }
+
+    /// Check if file size is available (from fileSize or dataAsset)
+    var hasFileSize: Bool {
+        return fileSize != nil || dataAsset?.data != nil
     }
 
     /// Subtitle text based on file type
