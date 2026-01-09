@@ -33,7 +33,15 @@ struct USDZModel: Identifiable, Hashable {
     }
     
     var displayName: String {
-        return name.replacingOccurrences(of: "_", with: " ").capitalized
+        var cleanName = name
+        // Remove timestamp suffix for PLY files (format: "RoomName_1767917336")
+        if fileType == .ply {
+            // Check if name ends with underscore followed by digits (timestamp)
+            if let range = cleanName.range(of: "_\\d+$", options: .regularExpression) {
+                cleanName = String(cleanName[..<range.lowerBound])
+            }
+        }
+        return cleanName.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     /// Formatted file size string (e.g., "45.2 MB")

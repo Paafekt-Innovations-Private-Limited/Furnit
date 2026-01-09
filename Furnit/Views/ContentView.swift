@@ -83,7 +83,7 @@ struct HomeTab: View {
                     }
                 } else {
                     VStack(spacing: 0) {
-                        // Room limit banner
+                        // Room limit banner with total memory
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(L10n.Home.roomsRemaining(limitManager.remainingRooms(), limitManager.roomLimit))
@@ -96,6 +96,15 @@ struct HomeTab: View {
                                 }
                             }
                             Spacer()
+                            // Total memory of all rooms
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("Total")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text(totalMemoryFormatted(models: modelManager.models))
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                            }
                         }
                         .padding()
                         .background(limitManager.remainingRooms() <= 3 ? Color.orange.opacity(0.1) : Color(.systemGroupedBackground))
@@ -272,7 +281,22 @@ struct HomeTab: View {
         roomToDelete = nil
         limitManager.updateRoomCount()
     }
-    
+
+    // MARK: - Total Memory Calculation
+    private func totalMemoryFormatted(models: [USDZModel]) -> String {
+        var totalBytes: UInt64 = 0
+        for model in models {
+            if let size = model.fileSize {
+                totalBytes += size
+            } else if let data = model.dataAsset?.data {
+                totalBytes += UInt64(data.count)
+            }
+        }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(totalBytes))
+    }
+
     // MARK: - Model Row with Logging
     private func modelRow(for model: USDZModel, at index: Int) -> some View {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
