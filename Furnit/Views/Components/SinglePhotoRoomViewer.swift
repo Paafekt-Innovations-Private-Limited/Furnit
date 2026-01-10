@@ -852,7 +852,7 @@ struct SinglePhotoRoomView: View {
         .navigationDestination(isPresented: $navigateToSplatViewer) {
             Group {
                 if let plyURL = generatedPLYURL {
-                    SharpRoomView(plyURL: plyURL)
+                    SharpRoomView(plyURL: plyURL, roomBounds: sharpService.roomMeasurements?.boundingBox)
                 }
             }
         }
