@@ -939,8 +939,8 @@ async function main() {
             e.preventDefault();
             if (e.touches.length === 1 && down) {
                 let inv = invert4(viewMatrix);
-                let dx = (10 * (e.touches[0].clientX - startX)) / innerWidth;
-                let dy = (10 * (e.touches[0].clientY - startY)) / innerHeight;
+                let dx = (5 * (e.touches[0].clientX - startX)) / innerWidth;
+                let dy = (5 * (e.touches[0].clientY - startY)) / innerHeight;
 
                 let d = 4;
                 inv = translate4(inv, 0, 0, d);
