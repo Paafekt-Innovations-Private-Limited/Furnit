@@ -165,11 +165,13 @@ class SHARPService: ObservableObject {
             let gaussianParams = try await runInference(inputBuffer)
             logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
 
-            // Step 3: Write PLY file
+            // Step 3: Write PLY files (original + classic for antimatter15)
             statusMessage = "Almost done..."
             progress = 0.8
-            let plyURL = try await writePLY(gaussianParams)
-            logDebug("SHARP: Saved PLY to \(plyURL.path)")
+            let plyURLs = try await writePLY(gaussianParams)
+            logDebug("SHARP: Saved PLY to \(plyURLs.original.path)")
+            logDebug("SHARP: Saved Classic PLY to \(plyURLs.classic.path)")
+            let plyURL = plyURLs.original
 
             // Complete
             progress = 1.0
@@ -529,7 +531,8 @@ class SHARPService: ObservableObject {
     // MARK: - PLY Writing
 
     /// Write Gaussian parameters to PLY file
-    private func writePLY(_ params: [Float]) async throws -> URL {
+    /// Returns tuple: (originalURL, classicURL) where classicURL is rotated 180° around Y for antimatter15/splat
+    private func writePLY(_ params: [Float]) async throws -> (original: URL, classic: URL) {
         // Filter Gaussians for mobile rendering
         let filteredParams = filterGaussians(params)
 
@@ -538,12 +541,14 @@ class SHARPService: ObservableObject {
         // Ensure output directory exists
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
 
-        // Generate filename
+        // Generate filenames
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         let timestamp = dateFormatter.string(from: Date())
         let fileName = "Room_\(timestamp).ply"
+        let classicFileName = "Room_\(timestamp)_classic.ply"
         let fileURL = modelsDirectory.appendingPathComponent(fileName)
+        let classicFileURL = modelsDirectory.appendingPathComponent(classicFileName)
 
         // Build PLY content - use uchar red/green/blue for proper color display
         let plyContent = """
@@ -567,8 +572,9 @@ class SHARPService: ObservableObject {
         end_header\n
         """
 
-        // Write header
+        // Write headers for both files
         var data = Data(plyContent.utf8)
+        var classicData = Data(plyContent.utf8)
 
         // Track bounding box and positions for measurements
         var minX: Float = .greatestFiniteMagnitude
@@ -600,9 +606,18 @@ class SHARPService: ObservableObject {
             minZ = min(minZ, z); maxZ = max(maxZ, z)
             positions.append((x, y, z))
 
+            // Original PLY
             data.append(Data(bytes: &x, count: 4))
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
+
+            // Classic PLY: rotate 180° around Y: (x, y, z) → (-x, y, -z)
+            var classicX = -x
+            var classicY = y
+            var classicZ = -z
+            classicData.append(Data(bytes: &classicX, count: 4))
+            classicData.append(Data(bytes: &classicY, count: 4))
+            classicData.append(Data(bytes: &classicZ, count: 4))
 
             // Scale - convert to log for renderer, boost to fill gaps
             let minScale: Float = 0.001
@@ -616,6 +631,9 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &s0, count: 4))
             data.append(Data(bytes: &s1, count: 4))
             data.append(Data(bytes: &s2, count: 4))
+            classicData.append(Data(bytes: &s0, count: 4))
+            classicData.append(Data(bytes: &s1, count: 4))
+            classicData.append(Data(bytes: &s2, count: 4))
 
             // Rotation quaternion - MUST normalize (SHARP outputs unnormalized)
             let rawR0 = filteredParams[offset + 6]
@@ -632,12 +650,17 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &r1, count: 4))
             data.append(Data(bytes: &r2, count: 4))
             data.append(Data(bytes: &r3, count: 4))
+            classicData.append(Data(bytes: &r0, count: 4))
+            classicData.append(Data(bytes: &r1, count: 4))
+            classicData.append(Data(bytes: &r2, count: 4))
+            classicData.append(Data(bytes: &r3, count: 4))
 
             // Opacity - convert to logit (inverse sigmoid) for renderer
             let rawOpacity = filteredParams[offset + 10]
             let clampedOpacity = min(max(rawOpacity, 1e-4), 1.0 - 1e-4)
             var opacity = log(clampedOpacity / (1.0 - clampedOpacity))
             data.append(Data(bytes: &opacity, count: 4))
+            classicData.append(Data(bytes: &opacity, count: 4))
 
             // Color - convert linear [0,1] to sRGB [0,255] with gamma
             let rawR = filteredParams[offset + 11]
@@ -658,15 +681,20 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &red, count: 1))
             data.append(Data(bytes: &green, count: 1))
             data.append(Data(bytes: &blue, count: 1))
+            classicData.append(Data(bytes: &red, count: 1))
+            classicData.append(Data(bytes: &green, count: 1))
+            classicData.append(Data(bytes: &blue, count: 1))
         }
 
-        // Write file
+        // Write both files
         try data.write(to: fileURL)
+        try classicData.write(to: classicFileURL)
 
         // Verify
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
         let fileSize = attributes[.size] as? UInt64 ?? 0
         logDebug("SHARP: PLY file saved (\(fileSize / 1024) KB)")
+        logDebug("SHARP: Classic PLY saved (rotated 180° for antimatter15/splat)")
 
         // Log room measurements (SHARP units are roughly meters)
         let width = maxX - minX
@@ -691,6 +719,6 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Could not detect front wall")
         }
 
-        return fileURL
+        return (original: fileURL, classic: classicFileURL)
     }
 }
