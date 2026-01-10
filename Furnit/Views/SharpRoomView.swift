@@ -886,8 +886,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                 });
             </script>
 
-            <!-- Load antimatter15/splat from CDN -->
-            <script src="https://cdn.jsdelivr.net/gh/antimatter15/splat@main/main.js"></script>
+            <!-- Load antimatter15/splat from local bundle -->
+            <script src="splat://local/main.js"></script>
         </body>
         </html>
         """
@@ -950,12 +950,12 @@ struct AntimatterSplatView: UIViewRepresentable {
             guard let userInfo = notification.userInfo,
                   let offset = userInfo["offset"] as? CGSize else { return }
 
-            let moveSpeed: CGFloat = 0.05
+            let moveSpeed: CGFloat = 0.012  // Reduced for smoother control
             let dx = Float(offset.width * moveSpeed)
             let dy = Float(-offset.height * moveSpeed)  // Invert Y for intuitive control
 
             // Skip if no movement
-            if abs(dx) < 0.001 && abs(dy) < 0.001 { return }
+            if abs(dx) < 0.0005 && abs(dy) < 0.0005 { return }
 
             // JavaScript to move camera by modifying viewMatrix translation
             // viewMatrix is column-major: [12]=tx, [13]=ty, [14]=tz

@@ -1,5 +1,6 @@
-// Modified antimatter15/splat main.js with custom camera positioning for SHARP rooms
+// Modified antimatter15/splat main.js for SHARP rooms
 // Original: https://github.com/antimatter15/splat
+// Changes: Faster carousel animation (2000ms vs 5000ms)
 
 let cameras = [
     {
@@ -21,70 +22,6 @@ let cameras = [
 ];
 
 let camera = cameras[0];
-
-// Custom lookAt helper for SHARP room camera positioning
-function customNormalize(v) {
-    const len = Math.hypot(v[0], v[1], v[2]) || 1.0;
-    return [v[0] / len, v[1] / len, v[2] / len];
-}
-
-function customCross(a, b) {
-    return [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0]
-    ];
-}
-
-function customDot(a, b) {
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-
-// Build a lookAt view matrix (column-major, OpenGL-style)
-function customLookAt(eye, center, up) {
-    const f = customNormalize([
-        center[0] - eye[0],
-        center[1] - eye[1],
-        center[2] - eye[2]
-    ]);
-    const s = customNormalize(customCross(f, up));
-    const u = customCross(s, f);
-
-    return [
-        s[0], u[0], -f[0], 0,
-        s[1], u[1], -f[1], 0,
-        s[2], u[2], -f[2], 0,
-        -customDot(s, eye), -customDot(u, eye), customDot(f, eye), 1
-    ];
-}
-
-// Set camera from bounding box - called after PLY is loaded
-function setCameraFromBounds(min, max) {
-    const cx = (min[0] + max[0]) * 0.5;
-    const cy = (min[1] + max[1]) * 0.5;
-    const cz = (min[2] + max[2]) * 0.5;
-
-    const sizeX = max[0] - min[0];
-    const sizeY = max[1] - min[1];
-    const sizeZ = max[2] - min[2];
-    const radius = Math.max(sizeX, sizeY, sizeZ) * 0.5;
-
-    // Distance from center - adjust multiplier for framing
-    const dist = radius * 3.5;
-
-    // Position camera along +Z axis from center (front of room)
-    // Try different positions if this doesn't work
-    const eye = [cx, cy, cz + dist];
-    const center = [cx, cy, cz];
-    const up = [0, 1, 0];
-
-    viewMatrix = customLookAt(eye, center, up);
-    defaultViewMatrix = viewMatrix.slice();
-
-    console.log('[SHARP Camera] Bounds:', { min, max });
-    console.log('[SHARP Camera] Center:', [cx, cy, cz], 'Radius:', radius);
-    console.log('[SHARP Camera] Eye:', eye);
-}
 
 function getProjectionMatrix(fx, fy, width, height) {
     const znear = 0.2;
@@ -656,7 +593,7 @@ void main () {
 
 let defaultViewMatrix = [
     0.47, 0.04, 0.88, 0, -0.11, 0.99, 0.02, 0, -0.88, -0.11, 0.47, 0, 0.07,
-    0.03, 15.0, 1,
+    0.03, 6.55, 1,
 ];
 let viewMatrix = defaultViewMatrix;
 
@@ -789,11 +726,6 @@ async function main() {
     worker.onmessage = (e) => {
         if (e.data.buffer) {
             splatData = new Uint8Array(e.data.buffer);
-
-            // SHARP: Set camera from bounds when PLY is loaded
-            if (e.data.bounds) {
-                setCameraFromBounds(e.data.bounds.min, e.data.bounds.max);
-            }
 
             if (e.data.save) {
                 const blob = new Blob([splatData.buffer], {
@@ -1234,7 +1166,7 @@ async function main() {
         if (carousel) {
             let inv = invert4(defaultViewMatrix);
 
-            const t = Math.sin((Date.now() - start) / 5000);
+            const t = Math.sin((Date.now() - start) / 2000);  // Faster orbit animation
             inv = translate4(inv, 2.5 * t, 0, 6 * (1 - Math.cos(t)));
             inv = rotate4(inv, -0.6 * t, 0, 1, 0);
 
