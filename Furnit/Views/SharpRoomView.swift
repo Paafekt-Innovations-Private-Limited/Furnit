@@ -35,22 +35,23 @@ struct WebGLBoundaryManager {
     /// Camera positioned outside room, looking at room center
     /// Returns (eye position, target position) for lookAt camera
     func getOptimalCameraPosition() -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
-        // Classic PLY transform puts room at NEGATIVE Z (around -1 to -3)
-        // Camera needs to be at POSITIVE Z looking toward negative Z
-        // Room center is approximately at Z = -depth (negative)
+        // Classic PLY transform: (x, -y, -z)
+        // Room ends up entirely in NEGATIVE Z (front wall around -1, back wall around -depth-1)
+        // Room is roughly centered in X and Y around origin
+        // Estimate room center Z based on typical SHARP output pattern
 
-        let roomCenterZ = -depth * 0.5  // Room is in negative Z space
+        let roomCenterZ = -(depth / 2 + 1.5)  // Room center (estimated from logs)
 
         let eye = SIMD3<Float>(
             0,                          // Center X
-            0.5,                        // Slightly above center
-            roomCenterZ + depth * 2.0   // In front of room (more positive Z)
+            0,                          // Center Y (room is symmetric)
+            2.0                         // In front (positive Z, outside room)
         )
 
         let target = SIMD3<Float>(
             0,                          // Center X
-            0,                          // Look at floor level
-            roomCenterZ                 // Room center in Z
+            0,                          // Center Y
+            roomCenterZ                 // Room center Z
         )
 
         return (eye: eye, target: target)
@@ -593,21 +594,20 @@ struct AntimatterSplatView: UIViewRepresentable {
                 }
 
                 // Position camera based on room bounds from Swift
-                // Debug: log calculated positions
-                const calcEye = [\(eyeX), \(eyeY), \(eyeZ)];
-                const calcTarget = [\(targetX), \(targetY), \(targetZ)];
-                console.log('[Camera] Calculated eye=' + JSON.stringify(calcEye) + ' target=' + JSON.stringify(calcTarget));
-
                 let cameraAdjusted = false;
                 function adjustCameraDistance() {
                     if (cameraAdjusted) return;
                     if (typeof viewMatrix === 'undefined' || !viewMatrix) return;
 
-                    // Let antimatter15/splat use its default camera (auto-centers on point cloud)
-                    // Just save the default for recenter
+                    // Camera position calculated from room bounds
+                    const eye = [\(eyeX), \(eyeY), \(eyeZ)];
+                    const target = [\(targetX), \(targetY), \(targetZ)];
+                    const up = [0, 1, 0];
+
+                    console.log('[Camera] Setting eye=' + JSON.stringify(eye) + ' target=' + JSON.stringify(target));
+                    viewMatrix = lookAt(eye, target, up);
                     defaultViewMatrix = viewMatrix.slice();
                     cameraAdjusted = true;
-                    console.log('[Camera] Using viewer default camera');
                 }
 
 
