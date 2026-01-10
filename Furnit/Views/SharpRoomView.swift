@@ -21,13 +21,11 @@ struct SharpRoomView: View {
     @State private var roomSnapshot: UIImage? = nil
     @State private var mlModel: MLModel? = nil
 
-    /// Compute classic PLY URL (pre-rotated 180° for antimatter15/splat)
+    /// Compute classic PLY URL (pre-rotated for antimatter15/splat)
     private var classicPlyURL: URL {
-        // Original: Room_timestamp.ply -> Classic: Room_timestamp_classic.ply
         let path = plyURL.path
         let classicPath = path.replacingOccurrences(of: ".ply", with: "_classic.ply")
         let classicURL = URL(fileURLWithPath: classicPath)
-        // Fall back to original if classic doesn't exist
         if FileManager.default.fileExists(atPath: classicPath) {
             return classicURL
         }
@@ -1020,7 +1018,6 @@ struct AntimatterSplatView: UIViewRepresentable {
                 function saveDefaultViewMatrix() {
                     if (typeof viewMatrix !== 'undefined' && viewMatrix && viewMatrix.length === 16 && !window.defaultViewMatrix) {
                         window.defaultViewMatrix = viewMatrix.slice();
-                        console.log('[saveDefaultViewMatrix] Saved default view matrix');
                     }
                 }
 
@@ -1039,16 +1036,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }, 30);
                 })();
 
-                // Stop all floating/auto-movement (the "default animation" from pressing 'p')
+                // Stop all floating/auto-movement
                 function stopAllMovement() {
-                    // Kill carousel/animation every frame
                     setInterval(function() {
                         if (typeof carousel !== 'undefined' && carousel === true) {
                             carousel = false;
                         }
                     }, 30);
 
-                    // Intercept 'p' key which triggers animation
                     document.addEventListener('keydown', function(e) {
                         if (e.key === 'p' || e.key === 'P') {
                             e.preventDefault();
@@ -1058,14 +1053,12 @@ struct AntimatterSplatView: UIViewRepresentable {
                         }
                     }, true);
 
-                    // Stop on any touch/mouse interaction
                     ['touchstart', 'touchend', 'touchmove', 'mousedown', 'mouseup', 'mousemove'].forEach(function(evt) {
                         document.addEventListener(evt, function() {
                             if (typeof carousel !== 'undefined') carousel = false;
                         }, true);
                     });
 
-                    // Clear cameras array to prevent carousel cycling
                     setTimeout(function() {
                         if (typeof cameras !== 'undefined' && cameras.length > 0) {
                             cameras.length = 0;
@@ -1073,16 +1066,13 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }, 2000);
                 }
 
-                // Hide loading message
                 function hideLoadingMessage() {
                     const msg = document.getElementById('message');
                     if (msg) msg.style.display = 'none';
                 }
 
-                // Timing
                 const jsStartTime = performance.now();
 
-                // Notify iOS when loaded
                 window.addEventListener('load', function() {
                     stopAllMovement();
 
@@ -1090,14 +1080,11 @@ struct AntimatterSplatView: UIViewRepresentable {
                     const checkLoaded = setInterval(function() {
                         checkCount++;
 
-                        // After 5 seconds, notify iOS
                         if (checkCount === 50) {
                             hideLoadingMessage();
                             saveDefaultViewMatrix();
 
                             const totalTime = performance.now() - jsStartTime;
-                            console.log('[WebGL] Splat ready: ' + totalTime.toFixed(0) + 'ms');
-
                             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.splatLoaded) {
                                 window.webkit.messageHandlers.splatLoaded.postMessage({ loaded: true, timeMs: totalTime });
                             }

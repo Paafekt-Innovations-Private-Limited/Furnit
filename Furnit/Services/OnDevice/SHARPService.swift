@@ -611,9 +611,9 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
 
-            // Classic PLY: rotate 180° around Y: (x, y, z) → (-x, y, -z)
+            // Classic PLY: point inversion for correct orientation: (x, y, z) → (-x, -y, -z)
             var classicX = -x
-            var classicY = y
+            var classicY = -y
             var classicZ = -z
             classicData.append(Data(bytes: &classicX, count: 4))
             classicData.append(Data(bytes: &classicY, count: 4))
@@ -694,7 +694,7 @@ class SHARPService: ObservableObject {
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
         let fileSize = attributes[.size] as? UInt64 ?? 0
         logDebug("SHARP: PLY file saved (\(fileSize / 1024) KB)")
-        logDebug("SHARP: Classic PLY saved (rotated 180° for antimatter15/splat)")
+        logDebug("SHARP: Classic PLY saved (point inversion for antimatter15/splat)")
 
         // Log room measurements (SHARP units are roughly meters)
         let width = maxX - minX
