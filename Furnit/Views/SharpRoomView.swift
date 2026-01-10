@@ -202,7 +202,13 @@ struct SharpRoomView: View {
                 saveRoomProgressOverlay
             }
 
-            // Bottom buttons (brain left, screenshot right when SmartyPants active)
+            // WebGL Joystick overlay (hide when SmartyPants active)
+            if !showingSmartyPants {
+                WebGLJoystickOverlay()
+                    .zIndex(99997)
+            }
+
+            // Bottom buttons (brain left, screenshot right)
             VStack {
                 Spacer()
                 HStack {
@@ -230,19 +236,18 @@ struct SharpRoomView: View {
 
                     Spacer()
 
-                    // Screenshot button (bottom-right) - only when SmartyPants active
-                    if showingSmartyPants {
-                        Button(action: {
-                            takeScreenshot()
-                        }) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(Color.blue).shadow(radius: 5))
-                        }
-                        .padding(.trailing, 16)
+                    // Screenshot button (bottom-right) - always visible
+                    Button(action: {
+                        takeScreenshot()
+                    }) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(Color.blue).shadow(radius: 5))
                     }
+                    .disabled(isLoading)
+                    .padding(.trailing, 16)
                 }
                 .padding(.bottom, 20)
             }
@@ -394,8 +399,8 @@ struct SharpRoomView: View {
 
             if self.saveProgress >= 0.6 && !saveStarted {
                 saveStarted = true
-                // Save the PLY file
-                self.modelManager.savePLY(from: self.plyURL, name: savedName) { success, error in
+                // Save the classic PLY file (pre-transformed for correct viewing)
+                self.modelManager.savePLY(from: self.classicPlyURL, name: savedName) { success, error in
                     DispatchQueue.main.async {
                         saveCompleted = true
                         saveSuccess = success
@@ -834,6 +839,8 @@ struct AntimatterSplatView: UIViewRepresentable {
         private var hasNotifiedLoaded = false
         private var loadStartTime: CFAbsoluteTime = 0
 
+        private var joystickTimer: Timer?
+
         init(onLoaded: @escaping () -> Void) {
             self.onLoaded = onLoaded
             self.loadStartTime = CFAbsoluteTimeGetCurrent()
@@ -847,9 +854,18 @@ struct AntimatterSplatView: UIViewRepresentable {
                 name: NSNotification.Name("RecenterWebGLCamera"),
                 object: nil
             )
+
+            // Listen for joystick movement
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleJoystickMove(_:)),
+                name: NSNotification.Name("WebGLJoystickMove"),
+                object: nil
+            )
         }
 
         deinit {
+            joystickTimer?.invalidate()
             NotificationCenter.default.removeObserver(self)
         }
 
@@ -867,6 +883,32 @@ struct AntimatterSplatView: UIViewRepresentable {
                     print("❌ [WebGL] Recenter JS error: \(error)")
                 }
             }
+        }
+
+        @objc private func handleJoystickMove(_ notification: Notification) {
+            guard let userInfo = notification.userInfo,
+                  let offset = userInfo["offset"] as? CGSize else { return }
+
+            let moveSpeed: CGFloat = 0.05
+            let dx = Float(offset.width * moveSpeed)
+            let dy = Float(-offset.height * moveSpeed)  // Invert Y for intuitive control
+
+            // Skip if no movement
+            if abs(dx) < 0.001 && abs(dy) < 0.001 { return }
+
+            // JavaScript to move camera by modifying viewMatrix translation
+            // viewMatrix is column-major: [12]=tx, [13]=ty, [14]=tz
+            let js = """
+                if (typeof viewMatrix !== 'undefined' && viewMatrix) {
+                    // Stop carousel animation
+                    if (typeof carousel !== 'undefined') carousel = false;
+
+                    // Move camera (tx and tz for horizontal movement)
+                    viewMatrix[12] += \(dx);  // Left/right
+                    viewMatrix[14] += \(dy);  // Forward/backward
+                }
+            """
+            webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -906,6 +948,87 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - WebGL Joystick Overlay
+
+/// Joystick overlay specifically for WebGL camera control
+/// Posts notifications that the WebView coordinator listens to
+struct WebGLJoystickOverlay: View {
+    @State private var offset: CGSize = .zero
+    @State private var isDragging = false
+
+    private let joystickSize: CGFloat = 120
+    private let knobSize: CGFloat = 50
+    private let maxOffset: CGFloat = 35
+
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                // Joystick base
+                ZStack {
+                    // Outer ring
+                    Circle()
+                        .fill(Color.black.opacity(0.3))
+                        .frame(width: joystickSize, height: joystickSize)
+
+                    // Directional indicators
+                    Circle()
+                        .stroke(Color.white.opacity(0.3), lineWidth: 2)
+                        .frame(width: joystickSize - 10, height: joystickSize - 10)
+
+                    // Knob
+                    Circle()
+                        .fill(isDragging ? Color.blue : Color.white.opacity(0.8))
+                        .frame(width: knobSize, height: knobSize)
+                        .shadow(color: .black.opacity(0.3), radius: 4)
+                        .offset(offset)
+                }
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            isDragging = true
+                            let translation = value.translation
+
+                            // Clamp to circular bounds
+                            let distance = sqrt(translation.width * translation.width + translation.height * translation.height)
+                            if distance > maxOffset {
+                                let scale = maxOffset / distance
+                                offset = CGSize(
+                                    width: translation.width * scale,
+                                    height: translation.height * scale
+                                )
+                            } else {
+                                offset = translation
+                            }
+
+                            // Post notification for WebGL camera movement
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("WebGLJoystickMove"),
+                                object: nil,
+                                userInfo: ["offset": offset]
+                            )
+                        }
+                        .onEnded { _ in
+                            isDragging = false
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                offset = .zero
+                            }
+                            // Post zero offset to stop movement
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("WebGLJoystickMove"),
+                                object: nil,
+                                userInfo: ["offset": CGSize.zero]
+                            )
+                        }
+                )
+                Spacer()
+            }
+            .padding(.bottom, 40)
         }
     }
 }
