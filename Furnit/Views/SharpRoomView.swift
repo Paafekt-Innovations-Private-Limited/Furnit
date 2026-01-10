@@ -165,7 +165,11 @@ struct SharpRoomView: View {
             // HUD (hide when SmartyPants active)
             if !showingSmartyPants {
                 VStack {
-                    HStack {
+                    HStack(alignment: .top) {
+                        // Room info (left side)
+                        roomInfoBadge
+                            .padding(.leading, 8)
+
                         Spacer()
 
                         // Save button
@@ -333,6 +337,63 @@ struct SharpRoomView: View {
                     logDebug("❌ [SharpRoomView] Failed to load \(name).\(ext): \(error)")
                 }
             }
+        }
+    }
+
+    // MARK: - Room Info Badge
+    private var roomInfoBadge: some View {
+        let boundaryManager = WebGLBoundaryManager(bounds: roomBounds)
+        let fileSize = getFileSize()
+
+        return VStack(alignment: .leading, spacing: 4) {
+            // Room dimensions
+            HStack(spacing: 6) {
+                Image(systemName: "cube.transparent")
+                    .font(.system(size: 12))
+                    .foregroundColor(.purple)
+
+                Text(String(format: "%.1f × %.1f × %.1f m",
+                            boundaryManager.width,
+                            boundaryManager.height,
+                            boundaryManager.depth))
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+            }
+
+            // File size
+            HStack(spacing: 6) {
+                Image(systemName: "doc.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(.blue)
+
+                Text(fileSize)
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.8))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.black.opacity(0.6))
+        )
+    }
+
+    /// Get file size of the PLY file
+    private func getFileSize() -> String {
+        let url = classicPlyURL
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? UInt64 else {
+            return "Unknown"
+        }
+
+        let mb = Double(size) / (1024 * 1024)
+        if mb >= 1.0 {
+            return String(format: "%.1f MB", mb)
+        } else {
+            let kb = Double(size) / 1024
+            return String(format: "%.0f KB", kb)
         }
     }
 
