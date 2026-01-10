@@ -1064,6 +1064,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }
                 }
 
+
                 function hideLoadingMessage() {
                     const msg = document.getElementById('message');
                     if (msg) msg.style.display = 'none';
@@ -1100,8 +1101,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                 });
             </script>
 
-            <!-- Load antimatter15/splat from CDN -->
-            <script src="https://cdn.jsdelivr.net/gh/antimatter15/splat@main/main.js"></script>
+            <!-- Load our modified main.js with faster touch sensitivity -->
+            <script src="splat://local/main.js"></script>
         </body>
         </html>
         """
