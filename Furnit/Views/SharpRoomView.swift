@@ -45,7 +45,7 @@ struct WebGLBoundaryManager {
         let eye = SIMD3<Float>(
             0,                          // Center X
             0,                          // Center Y (room is symmetric)
-            2.0                         // In front (positive Z, outside room)
+            6.0                         // Further back (positive Z, outside room)
         )
 
         let target = SIMD3<Float>(
@@ -541,9 +541,15 @@ struct AntimatterSplatView: UIViewRepresentable {
             <div id="fps"></div>
             <div id="camid"></div>
             <div id="info"></div>
+            <div id="debug" style="position:absolute;top:10px;left:10px;color:lime;font-size:14px;z-index:999;background:rgba(0,0,0,0.5);padding:5px;">WebGL Loading...</div>
             <canvas id="canvas"></canvas>
 
             <script>
+                // Log JS errors to console
+                window.addEventListener('error', function(e) {
+                    console.log('[JS Error] ' + e.message + ' at ' + e.filename + ':' + e.lineno);
+                });
+
                 // Room bounds from Swift (for camera positioning)
                 const roomWidth = \(boundaryManager.width);
                 const roomHeight = \(boundaryManager.height);
@@ -593,21 +599,23 @@ struct AntimatterSplatView: UIViewRepresentable {
                     ];
                 }
 
-                // Position camera based on room bounds from Swift
+                // Camera adjustment disabled - let viewer handle it
                 let cameraAdjusted = false;
                 function adjustCameraDistance() {
                     if (cameraAdjusted) return;
                     if (typeof viewMatrix === 'undefined' || !viewMatrix) return;
 
-                    // Camera position calculated from room bounds
-                    const eye = [\(eyeX), \(eyeY), \(eyeZ)];
-                    const target = [\(targetX), \(targetY), \(targetZ)];
-                    const up = [0, 1, 0];
-
-                    console.log('[Camera] Setting eye=' + JSON.stringify(eye) + ' target=' + JSON.stringify(target));
-                    viewMatrix = lookAt(eye, target, up);
+                    // Just save the default view matrix for recenter, don't modify
                     defaultViewMatrix = viewMatrix.slice();
                     cameraAdjusted = true;
+
+                    // Debug: show viewMatrix on screen
+                    const debug = document.getElementById('debug');
+                    if (debug && viewMatrix) {
+                        const z = viewMatrix[14] ? viewMatrix[14].toFixed(2) : 'N/A';
+                        debug.textContent = 'Loaded! viewMatrix[14]=' + z;
+                    }
+                    console.log('[Camera] viewMatrix:', viewMatrix);
                 }
 
 
