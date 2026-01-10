@@ -611,9 +611,9 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
 
-            // Classic PLY: point inversion for correct orientation: (x, y, z) → (-x, -y, -z)
+            // Classic PLY: 180° Y rotation to show front of room: (x, y, z) → (-x, y, -z)
             var classicX = -x
-            var classicY = -y
+            var classicY = y
             var classicZ = -z
             classicData.append(Data(bytes: &classicX, count: 4))
             classicData.append(Data(bytes: &classicY, count: 4))

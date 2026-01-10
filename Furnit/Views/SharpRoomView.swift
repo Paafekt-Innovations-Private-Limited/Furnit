@@ -863,6 +863,49 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
+        // Serve the local main.js (modified antimatter15/splat)
+        if path == "/main.js" {
+            // Try bundle first
+            if let jsURL = Bundle.main.url(forResource: "splat_main", withExtension: "js"),
+               let data = try? Data(contentsOf: jsURL) {
+                let response = HTTPURLResponse(
+                    url: requestURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Type": "application/javascript; charset=utf-8",
+                        "Content-Length": "\(data.count)"
+                    ]
+                )!
+                urlSchemeTask.didReceive(response)
+                urlSchemeTask.didReceive(data)
+                urlSchemeTask.didFinish()
+                logDebug("LocalFileSchemeHandler: Served main.js from bundle (\(data.count) bytes)")
+                return
+            }
+
+            // Try filesystem path as fallback
+            let fsPath = "/Users/al/Documents/tries01/Furnit/Furnit/Resources/splat_main.js"
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: fsPath)) {
+                let response = HTTPURLResponse(
+                    url: requestURL,
+                    statusCode: 200,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: [
+                        "Content-Type": "application/javascript; charset=utf-8",
+                        "Content-Length": "\(data.count)"
+                    ]
+                )!
+                urlSchemeTask.didReceive(response)
+                urlSchemeTask.didReceive(data)
+                urlSchemeTask.didFinish()
+                logDebug("LocalFileSchemeHandler: Served main.js from filesystem (\(data.count) bytes)")
+                return
+            }
+
+            logDebug("LocalFileSchemeHandler: main.js not found anywhere!")
+        }
+
         // 404 for other paths
         let errorResponse = HTTPURLResponse(
             url: requestURL,
@@ -1021,51 +1064,6 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }
                 }
 
-                // Poll until viewMatrix is ready, then save it
-                (function captureDefaultView() {
-                    let tries = 0;
-                    const maxTries = 200;
-                    const timer = setInterval(function() {
-                        tries++;
-                        if (typeof viewMatrix !== 'undefined' && viewMatrix && viewMatrix.length === 16) {
-                            saveDefaultViewMatrix();
-                            clearInterval(timer);
-                        } else if (tries >= maxTries) {
-                            clearInterval(timer);
-                        }
-                    }, 30);
-                })();
-
-                // Stop all floating/auto-movement
-                function stopAllMovement() {
-                    setInterval(function() {
-                        if (typeof carousel !== 'undefined' && carousel === true) {
-                            carousel = false;
-                        }
-                    }, 30);
-
-                    document.addEventListener('keydown', function(e) {
-                        if (e.key === 'p' || e.key === 'P') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (typeof carousel !== 'undefined') carousel = false;
-                            return false;
-                        }
-                    }, true);
-
-                    ['touchstart', 'touchend', 'touchmove', 'mousedown', 'mouseup', 'mousemove'].forEach(function(evt) {
-                        document.addEventListener(evt, function() {
-                            if (typeof carousel !== 'undefined') carousel = false;
-                        }, true);
-                    });
-
-                    setTimeout(function() {
-                        if (typeof cameras !== 'undefined' && cameras.length > 0) {
-                            cameras.length = 0;
-                        }
-                    }, 2000);
-                }
-
                 function hideLoadingMessage() {
                     const msg = document.getElementById('message');
                     if (msg) msg.style.display = 'none';
@@ -1074,11 +1072,16 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const jsStartTime = performance.now();
 
                 window.addEventListener('load', function() {
-                    stopAllMovement();
+                    // Disable carousel
+                    if (typeof carousel !== 'undefined') carousel = false;
 
                     let checkCount = 0;
                     const checkLoaded = setInterval(function() {
                         checkCount++;
+
+                        if (checkCount === 30) {
+                            saveDefaultViewMatrix();
+                        }
 
                         if (checkCount === 50) {
                             hideLoadingMessage();
@@ -1097,7 +1100,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                 });
             </script>
 
-            <!-- Load the antimatter15/splat main.js from jsDelivr CDN -->
+            <!-- Load antimatter15/splat from CDN -->
             <script src="https://cdn.jsdelivr.net/gh/antimatter15/splat@main/main.js"></script>
         </body>
         </html>
