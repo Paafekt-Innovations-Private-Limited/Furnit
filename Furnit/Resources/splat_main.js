@@ -70,7 +70,7 @@ function setCameraFromBounds(min, max) {
     const radius = Math.max(sizeX, sizeY, sizeZ) * 0.5;
 
     // Distance from center - adjust multiplier for framing
-    const dist = radius * 1.8;
+    const dist = radius * 3.5;
 
     // Position camera along +Z axis from center (front of room)
     // Try different positions if this doesn't work
@@ -656,7 +656,7 @@ void main () {
 
 let defaultViewMatrix = [
     0.47, 0.04, 0.88, 0, -0.11, 0.99, 0.02, 0, -0.88, -0.11, 0.47, 0, 0.07,
-    0.03, 6.55, 1,
+    0.03, 15.0, 1,
 ];
 let viewMatrix = defaultViewMatrix;
 

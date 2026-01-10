@@ -1064,6 +1064,22 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }
                 }
 
+                // Zoom out camera to see full room
+                let cameraAdjusted = false;
+                function adjustCameraDistance() {
+                    if (cameraAdjusted) return;
+                    if (typeof viewMatrix === 'undefined' || !viewMatrix) return;
+                    if (typeof invert4 === 'undefined' || typeof translate4 === 'undefined') return;
+
+                    // Move camera back by translating along Z
+                    let inv = invert4(viewMatrix);
+                    inv = translate4(inv, 0, 0, -8);  // Move back 8 units
+                    viewMatrix = invert4(inv);
+                    defaultViewMatrix = viewMatrix.slice();
+                    cameraAdjusted = true;
+                    console.log('[Camera] Zoomed out');
+                }
+
 
                 function hideLoadingMessage() {
                     const msg = document.getElementById('message');
@@ -1080,12 +1096,17 @@ struct AntimatterSplatView: UIViewRepresentable {
                     const checkLoaded = setInterval(function() {
                         checkCount++;
 
+                        if (checkCount === 20) {
+                            adjustCameraDistance();
+                        }
+
                         if (checkCount === 30) {
                             saveDefaultViewMatrix();
                         }
 
                         if (checkCount === 50) {
                             hideLoadingMessage();
+                            adjustCameraDistance();
                             saveDefaultViewMatrix();
 
                             const totalTime = performance.now() - jsStartTime;
@@ -1101,8 +1122,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                 });
             </script>
 
-            <!-- Load our modified main.js with faster touch sensitivity -->
-            <script src="splat://local/main.js"></script>
+            <!-- Load antimatter15/splat from CDN -->
+            <script src="https://cdn.jsdelivr.net/gh/antimatter15/splat@main/main.js"></script>
         </body>
         </html>
         """
