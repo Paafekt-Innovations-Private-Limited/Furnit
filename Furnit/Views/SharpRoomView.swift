@@ -88,6 +88,17 @@ struct SharpRoomView: View {
     @State private var roomSnapshot: UIImage? = nil
     @State private var mlModel: MLModel? = nil
 
+    // Save room state
+    @StateObject private var modelManager = USDZModelManager()
+    @State private var isSavingRoom = false
+    @State private var saveProgress: Double = 0.0
+    @State private var savingTimer: Timer?
+    @State private var showSaveAlert = false
+    @State private var saveAlertMessage = ""
+    @State private var saveWasSuccessful = false
+    @State private var showRoomNameInput = false
+    @State private var roomName = ""
+
     /// Compute classic PLY URL (pre-rotated for antimatter15/splat)
     private var classicPlyURL: URL {
         let path = plyURL.path
@@ -157,6 +168,18 @@ struct SharpRoomView: View {
                     HStack {
                         Spacer()
 
+                        // Save button
+                        Button(action: {
+                            showRoomNameInput = true
+                        }) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 20))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Circle().fill(Color.gray.opacity(0.8)))
+                        }
+                        .disabled(isLoading)
+
                         // Recenter button
                         Button(action: {
                             NotificationCenter.default.post(name: NSNotification.Name("RecenterWebGLCamera"), object: nil)
@@ -172,6 +195,11 @@ struct SharpRoomView: View {
                     .padding()
                     Spacer()
                 }
+            }
+
+            // Save progress overlay
+            if isSavingRoom {
+                saveRoomProgressOverlay
             }
 
             // Bottom buttons (brain left, screenshot right when SmartyPants active)
@@ -226,6 +254,29 @@ struct SharpRoomView: View {
         .onAppear {
             loadMLModel()
         }
+        // Room name input alert
+        .alert("Save Room", isPresented: $showRoomNameInput) {
+            TextField("Room name", text: $roomName)
+            Button("Cancel", role: .cancel) {
+                roomName = ""
+            }
+            Button("Save") {
+                startSavingRoom()
+            }
+            .disabled(roomName.isEmpty)
+        } message: {
+            Text("Enter a name for this room")
+        }
+        // Save result alert
+        .alert("Room Save", isPresented: $showSaveAlert) {
+            Button("OK", role: .cancel) {
+                if saveWasSuccessful {
+                    dismiss()
+                }
+            }
+        } message: {
+            Text(saveAlertMessage)
+        }
     }
 
     // MARK: - Screenshot
@@ -278,6 +329,116 @@ struct SharpRoomView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Save Room Progress Overlay
+    private var saveRoomProgressOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.9)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.2))
+                        .frame(width: 100, height: 100)
+
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 40))
+                        .foregroundColor(.green)
+                }
+
+                Text("Saving Room...")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+
+                ProgressView(value: saveProgress)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                    .frame(width: 200)
+
+                Text("\(Int(saveProgress * 100))%")
+                    .font(.headline)
+                    .foregroundColor(.gray)
+
+                Button("Cancel") {
+                    cancelSavingRoom()
+                }
+                .foregroundColor(.red)
+                .padding(.top, 20)
+            }
+        }
+    }
+
+    // MARK: - Save Room Functions
+    private func startSavingRoom() {
+        guard !roomName.isEmpty else { return }
+
+        let savedName = roomName
+        logDebug("💾 [SharpRoomView] Starting room save: \(savedName)")
+
+        withAnimation(.easeIn(duration: 0.3)) {
+            isSavingRoom = true
+            saveProgress = 0.0
+        }
+
+        var saveStarted = false
+        var saveCompleted = false
+        var saveSuccess = false
+        var saveError: String?
+
+        savingTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+            if !saveStarted || (saveStarted && saveCompleted) {
+                self.saveProgress += 0.015
+            }
+
+            if self.saveProgress >= 0.6 && !saveStarted {
+                saveStarted = true
+                // Save the PLY file
+                self.modelManager.savePLY(from: self.plyURL, name: savedName) { success, error in
+                    DispatchQueue.main.async {
+                        saveCompleted = true
+                        saveSuccess = success
+                        saveError = error
+                        logDebug(success ? "✅ [SharpRoomView] Room saved" : "❌ [SharpRoomView] Save failed: \(error ?? "unknown")")
+                    }
+                }
+            }
+
+            if self.saveProgress >= 1.0 && saveCompleted {
+                timer.invalidate()
+                self.savingTimer = nil
+
+                withAnimation(.easeOut(duration: 0.3)) {
+                    self.isSavingRoom = false
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    if saveSuccess {
+                        self.saveAlertMessage = "Room '\(savedName)' saved successfully!"
+                        self.saveWasSuccessful = true
+                    } else {
+                        self.saveAlertMessage = "Failed to save: \(saveError ?? "Unknown error")"
+                        self.saveWasSuccessful = false
+                    }
+                    self.showSaveAlert = true
+                    self.roomName = ""
+                }
+            }
+        }
+    }
+
+    private func cancelSavingRoom() {
+        savingTimer?.invalidate()
+        savingTimer = nil
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            isSavingRoom = false
+            saveProgress = 0.0
+        }
+
+        roomName = ""
+        logDebug("❌ [SharpRoomView] Room save cancelled")
     }
 
 }
@@ -627,8 +788,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const jsStartTime = performance.now();
 
                 window.addEventListener('load', function() {
-                    // Disable carousel
-                    if (typeof carousel !== 'undefined') carousel = false;
+                    // Keep default carousel animation (left-right orbit)
 
                     let checkCount = 0;
                     const checkLoaded = setInterval(function() {

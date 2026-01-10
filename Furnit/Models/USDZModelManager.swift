@@ -321,4 +321,50 @@ class USDZModelManager: ObservableObject {
         let sanitized = name.components(separatedBy: invalidChars).joined()
         return sanitized.replacingOccurrences(of: " ", with: "_")
     }
+
+    /// Save a PLY file to SavedRooms directory
+    func savePLY(from sourceURL: URL, name: String, completion: @escaping (Bool, String?) -> Void) {
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+
+        if debugMode {
+            logDebug("💾 [USDZModelManager] Starting to save PLY: \(name)")
+        }
+
+        let fileName = sanitizeFileName(name)
+        let destinationURL = modelsDirectory.appendingPathComponent("\(fileName).ply")
+
+        // Check if source exists
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            if debugMode {
+                logDebug("❌ [USDZModelManager] Source PLY not found: \(sourceURL.path)")
+            }
+            completion(false, "Source file not found")
+            return
+        }
+
+        do {
+            // Remove existing file if it exists
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+
+            // Copy PLY file
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+
+            if debugMode {
+                logDebug("✅ [USDZModelManager] PLY saved to: \(destinationURL.path)")
+            }
+
+            // Reload models to include the new one
+            DispatchQueue.main.async {
+                self.loadModels()
+                completion(true, nil)
+            }
+        } catch {
+            if debugMode {
+                logDebug("❌ [USDZModelManager] Failed to save PLY: \(error)")
+            }
+            completion(false, error.localizedDescription)
+        }
+    }
 }
