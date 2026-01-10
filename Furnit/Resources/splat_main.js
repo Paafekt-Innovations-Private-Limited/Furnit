@@ -591,9 +591,13 @@ void main () {
 
 `.trim();
 
+// View matrix looking straight at -Z (front wall of SHARP room)
+// Camera at (0, 0, 6) looking toward origin
 let defaultViewMatrix = [
-    0.47, 0.04, 0.88, 0, -0.11, 0.99, 0.02, 0, -0.88, -0.11, 0.47, 0, 0.07,
-    0.03, 6.55, 1,
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 6, 1,
 ];
 let viewMatrix = defaultViewMatrix;
 
