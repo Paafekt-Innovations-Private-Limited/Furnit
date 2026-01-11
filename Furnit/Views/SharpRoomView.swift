@@ -84,11 +84,124 @@ struct SharpRoomView: View {
     let allowSave: Bool  // Show save button (true for new rooms, false for viewing from home)
     @Environment(\.dismiss) private var dismiss
 
+    // Parsed bounds from PLY file (used when roomMeasurements is nil)
+    private let parsedBounds: RoomBounds?
+
     // Convenience initializer for backwards compatibility
     init(plyURL: URL, roomMeasurements: RoomMeasurements? = nil, allowSave: Bool = true) {
         self.plyURL = plyURL
         self.roomMeasurements = roomMeasurements
         self.allowSave = allowSave
+
+        // Compute classic PLY URL (matches what we display and save)
+        let classicPath = plyURL.path.replacingOccurrences(of: ".ply", with: "_classic.ply")
+        let classicURL = FileManager.default.fileExists(atPath: classicPath)
+            ? URL(fileURLWithPath: classicPath)
+            : plyURL
+
+        // Always parse bounds from the classic PLY we're displaying
+        // This ensures consistent camera framing regardless of whether roomMeasurements is provided
+        self.parsedBounds = Self.parsePLYBounds(from: classicURL)
+    }
+
+    /// Parse PLY file to extract position bounds (for HomeView where roomMeasurements isn't available)
+    private static func parsePLYBounds(from url: URL) -> RoomBounds? {
+        guard let data = try? Data(contentsOf: url) else {
+            logDebug("PLY Parser: Failed to read file")
+            return nil
+        }
+
+        // Find end_header
+        guard let headerEndRange = data.range(of: Data("end_header\n".utf8)) else {
+            logDebug("PLY Parser: No end_header found")
+            return nil
+        }
+
+        // Parse header for vertex count
+        guard let headerString = String(data: data[..<headerEndRange.lowerBound], encoding: .utf8) else {
+            logDebug("PLY Parser: Failed to parse header")
+            return nil
+        }
+
+        var vertexCount = 0
+        for line in headerString.components(separatedBy: "\n") {
+            if line.hasPrefix("element vertex ") {
+                let parts = line.components(separatedBy: " ")
+                if parts.count >= 3, let count = Int(parts[2]) {
+                    vertexCount = count
+                }
+            }
+        }
+
+        guard vertexCount > 0 else {
+            logDebug("PLY Parser: No vertices found")
+            return nil
+        }
+
+        logDebug("PLY Parser: Found \(vertexCount) vertices")
+
+        // Binary data starts after header
+        let binaryStart = headerEndRange.upperBound
+
+        // Each vertex: x,y,z (3 floats) + other properties
+        // Stride: 3 floats (xyz) + 3 floats (scale) + 4 floats (rot) + 1 float (opacity) + 3 bytes (rgb) = 47 bytes
+        let bytesPerVertex = 47
+        let binaryDataLength = data.count - binaryStart
+
+        var minX: Float = .greatestFiniteMagnitude
+        var maxX: Float = -.greatestFiniteMagnitude
+        var minY: Float = .greatestFiniteMagnitude
+        var maxY: Float = -.greatestFiniteMagnitude
+        var minZ: Float = .greatestFiniteMagnitude
+        var maxZ: Float = -.greatestFiniteMagnitude
+
+        let maxVertices = min(vertexCount, binaryDataLength / bytesPerVertex)
+
+        // Use safe byte copying to avoid alignment issues
+        for i in 0..<maxVertices {
+            let byteOffset = binaryStart + i * bytesPerVertex
+            guard byteOffset + 12 <= data.count else { continue }
+
+            var x: Float = 0
+            var y: Float = 0
+            var z: Float = 0
+
+            _ = withUnsafeMutableBytes(of: &x) { dest in
+                data.copyBytes(to: dest, from: byteOffset..<(byteOffset + 4))
+            }
+            _ = withUnsafeMutableBytes(of: &y) { dest in
+                data.copyBytes(to: dest, from: (byteOffset + 4)..<(byteOffset + 8))
+            }
+            _ = withUnsafeMutableBytes(of: &z) { dest in
+                data.copyBytes(to: dest, from: (byteOffset + 8)..<(byteOffset + 12))
+            }
+
+            minX = min(minX, x)
+            maxX = max(maxX, x)
+            minY = min(minY, y)
+            maxY = max(maxY, y)
+            minZ = min(minZ, z)
+            maxZ = max(maxZ, z)
+        }
+
+        guard minX < maxX else {
+            logDebug("PLY Parser: Invalid bounds")
+            return nil
+        }
+
+        logDebug("PLY Parser: Bounds X[\(minX), \(maxX)] Y[\(minY), \(maxY)] Z[\(minZ), \(maxZ)]")
+
+        return RoomBounds(
+            minX: minX, maxX: maxX,
+            minY: minY, maxY: maxY,
+            minZ: minZ, maxZ: maxZ
+        )
+    }
+
+    /// Get effective bounds - always use parsed bounds from the displayed PLY file
+    /// (roomMeasurements.actualBounds uses different coordinate system)
+    private var effectiveBounds: RoomBounds? {
+        parsedBounds
     }
 
     @State private var isLoading = true
@@ -138,11 +251,11 @@ struct SharpRoomView: View {
 
     var body: some View {
         ZStack {
-            // WebGL view using SparkJS (with original PLY)
+            // WebGL view using SparkJS (with classic PLY for correct coordinate system)
             AntimatterSplatView(
-                plyURL: plyURL,
+                plyURL: classicPlyURL,
                 roomBounds: roomMeasurements?.boundingBox,
-                actualBounds: roomMeasurements?.actualBounds,
+                actualBounds: effectiveBounds,
                 onLoaded: {
                     isLoading = false
                 },
@@ -273,8 +386,8 @@ struct SharpRoomView: View {
                     .disabled(isLoading)
                 }
 
-                // Save button (only in debug mode, and only for new rooms)
-                if AppStateManager.shared.qualitySettings.debugMode && allowSave {
+                // Save button (only for new rooms, not when viewing from home)
+                if allowSave {
                     Button(action: {
                         showRoomNameInput = true
                     }) {
@@ -577,7 +690,7 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
                 urlSchemeTask.didFinish()
 
                 let sizeMB = Double(data.count) / (1024 * 1024)
-                print("⏱️ [WebGL] PLY file read: \(String(format: "%.0f", readTime))ms (\(String(format: "%.1f", sizeMB)) MB)")
+                logDebug("⏱️ [WebGL] PLY file read: \(String(format: "%.0f", readTime))ms (\(String(format: "%.1f", sizeMB)) MB)")
             } catch {
                 logDebug("LocalFileSchemeHandler: Failed to read PLY: \(error)")
                 urlSchemeTask.didFailWithError(error)
@@ -849,7 +962,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     function autoFrameRoom() {
                         console.log('=== autoFrameRoom() called ===');
                         try {
-                            let wallWidth, wallHeight, centerX, centerY, frontZ;
+                            let wallWidth, wallHeight, centerX, centerY, frontZ, backZ;
 
                             if (hasActualBounds && swiftBounds.maxX !== 0) {
                                 // Use Swift-computed bounds (accurate)
@@ -858,6 +971,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 centerX = (swiftBounds.minX + swiftBounds.maxX) / 2;
                                 centerY = (swiftBounds.minY + swiftBounds.maxY) / 2;
                                 frontZ = swiftBounds.maxZ;
+                                backZ = swiftBounds.minZ;
                                 console.log('Using Swift bounds');
                             } else {
                                 // Fallback: try Box3
@@ -876,6 +990,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 centerX = center.x;
                                 centerY = center.y;
                                 frontZ = box.max.z;
+                                backZ = box.min.z;
                             }
 
                             console.log('Wall:', wallWidth.toFixed(2), 'x', wallHeight.toFixed(2));
@@ -888,16 +1003,17 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 });
                             }
 
-                            // Calculate camera position - use MUCH tighter framing
+                            // Calculate camera position - camera BEHIND near points, looking INTO room at front wall
+                            // In classic PLY coords: minZ = near camera, maxZ = front wall (far)
                             const maxDim = Math.max(wallWidth, wallHeight);
                             const fov = THREE.MathUtils.degToRad(camera.fov);
                             const aspect = window.innerWidth / window.innerHeight;
                             const fitHeightDist = (maxDim / 2) / Math.tan(fov / 2);
                             const fitWidthDist = (maxDim / 2) / (Math.tan(fov / 2) * aspect);
-                            // Use 0.4 for MUCH closer view (was 0.6)
-                            let distance = Math.max(fitHeightDist, fitWidthDist) * 0.4;
+                            let distance = Math.max(fitHeightDist, fitWidthDist) * 0.5;
 
-                            const newCamPos = new THREE.Vector3(centerX, centerY, frontZ + distance);
+                            // Camera positioned BEFORE the near points (backZ - distance), looking at front wall
+                            const newCamPos = new THREE.Vector3(centerX, centerY, backZ - distance);
                             const newTarget = new THREE.Vector3(centerX, centerY, frontZ);
 
                             console.log('OLD camera pos:', camera.position.x.toFixed(2), camera.position.y.toFixed(2), camera.position.z.toFixed(2));
@@ -977,7 +1093,7 @@ struct AntimatterSplatView: UIViewRepresentable {
             self.onLoaded = onLoaded
             self.onFrontWallDimensions = onFrontWallDimensions
             self.loadStartTime = CFAbsoluteTimeGetCurrent()
-            print("⏱️ [WebGL] Starting load...")
+            logDebug("⏱️ [WebGL] Starting load...")
             super.init()
 
             // Listen for recenter notification
@@ -1003,11 +1119,11 @@ struct AntimatterSplatView: UIViewRepresentable {
         }
 
         @objc private func recenterCamera() {
-            print("🎯 [WebGL] Recentering camera")
+            logDebug("🎯 [WebGL] Recentering camera")
             let js = "if (typeof recenterCamera === 'function') recenterCamera();"
             webView?.evaluateJavaScript(js) { _, error in
                 if let error = error {
-                    print("❌ [WebGL] Recenter JS error: \(error)")
+                    logDebug("❌ [WebGL] Recenter JS error: \(error)")
                 }
             }
         }
@@ -1029,32 +1145,32 @@ struct AntimatterSplatView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             let elapsed = (CFAbsoluteTimeGetCurrent() - loadStartTime) * 1000
-            print("⏱️ [WebGL] HTML page loaded: \(String(format: "%.0f", elapsed))ms")
+            logDebug("⏱️ [WebGL] HTML page loaded: \(String(format: "%.0f", elapsed))ms")
 
             // Fallback: notify loaded after delay if JS doesn't report
             DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
                 if !self.hasNotifiedLoaded {
                     self.hasNotifiedLoaded = true
                     let total = (CFAbsoluteTimeGetCurrent() - self.loadStartTime) * 1000
-                    print("⏱️ [WebGL] Total load (fallback): \(String(format: "%.0f", total))ms")
+                    logDebug("⏱️ [WebGL] Total load (fallback): \(String(format: "%.0f", total))ms")
                     self.onLoaded()
                 }
             }
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            print("❌ [WebGL] Navigation failed: \(error)")
+            logDebug("❌ [WebGL] Navigation failed: \(error)")
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            print("❌ [WebGL] Provisional navigation failed: \(error)")
+            logDebug("❌ [WebGL] Provisional navigation failed: \(error)")
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "splatLoaded" {
                 if let body = message.body as? [String: Any], body["loaded"] != nil {
                     let elapsed = (CFAbsoluteTimeGetCurrent() - loadStartTime) * 1000
-                    print("⏱️ [WebGL] Splat rendered: \(String(format: "%.0f", elapsed))ms total")
+                    logDebug("⏱️ [WebGL] Splat rendered: \(String(format: "%.0f", elapsed))ms total")
 
                     if !hasNotifiedLoaded {
                         hasNotifiedLoaded = true
@@ -1067,7 +1183,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                 if let body = message.body as? [String: Any],
                    let w = body["width"] as? Double,
                    let h = body["height"] as? Double {
-                    print("📏 [WebGL] Front wall from JS: \(String(format: "%.2f", w)) × \(String(format: "%.2f", h))")
+                    logDebug("📏 [WebGL] Front wall from JS: \(String(format: "%.2f", w)) × \(String(format: "%.2f", h))")
                     DispatchQueue.main.async {
                         self.onFrontWallDimensions?(w, h)
                     }
