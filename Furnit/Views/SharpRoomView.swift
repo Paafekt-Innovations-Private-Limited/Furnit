@@ -31,27 +31,35 @@ struct WebGLBoundaryManager {
         }
     }
 
-    /// Calculate optimal camera position for viewing the room
-    /// Camera positioned outside room, looking at room center
+    /// Calculate optimal camera position for viewing the front wall
+    /// Camera positioned to frame the front wall nicely
     /// Returns (eye position, target position) for lookAt camera
     func getOptimalCameraPosition() -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
         // Classic PLY transform: (x, -y, -z)
-        // Room ends up entirely in NEGATIVE Z (front wall around -1, back wall around -depth-1)
-        // Room is roughly centered in X and Y around origin
-        // Estimate room center Z based on typical SHARP output pattern
+        // Room extends into negative Z (front wall around -1.4, back wall around -4.7)
 
-        let roomCenterZ = -(depth / 2 + 1.5)  // Room center (estimated from logs)
+        // Front wall is at the "closest" Z (least negative)
+        let frontWallZ: Float = -1.4  // Typical front wall position from logs
+
+        // Calculate distance to fit the larger of width/height in view
+        // FOV is 60 degrees, so tan(30°) = 0.577
+        let maxDim = max(width, height)
+        let tanHalfFov: Float = 0.577  // tan(30°)
+        var distance = (maxDim / 2) / tanHalfFov
+
+        // Make it tighter (0.6x = 60% of the "fit exactly" distance)
+        distance *= 0.6
 
         let eye = SIMD3<Float>(
             0,                          // Center X
-            0,                          // Center Y (room is symmetric)
-            6.0                         // Further back (positive Z, outside room)
+            0,                          // Center Y
+            frontWallZ + distance       // In front of the wall
         )
 
         let target = SIMD3<Float>(
             0,                          // Center X
             0,                          // Center Y
-            roomCenterZ                 // Room center Z
+            frontWallZ                  // Look at front wall
         )
 
         return (eye: eye, target: target)
@@ -90,6 +98,10 @@ struct SharpRoomView: View {
     @State private var roomSnapshot: UIImage? = nil
     @State private var mlModel: MLModel? = nil
 
+    // JS-measured front wall dimensions (from actual splat bounds)
+    @State private var jsFrontWallWidth: Float?
+    @State private var jsFrontWallHeight: Float?
+
     // Save room state
     @StateObject private var modelManager = USDZModelManager()
     @State private var isSavingRoom = false
@@ -127,9 +139,19 @@ struct SharpRoomView: View {
     var body: some View {
         ZStack {
             // WebGL view using SparkJS (with original PLY)
-            AntimatterSplatView(plyURL: plyURL, roomBounds: roomMeasurements?.boundingBox, onLoaded: {
-                isLoading = false
-            })
+            AntimatterSplatView(
+                plyURL: plyURL,
+                roomBounds: roomMeasurements?.boundingBox,
+                actualBounds: roomMeasurements?.actualBounds,
+                onLoaded: {
+                    isLoading = false
+                },
+                onFrontWallDimensions: { w, h in
+                    // Store JS-measured dimensions for nav title
+                    jsFrontWallWidth = Float(w)
+                    jsFrontWallHeight = Float(h)
+                }
+            )
             .ignoresSafeArea()
 
             // Loading overlay
@@ -352,9 +374,13 @@ struct SharpRoomView: View {
 
     // MARK: - Navigation Title with Dimensions
     private var navigationTitleWithDimensions: String {
-        // Use actual room measurements if available
-        let wallWidth = roomMeasurements?.frontWallWidth ?? 4.0
-        let wallHeight = roomMeasurements?.frontWallHeight ?? 3.0
+        // Use actual room measurements if available, then JS-measured, then defaults
+        let wallWidth = roomMeasurements?.frontWallWidth
+            ?? jsFrontWallWidth
+            ?? 4.0
+        let wallHeight = roomMeasurements?.frontWallHeight
+            ?? jsFrontWallHeight
+            ?? 3.0
         let depth = roomMeasurements?.roomDepth ?? 2.0
 
         return String(format: "%.1f × %.1f × %.1f m", wallWidth, wallHeight, depth)
@@ -620,10 +646,12 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
 struct AntimatterSplatView: UIViewRepresentable {
     let plyURL: URL
     let roomBounds: SIMD3<Float>?  // Room dimensions for camera positioning
+    let actualBounds: RoomBounds?  // Actual min/max bounds for precise framing
     let onLoaded: () -> Void
+    var onFrontWallDimensions: ((Double, Double) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onLoaded: onLoaded)
+        Coordinator(onLoaded: onLoaded, onFrontWallDimensions: onFrontWallDimensions)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -638,11 +666,12 @@ struct AntimatterSplatView: UIViewRepresentable {
         // Register custom URL scheme handler
         let schemeHandler = LocalFileSchemeHandler()
         schemeHandler.plyURL = plyURL
-        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds)
+        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds)
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "splat")
 
-        // Add message handler for communication from JS
+        // Add message handlers for communication from JS
         config.userContentController.add(context.coordinator, name: "splatLoaded")
+        config.userContentController.add(context.coordinator, name: "frontWallDimensions")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -667,7 +696,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         // No updates needed
     }
 
-    private func generateSplatViewerHTML(bounds: SIMD3<Float>?) -> String {
+    private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?) -> String {
         // Use boundary manager to calculate camera position
         let boundaryManager = WebGLBoundaryManager(bounds: bounds)
         let cameraSetup = boundaryManager.getOptimalCameraPosition()
@@ -682,6 +711,14 @@ struct AntimatterSplatView: UIViewRepresentable {
 
         logDebug("📐 [WebGL] Room bounds: \(boundaryManager.width) × \(boundaryManager.height) × \(boundaryManager.depth)")
         logDebug("📷 [WebGL] Camera: eye=(\(eyeX), \(eyeY), \(eyeZ)) target=(\(targetX), \(targetY), \(targetZ))")
+
+        // Debug actual bounds
+        if let ab = actualBounds {
+            logDebug("📏 [WebGL] Actual bounds: X[\(ab.minX), \(ab.maxX)] Y[\(ab.minY), \(ab.maxY)] Z[\(ab.minZ), \(ab.maxZ)]")
+            logDebug("📏 [WebGL] Front wall at Z=\(ab.frontZ), center=(\(ab.centerX), \(ab.centerY))")
+        } else {
+            logDebug("⚠️ [WebGL] No actual bounds available - will use Box3 fallback")
+        }
 
         // SparkJS + THREE.js based Gaussian Splat viewer
         return """
@@ -763,7 +800,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.05;
                 controls.screenSpacePanning = false;
-                controls.minDistance = 1;
+                controls.minDistance = 0.4;   // Allow closer zooming
                 controls.maxDistance = 20;
                 controls.target.set(0, 0, 0);
 
@@ -791,34 +828,89 @@ struct AntimatterSplatView: UIViewRepresentable {
                     scene.add(splatMesh);
                     console.log('SplatMesh added to scene');
 
-                    // Auto-frame the room so it fills the view
-                    splatMesh.addEventListener('load', () => {
-                        // Compute tight bounds & bounding sphere
-                        const box = new THREE.Box3().setFromObject(splatMesh);
-                        const sphere = box.getBoundingSphere(new THREE.Sphere());
-                        const center = sphere.center;
-                        const radius = sphere.radius;
+                    // Auto-frame using actual bounds from Swift
+                    console.log('=== AUTO-FRAME SETUP ===');
+                    const hasActualBounds = \(actualBounds != nil ? "true" : "false");
+                    const swiftBounds = {
+                        minX: \(actualBounds?.minX ?? 0),
+                        maxX: \(actualBounds?.maxX ?? 0),
+                        minY: \(actualBounds?.minY ?? 0),
+                        maxY: \(actualBounds?.maxY ?? 0),
+                        minZ: \(actualBounds?.minZ ?? 0),
+                        maxZ: \(actualBounds?.maxZ ?? 0)
+                    };
+                    console.log('hasActualBounds:', hasActualBounds);
+                    console.log('swiftBounds:', JSON.stringify(swiftBounds));
 
-                        const fov = THREE.MathUtils.degToRad(camera.fov);
-                        const aspect = window.innerWidth / window.innerHeight;
+                    function autoFrameRoom() {
+                        console.log('=== autoFrameRoom() called ===');
+                        try {
+                            let wallWidth, wallHeight, centerX, centerY, frontZ;
 
-                        // Distances required to fit sphere in view
-                        const fitHeightDist = radius / Math.tan(fov / 2);
-                        const fitWidthDist  = radius / (Math.tan(fov / 2) * aspect);
-                        let distance = Math.max(fitHeightDist, fitWidthDist);
+                            if (hasActualBounds && swiftBounds.maxX !== 0) {
+                                // Use Swift-computed bounds (accurate)
+                                wallWidth = swiftBounds.maxX - swiftBounds.minX;
+                                wallHeight = swiftBounds.maxY - swiftBounds.minY;
+                                centerX = (swiftBounds.minX + swiftBounds.maxX) / 2;
+                                centerY = (swiftBounds.minY + swiftBounds.maxY) / 2;
+                                frontZ = swiftBounds.maxZ;
+                                console.log('Using Swift bounds');
+                            } else {
+                                // Fallback: try Box3
+                                console.log('No Swift bounds, trying Box3...');
+                                const box = new THREE.Box3().setFromObject(splatMesh);
+                                const size = box.getSize(new THREE.Vector3());
+                                console.log('Box3 size:', size.x, size.y, size.z);
+                                if (size.length() < 0.01) {
+                                    console.log('Waiting for splat...');
+                                    setTimeout(autoFrameRoom, 100);
+                                    return;
+                                }
+                                wallWidth = size.x;
+                                wallHeight = size.y;
+                                const center = box.getCenter(new THREE.Vector3());
+                                centerX = center.x;
+                                centerY = center.y;
+                                frontZ = box.max.z;
+                            }
 
-                        // Make it closer so the room uses more of the screen
-                        distance *= 0.85;
+                            console.log('Wall:', wallWidth.toFixed(2), 'x', wallHeight.toFixed(2));
+                            console.log('Center:', centerX.toFixed(2), centerY.toFixed(2), 'frontZ:', frontZ.toFixed(2));
 
-                        // Camera looks along -Z, so place it in +Z looking at center
-                        const dir = new THREE.Vector3(0, 0, 1);
-                        const position = center.clone().add(dir.multiplyScalar(distance));
+                            // Send to Swift
+                            if (window.webkit?.messageHandlers?.frontWallDimensions) {
+                                window.webkit.messageHandlers.frontWallDimensions.postMessage({
+                                    width: wallWidth, height: wallHeight
+                                });
+                            }
 
-                        camera.position.copy(position);
-                        controls.target.copy(center);
-                        controls.update();
-                        console.log('Auto-framed room (radius):', radius, 'distance:', distance);
-                    });
+                            // Calculate camera position - use MUCH tighter framing
+                            const maxDim = Math.max(wallWidth, wallHeight);
+                            const fov = THREE.MathUtils.degToRad(camera.fov);
+                            const aspect = window.innerWidth / window.innerHeight;
+                            const fitHeightDist = (maxDim / 2) / Math.tan(fov / 2);
+                            const fitWidthDist = (maxDim / 2) / (Math.tan(fov / 2) * aspect);
+                            // Use 0.4 for MUCH closer view (was 0.6)
+                            let distance = Math.max(fitHeightDist, fitWidthDist) * 0.4;
+
+                            const newCamPos = new THREE.Vector3(centerX, centerY, frontZ + distance);
+                            const newTarget = new THREE.Vector3(centerX, centerY, frontZ);
+
+                            console.log('OLD camera pos:', camera.position.x.toFixed(2), camera.position.y.toFixed(2), camera.position.z.toFixed(2));
+                            console.log('NEW camera pos:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2));
+                            console.log('NEW target:', newTarget.x.toFixed(2), newTarget.y.toFixed(2), newTarget.z.toFixed(2));
+
+                            camera.position.copy(newCamPos);
+                            controls.target.copy(newTarget);
+                            controls.update();
+
+                            console.log('=== Camera MOVED ===');
+                        } catch (err) {
+                            console.error('autoFrameRoom error:', err);
+                        }
+                    }
+                    console.log('Scheduling autoFrameRoom in 500ms...');
+                    setTimeout(autoFrameRoom, 500);
 
                 } catch (err) {
                     console.error('Failed to load splat:', err);
@@ -833,7 +925,7 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                 // Joystick movement handler
                 window.moveCamera = function(dx, dy) {
-                    const moveSpeed = 0.05;
+                    const moveSpeed = 0.015;  // Reduced sensitivity
                     camera.position.x += dx * moveSpeed;
                     camera.position.z += dy * moveSpeed;
                     controls.target.x += dx * moveSpeed;
@@ -871,13 +963,15 @@ struct AntimatterSplatView: UIViewRepresentable {
         var webView: WKWebView?
         var schemeHandler: LocalFileSchemeHandler?
         let onLoaded: () -> Void
+        let onFrontWallDimensions: ((Double, Double) -> Void)?
         private var hasNotifiedLoaded = false
         private var loadStartTime: CFAbsoluteTime = 0
 
         private var joystickTimer: Timer?
 
-        init(onLoaded: @escaping () -> Void) {
+        init(onLoaded: @escaping () -> Void, onFrontWallDimensions: ((Double, Double) -> Void)? = nil) {
             self.onLoaded = onLoaded
+            self.onFrontWallDimensions = onFrontWallDimensions
             self.loadStartTime = CFAbsoluteTimeGetCurrent()
             print("⏱️ [WebGL] Starting load...")
             super.init()
@@ -963,6 +1057,15 @@ struct AntimatterSplatView: UIViewRepresentable {
                         DispatchQueue.main.async {
                             self.onLoaded()
                         }
+                    }
+                }
+            } else if message.name == "frontWallDimensions" {
+                if let body = message.body as? [String: Any],
+                   let w = body["width"] as? Double,
+                   let h = body["height"] as? Double {
+                    print("📏 [WebGL] Front wall from JS: \(String(format: "%.2f", w)) × \(String(format: "%.2f", h))")
+                    DispatchQueue.main.async {
+                        self.onFrontWallDimensions?(w, h)
                     }
                 }
             }

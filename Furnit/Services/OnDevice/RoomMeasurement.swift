@@ -1,6 +1,25 @@
 import Foundation
 import simd
 
+/// Actual min/max bounds of the room in 3D space
+struct RoomBounds {
+    let minX: Float
+    let maxX: Float
+    let minY: Float
+    let maxY: Float
+    let minZ: Float
+    let maxZ: Float
+
+    var centerX: Float { (minX + maxX) / 2 }
+    var centerY: Float { (minY + maxY) / 2 }
+    var centerZ: Float { (minZ + maxZ) / 2 }
+    var width: Float { maxX - minX }
+    var height: Float { maxY - minY }
+    var depth: Float { maxZ - minZ }
+    /// Front wall Z (closest to camera, largest Z value)
+    var frontZ: Float { maxZ }
+}
+
 /// Room measurement results from plane detection
 struct RoomMeasurements {
     /// Front wall width in model units
@@ -11,6 +30,8 @@ struct RoomMeasurements {
     let roomDepth: Float
     /// Total bounding box dimensions
     let boundingBox: SIMD3<Float>
+    /// Actual min/max bounds in 3D space
+    let actualBounds: RoomBounds?
     /// Number of points used for front wall detection
     let frontWallPointCount: Int
     /// Confidence score (0-1) based on plane fit quality
@@ -89,11 +110,22 @@ class RoomMeasurement {
         logDebug("  Depth: \(roomDepth)")
         logDebug("  Points: \(positions.count)")
 
+        // Create actual bounds from min/max
+        let actualBounds = RoomBounds(
+            minX: minBound.x,
+            maxX: maxBound.x,
+            minY: minBound.y,
+            maxY: maxBound.y,
+            minZ: minBound.z,
+            maxZ: maxBound.z
+        )
+
         return RoomMeasurements(
             frontWallWidth: roomWidth,
             frontWallHeight: roomHeight,
             roomDepth: roomDepth,
             boundingBox: boundingBox,
+            actualBounds: actualBounds,
             frontWallPointCount: positions.count,
             confidence: 0.8
         )
