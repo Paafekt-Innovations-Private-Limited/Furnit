@@ -186,11 +186,13 @@ struct HomeTab: View {
             .sheet(isPresented: $showingPhotoRoomCreator) {
                 NavigationStack {
                     SinglePhotoRoomView()
-                        .navigationBarItems(
-                            trailing: Button(L10n.Common.back) {
-                                showingPhotoRoomCreator = false
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button(L10n.Common.back) {
+                                    showingPhotoRoomCreator = false
+                                }
                             }
-                        )
+                        }
                 }
             }
             // Refresh models when sheet closes
@@ -334,7 +336,7 @@ struct HomeTab: View {
 
                 // Handle PLY files - navigate to SharpRoomView (Gaussian splat viewer)
                 if model.fileType == .ply {
-                    NavigationLink(destination: SharpRoomView(plyURL: modelURL)) {
+                    NavigationLink(destination: SharpRoomView(plyURL: modelURL, allowSave: false)) {
                         HomeViewModelRow(model: model)
                     }
                     .onAppear {

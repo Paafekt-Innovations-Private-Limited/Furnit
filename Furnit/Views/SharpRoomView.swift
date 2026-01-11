@@ -73,12 +73,14 @@ struct WebGLBoundaryManager {
 struct SharpRoomView: View {
     let plyURL: URL
     let roomMeasurements: RoomMeasurements?  // Room measurements for display
+    let allowSave: Bool  // Show save button (true for new rooms, false for viewing from home)
     @Environment(\.dismiss) private var dismiss
 
     // Convenience initializer for backwards compatibility
-    init(plyURL: URL, roomMeasurements: RoomMeasurements? = nil) {
+    init(plyURL: URL, roomMeasurements: RoomMeasurements? = nil, allowSave: Bool = true) {
         self.plyURL = plyURL
         self.roomMeasurements = roomMeasurements
+        self.allowSave = allowSave
     }
 
     @State private var isLoading = true
@@ -224,13 +226,15 @@ struct SharpRoomView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
-                // Save button
-                Button(action: {
-                    showRoomNameInput = true
-                }) {
-                    Image(systemName: "square.and.arrow.down")
+                // Save button (only for new rooms, not when viewing from home)
+                if allowSave {
+                    Button(action: {
+                        showRoomNameInput = true
+                    }) {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    .disabled(isLoading)
                 }
-                .disabled(isLoading)
 
                 // Recenter button
                 Button(action: {
@@ -261,7 +265,8 @@ struct SharpRoomView: View {
         .alert("Room Save", isPresented: $showSaveAlert) {
             Button("OK", role: .cancel) {
                 if saveWasSuccessful {
-                    dismiss()
+                    // Dismiss entire sheet and go back to home view
+                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
                 }
             }
         } message: {
