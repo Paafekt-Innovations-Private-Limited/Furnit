@@ -5,6 +5,7 @@ import Metal
 import MetalKit
 import MetalPerformanceShaders
 import Accelerate
+import simd
 
 /// On-device 3D Gaussian generation using Apple's SHARP model
 /// Replaces remote Jarvis-based Room3DGenerationService with local CoreML inference
@@ -668,17 +669,16 @@ class SHARPService: ObservableObject {
 
         // Write binary vertex data
         // Each Gaussian: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14 floats
-        // Using raw SHARP output values directly
         for i in 0..<gaussianCount {
             let offset = i * Self.paramsPerGaussian
 
-            // Position - match Python test_sharp_coreml.py transform: (x, -y, -z)
+            // Position - Python transform (x, -y, -z) - DO NOT modify further, breaks quality
             let origX = filteredParams[offset + 0]
             let origY = filteredParams[offset + 1]
             let origZ = filteredParams[offset + 2]
-            var x = origX         // X unchanged
-            var y = -origY        // Y flipped (down -> up)
-            var z = -origZ        // Z flipped (forward -> backward)
+            var x = origX
+            var y = -origY
+            var z = -origZ
 
             // Track bounding box and collect positions
             minX = min(minX, x); maxX = max(maxX, x)
@@ -728,7 +728,7 @@ class SHARPService: ObservableObject {
             classicData.append(Data(bytes: &s1, count: 4))
             classicData.append(Data(bytes: &s2, count: 4))
 
-            // Rotation quaternion - normalize only, keep same order (match Python)
+            // Rotation quaternion - normalize only (don't transform, preserves quality)
             let rawR0 = filteredParams[offset + 6]
             let rawR1 = filteredParams[offset + 7]
             let rawR2 = filteredParams[offset + 8]

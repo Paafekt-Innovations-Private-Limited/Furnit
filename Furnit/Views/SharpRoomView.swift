@@ -739,6 +739,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Camera - position to see room
                 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
                 camera.position.set(0, 0, 5);
+                camera.up.set(-1, 0, 0);  // Rotate view 90° CCW to fix left tilt from PLY
 
                 // THREE.js Renderer (for SparkRenderer)
                 const renderer = new THREE.WebGLRenderer({ antialias: false });  // antialias: false per SparkJS docs
