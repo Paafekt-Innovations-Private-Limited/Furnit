@@ -793,30 +793,31 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                     // Auto-frame the room so it fills the view
                     splatMesh.addEventListener('load', () => {
+                        // Compute tight bounds & bounding sphere
                         const box = new THREE.Box3().setFromObject(splatMesh);
-                        const size = box.getSize(new THREE.Vector3());
-                        const center = box.getCenter(new THREE.Vector3());
+                        const sphere = box.getBoundingSphere(new THREE.Sphere());
+                        const center = sphere.center;
+                        const radius = sphere.radius;
 
-                        // Max dimension of the room (we'll make sure that fits)
-                        const maxDim = Math.max(size.x, size.y);
                         const fov = THREE.MathUtils.degToRad(camera.fov);
                         const aspect = window.innerWidth / window.innerHeight;
 
-                        // Compute distance needed so room fits vertically & horizontally
-                        const fitHeightDist = (maxDim / 2) / Math.tan(fov / 2);
-                        const fitWidthDist  = (maxDim / 2) / (Math.tan(fov / 2) * aspect);
+                        // Distances required to fit sphere in view
+                        const fitHeightDist = radius / Math.tan(fov / 2);
+                        const fitWidthDist  = radius / (Math.tan(fov / 2) * aspect);
                         let distance = Math.max(fitHeightDist, fitWidthDist);
 
-                        distance *= 1.1; // small padding
+                        // Make it closer so the room uses more of the screen
+                        distance *= 0.85;
 
-                        // Camera looks along -Z, so put it in front of the room
+                        // Camera looks along -Z, so place it in +Z looking at center
                         const dir = new THREE.Vector3(0, 0, 1);
                         const position = center.clone().add(dir.multiplyScalar(distance));
 
                         camera.position.copy(position);
                         controls.target.copy(center);
                         controls.update();
-                        console.log('Auto-framed room:', size, 'distance:', distance);
+                        console.log('Auto-framed room (radius):', radius, 'distance:', distance);
                     });
 
                 } catch (err) {
