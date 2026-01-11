@@ -601,6 +601,7 @@ struct SinglePhotoRoomView: View {
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
     @State private var showGenerationSuccess = false
     @State private var generatedPLYURL: URL?
+    @State private var generatedRoomMeasurements: RoomMeasurements?
     @State private var navigateToSplatViewer = false
     @State private var showMethodPicker = false  // Show method choice after photo selection
     @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
@@ -852,7 +853,7 @@ struct SinglePhotoRoomView: View {
         .navigationDestination(isPresented: $navigateToSplatViewer) {
             Group {
                 if let plyURL = generatedPLYURL {
-                    SharpRoomView(plyURL: plyURL, roomBounds: sharpService.roomMeasurements?.boundingBox)
+                    SharpRoomView(plyURL: plyURL, roomMeasurements: generatedRoomMeasurements)
                 }
             }
         }
@@ -919,6 +920,7 @@ struct SinglePhotoRoomView: View {
                 logDebug("✅ [View] PLY file generated: \(fileURL.path)")
                 await MainActor.run {
                     generatedPLYURL = fileURL
+                    generatedRoomMeasurements = sharpService.roomMeasurements
                     navigateToSplatViewer = true
                 }
             } catch {

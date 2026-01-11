@@ -43,7 +43,7 @@ class RoomMeasurement {
 
     /// Detect planes and measure room from Gaussian positions
     /// - Parameter positions: Array of (x, y, z) positions
-    /// - Returns: Room measurements if front wall detected
+    /// - Returns: Room measurements based on bounding box
     static func measureRoom(positions: [(Float, Float, Float)]) -> RoomMeasurements? {
         guard positions.count >= minPlanePoints else {
             logDebug("RoomMeasurement: Not enough points (\(positions.count))")
@@ -65,58 +65,37 @@ class RoomMeasurement {
         let boundingBox = maxBound - minBound
         logDebug("RoomMeasurement: Bounding box: \(boundingBox.x) × \(boundingBox.y) × \(boundingBox.z)")
 
-        // Find the front wall - typically the plane at max Z (back of room from camera view)
-        // or min Z depending on orientation. We'll check both and pick the larger vertical plane.
+        // Use bounding box directly for room measurements
+        // X = room width (left-right), Y = room height (floor-ceiling), Z = room depth (front-back)
+        let roomWidth = boundingBox.x
+        let roomDepth = boundingBox.z
 
-        // Strategy: The front wall should be:
-        // 1. A vertical plane (normal mostly in Z direction)
-        // 2. At one of the Z extremes
-        // 3. The largest such plane
+        // Apply realistic height cap (typical room: 2.4-3.2m)
+        let maxRealisticHeight: Float = 3.2
+        let minRealisticHeight: Float = 2.2
+        var roomHeight = boundingBox.y
 
-        // Sample points near the front (min Z) and back (max Z) of the room
-        let zRange = boundingBox.z
-        let frontZThreshold = minBound.z + zRange * 0.15  // Front 15% of room
-        let backZThreshold = maxBound.z - zRange * 0.15   // Back 15% of room
-
-        let frontPoints = points.filter { $0.z <= frontZThreshold }
-        let backPoints = points.filter { $0.z >= backZThreshold }
-
-        logDebug("RoomMeasurement: Front region points: \(frontPoints.count), Back region points: \(backPoints.count)")
-
-        // Detect plane in the region with more points (likely the visible wall)
-        let (wallPoints, wallNormal, wallConfidence) = detectLargestVerticalPlane(
-            in: frontPoints.count > backPoints.count ? frontPoints : backPoints
-        )
-
-        guard wallPoints.count >= minPlanePoints else {
-            logDebug("RoomMeasurement: No valid wall plane found")
-            // Fall back to bounding box estimation
-            return RoomMeasurements(
-                frontWallWidth: boundingBox.x,
-                frontWallHeight: boundingBox.y,
-                roomDepth: boundingBox.z,
-                boundingBox: boundingBox,
-                frontWallPointCount: 0,
-                confidence: 0.3
-            )
+        if roomHeight > maxRealisticHeight {
+            logDebug("RoomMeasurement: Height \(roomHeight) exceeds max, capping to \(maxRealisticHeight)")
+            roomHeight = maxRealisticHeight
+        } else if roomHeight < minRealisticHeight {
+            logDebug("RoomMeasurement: Height \(roomHeight) below min, using \(minRealisticHeight)")
+            roomHeight = minRealisticHeight
         }
 
-        // Measure the wall dimensions from inlier points
-        let wallDimensions = measurePlaneDimensions(points: wallPoints, normal: wallNormal)
-
-        logDebug("RoomMeasurement: Front wall detected:")
-        logDebug("  Width: \(wallDimensions.width)")
-        logDebug("  Height: \(wallDimensions.height)")
-        logDebug("  Points: \(wallPoints.count)")
-        logDebug("  Confidence: \(wallConfidence)")
+        logDebug("RoomMeasurement: Room dimensions:")
+        logDebug("  Width: \(roomWidth)")
+        logDebug("  Height: \(boundingBox.y) -> \(roomHeight) (adjusted)")
+        logDebug("  Depth: \(roomDepth)")
+        logDebug("  Points: \(positions.count)")
 
         return RoomMeasurements(
-            frontWallWidth: wallDimensions.width,
-            frontWallHeight: wallDimensions.height,
-            roomDepth: boundingBox.z,
+            frontWallWidth: roomWidth,
+            frontWallHeight: roomHeight,
+            roomDepth: roomDepth,
             boundingBox: boundingBox,
-            frontWallPointCount: wallPoints.count,
-            confidence: wallConfidence
+            frontWallPointCount: positions.count,
+            confidence: 0.8
         )
     }
 
