@@ -790,6 +790,35 @@ struct AntimatterSplatView: UIViewRepresentable {
                     });
                     scene.add(splatMesh);
                     console.log('SplatMesh added to scene');
+
+                    // Auto-frame the room so it fills the view
+                    splatMesh.addEventListener('load', () => {
+                        const box = new THREE.Box3().setFromObject(splatMesh);
+                        const size = box.getSize(new THREE.Vector3());
+                        const center = box.getCenter(new THREE.Vector3());
+
+                        // Max dimension of the room (we'll make sure that fits)
+                        const maxDim = Math.max(size.x, size.y);
+                        const fov = THREE.MathUtils.degToRad(camera.fov);
+                        const aspect = window.innerWidth / window.innerHeight;
+
+                        // Compute distance needed so room fits vertically & horizontally
+                        const fitHeightDist = (maxDim / 2) / Math.tan(fov / 2);
+                        const fitWidthDist  = (maxDim / 2) / (Math.tan(fov / 2) * aspect);
+                        let distance = Math.max(fitHeightDist, fitWidthDist);
+
+                        distance *= 1.1; // small padding
+
+                        // Camera looks along -Z, so put it in front of the room
+                        const dir = new THREE.Vector3(0, 0, 1);
+                        const position = center.clone().add(dir.multiplyScalar(distance));
+
+                        camera.position.copy(position);
+                        controls.target.copy(center);
+                        controls.update();
+                        console.log('Auto-framed room:', size, 'distance:', distance);
+                    });
+
                 } catch (err) {
                     console.error('Failed to load splat:', err);
                 }

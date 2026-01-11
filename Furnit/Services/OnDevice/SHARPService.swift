@@ -432,10 +432,11 @@ class SHARPService: ObservableObject {
     // MARK: - Splat Filtering
 
     /// Minimum opacity threshold (0-1) for keeping a splat (higher = cleaner edges)
-    private static let minOpacity: Float = 0.20  // Lower to avoid black patches
+    private static let minOpacity: Float = 0.08  // Drop very transparent splats (pure cloud)
 
-    /// Percentile to clip from edges (removes black cloud at corners)
-    private static let edgeClipPercent: Float = 0.0  // Disabled to avoid black patches
+    /// Margin to clip from edges (removes noisy cloud at perimeter)
+    /// 0.03 = keep central 94%, drop 3% band on each side
+    private static let edgeMarginPercent: Float = 0.03
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
@@ -506,32 +507,36 @@ class SHARPService: ObservableObject {
             logDebug("  color: (\(params[o+11]), \(params[o+12]), \(params[o+13]))")
         }
 
-        // First pass: collect positions to compute clip bounds
-        var xPositions: [Float] = []
-        var yPositions: [Float] = []
-        xPositions.reserveCapacity(inputCount)
-        yPositions.reserveCapacity(inputCount)
+        // First pass: find bounding box of visible splats
+        var rawMinX: Float = .greatestFiniteMagnitude
+        var rawMaxX: Float = -.greatestFiniteMagnitude
+        var rawMinY: Float = .greatestFiniteMagnitude
+        var rawMaxY: Float = -.greatestFiniteMagnitude
 
         for i in 0..<inputCount {
             let offset = i * Self.paramsPerGaussian
             if params[offset + 10] >= Self.minOpacity {  // Only consider visible splats
-                xPositions.append(params[offset + 0])
-                yPositions.append(params[offset + 1])
+                let x = params[offset + 0]
+                let y = params[offset + 1]
+                rawMinX = min(rawMinX, x)
+                rawMaxX = max(rawMaxX, x)
+                rawMinY = min(rawMinY, y)
+                rawMaxY = max(rawMaxY, y)
             }
         }
 
-        // Compute percentile bounds to clip edge outliers (where black clouds appear)
-        xPositions.sort()
-        yPositions.sort()
-        let lowIdx = Int(Float(xPositions.count) * Self.edgeClipPercent)
-        let highIdx = max(lowIdx, xPositions.count - 1 - lowIdx)
+        // Apply margin-based edge clipping (keep central 94%, drop 3% band on each side)
+        let width = rawMaxX - rawMinX
+        let height = rawMaxY - rawMinY
+        let marginX = Self.edgeMarginPercent * width
+        let marginY = Self.edgeMarginPercent * height
 
-        let xMin = xPositions.isEmpty ? -Float.greatestFiniteMagnitude : xPositions[lowIdx]
-        let xMax = xPositions.isEmpty ? Float.greatestFiniteMagnitude : xPositions[highIdx]
-        let yMin = yPositions.isEmpty ? -Float.greatestFiniteMagnitude : yPositions[lowIdx]
-        let yMax = yPositions.isEmpty ? Float.greatestFiniteMagnitude : yPositions[highIdx]
+        let xMin = rawMinX + marginX
+        let xMax = rawMaxX - marginX
+        let yMin = rawMinY + marginY
+        let yMax = rawMaxY - marginY
 
-        logDebug("SHARP: Edge clip bounds X:[\(xMin),\(xMax)] Y:[\(yMin),\(yMax)]")
+        logDebug("SHARP: Edge clip bounds X:[\(xMin),\(xMax)] Y:[\(yMin),\(yMax)] (margin: \(Self.edgeMarginPercent * 100)%)")
 
         // Second pass: collect splats above opacity threshold AND within spatial bounds
         var validSplats: [(index: Int, opacity: Float)] = []
