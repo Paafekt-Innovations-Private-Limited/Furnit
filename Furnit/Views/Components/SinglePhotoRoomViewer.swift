@@ -630,7 +630,7 @@ struct SinglePhotoRoomView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 8)
 
-                    // Method 1: SHARP (AI-powered) - Renamed to "Quick 3D"
+                    // Method 1: SHARP (AI-powered) - Single photo to 3D
                     Button(action: {
                         logDebug("🤖 [View] SHARP method selected")
                         showMethodPicker = false
@@ -643,10 +643,10 @@ struct SinglePhotoRoomView: View {
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Quick 3D (Recommended)")
+                                Text("Photo to 3D Room")
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text("Automatic room detection")
+                                Text("AI-powered 3D construction")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
