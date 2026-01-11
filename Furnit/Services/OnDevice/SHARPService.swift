@@ -431,15 +431,20 @@ class SHARPService: ObservableObject {
 
     // MARK: - Splat Filtering
 
-    /// Minimum opacity threshold (0-1) for keeping a splat (higher = cleaner edges)
-    private static let minOpacity: Float = 0.25  // Aggressive: drop all semi-transparent fog
+    /// Hard cutoff for almost-transparent splats
+    private static let minAlpha: Float = 0.10
 
-    /// Margin to clip from edges (removes noisy cloud at perimeter)
-    /// 0.08 = keep central 84%, drop 8% band on each side
-    private static let edgeMarginPercent: Float = 0.08
+    /// For "fluffy fog" filter: if alpha < this AND scale > fogScaleThreshold, drop it
+    private static let fogAlphaThreshold: Float = 0.25
+    private static let fogScaleThreshold: Float = 0.030
 
-    /// Maximum scale for a splat (larger = foggy/blurry appearance)
-    private static let maxScale: Float = 0.04  // Drop oversized blurry splats
+    /// Target room height for vertical band crop (from RoomMeasurement)
+    private static let targetRoomHeight: Float = 3.2
+    private static let roomHeightPadding: Float = 1.8  // 80% padding - keep most of vertical
+
+    /// Margin to clip from XY/Z edges
+    private static let edgeMarginXY: Float = 0.05  // 5% margin
+    private static let edgeMarginZ: Float = 0.05
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
@@ -510,7 +515,7 @@ class SHARPService: ObservableObject {
             logDebug("  color: (\(params[o+11]), \(params[o+12]), \(params[o+13]))")
         }
 
-        // First pass: find bounding box of visible splats (X, Y, and Z)
+        // First pass: find bounding box of all splats
         var rawMinX: Float = .greatestFiniteMagnitude
         var rawMaxX: Float = -.greatestFiniteMagnitude
         var rawMinY: Float = .greatestFiniteMagnitude
@@ -520,7 +525,8 @@ class SHARPService: ObservableObject {
 
         for i in 0..<inputCount {
             let offset = i * Self.paramsPerGaussian
-            if params[offset + 10] >= Self.minOpacity {  // Only consider visible splats
+            let alpha = params[offset + 10]
+            if alpha >= Self.minAlpha {
                 let x = params[offset + 0]
                 let y = params[offset + 1]
                 let z = params[offset + 2]
@@ -533,57 +539,67 @@ class SHARPService: ObservableObject {
             }
         }
 
-        // Apply margin-based edge clipping (keep central region, drop outer band)
+        // Compute clip bounds
         let width = rawMaxX - rawMinX
         let height = rawMaxY - rawMinY
         let depth = rawMaxZ - rawMinZ
-        let marginX = Self.edgeMarginPercent * width
-        let marginY = Self.edgeMarginPercent * height
-        let marginZ = Self.edgeMarginPercent * depth  // Also clip Z depth
+        let centerX = (rawMinX + rawMaxX) * 0.5
 
-        let xMin = rawMinX + marginX
-        let xMax = rawMaxX - marginX
-        let yMin = rawMinY + marginY
-        let yMax = rawMaxY - marginY
-        let zMin = rawMinZ + marginZ
-        let zMax = rawMaxZ - marginZ
+        // Y/Z edge margins (horizontal + depth)
+        let clipMinY = rawMinY + height * Self.edgeMarginXY
+        let clipMaxY = rawMaxY - height * Self.edgeMarginXY
+        let clipMinZ = rawMinZ + depth * Self.edgeMarginZ
+        let clipMaxZ = rawMaxZ - depth * Self.edgeMarginZ
 
-        logDebug("SHARP: Edge clip bounds X:[\(xMin),\(xMax)] Y:[\(yMin),\(yMax)] Z:[\(zMin),\(zMax)] (margin: \(Self.edgeMarginPercent * 100)%)")
+        // Vertical band crop on X axis (model's vertical) - use target room height
+        let keepHalfHeight = (Self.targetRoomHeight * 0.5) * Self.roomHeightPadding
+        let clipMinX = centerX - keepHalfHeight
+        let clipMaxX = centerX + keepHalfHeight
+
+        logDebug("SHARP: Clip bounds X:[\(clipMinX),\(clipMaxX)] (vertical) Y:[\(clipMinY),\(clipMaxY)] Z:[\(clipMinZ),\(clipMaxZ)]")
+        logDebug("SHARP: Room height crop on X: keeping \(Self.targetRoomHeight * Self.roomHeightPadding) of \(width) total")
 
         // Second pass: collect splats that pass all filters
         var validSplats: [(index: Int, opacity: Float)] = []
         validSplats.reserveCapacity(inputCount / 4)
-        var edgeFiltered = 0
         var opacityFiltered = 0
-        var scaleFiltered = 0
+        var fogFiltered = 0
+        var edgeFiltered = 0
 
         for i in 0..<inputCount {
             let offset = i * Self.paramsPerGaussian
-            let opacity = params[offset + 10]
+            let alpha = params[offset + 10]
             let x = params[offset + 0]
             let y = params[offset + 1]
             let z = params[offset + 2]
             let s0 = params[offset + 3]
             let s1 = params[offset + 4]
-            let s2 = params[offset + 5]
-            let maxSplatScale = max(s0, max(s1, s2))
+            let maxScaleXY = max(s0, s1)  // XY footprint
 
-            if opacity < Self.minOpacity {
+            // 1) Hard cutoff for almost-transparent splats
+            if alpha < Self.minAlpha {
                 opacityFiltered += 1
                 continue
             }
-            if maxSplatScale > Self.maxScale {
-                scaleFiltered += 1
+
+            // 2) Kill big, low-contrast blobs (typical fog splats)
+            if alpha < Self.fogAlphaThreshold && maxScaleXY > Self.fogScaleThreshold {
+                fogFiltered += 1
                 continue
             }
-            if x < xMin || x > xMax || y < yMin || y > yMax || z < zMin || z > zMax {
+
+            // 3) Edge/vertical band crop
+            if x < clipMinX || x > clipMaxX ||
+               y < clipMinY || y > clipMaxY ||
+               z < clipMinZ || z > clipMaxZ {
                 edgeFiltered += 1
                 continue
             }
-            validSplats.append((index: i, opacity: opacity))
+
+            validSplats.append((index: i, opacity: alpha))
         }
 
-        logDebug("SHARP: Filtered \(opacityFiltered) by opacity, \(scaleFiltered) by scale, \(edgeFiltered) by edge bounds")
+        logDebug("SHARP: Filtered \(opacityFiltered) by opacity, \(fogFiltered) by fog, \(edgeFiltered) by edge/height")
 
         logDebug("SHARP: \(validSplats.count) splats kept (filtered \(edgeFiltered) edge splats)")
 
