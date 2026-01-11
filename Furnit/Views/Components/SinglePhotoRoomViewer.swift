@@ -601,6 +601,7 @@ struct SinglePhotoRoomView: View {
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
     @State private var showGenerationSuccess = false
     @State private var generatedPLYURL: URL?
+    @State private var generatedRoomMeasurements: RoomMeasurements?
     @State private var navigateToSplatViewer = false
     @State private var showMethodPicker = false  // Show method choice after photo selection
     @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
@@ -619,11 +620,17 @@ struct SinglePhotoRoomView: View {
                         .padding()
                         .onAppear { logDebug("🖼️ [View] Displaying selected image with method picker") }
 
-                    Text("Choose Generation Method")
-                        .font(.headline)
-                        .padding(.top, 8)
+                    VStack(spacing: 4) {
+                        Text("How do you want to create your 3D room?")
+                            .font(.headline)
+                        Text("Tap an option below to continue")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
 
-                    // Method 1: SHARP (AI-powered)
+                    // Method 1: SHARP (AI-powered) - Single photo to 3D
                     Button(action: {
                         logDebug("🤖 [View] SHARP method selected")
                         showMethodPicker = false
@@ -636,10 +643,10 @@ struct SinglePhotoRoomView: View {
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("AI 3D Generation")
+                                Text("Photo to 3D Room")
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text("Automatic • Fast • Recommended")
+                                Text("AI-powered 3D construction")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -670,10 +677,10 @@ struct SinglePhotoRoomView: View {
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Manual Boundaries")
+                                Text("Manual Setup")
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text("Drag to adjust walls • More control")
+                                Text("Drag to adjust room walls")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -781,6 +788,7 @@ struct SinglePhotoRoomView: View {
             }
         }
         .navigationTitle("Photo to 3D Room")
+        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showImagePicker) {
             PhotoPickerView(selectedImage: $selectedImage)
                 .onDisappear {
@@ -852,7 +860,7 @@ struct SinglePhotoRoomView: View {
         .navigationDestination(isPresented: $navigateToSplatViewer) {
             Group {
                 if let plyURL = generatedPLYURL {
-                    SharpRoomView(plyURL: plyURL)
+                    SharpRoomView(plyURL: plyURL, roomMeasurements: generatedRoomMeasurements)
                 }
             }
         }
@@ -919,6 +927,7 @@ struct SinglePhotoRoomView: View {
                 logDebug("✅ [View] PLY file generated: \(fileURL.path)")
                 await MainActor.run {
                     generatedPLYURL = fileURL
+                    generatedRoomMeasurements = sharpService.roomMeasurements
                     navigateToSplatViewer = true
                 }
             } catch {

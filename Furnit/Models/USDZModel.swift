@@ -33,15 +33,36 @@ struct USDZModel: Identifiable, Hashable {
     }
     
     var displayName: String {
-        return name.replacingOccurrences(of: "_", with: " ").capitalized
+        var cleanName = name
+        // Remove timestamp suffix for PLY files (format: "RoomName_1767917336")
+        if fileType == .ply {
+            // Check if name ends with underscore followed by digits (timestamp)
+            if let range = cleanName.range(of: "_\\d+$", options: .regularExpression) {
+                cleanName = String(cleanName[..<range.lowerBound])
+            }
+        }
+        return cleanName.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     /// Formatted file size string (e.g., "45.2 MB")
     var fileSizeFormatted: String {
-        guard let size = fileSize else { return "Unknown size" }
+        // Use fileSize if available, otherwise calculate from dataAsset
+        let size: UInt64
+        if let fs = fileSize {
+            size = fs
+        } else if let data = dataAsset?.data {
+            size = UInt64(data.count)
+        } else {
+            return "Unknown size"
+        }
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(size))
+    }
+
+    /// Check if file size is available (from fileSize or dataAsset)
+    var hasFileSize: Bool {
+        return fileSize != nil || dataAsset?.data != nil
     }
 
     /// Subtitle text based on file type

@@ -5,6 +5,7 @@ import Metal
 import MetalKit
 import MetalPerformanceShaders
 import Accelerate
+import simd
 
 /// On-device 3D Gaussian generation using Apple's SHARP model
 /// Replaces remote Jarvis-based Room3DGenerationService with local CoreML inference
@@ -21,6 +22,9 @@ class SHARPService: ObservableObject {
 
     /// Processing progress (0.0 to 1.0)
     @Published var progress: Float = 0.0
+
+    /// Room measurements from plane detection (available after generation)
+    @Published var roomMeasurements: RoomMeasurements?
 
     // MARK: - Model Configuration
 
@@ -46,10 +50,10 @@ class SHARPService: ObservableObject {
 
     // MARK: - File Management
 
-    /// Directory for saving generated PLY files (persistent SavedRooms folder)
+    /// Directory for generated PLY files (temp until user explicitly saves)
     private var modelsDirectory: URL {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return documentsDirectory.appendingPathComponent("SavedRooms", isDirectory: true)
+        let tempDirectory = FileManager.default.temporaryDirectory
+        return tempDirectory.appendingPathComponent("SHARPModels", isDirectory: true)
     }
 
     // MARK: - Initialization
@@ -83,7 +87,7 @@ class SHARPService: ObservableObject {
         logDebug("SHARP: Loading CoreML model...")
 
         isLoadingModel = true
-        statusMessage = "Loading AI model..."
+        statusMessage = "Getting ready..."
         progress = 0.1
 
         // Check physical memory - INT8 model (~663MB) needs ~2GB available
@@ -96,12 +100,12 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Device has insufficient RAM, need 2GB+")
             logDebug("SHARP: Model will not be loaded - use fallback or remote API")
             isLoadingModel = false
-            statusMessage = "Insufficient memory"
+            statusMessage = "Not enough space on device"
             return
         }
 
         progress = 0.3
-        statusMessage = "Initializing neural network..."
+        statusMessage = "Setting things up..."
 
         do {
             // Configuration matching mlsharpondevice2 style
@@ -115,11 +119,11 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Model loaded successfully")
 
             progress = 1.0
-            statusMessage = "Model ready"
+            statusMessage = "Ready!"
 
         } catch {
             logDebug("SHARP: Failed to load model: \(error)")
-            statusMessage = "Failed to load model"
+            statusMessage = "Couldn't get ready"
         }
 
         isLoadingModel = false
@@ -141,13 +145,13 @@ class SHARPService: ObservableObject {
 
         guard model != nil else {
             status = .failed("SHARP model failed to load. Check device memory.")
-            statusMessage = "Model load failed"
+            statusMessage = "Something went wrong"
             throw GenerationError.serverError("SHARP model failed to load. Check device memory.")
         }
 
         // Reset state
         status = .processing
-        statusMessage = "Preprocessing image..."
+        statusMessage = "Preparing your photo..."
         progress = 0.0
 
         do {
@@ -157,27 +161,30 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
 
             // Step 2: Run inference
-            statusMessage = "Generating 3D Gaussians..."
+            statusMessage = "Creating your 3D room..."
             progress = 0.2
             let gaussianParams = try await runInference(inputBuffer)
             logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
 
-            // Step 3: Write PLY file
-            statusMessage = "Saving model..."
+            // Step 3: Write PLY files (original + classic for antimatter15)
+            statusMessage = "Almost done..."
             progress = 0.8
-            let plyURL = try await writePLY(gaussianParams)
-            logDebug("SHARP: Saved PLY to \(plyURL.path)")
+            let plyURLs = try await writePLY(gaussianParams)
+            logDebug("SHARP: Saved PLY to \(plyURLs.original.path)")
+            logDebug("SHARP: Saved Classic PLY to \(plyURLs.classic.path)")
+            logDebug("SHARP: Saved 3DGS PLY to \(plyURLs.threeDGS.path)")
+            let plyURL = plyURLs.original
 
             // Complete
             progress = 1.0
             status = .completed(fileURL: plyURL)
-            statusMessage = "Complete!"
+            statusMessage = "Done!"
 
             return plyURL
         } catch {
             // Update status on failure so UI can show error
             status = .failed(error.localizedDescription)
-            statusMessage = "Generation failed"
+            statusMessage = "Couldn't create room"
             logDebug("SHARP: Generation failed: \(error)")
             throw error
         }
@@ -424,16 +431,68 @@ class SHARPService: ObservableObject {
 
     // MARK: - Splat Filtering
 
-    /// Minimum opacity threshold (0-1) for keeping a splat (higher = less black cloud)
-    private static let minOpacity: Float = 0.05
+    /// Hard cutoff for almost-transparent splats
+    private static let minAlpha: Float = 0.10
 
-    /// Percentile to clip from edges (removes black cloud at corners)
-    private static let edgeClipPercent: Float = 0.02  // Remove outer 2% on each side
+    /// For "fluffy fog" filter: if alpha < this AND scale > fogScaleThreshold, drop it
+    private static let fogAlphaThreshold: Float = 0.25
+    private static let fogScaleThreshold: Float = 0.030
+
+    /// Target room height for vertical band crop (from RoomMeasurement)
+    private static let targetRoomHeight: Float = 3.2
+    private static let roomHeightPadding: Float = 1.8  // 80% padding - keep most of vertical
+
+    /// Margin to clip from XY/Z edges
+    private static let edgeMarginXY: Float = 0.05  // 5% margin
+    private static let edgeMarginZ: Float = 0.05
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
         let inputCount = params.count / Self.paramsPerGaussian
         logDebug("SHARP: Filtering \(inputCount) Gaussians...")
+
+        // Analyze value ranges across ALL gaussians to understand data format
+        var minScale: Float = .greatestFiniteMagnitude
+        var maxScale: Float = -.greatestFiniteMagnitude
+        var minOpacity: Float = .greatestFiniteMagnitude
+        var maxOpacity: Float = -.greatestFiniteMagnitude
+        var minColor: Float = .greatestFiniteMagnitude
+        var maxColor: Float = -.greatestFiniteMagnitude
+
+        for i in 0..<min(inputCount, 10000) {  // Sample first 10k
+            let o = i * Self.paramsPerGaussian
+            // Scales (indices 3, 4, 5)
+            for j in 3...5 {
+                minScale = min(minScale, params[o + j])
+                maxScale = max(maxScale, params[o + j])
+            }
+            // Opacity (index 10)
+            minOpacity = min(minOpacity, params[o + 10])
+            maxOpacity = max(maxOpacity, params[o + 10])
+            // Colors (indices 11, 12, 13)
+            for j in 11...13 {
+                minColor = min(minColor, params[o + j])
+                maxColor = max(maxColor, params[o + j])
+            }
+        }
+
+        logDebug("SHARP VALUE RANGES (first 10k gaussians):")
+        logDebug("  Scale:   min=\(minScale), max=\(maxScale)")
+        logDebug("  Opacity: min=\(minOpacity), max=\(maxOpacity)")
+        logDebug("  Color:   min=\(minColor), max=\(maxColor)")
+
+        // If scales are negative or very small, they might already be in log space
+        if maxScale < 0.1 {
+            logDebug("  WARNING: Scales appear to be in LOG space already!")
+        }
+        // If opacity is outside [0,1], it might already be in logit space
+        if minOpacity < 0 || maxOpacity > 1 {
+            logDebug("  WARNING: Opacity appears to be in LOGIT space already!")
+        }
+        // If colors are outside [0,1], they might need different handling
+        if minColor < 0 || maxColor > 1 {
+            logDebug("  WARNING: Colors are outside [0,1] range!")
+        }
 
         // Debug: sample first few gaussians to see value ranges
         if inputCount > 0 {
@@ -456,52 +515,91 @@ class SHARPService: ObservableObject {
             logDebug("  color: (\(params[o+11]), \(params[o+12]), \(params[o+13]))")
         }
 
-        // First pass: collect positions to compute clip bounds
-        var xPositions: [Float] = []
-        var yPositions: [Float] = []
-        xPositions.reserveCapacity(inputCount)
-        yPositions.reserveCapacity(inputCount)
+        // First pass: find bounding box of all splats
+        var rawMinX: Float = .greatestFiniteMagnitude
+        var rawMaxX: Float = -.greatestFiniteMagnitude
+        var rawMinY: Float = .greatestFiniteMagnitude
+        var rawMaxY: Float = -.greatestFiniteMagnitude
+        var rawMinZ: Float = .greatestFiniteMagnitude
+        var rawMaxZ: Float = -.greatestFiniteMagnitude
 
         for i in 0..<inputCount {
             let offset = i * Self.paramsPerGaussian
-            if params[offset + 10] >= Self.minOpacity {  // Only consider visible splats
-                xPositions.append(params[offset + 0])
-                yPositions.append(params[offset + 1])
+            let alpha = params[offset + 10]
+            if alpha >= Self.minAlpha {
+                let x = params[offset + 0]
+                let y = params[offset + 1]
+                let z = params[offset + 2]
+                rawMinX = min(rawMinX, x)
+                rawMaxX = max(rawMaxX, x)
+                rawMinY = min(rawMinY, y)
+                rawMaxY = max(rawMaxY, y)
+                rawMinZ = min(rawMinZ, z)
+                rawMaxZ = max(rawMaxZ, z)
             }
         }
 
-        // Compute percentile bounds to clip edge outliers (where black clouds appear)
-        xPositions.sort()
-        yPositions.sort()
-        let lowIdx = Int(Float(xPositions.count) * Self.edgeClipPercent)
-        let highIdx = max(lowIdx, xPositions.count - 1 - lowIdx)
+        // Compute clip bounds
+        let width = rawMaxX - rawMinX
+        let height = rawMaxY - rawMinY
+        let depth = rawMaxZ - rawMinZ
+        let centerX = (rawMinX + rawMaxX) * 0.5
 
-        let xMin = xPositions.isEmpty ? -Float.greatestFiniteMagnitude : xPositions[lowIdx]
-        let xMax = xPositions.isEmpty ? Float.greatestFiniteMagnitude : xPositions[highIdx]
-        let yMin = yPositions.isEmpty ? -Float.greatestFiniteMagnitude : yPositions[lowIdx]
-        let yMax = yPositions.isEmpty ? Float.greatestFiniteMagnitude : yPositions[highIdx]
+        // Y/Z edge margins (horizontal + depth)
+        let clipMinY = rawMinY + height * Self.edgeMarginXY
+        let clipMaxY = rawMaxY - height * Self.edgeMarginXY
+        let clipMinZ = rawMinZ + depth * Self.edgeMarginZ
+        let clipMaxZ = rawMaxZ - depth * Self.edgeMarginZ
 
-        logDebug("SHARP: Edge clip bounds X:[\(xMin),\(xMax)] Y:[\(yMin),\(yMax)]")
+        // Vertical band crop on X axis (model's vertical) - use target room height
+        let keepHalfHeight = (Self.targetRoomHeight * 0.5) * Self.roomHeightPadding
+        let clipMinX = centerX - keepHalfHeight
+        let clipMaxX = centerX + keepHalfHeight
 
-        // Second pass: collect splats above opacity threshold AND within spatial bounds
+        logDebug("SHARP: Clip bounds X:[\(clipMinX),\(clipMaxX)] (vertical) Y:[\(clipMinY),\(clipMaxY)] Z:[\(clipMinZ),\(clipMaxZ)]")
+        logDebug("SHARP: Room height crop on X: keeping \(Self.targetRoomHeight * Self.roomHeightPadding) of \(width) total")
+
+        // Second pass: collect splats that pass all filters
         var validSplats: [(index: Int, opacity: Float)] = []
         validSplats.reserveCapacity(inputCount / 4)
+        var opacityFiltered = 0
+        var fogFiltered = 0
         var edgeFiltered = 0
 
         for i in 0..<inputCount {
             let offset = i * Self.paramsPerGaussian
-            let opacity = params[offset + 10]
+            let alpha = params[offset + 10]
             let x = params[offset + 0]
             let y = params[offset + 1]
+            let z = params[offset + 2]
+            let s0 = params[offset + 3]
+            let s1 = params[offset + 4]
+            let maxScaleXY = max(s0, s1)  // XY footprint
 
-            if opacity >= Self.minOpacity {
-                if x >= xMin && x <= xMax && y >= yMin && y <= yMax {
-                    validSplats.append((index: i, opacity: opacity))
-                } else {
-                    edgeFiltered += 1
-                }
+            // 1) Hard cutoff for almost-transparent splats
+            if alpha < Self.minAlpha {
+                opacityFiltered += 1
+                continue
             }
+
+            // 2) Kill big, low-contrast blobs (typical fog splats)
+            if alpha < Self.fogAlphaThreshold && maxScaleXY > Self.fogScaleThreshold {
+                fogFiltered += 1
+                continue
+            }
+
+            // 3) Edge/vertical band crop
+            if x < clipMinX || x > clipMaxX ||
+               y < clipMinY || y > clipMaxY ||
+               z < clipMinZ || z > clipMaxZ {
+                edgeFiltered += 1
+                continue
+            }
+
+            validSplats.append((index: i, opacity: alpha))
         }
+
+        logDebug("SHARP: Filtered \(opacityFiltered) by opacity, \(fogFiltered) by fog, \(edgeFiltered) by edge/height")
 
         logDebug("SHARP: \(validSplats.count) splats kept (filtered \(edgeFiltered) edge splats)")
 
@@ -526,7 +624,8 @@ class SHARPService: ObservableObject {
     // MARK: - PLY Writing
 
     /// Write Gaussian parameters to PLY file
-    private func writePLY(_ params: [Float]) async throws -> URL {
+    /// Returns tuple: (originalURL, classicURL, threeDGSURL) for different viewer compatibility
+    private func writePLY(_ params: [Float]) async throws -> (original: URL, classic: URL, threeDGS: URL) {
         // Filter Gaussians for mobile rendering
         let filteredParams = filterGaussians(params)
 
@@ -535,12 +634,16 @@ class SHARPService: ObservableObject {
         // Ensure output directory exists
         try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
 
-        // Generate filename
+        // Generate filenames
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
         let timestamp = dateFormatter.string(from: Date())
         let fileName = "Room_\(timestamp).ply"
+        let classicFileName = "Room_\(timestamp)_classic.ply"
+        let threeDGSFileName = "Room_\(timestamp)_3dgs.ply"
         let fileURL = modelsDirectory.appendingPathComponent(fileName)
+        let classicFileURL = modelsDirectory.appendingPathComponent(classicFileName)
+        let threeDGSFileURL = modelsDirectory.appendingPathComponent(threeDGSFileName)
 
         // Build PLY content - use uchar red/green/blue for proper color display
         let plyContent = """
@@ -564,43 +667,102 @@ class SHARPService: ObservableObject {
         end_header\n
         """
 
-        // Write header
-        var data = Data(plyContent.utf8)
+        // 3DGS format header (SuperSplat compatible)
+        // Must use f_dc_* for colors (SuperSplat requirement)
+        let threeDGSHeader = """
+        ply
+        format binary_little_endian 1.0
+        element vertex \(gaussianCount)
+        property float x
+        property float y
+        property float z
+        property float nx
+        property float ny
+        property float nz
+        property float f_dc_0
+        property float f_dc_1
+        property float f_dc_2
+        property float opacity
+        property float scale_0
+        property float scale_1
+        property float scale_2
+        property float rot_0
+        property float rot_1
+        property float rot_2
+        property float rot_3
+        end_header\n
+        """
 
-        // Track bounding box for measurements
+        // SH coefficient constant: C0 = 0.5 * sqrt(1/pi)
+        let SH_C0: Float = 0.28209479177387814
+
+        // Write headers for all files
+        var data = Data(plyContent.utf8)
+        var classicData = Data(plyContent.utf8)
+        var threeDGSData = Data(threeDGSHeader.utf8)
+
+        // Track bounding box and positions for measurements
         var minX: Float = .greatestFiniteMagnitude
         var maxX: Float = -.greatestFiniteMagnitude
         var minY: Float = .greatestFiniteMagnitude
         var maxY: Float = -.greatestFiniteMagnitude
         var minZ: Float = .greatestFiniteMagnitude
         var maxZ: Float = -.greatestFiniteMagnitude
+        var positions: [(Float, Float, Float)] = []
+        positions.reserveCapacity(gaussianCount)
+
+        // Debug: Log final PLY values for first few gaussians
+        var debugCount = 0
+        let debugMax = 3
 
         // Write binary vertex data
         // Each Gaussian: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14 floats
-        // Using raw SHARP output values directly
         for i in 0..<gaussianCount {
             let offset = i * Self.paramsPerGaussian
 
-            // Position - face front, tilt 90° left, correct mirror
+            // Position - Python transform (x, -y, -z) - DO NOT modify further, breaks quality
             let origX = filteredParams[offset + 0]
             let origY = filteredParams[offset + 1]
             let origZ = filteredParams[offset + 2]
-            var x = -origY        // -Y becomes X (flip to fix mirror)
-            var y = -origX        // -X becomes Y
-            var z = -origZ        // Z negated
+            var x = origX
+            var y = -origY
+            var z = -origZ
 
-            // Track bounding box
+            // Track bounding box and collect positions
             minX = min(minX, x); maxX = max(maxX, x)
             minY = min(minY, y); maxY = max(maxY, y)
             minZ = min(minZ, z); maxZ = max(maxZ, z)
+            positions.append((x, y, z))
 
+            // Original PLY
             data.append(Data(bytes: &x, count: 4))
             data.append(Data(bytes: &y, count: 4))
             data.append(Data(bytes: &z, count: 4))
 
-            // Scale - convert to log for renderer, boost to fill gaps, clamp minimum
+            // Classic PLY: front (180° Y) + upright (180° Z): (x, y, z) → (x, -y, -z)
+            var classicX = x
+            var classicY = -y
+            var classicZ = -z
+            classicData.append(Data(bytes: &classicX, count: 4))
+            classicData.append(Data(bytes: &classicY, count: 4))
+            classicData.append(Data(bytes: &classicZ, count: 4))
+
+            // 3DGS format: position
+            threeDGSData.append(Data(bytes: &x, count: 4))
+            threeDGSData.append(Data(bytes: &y, count: 4))
+            threeDGSData.append(Data(bytes: &z, count: 4))
+
+            // 3DGS format: normals (zeros)
+            var nx: Float = 0.0
+            var ny: Float = 0.0
+            var nz: Float = 0.0
+            threeDGSData.append(Data(bytes: &nx, count: 4))
+            threeDGSData.append(Data(bytes: &ny, count: 4))
+            threeDGSData.append(Data(bytes: &nz, count: 4))
+
+            // Scale - convert to log for renderer (match Python's scale_boost=1.3)
             let minScale: Float = 0.001
-            let scaleBoost: Float = 1.3  // Make splats 30% larger to fill edge gaps
+            let scaleBoost: Float = 1.3  // Match Python test_sharp_coreml.py
             let rawS0 = filteredParams[offset + 3] * scaleBoost
             let rawS1 = filteredParams[offset + 4] * scaleBoost
             let rawS2 = filteredParams[offset + 5] * scaleBoost
@@ -610,8 +772,11 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &s0, count: 4))
             data.append(Data(bytes: &s1, count: 4))
             data.append(Data(bytes: &s2, count: 4))
+            classicData.append(Data(bytes: &s0, count: 4))
+            classicData.append(Data(bytes: &s1, count: 4))
+            classicData.append(Data(bytes: &s2, count: 4))
 
-            // Rotation quaternion - MUST normalize (SHARP outputs unnormalized)
+            // Rotation quaternion - normalize only (don't transform, preserves quality)
             let rawR0 = filteredParams[offset + 6]
             let rawR1 = filteredParams[offset + 7]
             let rawR2 = filteredParams[offset + 8]
@@ -626,52 +791,112 @@ class SHARPService: ObservableObject {
             data.append(Data(bytes: &r1, count: 4))
             data.append(Data(bytes: &r2, count: 4))
             data.append(Data(bytes: &r3, count: 4))
+            classicData.append(Data(bytes: &r0, count: 4))
+            classicData.append(Data(bytes: &r1, count: 4))
+            classicData.append(Data(bytes: &r2, count: 4))
+            classicData.append(Data(bytes: &r3, count: 4))
 
             // Opacity - convert to logit (inverse sigmoid) for renderer
             let rawOpacity = filteredParams[offset + 10]
             let clampedOpacity = min(max(rawOpacity, 1e-4), 1.0 - 1e-4)
             var opacity = log(clampedOpacity / (1.0 - clampedOpacity))
             data.append(Data(bytes: &opacity, count: 4))
+            classicData.append(Data(bytes: &opacity, count: 4))
 
-            // Color - convert linear [0,1] to sRGB [0,255] with gamma
+            // Color - get raw values from SHARP
             let rawR = filteredParams[offset + 11]
             let rawG = filteredParams[offset + 12]
             let rawB = filteredParams[offset + 13]
 
-            // Apply gamma correction (linear to sRGB) and slight brightness boost
+            // 3DGS format: f_dc colors as SH coefficients
+            // Formula: f_dc = (color - 0.5) / SH_C0
+            // SparkJS shows correct colors with RGB order, so use RGB (not BGR)
+            var f_dc_0 = (rawR - 0.5) / SH_C0  // R
+            var f_dc_1 = (rawG - 0.5) / SH_C0  // G
+            var f_dc_2 = (rawB - 0.5) / SH_C0  // B
+            threeDGSData.append(Data(bytes: &f_dc_0, count: 4))
+            threeDGSData.append(Data(bytes: &f_dc_1, count: 4))
+            threeDGSData.append(Data(bytes: &f_dc_2, count: 4))
+
+            // 3DGS format: opacity, scale, rotation
+            threeDGSData.append(Data(bytes: &opacity, count: 4))
+            threeDGSData.append(Data(bytes: &s0, count: 4))
+            threeDGSData.append(Data(bytes: &s1, count: 4))
+            threeDGSData.append(Data(bytes: &s2, count: 4))
+            threeDGSData.append(Data(bytes: &r0, count: 4))
+            threeDGSData.append(Data(bytes: &r1, count: 4))
+            threeDGSData.append(Data(bytes: &r2, count: 4))
+            threeDGSData.append(Data(bytes: &r3, count: 4))
+
+            // Apply gamma correction (linear to sRGB) and slight brightness boost for SparkJS format
             let gamma: Float = 1.0 / 2.2
             let brightness: Float = 1.1
-            let r = pow(min(max(rawR * brightness, 0), 1), gamma)
-            let g = pow(min(max(rawG * brightness, 0), 1), gamma)
-            let b = pow(min(max(rawB * brightness, 0), 1), gamma)
+            let finalR = pow(min(max(rawR * brightness, 0), 1), gamma)
+            let finalG = pow(min(max(rawG * brightness, 0), 1), gamma)
+            let finalB = pow(min(max(rawB * brightness, 0), 1), gamma)
 
-            // Convert to 0-255 uchar
-            var red = UInt8(min(max(Int(r * 255), 0), 255))
-            var green = UInt8(min(max(Int(g * 255), 0), 255))
-            var blue = UInt8(min(max(Int(b * 255), 0), 255))
+            // Convert to 0-255 uchar for original/classic PLY
+            var red = UInt8(min(max(Int(finalR * 255), 0), 255))
+            var green = UInt8(min(max(Int(finalG * 255), 0), 255))
+            var blue = UInt8(min(max(Int(finalB * 255), 0), 255))
             data.append(Data(bytes: &red, count: 1))
             data.append(Data(bytes: &green, count: 1))
             data.append(Data(bytes: &blue, count: 1))
+            classicData.append(Data(bytes: &red, count: 1))
+            classicData.append(Data(bytes: &green, count: 1))
+            classicData.append(Data(bytes: &blue, count: 1))
+
+            // Debug logging for first few gaussians
+            if debugCount < debugMax {
+                let quatLen = sqrt(r0*r0 + r1*r1 + r2*r2 + r3*r3)
+                logDebug("SHARP PLY GAUSSIAN \(i) (final values):")
+                logDebug("  pos: (\(x), \(y), \(z))")
+                logDebug("  scale (log): (\(s0), \(s1), \(s2))")
+                logDebug("  rot: (\(r0), \(r1), \(r2), \(r3)) len=\(quatLen)")
+                logDebug("  opacity (logit): \(opacity)")
+                logDebug("  f_dc (SH): (\(f_dc_0), \(f_dc_1), \(f_dc_2))")
+                logDebug("  color (uchar): (\(red), \(green), \(blue))")
+                debugCount += 1
+            }
         }
 
-        // Write file
+        // Write all files
         try data.write(to: fileURL)
+        try classicData.write(to: classicFileURL)
+        try threeDGSData.write(to: threeDGSFileURL)
 
         // Verify
         let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
         let fileSize = attributes[.size] as? UInt64 ?? 0
+        let threeDGSAttributes = try FileManager.default.attributesOfItem(atPath: threeDGSFileURL.path)
+        let threeDGSSize = threeDGSAttributes[.size] as? UInt64 ?? 0
         logDebug("SHARP: PLY file saved (\(fileSize / 1024) KB)")
+        logDebug("SHARP: Classic PLY saved (point inversion for antimatter15/splat)")
+        logDebug("SHARP: 3DGS PLY saved (\(threeDGSSize / 1024) KB) - SuperSplat compatible")
 
         // Log room measurements (SHARP units are roughly meters)
         let width = maxX - minX
         let height = maxY - minY
         let depth = maxZ - minZ
-        logDebug("SHARP: Room measurements:")
+        logDebug("SHARP: Room bounding box:")
         logDebug("  Width (X):  \(String(format: "%.2f", width)) units (\(minX) to \(maxX))")
         logDebug("  Height (Y): \(String(format: "%.2f", height)) units (\(minY) to \(maxY))")
         logDebug("  Depth (Z):  \(String(format: "%.2f", depth)) units (\(minZ) to \(maxZ))")
         logDebug("  Splats: \(gaussianCount)")
 
-        return fileURL
+        // Detect front wall and compute measurements
+        if let measurements = RoomMeasurement.measureRoom(positions: positions) {
+            await MainActor.run {
+                self.roomMeasurements = measurements
+            }
+            logDebug("SHARP: Front wall detected:")
+            logDebug("  Width:  \(String(format: "%.2f", measurements.frontWallWidth)) units")
+            logDebug("  Height: \(String(format: "%.2f", measurements.frontWallHeight)) units")
+            logDebug("  Confidence: \(String(format: "%.0f", measurements.confidence * 100))%")
+        } else {
+            logDebug("SHARP: Could not detect front wall")
+        }
+
+        return (original: fileURL, classic: classicFileURL, threeDGS: threeDGSFileURL)
     }
 }

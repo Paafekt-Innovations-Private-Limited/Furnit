@@ -83,7 +83,7 @@ struct HomeTab: View {
                     }
                 } else {
                     VStack(spacing: 0) {
-                        // Room limit banner
+                        // Room limit banner with total memory
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(L10n.Home.roomsRemaining(limitManager.remainingRooms(), limitManager.roomLimit))
@@ -96,6 +96,15 @@ struct HomeTab: View {
                                 }
                             }
                             Spacer()
+                            // Total memory of all rooms
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("Total")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Text(totalMemoryFormatted(models: modelManager.models))
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                            }
                         }
                         .padding()
                         .background(limitManager.remainingRooms() <= 3 ? Color.orange.opacity(0.1) : Color(.systemGroupedBackground))
@@ -177,11 +186,13 @@ struct HomeTab: View {
             .sheet(isPresented: $showingPhotoRoomCreator) {
                 NavigationStack {
                     SinglePhotoRoomView()
-                        .navigationBarItems(
-                            trailing: Button(L10n.Common.back) {
-                                showingPhotoRoomCreator = false
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button(L10n.Common.back) {
+                                    showingPhotoRoomCreator = false
+                                }
                             }
-                        )
+                        }
                 }
             }
             // Refresh models when sheet closes
@@ -272,7 +283,22 @@ struct HomeTab: View {
         roomToDelete = nil
         limitManager.updateRoomCount()
     }
-    
+
+    // MARK: - Total Memory Calculation
+    private func totalMemoryFormatted(models: [USDZModel]) -> String {
+        var totalBytes: UInt64 = 0
+        for model in models {
+            if let size = model.fileSize {
+                totalBytes += size
+            } else if let data = model.dataAsset?.data {
+                totalBytes += UInt64(data.count)
+            }
+        }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(totalBytes))
+    }
+
     // MARK: - Model Row with Logging
     private func modelRow(for model: USDZModel, at index: Int) -> some View {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
@@ -310,7 +336,7 @@ struct HomeTab: View {
 
                 // Handle PLY files - navigate to SharpRoomView (Gaussian splat viewer)
                 if model.fileType == .ply {
-                    NavigationLink(destination: SharpRoomView(plyURL: modelURL)) {
+                    NavigationLink(destination: SharpRoomView(plyURL: modelURL, allowSave: false)) {
                         HomeViewModelRow(model: model)
                     }
                     .onAppear {
@@ -612,8 +638,8 @@ struct HomeViewModelRow: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
 
-                    // Show file size for saved rooms
-                    if model.isSavedRoom, let _ = model.fileSize {
+                    // Show file size for all rooms
+                    if model.hasFileSize {
                         Text("•")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -757,25 +783,28 @@ struct SupportView: View {
                     FAQItem(question: "faq.howToCreate".localized, answer: "faq.howToCreateAnswer".localized),
                     FAQItem(question: "faq.bestPhotos".localized, answer: "faq.bestPhotosAnswer".localized),
                     FAQItem(question: "faq.generationFailing".localized, answer: "faq.generationFailingAnswer".localized),
-                    FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized)
+                    FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized),
+                    FAQItem(question: "faq.howToSaveRoom".localized, answer: "faq.howToSaveRoomAnswer".localized)
                 ]
             ),
             FAQSection(
-                title: "faq.furnitureSegmentation".localized,
-                icon: "square.on.square.dashed",
+                title: "faq.aiFeatures".localized,
+                icon: "brain.head.profile",
                 items: [
+                    FAQItem(question: "faq.whatIsBrainIcon".localized, answer: "faq.whatIsBrainIconAnswer".localized),
+                    FAQItem(question: "faq.howToScreenshot".localized, answer: "faq.howToScreenshotAnswer".localized),
                     FAQItem(question: "faq.whatIsSegmentation".localized, answer: "faq.whatIsSegmentationAnswer".localized),
                     FAQItem(question: "faq.howToSegment".localized, answer: "faq.howToSegmentAnswer".localized),
-                    FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized),
-                    FAQItem(question: "faq.multiplePieces".localized, answer: "faq.multiplePiecesAnswer".localized)
+                    FAQItem(question: "faq.notDetected".localized, answer: "faq.notDetectedAnswer".localized)
                 ]
             ),
             FAQSection(
-                title: "faq.roomFitment".localized,
+                title: "faq.roomControls".localized,
                 icon: "cube.fill",
                 items: [
                     FAQItem(question: "faq.howToView".localized, answer: "faq.howToViewAnswer".localized),
-                    FAQItem(question: "faq.howToPlace".localized, answer: "faq.howToPlaceAnswer".localized),
+                    FAQItem(question: "faq.howToNavigate".localized, answer: "faq.howToNavigateAnswer".localized),
+                    FAQItem(question: "faq.whatIsMemoryDisplay".localized, answer: "faq.whatIsMemoryDisplayAnswer".localized),
                     FAQItem(question: "faq.sampleRoom".localized, answer: "faq.sampleRoomAnswer".localized),
                     FAQItem(question: "faq.accuracy".localized, answer: "faq.accuracyAnswer".localized),
                     FAQItem(question: "faq.adjustDimensions".localized, answer: "faq.adjustDimensionsAnswer".localized)

@@ -176,7 +176,7 @@ struct GaussianSplatView: UIViewRepresentable {
                     // Load PLY file into renderer (async)
                     try await renderer.read(from: plyURL)
 
-                    await MainActor.run {
+                    await MainActor.run { [weak self] in
                         guard let self = self else { return }
 
                         logDebug("✅ [GaussianSplatView] PLY loaded with \(renderer.splatCount) splats")
