@@ -100,6 +100,7 @@ struct SharpRoomView: View {
     @State private var saveWasSuccessful = false
     @State private var showRoomNameInput = false
     @State private var roomName = ""
+    @State private var showShareSheet = false
 
     /// Compute classic PLY URL (pre-rotated for antimatter15/splat)
     private var classicPlyURL: URL {
@@ -112,10 +113,21 @@ struct SharpRoomView: View {
         return plyURL
     }
 
+    /// Compute 3DGS PLY URL (SuperSplat compatible format)
+    private var threeDGSPlyURL: URL {
+        let path = plyURL.path
+        let threeDGSPath = path.replacingOccurrences(of: ".ply", with: "_3dgs.ply")
+        let threeDGSURL = URL(fileURLWithPath: threeDGSPath)
+        if FileManager.default.fileExists(atPath: threeDGSPath) {
+            return threeDGSURL
+        }
+        return plyURL
+    }
+
     var body: some View {
         ZStack {
-            // WebGL view using antimatter15/splat (with pre-rotated classic PLY)
-            AntimatterSplatView(plyURL: classicPlyURL, roomBounds: roomMeasurements?.boundingBox, onLoaded: {
+            // WebGL view using SparkJS (with original PLY)
+            AntimatterSplatView(plyURL: plyURL, roomBounds: roomMeasurements?.boundingBox, onLoaded: {
                 isLoading = false
             })
             .ignoresSafeArea()
@@ -226,6 +238,14 @@ struct SharpRoomView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
+                // Share button - export PLY to Files/AirDrop
+                Button(action: {
+                    showShareSheet = true
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .disabled(isLoading)
+
                 // Save button (only for new rooms, not when viewing from home)
                 if allowSave {
                     Button(action: {
@@ -244,6 +264,10 @@ struct SharpRoomView: View {
                 }
                 .disabled(isLoading)
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            // Share the 3DGS format (SuperSplat compatible)
+            ShareSheet(activityItems: [threeDGSPlyURL])
         }
         .onAppear {
             loadMLModel()
@@ -659,8 +683,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         logDebug("📐 [WebGL] Room bounds: \(boundaryManager.width) × \(boundaryManager.height) × \(boundaryManager.depth)")
         logDebug("📷 [WebGL] Camera: eye=(\(eyeX), \(eyeY), \(eyeZ)) target=(\(targetX), \(targetY), \(targetZ))")
 
-        // The antimatter15/splat viewer loads main.js from CDN
-        // URL parameter tells it to fetch room.ply from our custom scheme
+        // SparkJS + THREE.js based Gaussian Splat viewer
         return """
         <!DOCTYPE html>
         <html>
@@ -679,162 +702,135 @@ struct AntimatterSplatView: UIViewRepresentable {
                     -webkit-touch-callout: none;
                     -webkit-user-select: none;
                 }
-                #canvas {
+                canvas {
                     width: 100%;
                     height: 100%;
                     display: block;
                     touch-action: none;
                 }
-                #progress {
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    height: 4px;
-                    background: #4a9eff;
-                    width: 0%;
-                    transition: width 0.3s;
-                    z-index: 100;
-                }
-                #message {
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    color: white;
-                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                    font-size: 16px;
-                    text-align: center;
-                    z-index: 50;
-                    padding: 20px;
-                    background: rgba(0,0,0,0.7);
-                    border-radius: 10px;
-                }
-                #spinner {
-                    display: none;
-                }
-                #fps, #camid, #info {
-                    display: none;
-                }
             </style>
+            <script type="importmap">
+            {
+                "imports": {
+                    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.170.0/three.module.min.js",
+                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+                    "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/0.1.10/spark.module.js"
+                }
+            }
+            </script>
         </head>
         <body>
-            <div id="progress"></div>
-            <div id="message" style="display:none;"></div>
-            <div id="spinner"></div>
-            <div id="fps"></div>
-            <div id="camid"></div>
-            <div id="info"></div>
-            <canvas id="canvas"></canvas>
+            <script type="module">
+                import * as THREE from 'three';
+                import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+                import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
 
-            <script>
-                // Log JS errors to console
+                // Log JS errors
                 window.addEventListener('error', function(e) {
                     console.log('[JS Error] ' + e.message + ' at ' + e.filename + ':' + e.lineno);
                 });
 
-                // Room bounds from Swift (for camera positioning)
-                const roomWidth = \(boundaryManager.width);
-                const roomHeight = \(boundaryManager.height);
-                const roomDepth = \(boundaryManager.depth);
-
-                // Override URL params to point to our local PLY (pre-rotated classic version)
-                const originalURLSearchParams = URLSearchParams;
-                window.URLSearchParams = function(search) {
-                    const params = new originalURLSearchParams(search);
-                    const originalGet = params.get.bind(params);
-                    params.get = function(key) {
-                        if (key === 'url') {
-                            return 'splat://local/room.ply';
-                        }
-                        return originalGet(key);
-                    };
-                    return params;
-                };
-
-                // Save default view matrix for recenter
-                function saveDefaultViewMatrix() {
-                    if (typeof viewMatrix !== 'undefined' && viewMatrix && viewMatrix.length === 16 && !window.defaultViewMatrix) {
-                        window.defaultViewMatrix = viewMatrix.slice();
-                    }
-                }
-
-                // LookAt camera helper
-                function normalize(v) {
-                    const len = Math.hypot(v[0], v[1], v[2]) || 1;
-                    return [v[0]/len, v[1]/len, v[2]/len];
-                }
-                function cross(a, b) {
-                    return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
-                }
-                function dot(a, b) {
-                    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
-                }
-                function lookAt(eye, target, up) {
-                    const f = normalize([target[0]-eye[0], target[1]-eye[1], target[2]-eye[2]]);
-                    const s = normalize(cross(f, up));
-                    const u = cross(s, f);
-                    return [
-                        s[0], u[0], -f[0], 0,
-                        s[1], u[1], -f[1], 0,
-                        s[2], u[2], -f[2], 0,
-                        -dot(s,eye), -dot(u,eye), dot(f,eye), 1
-                    ];
-                }
-
-                // Camera adjustment disabled - let viewer handle it
-                let cameraAdjusted = false;
-                function adjustCameraDistance() {
-                    if (cameraAdjusted) return;
-                    if (typeof viewMatrix === 'undefined' || !viewMatrix) return;
-
-                    // Just save the default view matrix for recenter, don't modify
-                    defaultViewMatrix = viewMatrix.slice();
-                    cameraAdjusted = true;
-                }
-
-
-                function hideLoadingMessage() {
-                    const msg = document.getElementById('message');
-                    if (msg) msg.style.display = 'none';
-                }
-
                 const jsStartTime = performance.now();
 
-                window.addEventListener('load', function() {
-                    // Keep default carousel animation (left-right orbit)
+                // Scene setup
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x1a1a1a);
 
-                    let checkCount = 0;
-                    const checkLoaded = setInterval(function() {
-                        checkCount++;
+                // Camera - position to see room
+                const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.set(0, 0, 5);
 
-                        if (checkCount === 20) {
-                            adjustCameraDistance();
-                        }
+                // THREE.js Renderer (for SparkRenderer)
+                const renderer = new THREE.WebGLRenderer({ antialias: false });  // antialias: false per SparkJS docs
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                document.body.appendChild(renderer.domElement);
 
-                        if (checkCount === 30) {
-                            saveDefaultViewMatrix();
-                        }
-
-                        if (checkCount === 50) {
-                            hideLoadingMessage();
-                            adjustCameraDistance();
-                            saveDefaultViewMatrix();
-
-                            const totalTime = performance.now() - jsStartTime;
-                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.splatLoaded) {
-                                window.webkit.messageHandlers.splatLoaded.postMessage({ loaded: true, timeMs: totalTime });
-                            }
-                        }
-
-                        if (checkCount > 60) {
-                            clearInterval(checkLoaded);
-                        }
-                    }, 100);
+                // SparkRenderer for Gaussian-specific rendering (sharper preset)
+                const spark = new SparkRenderer({
+                    renderer: renderer,
+                    maxStdDev: Math.sqrt(6),    // Tighter Gaussians (default is sqrt(8))
+                    preBlurAmount: 0.0,         // No pre-blur smearing
+                    blurAmount: 0.2,            // Minimal post blur
+                    falloff: 1.0,               // Normal Gaussian kernel
+                    focalAdjustment: 2.0        // Extra sharpness per docs
                 });
-            </script>
+                camera.add(spark);  // Add SparkRenderer as child of camera
 
-            <!-- Load antimatter15/splat from local bundle -->
-            <script src="splat://local/main.js"></script>
+                // Orbit controls for touch/mouse
+                const controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.screenSpacePanning = false;
+                controls.minDistance = 1;
+                controls.maxDistance = 20;
+                controls.target.set(0, 0, 0);
+
+                // Save initial camera state for recenter
+                const initialCameraPosition = camera.position.clone();
+                const initialControlsTarget = controls.target.clone();
+
+                // Recenter function
+                window.recenterCamera = function() {
+                    camera.position.copy(initialCameraPosition);
+                    controls.target.copy(initialControlsTarget);
+                    controls.update();
+                };
+
+                // Load PLY splat using SparkJS
+                const plyURL = 'splat://local/room.ply';
+                console.log('Loading splat from:', plyURL);
+
+                let splatMesh = null;
+                try {
+                    splatMesh = new SplatMesh({
+                        url: plyURL,
+                        maxSh: 0  // Disable spherical harmonics for cleaner look
+                    });
+                    scene.add(splatMesh);
+                    console.log('SplatMesh added to scene');
+                } catch (err) {
+                    console.error('Failed to load splat:', err);
+                }
+
+                // Handle resize
+                window.addEventListener('resize', () => {
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+
+                // Joystick movement handler
+                window.moveCamera = function(dx, dy) {
+                    const moveSpeed = 0.05;
+                    camera.position.x += dx * moveSpeed;
+                    camera.position.z += dy * moveSpeed;
+                    controls.target.x += dx * moveSpeed;
+                    controls.target.z += dy * moveSpeed;
+                };
+
+                // Animation loop
+                let loadNotified = false;
+                function animate() {
+                    requestAnimationFrame(animate);
+                    controls.update();
+
+                    // Use SparkRenderer's update method for optimized Gaussian rendering
+                    spark.update({ scene });
+                    renderer.render(scene, camera);
+
+                    // Notify Swift when loaded
+                    if (!loadNotified && splatMesh) {
+                        loadNotified = true;
+                        const totalTime = performance.now() - jsStartTime;
+                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.splatLoaded) {
+                            window.webkit.messageHandlers.splatLoaded.postMessage({ loaded: true, timeMs: totalTime });
+                        }
+                        console.log('Splat loaded in', totalTime, 'ms');
+                    }
+                }
+                animate();
+            </script>
         </body>
         </html>
         """
@@ -879,13 +875,7 @@ struct AntimatterSplatView: UIViewRepresentable {
 
         @objc private func recenterCamera() {
             print("🎯 [WebGL] Recentering camera")
-            let js = """
-                if (typeof defaultViewMatrix !== 'undefined') {
-                    viewMatrix = defaultViewMatrix.slice();
-                    console.log('[Recenter] Reset to default view');
-                }
-                if (typeof carousel !== 'undefined') carousel = false;
-            """
+            let js = "if (typeof recenterCamera === 'function') recenterCamera();"
             webView?.evaluateJavaScript(js) { _, error in
                 if let error = error {
                     print("❌ [WebGL] Recenter JS error: \(error)")
@@ -897,25 +887,14 @@ struct AntimatterSplatView: UIViewRepresentable {
             guard let userInfo = notification.userInfo,
                   let offset = userInfo["offset"] as? CGSize else { return }
 
-            let moveSpeed: CGFloat = 0.012  // Reduced for smoother control
-            let dx = Float(offset.width * moveSpeed)
-            let dy = Float(-offset.height * moveSpeed)  // Invert Y for intuitive control
+            let dx = Float(offset.width)
+            let dy = Float(-offset.height)  // Invert Y for intuitive control
 
             // Skip if no movement
-            if abs(dx) < 0.0005 && abs(dy) < 0.0005 { return }
+            if abs(dx) < 0.01 && abs(dy) < 0.01 { return }
 
-            // JavaScript to move camera by modifying viewMatrix translation
-            // viewMatrix is column-major: [12]=tx, [13]=ty, [14]=tz
-            let js = """
-                if (typeof viewMatrix !== 'undefined' && viewMatrix) {
-                    // Stop carousel animation
-                    if (typeof carousel !== 'undefined') carousel = false;
-
-                    // Move camera (tx and tz for horizontal movement)
-                    viewMatrix[12] += \(dx);  // Left/right
-                    viewMatrix[14] += \(dy);  // Forward/backward
-                }
-            """
+            // Call SparkJS moveCamera function
+            let js = "if (typeof moveCamera === 'function') moveCamera(\(dx), \(dy));"
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
@@ -1039,6 +1018,23 @@ struct WebGLJoystickOverlay: View {
             .padding(.bottom, 40)
         }
     }
+}
+
+// MARK: - Share Sheet
+
+/// UIActivityViewController wrapper for sharing files
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: nil
+        )
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Preview
