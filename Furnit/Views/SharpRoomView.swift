@@ -260,16 +260,18 @@ struct SharpRoomView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
-                // Share button - export PLY to Files/AirDrop
-                Button(action: {
-                    showShareSheet = true
-                }) {
-                    Image(systemName: "square.and.arrow.up")
+                // Share button - only in debug mode
+                if AppStateManager.shared.qualitySettings.debugMode {
+                    Button(action: {
+                        showShareSheet = true
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .disabled(isLoading)
                 }
-                .disabled(isLoading)
 
-                // Save button (only for new rooms, not when viewing from home)
-                if allowSave {
+                // Save button (only in debug mode, and only for new rooms)
+                if AppStateManager.shared.qualitySettings.debugMode && allowSave {
                     Button(action: {
                         showRoomNameInput = true
                     }) {
@@ -374,16 +376,15 @@ struct SharpRoomView: View {
 
     // MARK: - Navigation Title with Dimensions
     private var navigationTitleWithDimensions: String {
-        // Use actual room measurements if available, then JS-measured, then defaults
+        // Show front wall dimensions (width × height)
         let wallWidth = roomMeasurements?.frontWallWidth
             ?? jsFrontWallWidth
             ?? 4.0
         let wallHeight = roomMeasurements?.frontWallHeight
             ?? jsFrontWallHeight
             ?? 3.0
-        let depth = roomMeasurements?.roomDepth ?? 2.0
 
-        return String(format: "%.1f × %.1f × %.1f m", wallWidth, wallHeight, depth)
+        return String(format: "%.1f × %.1f m", wallWidth, wallHeight)
     }
 
     /// Get file size of the PLY file
