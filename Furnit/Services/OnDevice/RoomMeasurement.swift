@@ -10,10 +10,21 @@ enum PhotoOrientation: String, Codable {
     case landscape
     case square
 
-    /// Detect orientation from image dimensions
+    /// Detect orientation from image dimensions (accounting for EXIF rotation)
     static func detect(from image: UIImage) -> PhotoOrientation {
-        let w = image.size.width
-        let h = image.size.height
+        // Account for EXIF orientation - some images are rotated 90°
+        let normalizedSize: CGSize
+        switch image.imageOrientation {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            normalizedSize = CGSize(width: image.size.height, height: image.size.width)
+        default:
+            normalizedSize = image.size
+        }
+
+        let w = normalizedSize.width
+        let h = normalizedSize.height
+
+        logDebug("📐 [Orientation] Raw size: \(image.size.width)x\(image.size.height), EXIF: \(image.imageOrientation.rawValue), Normalized: \(w)x\(h)")
 
         if abs(w - h) < 5 {  // small tolerance for nearly square
             return .square

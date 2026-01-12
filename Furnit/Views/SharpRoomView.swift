@@ -921,15 +921,22 @@ struct AntimatterSplatView: UIViewRepresentable {
                 controls.maxDistance = 20;
                 controls.target.set(0, 0, 0);
 
-                // Save initial camera state for recenter
-                const initialCameraPosition = camera.position.clone();
-                const initialControlsTarget = controls.target.clone();
+                // Save initial camera state for recenter (will be updated after auto-frame)
+                let initialCameraPosition = camera.position.clone();
+                let initialControlsTarget = controls.target.clone();
 
                 // Recenter function
                 window.recenterCamera = function() {
                     camera.position.copy(initialCameraPosition);
                     controls.target.copy(initialControlsTarget);
                     controls.update();
+                };
+
+                // Function to update initial position (called after auto-frame)
+                window.updateInitialPosition = function() {
+                    initialCameraPosition = camera.position.clone();
+                    initialControlsTarget = controls.target.clone();
+                    console.log('Updated initial position for recenter:', initialCameraPosition);
                 };
 
                 // Load PLY splat using SparkJS
@@ -1023,6 +1030,11 @@ struct AntimatterSplatView: UIViewRepresentable {
                             camera.position.copy(newCamPos);
                             controls.target.copy(newTarget);
                             controls.update();
+
+                            // Update initial position for recenter to use auto-framed position
+                            if (typeof updateInitialPosition === 'function') {
+                                updateInitialPosition();
+                            }
 
                             console.log('=== Camera MOVED ===');
                         } catch (err) {
