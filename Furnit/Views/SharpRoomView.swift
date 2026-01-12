@@ -35,29 +35,39 @@ struct RoomBoundaryManager {
         RoomBounds(minX: -2, maxX: 2, minY: -1.5, maxY: 1.5, minZ: -5, maxZ: -1)
     }
 
-    /// Calculate camera position in front of room, looking into it
-    /// - Parameter fovDegrees: Camera field of view in degrees
-    /// - Returns: (eye position, target position) for lookAt camera
+    /// Calculate camera position just INSIDE the room, near the front wall,
+    /// looking towards the room center.
+    ///
+    /// insideFactor:
+    ///   - 0.0  => exactly at front wall plane
+    ///   - 0.1  => 10% of room depth inside from the front wall
+    ///   - 0.5  => at room center
     func getCameraAtBackWall(fovDegrees: Float = 60) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
-        // Depth is already maxZ - minZ (positive), coming from RoomBounds
-        let standoff = depth * 0.3  // 30% of room depth in front of the front wall
+        // Move camera INSIDE the room (towards negative Z),
+        // slightly behind the front wall so the room fills more of the view.
+        let insideFactor: Float = 0.15   // 15% into the room from the front wall
 
-        // For typical bounds: minZ ≈ -18, maxZ ≈ -1
-        // frontWallZ ≈ -1, standoff ≈ 5  => eyeZ ≈ +4 (outside room, in front)
+        // frontWallZ = maxZ (closest wall to camera, least negative)
+        // backWallZ  = minZ (far wall, most negative)
+        //
+        // depth = frontWallZ - backWallZ (positive)
+        // eyeZ = frontWallZ - depth * insideFactor  → moves towards backWallZ (more negative)
+        let eyeZ = frontWallZ - depth * insideFactor
+
         let eye = SIMD3<Float>(
             centerX,
             centerY,
-            frontWallZ + standoff   // move in front of front wall (towards +Z)
+            eyeZ
         )
 
         let target = SIMD3<Float>(
             centerX,
             centerY,
-            centerZ                 // look at room center
+            centerZ   // look at room center
         )
 
         logDebug("📷 [BoundaryManager] frontWallZ=\(frontWallZ), backWallZ=\(backWallZ), depth=\(depth)")
-        logDebug("📷 [BoundaryManager] Camera: eye=(\(eye.x), \(eye.y), \(eye.z)) target=(\(target.x), \(target.y), \(target.z))")
+        logDebug("📷 [BoundaryManager] INSIDE room: eye=(\(eye.x), \(eye.y), \(eye.z)) target=(\(target.x), \(target.y), \(target.z))")
 
         return (eye: eye, target: target)
     }
@@ -989,8 +999,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.05;
                 controls.screenSpacePanning = false;
-                controls.minDistance = 0.4;   // Allow closer zooming
-                controls.maxDistance = 20;
+                controls.minDistance = 0.01;  // Allow very close (we control limits with room box)
+                controls.maxDistance = 100;   // No hard outer limit (room box handles this)
                 controls.target.set(0, 0, 0);
 
                 // Limit rotation angles to front hemisphere
@@ -999,47 +1009,20 @@ struct AntimatterSplatView: UIViewRepresentable {
                 controls.minPolarAngle = Math.PI / 4;     // 45° down from top
                 controls.maxPolarAngle = 3 * Math.PI / 4; // 135° (don't go underneath)
 
-                // Clamp orbit controls to stay near room
+                // Simple box clamp: keep camera INSIDE room bounds, no spherical cage
                 controls.addEventListener('change', () => {
-                    if (!roomBoundsForClamping || !roomRadius) return;
+                    if (!roomBoundsForClamping) return;
 
-                    const margin = 0.3;
+                    const margin = 0.1; // small buffer from exact walls
+                    const b = roomBoundsForClamping;
 
-                    const center = new THREE.Vector3(
-                        roomBoundsForClamping.centerX,
-                        roomBoundsForClamping.centerY,
-                        roomBoundsForClamping.centerZ
-                    );
+                    // Clamp camera X/Y/Z to the inner room box
+                    camera.position.x = Math.max(b.minX + margin, Math.min(b.maxX - margin, camera.position.x));
+                    camera.position.z = Math.max(b.minZ + margin, Math.min(b.maxZ - margin, camera.position.z));
+                    camera.position.y = Math.max(b.minY - margin, Math.min(b.maxY + margin, camera.position.y));
 
-                    // Vector from center to camera
-                    const offset = new THREE.Vector3().subVectors(camera.position, center);
-                    const dist = offset.length();
-
-                    const minDist = roomRadius * 0.2;   // can get fairly close
-                    const maxDist = roomRadius * 0.8;   // much closer cap than before
-
-                    let changed = false;
-
-                    if (dist < minDist) {
-                        offset.setLength(minDist);
-                        changed = true;
-                    } else if (dist > maxDist) {
-                        offset.setLength(maxDist);
-                        changed = true;
-                    }
-
-                    if (changed) {
-                        camera.position.copy(center).add(offset);
-                    }
-
-                    // Clamp Y so camera doesn't go absurdly high/low
-                    camera.position.y = Math.max(
-                        roomBoundsForClamping.minY - margin,
-                        Math.min(roomBoundsForClamping.maxY + margin, camera.position.y)
-                    );
-
-                    // Keep target near center so orbit always stays on room
-                    controls.target.copy(center);
+                    // Do NOT reset controls.target to center here.
+                    // We let joystick + finger rotation decide the target.
                 });
 
                 // Save initial camera state for recenter (will be updated after auto-frame)
@@ -1127,40 +1110,66 @@ struct AntimatterSplatView: UIViewRepresentable {
                             console.log('Wall:', wallWidth.toFixed(2), 'x', wallHeight.toFixed(2));
                             console.log('Center:', centerX.toFixed(2), centerY.toFixed(2), 'frontZ:', frontZ.toFixed(2));
 
-                            // Store bounds for camera clamping (expanded with Y and centers)
-                            const centerZ = (frontZ + backZ) / 2;
+                            // 1) Raw bounds from Swift / Box3
+                            let rawMinX = centerX - wallWidth / 2;
+                            let rawMaxX = centerX + wallWidth / 2;
+                            let rawMinY = centerY - wallHeight / 2;
+                            let rawMaxY = centerY + wallHeight / 2;
+                            let rawMinZ = backZ;
+                            let rawMaxZ = frontZ;
+
+                            // 2) Shrink bounds to ignore foggy outer layer
+                            //    e.g. ignore outer 10% in each direction
+                            const fogFactor = 0.10;  // 0.10 = ignore 10% outer band
+                            const shrinkX = wallWidth * fogFactor * 0.5;
+                            const shrinkY = wallHeight * fogFactor * 0.5;
+                            const shrinkZ = Math.abs(frontZ - backZ) * fogFactor * 0.5;
+
+                            const minX = rawMinX + shrinkX;
+                            const maxX = rawMaxX - shrinkX;
+                            const minY = rawMinY + shrinkY;
+                            const maxY = rawMaxY - shrinkY;
+                            const minZ = rawMinZ + shrinkZ;  // move in from back wall
+                            const maxZ = rawMaxZ - shrinkZ;  // move in from front wall
+
+                            const innerCenterX = (minX + maxX) / 2;
+                            const innerCenterY = (minY + maxY) / 2;
+                            const innerCenterZ = (minZ + maxZ) / 2;
+
+                            // Store tightened bounds for clamping + joystick
                             roomBoundsForClamping = {
-                                minX: centerX - wallWidth / 2,
-                                maxX: centerX + wallWidth / 2,
-                                minY: centerY - wallHeight / 2,
-                                maxY: centerY + wallHeight / 2,
-                                minZ: backZ,
-                                maxZ: frontZ,
-                                centerX: centerX,
-                                centerY: centerY,
-                                centerZ: centerZ
+                                minX, maxX,
+                                minY, maxY,
+                                minZ, maxZ,
+                                centerX: innerCenterX,
+                                centerY: innerCenterY,
+                                centerZ: innerCenterZ
                             };
 
-                            // Safe bubble around room center for camera clamping
-                            // Smaller factor => camera stays closer to the room
-                            roomRadius = Math.max(wallWidth, wallHeight, Math.abs(frontZ - backZ)) * 0.5;
-                            console.log('Camera bounds set:', JSON.stringify(roomBoundsForClamping));
-                            console.log('Room radius for clamping:', roomRadius.toFixed(2));
+                            roomRadius = Math.max(
+                                maxX - minX,
+                                maxY - minY,
+                                Math.abs(maxZ - minZ)
+                            ) * 0.5;
 
-                            // Send to Swift
+                            // Send to Swift (original dimensions)
                             if (window.webkit?.messageHandlers?.frontWallDimensions) {
                                 window.webkit.messageHandlers.frontWallDimensions.postMessage({
                                     width: wallWidth, height: wallHeight
                                 });
                             }
 
-                            // --- USE SWIFT BOUNDARY MANAGER VALUES DIRECTLY ---
-                            // Use Swift-computed camera position directly
-                            const newCamPos = new THREE.Vector3(\(eyeX), \(eyeY), \(eyeZ));
-                            const newTarget = new THREE.Vector3(\(targetX), \(targetY), \(targetZ));
+                            // 3) Place camera INSIDE this inner box
+                            const insideFactor = 0.4;  // 40% from front wall towards back
+                            const depth = maxZ - minZ; // positive
+                            const eyeZ = maxZ - depth * insideFactor;
 
-                            console.log('Final camera pos:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2));
-                            console.log('Final target:', newTarget.x.toFixed(2), newTarget.y.toFixed(2), newTarget.z.toFixed(2));
+                            const newCamPos = new THREE.Vector3(innerCenterX, innerCenterY, eyeZ);
+                            const newTarget = new THREE.Vector3(innerCenterX, innerCenterY, innerCenterZ);
+
+                            console.log('Inner bounds:', JSON.stringify(roomBoundsForClamping));
+                            console.log('Camera inside inner box:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2));
+                            console.log('Target:', newTarget.x.toFixed(2), newTarget.y.toFixed(2), newTarget.z.toFixed(2));
 
                             camera.position.copy(newCamPos);
                             controls.target.copy(newTarget);
@@ -1170,7 +1179,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                             initialCameraPosition.copy(camera.position);
                             initialControlsTarget.copy(controls.target);
 
-                            console.log('=== Camera positioned by Swift BoundaryManager ===');
+                            console.log('=== Camera positioned inside inner bounds ===');
                         } catch (err) {
                             console.error('autoFrameRoom error:', err);
                         }
@@ -1195,7 +1204,7 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                 // Joystick movement handler with boundary clamping
                 window.moveCamera = function(dx, dy) {
-                    const moveSpeed = 0.015;  // Reduced sensitivity
+                    const moveSpeed = 0.03;  // Increased for better walk feel
 
                     // Calculate new position
                     let newX = camera.position.x + dx * moveSpeed;
@@ -1203,7 +1212,7 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                     // Clamp to room bounds if available
                     if (roomBoundsForClamping) {
-                        const margin = 0.5;  // Small margin inside bounds
+                        const margin = 0.2;  // Smaller margin to approach walls more closely
                         newX = Math.max(roomBoundsForClamping.minX + margin,
                                Math.min(roomBoundsForClamping.maxX - margin, newX));
                         newZ = Math.max(roomBoundsForClamping.minZ + margin,
