@@ -581,7 +581,7 @@ import RoomPlan
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @StateObject private var sharpService = SHARPService()
-    @StateObject private var landscapeSharpService = LandscapeSHARPService()
+    // LandscapeSHARPService removed - using SHARPService for both orientations
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var adjustedBoundaries: RoomStructure?
@@ -783,18 +783,18 @@ struct SinglePhotoRoomView: View {
                 }
             }
 
-            // Progress overlay for model loading (show for either service)
-            if sharpService.isLoadingModel || landscapeSharpService.isLoadingModel {
+            // Progress overlay for model loading
+            if sharpService.isLoadingModel {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.5)
                         .tint(.purple)
 
-                    Text(selectedOrientation == .landscape ? landscapeSharpService.statusMessage : sharpService.statusMessage)
+                    Text(sharpService.statusMessage)
                         .font(.headline)
                         .foregroundColor(.primary)
 
-                    ProgressView(value: Double(selectedOrientation == .landscape ? landscapeSharpService.progress : sharpService.progress))
+                    ProgressView(value: Double(sharpService.progress))
                         .progressViewStyle(LinearProgressViewStyle(tint: .purple))
                         .frame(width: 200)
                 }
@@ -812,14 +812,6 @@ struct SinglePhotoRoomView: View {
                     downloadProgress: sharpService.progress,
                     statusMessage: sharpService.statusMessage,
                     onCancel: { sharpService.cancelGeneration() }
-                )
-            } else if case .processing = landscapeSharpService.status {
-                GenerationProgressOverlay(
-                    status: landscapeSharpService.status,
-                    uploadProgress: landscapeSharpService.progress,
-                    downloadProgress: landscapeSharpService.progress,
-                    statusMessage: landscapeSharpService.statusMessage,
-                    onCancel: { landscapeSharpService.cancelGeneration() }
                 )
             }
         }
@@ -896,20 +888,17 @@ struct SinglePhotoRoomView: View {
                 }
             }
         }
-        // Navigate to SharpRoomView when PLY is generated
-        // Use LandscapeSharpRoomView for landscape, SharpRoomView for portrait
+        // Navigate to SharpRoomView when PLY is generated (used for both orientations)
         .navigationDestination(isPresented: $navigateToSplatViewer) {
             Group {
                 if let plyURL = generatedPLYURL {
-                    let _ = print("🚀 [Navigation] selectedOrientation = \(selectedOrientation.rawValue)")
+                    let _ = print("🚀 [Navigation] orientation = \(selectedOrientation.rawValue)")
                     let _ = print("🚀 [Navigation] plyURL = \(plyURL.lastPathComponent)")
-                    if selectedOrientation == .landscape {
-                        let _ = print("🚀 [Navigation] Using LandscapeSharpRoomView")
-                        LandscapeSharpRoomView(plyURL: plyURL, roomMeasurements: generatedRoomMeasurements)
-                    } else {
-                        let _ = print("🚀 [Navigation] Using SharpRoomView (portrait)")
-                        SharpRoomView(plyURL: plyURL, roomMeasurements: generatedRoomMeasurements)
-                    }
+                    SharpRoomView(
+                        plyURL: plyURL,
+                        roomMeasurements: generatedRoomMeasurements,
+                        photoOrientation: selectedOrientation
+                    )
                 } else {
                     let _ = print("🚀 [Navigation] ERROR: generatedPLYURL is nil!")
                 }
@@ -933,7 +922,6 @@ struct SinglePhotoRoomView: View {
         .alert("Generation Failed", isPresented: Binding(
             get: {
                 if case .failed = sharpService.status { return true }
-                if case .failed = landscapeSharpService.status { return true }
                 return false
             },
             set: { _ in }
@@ -948,8 +936,6 @@ struct SinglePhotoRoomView: View {
             }
         } message: {
             if case .failed(let errorMessage) = sharpService.status {
-                Text(errorMessage)
-            } else if case .failed(let errorMessage) = landscapeSharpService.status {
                 Text(errorMessage)
             } else {
                 Text("An error occurred while generating your 3D model.")
@@ -978,15 +964,9 @@ struct SinglePhotoRoomView: View {
                 let fileURL: URL
                 let measurements: RoomMeasurements?
 
-                if orientation == .landscape {
-                    // Use LandscapeSHARPService for landscape
-                    fileURL = try await landscapeSharpService.generateGaussians(from: image)
-                    measurements = landscapeSharpService.roomMeasurements
-                } else {
-                    // Use SHARPService for portrait
-                    fileURL = try await sharpService.generateGaussians(from: image)
-                    measurements = sharpService.roomMeasurements
-                }
+                // Use SHARPService for both orientations
+                fileURL = try await sharpService.generateGaussians(from: image)
+                measurements = sharpService.roomMeasurements
 
                 logDebug("✅ [View] PLY file generated: \(fileURL.path)")
                 await MainActor.run {

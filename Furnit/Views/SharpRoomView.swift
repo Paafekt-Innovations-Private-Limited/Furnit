@@ -82,16 +82,18 @@ struct SharpRoomView: View {
     let plyURL: URL
     let roomMeasurements: RoomMeasurements?  // Room measurements for display
     let allowSave: Bool  // Show save button (true for new rooms, false for viewing from home)
+    let photoOrientation: PhotoOrientation  // Source photo orientation (for UI layout)
     @Environment(\.dismiss) private var dismiss
 
     // Parsed bounds from PLY file (used when roomMeasurements is nil)
     private let parsedBounds: RoomBounds?
 
     // Convenience initializer for backwards compatibility
-    init(plyURL: URL, roomMeasurements: RoomMeasurements? = nil, allowSave: Bool = true) {
+    init(plyURL: URL, roomMeasurements: RoomMeasurements? = nil, allowSave: Bool = true, photoOrientation: PhotoOrientation = .portrait) {
         self.plyURL = plyURL
         self.roomMeasurements = roomMeasurements
         self.allowSave = allowSave
+        self.photoOrientation = photoOrientation
 
         // Compute classic PLY URL (matches what we display and save)
         let classicPath = plyURL.path.replacingOccurrences(of: ".ply", with: "_classic.ply")
@@ -320,56 +322,112 @@ struct SharpRoomView: View {
                 saveRoomProgressOverlay
             }
 
-            // WebGL Joystick overlay (hide when SmartyPants active)
-            if !showingSmartyPants {
-                WebGLJoystickOverlay()
-                    .zIndex(99997)
-            }
-
-            // Bottom buttons (brain left, screenshot right)
-            VStack {
-                Spacer()
+            // Landscape layout: controls on LEFT side (appears at bottom when phone held horizontally)
+            // - Joystick: left-center
+            // - Brain: top-left
+            // - Snapshot: bottom-left
+            if photoOrientation == .landscape {
+                // Left edge controls for landscape
                 HStack {
-                    // Brain button (bottom-left)
-                    Button(action: {
-                        if showingSmartyPants {
-                            showingSmartyPants = false
-                        } else {
-                            // Request Metal view snapshot
-                            NotificationCenter.default.post(name: NSNotification.Name("CaptureMetalSnapshot"), object: nil)
-                            // Wait for snapshot then show SmartyPants
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                showingSmartyPants = true
+                    VStack {
+                        // Brain button (top-left)
+                        Button(action: {
+                            if showingSmartyPants {
+                                showingSmartyPants = false
+                            } else {
+                                NotificationCenter.default.post(name: NSNotification.Name("CaptureMetalSnapshot"), object: nil)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showingSmartyPants = true
+                                }
                             }
+                        }) {
+                            Image(systemName: "brain.head.profile")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
                         }
-                    }) {
-                        Image(systemName: "brain.head.profile")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white)
-                            .frame(width: 60, height: 60)
-                            .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
-                    }
-                    .disabled(isLoading)
-                    .padding(.leading, 16)
+                        .disabled(isLoading)
+                        .padding(.top, 100)  // Below nav bar
 
+                        Spacer()
+
+                        // Joystick (center-left)
+                        if !showingSmartyPants {
+                            WebGLJoystickOverlay()
+                        }
+
+                        Spacer()
+
+                        // Screenshot button (bottom-left)
+                        Button(action: {
+                            takeScreenshot()
+                        }) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(Color.blue).shadow(radius: 5))
+                        }
+                        .disabled(isLoading)
+                        .padding(.bottom, 40)
+                    }
+                    .padding(.leading, 20)
                     Spacer()
-
-                    // Screenshot button (bottom-right) - always visible
-                    Button(action: {
-                        takeScreenshot()
-                    }) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white)
-                            .frame(width: 60, height: 60)
-                            .background(Circle().fill(Color.blue).shadow(radius: 5))
-                    }
-                    .disabled(isLoading)
-                    .padding(.trailing, 16)
                 }
-                .padding(.bottom, 20)
+                .zIndex(99997)
+            } else {
+                // Portrait layout: standard bottom controls
+
+                // Joystick at bottom center
+                if !showingSmartyPants {
+                    WebGLJoystickOverlay()
+                        .zIndex(99997)
+                }
+
+                // Buttons at bottom row
+                VStack {
+                    Spacer()
+                    HStack {
+                        // Brain button (bottom-left)
+                        Button(action: {
+                            if showingSmartyPants {
+                                showingSmartyPants = false
+                            } else {
+                                NotificationCenter.default.post(name: NSNotification.Name("CaptureMetalSnapshot"), object: nil)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    showingSmartyPants = true
+                                }
+                            }
+                        }) {
+                            Image(systemName: "brain.head.profile")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+                        }
+                        .disabled(isLoading)
+                        .padding(.leading, 16)
+
+                        Spacer()
+
+                        // Screenshot button (bottom-right)
+                        Button(action: {
+                            takeScreenshot()
+                        }) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(Color.blue).shadow(radius: 5))
+                        }
+                        .disabled(isLoading)
+                        .padding(.trailing, 16)
+                    }
+                    .padding(.bottom, 20)
+                }
+                .zIndex(201)
             }
-            .zIndex(201)
         }
         .background(Color.black)
         .navigationTitle(navigationTitleWithDimensions)
@@ -411,6 +469,12 @@ struct SharpRoomView: View {
         }
         .onAppear {
             loadMLModel()
+            // Lock to portrait orientation for 3D view stability
+            OrientationLockManager.shared.lockToPortrait()
+        }
+        .onDisappear {
+            // Unlock orientation when leaving the view
+            OrientationLockManager.shared.unlock()
         }
         // Room name input alert
         .alert("Save Room", isPresented: $showRoomNameInput) {

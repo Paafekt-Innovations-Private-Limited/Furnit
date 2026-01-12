@@ -3,7 +3,50 @@ import FirebaseCore
 import FirebaseAuth
 import UserNotifications
 
+// MARK: - Orientation Lock Manager
+
+/// Manages app-wide orientation locking for specific views
+class OrientationLockManager {
+    static let shared = OrientationLockManager()
+
+    /// Currently allowed orientations (default: all)
+    var lockedOrientation: UIInterfaceOrientationMask = .all
+
+    private init() {}
+
+    /// Lock to portrait only
+    func lockToPortrait() {
+        lockedOrientation = .portrait
+
+        // Force orientation update on iOS 16+
+        if #available(iOS 16.0, *) {
+            let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+            windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            windowScene?.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        }
+    }
+
+    /// Unlock to allow all orientations
+    func unlock() {
+        lockedOrientation = .all
+
+        if #available(iOS 16.0, *) {
+            let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+            windowScene?.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        }
+    }
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
+
+    // MARK: - Orientation Support
+
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        return OrientationLockManager.shared.lockedOrientation
+    }
+
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
