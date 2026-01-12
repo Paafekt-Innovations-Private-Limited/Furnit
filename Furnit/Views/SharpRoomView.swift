@@ -3,76 +3,87 @@ import CoreML
 import Photos
 import WebKit
 
-// MARK: - WebGL Boundary Manager
+// MARK: - Room Boundary Manager
 
 /// Boundary manager for WebGL Gaussian splat rendering
-/// Calculates optimal camera positions based on room dimensions
-struct WebGLBoundaryManager {
-    let width: Float
-    let height: Float
-    let depth: Float
+/// Uses actual room bounds to calculate optimal camera positions
+struct RoomBoundaryManager {
+    let bounds: RoomBounds
 
-    /// Default room dimensions when bounds not provided
-    static let defaultBounds = WebGLBoundaryManager(width: 4.0, height: 3.0, depth: 2.0)
+    /// Room dimensions
+    var width: Float { bounds.width }
+    var height: Float { bounds.height }
+    var depth: Float { bounds.depth }
 
-    init(width: Float, height: Float, depth: Float) {
-        self.width = width
-        self.height = height
-        self.depth = depth
+    /// Room center
+    var centerX: Float { bounds.centerX }
+    var centerY: Float { bounds.centerY }
+    var centerZ: Float { bounds.centerZ }
+
+    /// Wall positions (maxZ = front wall in classic PLY, minZ = back wall)
+    /// In classic PLY from SHARP, Z is negative, and the wall closest to camera
+    /// is the one with the *largest* Z (least negative).
+    var frontWallZ: Float { bounds.maxZ }  // closest to camera
+    var backWallZ: Float { bounds.minZ }   // farthest from camera
+
+    init(bounds: RoomBounds) {
+        self.bounds = bounds
     }
 
-    init(bounds: SIMD3<Float>?) {
-        if let b = bounds {
-            self.width = b.x
-            self.height = b.y
-            self.depth = b.z
-        } else {
-            self = Self.defaultBounds
-        }
+    /// Default bounds when none provided
+    static var defaultBounds: RoomBounds {
+        RoomBounds(minX: -2, maxX: 2, minY: -1.5, maxY: 1.5, minZ: -5, maxZ: -1)
     }
 
-    /// Calculate optimal camera position for viewing the front wall
-    /// Camera positioned to frame the front wall nicely
-    /// Returns (eye position, target position) for lookAt camera
-    func getOptimalCameraPosition() -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
-        // Classic PLY transform: (x, -y, -z)
-        // Room extends into negative Z (front wall around -1.4, back wall around -4.7)
+    /// Calculate camera position in front of room, looking into it
+    /// - Parameter fovDegrees: Camera field of view in degrees
+    /// - Returns: (eye position, target position) for lookAt camera
+    func getCameraAtBackWall(fovDegrees: Float = 60) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
+        // Depth is already maxZ - minZ (positive), coming from RoomBounds
+        let standoff = depth * 0.3  // 30% of room depth in front of the front wall
 
-        // Front wall is at the "closest" Z (least negative)
-        let frontWallZ: Float = -1.4  // Typical front wall position from logs
-
-        // Calculate distance to fit the larger of width/height in view
-        // FOV is 60 degrees, so tan(30°) = 0.577
-        let maxDim = max(width, height)
-        let tanHalfFov: Float = 0.577  // tan(30°)
-        var distance = (maxDim / 2) / tanHalfFov
-
-        // Make it tighter (0.6x = 60% of the "fit exactly" distance)
-        distance *= 0.6
-
+        // For typical bounds: minZ ≈ -18, maxZ ≈ -1
+        // frontWallZ ≈ -1, standoff ≈ 5  => eyeZ ≈ +4 (outside room, in front)
         let eye = SIMD3<Float>(
-            0,                          // Center X
-            0,                          // Center Y
-            frontWallZ + distance       // In front of the wall
+            centerX,
+            centerY,
+            frontWallZ + standoff   // move in front of front wall (towards +Z)
         )
 
         let target = SIMD3<Float>(
-            0,                          // Center X
-            0,                          // Center Y
-            frontWallZ                  // Look at front wall
+            centerX,
+            centerY,
+            centerZ                 // look at room center
         )
+
+        logDebug("📷 [BoundaryManager] frontWallZ=\(frontWallZ), backWallZ=\(backWallZ), depth=\(depth)")
+        logDebug("📷 [BoundaryManager] Camera: eye=(\(eye.x), \(eye.y), \(eye.z)) target=(\(target.x), \(target.y), \(target.z))")
 
         return (eye: eye, target: target)
     }
 
-    /// Get room center point
-    var roomCenter: SIMD3<Float> {
-        SIMD3<Float>(0, 0, 0)  // Classic PLY is centered at origin
-    }
+    /// Calculate camera position to fit front wall in view
+    /// - Parameter fovDegrees: Camera field of view in degrees
+    /// - Returns: (eye position, target position) for lookAt camera
+    func getCameraFittingFrontWall(fovDegrees: Float = 60) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
+        let maxDim = max(width, height)
+        let tanHalfFov = tan(fovDegrees * .pi / 360)  // tan(fov/2) in radians
+        var distance = (maxDim / 2) / tanHalfFov
+        distance *= 1.1  // 10% padding
 
-    /// Get room dimensions
-    var dimensions: SIMD3<Float> {
-        SIMD3<Float>(width, height, depth)
+        let eye = SIMD3<Float>(
+            centerX,
+            centerY,
+            frontWallZ + distance  // In front of front wall
+        )
+
+        let target = SIMD3<Float>(
+            centerX,
+            centerY,
+            frontWallZ  // Look at front wall
+        )
+
+        return (eye: eye, target: target)
     }
 }
 
@@ -880,9 +891,10 @@ struct AntimatterSplatView: UIViewRepresentable {
     }
 
     private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?) -> String {
-        // Use boundary manager to calculate camera position
-        let boundaryManager = WebGLBoundaryManager(bounds: bounds)
-        let cameraSetup = boundaryManager.getOptimalCameraPosition()
+        // Use RoomBoundaryManager to calculate camera position
+        let roomBounds = actualBounds ?? RoomBoundaryManager.defaultBounds
+        let boundaryManager = RoomBoundaryManager(bounds: roomBounds)
+        let cameraSetup = boundaryManager.getCameraAtBackWall()
 
         let eyeX = cameraSetup.eye.x
         let eyeY = cameraSetup.eye.y
@@ -892,16 +904,10 @@ struct AntimatterSplatView: UIViewRepresentable {
         let targetY = cameraSetup.target.y
         let targetZ = cameraSetup.target.z
 
-        logDebug("📐 [WebGL] Room bounds: \(boundaryManager.width) × \(boundaryManager.height) × \(boundaryManager.depth)")
+        logDebug("📐 [WebGL] Room: \(boundaryManager.width) × \(boundaryManager.height) × \(boundaryManager.depth)")
+        logDebug("📐 [WebGL] Center: (\(boundaryManager.centerX), \(boundaryManager.centerY), \(boundaryManager.centerZ))")
+        logDebug("📐 [WebGL] Front wall Z: \(boundaryManager.frontWallZ), Back wall Z: \(boundaryManager.backWallZ)")
         logDebug("📷 [WebGL] Camera: eye=(\(eyeX), \(eyeY), \(eyeZ)) target=(\(targetX), \(targetY), \(targetZ))")
-
-        // Debug actual bounds
-        if let ab = actualBounds {
-            logDebug("📏 [WebGL] Actual bounds: X[\(ab.minX), \(ab.maxX)] Y[\(ab.minY), \(ab.maxY)] Z[\(ab.minZ), \(ab.maxZ)]")
-            logDebug("📏 [WebGL] Front wall at Z=\(ab.frontZ), center=(\(ab.centerX), \(ab.centerY))")
-        } else {
-            logDebug("⚠️ [WebGL] No actual bounds available - will use Box3 fallback")
-        }
 
         // SparkJS + THREE.js based Gaussian Splat viewer
         return """
@@ -987,6 +993,55 @@ struct AntimatterSplatView: UIViewRepresentable {
                 controls.maxDistance = 20;
                 controls.target.set(0, 0, 0);
 
+                // Limit rotation angles to front hemisphere
+                controls.minAzimuthAngle = -Math.PI / 2;  // -90° left
+                controls.maxAzimuthAngle =  Math.PI / 2;  // +90° right
+                controls.minPolarAngle = Math.PI / 4;     // 45° down from top
+                controls.maxPolarAngle = 3 * Math.PI / 4; // 135° (don't go underneath)
+
+                // Clamp orbit controls to stay near room
+                controls.addEventListener('change', () => {
+                    if (!roomBoundsForClamping || !roomRadius) return;
+
+                    const margin = 0.3;
+
+                    const center = new THREE.Vector3(
+                        roomBoundsForClamping.centerX,
+                        roomBoundsForClamping.centerY,
+                        roomBoundsForClamping.centerZ
+                    );
+
+                    // Vector from center to camera
+                    const offset = new THREE.Vector3().subVectors(camera.position, center);
+                    const dist = offset.length();
+
+                    const minDist = roomRadius * 0.3;   // don't bury camera inside splats
+                    const maxDist = roomRadius * 1.1;   // don't zoom far outside room
+
+                    let changed = false;
+
+                    if (dist < minDist) {
+                        offset.setLength(minDist);
+                        changed = true;
+                    } else if (dist > maxDist) {
+                        offset.setLength(maxDist);
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        camera.position.copy(center).add(offset);
+                    }
+
+                    // Clamp Y so camera doesn't go absurdly high/low
+                    camera.position.y = Math.max(
+                        roomBoundsForClamping.minY - margin,
+                        Math.min(roomBoundsForClamping.maxY + margin, camera.position.y)
+                    );
+
+                    // Keep target near center so orbit always stays on room
+                    controls.target.copy(center);
+                });
+
                 // Save initial camera state for recenter (will be updated after auto-frame)
                 let initialCameraPosition = camera.position.clone();
                 let initialControlsTarget = controls.target.clone();
@@ -1016,7 +1071,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                         maxSh: 0  // Disable spherical harmonics for cleaner look
                     });
                     scene.add(splatMesh);
-                    console.log('SplatMesh added to scene');
+
+                    // Rotate room 180° around X-axis to correct orientation
+                    splatMesh.rotation.x = Math.PI;
+                    console.log('SplatMesh added to scene & rotated 180° around X');
 
                     // Auto-frame using actual bounds from Swift
                     console.log('=== AUTO-FRAME SETUP ===');
@@ -1069,14 +1127,24 @@ struct AntimatterSplatView: UIViewRepresentable {
                             console.log('Wall:', wallWidth.toFixed(2), 'x', wallHeight.toFixed(2));
                             console.log('Center:', centerX.toFixed(2), centerY.toFixed(2), 'frontZ:', frontZ.toFixed(2));
 
-                            // Store bounds for camera clamping
+                            // Store bounds for camera clamping (expanded with Y and centers)
+                            const centerZ = (frontZ + backZ) / 2;
                             roomBoundsForClamping = {
                                 minX: centerX - wallWidth / 2,
                                 maxX: centerX + wallWidth / 2,
+                                minY: centerY - wallHeight / 2,
+                                maxY: centerY + wallHeight / 2,
                                 minZ: backZ,
-                                maxZ: frontZ
+                                maxZ: frontZ,
+                                centerX: centerX,
+                                centerY: centerY,
+                                centerZ: centerZ
                             };
+
+                            // Safe bubble around room center for camera clamping
+                            roomRadius = Math.max(wallWidth, wallHeight, Math.abs(frontZ - backZ)) * 0.7;
                             console.log('Camera bounds set:', JSON.stringify(roomBoundsForClamping));
+                            console.log('Room radius for clamping:', roomRadius.toFixed(2));
 
                             // Send to Swift
                             if (window.webkit?.messageHandlers?.frontWallDimensions) {
@@ -1085,57 +1153,23 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 });
                             }
 
-                            // --- CAMERA IN FRONT OF ROOM, LOOKING AT FRONT WALL ---
-                            // SHARP classic PLY: front wall at minZ (most negative), back wall at maxZ
+                            // --- USE SWIFT BOUNDARY MANAGER VALUES DIRECTLY ---
+                            // Use Swift-computed camera position directly
+                            const newCamPos = new THREE.Vector3(\(eyeX), \(eyeY), \(eyeZ));
+                            const newTarget = new THREE.Vector3(\(targetX), \(targetY), \(targetZ));
 
-                            // Swap: front wall is actually at minZ (backZ variable), not maxZ
-                            const actualFrontZ = backZ;  // minZ = front wall
-                            const actualBackZ = frontZ;  // maxZ = back wall
-
-                            const maxDim = Math.max(wallWidth, wallHeight);
-                            const fov = THREE.MathUtils.degToRad(camera.fov);
-                            const aspect = window.innerWidth / window.innerHeight;
-
-                            // Distance needed so the wall fits in vertical & horizontal FOV
-                            const fitHeightDist = (maxDim * 0.5) / Math.tan(fov * 0.5);
-                            const fitWidthDist  = (maxDim * 0.5) / (Math.tan(fov * 0.5) * aspect);
-                            let distance = Math.max(fitHeightDist, fitWidthDist);
-                            distance *= 1.05;  // Small padding so wall isn't touching edges
-
-                            // Camera positioned in front of front wall (actualFrontZ - distance)
-                            const newCamPos = new THREE.Vector3(
-                                centerX,                    // Center X
-                                centerY,                    // Center Y (middle height)
-                                actualFrontZ - distance     // In front of front wall (more negative)
-                            );
-
-                            // Look at middle of front wall
-                            const newTarget = new THREE.Vector3(
-                                centerX,                // Center X
-                                centerY,                // Center Y
-                                actualFrontZ            // Front wall (minZ)
-                            );
-
-                            console.log('Auto-framed front wall:',
-                                'wallWidth=', wallWidth.toFixed(2),
-                                'wallHeight=', wallHeight.toFixed(2),
-                                'actualFrontZ=', actualFrontZ.toFixed(2),
-                                'distance=', distance.toFixed(2)
-                            );
-
-                            console.log('OLD camera pos:', camera.position.x.toFixed(2), camera.position.y.toFixed(2), camera.position.z.toFixed(2));
-                            console.log('NEW camera pos:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2));
-                            console.log('NEW target:', newTarget.x.toFixed(2), newTarget.y.toFixed(2), newTarget.z.toFixed(2));
+                            console.log('Final camera pos:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2));
+                            console.log('Final target:', newTarget.x.toFixed(2), newTarget.y.toFixed(2), newTarget.z.toFixed(2));
 
                             camera.position.copy(newCamPos);
                             controls.target.copy(newTarget);
                             controls.update();
 
-                            // Update initial recenter state to this auto-framed position
+                            // Update recenter base
                             initialCameraPosition.copy(camera.position);
                             initialControlsTarget.copy(controls.target);
 
-                            console.log('=== Camera MOVED & recenter updated ===');
+                            console.log('=== Camera positioned by Swift BoundaryManager ===');
                         } catch (err) {
                             console.error('autoFrameRoom error:', err);
                         }
@@ -1156,6 +1190,7 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                 // Room bounds for camera clamping (will be set by autoFrameRoom)
                 let roomBoundsForClamping = null;
+                let roomRadius = null;
 
                 // Joystick movement handler with boundary clamping
                 window.moveCamera = function(dx, dy) {

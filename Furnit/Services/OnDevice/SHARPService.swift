@@ -433,17 +433,17 @@ class SHARPService: ObservableObject {
 
     // MARK: - Splat Filtering
 
-    /// Hard cutoff for almost-transparent splats
-    private static let minAlpha: Float = 0.10
+    /// Hard cutoff for almost-transparent splats (higher = fewer foggy edge splats)
+    private static let minAlpha: Float = 0.30
 
     /// For "fluffy fog" filter: if alpha < this AND scale > fogScaleThreshold, drop it
-    private static let fogAlphaThreshold: Float = 0.25
-    private static let fogScaleThreshold: Float = 0.030
+    private static let fogAlphaThreshold: Float = 0.50
+    private static let fogScaleThreshold: Float = 0.020
 
     /// Edge margins (percentage of bbox to trim from edges)
-    private static let edgeMarginX: Float = 0.05  // 5% margin on X (vertical)
-    private static let edgeMarginY: Float = 0.05  // 5% margin on Y
-    private static let edgeMarginZ: Float = 0.05  // 5% margin on Z (depth)
+    private static let edgeMarginX: Float = 0.12  // 12% margin on X
+    private static let edgeMarginY: Float = 0.12  // 12% margin on Y
+    private static let edgeMarginZ: Float = 0.12  // 12% margin on Z (depth)
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
