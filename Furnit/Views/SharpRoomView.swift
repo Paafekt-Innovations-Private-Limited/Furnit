@@ -351,9 +351,10 @@ struct SharpRoomView: View {
 
                         Spacer()
 
-                        // Joystick (center) - no rotation needed, it's circular
+                        // Joystick (center) - rotated 90° for horizontal viewing
                         if !showingSmartyPants {
                             JoystickControl()
+                                .rotationEffect(.degrees(90))
                         }
 
                         Spacer()
@@ -1068,6 +1069,15 @@ struct AntimatterSplatView: UIViewRepresentable {
                             console.log('Wall:', wallWidth.toFixed(2), 'x', wallHeight.toFixed(2));
                             console.log('Center:', centerX.toFixed(2), centerY.toFixed(2), 'frontZ:', frontZ.toFixed(2));
 
+                            // Store bounds for camera clamping
+                            roomBoundsForClamping = {
+                                minX: centerX - wallWidth / 2,
+                                maxX: centerX + wallWidth / 2,
+                                minZ: backZ,
+                                maxZ: frontZ
+                            };
+                            console.log('Camera bounds set:', JSON.stringify(roomBoundsForClamping));
+
                             // Send to Swift
                             if (window.webkit?.messageHandlers?.frontWallDimensions) {
                                 window.webkit.messageHandlers.frontWallDimensions.postMessage({
@@ -1120,13 +1130,34 @@ struct AntimatterSplatView: UIViewRepresentable {
                     renderer.setSize(window.innerWidth, window.innerHeight);
                 });
 
-                // Joystick movement handler
+                // Room bounds for camera clamping (will be set by autoFrameRoom)
+                let roomBoundsForClamping = null;
+
+                // Joystick movement handler with boundary clamping
                 window.moveCamera = function(dx, dy) {
                     const moveSpeed = 0.015;  // Reduced sensitivity
-                    camera.position.x += dx * moveSpeed;
-                    camera.position.z += dy * moveSpeed;
-                    controls.target.x += dx * moveSpeed;
-                    controls.target.z += dy * moveSpeed;
+
+                    // Calculate new position
+                    let newX = camera.position.x + dx * moveSpeed;
+                    let newZ = camera.position.z + dy * moveSpeed;
+
+                    // Clamp to room bounds if available
+                    if (roomBoundsForClamping) {
+                        const margin = 0.5;  // Small margin inside bounds
+                        newX = Math.max(roomBoundsForClamping.minX + margin,
+                               Math.min(roomBoundsForClamping.maxX - margin, newX));
+                        newZ = Math.max(roomBoundsForClamping.minZ + margin,
+                               Math.min(roomBoundsForClamping.maxZ - margin, newZ));
+                    }
+
+                    // Apply clamped movement
+                    const actualDx = newX - camera.position.x;
+                    const actualDz = newZ - camera.position.z;
+
+                    camera.position.x = newX;
+                    camera.position.z = newZ;
+                    controls.target.x += actualDx;
+                    controls.target.z += actualDz;
                 };
 
                 // Animation loop
