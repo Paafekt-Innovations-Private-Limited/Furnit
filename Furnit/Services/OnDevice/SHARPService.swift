@@ -275,7 +275,6 @@ class SHARPService: ObservableObject {
 
         // Sample pixel values to check for NaN/Inf/range issues
         CVPixelBufferLockBaseAddress(input, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(input, .readOnly) }
 
         if let baseAddress = CVPixelBufferGetBaseAddress(input) {
             let ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
@@ -299,6 +298,9 @@ class SHARPService: ObservableObject {
                 logDebug("  First pixel BGRA: (\(ptr[0]), \(ptr[1]), \(ptr[2]), \(ptr[3]))")
             }
         }
+
+        // Unlock before passing to CoreML - CoreML needs to manage its own buffer access
+        CVPixelBufferUnlockBaseAddress(input, .readOnly)
 
         // Create feature provider with CVPixelBuffer as Image type
         let imageFeature = MLFeatureValue(pixelBuffer: input)
@@ -438,13 +440,10 @@ class SHARPService: ObservableObject {
     private static let fogAlphaThreshold: Float = 0.25
     private static let fogScaleThreshold: Float = 0.030
 
-    /// Target room height for vertical band crop (from RoomMeasurement)
-    private static let targetRoomHeight: Float = 3.2
-    private static let roomHeightPadding: Float = 1.8  // 80% padding - keep most of vertical
-
-    /// Margin to clip from XY/Z edges
-    private static let edgeMarginXY: Float = 0.05  // 5% margin
-    private static let edgeMarginZ: Float = 0.05
+    /// Edge margins (percentage of bbox to trim from edges)
+    private static let edgeMarginX: Float = 0.05  // 5% margin on X (vertical)
+    private static let edgeMarginY: Float = 0.05  // 5% margin on Y
+    private static let edgeMarginZ: Float = 0.05  // 5% margin on Z (depth)
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
@@ -539,25 +538,21 @@ class SHARPService: ObservableObject {
             }
         }
 
-        // Compute clip bounds
+        // Compute clip bounds from bbox with percentage margins
         let width = rawMaxX - rawMinX
         let height = rawMaxY - rawMinY
         let depth = rawMaxZ - rawMinZ
-        let centerX = (rawMinX + rawMaxX) * 0.5
 
-        // Y/Z edge margins (horizontal + depth)
-        let clipMinY = rawMinY + height * Self.edgeMarginXY
-        let clipMaxY = rawMaxY - height * Self.edgeMarginXY
+        // All axes: trim percentage from edges based on actual bbox
+        let clipMinX = rawMinX + width * Self.edgeMarginX
+        let clipMaxX = rawMaxX - width * Self.edgeMarginX
+        let clipMinY = rawMinY + height * Self.edgeMarginY
+        let clipMaxY = rawMaxY - height * Self.edgeMarginY
         let clipMinZ = rawMinZ + depth * Self.edgeMarginZ
         let clipMaxZ = rawMaxZ - depth * Self.edgeMarginZ
 
-        // Vertical band crop on X axis (model's vertical) - use target room height
-        let keepHalfHeight = (Self.targetRoomHeight * 0.5) * Self.roomHeightPadding
-        let clipMinX = centerX - keepHalfHeight
-        let clipMaxX = centerX + keepHalfHeight
-
-        logDebug("SHARP: Clip bounds X:[\(clipMinX),\(clipMaxX)] (vertical) Y:[\(clipMinY),\(clipMaxY)] Z:[\(clipMinZ),\(clipMaxZ)]")
-        logDebug("SHARP: Room height crop on X: keeping \(Self.targetRoomHeight * Self.roomHeightPadding) of \(width) total")
+        logDebug("SHARP: Raw bbox X:[\(rawMinX),\(rawMaxX)] Y:[\(rawMinY),\(rawMaxY)] Z:[\(rawMinZ),\(rawMaxZ)]")
+        logDebug("SHARP: Clip bounds X:[\(clipMinX),\(clipMaxX)] Y:[\(clipMinY),\(clipMaxY)] Z:[\(clipMinZ),\(clipMaxZ)]")
 
         // Second pass: collect splats that pass all filters
         var validSplats: [(index: Int, opacity: Float)] = []

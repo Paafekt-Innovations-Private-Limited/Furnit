@@ -155,18 +155,24 @@ class LandscapeSHARPService: ObservableObject {
         progress = 0.0
 
         do {
-            // Step 1: Preprocess image
+            // Step 1: Auto-crop letterbox bars (for screenshots of landscape photos)
+            progress = 0.05
+            logDebug("SHARP: Original image size: \(Int(image.size.width))x\(Int(image.size.height))")
+            let croppedImage = autoCropLetterbox(image)
+            logDebug("SHARP: After crop: \(Int(croppedImage.size.width))x\(Int(croppedImage.size.height))")
+
+            // Step 2: Preprocess image
             progress = 0.1
-            let inputBuffer = try await preprocessImage(image)
+            let inputBuffer = try await preprocessImage(croppedImage)
             logDebug("SHARP: Image preprocessed to \(Self.inputSize)x\(Self.inputSize)")
 
-            // Step 2: Run inference
+            // Step 3: Run inference
             statusMessage = "Creating your 3D room..."
             progress = 0.2
             let gaussianParams = try await runInference(inputBuffer)
             logDebug("SHARP: Generated \(gaussianParams.count / Self.paramsPerGaussian) Gaussians")
 
-            // Step 3: Write PLY files (original + classic for antimatter15)
+            // Step 4: Write PLY files (original + classic for antimatter15)
             statusMessage = "Almost done..."
             progress = 0.8
             let plyURLs = try await writePLY(gaussianParams)
@@ -194,6 +200,105 @@ class LandscapeSHARPService: ObservableObject {
     func cancelGeneration() {
         status = .failed("Cancelled")
         statusMessage = "Cancelled"
+    }
+
+    // MARK: - Letterbox Auto-Crop
+
+    /// Auto-crop black letterbox bars from screenshots of landscape photos
+    /// Detects rows that are almost all black and trims them away
+    private func autoCropLetterbox(_ image: UIImage) -> UIImage {
+        guard let cg = image.cgImage else {
+            logDebug("SHARP CROP: No CGImage, returning original")
+            return image
+        }
+
+        let width = cg.width
+        let height = cg.height
+        logDebug("SHARP CROP: Input image \(width)x\(height)")
+
+        // Get raw pixels
+        guard let dataProvider = cg.dataProvider,
+              let data = dataProvider.data as Data? else {
+            logDebug("SHARP CROP: Could not get pixel data, returning original")
+            return image
+        }
+
+        let bytes = [UInt8](data)
+        let bytesPerRow = cg.bytesPerRow
+        let bytesPerPixel = cg.bitsPerPixel / 8
+        let threshold: Int = 15   // 0–255 brightness threshold for "black"
+
+        logDebug("SHARP CROP: bytesPerRow=\(bytesPerRow), bytesPerPixel=\(bytesPerPixel), dataSize=\(bytes.count)")
+
+        // Calculate average brightness of a row
+        func rowBrightness(y: Int) -> Int {
+            let base = y * bytesPerRow
+            var sum = 0
+            for x in 0..<width {
+                let i = base + x * bytesPerPixel
+                guard i + 2 < bytes.count else { continue }
+                // BGRA or RGBA - just average all color channels
+                let c0 = Int(bytes[i + 0])
+                let c1 = Int(bytes[i + 1])
+                let c2 = Int(bytes[i + 2])
+                sum += (c0 + c1 + c2) / 3
+            }
+            return sum / max(width, 1)
+        }
+
+        // Find top edge (skip black rows from top)
+        var top = 0
+        while top < height - 1 {
+            let brightness = rowBrightness(y: top)
+            if brightness >= threshold {
+                break
+            }
+            top += 1
+        }
+
+        // Find bottom edge (skip black rows from bottom)
+        var bottom = height - 1
+        while bottom > top {
+            let brightness = rowBrightness(y: bottom)
+            if brightness >= threshold {
+                break
+            }
+            bottom -= 1
+        }
+
+        let croppedHeight = bottom - top + 1
+        logDebug("SHARP CROP: top=\(top), bottom=\(bottom), croppedHeight=\(croppedHeight)")
+
+        // If we didn't crop much or found nothing meaningful, return original
+        let minCropRows = 50  // Only crop if we're removing at least 50 rows
+        if top < minCropRows && (height - 1 - bottom) < minCropRows {
+            logDebug("SHARP CROP: No significant letterbox detected, using original")
+            return image
+        }
+
+        // If crop would be too small, return original
+        if croppedHeight < height / 4 {
+            logDebug("SHARP CROP: Cropped result too small, using original")
+            return image
+        }
+
+        let cropRect = CGRect(
+            x: 0,
+            y: top,
+            width: width,
+            height: croppedHeight
+        )
+
+        logDebug("SHARP CROP: Cropping to rect \(cropRect)")
+
+        if let cropped = cg.cropping(to: cropRect) {
+            let croppedImage = UIImage(cgImage: cropped, scale: image.scale, orientation: image.imageOrientation)
+            logDebug("SHARP CROP: Success! New size: \(cropped.width)x\(cropped.height)")
+            return croppedImage
+        } else {
+            logDebug("SHARP CROP: CGImage.cropping failed, using original")
+            return image
+        }
     }
 
     // MARK: - Image Preprocessing
@@ -275,7 +380,6 @@ class LandscapeSHARPService: ObservableObject {
 
         // Sample pixel values to check for NaN/Inf/range issues
         CVPixelBufferLockBaseAddress(input, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(input, .readOnly) }
 
         if let baseAddress = CVPixelBufferGetBaseAddress(input) {
             let ptr = baseAddress.assumingMemoryBound(to: UInt8.self)
@@ -299,6 +403,9 @@ class LandscapeSHARPService: ObservableObject {
                 logDebug("  First pixel BGRA: (\(ptr[0]), \(ptr[1]), \(ptr[2]), \(ptr[3]))")
             }
         }
+
+        // Unlock before passing to CoreML - CoreML needs to manage its own buffer access
+        CVPixelBufferUnlockBaseAddress(input, .readOnly)
 
         // Create feature provider with CVPixelBuffer as Image type
         let imageFeature = MLFeatureValue(pixelBuffer: input)
@@ -438,8 +545,9 @@ class LandscapeSHARPService: ObservableObject {
     private static let fogAlphaThreshold: Float = 0.25
     private static let fogScaleThreshold: Float = 0.030
 
-    /// Treat very dark splats as black fog and drop them
-    private static let blackBrightnessThreshold: Float = 0.05  // ~13/255 - very conservative
+    /// Kill very dark "fog curtain" splats (near-black colors)
+    /// Colors are in [0,1], so 0.10 ≈ 25/255
+    private static let blackBrightnessThreshold: Float = 0.10
 
     /// Filter Gaussians - opacity, fog and black-fog removal
     /// Params layout per gaussian:
@@ -712,18 +820,12 @@ class LandscapeSHARPService: ObservableObject {
             let rawG = filteredParams[offset + 12]
             let rawB = filteredParams[offset + 13]
 
-            // Apply gamma correction (linear to sRGB) and brightness boost
-            let gamma: Float = 1.0 / 2.2
-            let brightness: Float = 1.3  // Boost for landscape
-            let finalR = pow(min(max(rawR * brightness, 0), 1), gamma)
-            let finalG = pow(min(max(rawG * brightness, 0), 1), gamma)
-            let finalB = pow(min(max(rawB * brightness, 0), 1), gamma)
-
-            // 3DGS format: f_dc colors as SH coefficients (using boosted colors)
+            // 3DGS format: f_dc colors as SH coefficients
             // Formula: f_dc = (color - 0.5) / SH_C0
-            var f_dc_0 = (finalR - 0.5) / SH_C0  // R
-            var f_dc_1 = (finalG - 0.5) / SH_C0  // G
-            var f_dc_2 = (finalB - 0.5) / SH_C0  // B
+            // SparkJS shows correct colors with RGB order, so use RGB (not BGR)
+            var f_dc_0 = (rawR - 0.5) / SH_C0  // R
+            var f_dc_1 = (rawG - 0.5) / SH_C0  // G
+            var f_dc_2 = (rawB - 0.5) / SH_C0  // B
             threeDGSData.append(Data(bytes: &f_dc_0, count: 4))
             threeDGSData.append(Data(bytes: &f_dc_1, count: 4))
             threeDGSData.append(Data(bytes: &f_dc_2, count: 4))
@@ -737,6 +839,13 @@ class LandscapeSHARPService: ObservableObject {
             threeDGSData.append(Data(bytes: &r1, count: 4))
             threeDGSData.append(Data(bytes: &r2, count: 4))
             threeDGSData.append(Data(bytes: &r3, count: 4))
+
+            // Apply gamma correction (linear to sRGB) and slight brightness boost for SparkJS format
+            let gamma: Float = 1.0 / 2.2
+            let brightness: Float = 1.1
+            let finalR = pow(min(max(rawR * brightness, 0), 1), gamma)
+            let finalG = pow(min(max(rawG * brightness, 0), 1), gamma)
+            let finalB = pow(min(max(rawB * brightness, 0), 1), gamma)
 
             // Convert to 0-255 uchar for original/classic PLY
             var red = UInt8(min(max(Int(finalR * 255), 0), 255))

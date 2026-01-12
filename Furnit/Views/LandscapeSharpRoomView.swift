@@ -750,7 +750,7 @@ struct LandscapeAntimatterSplatView: UIViewRepresentable {
                 renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(renderer.domElement);
 
-                // SparkRenderer for Gaussian-specific rendering (sharper preset)
+                // SparkRenderer for Gaussian-specific rendering (matching portrait)
                 const spark = new SparkRenderer({
                     renderer: renderer,
                     maxStdDev: Math.sqrt(6),    // Tighter Gaussians (default is sqrt(8))
