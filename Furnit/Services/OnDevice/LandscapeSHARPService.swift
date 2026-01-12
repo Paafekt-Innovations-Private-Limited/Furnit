@@ -5,6 +5,7 @@ import Metal
 import MetalKit
 import MetalPerformanceShaders
 import Accelerate
+import simd
 
 /// On-device 3D Gaussian generation using Apple's SHARP model
 /// Replaces remote Jarvis-based Room3DGenerationService with local CoreML inference
@@ -195,13 +196,106 @@ class LandscapeSHARPService: ObservableObject {
         statusMessage = "Cancelled"
     }
 
+    // MARK: - Letterbox / Black-Bar Cropping (for library images)
+
+    /// Detect and crop solid black bars at the top and bottom of the image.
+    /// Safe for normal photos: if there are no bars, it returns the original image.
+    private func cropVerticalBlackBars(from image: UIImage,
+                                       threshold: UInt8 = 10,
+                                       minNonBlackFraction: Double = 0.02) -> UIImage {
+        guard let cgImage = image.cgImage else {
+            return image
+        }
+
+        let width = cgImage.width
+        let height = cgImage.height
+
+        // ARGB / RGBA 8-bit buffer
+        let bytesPerPixel = 4
+        let bytesPerRow = bytesPerPixel * width
+        let bitsPerComponent = 8
+        var data = [UInt8](repeating: 0, count: height * bytesPerRow)
+
+        guard let ctx = CGContext(
+            data: &data,
+            width: width,
+            height: height,
+            bitsPerComponent: bitsPerComponent,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return image
+        }
+
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        // Helper: is this row essentially all black?
+        func rowIsMostlyBlack(_ row: Int) -> Bool {
+            let rowStart = row * bytesPerRow
+            let sampleStep = max(1, width / 256)   // sample at most 256 pixels per row
+            var nonBlackCount = 0
+            var totalSamples = 0
+
+            for x in stride(from: 0, to: width, by: sampleStep) {
+                let idx = rowStart + x * bytesPerPixel
+                let r = data[idx + 0]
+                let g = data[idx + 1]
+                let b = data[idx + 2]
+                // simple brightness
+                let brightness = (UInt16(r) + UInt16(g) + UInt16(b)) / 3
+                if brightness > threshold {
+                    nonBlackCount += 1
+                }
+                totalSamples += 1
+            }
+
+            let nonBlackFraction = Double(nonBlackCount) / Double(totalSamples)
+            // If almost all pixels are <= threshold, treat as black bar row
+            return nonBlackFraction < minNonBlackFraction
+        }
+
+        var top = 0
+        while top < height && rowIsMostlyBlack(top) {
+            top += 1
+        }
+
+        var bottom = height - 1
+        while bottom > top && rowIsMostlyBlack(bottom) {
+            bottom -= 1
+        }
+
+        // If we didn't actually find a useful content band, return original
+        if bottom <= top || (bottom - top + 1) < height / 2 {
+            logDebug("SHARP: No black bars detected, using original image")
+            return image
+        }
+
+        let cropRect = CGRect(x: 0,
+                              y: top,
+                              width: width,
+                              height: bottom - top + 1)
+
+        guard let croppedCG = cgImage.cropping(to: cropRect) else {
+            return image
+        }
+
+        logDebug("SHARP: Cropped black bars - original: \(width)x\(height), cropped: \(width)x\(bottom - top + 1)")
+        return UIImage(cgImage: croppedCG,
+                       scale: image.scale,
+                       orientation: image.imageOrientation)
+    }
+
     // MARK: - Image Preprocessing
 
     /// Preprocess image for SHARP model input
     /// - Parameter image: Source UIImage
     /// - Returns: CVPixelBuffer sized to 1536x1536 (model expects Image type)
     private func preprocessImage(_ image: UIImage) async throws -> CVPixelBuffer {
-        guard let cgImage = image.cgImage else {
+        // 1) Remove letterboxed black bars (common in landscape photos from library)
+        let cleanedImage = cropVerticalBlackBars(from: image)
+
+        guard let cgImage = cleanedImage.cgImage else {
             throw GenerationError.invalidImage
         }
 
@@ -428,136 +522,70 @@ class LandscapeSHARPService: ObservableObject {
         return result
     }
 
+    // MARK: - Landscape Rotation Fix
+
+    /// Rotation matrix to align device coordinates with Jarvis/upright coordinates
+    /// Run Python Kabsch script to get exact values: R @ device_pos = jarvis_pos
+    /// This is a placeholder - replace with values from your alignment script
+    private static let landscapeRotation: simd_float3x3 = {
+        // Identity for now - replace with actual R matrix from Python script
+        // Example for 90° rotation around Z: [[0,-1,0],[1,0,0],[0,0,1]]
+        return simd_float3x3(
+            SIMD3<Float>(1, 0, 0),  // Column 0
+            SIMD3<Float>(0, 1, 0),  // Column 1
+            SIMD3<Float>(0, 0, 1)   // Column 2
+        )
+    }()
+
+    /// Quaternion version of the rotation fix (computed from matrix)
+    private static let landscapeRotationQuat: simd_quatf = simd_quatf(landscapeRotation)
+
     // MARK: - Splat Filtering
 
-    /// Minimum opacity threshold (0-1) for keeping a splat (higher = cleaner edges)
-    private static let minOpacity: Float = 0.20  // Lower to avoid black patches
+    /// Hard cutoff for almost-transparent splats
+    private static let minAlpha: Float = 0.10
 
-    /// Percentile to clip from edges (removes black cloud at corners)
-    private static let edgeClipPercent: Float = 0.0  // Disabled to avoid black patches
+    /// For "fluffy fog" filter: if alpha < this AND scale > fogScaleThreshold, drop it
+    private static let fogAlphaThreshold: Float = 0.25
+    private static let fogScaleThreshold: Float = 0.030
 
-    /// Filter Gaussians by opacity and limit count for mobile rendering
+    /// Filter Gaussians - only opacity and fog filtering, no spatial cropping
     private func filterGaussians(_ params: [Float]) -> [Float] {
         let inputCount = params.count / Self.paramsPerGaussian
         logDebug("SHARP: Filtering \(inputCount) Gaussians...")
 
-        // Analyze value ranges across ALL gaussians to understand data format
-        var minScale: Float = .greatestFiniteMagnitude
-        var maxScale: Float = -.greatestFiniteMagnitude
-        var minOpacity: Float = .greatestFiniteMagnitude
-        var maxOpacity: Float = -.greatestFiniteMagnitude
-        var minColor: Float = .greatestFiniteMagnitude
-        var maxColor: Float = -.greatestFiniteMagnitude
-
-        for i in 0..<min(inputCount, 10000) {  // Sample first 10k
-            let o = i * Self.paramsPerGaussian
-            // Scales (indices 3, 4, 5)
-            for j in 3...5 {
-                minScale = min(minScale, params[o + j])
-                maxScale = max(maxScale, params[o + j])
-            }
-            // Opacity (index 10)
-            minOpacity = min(minOpacity, params[o + 10])
-            maxOpacity = max(maxOpacity, params[o + 10])
-            // Colors (indices 11, 12, 13)
-            for j in 11...13 {
-                minColor = min(minColor, params[o + j])
-                maxColor = max(maxColor, params[o + j])
-            }
-        }
-
-        logDebug("SHARP VALUE RANGES (first 10k gaussians):")
-        logDebug("  Scale:   min=\(minScale), max=\(maxScale)")
-        logDebug("  Opacity: min=\(minOpacity), max=\(maxOpacity)")
-        logDebug("  Color:   min=\(minColor), max=\(maxColor)")
-
-        // If scales are negative or very small, they might already be in log space
-        if maxScale < 0.1 {
-            logDebug("  WARNING: Scales appear to be in LOG space already!")
-        }
-        // If opacity is outside [0,1], it might already be in logit space
-        if minOpacity < 0 || maxOpacity > 1 {
-            logDebug("  WARNING: Opacity appears to be in LOGIT space already!")
-        }
-        // If colors are outside [0,1], they might need different handling
-        if minColor < 0 || maxColor > 1 {
-            logDebug("  WARNING: Colors are outside [0,1] range!")
-        }
-
-        // Debug: sample first few gaussians to see value ranges
-        if inputCount > 0 {
-            let idx = 0
-            let o = idx * Self.paramsPerGaussian
-            logDebug("SHARP DEBUG: Sample Gaussian 0:")
-            logDebug("  pos: (\(params[o+0]), \(params[o+1]), \(params[o+2]))")
-            logDebug("  scale: (\(params[o+3]), \(params[o+4]), \(params[o+5]))")
-            logDebug("  rot: (\(params[o+6]), \(params[o+7]), \(params[o+8]), \(params[o+9]))")
-            logDebug("  opacity: \(params[o+10])")
-            logDebug("  color: (\(params[o+11]), \(params[o+12]), \(params[o+13]))")
-        }
-        if inputCount > 1000 {
-            let idx = 1000
-            let o = idx * Self.paramsPerGaussian
-            logDebug("SHARP DEBUG: Sample Gaussian 1000:")
-            logDebug("  pos: (\(params[o+0]), \(params[o+1]), \(params[o+2]))")
-            logDebug("  scale: (\(params[o+3]), \(params[o+4]), \(params[o+5]))")
-            logDebug("  opacity: \(params[o+10])")
-            logDebug("  color: (\(params[o+11]), \(params[o+12]), \(params[o+13]))")
-        }
-
-        // First pass: collect positions to compute clip bounds
-        var xPositions: [Float] = []
-        var yPositions: [Float] = []
-        xPositions.reserveCapacity(inputCount)
-        yPositions.reserveCapacity(inputCount)
-
-        for i in 0..<inputCount {
-            let offset = i * Self.paramsPerGaussian
-            if params[offset + 10] >= Self.minOpacity {  // Only consider visible splats
-                xPositions.append(params[offset + 0])
-                yPositions.append(params[offset + 1])
-            }
-        }
-
-        // Compute percentile bounds to clip edge outliers (where black clouds appear)
-        xPositions.sort()
-        yPositions.sort()
-        let lowIdx = Int(Float(xPositions.count) * Self.edgeClipPercent)
-        let highIdx = max(lowIdx, xPositions.count - 1 - lowIdx)
-
-        let xMin = xPositions.isEmpty ? -Float.greatestFiniteMagnitude : xPositions[lowIdx]
-        let xMax = xPositions.isEmpty ? Float.greatestFiniteMagnitude : xPositions[highIdx]
-        let yMin = yPositions.isEmpty ? -Float.greatestFiniteMagnitude : yPositions[lowIdx]
-        let yMax = yPositions.isEmpty ? Float.greatestFiniteMagnitude : yPositions[highIdx]
-
-        logDebug("SHARP: Edge clip bounds X:[\(xMin),\(xMax)] Y:[\(yMin),\(yMax)]")
-
-        // Second pass: collect splats above opacity threshold AND within spatial bounds
         var validSplats: [(index: Int, opacity: Float)] = []
         validSplats.reserveCapacity(inputCount / 4)
-        var edgeFiltered = 0
+        var opacityFiltered = 0
+        var fogFiltered = 0
 
         for i in 0..<inputCount {
             let offset = i * Self.paramsPerGaussian
-            let opacity = params[offset + 10]
-            let x = params[offset + 0]
-            let y = params[offset + 1]
+            let alpha = params[offset + 10]
+            let s0 = params[offset + 3]
+            let s1 = params[offset + 4]
+            let maxScaleXY = max(s0, s1)
 
-            if opacity >= Self.minOpacity {
-                if x >= xMin && x <= xMax && y >= yMin && y <= yMax {
-                    validSplats.append((index: i, opacity: opacity))
-                } else {
-                    edgeFiltered += 1
-                }
+            // 1) Hard cutoff for almost-transparent splats
+            if alpha < Self.minAlpha {
+                opacityFiltered += 1
+                continue
             }
+
+            // 2) Kill big, low-contrast blobs (fog splats)
+            if alpha < Self.fogAlphaThreshold && maxScaleXY > Self.fogScaleThreshold {
+                fogFiltered += 1
+                continue
+            }
+
+            validSplats.append((index: i, opacity: alpha))
         }
 
-        logDebug("SHARP: \(validSplats.count) splats kept (filtered \(edgeFiltered) edge splats)")
-
-        // Use all valid splats (no cap)
-        let selectedIndices = validSplats.map { $0.index }
+        logDebug("SHARP: Filtered \(opacityFiltered) by opacity, \(fogFiltered) by fog")
+        logDebug("SHARP: \(validSplats.count) splats kept")
 
         // Build filtered output
+        let selectedIndices = validSplats.map { $0.index }
         var filtered = [Float]()
         filtered.reserveCapacity(selectedIndices.count * Self.paramsPerGaussian)
 
@@ -676,9 +704,16 @@ class LandscapeSHARPService: ObservableObject {
             let origX = filteredParams[offset + 0]
             let origY = filteredParams[offset + 1]
             let origZ = filteredParams[offset + 2]
-            var x = origX         // X unchanged
-            var y = -origY        // Y flipped (down -> up)
-            var z = -origZ        // Z flipped (forward -> backward)
+
+            // Base transform
+            var pos = SIMD3<Float>(origX, -origY, -origZ)
+
+            // Apply landscape rotation fix
+            pos = Self.landscapeRotation * pos
+
+            var x = pos.x
+            var y = pos.y
+            var z = pos.z
 
             // Track bounding box and collect positions
             minX = min(minX, x); maxX = max(maxX, x)
@@ -728,17 +763,25 @@ class LandscapeSHARPService: ObservableObject {
             classicData.append(Data(bytes: &s1, count: 4))
             classicData.append(Data(bytes: &s2, count: 4))
 
-            // Rotation quaternion - normalize only, keep same order (match Python)
+            // Rotation quaternion - normalize and apply landscape rotation fix
             let rawR0 = filteredParams[offset + 6]
             let rawR1 = filteredParams[offset + 7]
             let rawR2 = filteredParams[offset + 8]
             let rawR3 = filteredParams[offset + 9]
             let mag = sqrt(rawR0*rawR0 + rawR1*rawR1 + rawR2*rawR2 + rawR3*rawR3)
             let invMag = mag > 1e-8 ? 1.0 / mag : 1.0
-            var r0 = rawR0 * invMag
-            var r1 = rawR1 * invMag
-            var r2 = rawR2 * invMag
-            var r3 = rawR3 * invMag
+
+            // Original normalized quaternion (w, x, y, z order from network)
+            let qOrig = simd_quatf(ix: rawR1 * invMag, iy: rawR2 * invMag, iz: rawR3 * invMag, r: rawR0 * invMag)
+
+            // Apply landscape rotation fix: qFinal = qFix * qOrig
+            let qFinal = Self.landscapeRotationQuat * qOrig
+
+            // Extract components (PLY uses w, x, y, z order)
+            var r0 = qFinal.real        // w
+            var r1 = qFinal.imag.x      // x
+            var r2 = qFinal.imag.y      // y
+            var r3 = qFinal.imag.z      // z
             data.append(Data(bytes: &r0, count: 4))
             data.append(Data(bytes: &r1, count: 4))
             data.append(Data(bytes: &r2, count: 4))

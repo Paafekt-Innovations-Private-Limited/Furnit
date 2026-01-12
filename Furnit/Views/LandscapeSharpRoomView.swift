@@ -126,8 +126,8 @@ struct LandscapeSharpRoomView: View {
 
     var body: some View {
         ZStack {
-            // WebGL view using SparkJS (with original PLY)
-            LandscapeAntimatterSplatView(plyURL: plyURL, roomBounds: roomMeasurements?.boundingBox, onLoaded: {
+            // WebGL view using SparkJS (with 3DGS PLY for proper f_dc_* SH coefficients)
+            LandscapeAntimatterSplatView(plyURL: threeDGSPlyURL, roomBounds: roomMeasurements?.boundingBox, onLoaded: {
                 isLoading = false
             })
             .ignoresSafeArea()
@@ -738,7 +738,7 @@ struct LandscapeAntimatterSplatView: UIViewRepresentable {
 
                 // Camera - position to see room
                 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-                camera.position.set(0, 0, 5);
+                camera.position.set(0, 0, 3.5);  // Closer camera (0.7 factor) for less haze
 
                 // THREE.js Renderer (for SparkRenderer)
                 const renderer = new THREE.WebGLRenderer({ antialias: false });  // antialias: false per SparkJS docs
@@ -746,14 +746,14 @@ struct LandscapeAntimatterSplatView: UIViewRepresentable {
                 renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(renderer.domElement);
 
-                // SparkRenderer for Gaussian-specific rendering (sharper preset)
+                // SparkRenderer - aggressive sharp preset for landscape
                 const spark = new SparkRenderer({
                     renderer: renderer,
-                    maxStdDev: Math.sqrt(6),    // Tighter Gaussians (default is sqrt(8))
+                    maxStdDev: 2.0,             // Much tighter than default sqrt(8)
                     preBlurAmount: 0.0,         // No pre-blur smearing
-                    blurAmount: 0.2,            // Minimal post blur
+                    blurAmount: 0.15,           // Minimal post blur
                     falloff: 1.0,               // Normal Gaussian kernel
-                    focalAdjustment: 2.0        // Extra sharpness per docs
+                    focalAdjustment: 2.3        // Extra sharpness
                 });
                 camera.add(spark);  // Add SparkRenderer as child of camera
 
