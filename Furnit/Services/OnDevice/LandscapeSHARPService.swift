@@ -429,61 +429,100 @@ class LandscapeSHARPService: ObservableObject {
         return result
     }
 
-    // MARK: - Landscape Rotation Fix
-
-    /// Rotation matrix to align device coordinates with Jarvis/upright coordinates
-    /// Run Python Kabsch script to get exact values: R @ device_pos = jarvis_pos
-    /// This is a placeholder - replace with values from your alignment script
-    private static let landscapeRotation: simd_float3x3 = {
-        // Identity for now - replace with actual R matrix from Python script
-        // Example for 90° rotation around Z: [[0,-1,0],[1,0,0],[0,0,1]]
-        return simd_float3x3(
-            SIMD3<Float>(1, 0, 0),  // Column 0
-            SIMD3<Float>(0, 1, 0),  // Column 1
-            SIMD3<Float>(0, 0, 1)   // Column 2
-        )
-    }()
-
-    /// Quaternion version of the rotation fix (computed from matrix)
-    private static let landscapeRotationQuat: simd_quatf = simd_quatf(landscapeRotation)
-
     // MARK: - Splat Filtering
 
-    /// Filter out very dark gaussians (black patches from letterboxed images)
+    /// Hard cutoff for almost-transparent splats
+    private static let minAlpha: Float = 0.10
+
+    /// For "fluffy fog" filter: if alpha < this AND scale > fogScaleThreshold, drop it
+    private static let fogAlphaThreshold: Float = 0.25
+    private static let fogScaleThreshold: Float = 0.030
+
+    /// Treat very dark splats as black fog and drop them
+    private static let blackBrightnessThreshold: Float = 0.05  // ~13/255 - very conservative
+
+    /// Filter Gaussians - opacity, fog and black-fog removal
+    /// Params layout per gaussian:
+    /// [0] pos.x, [1] pos.y, [2] pos.z,
+    /// [3] scale.x, [4] scale.y, [5] scale.z,
+    /// [6] rot.x, [7] rot.y, [8] rot.z, [9] rot.w,
+    /// [10] opacity (alpha 0-1),
+    /// [11] colorR (0-1), [12] colorG (0-1), [13] colorB (0-1)
     private func filterGaussians(_ params: [Float]) -> [Float] {
-        let inputCount = params.count / Self.paramsPerGaussian
+        let gaussianCount = params.count / Self.paramsPerGaussian
+        guard gaussianCount > 0 else { return [] }
 
-        // Brightness threshold - remove splats darker than this
-        let brightnessThreshold: Float = 0.1
+        // --- Brightness stats (for debug) ---
+        var minBrightness: Float = 1.0
+        var maxBrightness: Float = 0.0
+        let statsCount = min(gaussianCount, 50_000)  // don't scan all 1.1M for stats
 
-        var result = [Float]()
-        result.reserveCapacity(params.count)
-
-        var removedCount = 0
-
-        for i in 0..<inputCount {
+        for i in 0..<statsCount {
             let offset = i * Self.paramsPerGaussian
             let r = params[offset + 11]
             let g = params[offset + 12]
             let b = params[offset + 13]
-            let brightness = (r + g + b) / 3.0
+            let brightness = max(0.0, min(1.0, (r + g + b) / 3.0))
+            minBrightness = min(minBrightness, brightness)
+            maxBrightness = max(maxBrightness, brightness)
+        }
 
-            // Skip very dark splats (black patches)
-            if brightness < brightnessThreshold {
-                removedCount += 1
+        logDebug(String(
+            format: "SHARP BRIGHTNESS: min=%.3f max=%.3f",
+            minBrightness, maxBrightness
+        ))
+
+        // --- Main filtering pass ---
+        var filtered: [Float] = []
+        filtered.reserveCapacity(params.count)
+
+        var opacityFiltered = 0
+        var fogFiltered = 0
+        var blackFogFiltered = 0
+
+        for i in 0..<gaussianCount {
+            let offset = i * Self.paramsPerGaussian
+
+            let sx = params[offset + 3]
+            let sy = params[offset + 4]
+
+            let alpha = params[offset + 10]      // already 0-1 at this point
+            let r = params[offset + 11]
+            let g = params[offset + 12]
+            let b = params[offset + 13]
+
+            // 1) Basic opacity cull
+            if alpha < Self.minAlpha {
+                opacityFiltered += 1
                 continue
             }
 
-            // Keep this gaussian
+            // 2) Fog cull: big splats with low alpha (tend to be smeary blobs)
+            let maxScaleXY = max(sx, sy)
+            if alpha < Self.fogAlphaThreshold && maxScaleXY > Self.fogScaleThreshold {
+                fogFiltered += 1
+                continue
+            }
+
+            // 3) Black-fog cull: very dark splats (cause the black patch)
+            let brightness = (r + g + b) / 3.0
+            if brightness < Self.blackBrightnessThreshold {
+                blackFogFiltered += 1
+                continue
+            }
+
+            // If we got here, keep this gaussian (copy all 14 floats)
             for j in 0..<Self.paramsPerGaussian {
-                result.append(params[offset + j])
+                filtered.append(params[offset + j])
             }
         }
 
-        let keptCount = inputCount - removedCount
-        logDebug("SHARP: Filtered \(removedCount) dark splats (brightness < \(brightnessThreshold)), kept \(keptCount)")
+        let kept = filtered.count / Self.paramsPerGaussian
+        logDebug("SHARP: Filtering \(gaussianCount) Gaussians...")
+        logDebug("SHARP: Filtered \(opacityFiltered) by opacity, " +
+                 "\(fogFiltered) by fog, \(blackFogFiltered) by black fog, kept \(kept)")
 
-        return result
+        return filtered
     }
 
     // MARK: - PLY Writing
@@ -582,24 +621,16 @@ class LandscapeSHARPService: ObservableObject {
 
         // Write binary vertex data
         // Each Gaussian: pos(3) + scale(3) + rot(4) + opacity(1) + sh(3) = 14 floats
-        // Using raw SHARP output values directly
         for i in 0..<gaussianCount {
             let offset = i * Self.paramsPerGaussian
 
-            // Position - match Python test_sharp_coreml.py transform: (x, -y, -z)
+            // Position - Python transform (x, -y, -z) - DO NOT modify further, breaks quality
             let origX = filteredParams[offset + 0]
             let origY = filteredParams[offset + 1]
             let origZ = filteredParams[offset + 2]
-
-            // Base transform
-            var pos = SIMD3<Float>(origX, -origY, -origZ)
-
-            // Apply landscape rotation fix
-            pos = Self.landscapeRotation * pos
-
-            var x = pos.x
-            var y = pos.y
-            var z = pos.z
+            var x = origX
+            var y = -origY
+            var z = -origZ
 
             // Track bounding box and collect positions
             minX = min(minX, x); maxX = max(maxX, x)
@@ -649,25 +680,17 @@ class LandscapeSHARPService: ObservableObject {
             classicData.append(Data(bytes: &s1, count: 4))
             classicData.append(Data(bytes: &s2, count: 4))
 
-            // Rotation quaternion - normalize and apply landscape rotation fix
+            // Rotation quaternion - normalize only (don't transform, preserves quality)
             let rawR0 = filteredParams[offset + 6]
             let rawR1 = filteredParams[offset + 7]
             let rawR2 = filteredParams[offset + 8]
             let rawR3 = filteredParams[offset + 9]
             let mag = sqrt(rawR0*rawR0 + rawR1*rawR1 + rawR2*rawR2 + rawR3*rawR3)
             let invMag = mag > 1e-8 ? 1.0 / mag : 1.0
-
-            // Original normalized quaternion (w, x, y, z order from network)
-            let qOrig = simd_quatf(ix: rawR1 * invMag, iy: rawR2 * invMag, iz: rawR3 * invMag, r: rawR0 * invMag)
-
-            // Apply landscape rotation fix: qFinal = qFix * qOrig
-            let qFinal = Self.landscapeRotationQuat * qOrig
-
-            // Extract components (PLY uses w, x, y, z order)
-            var r0 = qFinal.real        // w
-            var r1 = qFinal.imag.x      // x
-            var r2 = qFinal.imag.y      // y
-            var r3 = qFinal.imag.z      // z
+            var r0 = rawR0 * invMag
+            var r1 = rawR1 * invMag
+            var r2 = rawR2 * invMag
+            var r3 = rawR3 * invMag
             data.append(Data(bytes: &r0, count: 4))
             data.append(Data(bytes: &r1, count: 4))
             data.append(Data(bytes: &r2, count: 4))

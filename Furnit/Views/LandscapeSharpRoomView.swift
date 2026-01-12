@@ -126,7 +126,7 @@ struct LandscapeSharpRoomView: View {
 
     var body: some View {
         ZStack {
-            // WebGL view using SparkJS (with 3DGS PLY for proper f_dc_* SH coefficients)
+            // WebGL view using SparkJS (with 3DGS PLY for landscape)
             LandscapeAntimatterSplatView(plyURL: threeDGSPlyURL, roomBounds: roomMeasurements?.boundingBox, onLoaded: {
                 isLoading = false
             })
@@ -741,7 +741,8 @@ struct LandscapeAntimatterSplatView: UIViewRepresentable {
 
                 // Camera - position to see room
                 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-                camera.position.set(0, 0, 3.5);  // Closer camera (0.7 factor) for less haze
+                camera.position.set(0, 0, 5);
+                camera.up.set(-1, 0, 0);  // Rotate view 90° CCW to fix left tilt from PLY
 
                 // THREE.js Renderer (for SparkRenderer)
                 const renderer = new THREE.WebGLRenderer({ antialias: false });  // antialias: false per SparkJS docs
@@ -749,14 +750,14 @@ struct LandscapeAntimatterSplatView: UIViewRepresentable {
                 renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(renderer.domElement);
 
-                // SparkRenderer - aggressive sharp preset for landscape
+                // SparkRenderer for Gaussian-specific rendering (sharper preset)
                 const spark = new SparkRenderer({
                     renderer: renderer,
-                    maxStdDev: 2.0,             // Much tighter than default sqrt(8)
+                    maxStdDev: Math.sqrt(6),    // Tighter Gaussians (default is sqrt(8))
                     preBlurAmount: 0.0,         // No pre-blur smearing
-                    blurAmount: 0.15,           // Minimal post blur
+                    blurAmount: 0.2,            // Minimal post blur
                     falloff: 1.0,               // Normal Gaussian kernel
-                    focalAdjustment: 2.3        // Extra sharpness
+                    focalAdjustment: 2.0        // Extra sharpness per docs
                 });
                 camera.add(spark);  // Add SparkRenderer as child of camera
 
@@ -765,7 +766,7 @@ struct LandscapeAntimatterSplatView: UIViewRepresentable {
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.05;
                 controls.screenSpacePanning = false;
-                controls.minDistance = 1;
+                controls.minDistance = 0.4;   // Allow closer zooming
                 controls.maxDistance = 20;
                 controls.target.set(0, 0, 0);
 
@@ -805,7 +806,7 @@ struct LandscapeAntimatterSplatView: UIViewRepresentable {
 
                 // Joystick movement handler
                 window.moveCamera = function(dx, dy) {
-                    const moveSpeed = 0.05;
+                    const moveSpeed = 0.015;  // Reduced sensitivity
                     camera.position.x += dx * moveSpeed;
                     camera.position.z += dy * moveSpeed;
                     controls.target.x += dx * moveSpeed;
