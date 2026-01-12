@@ -494,6 +494,7 @@ struct SharpRoomView: View {
             loadMLModel()
             // Lock to portrait orientation for 3D view stability
             OrientationLockManager.shared.lockToPortrait()
+            logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
         }
         .onDisappear {
             // Unlock orientation when leaving the view

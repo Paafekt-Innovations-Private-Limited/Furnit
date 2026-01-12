@@ -892,7 +892,8 @@ struct SinglePhotoRoomView: View {
         .navigationDestination(isPresented: $navigateToSplatViewer) {
             Group {
                 if let plyURL = generatedPLYURL {
-                    let _ = print("🚀 [Navigation] orientation = \(selectedOrientation.rawValue)")
+                    // Use orientation detected from original image (set in onChange of selectedImage)
+                    let _ = print("🚀 [Navigation] orientation = \(selectedOrientation.rawValue) (from image)")
                     let _ = print("🚀 [Navigation] plyURL = \(plyURL.lastPathComponent)")
                     SharpRoomView(
                         plyURL: plyURL,
