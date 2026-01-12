@@ -322,15 +322,13 @@ struct SharpRoomView: View {
                 saveRoomProgressOverlay
             }
 
-            // Landscape layout: controls on LEFT side (appears at bottom when phone held horizontally)
-            // - Joystick: left-center
-            // - Brain: top-left
-            // - Snapshot: bottom-left
+            // Landscape layout: controls on LEFT edge (appears at bottom when phone held horizontally)
+            // When held horizontal: brain at bottom-left, joystick at bottom-center, camera at bottom-right
             if photoOrientation == .landscape {
-                // Left edge controls for landscape
-                HStack {
-                    VStack {
-                        // Brain button (top-left)
+                // Far left edge controls for landscape - no padding so they're at the edge
+                HStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        // Brain button (top = left when horizontal)
                         Button(action: {
                             if showingSmartyPants {
                                 showingSmartyPants = false
@@ -348,18 +346,18 @@ struct SharpRoomView: View {
                                 .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
                         }
                         .disabled(isLoading)
-                        .padding(.top, 100)  // Below nav bar
+                        .padding(.top, 80)
 
                         Spacer()
 
-                        // Joystick (center-left)
+                        // Joystick (center)
                         if !showingSmartyPants {
-                            WebGLJoystickOverlay()
+                            JoystickControl()
                         }
 
                         Spacer()
 
-                        // Screenshot button (bottom-left)
+                        // Screenshot button (bottom = right when horizontal)
                         Button(action: {
                             takeScreenshot()
                         }) {
@@ -370,9 +368,10 @@ struct SharpRoomView: View {
                                 .background(Circle().fill(Color.blue).shadow(radius: 5))
                         }
                         .disabled(isLoading)
-                        .padding(.bottom, 40)
+                        .padding(.bottom, 30)
                     }
-                    .padding(.leading, 20)
+                    .frame(width: 130)  // Fixed width column at left edge
+                    .padding(.leading, 0)  // No padding - stick to left edge
                     Spacer()
                 }
                 .zIndex(99997)
@@ -1269,11 +1268,10 @@ struct AntimatterSplatView: UIViewRepresentable {
     }
 }
 
-// MARK: - WebGL Joystick Overlay
+// MARK: - WebGL Joystick Control
 
-/// Joystick overlay specifically for WebGL camera control
-/// Posts notifications that the WebView coordinator listens to
-struct WebGLJoystickOverlay: View {
+/// Just the joystick control without positioning (for use in custom layouts)
+struct JoystickControl: View {
     @State private var offset: CGSize = .zero
     @State private var isDragging = false
 
@@ -1282,67 +1280,75 @@ struct WebGLJoystickOverlay: View {
     private let maxOffset: CGFloat = 35
 
     var body: some View {
+        ZStack {
+            // Outer ring
+            Circle()
+                .fill(Color.black.opacity(0.3))
+                .frame(width: joystickSize, height: joystickSize)
+
+            // Directional indicators
+            Circle()
+                .stroke(Color.white.opacity(0.3), lineWidth: 2)
+                .frame(width: joystickSize - 10, height: joystickSize - 10)
+
+            // Knob
+            Circle()
+                .fill(isDragging ? Color.blue : Color.white.opacity(0.8))
+                .frame(width: knobSize, height: knobSize)
+                .shadow(color: .black.opacity(0.3), radius: 4)
+                .offset(offset)
+        }
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    isDragging = true
+                    let translation = value.translation
+
+                    // Clamp to circular bounds
+                    let distance = sqrt(translation.width * translation.width + translation.height * translation.height)
+                    if distance > maxOffset {
+                        let scale = maxOffset / distance
+                        offset = CGSize(
+                            width: translation.width * scale,
+                            height: translation.height * scale
+                        )
+                    } else {
+                        offset = translation
+                    }
+
+                    // Post notification for WebGL camera movement
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("WebGLJoystickMove"),
+                        object: nil,
+                        userInfo: ["offset": offset]
+                    )
+                }
+                .onEnded { _ in
+                    isDragging = false
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        offset = .zero
+                    }
+                    // Post zero offset to stop movement
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("WebGLJoystickMove"),
+                        object: nil,
+                        userInfo: ["offset": CGSize.zero]
+                    )
+                }
+        )
+    }
+}
+
+// MARK: - WebGL Joystick Overlay
+
+/// Joystick overlay for portrait mode - positioned at bottom center
+struct WebGLJoystickOverlay: View {
+    var body: some View {
         VStack {
             Spacer()
             HStack {
                 Spacer()
-                // Joystick base
-                ZStack {
-                    // Outer ring
-                    Circle()
-                        .fill(Color.black.opacity(0.3))
-                        .frame(width: joystickSize, height: joystickSize)
-
-                    // Directional indicators
-                    Circle()
-                        .stroke(Color.white.opacity(0.3), lineWidth: 2)
-                        .frame(width: joystickSize - 10, height: joystickSize - 10)
-
-                    // Knob
-                    Circle()
-                        .fill(isDragging ? Color.blue : Color.white.opacity(0.8))
-                        .frame(width: knobSize, height: knobSize)
-                        .shadow(color: .black.opacity(0.3), radius: 4)
-                        .offset(offset)
-                }
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            isDragging = true
-                            let translation = value.translation
-
-                            // Clamp to circular bounds
-                            let distance = sqrt(translation.width * translation.width + translation.height * translation.height)
-                            if distance > maxOffset {
-                                let scale = maxOffset / distance
-                                offset = CGSize(
-                                    width: translation.width * scale,
-                                    height: translation.height * scale
-                                )
-                            } else {
-                                offset = translation
-                            }
-
-                            // Post notification for WebGL camera movement
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("WebGLJoystickMove"),
-                                object: nil,
-                                userInfo: ["offset": offset]
-                            )
-                        }
-                        .onEnded { _ in
-                            isDragging = false
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                offset = .zero
-                            }
-                            // Post zero offset to stop movement
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("WebGLJoystickMove"),
-                                object: nil,
-                                userInfo: ["offset": CGSize.zero]
-                            )
-                        }
-                )
+                JoystickControl()
                 Spacer()
             }
             .padding(.bottom, 40)
