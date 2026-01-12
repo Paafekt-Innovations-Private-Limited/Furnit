@@ -323,9 +323,9 @@ struct SharpRoomView: View {
             }
 
             // Landscape layout: controls on LEFT edge (appears at bottom when phone held horizontally)
-            // When held horizontal: brain at bottom-left, joystick at bottom-center, camera at bottom-right
+            // Rotated 90° CW so icons appear upright when phone is horizontal
             if photoOrientation == .landscape {
-                // Far left edge controls for landscape - no padding so they're at the edge
+                // Far left edge controls for landscape - rotated 90° clockwise
                 HStack(spacing: 0) {
                     VStack(spacing: 0) {
                         // Brain button (top = left when horizontal)
@@ -344,13 +344,14 @@ struct SharpRoomView: View {
                                 .foregroundColor(.white)
                                 .frame(width: 60, height: 60)
                                 .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+                                .rotationEffect(.degrees(90))  // Rotate icon for horizontal viewing
                         }
                         .disabled(isLoading)
                         .padding(.top, 80)
 
                         Spacer()
 
-                        // Joystick (center)
+                        // Joystick (center) - no rotation needed, it's circular
                         if !showingSmartyPants {
                             JoystickControl()
                         }
@@ -366,6 +367,7 @@ struct SharpRoomView: View {
                                 .foregroundColor(.white)
                                 .frame(width: 60, height: 60)
                                 .background(Circle().fill(Color.blue).shadow(radius: 5))
+                                .rotationEffect(.degrees(90))  // Rotate icon for horizontal viewing
                         }
                         .disabled(isLoading)
                         .padding(.bottom, 30)
