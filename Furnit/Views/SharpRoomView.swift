@@ -1015,8 +1015,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                     const offset = new THREE.Vector3().subVectors(camera.position, center);
                     const dist = offset.length();
 
-                    const minDist = roomRadius * 0.3;   // don't bury camera inside splats
-                    const maxDist = roomRadius * 1.1;   // don't zoom far outside room
+                    const minDist = roomRadius * 0.2;   // can get fairly close
+                    const maxDist = roomRadius * 0.8;   // much closer cap than before
 
                     let changed = false;
 
@@ -1142,7 +1142,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                             };
 
                             // Safe bubble around room center for camera clamping
-                            roomRadius = Math.max(wallWidth, wallHeight, Math.abs(frontZ - backZ)) * 0.7;
+                            // Smaller factor => camera stays closer to the room
+                            roomRadius = Math.max(wallWidth, wallHeight, Math.abs(frontZ - backZ)) * 0.5;
                             console.log('Camera bounds set:', JSON.stringify(roomBoundsForClamping));
                             console.log('Room radius for clamping:', roomRadius.toFixed(2));
 
