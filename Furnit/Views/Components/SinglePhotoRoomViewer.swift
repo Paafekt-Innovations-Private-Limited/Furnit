@@ -979,7 +979,7 @@ struct SinglePhotoRoomView: View {
                     measurements = landscapeSharpService.roomMeasurements
                 } else {
                     // Use SHARPService for portrait
-                    fileURL = try await sharpService.generateGaussians(from: image, orientationOverride: orientation)
+                    fileURL = try await sharpService.generateGaussians(from: image)
                     measurements = sharpService.roomMeasurements
                 }
 
