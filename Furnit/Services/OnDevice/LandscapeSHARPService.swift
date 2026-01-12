@@ -712,12 +712,18 @@ class LandscapeSHARPService: ObservableObject {
             let rawG = filteredParams[offset + 12]
             let rawB = filteredParams[offset + 13]
 
-            // 3DGS format: f_dc colors as SH coefficients
+            // Apply gamma correction (linear to sRGB) and brightness boost
+            let gamma: Float = 1.0 / 2.2
+            let brightness: Float = 1.3  // Boost for landscape
+            let finalR = pow(min(max(rawR * brightness, 0), 1), gamma)
+            let finalG = pow(min(max(rawG * brightness, 0), 1), gamma)
+            let finalB = pow(min(max(rawB * brightness, 0), 1), gamma)
+
+            // 3DGS format: f_dc colors as SH coefficients (using boosted colors)
             // Formula: f_dc = (color - 0.5) / SH_C0
-            // SparkJS shows correct colors with RGB order, so use RGB (not BGR)
-            var f_dc_0 = (rawR - 0.5) / SH_C0  // R
-            var f_dc_1 = (rawG - 0.5) / SH_C0  // G
-            var f_dc_2 = (rawB - 0.5) / SH_C0  // B
+            var f_dc_0 = (finalR - 0.5) / SH_C0  // R
+            var f_dc_1 = (finalG - 0.5) / SH_C0  // G
+            var f_dc_2 = (finalB - 0.5) / SH_C0  // B
             threeDGSData.append(Data(bytes: &f_dc_0, count: 4))
             threeDGSData.append(Data(bytes: &f_dc_1, count: 4))
             threeDGSData.append(Data(bytes: &f_dc_2, count: 4))
@@ -731,13 +737,6 @@ class LandscapeSHARPService: ObservableObject {
             threeDGSData.append(Data(bytes: &r1, count: 4))
             threeDGSData.append(Data(bytes: &r2, count: 4))
             threeDGSData.append(Data(bytes: &r3, count: 4))
-
-            // Apply gamma correction (linear to sRGB) and slight brightness boost for SparkJS format
-            let gamma: Float = 1.0 / 2.2
-            let brightness: Float = 1.1
-            let finalR = pow(min(max(rawR * brightness, 0), 1), gamma)
-            let finalG = pow(min(max(rawG * brightness, 0), 1), gamma)
-            let finalB = pow(min(max(rawB * brightness, 0), 1), gamma)
 
             // Convert to 0-255 uchar for original/classic PLY
             var red = UInt8(min(max(Int(finalR * 255), 0), 255))
