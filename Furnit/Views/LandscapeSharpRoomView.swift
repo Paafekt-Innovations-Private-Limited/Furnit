@@ -131,6 +131,9 @@ struct LandscapeSharpRoomView: View {
                 isLoading = false
             })
             .ignoresSafeArea()
+            // Prevent swipe-back gesture from interfering with 3D touch controls
+            .contentShape(Rectangle())
+            .highPriorityGesture(DragGesture(minimumDistance: 0))
 
             // Loading overlay
             if isLoading {
