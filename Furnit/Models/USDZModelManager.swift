@@ -116,8 +116,11 @@ class USDZModelManager: ObservableObject {
                 let ext = fileURL.pathExtension.lowercased()
                 let fileType: ModelFileType = (ext == "ply") ? .ply : .usdz
 
+                // Load photo orientation from metadata for PLY files
+                let orientation: PhotoOrientation = (fileType == .ply) ? loadPhotoOrientation(for: fileName) : .portrait
+
                 if debugMode {
-                    logDebug("   - \(fileName) (\(fileType.rawValue))")
+                    logDebug("   - \(fileName) (\(fileType.rawValue), orientation: \(orientation.rawValue))")
                 }
 
                 let model = USDZModel(
@@ -125,7 +128,8 @@ class USDZModelManager: ObservableObject {
                     fileName: fileName,
                     isSavedRoom: true,
                     fileType: fileType,
-                    fileSize: size
+                    fileSize: size,
+                    photoOrientation: orientation
                 )
                 savedRoomModels.append(model)
             }
@@ -323,15 +327,16 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Save a PLY file to SavedRooms directory
-    func savePLY(from sourceURL: URL, name: String, completion: @escaping (Bool, String?) -> Void) {
+    func savePLY(from sourceURL: URL, name: String, photoOrientation: PhotoOrientation = .portrait, completion: @escaping (Bool, String?) -> Void) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
 
         if debugMode {
-            logDebug("💾 [USDZModelManager] Starting to save PLY: \(name)")
+            logDebug("💾 [USDZModelManager] Starting to save PLY: \(name) (orientation: \(photoOrientation.rawValue))")
         }
 
         let fileName = sanitizeFileName(name)
         let destinationURL = modelsDirectory.appendingPathComponent("\(fileName).ply")
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
 
         // Check if source exists
         guard FileManager.default.fileExists(atPath: sourceURL.path) else {
@@ -347,12 +352,21 @@ class USDZModelManager: ObservableObject {
             if FileManager.default.fileExists(atPath: destinationURL.path) {
                 try FileManager.default.removeItem(at: destinationURL)
             }
+            if FileManager.default.fileExists(atPath: metadataURL.path) {
+                try FileManager.default.removeItem(at: metadataURL)
+            }
 
             // Copy PLY file
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
+            // Save metadata (orientation)
+            let metadata: [String: String] = ["photoOrientation": photoOrientation.rawValue]
+            let metadataData = try JSONEncoder().encode(metadata)
+            try metadataData.write(to: metadataURL)
+
             if debugMode {
                 logDebug("✅ [USDZModelManager] PLY saved to: \(destinationURL.path)")
+                logDebug("✅ [USDZModelManager] Metadata saved to: \(metadataURL.path)")
             }
 
             // Reload models to include the new one
@@ -366,5 +380,20 @@ class USDZModelManager: ObservableObject {
             }
             completion(false, error.localizedDescription)
         }
+    }
+
+    /// Load photo orientation from metadata file
+    private func loadPhotoOrientation(for fileName: String) -> PhotoOrientation {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
+
+        guard FileManager.default.fileExists(atPath: metadataURL.path),
+              let data = try? Data(contentsOf: metadataURL),
+              let metadata = try? JSONDecoder().decode([String: String].self, from: data),
+              let orientationStr = metadata["photoOrientation"],
+              let orientation = PhotoOrientation(rawValue: orientationStr) else {
+            return .portrait  // Default to portrait if no metadata
+        }
+
+        return orientation
     }
 }

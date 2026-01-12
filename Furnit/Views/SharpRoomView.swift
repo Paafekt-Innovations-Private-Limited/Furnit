@@ -650,7 +650,7 @@ struct SharpRoomView: View {
             if self.saveProgress >= 0.6 && !saveStarted {
                 saveStarted = true
                 // Save the classic PLY file (pre-transformed for correct viewing)
-                self.modelManager.savePLY(from: self.classicPlyURL, name: savedName) { success, error in
+                self.modelManager.savePLY(from: self.classicPlyURL, name: savedName, photoOrientation: self.photoOrientation) { success, error in
                     DispatchQueue.main.async {
                         saveCompleted = true
                         saveSuccess = success
