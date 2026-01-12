@@ -1085,18 +1085,43 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 });
                             }
 
-                            // Calculate camera position - camera BEHIND near points, looking INTO room at front wall
-                            // In classic PLY coords: minZ = near camera, maxZ = front wall (far)
+                            // --- CAMERA IN FRONT OF ROOM, LOOKING AT FRONT WALL ---
+                            // SHARP classic PLY: front wall at minZ (most negative), back wall at maxZ
+
+                            // Swap: front wall is actually at minZ (backZ variable), not maxZ
+                            const actualFrontZ = backZ;  // minZ = front wall
+                            const actualBackZ = frontZ;  // maxZ = back wall
+
                             const maxDim = Math.max(wallWidth, wallHeight);
                             const fov = THREE.MathUtils.degToRad(camera.fov);
                             const aspect = window.innerWidth / window.innerHeight;
-                            const fitHeightDist = (maxDim / 2) / Math.tan(fov / 2);
-                            const fitWidthDist = (maxDim / 2) / (Math.tan(fov / 2) * aspect);
-                            let distance = Math.max(fitHeightDist, fitWidthDist) * 0.5;
 
-                            // Camera positioned BEFORE the near points (backZ - distance), looking at front wall
-                            const newCamPos = new THREE.Vector3(centerX, centerY, backZ - distance);
-                            const newTarget = new THREE.Vector3(centerX, centerY, frontZ);
+                            // Distance needed so the wall fits in vertical & horizontal FOV
+                            const fitHeightDist = (maxDim * 0.5) / Math.tan(fov * 0.5);
+                            const fitWidthDist  = (maxDim * 0.5) / (Math.tan(fov * 0.5) * aspect);
+                            let distance = Math.max(fitHeightDist, fitWidthDist);
+                            distance *= 1.05;  // Small padding so wall isn't touching edges
+
+                            // Camera positioned in front of front wall (actualFrontZ - distance)
+                            const newCamPos = new THREE.Vector3(
+                                centerX,                    // Center X
+                                centerY,                    // Center Y (middle height)
+                                actualFrontZ - distance     // In front of front wall (more negative)
+                            );
+
+                            // Look at middle of front wall
+                            const newTarget = new THREE.Vector3(
+                                centerX,                // Center X
+                                centerY,                // Center Y
+                                actualFrontZ            // Front wall (minZ)
+                            );
+
+                            console.log('Auto-framed front wall:',
+                                'wallWidth=', wallWidth.toFixed(2),
+                                'wallHeight=', wallHeight.toFixed(2),
+                                'actualFrontZ=', actualFrontZ.toFixed(2),
+                                'distance=', distance.toFixed(2)
+                            );
 
                             console.log('OLD camera pos:', camera.position.x.toFixed(2), camera.position.y.toFixed(2), camera.position.z.toFixed(2));
                             console.log('NEW camera pos:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2));
@@ -1106,12 +1131,11 @@ struct AntimatterSplatView: UIViewRepresentable {
                             controls.target.copy(newTarget);
                             controls.update();
 
-                            // Update initial position for recenter to use auto-framed position
-                            if (typeof updateInitialPosition === 'function') {
-                                updateInitialPosition();
-                            }
+                            // Update initial recenter state to this auto-framed position
+                            initialCameraPosition.copy(camera.position);
+                            initialControlsTarget.copy(controls.target);
 
-                            console.log('=== Camera MOVED ===');
+                            console.log('=== Camera MOVED & recenter updated ===');
                         } catch (err) {
                             console.error('autoFrameRoom error:', err);
                         }
