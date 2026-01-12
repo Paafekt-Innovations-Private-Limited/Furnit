@@ -606,7 +606,7 @@ struct SinglePhotoRoomView: View {
     @State private var navigateToSplatViewer = false
     @State private var showMethodPicker = false  // Show method choice after photo selection
     @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
-    @State private var selectedOrientation: PhotoOrientation = .landscape  // User-selected orientation
+    @State private var selectedOrientation: PhotoOrientation = .portrait  // User-selected orientation
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -639,8 +639,8 @@ struct SinglePhotoRoomView: View {
                             .fontWeight(.medium)
 
                         Picker("Orientation", selection: $selectedOrientation) {
-                            Text("📐 Landscape").tag(PhotoOrientation.landscape)
                             Text("📱 Portrait").tag(PhotoOrientation.portrait)
+                            Text("📐 Landscape").tag(PhotoOrientation.landscape)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal)
@@ -968,6 +968,11 @@ struct SinglePhotoRoomView: View {
     private func startSHARPGeneration(image: UIImage) {
         let orientation = selectedOrientation  // Capture current selection
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
+
+        // Clear previous generation state to prevent using stale data on failure
+        generatedPLYURL = nil
+        generatedRoomMeasurements = nil
+
         Task {
             do {
                 let fileURL: URL
