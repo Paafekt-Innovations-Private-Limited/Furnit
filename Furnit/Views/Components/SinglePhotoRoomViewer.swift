@@ -581,6 +581,7 @@ import RoomPlan
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @StateObject private var sharpService = SHARPService()
+    @StateObject private var landscapeSharpService = LandscapeSHARPService()
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var adjustedBoundaries: RoomStructure?
@@ -605,6 +606,7 @@ struct SinglePhotoRoomView: View {
     @State private var navigateToSplatViewer = false
     @State private var showMethodPicker = false  // Show method choice after photo selection
     @State private var showRoomBoundaries = false  // Show boundary adjustment sheet
+    @State private var selectedOrientation: PhotoOrientation = .landscape  // User-selected orientation
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -630,9 +632,34 @@ struct SinglePhotoRoomView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 8)
 
+                    // Photo orientation picker - user can override auto-detection
+                    VStack(spacing: 8) {
+                        Text("Select your photo orientation:")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+
+                        Picker("Orientation", selection: $selectedOrientation) {
+                            Text("📐 Landscape").tag(PhotoOrientation.landscape)
+                            Text("📱 Portrait").tag(PhotoOrientation.portrait)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal)
+
+                        Text("Tap to change if auto-detection was wrong")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                    .padding(.bottom, 12)
+
                     // Method 1: SHARP (AI-powered) - Single photo to 3D
                     Button(action: {
                         logDebug("🤖 [View] SHARP method selected")
+                        print("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
                         showMethodPicker = false
                         startSHARPGeneration(image: image)
                     }) {
@@ -667,6 +694,7 @@ struct SinglePhotoRoomView: View {
                     // Method 2: Manual Boundaries
                     Button(action: {
                         logDebug("🏠 [View] Manual boundaries method selected")
+                        print("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
                         showMethodPicker = false
                         fixedImageItem = IdentifiedImage(image: image)
                     }) {
@@ -755,18 +783,18 @@ struct SinglePhotoRoomView: View {
                 }
             }
 
-            // Progress overlay for model loading
-            if sharpService.isLoadingModel {
+            // Progress overlay for model loading (show for either service)
+            if sharpService.isLoadingModel || landscapeSharpService.isLoadingModel {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.5)
                         .tint(.purple)
 
-                    Text(sharpService.statusMessage)
+                    Text(selectedOrientation == .landscape ? landscapeSharpService.statusMessage : sharpService.statusMessage)
                         .font(.headline)
                         .foregroundColor(.primary)
 
-                    ProgressView(value: Double(sharpService.progress))
+                    ProgressView(value: Double(selectedOrientation == .landscape ? landscapeSharpService.progress : sharpService.progress))
                         .progressViewStyle(LinearProgressViewStyle(tint: .purple))
                         .frame(width: 200)
                 }
@@ -784,6 +812,14 @@ struct SinglePhotoRoomView: View {
                     downloadProgress: sharpService.progress,
                     statusMessage: sharpService.statusMessage,
                     onCancel: { sharpService.cancelGeneration() }
+                )
+            } else if case .processing = landscapeSharpService.status {
+                GenerationProgressOverlay(
+                    status: landscapeSharpService.status,
+                    uploadProgress: landscapeSharpService.progress,
+                    downloadProgress: landscapeSharpService.progress,
+                    statusMessage: landscapeSharpService.statusMessage,
+                    onCancel: { landscapeSharpService.cancelGeneration() }
                 )
             }
         }
@@ -806,6 +842,10 @@ struct SinglePhotoRoomView: View {
             logDebug("✅ [View] Image selected")
             // Store the fixed image for later use
             fixedImage = image
+            // Auto-detect orientation and pre-select it (user can override)
+            let detectedOrientation = PhotoOrientation.detect(from: image)
+            selectedOrientation = detectedOrientation
+            logDebug("📐 [View] Auto-detected orientation: \(detectedOrientation.rawValue)")
         }
         .sheet(item: $fixedImageItem) { item in
             RoomBoundaryDetectionView(
@@ -857,10 +897,21 @@ struct SinglePhotoRoomView: View {
             }
         }
         // Navigate to SharpRoomView when PLY is generated
+        // Use LandscapeSharpRoomView for landscape, SharpRoomView for portrait
         .navigationDestination(isPresented: $navigateToSplatViewer) {
             Group {
                 if let plyURL = generatedPLYURL {
-                    SharpRoomView(plyURL: plyURL, roomMeasurements: generatedRoomMeasurements)
+                    let _ = print("🚀 [Navigation] selectedOrientation = \(selectedOrientation.rawValue)")
+                    let _ = print("🚀 [Navigation] plyURL = \(plyURL.lastPathComponent)")
+                    if selectedOrientation == .landscape {
+                        let _ = print("🚀 [Navigation] Using LandscapeSharpRoomView")
+                        LandscapeSharpRoomView(plyURL: plyURL, roomMeasurements: generatedRoomMeasurements)
+                    } else {
+                        let _ = print("🚀 [Navigation] Using SharpRoomView (portrait)")
+                        SharpRoomView(plyURL: plyURL, roomMeasurements: generatedRoomMeasurements)
+                    }
+                } else {
+                    let _ = print("🚀 [Navigation] ERROR: generatedPLYURL is nil!")
                 }
             }
         }
@@ -882,6 +933,7 @@ struct SinglePhotoRoomView: View {
         .alert("Generation Failed", isPresented: Binding(
             get: {
                 if case .failed = sharpService.status { return true }
+                if case .failed = landscapeSharpService.status { return true }
                 return false
             },
             set: { _ in }
@@ -891,19 +943,13 @@ struct SinglePhotoRoomView: View {
             }
             Button("Retry") {
                 if let image = selectedImage {
-                    Task {
-                        do {
-                            let fileURL = try await sharpService.generateGaussians(from: image)
-                            generatedPLYURL = fileURL
-                            showGenerationSuccess = true
-                        } catch {
-                            logDebug("❌ [View] Retry failed: \(error)")
-                        }
-                    }
+                    startSHARPGeneration(image: image)
                 }
             }
         } message: {
             if case .failed(let errorMessage) = sharpService.status {
+                Text(errorMessage)
+            } else if case .failed(let errorMessage) = landscapeSharpService.status {
                 Text(errorMessage)
             } else {
                 Text("An error occurred while generating your 3D model.")
@@ -920,14 +966,27 @@ struct SinglePhotoRoomView: View {
     }
 
     private func startSHARPGeneration(image: UIImage) {
-        logDebug("🤖 [View] Starting on-device SHARP generation...")
+        let orientation = selectedOrientation  // Capture current selection
+        logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
         Task {
             do {
-                let fileURL = try await sharpService.generateGaussians(from: image)
+                let fileURL: URL
+                let measurements: RoomMeasurements?
+
+                if orientation == .landscape {
+                    // Use LandscapeSHARPService for landscape
+                    fileURL = try await landscapeSharpService.generateGaussians(from: image)
+                    measurements = landscapeSharpService.roomMeasurements
+                } else {
+                    // Use SHARPService for portrait
+                    fileURL = try await sharpService.generateGaussians(from: image, orientationOverride: orientation)
+                    measurements = sharpService.roomMeasurements
+                }
+
                 logDebug("✅ [View] PLY file generated: \(fileURL.path)")
                 await MainActor.run {
                     generatedPLYURL = fileURL
-                    generatedRoomMeasurements = sharpService.roomMeasurements
+                    generatedRoomMeasurements = measurements
                     navigateToSplatViewer = true
                 }
             } catch {

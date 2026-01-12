@@ -1,5 +1,41 @@
 import Foundation
 import simd
+import UIKit
+
+// MARK: - Photo Orientation
+
+/// Orientation of the source photo used for 3D reconstruction
+enum PhotoOrientation: String, Codable {
+    case portrait
+    case landscape
+    case square
+
+    /// Detect orientation from image dimensions
+    static func detect(from image: UIImage) -> PhotoOrientation {
+        let w = image.size.width
+        let h = image.size.height
+
+        if abs(w - h) < 5 {  // small tolerance for nearly square
+            return .square
+        } else if w > h {
+            return .landscape
+        } else {
+            return .portrait
+        }
+    }
+
+    /// User-friendly description
+    var hint: String {
+        switch self {
+        case .landscape:
+            return "Landscape – better for full wall width"
+        case .portrait:
+            return "Portrait – great for tall furniture"
+        case .square:
+            return "Square"
+        }
+    }
+}
 
 /// Actual min/max bounds of the room in 3D space
 struct RoomBounds {
@@ -36,6 +72,8 @@ struct RoomMeasurements {
     let frontWallPointCount: Int
     /// Confidence score (0-1) based on plane fit quality
     let confidence: Float
+    /// Orientation of the source photo
+    let photoOrientation: PhotoOrientation
 
     /// Formatted string for display
     var frontWallDescription: String {
@@ -63,13 +101,17 @@ class RoomMeasurement {
     // MARK: - Plane Detection
 
     /// Detect planes and measure room from Gaussian positions
-    /// - Parameter positions: Array of (x, y, z) positions
+    /// - Parameters:
+    ///   - positions: Array of (x, y, z) positions
+    ///   - photoOrientation: Orientation of the source photo (affects height heuristics)
     /// - Returns: Room measurements based on bounding box
-    static func measureRoom(positions: [(Float, Float, Float)]) -> RoomMeasurements? {
+    static func measureRoom(positions: [(Float, Float, Float)], photoOrientation: PhotoOrientation = .landscape) -> RoomMeasurements? {
         guard positions.count >= minPlanePoints else {
             logDebug("RoomMeasurement: Not enough points (\(positions.count))")
             return nil
         }
+
+        logDebug("RoomMeasurement: Orientation = \(photoOrientation.rawValue)")
 
         // Convert to SIMD for faster math
         let points = positions.map { SIMD3<Float>($0.0, $0.1, $0.2) }
@@ -91,9 +133,20 @@ class RoomMeasurement {
         let roomWidth = boundingBox.x
         let roomDepth = boundingBox.z
 
-        // Apply realistic height cap (typical room: 2.4-3.2m)
-        let maxRealisticHeight: Float = 3.2
-        let minRealisticHeight: Float = 2.2
+        // Apply realistic height cap - tweak based on orientation
+        // Portrait photos often capture more vertical content, so be slightly more forgiving
+        let maxRealisticHeight: Float
+        let minRealisticHeight: Float
+
+        switch photoOrientation {
+        case .portrait:
+            maxRealisticHeight = 3.5  // Allow slightly taller for portrait shots
+            minRealisticHeight = 2.2
+        case .landscape, .square:
+            maxRealisticHeight = 3.2
+            minRealisticHeight = 2.2
+        }
+
         var roomHeight = boundingBox.y
 
         if roomHeight > maxRealisticHeight {
@@ -127,7 +180,8 @@ class RoomMeasurement {
             boundingBox: boundingBox,
             actualBounds: actualBounds,
             frontWallPointCount: positions.count,
-            confidence: 0.8
+            confidence: 0.8,
+            photoOrientation: photoOrientation
         )
     }
 
