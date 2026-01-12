@@ -196,106 +196,13 @@ class LandscapeSHARPService: ObservableObject {
         statusMessage = "Cancelled"
     }
 
-    // MARK: - Letterbox / Black-Bar Cropping (for library images)
-
-    /// Detect and crop solid black bars at the top and bottom of the image.
-    /// Safe for normal photos: if there are no bars, it returns the original image.
-    private func cropVerticalBlackBars(from image: UIImage,
-                                       threshold: UInt8 = 10,
-                                       minNonBlackFraction: Double = 0.02) -> UIImage {
-        guard let cgImage = image.cgImage else {
-            return image
-        }
-
-        let width = cgImage.width
-        let height = cgImage.height
-
-        // ARGB / RGBA 8-bit buffer
-        let bytesPerPixel = 4
-        let bytesPerRow = bytesPerPixel * width
-        let bitsPerComponent = 8
-        var data = [UInt8](repeating: 0, count: height * bytesPerRow)
-
-        guard let ctx = CGContext(
-            data: &data,
-            width: width,
-            height: height,
-            bitsPerComponent: bitsPerComponent,
-            bytesPerRow: bytesPerRow,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            return image
-        }
-
-        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        // Helper: is this row essentially all black?
-        func rowIsMostlyBlack(_ row: Int) -> Bool {
-            let rowStart = row * bytesPerRow
-            let sampleStep = max(1, width / 256)   // sample at most 256 pixels per row
-            var nonBlackCount = 0
-            var totalSamples = 0
-
-            for x in stride(from: 0, to: width, by: sampleStep) {
-                let idx = rowStart + x * bytesPerPixel
-                let r = data[idx + 0]
-                let g = data[idx + 1]
-                let b = data[idx + 2]
-                // simple brightness
-                let brightness = (UInt16(r) + UInt16(g) + UInt16(b)) / 3
-                if brightness > threshold {
-                    nonBlackCount += 1
-                }
-                totalSamples += 1
-            }
-
-            let nonBlackFraction = Double(nonBlackCount) / Double(totalSamples)
-            // If almost all pixels are <= threshold, treat as black bar row
-            return nonBlackFraction < minNonBlackFraction
-        }
-
-        var top = 0
-        while top < height && rowIsMostlyBlack(top) {
-            top += 1
-        }
-
-        var bottom = height - 1
-        while bottom > top && rowIsMostlyBlack(bottom) {
-            bottom -= 1
-        }
-
-        // If we didn't actually find a useful content band, return original
-        if bottom <= top || (bottom - top + 1) < height / 2 {
-            logDebug("SHARP: No black bars detected, using original image")
-            return image
-        }
-
-        let cropRect = CGRect(x: 0,
-                              y: top,
-                              width: width,
-                              height: bottom - top + 1)
-
-        guard let croppedCG = cgImage.cropping(to: cropRect) else {
-            return image
-        }
-
-        logDebug("SHARP: Cropped black bars - original: \(width)x\(height), cropped: \(width)x\(bottom - top + 1)")
-        return UIImage(cgImage: croppedCG,
-                       scale: image.scale,
-                       orientation: image.imageOrientation)
-    }
-
     // MARK: - Image Preprocessing
 
     /// Preprocess image for SHARP model input
     /// - Parameter image: Source UIImage
     /// - Returns: CVPixelBuffer sized to 1536x1536 (model expects Image type)
     private func preprocessImage(_ image: UIImage) async throws -> CVPixelBuffer {
-        // 1) Remove letterboxed black bars (common in landscape photos from library)
-        let cleanedImage = cropVerticalBlackBars(from: image)
-
-        guard let cgImage = cleanedImage.cgImage else {
+        guard let cgImage = image.cgImage else {
             throw GenerationError.invalidImage
         }
 
@@ -542,62 +449,41 @@ class LandscapeSHARPService: ObservableObject {
 
     // MARK: - Splat Filtering
 
-    /// Hard cutoff for almost-transparent splats
-    private static let minAlpha: Float = 0.10
-
-    /// For "fluffy fog" filter: if alpha < this AND scale > fogScaleThreshold, drop it
-    private static let fogAlphaThreshold: Float = 0.25
-    private static let fogScaleThreshold: Float = 0.030
-
-    /// Filter Gaussians - only opacity and fog filtering, no spatial cropping
+    /// Filter out very dark gaussians (black patches from letterboxed images)
     private func filterGaussians(_ params: [Float]) -> [Float] {
         let inputCount = params.count / Self.paramsPerGaussian
-        logDebug("SHARP: Filtering \(inputCount) Gaussians...")
 
-        var validSplats: [(index: Int, opacity: Float)] = []
-        validSplats.reserveCapacity(inputCount / 4)
-        var opacityFiltered = 0
-        var fogFiltered = 0
+        // Brightness threshold - remove splats darker than this
+        let brightnessThreshold: Float = 0.1
+
+        var result = [Float]()
+        result.reserveCapacity(params.count)
+
+        var removedCount = 0
 
         for i in 0..<inputCount {
             let offset = i * Self.paramsPerGaussian
-            let alpha = params[offset + 10]
-            let s0 = params[offset + 3]
-            let s1 = params[offset + 4]
-            let maxScaleXY = max(s0, s1)
+            let r = params[offset + 11]
+            let g = params[offset + 12]
+            let b = params[offset + 13]
+            let brightness = (r + g + b) / 3.0
 
-            // 1) Hard cutoff for almost-transparent splats
-            if alpha < Self.minAlpha {
-                opacityFiltered += 1
+            // Skip very dark splats (black patches)
+            if brightness < brightnessThreshold {
+                removedCount += 1
                 continue
             }
 
-            // 2) Kill big, low-contrast blobs (fog splats)
-            if alpha < Self.fogAlphaThreshold && maxScaleXY > Self.fogScaleThreshold {
-                fogFiltered += 1
-                continue
-            }
-
-            validSplats.append((index: i, opacity: alpha))
-        }
-
-        logDebug("SHARP: Filtered \(opacityFiltered) by opacity, \(fogFiltered) by fog")
-        logDebug("SHARP: \(validSplats.count) splats kept")
-
-        // Build filtered output
-        let selectedIndices = validSplats.map { $0.index }
-        var filtered = [Float]()
-        filtered.reserveCapacity(selectedIndices.count * Self.paramsPerGaussian)
-
-        for idx in selectedIndices {
-            let offset = idx * Self.paramsPerGaussian
+            // Keep this gaussian
             for j in 0..<Self.paramsPerGaussian {
-                filtered.append(params[offset + j])
+                result.append(params[offset + j])
             }
         }
 
-        logDebug("SHARP: Output \(filtered.count / Self.paramsPerGaussian) filtered Gaussians")
-        return filtered
+        let keptCount = inputCount - removedCount
+        logDebug("SHARP: Filtered \(removedCount) dark splats (brightness < \(brightnessThreshold)), kept \(keptCount)")
+
+        return result
     }
 
     // MARK: - PLY Writing
