@@ -433,10 +433,13 @@ struct SharpRoomView: View {
                 saveRoomProgressOverlay
             }
 
-            // Landscape layout: controls on LEFT edge (appears at bottom when phone held horizontally)
-            // Rotated 90° CW so icons appear upright when phone is horizontal
-            if photoOrientation == .landscape {
-                // Far left edge controls for landscape - rotated 90° clockwise
+            // Match UI to how you'd naturally hold phone for the photo:
+            //   portrait photo  → vertical UI (bottom controls)
+            //   landscape photo → horizontal UI (side column)
+            let useSideControls = (photoOrientation == .landscape)
+
+            if useSideControls {
+                // Left edge controls for portrait photos - rotated 90° clockwise
                 HStack(spacing: 0) {
                     VStack(spacing: 0) {
                         // Brain button (top = left when horizontal)
