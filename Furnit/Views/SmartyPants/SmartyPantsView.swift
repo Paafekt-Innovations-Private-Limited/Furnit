@@ -525,11 +525,17 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 4: Extract tensors (handle different model output names)
         let t4 = Date()
 
-        // Try new model output names first (yoloe-26l), then fall back to old names (yoloe-11l)
+        // Try model output names - yoloe-11l (new export), yoloe-26l, yoloe-11l (old)
         let detArray: MLMultiArray
         let protoArray: MLMultiArray
 
-        if let det = output.featureValue(for: "var_2346")?.multiArrayValue,
+        if let det = output.featureValue(for: "var_2374")?.multiArrayValue,
+           let proto = output.featureValue(for: "var_2412")?.multiArrayValue {
+            // yoloe-11l model outputs (new export with proper cv3/cv4 heads)
+            detArray = det
+            protoArray = proto
+            if debugMode { logDebug("📦 Using yoloe-11l output tensors (var_2374/var_2412)") }
+        } else if let det = output.featureValue(for: "var_2346")?.multiArrayValue,
            let proto = output.featureValue(for: "var_2429")?.multiArrayValue {
             // yoloe-26l model outputs
             detArray = det
@@ -537,10 +543,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             if debugMode { logDebug("📦 Using yoloe-26l output tensors") }
         } else if let det = output.featureValue(for: "var_2497")?.multiArrayValue,
                   let proto = output.featureValue(for: "p")?.multiArrayValue {
-            // yoloe-11l model outputs
+            // yoloe-11l model outputs (old export)
             detArray = det
             protoArray = proto
-            if debugMode { logDebug("📦 Using yoloe-11l output tensors") }
+            if debugMode { logDebug("📦 Using yoloe-11l output tensors (old)") }
         } else {
             if debugMode {
                 logDebug("❌ STAGE 4 FAILED: Missing output tensors")
@@ -649,11 +655,28 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
                 let classIdx = Int(classIdxFloat)
 
+                // Bounds checking for mask coefficients
                 var coeffs = [Float](repeating: 0, count: 32)
+                var validCoeffs = true
                 for k in 0..<32 {
-                    coeffs[k] = detBuf[base + (6 + k) * featStride]
+                    let coeffIndex = base + (6 + k) * featStride
+                    if coeffIndex < totalCount {
+                        let val = detBuf[coeffIndex]
+                        if val.isFinite {
+                            coeffs[k] = val
+                        } else {
+                            if debugMode { logDebug("⚠️ Coefficient NaN/Inf for k=\(k), detIdx=\(detIdx)") }
+                            validCoeffs = false
+                            break
+                        }
+                    } else {
+                        if debugMode { logDebug("⚠️ Coefficient bounds check failed for k=\(k), detIdx=\(detIdx)") }
+                        validCoeffs = false
+                        break
+                    }
                 }
 
+                guard validCoeffs else { continue }
                 guard classIdx >= 0, !clsToIgnore.contains(classIdx) else { continue }
 
                 allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: confidence, classIdx: classIdx, coeffs: coeffs))
@@ -722,41 +745,210 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
 
-        // STAGE 7: Skip NMS (yoloe-26l is NMS-free)
+        // STAGE 7: Apply NMS
         let t7 = Date()
-        // NMS disabled - use all detections directly
-        let afterNMS: [UnionDet] = allDets
+        let boxes: [CGRect] = allDets.map { d in
+            CGRect(x: CGFloat(d.x - d.w * 0.5),
+                   y: CGFloat(d.y - d.h * 0.5),
+                   width: CGFloat(d.w),
+                   height: CGFloat(d.h))
+        }
+        let scores: [Float] = allDets.map { $0.confidence }
+        let keptIdx = applyNMS(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
+        let afterNMS: [UnionDet] = keptIdx.map { allDets[$0] }
         let t7End = Date()
         if debugMode {
             let nmsMs = String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)
-            logDebug("⏱️ STAGE 7 - NMS skipped: \(nmsMs) ms, kept: \(afterNMS.count)")
+            logDebug("⏱️ STAGE 7 - NMS: \(nmsMs) ms, kept: \(afterNMS.count)")
         }
 
-        // STAGE 8: Find primary (highest confidence)
+        // STAGE 8: Find primary (conf > 0.5, largest area)
         let t8 = Date()
 
         var primaryIdx = -1
-        var maxConf: Float = 0
+        var maxArea: Float = 0
         for (i, d) in afterNMS.enumerated() {
-            if d.confidence > maxConf {
-                maxConf = d.confidence
-                primaryIdx = i
+            if d.confidence > 0.5 {
+                let area = d.w * d.h
+                if area > maxArea {
+                    maxArea = area
+                    primaryIdx = i
+                }
             }
         }
 
         if primaryIdx < 0 {
-            if debugMode { logDebug("   ⚠️ No detections found") }
+            if debugMode { logDebug("   ⚠️ No detection with conf > 0.5") }
             DispatchQueue.main.async { self.maskImageView.image = nil }
             resetProcessingFlag()
             return
         }
         
-        let primary = afterNMS[primaryIdx]
+        var primary = afterNMS[primaryIdx]
         let t8End = Date()
         if debugMode {
             let primaryMs = String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)
             logDebug("⏱️ STAGE 8 - Primary: \(primaryMs) ms")
             logDebug("   🎯 PRIMARY[\(primaryIdx)]: \u{001B}[1m\(className(primary.classIdx))\u{001B}[0m conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
+        }
+
+        // STAGE 8b: Two-stage verification - crop to primary bbox and re-detect
+        // If a detection fills most of the crop, it's likely the real object
+        let t8b = Date()
+        if let croppedBuffer = cropPixelBuffer(pixelBuffer, toBBox: primary, modelSize: 1280, padding: 0.15),
+           let croppedSq = resizeToSquare(croppedBuffer, size: 1280) {
+
+            // Prepare input for cropped image
+            let cropInputProvider: MLFeatureProvider?
+            if expectsImage {
+                if let imageValue = try? MLFeatureValue(pixelBuffer: croppedSq.buffer),
+                   let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) {
+                    cropInputProvider = provider
+                } else {
+                    cropInputProvider = nil
+                }
+            } else {
+                if let inputArray = pixelBufferToMLMultiArray(croppedSq.buffer),
+                   let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) {
+                    cropInputProvider = provider
+                } else {
+                    cropInputProvider = nil
+                }
+            }
+
+            if let cropInput = cropInputProvider,
+               let cropOutput = try? model.prediction(from: cropInput) {
+
+                // Extract detection tensor from crop output
+                var cropDetArray: MLMultiArray?
+                if let det = cropOutput.featureValue(for: "var_2346")?.multiArrayValue {
+                    cropDetArray = det
+                } else if let det = cropOutput.featureValue(for: "var_2497")?.multiArrayValue {
+                    cropDetArray = det
+                }
+
+                if let cropDet = cropDetArray {
+                    // Parse detections from crop (same logic as STAGE 6 but simplified)
+                    let cropDim1 = cropDet.shape[1].intValue
+                    let cropDim2 = cropDet.shape[2].intValue
+                    let cropIsNewFormat = cropDim2 < 100
+
+                    if cropIsNewFormat {
+                        let numDetections = cropDim1
+                        let strides = cropDet.strides.map { $0.intValue }
+                        let detStride = strides.count >= 2 ? strides[1] : cropDim2
+                        let featStride = strides.count >= 3 ? strides[2] : 1
+
+                        // Copy to float buffer
+                        let cropTotalCount = cropDet.count
+                        let cropBuf = UnsafeMutablePointer<Float>.allocate(capacity: cropTotalCount)
+                        defer { cropBuf.deallocate() }
+
+                        if cropDet.dataType == .float32 {
+                            memcpy(cropBuf, cropDet.dataPointer, cropTotalCount * MemoryLayout<Float>.size)
+                        } else if cropDet.dataType == .float16 {
+                            let src = cropDet.dataPointer.bindMemory(to: UInt16.self, capacity: cropTotalCount)
+                            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(cropTotalCount), rowBytes: cropTotalCount * 2)
+                            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(cropBuf), height: 1, width: vImagePixelCount(cropTotalCount), rowBytes: cropTotalCount * 4)
+                            vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+                        }
+
+                        // Find detection that fills most of the crop (coverage > 70%)
+                        // In crop space, the model sees the cropped region as 1280x1280
+                        // A detection filling the crop would have large w,h relative to 1280
+                        var bestCropDet: UnionDet?
+                        var bestCropCoverage: Float = 0
+                        let cropModelArea: Float = 1280 * 1280
+
+                        for detIdx in 0..<numDetections {
+                            let base = detIdx * detStride
+                            let x = cropBuf[base + 0 * featStride]
+                            let y = cropBuf[base + 1 * featStride]
+                            let w = cropBuf[base + 2 * featStride]
+                            let h = cropBuf[base + 3 * featStride]
+                            let conf = cropBuf[base + 4 * featStride]
+                            let classIdxFloat = cropBuf[base + 5 * featStride]
+
+                            guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, conf.isFinite, classIdxFloat.isFinite else { continue }
+                            guard conf > 0.3, w > 0, h > 0, w < 2000, h < 2000 else { continue }
+
+                            let classIdx = Int(classIdxFloat)
+                            let detArea = w * h
+                            let coverage = detArea / cropModelArea
+
+                            // Look for detection with >50% coverage of the crop
+                            if coverage > 0.50 && coverage > bestCropCoverage {
+                                var coeffs = [Float](repeating: 0, count: 32)
+                                var validCoeffs = true
+                                for k in 0..<32 {
+                                    let coeffIndex = base + (6 + k) * featStride
+                                    if coeffIndex < cropTotalCount {
+                                        let val = cropBuf[coeffIndex]
+                                        if val.isFinite { coeffs[k] = val } else { validCoeffs = false; break }
+                                    } else { validCoeffs = false; break }
+                                }
+                                if validCoeffs {
+                                    bestCropDet = UnionDet(x: x, y: y, w: w, h: h, confidence: conf, classIdx: classIdx, coeffs: coeffs)
+                                    bestCropCoverage = coverage
+                                }
+                            }
+                        }
+
+                        // If we found a detection filling most of the crop, use it to verify/update primary
+                        if let cropDet = bestCropDet {
+                            if debugMode {
+                                logDebug("   🔍 STAGE 8b: Crop detection found - \(className(cropDet.classIdx)) conf=\(String(format: "%.2f", cropDet.confidence)) coverage=\(String(format: "%.0f", bestCropCoverage * 100))%")
+                            }
+
+                            // If crop detection has different class OR significantly higher confidence, adopt it
+                            // But we need to map coordinates back to full-frame model space
+                            // The detection coords are in crop's 1280x1280 space, need to map to original model space
+                            let padding: Float = 0.15
+                            let cropX1 = max(0, primary.x - primary.w / 2 * (1 + padding))
+                            let cropY1 = max(0, primary.y - primary.h / 2 * (1 + padding))
+                            let cropX2 = min(1280, primary.x + primary.w / 2 * (1 + padding))
+                            let cropY2 = min(1280, primary.y + primary.h / 2 * (1 + padding))
+                            let cropW = cropX2 - cropX1
+                            let cropH = cropY2 - cropY1
+
+                            // Map crop detection coords to full-frame model coords
+                            let scaleX = cropW / 1280
+                            let scaleY = cropH / 1280
+                            let mappedX = cropX1 + cropDet.x * scaleX
+                            let mappedY = cropY1 + cropDet.y * scaleY
+                            let mappedW = cropDet.w * scaleX
+                            let mappedH = cropDet.h * scaleY
+
+                            // Update primary if crop detection looks more reliable
+                            // (higher coverage means it's more likely the actual object in frame)
+                            if bestCropCoverage > 0.60 {
+                                if debugMode {
+                                    logDebug("   ✅ STAGE 8b: Updating primary from \(className(primary.classIdx)) to \(className(cropDet.classIdx))")
+                                }
+                                // Use the crop detection's class but with mapped coordinates
+                                // Note: We use primary's coeffs since they're in the right prototype space
+                                primary = UnionDet(
+                                    x: mappedX,
+                                    y: mappedY,
+                                    w: mappedW,
+                                    h: mappedH,
+                                    confidence: cropDet.confidence,
+                                    classIdx: cropDet.classIdx,
+                                    coeffs: primary.coeffs  // Keep original coeffs for mask generation
+                                )
+                            }
+                        } else {
+                            if debugMode { logDebug("   ⚠️ STAGE 8b: No dominant detection in crop (coverage < 50%)") }
+                        }
+                    }
+                }
+            }
+        }
+
+        let t8bEnd = Date()
+        if debugMode {
+            logDebug("⏱️ STAGE 8b - Two-stage verify: \(String(format: "%.2f", t8bEnd.timeIntervalSince(t8b) * 1000)) ms")
+            logDebug("   🎯 FINAL PRIMARY: \(className(primary.classIdx)) conf=\(String(format: "%.2f", primary.confidence))")
         }
 
         // STAGE 9: Parse prototypes
@@ -853,7 +1045,31 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return Float(interCount) / Float(primaryMaskIndices.count)
         }
 
-        // Compute bbox edges for size comparison only (we still keep the too-large guard)
+        // Helper: compute mask density (positive pixels / mask bounding box area)
+        // Returns (density, valid) - valid is false if mask is empty
+        func maskDensity(coeffs: [Float]) -> (Float, Bool) {
+            let logits = logitsForDetection(coeffs)
+            var minX = pW, maxX = 0, minY = pH, maxY = 0
+            var positiveCount = 0
+            for idx in 0..<planeSize {
+                if logits[idx] > 0 {
+                    positiveCount += 1
+                    let x = idx % pW
+                    let y = idx / pW
+                    if x < minX { minX = x }
+                    if x > maxX { maxX = x }
+                    if y < minY { minY = y }
+                    if y > maxY { maxY = y }
+                }
+            }
+            let maskW = maxX - minX + 1
+            let maskH = maxY - minY + 1
+            if maskW <= 0 || maskH <= 0 || positiveCount == 0 { return (0, false) }
+            let boundingArea = maskW * maskH
+            return (Float(positiveCount) / Float(boundingArea), true)
+        }
+
+        // Compute bbox edges for size comparison
         let pLeft = primary.x - primary.w * 0.5
         let pRight = primary.x + primary.w * 0.5
         let pTop = primary.y - primary.h * 0.5
@@ -891,11 +1107,22 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 if debugMode {
                     logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] TOO LARGE")
                 }
-            } else {
-                kept2.append(d)
+                continue
+            }
+
+            // Check mask density - reject sparse/fragmented masks
+            let (density, densityValid) = maskDensity(coeffs: d.coeffs)
+            if densityValid && density < 0.2 {
+                // Less than 20% of mask bounding box is filled - likely sparse noise
                 if debugMode {
-                    logDebug("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] (primary coverage ok)")
+                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) SPARSE MASK density=\(String(format: "%.1f", density * 100))%")
                 }
+                continue
+            }
+
+            kept2.append(d)
+            if debugMode {
+                logDebug("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] (ok)")
             }
         }
 
@@ -904,7 +1131,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let filterMs = String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)
             logDebug("⏱️ STAGE 11 - Filter: \(filterMs) ms, kept=\(kept2.count)")
         }
-        
+
         if kept2.isEmpty {
             if debugMode { logDebug("⚠️ No detections after filter") }
             DispatchQueue.main.async { self.maskImageView.image = nil }
@@ -914,32 +1141,32 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         // STAGE 12: Compute union bbox
         let t12 = Date()
-        
+
         var ux1: Float = .greatestFiniteMagnitude
         var uy1: Float = .greatestFiniteMagnitude
         var ux2: Float = -.greatestFiniteMagnitude
         var uy2: Float = -.greatestFiniteMagnitude
-        
+
         for d in kept2 {
             ux1 = min(ux1, d.x - d.w * 0.5)
             uy1 = min(uy1, d.y - d.h * 0.5)
             ux2 = max(ux2, d.x + d.w * 0.5)
             uy2 = max(uy2, d.y + d.h * 0.5)
         }
-        
+
         let origW = CVPixelBufferGetWidth(pixelBuffer)
         let origH = CVPixelBufferGetHeight(pixelBuffer)
-        
+
         var bx1 = Int(round((ux1 - padX) / resizeGain))
         var by1 = Int(round((uy1 - padY) / resizeGain))
         var bx2 = Int(round((ux2 - padX) / resizeGain))
         var by2 = Int(round((uy2 - padY) / resizeGain))
-        
+
         bx1 = max(0, min(origW - 1, bx1))
         by1 = max(0, min(origH - 1, by1))
         bx2 = max(0, min(origW, bx2))
         by2 = max(0, min(origH, by2))
-        
+
         let t12End = Date()
         if debugMode {
             let unionMs = String(format: "%.2f", t12End.timeIntervalSince(t12) * 1000)
@@ -1625,6 +1852,77 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(0)) == kvImageNoError else { return nil }
         
         return (buffer: dst, gain: gain, padX: padX, padY: padY)
+    }
+
+    // MARK: - Crop Pixel Buffer to BBox
+    /// Crop pixel buffer to detection bbox with padding, for two-stage detection
+    /// - Parameters:
+    ///   - pixelBuffer: Source pixel buffer (original camera frame)
+    ///   - det: Detection to crop around (coordinates in model space 0-1280)
+    ///   - modelSize: Model input size (1280)
+    ///   - padding: Fractional padding around bbox (0.1 = 10%)
+    /// - Returns: Cropped pixel buffer, or nil if crop region is invalid
+    private func cropPixelBuffer(_ pixelBuffer: CVPixelBuffer, toBBox det: UnionDet, modelSize: Float = 1280, padding: Float = 0.15) -> CVPixelBuffer? {
+        let fullW = Float(CVPixelBufferGetWidth(pixelBuffer))
+        let fullH = Float(CVPixelBufferGetHeight(pixelBuffer))
+
+        // Scale from model coords to original image coords
+        let scaleX = fullW / modelSize
+        let scaleY = fullH / modelSize
+
+        let centerX = det.x * scaleX
+        let centerY = det.y * scaleY
+        let boxW = det.w * scaleX
+        let boxH = det.h * scaleY
+
+        // Add padding
+        let padW = boxW * padding
+        let padH = boxH * padding
+
+        var x1 = centerX - boxW / 2 - padW
+        var y1 = centerY - boxH / 2 - padH
+        var x2 = centerX + boxW / 2 + padW
+        var y2 = centerY + boxH / 2 + padH
+
+        // Clamp to image bounds
+        x1 = max(0, x1)
+        y1 = max(0, y1)
+        x2 = min(fullW, x2)
+        y2 = min(fullH, y2)
+
+        let cropW = Int(x2 - x1)
+        let cropH = Int(y2 - y1)
+
+        guard cropW > 32 && cropH > 32 else { return nil }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        guard let srcBase = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+        let srcBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+
+        var out: CVPixelBuffer?
+        guard CVPixelBufferCreate(kCFAllocatorDefault, cropW, cropH, kCVPixelFormatType_32BGRA, nil, &out) == kCVReturnSuccess,
+              let dst = out else { return nil }
+
+        CVPixelBufferLockBaseAddress(dst, [])
+        defer { CVPixelBufferUnlockBaseAddress(dst, []) }
+        guard let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
+        let dstBytesPerRow = CVPixelBufferGetBytesPerRow(dst)
+
+        let x1Int = Int(x1)
+        let y1Int = Int(y1)
+        let srcPtr = srcBase.assumingMemoryBound(to: UInt8.self)
+        let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
+
+        // Copy row by row
+        for row in 0..<cropH {
+            let srcRow = srcPtr.advanced(by: (y1Int + row) * srcBytesPerRow + x1Int * 4)
+            let dstRow = dstPtr.advanced(by: row * dstBytesPerRow)
+            memcpy(dstRow, srcRow, cropW * 4)
+        }
+
+        return dst
     }
 
     // MARK: - MLMultiArray
