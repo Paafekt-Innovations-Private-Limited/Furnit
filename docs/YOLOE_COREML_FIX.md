@@ -117,6 +117,39 @@ if let det = output.featureValue(for: "var_2374")?.multiArrayValue,
 
 Added `yoloe-11l-seg-pf.mlpackage` to the project with proper build file references.
 
+## Refactoring: Removed Workaround Code
+
+With the 11l model working correctly, we removed the following workaround code that was added for the broken 26l model:
+
+### Removed: STAGE 8b (Two-Stage Verification)
+
+Previously, the pipeline ran inference twice:
+1. First pass on full image → select primary detection
+2. **STAGE 8b**: Crop to primary bbox → run inference again → verify class
+
+This was ~160 lines of code that:
+- Cropped the pixel buffer to the primary detection bbox
+- Ran model inference a second time on the crop
+- Looked for a detection filling >50% of the crop
+- Updated the primary if coverage >60%
+
+**Why it was needed**: The 26l model was outputting wrong classes, so two-stage verification helped correct misclassifications.
+
+**Why it's removed**: The 11l model correctly classifies objects on the first pass, making two-stage verification unnecessary overhead.
+
+### Removed: `cropPixelBuffer()` Function
+
+~70 lines of code for cropping a CVPixelBuffer to a detection bbox. Only used by STAGE 8b.
+
+### Performance Impact
+
+Removing STAGE 8b eliminates:
+- One full model inference (~50-100ms)
+- Pixel buffer crop operation (~5ms)
+- Detection parsing on crop (~2ms)
+
+**Total savings: ~60-110ms per frame**
+
 ## Verification
 
 ### Python Verification
