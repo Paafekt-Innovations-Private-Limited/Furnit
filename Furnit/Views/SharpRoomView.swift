@@ -1076,6 +1076,18 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // No full 360° spin - we'll do back-and-forth oscillation instead
                 controls.autoRotate = false;
 
+                // --- Back-and-forth orbit state ---
+                let autoOrbitEnabled = true;       // master switch for idle orbit
+                let autoOrbitTime = 0;             // time accumulator
+                let autoOrbitBaseAngle = 0;        // center angle around target
+                let autoOrbitRadius = 5;           // distance from target to camera
+                let isUserInteracting = false;     // pause auto-orbit during interaction
+                const clock = new THREE.Clock();
+
+                // Pause auto orbit while user interacts
+                controls.addEventListener('start', () => { isUserInteracting = true; });
+                controls.addEventListener('end',   () => { isUserInteracting = false; });
+
                 // Unlimited spin around object (train-style orbit)
                 controls.minAzimuthAngle = -Infinity;
                 controls.maxAzimuthAngle =  Infinity;
@@ -1240,6 +1252,15 @@ struct AntimatterSplatView: UIViewRepresentable {
                             initialCameraPosition.copy(camera.position);
                             initialControlsTarget.copy(controls.target);
 
+                            // 7) Setup base orbit parameters around this view
+                            autoOrbitRadius = camera.position.distanceTo(controls.target);
+                            autoOrbitBaseAngle = Math.atan2(
+                                camera.position.x - controls.target.x,
+                                camera.position.z - controls.target.z
+                            );
+                            console.log('Auto-orbit base radius:', autoOrbitRadius.toFixed(2),
+                                        'baseAngle:', autoOrbitBaseAngle.toFixed(2));
+
                             // Report camera pose to Swift for debugging
                             if (window.webkit?.messageHandlers?.cameraPose) {
                                 window.webkit.messageHandlers.cameraPose.postMessage({
@@ -1339,16 +1360,6 @@ struct AntimatterSplatView: UIViewRepresentable {
                     controls.update();
                 };
 
-                // Back-and-forth oscillation variables
-                let autoOrbitEnabled = true;
-                let autoOrbitTime = 0;
-                let isUserInteracting = false;
-                const clock = new THREE.Clock();
-
-                // Pause oscillation while user is interacting
-                controls.addEventListener('start', () => { isUserInteracting = true; });
-                controls.addEventListener('end', () => { isUserInteracting = false; });
-
                 // Animation loop
                 let loadNotified = false;
                 function animate() {
@@ -1356,24 +1367,22 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                     const dt = clock.getDelta();
 
-                    // Back-and-forth orbit when not interacting
-                    if (autoOrbitEnabled && !isUserInteracting && window.roomViewParams) {
+                    // Back-and-forth orbit when not interacting (uses base angle from autoFrameRoom)
+                    if (autoOrbitEnabled && !isUserInteracting && autoOrbitRadius > 0.1) {
                         autoOrbitTime += dt;
 
-                        const p = window.roomViewParams;
-                        const radius = p.radius;
+                        // Swing ±30° around the current view direction
+                        const amplitude = Math.PI / 6;  // ±30°
+                        const speed = 0.35;             // sweep speed
+                        const angle = autoOrbitBaseAngle + amplitude * Math.sin(autoOrbitTime * speed);
 
-                        // Oscillate ±30° around front direction
-                        const amplitude = Math.PI / 6;    // 30°
-                        const speed = 0.3;                // sweep speed
-                        const theta = amplitude * Math.sin(autoOrbitTime * speed);
+                        // Keep camera at fixed radius around controls.target
+                        const t = controls.target;
+                        const y = camera.position.y;  // keep height constant
 
-                        // Stay in front of room, sweep left-right
-                        camera.position.x = p.centerX + radius * Math.sin(theta);
-                        camera.position.z = p.centerZ + radius * Math.cos(theta);
-                        camera.position.y = p.centerY;
-
-                        controls.target.set(p.centerX, p.centerY, p.centerZ);
+                        camera.position.x = t.x + autoOrbitRadius * Math.sin(angle);
+                        camera.position.z = t.z + autoOrbitRadius * Math.cos(angle);
+                        camera.position.y = y;
                     }
 
                     controls.update();
