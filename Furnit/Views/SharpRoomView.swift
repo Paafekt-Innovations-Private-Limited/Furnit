@@ -1210,16 +1210,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                     });
                     scene.add(splatMesh);
 
-                    // Classic PLY is pre-rotated, flip 180° around X for correct viewing
+                    // Classic PLY is pre-rotated, flip 180° around X + 90° around Z for correct viewing
                     splatMesh.rotation.x = Math.PI;
-
-                    // Landscape: additional -90° rotation around Z
-                    if (!isPortrait) {
-                        splatMesh.rotation.z = -Math.PI / 2;
-                        console.log('SplatMesh: rotated 180° X + -90° Z for landscape');
-                    } else {
-                        console.log('SplatMesh: rotated 180° X for portrait');
-                    }
+                    splatMesh.rotation.z = Math.PI / 2;
+                    console.log('SplatMesh: rotated 180° X + 90° Z');
 
                     // Auto-frame using Box3 (no orientation changes)
                     function autoFrameRoom() {
