@@ -632,30 +632,6 @@ struct SinglePhotoRoomView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 8)
 
-                    // Photo orientation picker - user can override auto-detection
-                    VStack(spacing: 8) {
-                        Text("Select your photo orientation:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-
-                        Picker("Orientation", selection: $selectedOrientation) {
-                            Text("📱 Portrait").tag(PhotoOrientation.portrait)
-                            Text("📐 Landscape").tag(PhotoOrientation.landscape)
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal)
-
-                        Text("Tap to change if auto-detection was wrong")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(12)
-                    .padding(.horizontal)
-                    .padding(.bottom, 12)
-
                     // Method 1: SHARP (AI-powered) - Single photo to 3D
                     Button(action: {
                         logDebug("🤖 [View] SHARP method selected")

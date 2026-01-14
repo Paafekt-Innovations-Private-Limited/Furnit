@@ -202,15 +202,22 @@ struct SharpRoomView: View {
         self.allowSave = allowSave
         self.photoOrientation = photoOrientation
 
-        // Compute classic PLY URL (matches what we display and save)
-        let classicPath = plyURL.path.replacingOccurrences(of: ".ply", with: "_classic.ply")
-        let classicURL = FileManager.default.fileExists(atPath: classicPath)
-            ? URL(fileURLWithPath: classicPath)
-            : plyURL
+        // Compute viewer PLY URL (prefer 3DGS for SparkJS, then classic, then base)
+        let basePath = plyURL.path
+        let threeDGSPath = basePath.replacingOccurrences(of: ".ply", with: "_3dgs.ply")
+        let classicPath = basePath.replacingOccurrences(of: ".ply", with: "_classic.ply")
 
-        // Always parse bounds from the classic PLY we're displaying
-        // This ensures consistent camera framing regardless of whether roomMeasurements is provided
-        self.parsedBounds = Self.parsePLYBounds(from: classicURL)
+        let viewerURL: URL
+        if FileManager.default.fileExists(atPath: threeDGSPath) {
+            viewerURL = URL(fileURLWithPath: threeDGSPath)
+        } else if FileManager.default.fileExists(atPath: classicPath) {
+            viewerURL = URL(fileURLWithPath: classicPath)
+        } else {
+            viewerURL = plyURL
+        }
+
+        // Always parse bounds from the PLY we're actually displaying
+        self.parsedBounds = Self.parsePLYBounds(from: viewerURL)
     }
 
     /// Parse PLY file to extract position bounds (for HomeView where roomMeasurements isn't available)
@@ -358,13 +365,34 @@ struct SharpRoomView: View {
         return plyURL
     }
 
+    /// PLY file for WebGL viewer: prefer 3DGS (SparkJS compatible), then classic, then base
+    private var viewerPlyURL: URL {
+        let basePath = plyURL.path
+
+        // Prefer 3DGS variant for Spark/SuperSplat-style viewers
+        let threeDGSPath = basePath.replacingOccurrences(of: ".ply", with: "_3dgs.ply")
+        if FileManager.default.fileExists(atPath: threeDGSPath) {
+            return URL(fileURLWithPath: threeDGSPath)
+        }
+
+        // Fallback: classic antimatter-oriented PLY
+        let classicPath = basePath.replacingOccurrences(of: ".ply", with: "_classic.ply")
+        if FileManager.default.fileExists(atPath: classicPath) {
+            return URL(fileURLWithPath: classicPath)
+        }
+
+        // Last resort: original .ply
+        return plyURL
+    }
+
     var body: some View {
         ZStack {
-            // WebGL view using SparkJS (with classic PLY for correct coordinate system)
+            // WebGL view using SparkJS (use classic PLY - pre-rotated for antimatter viewer)
             AntimatterSplatView(
                 plyURL: classicPlyURL,
                 roomBounds: roomMeasurements?.boundingBox,
                 actualBounds: effectiveBounds,
+                photoOrientation: photoOrientation,
                 onLoaded: {
                     isLoading = false
                 },
@@ -433,13 +461,10 @@ struct SharpRoomView: View {
                 saveRoomProgressOverlay
             }
 
-            // Match UI to how you'd naturally hold phone for the photo:
-            //   portrait photo  → vertical UI (bottom controls)
-            //   landscape photo → horizontal UI (side column)
-            let useSideControls = (photoOrientation == .landscape)
-
-            if useSideControls {
-                // Left edge controls for portrait photos - rotated 90° clockwise
+            // Landscape layout: controls on LEFT edge (appears at bottom when phone held horizontally)
+            // Rotated 90° CW so icons appear upright when phone is horizontal
+            if photoOrientation == .landscape {
+                // Far left edge controls for landscape - rotated 90° clockwise
                 HStack(spacing: 0) {
                     VStack(spacing: 0) {
                         // Brain button (top = left when horizontal)
@@ -950,6 +975,7 @@ struct AntimatterSplatView: UIViewRepresentable {
     let plyURL: URL
     let roomBounds: SIMD3<Float>?  // Room dimensions for camera positioning
     let actualBounds: RoomBounds?  // Actual min/max bounds for precise framing
+    let photoOrientation: PhotoOrientation  // For orientation-based room rotation
     let onLoaded: () -> Void
     var onFrontWallDimensions: ((Double, Double) -> Void)? = nil
 
@@ -969,7 +995,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         // Register custom URL scheme handler
         let schemeHandler = LocalFileSchemeHandler()
         schemeHandler.plyURL = plyURL
-        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds)
+        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation)
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "splat")
 
         // Add message handlers for communication from JS
@@ -1003,7 +1029,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         // No updates needed
     }
 
-    private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?) -> String {
+    private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?, orientation: PhotoOrientation) -> String {
         // Use RoomBoundaryManager to calculate camera position
         let roomBounds = actualBounds ?? RoomBoundaryManager.defaultBounds
         let boundaryManager = RoomBoundaryManager(bounds: roomBounds)
@@ -1064,6 +1090,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
                 import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
 
+                // Photo orientation from Swift
+                const isPortrait = \(orientation == .portrait ? "true" : "false");
+                console.log('[WebGL] isPortrait =', isPortrait);
+
                 // Log JS errors
                 window.addEventListener('error', function(e) {
                     console.log('[JS Error] ' + e.message + ' at ' + e.filename + ':' + e.lineno);
@@ -1086,14 +1116,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                 renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(renderer.domElement);
 
-                // SparkRenderer for Gaussian-specific rendering (sharper preset)
+                // SparkRenderer with sharpness tuning
                 const spark = new SparkRenderer({
                     renderer: renderer,
-                    maxStdDev: Math.sqrt(6),    // Tighter Gaussians (default is sqrt(8))
-                    preBlurAmount: 0.0,         // No pre-blur smearing
-                    blurAmount: 0.2,            // Minimal post blur
-                    falloff: 1.0,               // Normal Gaussian kernel
-                    focalAdjustment: 2.0        // Extra sharpness per docs
+                    maxStdDev: Math.sqrt(6),
+                    preBlurAmount: 0.0,
+                    blurAmount: 0.2,
+                    falloff: 1.0,
+                    focalAdjustment: 2.0
                 });
                 camera.add(spark);  // Add SparkRenderer as child of camera
 
@@ -1172,6 +1202,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                 console.log('Loading splat from:', plyURL);
 
                 let splatMesh = null;
+
                 try {
                     splatMesh = new SplatMesh({
                         url: plyURL,
@@ -1179,13 +1210,20 @@ struct AntimatterSplatView: UIViewRepresentable {
                     });
                     scene.add(splatMesh);
 
-                    // Rotate room 180° around X-axis to correct orientation
+                    // Classic PLY is pre-rotated, flip 180° around X for correct viewing
                     splatMesh.rotation.x = Math.PI;
-                    console.log('SplatMesh added to scene & rotated 180° around X');
 
-                    // Auto-frame using Box3 on actual rotated mesh (not Swift bounds)
+                    // Landscape: additional -90° rotation around Z
+                    if (!isPortrait) {
+                        splatMesh.rotation.z = -Math.PI / 2;
+                        console.log('SplatMesh: rotated 180° X + -90° Z for landscape');
+                    } else {
+                        console.log('SplatMesh: rotated 180° X for portrait');
+                    }
+
+                    // Auto-frame using Box3 (no orientation changes)
                     function autoFrameRoom() {
-                        console.log('=== autoFrameRoom() called (Box3-only) ===');
+                        console.log('=== autoFrameRoom() called (Box3 framing only) ===');
                         try {
                             if (!splatMesh) {
                                 console.log('No splatMesh yet, retrying...');
@@ -1193,7 +1231,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 return;
                             }
 
-                            // 1) Compute bounds on the ACTUAL rendered mesh (includes rotation etc.)
+                            // 1) Compute bounds on the mesh (no rotation applied)
                             const box = new THREE.Box3().setFromObject(splatMesh);
                             const size = box.getSize(new THREE.Vector3());
 
@@ -1270,7 +1308,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 });
                             }
 
-                            // 5) Place camera OUTSIDE the inner box, looking at its center (train-style)
+                            // 5) Place camera outside, looking at inner center
                             const fov = camera.fov * (Math.PI / 180);
                             const maxDim = Math.max(roomWidth, roomHeight, roomDepth);
                             const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 1.5;
