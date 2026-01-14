@@ -1454,30 +1454,22 @@ struct AntimatterSplatView: UIViewRepresentable {
                     if (autoOrbitEnabled && !window._userInteracting && autoOrbitRadius > 0.1) {
                         autoOrbitTime += dt;
 
-                        const baseAmplitude = Math.PI / 6;       // portrait swing ±30°
-                        const landscapeAmplitude = Math.PI / 10; // landscape: tighter
-                        const speed = 0.35;                      // sweep speed
-
-                        const amplitude = isPortrait ? baseAmplitude : landscapeAmplitude;
-                        const angle = autoOrbitBaseAngle + amplitude * Math.sin(autoOrbitTime * speed);
-
+                        const speed = 0.35;
                         const t = controls.target;
-                        const y = camera.position.y;  // base height
 
                         if (isPortrait) {
-                            // Original circular-ish orbit for portrait
+                            // Portrait: circular arc oscillation ±30°
+                            const amplitude = Math.PI / 6;
+                            const angle = autoOrbitBaseAngle + amplitude * Math.sin(autoOrbitTime * speed);
+
                             camera.position.x = t.x + autoOrbitRadius * Math.sin(angle);
                             camera.position.z = t.z + autoOrbitRadius * Math.cos(angle);
-                            camera.position.y = y;
                         } else {
-                            // Landscape: left-right sweep + shallow in/out + subtle vertical bob
-                            const horiz = autoOrbitRadius * Math.sin(angle);
-                            const depth = autoOrbitRadius * 0.4 * Math.cos(angle);
-                            const verticalBob = autoOrbitRadius * 0.05 * Math.sin(autoOrbitTime * speed * 0.7);
+                            // Landscape: horizontal left-right sweep only
+                            const sweepAmount = autoOrbitRadius * 0.3 * Math.sin(autoOrbitTime * speed);
 
-                            camera.position.x = t.x + horiz;
-                            camera.position.z = t.z + depth;
-                            camera.position.y = y + verticalBob;
+                            camera.position.x = initialCameraPosition.x + sweepAmount;
+                            camera.position.z = initialCameraPosition.z;
                         }
                     }
 
