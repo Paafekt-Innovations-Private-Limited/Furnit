@@ -112,6 +112,15 @@ struct OrbitGestureView: View {
                     .onChanged { value in
                         let currentLocation = value.location
 
+                        // First movement in this drag → tell JS "user started interacting"
+                        if lastDragLocation == nil {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("WebGLOrbitGestureState"),
+                                object: nil,
+                                userInfo: ["interacting": true]
+                            )
+                        }
+
                         if let lastLocation = lastDragLocation {
                             // Calculate delta from last position (not from start)
                             let deltaX = currentLocation.x - lastLocation.x
@@ -130,11 +139,27 @@ struct OrbitGestureView: View {
                     .onEnded { _ in
                         // Reset for next gesture
                         lastDragLocation = nil
+
+                        // Tell JS "user stopped interacting"
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("WebGLOrbitGestureState"),
+                            object: nil,
+                            userInfo: ["interacting": false]
+                        )
                     }
             )
             .simultaneousGesture(
                 MagnificationGesture()
                     .onChanged { scale in
+                        // First pinch → tell JS "user started interacting"
+                        if lastScale == 1.0 {
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("WebGLOrbitGestureState"),
+                                object: nil,
+                                userInfo: ["interacting": true]
+                            )
+                        }
+
                         let incrementalScale = scale / lastScale
                         lastScale = scale
 
@@ -146,6 +171,13 @@ struct OrbitGestureView: View {
                     }
                     .onEnded { _ in
                         lastScale = 1.0
+
+                        // Tell JS "user stopped interacting"
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("WebGLOrbitGestureState"),
+                            object: nil,
+                            userInfo: ["interacting": false]
+                        )
                     }
             )
     }
@@ -1081,12 +1113,19 @@ struct AntimatterSplatView: UIViewRepresentable {
                 let autoOrbitTime = 0;             // time accumulator
                 let autoOrbitBaseAngle = 0;        // center angle around target
                 let autoOrbitRadius = 5;           // distance from target to camera
-                let isUserInteracting = false;     // pause auto-orbit during interaction
                 const clock = new THREE.Clock();
 
-                // Pause auto orbit while user interacts
-                controls.addEventListener('start', () => { isUserInteracting = true; });
-                controls.addEventListener('end',   () => { isUserInteracting = false; });
+                // Global interaction flag (used by auto-orbit)
+                window._userInteracting = false;
+
+                // Called from Swift AND by OrbitControls
+                window.setUserInteracting = function(flag) {
+                    window._userInteracting = !!flag;
+                };
+
+                // Let OrbitControls also toggle interaction
+                controls.addEventListener('start', () => { window._userInteracting = true; });
+                controls.addEventListener('end',   () => { window._userInteracting = false; });
 
                 // Unlimited spin around object (train-style orbit)
                 controls.minAzimuthAngle = -Infinity;
@@ -1298,6 +1337,9 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                 // Joystick movement handler with boundary clamping
                 window.moveCamera = function(dx, dy) {
+                    // Stop auto orbit when user starts walking
+                    autoOrbitEnabled = false;
+
                     const moveSpeed = 0.03;  // Increased for better walk feel
 
                     // Calculate new position
@@ -1325,6 +1367,9 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                 // Orbit rotation handler (for Swift gesture overlay)
                 window.orbitCamera = function(deltaX, deltaY) {
+                    // Stop auto orbit when user drags
+                    autoOrbitEnabled = false;
+
                     // Rotate around target using spherical coordinates
                     const rotateSpeed = 0.005;
 
@@ -1348,6 +1393,9 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                 // Zoom handler (for Swift pinch gesture)
                 window.zoomCamera = function(scale) {
+                    // Stop auto orbit when user pinches
+                    autoOrbitEnabled = false;
+
                     const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
                     offset.multiplyScalar(1 / scale);
 
@@ -1368,7 +1416,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     const dt = clock.getDelta();
 
                     // Back-and-forth orbit when not interacting (uses base angle from autoFrameRoom)
-                    if (autoOrbitEnabled && !isUserInteracting && autoOrbitRadius > 0.1) {
+                    if (autoOrbitEnabled && !window._userInteracting && autoOrbitRadius > 0.1) {
                         autoOrbitTime += dt;
 
                         // Swing ±30° around the current view direction
@@ -1456,6 +1504,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                 name: NSNotification.Name("WebGLZoomGesture"),
                 object: nil
             )
+
+            // Listen for gesture state (to pause/resume auto-orbit)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleOrbitGestureState(_:)),
+                name: NSNotification.Name("WebGLOrbitGestureState"),
+                object: nil
+            )
         }
 
         deinit {
@@ -1508,6 +1564,15 @@ struct AntimatterSplatView: UIViewRepresentable {
 
             // OrbitGestureView now sends incremental scale directly
             let js = "if (typeof zoomCamera === 'function') zoomCamera(\(scale));"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        @objc private func handleOrbitGestureState(_ notification: Notification) {
+            guard let userInfo = notification.userInfo,
+                  let interacting = userInfo["interacting"] as? Bool else { return }
+
+            let js = "if (typeof setUserInteracting === 'function') setUserInteracting(\(interacting ? "true" : "false"));"
+            logDebug("🎮 [WebGL] setUserInteracting(\(interacting))")
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
