@@ -1065,16 +1065,16 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Orbit controls for touch/mouse
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.02;  // Snappier feel
+                controls.dampingFactor = 0.05;  // More glide/inertia
+                controls.rotateSpeed = 0.8;     // Slightly slower, weighted feel
                 controls.screenSpacePanning = false;
                 controls.minDistance = 0.01;
                 controls.maxDistance = 100;
                 // Default target, autoFrameRoom will update using Box3
                 controls.target.set(0, 0, 0);
 
-                // Auto-orbit like antimatter train demo
-                controls.autoRotate = true;
-                controls.autoRotateSpeed = 3.0;  // Visible spin speed
+                // No full 360° spin - we'll do back-and-forth oscillation instead
+                controls.autoRotate = false;
 
                 // Unlimited spin around object (train-style orbit)
                 controls.minAzimuthAngle = -Infinity;
@@ -1197,6 +1197,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 maxY - minY,
                                 Math.abs(maxZ - minZ)
                             ) * 0.5;
+
+                            // Store for oscillation camera path
+                            window.roomViewParams = {
+                                centerX: innerCenterX,
+                                centerY: innerCenterY,
+                                centerZ: innerCenterZ,
+                                radius: roomRadius * 1.2
+                            };
 
                             console.log('Inner bounds:', JSON.stringify(roomBoundsForClamping));
 
@@ -1331,10 +1339,43 @@ struct AntimatterSplatView: UIViewRepresentable {
                     controls.update();
                 };
 
+                // Back-and-forth oscillation variables
+                let autoOrbitEnabled = true;
+                let autoOrbitTime = 0;
+                let isUserInteracting = false;
+                const clock = new THREE.Clock();
+
+                // Pause oscillation while user is interacting
+                controls.addEventListener('start', () => { isUserInteracting = true; });
+                controls.addEventListener('end', () => { isUserInteracting = false; });
+
                 // Animation loop
                 let loadNotified = false;
                 function animate() {
                     requestAnimationFrame(animate);
+
+                    const dt = clock.getDelta();
+
+                    // Back-and-forth orbit when not interacting
+                    if (autoOrbitEnabled && !isUserInteracting && window.roomViewParams) {
+                        autoOrbitTime += dt;
+
+                        const p = window.roomViewParams;
+                        const radius = p.radius;
+
+                        // Oscillate ±30° around front direction
+                        const amplitude = Math.PI / 6;    // 30°
+                        const speed = 0.3;                // sweep speed
+                        const theta = amplitude * Math.sin(autoOrbitTime * speed);
+
+                        // Stay in front of room, sweep left-right
+                        camera.position.x = p.centerX + radius * Math.sin(theta);
+                        camera.position.z = p.centerZ + radius * Math.cos(theta);
+                        camera.position.y = p.centerY;
+
+                        controls.target.set(p.centerX, p.centerY, p.centerZ);
+                    }
+
                     controls.update();
 
                     // Use SparkRenderer's update method for optimized Gaussian rendering
