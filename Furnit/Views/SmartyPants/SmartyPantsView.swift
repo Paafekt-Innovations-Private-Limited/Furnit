@@ -465,27 +465,53 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ STAGE 1 - Resize: \(String(format: "%.2f", t1End.timeIntervalSince(t1) * 1000)) ms")
         }
 
-        // STAGE 2: Convert to MLMultiArray
+        // STAGE 2: Prepare model input
         let t2 = Date()
         setProgress(0.25, text: "Preprocessing…")
-        
-        guard let inputArray = pixelBufferToMLMultiArray(sq.buffer) else {
-            if debugMode { logDebug("❌ STAGE 2 FAILED: MLMultiArray conversion") }
-            resetProcessingFlag()
-            return
+
+        // Check if model expects Image or MultiArray input
+        let inputDesc = model.modelDescription.inputDescriptionsByName["image"]
+        let expectsImage = inputDesc?.type == .image
+
+        let inputProvider: MLFeatureProvider
+        if expectsImage {
+            // Model expects CVPixelBuffer (Image type)
+            guard let imageValue = try? MLFeatureValue(pixelBuffer: sq.buffer) else {
+                if debugMode { logDebug("❌ STAGE 2 FAILED: Image conversion") }
+                resetProcessingFlag()
+                return
+            }
+            guard let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) else {
+                if debugMode { logDebug("❌ STAGE 2 FAILED: Feature provider") }
+                resetProcessingFlag()
+                return
+            }
+            inputProvider = provider
+        } else {
+            // Model expects MLMultiArray
+            guard let inputArray = pixelBufferToMLMultiArray(sq.buffer) else {
+                if debugMode { logDebug("❌ STAGE 2 FAILED: MLMultiArray conversion") }
+                resetProcessingFlag()
+                return
+            }
+            guard let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
+                if debugMode { logDebug("❌ STAGE 2 FAILED: Feature provider") }
+                resetProcessingFlag()
+                return
+            }
+            inputProvider = provider
         }
-        
+
         let t2End = Date()
         if debugMode {
-            logDebug("⏱️ STAGE 2 - MLMultiArray: \(String(format: "%.2f", t2End.timeIntervalSince(t2) * 1000)) ms")
+            logDebug("⏱️ STAGE 2 - Input prep (\(expectsImage ? "Image" : "MultiArray")): \(String(format: "%.2f", t2End.timeIntervalSince(t2) * 1000)) ms")
         }
 
         // STAGE 3: Model inference
         let t3 = Date()
         setProgress(0.40, text: "Running model…")
 
-        guard let inputProvider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]),
-              let output = try? model.prediction(from: inputProvider) else {
+        guard let output = try? model.prediction(from: inputProvider) else {
             if debugMode { logDebug("❌ STAGE 3 FAILED: Model inference") }
             resetProcessingFlag()
             return
@@ -496,38 +522,63 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ STAGE 3 - Inference: \(String(format: "%.2f", t3End.timeIntervalSince(t3) * 1000)) ms")
         }
 
-        // STAGE 4: Extract tensors
+        // STAGE 4: Extract tensors (handle different model output names)
         let t4 = Date()
-        
-        guard let detArray = output.featureValue(for: "var_2497")?.multiArrayValue,
-              let protoArray = output.featureValue(for: "p")?.multiArrayValue else {
-            if debugMode { logDebug("❌ STAGE 4 FAILED: Missing output tensors") }
+
+        // Try new model output names first (yoloe-26l), then fall back to old names (yoloe-11l)
+        let detArray: MLMultiArray
+        let protoArray: MLMultiArray
+
+        if let det = output.featureValue(for: "var_2346")?.multiArrayValue,
+           let proto = output.featureValue(for: "var_2429")?.multiArrayValue {
+            // yoloe-26l model outputs
+            detArray = det
+            protoArray = proto
+            if debugMode { logDebug("📦 Using yoloe-26l output tensors") }
+        } else if let det = output.featureValue(for: "var_2497")?.multiArrayValue,
+                  let proto = output.featureValue(for: "p")?.multiArrayValue {
+            // yoloe-11l model outputs
+            detArray = det
+            protoArray = proto
+            if debugMode { logDebug("📦 Using yoloe-11l output tensors") }
+        } else {
+            if debugMode {
+                logDebug("❌ STAGE 4 FAILED: Missing output tensors")
+                // Log available outputs for debugging
+                let availableOutputs = output.featureNames.joined(separator: ", ")
+                logDebug("   Available outputs: \(availableOutputs)")
+            }
             resetProcessingFlag()
             return
         }
         
-        let numFeatures = detArray.shape[1].intValue
-        let numAnchors = detArray.shape[2].intValue
-        let numClasses = numFeatures - 4 - 32
-        
-        guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
-            if debugMode { logDebug("❌ STAGE 4 FAILED: Invalid tensor dims") }
-            resetProcessingFlag()
-            return
+        // Debug: print actual tensor shapes
+        let dim1 = detArray.shape[1].intValue
+        let dim2 = detArray.shape[2].intValue
+        if debugMode {
+            logDebug("   detArray shape: \(detArray.shape.map { $0.intValue })")
+            logDebug("   protoArray shape: \(protoArray.shape.map { $0.intValue })")
         }
-        
+
+        // Detect tensor format:
+        // - Old format (yoloe-11l): [1, 144, 8400] where 144 = features (4+numClasses+32), 8400 = anchors
+        // - New format (yoloe-26l): [1, 300, 38] where 300 = detections, 38 = features per detection
+        // Heuristic: if dim2 is small (< 100), it's the new format with features per detection
+        let isNewFormat = dim2 < 100
+
         let t4End = Date()
         if debugMode {
+            logDebug("   Format detected: \(isNewFormat ? "NEW (detections×features)" : "OLD (features×anchors)")")
             logDebug("⏱️ STAGE 4 - Extract tensors: \(String(format: "%.2f", t4End.timeIntervalSince(t4) * 1000)) ms")
         }
 
         // STAGE 5: Copy detection tensor to float buffer
         let t5 = Date()
-        
+
         let totalCount = detArray.count
         let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
         defer { detBuf.deallocate() }
-        
+
         if detArray.dataType == .float32 {
             memcpy(detBuf, detArray.dataPointer, totalCount * MemoryLayout<Float>.size)
         } else if detArray.dataType == .float16 {
@@ -536,7 +587,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
             vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
         }
-        
+
         let t5End = Date()
         if debugMode {
             logDebug("⏱️ STAGE 5 - Copy detBuf: \(String(format: "%.2f", t5End.timeIntervalSince(t5) * 1000)) ms")
@@ -545,44 +596,123 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 6: Extract detections
         let t6 = Date()
         setProgress(0.55, text: "Extracting detections…")
-        
-        let stride = numAnchors
-        let coeffOffset = 4 + numClasses
-        var tempScores = [Float](repeating: 0, count: numClasses)
-        
+
         var allDets: [UnionDet] = []
         allDets.reserveCapacity(512)
-        
-        for anchor in 0..<numAnchors {
-            let x = detBuf[0 * stride + anchor]
-            let y = detBuf[1 * stride + anchor]
-            let w = detBuf[2 * stride + anchor]
-            let h = detBuf[3 * stride + anchor]
-            
-            guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
-            
-            let basePtr = detBuf.advanced(by: 4 * stride + anchor)
-            blas_scopy(BLASInt(numClasses), basePtr, BLASInt(stride), &tempScores, 1)
-            
-            var maxVal: Float = 0
-            var maxIdx: vDSP_Length = 0
-            vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
-            
-            let classIdx = Int(maxIdx)
-            
-            guard maxVal > confidenceThreshold, !clsToIgnore.contains(classIdx) else { continue }
-            
-            var coeffs = [Float](repeating: 0, count: 32)
-            let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
-            blas_scopy(32, coeffBase, BLASInt(stride), &coeffs, 1)
-            
-            allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: maxVal, classIdx: classIdx, coeffs: coeffs))
+
+        if isNewFormat {
+            // NEW FORMAT: [1, numDetections, featuresPerDetection]
+            // featuresPerDetection = 38 = 4 (bbox) + 1 (conf) + 1 (class) + 32 (mask coeffs)
+            let numDetections = dim1
+            let featuresPerDet = dim2
+
+            // IMPORTANT: Use actual strides from MLMultiArray, not shape dimensions!
+            // Shape [1, 300, 38] might have strides [14400, 48, 1] due to memory alignment
+            let strides = detArray.strides.map { $0.intValue }
+            let detStride = strides.count >= 2 ? strides[1] : featuresPerDet  // stride between detections
+            let featStride = strides.count >= 3 ? strides[2] : 1              // stride between features
+
+            if debugMode {
+                logDebug("   NEW FORMAT: numDetections=\(numDetections), featuresPerDet=\(featuresPerDet)")
+                logDebug("   Strides: \(strides), detStride=\(detStride), featStride=\(featStride)")
+                // Print first detection's raw values using correct strides
+                if numDetections > 0 {
+                    var rawVals: [Float] = []
+                    for f in 0..<min(10, featuresPerDet) {
+                        let idx = 0 * detStride + f * featStride
+                        rawVals.append(detBuf[idx])
+                    }
+                    logDebug("   First det raw[0..9]: \(rawVals.map { String(format: "%.2f", $0) })")
+                }
+            }
+
+            // Layout: [x, y, w, h, conf, class_id, coeff0..coeff31]
+            // Ultralytics NMS-free export: conf at index 4, class at index 5
+
+            for detIdx in 0..<numDetections {
+                // Use actual strides for memory access
+                let base = detIdx * detStride
+
+                let x = detBuf[base + 0 * featStride]
+                let y = detBuf[base + 1 * featStride]
+                let w = detBuf[base + 2 * featStride]
+                let h = detBuf[base + 3 * featStride]
+                let confidence = detBuf[base + 4 * featStride]
+                let classIdxFloat = detBuf[base + 5 * featStride]
+
+                // Skip if any value is NaN or Inf
+                guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, confidence.isFinite, classIdxFloat.isFinite else { continue }
+
+                // Validate ranges - confidence should be 0-1, bbox should be reasonable
+                guard confidence > confidenceThreshold, confidence <= 1.0 else { continue }
+                guard w > 0, h > 0, w < 2000, h < 2000 else { continue }  // Max reasonable size for 1280 input
+
+                let classIdx = Int(classIdxFloat)
+
+                var coeffs = [Float](repeating: 0, count: 32)
+                for k in 0..<32 {
+                    coeffs[k] = detBuf[base + (6 + k) * featStride]
+                }
+
+                guard classIdx >= 0, !clsToIgnore.contains(classIdx) else { continue }
+
+                allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: confidence, classIdx: classIdx, coeffs: coeffs))
+            }
+        } else {
+            // OLD FORMAT: [1, numFeatures, numAnchors]
+            let numFeatures = dim1
+            let numAnchors = dim2
+            let numClasses = numFeatures - 4 - 32
+
+            if debugMode {
+                logDebug("   OLD FORMAT: numFeatures=\(numFeatures), numAnchors=\(numAnchors), numClasses=\(numClasses)")
+            }
+
+            guard numFeatures >= 36, numAnchors > 0, numClasses > 0 else {
+                if debugMode { logDebug("❌ STAGE 6 FAILED: Invalid tensor dims for old format") }
+                resetProcessingFlag()
+                return
+            }
+
+            let stride = numAnchors
+            let coeffOffset = 4 + numClasses
+            var tempScores = [Float](repeating: 0, count: numClasses)
+
+            for anchor in 0..<numAnchors {
+                let x = detBuf[0 * stride + anchor]
+                let y = detBuf[1 * stride + anchor]
+                let w = detBuf[2 * stride + anchor]
+                let h = detBuf[3 * stride + anchor]
+
+                guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { continue }
+
+                let basePtr = detBuf.advanced(by: 4 * stride + anchor)
+                blas_scopy(BLASInt(numClasses), basePtr, BLASInt(stride), &tempScores, 1)
+
+                var maxVal: Float = 0
+                var maxIdx: vDSP_Length = 0
+                vDSP_maxvi(tempScores, 1, &maxVal, &maxIdx, vDSP_Length(numClasses))
+
+                let classIdx = Int(maxIdx)
+
+                guard maxVal > confidenceThreshold, !clsToIgnore.contains(classIdx) else { continue }
+
+                var coeffs = [Float](repeating: 0, count: 32)
+                let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
+                blas_scopy(32, coeffBase, BLASInt(stride), &coeffs, 1)
+
+                allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: maxVal, classIdx: classIdx, coeffs: coeffs))
+            }
         }
         
         let t6End = Date()
         if debugMode {
             logDebug("⏱️ STAGE 6 - Extract detections: \(String(format: "%.2f", t6End.timeIntervalSince(t6) * 1000)) ms")
             logDebug("   raw detections: \(allDets.count)")
+            // Print all detections for debugging
+            for (i, d) in allDets.enumerated() {
+                logDebug("   [\(i)] \(className(d.classIdx)) (id:\(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) box=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h))")
+            }
         }
         
         if allDets.isEmpty {
@@ -592,41 +722,30 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
 
-        // STAGE 7: Apply NMS
+        // STAGE 7: Skip NMS (yoloe-26l is NMS-free)
         let t7 = Date()
-        // Build boxes and scores from allDets in model space (center x,y with w,h)
-        let boxes: [CGRect] = allDets.map { d in
-            CGRect(x: CGFloat(d.x - d.w * 0.5),
-                   y: CGFloat(d.y - d.h * 0.5),
-                   width: CGFloat(d.w),
-                   height: CGFloat(d.h))
-        }
-        let scores: [Float] = allDets.map { $0.confidence }
-        let keptIdx = applyNMS(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
-        let afterNMS: [UnionDet] = keptIdx.map { allDets[$0] }
+        // NMS disabled - use all detections directly
+        let afterNMS: [UnionDet] = allDets
         let t7End = Date()
         if debugMode {
             let nmsMs = String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)
-            logDebug("⏱️ STAGE 7 - NMS: \(nmsMs) ms, kept: \(afterNMS.count)")
+            logDebug("⏱️ STAGE 7 - NMS skipped: \(nmsMs) ms, kept: \(afterNMS.count)")
         }
 
-        // STAGE 8: Find primary (conf > 0.5, largest area)
+        // STAGE 8: Find primary (highest confidence)
         let t8 = Date()
-        
+
         var primaryIdx = -1
-        var maxArea: Float = 0
+        var maxConf: Float = 0
         for (i, d) in afterNMS.enumerated() {
-            if d.confidence > 0.5 {
-                let area = d.w * d.h
-                if area > maxArea {
-                    maxArea = area
-                    primaryIdx = i
-                }
+            if d.confidence > maxConf {
+                maxConf = d.confidence
+                primaryIdx = i
             }
         }
-        
+
         if primaryIdx < 0 {
-            if debugMode { logDebug("   ⚠️ No detection with conf > 0.5") }
+            if debugMode { logDebug("   ⚠️ No detections found") }
             DispatchQueue.main.async { self.maskImageView.image = nil }
             resetProcessingFlag()
             return
@@ -751,8 +870,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         for (i, d) in afterNMS.enumerated() {
             if i == primaryIdx { continue }
 
-            let wPct = Int(d.w / primary.w * 100)
-            let hPct = Int(d.h / primary.h * 100)
+            // Guard against division by zero / NaN
+            let wPct = primary.w > 0 ? Int(d.w / primary.w * 100) : 0
+            let hPct = primary.h > 0 ? Int(d.h / primary.h * 100) : 0
 
             // Mask-based overlap: fraction of PRIMARY mask pixels that are also in candidate mask
             let coverageOfCandidate = intersectionCoverage(candidateCoeffs: d.coeffs)
