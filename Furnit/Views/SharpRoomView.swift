@@ -1065,12 +1065,16 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Orbit controls for touch/mouse
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.05;
+                controls.dampingFactor = 0.02;  // Snappier feel
                 controls.screenSpacePanning = false;
-                controls.minDistance = 0.01;  // Allow very close (we control limits with room box)
-                controls.maxDistance = 100;   // No hard outer limit (room box handles this)
+                controls.minDistance = 0.01;
+                controls.maxDistance = 100;
                 // Default target, autoFrameRoom will update using Box3
                 controls.target.set(0, 0, 0);
+
+                // Auto-orbit like antimatter train demo
+                controls.autoRotate = true;
+                controls.autoRotateSpeed = 3.0;  // Visible spin speed
 
                 // Unlimited spin around object (train-style orbit)
                 controls.minAzimuthAngle = -Infinity;
