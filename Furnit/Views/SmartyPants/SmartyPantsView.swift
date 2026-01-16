@@ -476,7 +476,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let inputProvider: MLFeatureProvider
         if expectsImage {
             // Model expects CVPixelBuffer (Image type)
-            guard let imageValue = try? MLFeatureValue(pixelBuffer: sq.buffer) else {
+            guard let imageValue = MLFeatureValue(pixelBuffer: sq.buffer) as MLFeatureValue? else {
                 if debugMode { logDebug("❌ STAGE 2 FAILED: Image conversion") }
                 resetProcessingFlag()
                 return
@@ -525,28 +525,22 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 4: Extract tensors (handle different model output names)
         let t4 = Date()
 
-        // Try model output names - yoloe-11l (new export), yoloe-26l, yoloe-11l (old)
+        // Try model output names for yoloe-11l
         let detArray: MLMultiArray
         let protoArray: MLMultiArray
 
         if let det = output.featureValue(for: "var_2374")?.multiArrayValue,
            let proto = output.featureValue(for: "var_2412")?.multiArrayValue {
-            // yoloe-11l model outputs (new export with proper cv3/cv4 heads)
+            // yoloe-11l model outputs (export with proper cv3/cv4 heads)
             detArray = det
             protoArray = proto
             if debugMode { logDebug("📦 Using yoloe-11l output tensors (var_2374/var_2412)") }
-        } else if let det = output.featureValue(for: "var_2346")?.multiArrayValue,
-           let proto = output.featureValue(for: "var_2429")?.multiArrayValue {
-            // yoloe-26l model outputs
-            detArray = det
-            protoArray = proto
-            if debugMode { logDebug("📦 Using yoloe-26l output tensors") }
         } else if let det = output.featureValue(for: "var_2497")?.multiArrayValue,
                   let proto = output.featureValue(for: "p")?.multiArrayValue {
-            // yoloe-11l model outputs (old export)
+            // yoloe-11l model outputs (old export format)
             detArray = det
             protoArray = proto
-            if debugMode { logDebug("📦 Using yoloe-11l output tensors (old)") }
+            if debugMode { logDebug("📦 Using yoloe-11l output tensors (old format)") }
         } else {
             if debugMode {
                 logDebug("❌ STAGE 4 FAILED: Missing output tensors")
@@ -567,8 +561,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // Detect tensor format:
-        // - Old format (yoloe-11l): [1, 144, 8400] where 144 = features (4+numClasses+32), 8400 = anchors
-        // - New format (yoloe-26l): [1, 300, 38] where 300 = detections, 38 = features per detection
+        // - Old format: [1, 144, 8400] where 144 = features (4+numClasses+32), 8400 = anchors
+        // - New format: [1, 300, 38] where 300 = detections, 38 = features per detection
         // Heuristic: if dim2 is small (< 100), it's the new format with features per detection
         let isNewFormat = dim2 < 100
 
@@ -784,7 +778,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
         
-        var primary = afterNMS[primaryIdx]
+        let primary = afterNMS[primaryIdx]
         let t8End = Date()
         if debugMode {
             let primaryMs = String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)

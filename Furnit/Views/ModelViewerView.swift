@@ -542,11 +542,9 @@ struct ModelViewerView: View {
             return
         }
 
-        // Prefer .mlpackage (often smaller on memory footprint when loaded),
-        // and try both 'l' and 's' variants. Adjust names as needed for your bundle.
+        // YOLOE-11l model with proper cv3/cv4 heads for CoreML export
         let candidateNames = [
-            ("yoloe-11l-seg-pf", "mlmodelc"),  // Preferred - has proper cv3/cv4 heads
-            ("yoloe-26l-seg-pf", "mlmodelc"),  // fallback
+            ("yoloe-11l-seg-pf", "mlmodelc"),
         ]
 
         logDebug("🔍 Looking for ML Model (preferring .mlpackage):", candidateNames.map { "\($0.0).\($0.1)" }.joined(separator: ", "))
