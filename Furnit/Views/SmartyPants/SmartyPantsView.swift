@@ -1697,7 +1697,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     // MARK: - Rotation Helpers
 
-    /// Rotates a CVPixelBuffer 90 degrees
+    /// Rotates a CVPixelBuffer 90 degrees using vImage
     private func rotatePixelBuffer90(_ pixelBuffer: CVPixelBuffer, clockwise: Bool) -> CVPixelBuffer? {
         let srcWidth = CVPixelBufferGetWidth(pixelBuffer)
         let srcHeight = CVPixelBufferGetHeight(pixelBuffer)
@@ -1706,8 +1706,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let dstWidth = srcHeight
         let dstHeight = srcWidth
 
+        // Create destination buffer with proper attributes
+        let attrs: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+        ]
         var dstBuffer: CVPixelBuffer?
-        let status = CVPixelBufferCreate(nil, dstWidth, dstHeight, kCVPixelFormatType_32BGRA, nil, &dstBuffer)
+        let status = CVPixelBufferCreate(nil, dstWidth, dstHeight, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &dstBuffer)
         guard status == kCVReturnSuccess, let dst = dstBuffer else { return nil }
 
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
@@ -1722,33 +1727,27 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         let srcBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
         let dstBytesPerRow = CVPixelBufferGetBytesPerRow(dst)
-        let srcPtr = srcBase.assumingMemoryBound(to: UInt8.self)
-        let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
 
-        // Rotate pixel by pixel
-        for srcY in 0..<srcHeight {
-            for srcX in 0..<srcWidth {
-                let srcIdx = srcY * srcBytesPerRow + srcX * 4
+        // Use vImage for efficient rotation
+        var srcBuffer = vImage_Buffer(
+            data: srcBase,
+            height: vImagePixelCount(srcHeight),
+            width: vImagePixelCount(srcWidth),
+            rowBytes: srcBytesPerRow
+        )
+        var dstBufferImg = vImage_Buffer(
+            data: dstBase,
+            height: vImagePixelCount(dstHeight),
+            width: vImagePixelCount(dstWidth),
+            rowBytes: dstBytesPerRow
+        )
 
-                let dstX: Int
-                let dstY: Int
-                if clockwise {
-                    // 90° CW: (x,y) -> (h-1-y, x) where h is srcHeight
-                    dstX = srcHeight - 1 - srcY
-                    dstY = srcX
-                } else {
-                    // 90° CCW: (x,y) -> (y, w-1-x) where w is srcWidth
-                    dstX = srcY
-                    dstY = srcWidth - 1 - srcX
-                }
+        // vImage rotation: kRotate90DegreesClockwise or kRotate90DegreesCounterClockwise
+        let rotationConstant: UInt8 = clockwise ? UInt8(kRotate90DegreesClockwise) : UInt8(kRotate90DegreesCounterClockwise)
+        let bgColor: [UInt8] = [0, 0, 0, 255]
 
-                let dstIdx = dstY * dstBytesPerRow + dstX * 4
-                dstPtr[dstIdx + 0] = srcPtr[srcIdx + 0]
-                dstPtr[dstIdx + 1] = srcPtr[srcIdx + 1]
-                dstPtr[dstIdx + 2] = srcPtr[srcIdx + 2]
-                dstPtr[dstIdx + 3] = srcPtr[srcIdx + 3]
-            }
-        }
+        let error = vImageRotate90_ARGB8888(&srcBuffer, &dstBufferImg, rotationConstant, bgColor, vImage_Flags(kvImageNoFlags))
+        guard error == kvImageNoError else { return nil }
 
         return dst
     }
