@@ -231,3 +231,19 @@
 "accessibility.settings" = "Paramètres";
 "accessibility.help" = "Aide";
 "accessibility.createRoom" = "Créer une pièce à partir d'une photo";
+
+// FAQ - AI Features (added)
+"faq.aiFeatures" = "Fonctionnalités IA";
+"faq.whatIsBrainIcon" = "Que fait l'icône du cerveau ?";
+"faq.whatIsBrainIconAnswer" = "L'icône du cerveau active SmartyPants - une fonctionnalité de détection d'objets alimentée par l'IA. Elle utilise votre caméra pour identifier les meubles et objets en temps réel, affichant des étiquettes et des cadres autour des éléments détectés.";
+"faq.howToScreenshot" = "Comment prendre une capture d'écran ?";
+"faq.howToScreenshotAnswer" = "Lorsque SmartyPants est actif (icône du cerveau verte), une icône de partage apparaît en bas à droite. Appuyez dessus pour enregistrer une capture d'écran avec les détections IA dans votre photothèque.";
+"faq.howToSaveRoom" = "Comment enregistrer une pièce ?";
+"faq.howToSaveRoomAnswer" = "Après avoir généré une pièce 3D, appuyez sur l'icône d'enregistrement (flèche de téléchargement) dans la barre d'outils pour la sauvegarder avec un nom personnalisé. Les pièces non enregistrées seront supprimées en appuyant sur Retour.";
+
+// FAQ - 3D Room Controls (added)
+"faq.roomControls" = "Contrôles de Pièce 3D";
+"faq.howToNavigate" = "Comment naviguer dans la pièce ?";
+"faq.howToNavigateAnswer" = "Utilisez le joystick en bas au centre de l'écran pour vous déplacer. Faites-le glisser dans n'importe quelle direction pour voler à travers la pièce. Utilisez le bouton de recentrage (icône du viseur) pour réinitialiser la position de la caméra.";
+"faq.whatIsMemoryDisplay" = "Que signifie le nombre MB ?";
+"faq.whatIsMemoryDisplayAnswer" = "Le MB (mégaoctets) affiché dans les pièces indique la taille du fichier. Cela vous aide à gérer le stockage. Le stockage total utilisé par toutes les pièces est affiché en haut de l'écran d'accueil.";

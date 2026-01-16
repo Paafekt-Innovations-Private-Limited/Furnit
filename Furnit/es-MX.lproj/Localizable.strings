@@ -231,3 +231,19 @@
 "accessibility.settings" = "Configuración";
 "accessibility.help" = "Ayuda";
 "accessibility.createRoom" = "Crear cuarto desde foto";
+
+// FAQ - AI Features (added)
+"faq.aiFeatures" = "Funciones de IA";
+"faq.whatIsBrainIcon" = "¿Qué hace el ícono del cerebro?";
+"faq.whatIsBrainIconAnswer" = "El ícono del cerebro activa SmartyPants - una función de detección de objetos impulsada por IA. Usa tu cámara para identificar muebles y objetos en tiempo real, mostrando etiquetas y cuadros delimitadores alrededor de los elementos detectados.";
+"faq.howToScreenshot" = "¿Cómo tomo una captura de pantalla?";
+"faq.howToScreenshotAnswer" = "Cuando SmartyPants está activo (ícono del cerebro verde), aparece un ícono de compartir en la parte inferior derecha. Tócalo para guardar una captura de pantalla con las detecciones de IA en tu biblioteca de fotos.";
+"faq.howToSaveRoom" = "¿Cómo guardo un cuarto?";
+"faq.howToSaveRoomAnswer" = "Después de generar un cuarto 3D, toca el ícono de guardar (flecha de descarga) en la barra de herramientas para guardarlo con un nombre personalizado. Los cuartos no guardados se eliminarán al tocar Atrás.";
+
+// FAQ - 3D Room Controls (added)
+"faq.roomControls" = "Controles de Cuarto 3D";
+"faq.howToNavigate" = "¿Cómo navego dentro del cuarto?";
+"faq.howToNavigateAnswer" = "Usa el joystick en la parte inferior central de la pantalla para moverte. Arrástralo en cualquier dirección para volar por el cuarto. Usa el botón de recentrar (ícono del visor) para restablecer la posición de la cámara.";
+"faq.whatIsMemoryDisplay" = "¿Qué significa el número MB?";
+"faq.whatIsMemoryDisplayAnswer" = "El MB (megabytes) mostrado en los cuartos indica el tamaño del archivo. Esto te ayuda a administrar el almacenamiento. El almacenamiento total usado por todos los cuartos se muestra en la parte superior de la pantalla de inicio.";

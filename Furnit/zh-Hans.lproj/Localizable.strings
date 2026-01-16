@@ -231,3 +231,19 @@
 "accessibility.settings" = "设定";
 "accessibility.help" = "帮助";
 "accessibility.createRoom" = "从照片建立房间";
+
+// FAQ - AI Features (added)
+"faq.aiFeatures" = "AI 功能";
+"faq.whatIsBrainIcon" = "大脑图标有什么作用？";
+"faq.whatIsBrainIconAnswer" = "大脑图标激活 SmartyPants - 一个 AI 驱动的物体检测功能。它使用您的相机实时识别家具和物体，在检测到的物品周围显示标签和边界框。";
+"faq.howToScreenshot" = "如何截屏？";
+"faq.howToScreenshotAnswer" = "当 SmartyPants 激活时（大脑图标变绿），右下角会出现分享图标。点击它将带有 AI 检测的视图截图保存到您的照片库。";
+"faq.howToSaveRoom" = "如何保存房间？";
+"faq.howToSaveRoomAnswer" = "生成 3D 房间后，点击工具栏中的保存图标（下载箭头）以自定义名称保存。未保存的房间在点击返回时将被删除。";
+
+// FAQ - 3D Room Controls (added)
+"faq.roomControls" = "3D 房间控制";
+"faq.howToNavigate" = "如何在房间内导航？";
+"faq.howToNavigateAnswer" = "使用屏幕底部中央的操纵杆移动。向任意方向拖动可在房间内飞行。点击重新居中按钮（取景器图标）可重置相机位置。";
+"faq.whatIsMemoryDisplay" = "MB 数字是什么意思？";
+"faq.whatIsMemoryDisplayAnswer" = "房间中显示的 MB（兆字节）表示文件大小。这有助于您管理存储空间。所有房间使用的总存储空间显示在主屏幕顶部。";
