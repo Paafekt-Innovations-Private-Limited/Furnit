@@ -1361,10 +1361,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     let m = maskFull[y * origW + x]
                     if m > 0 {
                         let origIdx = origRow + x * 4
-                        outBase[outIdx+0] = origBase[origIdx+0]
-                        outBase[outIdx+1] = origBase[origIdx+1]
-                        outBase[outIdx+2] = origBase[origIdx+2]
-                        outBase[outIdx+3] = 255
+                        // Source is BGRA, destination is RGBA - swap R and B
+                        outBase[outIdx+0] = origBase[origIdx+2]  // R
+                        outBase[outIdx+1] = origBase[origIdx+1]  // G
+                        outBase[outIdx+2] = origBase[origIdx+0]  // B
+                        outBase[outIdx+3] = 255                   // A
                     } else {
                         outBase[outIdx+3] = 0
                     }
