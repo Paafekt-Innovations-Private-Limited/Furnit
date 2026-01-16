@@ -141,7 +141,20 @@ final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBuff
     var debugMode: Bool {
         return AppStateManager.shared.qualitySettings.debugMode
     }
-    
+
+    // MARK: - Ignored Classes (loaded from blacklist.json)
+    private lazy var clsToIgnore: Set<Int> = {
+        guard let url = Bundle.main.url(forResource: "blacklist", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
+            if debugMode { logDebug("⚠️ Failed to load blacklist.json") }
+            return []
+        }
+        let blacklistSet = Set(dict.keys.compactMap { Int($0) })
+        if debugMode { logDebug("✅ Loaded \(blacklistSet.count) blacklisted classes") }
+        return blacklistSet
+    }()
+
     // MARK: Camera
     private let captureSession = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -664,7 +677,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
 
                 guard validCoeffs else { continue }
-                guard classIdx >= 0 else { continue }
+                guard classIdx >= 0, !clsToIgnore.contains(classIdx) else { continue }
 
                 allDets.append(UnionDet(x: x, y: y, w: w, h: h, confidence: confidence, classIdx: classIdx, coeffs: coeffs))
             }
@@ -705,7 +718,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
                 let classIdx = Int(maxIdx)
 
-                guard maxVal > confidenceThreshold else { continue }
+                guard maxVal > confidenceThreshold, !clsToIgnore.contains(classIdx) else { continue }
 
                 var coeffs = [Float](repeating: 0, count: 32)
                 let coeffBase = detBuf.advanced(by: coeffOffset * stride + anchor)
