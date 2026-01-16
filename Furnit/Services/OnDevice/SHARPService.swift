@@ -433,22 +433,29 @@ class SHARPService: ObservableObject {
 
     // MARK: - Splat Filtering
 
-    /// Hard cutoff for almost-transparent splats (higher = fewer foggy edge splats)
-    private static let minAlpha: Float = 0.30
+    /// Hard cutoff for almost-transparent splats (lower = keep more semi-transparent splats)
+    /// Reduced from 0.30 to 0.08 to preserve wall/ceiling areas that were showing as black patches
+    private static let minAlpha: Float = 0.08
 
     /// For "fluffy fog" filter: if alpha < this AND scale > fogScaleThreshold, drop it
-    private static let fogAlphaThreshold: Float = 0.50
-    private static let fogScaleThreshold: Float = 0.020
+    /// Reduced from 0.50 to 0.20 to keep more of the scene (only remove truly foggy splats)
+    private static let fogAlphaThreshold: Float = 0.20
+    private static let fogScaleThreshold: Float = 0.025  // Slightly higher threshold
 
     /// Edge margins (percentage of bbox to trim from edges)
-    private static let edgeMarginX: Float = 0.12  // 12% margin on X
-    private static let edgeMarginY: Float = 0.12  // 12% margin on Y
-    private static let edgeMarginZ: Float = 0.12  // 12% margin on Z (depth)
+    /// Reduced from 12% to 8% to keep more edge content
+    private static let edgeMarginX: Float = 0.08  // 8% margin on X
+    private static let edgeMarginY: Float = 0.08  // 8% margin on Y
+    private static let edgeMarginZ: Float = 0.08  // 8% margin on Z (depth)
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
     private func filterGaussians(_ params: [Float]) -> [Float] {
         let inputCount = params.count / Self.paramsPerGaussian
         logDebug("SHARP: Filtering \(inputCount) Gaussians...")
+
+        // DEBUG: Return ALL gaussians without any filtering to test if filtering is the issue
+        logDebug("SHARP: ⚠️ FILTERING DISABLED - keeping all \(inputCount) gaussians")
+        return params
 
         // Analyze value ranges across ALL gaussians to understand data format
         var minScale: Float = .greatestFiniteMagnitude
