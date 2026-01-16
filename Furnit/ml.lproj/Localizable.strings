@@ -146,7 +146,15 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "മുറി സൃഷ്ടി";
 "faq.howToCreate" = "3D മുറി എങ്ങനെ സൃഷ്ടിക്കാം?";
-"faq.howToCreateAnswer" = "ഹോം സ്ക്രീനിന്റെ ഇടത് മുകളിലെ കോണിലുള്ള ഫോട്ടോ ഐക്കൺ ടാപ്പ് ചെയ്യുക, തുടർന്ന് നിങ്ങളുടെ മുറിയുടെ ഫോട്ടോ എടുക്കുക അല്ലെങ്കിൽ തിരഞ്ഞെടുക്കുക. ആപ്പ് നിങ്ങളുടെ ഫോട്ടോയിൽ നിന്ന് സ്വയമേവ 3D മോഡൽ സൃഷ്ടിക്കും.";
+"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You'll see two options to choose from for creating your 3D room.";
+"faq.twoMethods" = "What are the two room creation options?";
+"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
+"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
+"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
+"faq.whatIsManualRoom" = "What is Manual Setup?";
+"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
+"faq.whichMethodBetter" = "Which method should I choose?";
+"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
 "faq.bestPhotos" = "ഏത് തരം ഫോട്ടോകളാണ് നന്നായി പ്രവർത്തിക്കുന്നത്?";
 "faq.bestPhotosAnswer" = "മികച്ച ഫലങ്ങൾക്ക്, നല്ല വെളിച്ചത്തിൽ ഉപകരണം സ്ഥിരമായി പിടിച്ച് ഫോട്ടോകൾ എടുക്കുക. തറ, ചുവരുകൾ, സീലിംഗ് അരികുകൾ എന്നിവയുൾപ്പെടെ മുഴുവൻ മുറിയും പിടിച്ചെടുക്കാൻ ശ്രമിക്കുക. മങ്ങിയ അല്ലെങ്കിൽ ഇരുണ്ട ഫോട്ടോകൾ ഒഴിവാക്കുക.";
 "faq.generationFailing" = "എന്റെ മുറി ജനറേഷൻ എന്തുകൊണ്ട് പരാജയപ്പെടുന്നു?";

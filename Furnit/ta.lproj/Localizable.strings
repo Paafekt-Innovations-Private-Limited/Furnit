@@ -146,7 +146,15 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "அறை உருவாக்கம்";
 "faq.howToCreate" = "3D அறையை எப்படி உருவாக்குவது?";
-"faq.howToCreateAnswer" = "முகப்பு திரையின் மேல் இடது மூலையில் உள்ள புகைப்பட ஐகானைத் தட்டவும், பின்னர் உங்கள் அறையின் புகைப்படத்தை எடுக்கவும் அல்லது தேர்ந்தெடுக்கவும். பயன்பாடு தானாகவே உங்கள் புகைப்படத்திலிருந்து 3D மாதிரியை உருவாக்கும்.";
+"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You'll see two options to choose from for creating your 3D room.";
+"faq.twoMethods" = "What are the two room creation options?";
+"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
+"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
+"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
+"faq.whatIsManualRoom" = "What is Manual Setup?";
+"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
+"faq.whichMethodBetter" = "Which method should I choose?";
+"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
 "faq.bestPhotos" = "எந்த வகையான புகைப்படங்கள் சிறப்பாக செயல்படும்?";
 "faq.bestPhotosAnswer" = "சிறந்த முடிவுகளுக்கு, நல்ல வெளிச்சத்தில் சாதனத்தை நிலையாக வைத்து புகைப்படங்கள் எடுக்கவும். தரைகள், சுவர்கள் மற்றும் கூரை விளிம்புகள் உட்பட முழு அறையையும் படம்பிடிக்க முயற்சிக்கவும். மங்கலான அல்லது இருண்ட புகைப்படங்களைத் தவிர்க்கவும்.";
 "faq.generationFailing" = "என் அறை உருவாக்கம் ஏன் தோல்வியடைகிறது?";

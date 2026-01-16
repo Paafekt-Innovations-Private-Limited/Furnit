@@ -146,7 +146,15 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "Création de pièce";
 "faq.howToCreate" = "Comment créer une pièce 3D ?";
-"faq.howToCreateAnswer" = "Appuyez sur l'icône photo dans le coin supérieur gauche de l'écran d'accueil, puis prenez ou sélectionnez une photo de votre pièce. L'application générera automatiquement un modèle 3D à partir de votre photo.";
+"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You'll see two options to choose from for creating your 3D room.";
+"faq.twoMethods" = "What are the two room creation options?";
+"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
+"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
+"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
+"faq.whatIsManualRoom" = "What is Manual Setup?";
+"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
+"faq.whichMethodBetter" = "Which method should I choose?";
+"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
 "faq.bestPhotos" = "Quel type de photos fonctionne le mieux ?";
 "faq.bestPhotosAnswer" = "Pour de meilleurs résultats, prenez des photos dans un bon éclairage avec l'appareil tenu à l'horizontale. Essayez de capturer toute la pièce, y compris les sols, les murs et les bords du plafond. Évitez les photos floues ou sombres.";
 "faq.generationFailing" = "Pourquoi ma génération de pièce échoue-t-elle ?";

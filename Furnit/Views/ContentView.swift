@@ -754,9 +754,11 @@ struct AboutView: View {
 
 // MARK: - FAQ Item Model
 struct FAQItem: Identifiable {
-    let id = UUID()
     let question: String
     let answer: String
+
+    // Use question as stable ID (UUID changes on each view render)
+    var id: String { question }
 }
 
 // MARK: - FAQ Section Model
@@ -769,7 +771,7 @@ struct FAQSection: Identifiable {
 
 // MARK: - Help & Support View
 struct SupportView: View {
-    @State private var expandedFAQs: Set<UUID> = []
+    @State private var expandedFAQs: Set<String> = []
     @State private var supportMessage: String = ""
     @State private var showMailComposer = false
     @State private var showCopiedAlert = false
@@ -781,6 +783,10 @@ struct SupportView: View {
                 icon: "camera.fill",
                 items: [
                     FAQItem(question: "faq.howToCreate".localized, answer: "faq.howToCreateAnswer".localized),
+                    FAQItem(question: "faq.twoMethods".localized, answer: "faq.twoMethodsAnswer".localized),
+                    FAQItem(question: "faq.whatIsAIRoom".localized, answer: "faq.whatIsAIRoomAnswer".localized),
+                    FAQItem(question: "faq.whatIsManualRoom".localized, answer: "faq.whatIsManualRoomAnswer".localized),
+                    FAQItem(question: "faq.whichMethodBetter".localized, answer: "faq.whichMethodBetterAnswer".localized),
                     FAQItem(question: "faq.bestPhotos".localized, answer: "faq.bestPhotosAnswer".localized),
                     FAQItem(question: "faq.generationFailing".localized, answer: "faq.generationFailingAnswer".localized),
                     FAQItem(question: "faq.howManyRooms".localized, answer: "faq.howManyRoomsAnswer".localized),
@@ -924,23 +930,23 @@ struct FAQRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: onTap) {
-                HStack {
-                    Text(item.question)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.leading)
+            HStack {
+                Text(item.question)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.leading)
 
-                    Spacer()
+                Spacer()
 
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .contentShape(Rectangle())
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            .buttonStyle(PlainButtonStyle())
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onTap()
+            }
 
             if isExpanded {
                 Text(item.answer)

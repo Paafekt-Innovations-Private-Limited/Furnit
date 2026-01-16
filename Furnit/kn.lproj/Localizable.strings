@@ -146,7 +146,15 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "ಕೊಠಡಿ ರಚನೆ";
 "faq.howToCreate" = "3D ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ರಚಿಸುವುದು?";
-"faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ ಎಡ ಮೂಲೆಯಲ್ಲಿರುವ ಫೋಟೋ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ಅಪ್ಲಿಕೇಶನ್ ನಿಮ್ಮ ಫೋಟೋದಿಂದ ಸ್ವಯಂಚಾಲಿತವಾಗಿ 3D ಮಾದರಿಯನ್ನು ರಚಿಸುತ್ತದೆ.";
+"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You'll see two options to choose from for creating your 3D room.";
+"faq.twoMethods" = "What are the two room creation options?";
+"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
+"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
+"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
+"faq.whatIsManualRoom" = "What is Manual Setup?";
+"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
+"faq.whichMethodBetter" = "Which method should I choose?";
+"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
 "faq.bestPhotos" = "ಯಾವ ರೀತಿಯ ಫೋಟೋಗಳು ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತವೆ?";
 "faq.bestPhotosAnswer" = "ಉತ್ತಮ ಫಲಿತಾಂಶಗಳಿಗಾಗಿ, ಉತ್ತಮ ಬೆಳಕಿನಲ್ಲಿ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಫೋಟೋಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳಿ. ನೆಲ, ಗೋಡೆಗಳು ಮತ್ತು ಸೀಲಿಂಗ್ ಅಂಚುಗಳನ್ನು ಒಳಗೊಂಡಂತೆ ಸಂಪೂರ್ಣ ಕೊಠಡಿಯನ್ನು ಸೆರೆಹಿಡಿಯಲು ಪ್ರಯತ್ನಿಸಿ. ಮಸುಕಾದ ಅಥವಾ ಕತ್ತಲೆಯ ಫೋಟೋಗಳನ್ನು ತಪ್ಪಿಸಿ.";
 "faq.generationFailing" = "ನನ್ನ ಕೊಠಡಿ ರಚನೆ ಏಕೆ ವಿಫಲವಾಗುತ್ತಿದೆ?";
