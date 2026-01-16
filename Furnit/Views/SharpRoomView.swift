@@ -575,7 +575,7 @@ struct SharpRoomView: View {
                 .zIndex(201)
             }
         }
-        .background(Color.black)
+        .background(Color.gray)
         .navigationTitle(navigationTitleWithDimensions)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1008,7 +1008,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
         webView.isOpaque = false
-        webView.backgroundColor = .black
+        webView.backgroundColor = .gray
         webView.isUserInteractionEnabled = true
         webView.isMultipleTouchEnabled = true
 
@@ -1062,7 +1062,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     width: 100%;
                     height: 100%;
                     overflow: hidden;
-                    background: #1a1a1a;
+                    background: #808080;
                     touch-action: none;
                     -webkit-touch-callout: none;
                     -webkit-user-select: none;
@@ -1102,8 +1102,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const jsStartTime = performance.now();
 
                 // Scene setup
+                // Use neutral gray background to blend better with room colors
+                // (black makes holes/sparse areas very obvious)
                 const scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x1a1a1a);
+                scene.background = new THREE.Color(0x808080);
 
                 // Camera - start at default, autoFrameRoom will position using Box3
                 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -1116,14 +1118,17 @@ struct AntimatterSplatView: UIViewRepresentable {
                 renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(renderer.domElement);
 
-                // SparkRenderer with sharpness tuning
+                // SparkRenderer with settings tuned to reduce visible holes
+                // - Increased maxStdDev allows larger gaussians to fill gaps
+                // - preBlurAmount adds soft edges to blend sparse areas
+                // - falloff controls opacity falloff (lower = more spread)
                 const spark = new SparkRenderer({
                     renderer: renderer,
-                    maxStdDev: Math.sqrt(6),
-                    preBlurAmount: 0.0,
-                    blurAmount: 0.2,
-                    falloff: 1.0,
-                    focalAdjustment: 2.0
+                    maxStdDev: 3.0,           // Larger gaussians to fill gaps
+                    preBlurAmount: 0.5,       // Soft blur to blend edges
+                    blurAmount: 0.3,          // Slightly more post-blur
+                    falloff: 0.8,             // Gentler opacity falloff
+                    focalAdjustment: 1.5      // Slightly less aggressive focal adjustment
                 });
                 camera.add(spark);  // Add SparkRenderer as child of camera
 
