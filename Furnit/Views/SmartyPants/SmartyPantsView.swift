@@ -371,12 +371,34 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         )
 
         requestCameraPermissionAndStart()
+
+        // Set initial video rotation after camera starts
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            self.updateVideoRotationForOrientation(self.currentDeviceOrientation)
+        }
     }
 
     @objc private func deviceOrientationDidChange() {
         let orientation = UIDevice.current.orientation
         if orientation.isValidInterfaceOrientation {
             currentDeviceOrientation = orientation
+            // Update video rotation to match device orientation for full FOV
+            updateVideoRotationForOrientation(orientation)
+        }
+    }
+
+    private func updateVideoRotationForOrientation(_ orientation: UIDeviceOrientation) {
+        guard let conn = videoOutput.connection(with: .video) else { return }
+
+        // Set video rotation to match device orientation for natural FOV
+        switch orientation {
+        case .landscapeLeft:
+            conn.videoRotationAngle = 0    // Native landscape
+        case .landscapeRight:
+            conn.videoRotationAngle = 180  // Native landscape (flipped)
+        default:
+            conn.videoRotationAngle = 90   // Portrait
         }
     }
 
@@ -479,18 +501,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
 
-        // For landscape: rotate pixel buffer so YOLO sees upright content
-        let processBuffer: CVPixelBuffer
-        if isLandscape {
-            // landscapeLeft (home button right): rotate CCW, landscapeRight (home button left): rotate CW
-            if let rotated = rotatePixelBuffer90(pixelBuffer, clockwise: orientation == .landscapeRight) {
-                processBuffer = rotated
-            } else {
-                processBuffer = pixelBuffer
-            }
-        } else {
-            processBuffer = pixelBuffer
-        }
+        // Camera now delivers correctly oriented frames via dynamic videoRotationAngle
+        // No pre-rotation needed - frames match device orientation
+        let processBuffer = pixelBuffer
 
         // STAGE 1: Resize to square
         let t1 = Date()
