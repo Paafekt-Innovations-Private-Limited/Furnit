@@ -575,13 +575,9 @@ struct DraggableHandle: View {
     }
 }
 
-import SwiftUI
-import RoomPlan
-
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
     @StateObject private var sharpService = SHARPService()
-    // LandscapeSHARPService removed - using SHARPService for both orientations
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var adjustedBoundaries: RoomStructure?
@@ -623,9 +619,9 @@ struct SinglePhotoRoomView: View {
                         .onAppear { logDebug("🖼️ [View] Displaying selected image with method picker") }
 
                     VStack(spacing: 4) {
-                        Text("How do you want to create your 3D room?")
+                        Text(NSLocalizedString("photoRoom.howToCreate", comment: ""))
                             .font(.headline)
-                        Text("Tap an option below to continue")
+                        Text(NSLocalizedString("photoRoom.tapOption", comment: ""))
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -635,7 +631,7 @@ struct SinglePhotoRoomView: View {
                     // Method 1: SHARP (AI-powered) - Single photo to 3D
                     Button(action: {
                         logDebug("🤖 [View] SHARP method selected")
-                        print("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
+                        logDebug("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
                         showMethodPicker = false
                         startSHARPGeneration(image: image)
                     }) {
@@ -646,10 +642,10 @@ struct SinglePhotoRoomView: View {
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Photo to 3D Room")
+                                Text(NSLocalizedString("photoRoom.title", comment: ""))
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text("AI-powered 3D construction")
+                                Text(NSLocalizedString("photoRoom.aiPowered", comment: ""))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -670,7 +666,7 @@ struct SinglePhotoRoomView: View {
                     // Method 2: Manual Boundaries
                     Button(action: {
                         logDebug("🏠 [View] Manual boundaries method selected")
-                        print("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
+                        logDebug("📸 User selected pic type: \(selectedOrientation == .portrait ? "Portrait" : "Landscape")")
                         showMethodPicker = false
                         fixedImageItem = IdentifiedImage(image: image)
                     }) {
@@ -681,10 +677,10 @@ struct SinglePhotoRoomView: View {
                                 .frame(width: 50)
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Manual Setup")
+                                Text(NSLocalizedString("photoRoom.manualSetup", comment: ""))
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text("Drag to adjust room walls")
+                                Text(NSLocalizedString("photoRoom.manualSetupDesc", comment: ""))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -717,12 +713,12 @@ struct SinglePhotoRoomView: View {
                 } else {
                     // Photo Selection (initial state)
                     VStack(spacing: 20) {
-                        Text("Create a 3D Room")
+                        Text(NSLocalizedString("photoRoom.createTitle", comment: ""))
                             .font(.title2)
                             .fontWeight(.bold)
                             .padding(.top, 40)
 
-                        Text("Select a photo to get started")
+                        Text(NSLocalizedString("photoRoom.createSubtitle", comment: ""))
                             .font(.subheadline)
                             .foregroundColor(.secondary)
 
@@ -736,9 +732,9 @@ struct SinglePhotoRoomView: View {
                                     .foregroundColor(.green)
 
                                 VStack(spacing: 4) {
-                                    Text("Select Photo")
+                                    Text(NSLocalizedString("photoRoom.selectPhoto", comment: ""))
                                         .font(.headline)
-                                    Text("From your photo library")
+                                    Text(NSLocalizedString("photoRoom.fromLibrary", comment: ""))
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -826,6 +822,11 @@ struct SinglePhotoRoomView: View {
         }
         .onAppear {
             logDebug("👁️ [View] SinglePhotoRoomView appeared")
+            // Reset navigation state on appear to clear any stale state
+            if navigateToSplatViewer && generatedPLYURL == nil {
+                logDebug("   Resetting stale navigateToSplatViewer state")
+                navigateToSplatViewer = false
+            }
             // Dimensions are now managed by @AppStorage
         }
         // ✅ Watch for boundary changes and rebuild automatically, then navigate to viewer
@@ -866,19 +867,32 @@ struct SinglePhotoRoomView: View {
         }
         // Navigate to SharpRoomView when PLY is generated (used for both orientations)
         .navigationDestination(isPresented: $navigateToSplatViewer) {
-            Group {
-                if let plyURL = generatedPLYURL {
-                    // Use orientation detected from original image (set in onChange of selectedImage)
-                    let _ = print("🚀 [Navigation] orientation = \(selectedOrientation.rawValue) (from image)")
-                    let _ = print("🚀 [Navigation] plyURL = \(plyURL.lastPathComponent)")
-                    SharpRoomView(
-                        plyURL: plyURL,
-                        roomMeasurements: generatedRoomMeasurements,
-                        photoOrientation: selectedOrientation
-                    )
-                } else {
-                    let _ = print("🚀 [Navigation] ERROR: generatedPLYURL is nil!")
+            // Only navigate if we have a valid PLY URL - otherwise show empty view
+            // (navigation should be prevented by the onChange guard below)
+            if let plyURL = generatedPLYURL {
+                SharpRoomView(
+                    plyURL: plyURL,
+                    roomMeasurements: generatedRoomMeasurements,
+                    photoOrientation: selectedOrientation
+                )
+                .onAppear {
+                    logDebug("🚀 [Navigation] SharpRoomView appeared")
+                    logDebug("   orientation = \(selectedOrientation.rawValue)")
+                    logDebug("   plyURL = \(plyURL.lastPathComponent)")
                 }
+            } else {
+                // Fallback - should not happen if navigation is properly guarded
+                Color.clear.onAppear {
+                    logDebug("⚠️ [Navigation] navigateToSplatViewer=true but generatedPLYURL is nil - resetting")
+                    navigateToSplatViewer = false
+                }
+            }
+        }
+        // Guard: only allow navigation when URL is set
+        .onChange(of: navigateToSplatViewer) { oldValue, newValue in
+            if newValue && generatedPLYURL == nil {
+                logDebug("⚠️ [Navigation] Blocking navigation - generatedPLYURL is nil")
+                navigateToSplatViewer = false
             }
         }
         // Success alert for API-generated PLY file
@@ -935,6 +949,7 @@ struct SinglePhotoRoomView: View {
         // Clear previous generation state to prevent using stale data on failure
         generatedPLYURL = nil
         generatedRoomMeasurements = nil
+        navigateToSplatViewer = false  // Reset navigation state
 
         Task {
             do {

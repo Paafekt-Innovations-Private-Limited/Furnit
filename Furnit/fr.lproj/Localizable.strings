@@ -247,3 +247,16 @@
 "faq.howToNavigateAnswer" = "Utilisez le joystick en bas au centre de l'écran pour vous déplacer. Faites-le glisser dans n'importe quelle direction pour voler à travers la pièce. Utilisez le bouton de recentrage (icône du viseur) pour réinitialiser la position de la caméra.";
 "faq.whatIsMemoryDisplay" = "Que signifie le nombre MB ?";
 "faq.whatIsMemoryDisplayAnswer" = "Le MB (mégaoctets) affiché dans les pièces indique la taille du fichier. Cela vous aide à gérer le stockage. Le stockage total utilisé par toutes les pièces est affiché en haut de l'écran d'accueil.";
+
+// MARK: - Single Photo Room (added)
+"photoRoom.howToCreate" = "How do you want to create your 3D room?";
+"photoRoom.tapOption" = "Tap an option below to continue";
+"photoRoom.aiPowered" = "AI-powered 3D construction";
+"photoRoom.manualSetup" = "Manual Setup";
+"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
+"photoRoom.selectPhoto" = "Select Photo";
+"photoRoom.fromLibrary" = "From your photo library";
+"photoRoom.loading" = "Loading 3D room...";
+"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
+"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.error" = "An error occurred while generating your 3D model.";

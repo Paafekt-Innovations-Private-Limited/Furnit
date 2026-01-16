@@ -247,3 +247,16 @@
 "faq.howToNavigateAnswer" = "Usa el joystick en la parte inferior central de la pantalla para moverte. Arrástralo en cualquier dirección para volar por el cuarto. Usa el botón de recentrar (ícono del visor) para restablecer la posición de la cámara.";
 "faq.whatIsMemoryDisplay" = "¿Qué significa el número MB?";
 "faq.whatIsMemoryDisplayAnswer" = "El MB (megabytes) mostrado en los cuartos indica el tamaño del archivo. Esto te ayuda a administrar el almacenamiento. El almacenamiento total usado por todos los cuartos se muestra en la parte superior de la pantalla de inicio.";
+
+// MARK: - Single Photo Room (added)
+"photoRoom.howToCreate" = "How do you want to create your 3D room?";
+"photoRoom.tapOption" = "Tap an option below to continue";
+"photoRoom.aiPowered" = "AI-powered 3D construction";
+"photoRoom.manualSetup" = "Manual Setup";
+"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
+"photoRoom.selectPhoto" = "Select Photo";
+"photoRoom.fromLibrary" = "From your photo library";
+"photoRoom.loading" = "Loading 3D room...";
+"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
+"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.error" = "An error occurred while generating your 3D model.";

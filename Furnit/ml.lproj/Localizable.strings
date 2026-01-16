@@ -247,3 +247,16 @@
 "faq.howToNavigateAnswer" = "സ്ക്രീനിന്റെ താഴെ മധ്യഭാഗത്തുള്ള ജോയ്സ്റ്റിക് ഉപയോഗിച്ച് നീങ്ങുക. മുറിയിലൂടെ പറക്കാൻ ഏത് ദിശയിലേക്കും വലിക്കുക. ക്യാമറ പൊസിഷൻ റീസെറ്റ് ചെയ്യാൻ റീസെന്റർ ബട്ടൺ (വ്യൂഫൈൻഡർ ഐക്കൺ) ടാപ്പ് ചെയ്യുക.";
 "faq.whatIsMemoryDisplay" = "MB നമ്പർ എന്താണ് അർത്ഥമാക്കുന്നത്?";
 "faq.whatIsMemoryDisplayAnswer" = "മുറികളിൽ കാണിക്കുന്ന MB (മെഗാബൈറ്റ്സ്) ഫയൽ സൈസ് സൂചിപ്പിക്കുന്നു. ഇത് സ്റ്റോറേജ് മാനേജ് ചെയ്യാൻ സഹായിക്കുന്നു. എല്ലാ മുറികളും ഉപയോഗിക്കുന്ന ആകെ സ്റ്റോറേജ് ഹോം സ്ക്രീനിന്റെ മുകളിൽ കാണിക്കും.";
+
+// MARK: - Single Photo Room (added)
+"photoRoom.howToCreate" = "How do you want to create your 3D room?";
+"photoRoom.tapOption" = "Tap an option below to continue";
+"photoRoom.aiPowered" = "AI-powered 3D construction";
+"photoRoom.manualSetup" = "Manual Setup";
+"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
+"photoRoom.selectPhoto" = "Select Photo";
+"photoRoom.fromLibrary" = "From your photo library";
+"photoRoom.loading" = "Loading 3D room...";
+"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
+"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.error" = "An error occurred while generating your 3D model.";

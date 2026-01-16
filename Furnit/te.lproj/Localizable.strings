@@ -247,3 +247,16 @@
 "faq.howToNavigateAnswer" = "స్క్రీన్ కింద మధ్యలో ఉన్న జాయ్‌స్టిక్ ఉపయోగించి కదలండి. గది గుండా ఫ్లై చేయడానికి ఏ దిశలోనైనా డ్రాగ్ చేయండి. కెమెరా పొజిషన్ రీసెట్ చేయడానికి రీసెంటర్ బటన్ (వ్యూఫైండర్ ఐకాన్) ట్యాప్ చేయండి.";
 "faq.whatIsMemoryDisplay" = "MB నంబర్ అంటే ఏమిటి?";
 "faq.whatIsMemoryDisplayAnswer" = "గదులలో చూపించే MB (మెగాబైట్స్) ఫైల్ సైజ్‌ను సూచిస్తుంది. ఇది స్టోరేజ్ మేనేజ్ చేయడానికి సహాయపడుతుంది. అన్ని గదులు ఉపయోగించే మొత్తం స్టోరేజ్ హోమ్ స్క్రీన్ పైన చూపించబడుతుంది.";
+
+// MARK: - Single Photo Room (added)
+"photoRoom.howToCreate" = "How do you want to create your 3D room?";
+"photoRoom.tapOption" = "Tap an option below to continue";
+"photoRoom.aiPowered" = "AI-powered 3D construction";
+"photoRoom.manualSetup" = "Manual Setup";
+"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
+"photoRoom.selectPhoto" = "Select Photo";
+"photoRoom.fromLibrary" = "From your photo library";
+"photoRoom.loading" = "Loading 3D room...";
+"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
+"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.error" = "An error occurred while generating your 3D model.";

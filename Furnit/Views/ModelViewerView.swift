@@ -39,9 +39,6 @@ struct ModelViewerView: View {
 
     @State private var isCapturingSnapshot = false
 
-//    // Edge fill mode for SmartyPants segmentation
-//    @State private var selectedEdgeFillMode: EdgeFillMode = .chairType
-
     init(model: USDZModel) {
         self.model = model
     }
@@ -391,26 +388,7 @@ struct ModelViewerView: View {
         }
     }
 
-    // Edge fill mode toggle for SmartyPants
-//    private var edgeFillModeToggle: some View {
-//        HStack {
-//            Spacer()
-//            Picker("Edge Mode", selection: $selectedEdgeFillMode) {
-//                Text("Cloth").tag(EdgeFillMode.clothBased)
-//                Text("Chair").tag(EdgeFillMode.chairType)
-//                Text("Furni").tag(EdgeFillMode.furniMaterial)
-//            }
-//            .pickerStyle(.segmented)
-//            .frame(width: 240)
-//            .padding(8)
-//            .background(Color.black.opacity(0.6))
-//            .cornerRadius(12)
-//            .padding(.top, 60)
-//            .padding(.trailing, 16)
-//        }
-//    }
-
-    // NEW: SmartyPants Button (YOLOE - 168 furniture classes!)
+    // SmartyPants Button (YOLOE - 168 furniture classes!)
     private var smartyPantsButton: some View {
         ZStack {
             Button(action: {
@@ -645,8 +623,6 @@ struct SmartyPantsUIView: UIViewRepresentable {
     func updateUIView(_ uiView: SmartyPantsContainerView, context: Context) {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
-//        uiView.scoreThreshold = scoreThreshold
-        
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }

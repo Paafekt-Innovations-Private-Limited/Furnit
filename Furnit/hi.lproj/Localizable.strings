@@ -247,3 +247,16 @@
 "faq.howToNavigateAnswer" = "स्क्रीन के नीचे बीच में जॉयस्टिक का उपयोग करें। रूम में उड़ने के लिए किसी भी दिशा में खींचें। कैमरा पोजीशन रीसेट करने के लिए रीसेंटर बटन (व्यूफाइंडर आइकन) पर टैप करें।";
 "faq.whatIsMemoryDisplay" = "MB नंबर का क्या मतलब है?";
 "faq.whatIsMemoryDisplayAnswer" = "रूम में दिखाया गया MB (मेगाबाइट्स) फाइल साइज इंगित करता है। यह आपको स्टोरेज मैनेज करने में मदद करता है। सभी रूम द्वारा उपयोग किया गया कुल स्टोरेज होम स्क्रीन के शीर्ष पर दिखाया जाता है।";
+
+// MARK: - Single Photo Room (added)
+"photoRoom.howToCreate" = "How do you want to create your 3D room?";
+"photoRoom.tapOption" = "Tap an option below to continue";
+"photoRoom.aiPowered" = "AI-powered 3D construction";
+"photoRoom.manualSetup" = "Manual Setup";
+"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
+"photoRoom.selectPhoto" = "Select Photo";
+"photoRoom.fromLibrary" = "From your photo library";
+"photoRoom.loading" = "Loading 3D room...";
+"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
+"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.error" = "An error occurred while generating your 3D model.";

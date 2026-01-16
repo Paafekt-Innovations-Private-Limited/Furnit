@@ -418,7 +418,7 @@ struct SharpRoomView: View {
                         .scaleEffect(1.5)
                         .tint(.white)
 
-                    Text("Loading 3D room...")
+                    Text(NSLocalizedString("photoRoom.loading", comment: ""))
                         .font(.subheadline)
                         .foregroundColor(.white)
                 }
@@ -634,7 +634,7 @@ struct SharpRoomView: View {
             }
             .disabled(roomName.isEmpty)
         } message: {
-            Text("Enter a name for this room")
+            Text(NSLocalizedString("roomViewer.enterName", comment: ""))
         }
         // Save result alert
         .alert("Room Save", isPresented: $showSaveAlert) {

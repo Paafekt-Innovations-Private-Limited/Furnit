@@ -247,3 +247,16 @@
 "faq.howToNavigateAnswer" = "使用螢幕底部中央的搖桿移動。向任意方向拖動可在房間內飛行。點擊重新置中按鈕（取景器圖標）可重置相機位置。";
 "faq.whatIsMemoryDisplay" = "MB 數字是什麼意思？";
 "faq.whatIsMemoryDisplayAnswer" = "房間中顯示的 MB（兆位元組）表示檔案大小。這有助於您管理儲存空間。所有房間使用的總儲存空間顯示在主畫面頂部。";
+
+// MARK: - Single Photo Room (added)
+"photoRoom.howToCreate" = "How do you want to create your 3D room?";
+"photoRoom.tapOption" = "Tap an option below to continue";
+"photoRoom.aiPowered" = "AI-powered 3D construction";
+"photoRoom.manualSetup" = "Manual Setup";
+"photoRoom.manualSetupDesc" = "Drag to adjust room walls";
+"photoRoom.selectPhoto" = "Select Photo";
+"photoRoom.fromLibrary" = "From your photo library";
+"photoRoom.loading" = "Loading 3D room...";
+"photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
+"photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
+"photoRoom.error" = "An error occurred while generating your 3D model.";
