@@ -222,6 +222,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private var isProcessing = false
     private let frameLock = NSLock() // Protects lastProcessTime and isProcessing for early-exit checks
 
+    // MARK: Orientation
+    private var currentDeviceOrientation: UIDeviceOrientation = .portrait
+
     /// Thread-safe reset of isProcessing flag
     private func resetProcessingFlag() {
         frameLock.lock()
@@ -355,10 +358,32 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     func startIfNeeded() {
         hasFirstDetection = false
         setProgress(0.05, text: "Starting camera…")
+
+        // Setup orientation detection for landscape support
+        currentDeviceOrientation = UIDevice.current.orientation.isValidInterfaceOrientation
+            ? UIDevice.current.orientation : .portrait
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(deviceOrientationDidChange),
+            name: UIDevice.orientationDidChangeNotification,
+            object: nil
+        )
+
         requestCameraPermissionAndStart()
     }
-    
+
+    @objc private func deviceOrientationDidChange() {
+        let orientation = UIDevice.current.orientation
+        if orientation.isValidInterfaceOrientation {
+            currentDeviceOrientation = orientation
+        }
+    }
+
     func stop() {
+        NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
+        UIDevice.current.endGeneratingDeviceOrientationNotifications()
+
         DispatchQueue.global(qos: .userInitiated).async {
             if self.captureSession.isRunning {
                 self.captureSession.stopRunning()
@@ -388,6 +413,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if captureSession.canAddOutput(videoOutput) {
             captureSession.addOutput(videoOutput)
         }
+        // Fixed 90° rotation - camera captures in landscape, we need portrait for model
+        // The preview layer handles display orientation automatically
         if let conn = videoOutput.connection(with: .video) {
             conn.videoRotationAngle = 90
         }
@@ -441,17 +468,35 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
 
+        // Capture orientation at start of processing
+        let orientation = currentDeviceOrientation
+        let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
+
         if debugMode {
             logDebug("\n⏱️ ═══════════════════════════════════════════")
             logDebug("⏱️ FRAME START @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
+            logDebug("⏱️ Orientation: \(orientation.rawValue), isLandscape: \(isLandscape)")
             logDebug("⏱️ ═══════════════════════════════════════════")
+        }
+
+        // For landscape: rotate pixel buffer so YOLO sees upright content
+        let processBuffer: CVPixelBuffer
+        if isLandscape {
+            // landscapeLeft (home button right): rotate CCW, landscapeRight (home button left): rotate CW
+            if let rotated = rotatePixelBuffer90(pixelBuffer, clockwise: orientation == .landscapeRight) {
+                processBuffer = rotated
+            } else {
+                processBuffer = pixelBuffer
+            }
+        } else {
+            processBuffer = pixelBuffer
         }
 
         // STAGE 1: Resize to square
         let t1 = Date()
         setProgress(0.15, text: "Resizing…")
-        
-        guard let sq = resizeToSquare(pixelBuffer, size: 1280) else {
+
+        guard let sq = resizeToSquare(processBuffer, size: 1280) else {
             if debugMode { logDebug("❌ STAGE 1 FAILED: Resize to square") }
             resetProcessingFlag()
             return
@@ -989,8 +1034,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             uy2 = max(uy2, d.y + d.h * 0.5)
         }
 
-        let origW = CVPixelBufferGetWidth(pixelBuffer)
-        let origH = CVPixelBufferGetHeight(pixelBuffer)
+        let origW = CVPixelBufferGetWidth(processBuffer)
+        let origH = CVPixelBufferGetHeight(processBuffer)
 
         var bx1 = Int(round((ux1 - padX) / resizeGain))
         var by1 = Int(round((uy1 - padY) / resizeGain))
@@ -1193,10 +1238,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 return tex
             }
 
-            // Source BGRA texture from camera buffer
-            CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-            let srcTexture = makeTexture(from: pixelBuffer, pixelFormat: .bgra8Unorm)
-            CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
+            // Source BGRA texture from camera buffer (use processBuffer for landscape support)
+            CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
+            let srcTexture = makeTexture(from: processBuffer, pixelFormat: .bgra8Unorm)
+            CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly)
 
             if let src = srcTexture, let cmdBuf = queue.makeCommandBuffer() {
                 if let fused = fusedMaskCompositePipeline {
@@ -1299,14 +1344,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         if composedImage == nil {
-            // Fallback CPU compositing
+            // Fallback CPU compositing (use processBuffer for landscape support)
             let ctx = CGContext(data: nil, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: origW * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-            CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+            CVPixelBufferLockBaseAddress(processBuffer, .readOnly)
             let outBase = ctx.data!.assumingMemoryBound(to: UInt8.self)
-            let origBase = CVPixelBufferGetBaseAddress(pixelBuffer)!.assumingMemoryBound(to: UInt8.self)
+            let origBase = CVPixelBufferGetBaseAddress(processBuffer)!.assumingMemoryBound(to: UInt8.self)
             for y in 0..<origH {
                 let outRow = y * origW * 4
-                let origRow = y * CVPixelBufferGetBytesPerRow(pixelBuffer)
+                let origRow = y * CVPixelBufferGetBytesPerRow(processBuffer)
                 for x in 0..<origW {
                     let outIdx = outRow + x * 4
                     if x < bx1 || x >= bx2 || y < by1 || y >= by2 {
@@ -1325,7 +1370,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     }
                 }
             }
-            CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
+            CVPixelBufferUnlockBaseAddress(processBuffer, .readOnly)
             composedImage = ctx.makeImage()
         }
 
@@ -1410,9 +1455,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             composedImage = img
         }
 
-        // Present result
+        // Present result - for landscape, rotate the composite back for the portrait UI
         DispatchQueue.main.async {
-            if let cgImg = composedImage { self.maskImageView.image = UIImage(cgImage: cgImg) }
+            if var cgImg = composedImage {
+                if isLandscape {
+                    // Rotate back for portrait display: landscapeLeft -> 90° CCW, landscapeRight -> 90° CW
+                    let rotatedImg = self.rotateCGImage90(cgImg, clockwise: orientation == .landscapeLeft)
+                    cgImg = rotatedImg ?? cgImg
+                }
+                self.maskImageView.image = UIImage(cgImage: cgImg)
+            }
         }
         resetProcessingFlag()
 
@@ -1641,6 +1693,93 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
         }
         return array
+    }
+
+    // MARK: - Rotation Helpers
+
+    /// Rotates a CVPixelBuffer 90 degrees
+    private func rotatePixelBuffer90(_ pixelBuffer: CVPixelBuffer, clockwise: Bool) -> CVPixelBuffer? {
+        let srcWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let srcHeight = CVPixelBufferGetHeight(pixelBuffer)
+
+        // After 90° rotation, dimensions swap
+        let dstWidth = srcHeight
+        let dstHeight = srcWidth
+
+        var dstBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(nil, dstWidth, dstHeight, kCVPixelFormatType_32BGRA, nil, &dstBuffer)
+        guard status == kCVReturnSuccess, let dst = dstBuffer else { return nil }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        CVPixelBufferLockBaseAddress(dst, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
+            CVPixelBufferUnlockBaseAddress(dst, [])
+        }
+
+        guard let srcBase = CVPixelBufferGetBaseAddress(pixelBuffer),
+              let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
+
+        let srcBytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let dstBytesPerRow = CVPixelBufferGetBytesPerRow(dst)
+        let srcPtr = srcBase.assumingMemoryBound(to: UInt8.self)
+        let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
+
+        // Rotate pixel by pixel
+        for srcY in 0..<srcHeight {
+            for srcX in 0..<srcWidth {
+                let srcIdx = srcY * srcBytesPerRow + srcX * 4
+
+                let dstX: Int
+                let dstY: Int
+                if clockwise {
+                    // 90° CW: (x,y) -> (h-1-y, x) where h is srcHeight
+                    dstX = srcHeight - 1 - srcY
+                    dstY = srcX
+                } else {
+                    // 90° CCW: (x,y) -> (y, w-1-x) where w is srcWidth
+                    dstX = srcY
+                    dstY = srcWidth - 1 - srcX
+                }
+
+                let dstIdx = dstY * dstBytesPerRow + dstX * 4
+                dstPtr[dstIdx + 0] = srcPtr[srcIdx + 0]
+                dstPtr[dstIdx + 1] = srcPtr[srcIdx + 1]
+                dstPtr[dstIdx + 2] = srcPtr[srcIdx + 2]
+                dstPtr[dstIdx + 3] = srcPtr[srcIdx + 3]
+            }
+        }
+
+        return dst
+    }
+
+    /// Rotates a CGImage 90 degrees
+    private func rotateCGImage90(_ image: CGImage, clockwise: Bool) -> CGImage? {
+        let srcWidth = image.width
+        let srcHeight = image.height
+
+        // After 90° rotation, dimensions swap
+        let dstWidth = srcHeight
+        let dstHeight = srcWidth
+
+        guard let colorSpace = image.colorSpace,
+              let context = CGContext(
+                  data: nil,
+                  width: dstWidth,
+                  height: dstHeight,
+                  bitsPerComponent: image.bitsPerComponent,
+                  bytesPerRow: 0,
+                  space: colorSpace,
+                  bitmapInfo: image.bitmapInfo.rawValue
+              ) else { return nil }
+
+        // Apply rotation transform
+        context.translateBy(x: CGFloat(dstWidth) / 2, y: CGFloat(dstHeight) / 2)
+        context.rotate(by: clockwise ? -.pi / 2 : .pi / 2)
+        context.translateBy(x: -CGFloat(srcWidth) / 2, y: -CGFloat(srcHeight) / 2)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: srcWidth, height: srcHeight))
+
+        return context.makeImage()
     }
 
     // MARK: - Progress UI
