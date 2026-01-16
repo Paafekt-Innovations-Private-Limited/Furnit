@@ -1132,6 +1132,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                 });
                 camera.add(spark);  // Add SparkRenderer as child of camera
 
+                // Battery optimization: only render when needed
+                let needsRender = true;  // Force initial render
+
                 // Orbit controls for touch/mouse
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
@@ -1145,6 +1148,11 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                 // No full 360° spin - we'll do back-and-forth oscillation instead
                 controls.autoRotate = false;
+
+                // Request render when controls change (handles damping animation too)
+                controls.addEventListener('change', function() {
+                    needsRender = true;
+                });
 
                 // --- Back-and-forth orbit state ---
                 let autoOrbitEnabled = true;       // master switch for idle orbit
@@ -1403,6 +1411,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     camera.position.z = newZ;
                     controls.target.x += actualDx;
                     controls.target.z += actualDz;
+                    needsRender = true;  // Request render after camera move
                 };
 
                 // Orbit rotation handler (for Swift gesture overlay)
@@ -1429,6 +1438,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     camera.position.copy(controls.target).add(offset);
 
                     controls.update();
+                    needsRender = true;  // Request render after orbit
                 };
 
                 // Zoom handler (for Swift pinch gesture)
@@ -1446,14 +1456,29 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                     camera.position.copy(controls.target).add(offset);
                     controls.update();
+                    needsRender = true;  // Request render after zoom
                 };
 
-                // Animation loop
+                // Animation loop with battery optimization
+                // - Only renders when needed (user interacting or auto-orbit active)
+                // - Throttles to 30fps when idle auto-orbit is running
+                // - Stops rendering completely when static
                 let loadNotified = false;
-                function animate() {
+                let lastRenderTime = 0;
+                const IDLE_FPS = 30;     // Lower FPS for auto-orbit (saves battery)
+                const IDLE_FRAME_TIME = 1000 / IDLE_FPS;
+
+                // Request render on next frame (called when something changes)
+                window.requestRender = function() {
+                    needsRender = true;
+                };
+
+                function animate(currentTime) {
                     requestAnimationFrame(animate);
 
                     const dt = clock.getDelta();
+                    let shouldRender = needsRender;
+                    needsRender = false;
 
                     // Back-and-forth orbit when not interacting (uses base angle from autoFrameRoom)
                     if (autoOrbitEnabled && !window._userInteracting && autoOrbitRadius > 0.1) {
@@ -1476,8 +1501,24 @@ struct AntimatterSplatView: UIViewRepresentable {
                             camera.position.x = initialCameraPosition.x + sweepAmount;
                             camera.position.z = initialCameraPosition.z;
                         }
+
+                        // Throttle auto-orbit to 30fps to save battery
+                        if (currentTime - lastRenderTime >= IDLE_FRAME_TIME) {
+                            shouldRender = true;
+                        }
                     }
 
+                    // Always render during user interaction (60fps)
+                    if (window._userInteracting) {
+                        shouldRender = true;
+                    }
+
+                    // Skip render if nothing changed (huge battery savings)
+                    if (!shouldRender) {
+                        return;
+                    }
+
+                    lastRenderTime = currentTime;
                     controls.update();
 
                     // Use SparkRenderer's update method for optimized Gaussian rendering
@@ -1494,7 +1535,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                         console.log('Splat loaded in', totalTime, 'ms');
                     }
                 }
-                animate();
+                animate(0);
             </script>
         </body>
         </html>
