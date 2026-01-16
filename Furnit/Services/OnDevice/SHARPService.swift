@@ -449,13 +449,20 @@ class SHARPService: ObservableObject {
     private static let edgeMarginZ: Float = 0.08  // 8% margin on Z (depth)
 
     /// Filter Gaussians by opacity and limit count for mobile rendering
+    ///
+    /// NOTE: Filtering is DISABLED as of Jan 2026. The opacity/fog/edge filters were too
+    /// aggressive and removed valid wall/ceiling/corner gaussians, causing black patches
+    /// in the rendered room. The SHARP model output is now used directly without filtering.
     private func filterGaussians(_ params: [Float]) -> [Float] {
         let inputCount = params.count / Self.paramsPerGaussian
-        logDebug("SHARP: Filtering \(inputCount) Gaussians...")
+        logDebug("SHARP: Processing \(inputCount) Gaussians (no filtering)")
 
-        // DEBUG: Return ALL gaussians without any filtering to test if filtering is the issue
-        logDebug("SHARP: ⚠️ FILTERING DISABLED - keeping all \(inputCount) gaussians")
+        // Return all gaussians without filtering - filtering was causing black patches
+        // by removing valid wall/ceiling splats that had lower opacity
         return params
+
+        // ========== DISABLED FILTERING CODE BELOW ==========
+        // Kept for reference in case selective filtering is needed in the future
 
         // Analyze value ranges across ALL gaussians to understand data format
         var minScale: Float = .greatestFiniteMagnitude
