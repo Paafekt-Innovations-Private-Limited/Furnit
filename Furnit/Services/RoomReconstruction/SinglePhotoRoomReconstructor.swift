@@ -177,13 +177,18 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         logDebug("   Floor: \(boundaries.floorY), Ceiling: \(boundaries.ceilingY)")
         logDebug("   Left: \(boundaries.leftX), Right: \(boundaries.rightX)")
         logDebug("   VP: (\(boundaries.vanishingX), \(boundaries.vanishingY))")
-        
+
         await MainActor.run {
             isProcessing = true
             progress = 0.0
-            statusMessage = "Rebuilding with adjusted boundaries..."
+            statusMessage = "Starting..."
         }
-        
+
+        // Small delay for UI feedback
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
+
+        await updateProgress(0.1, "Preparing image...")
+
         // Fix image orientation FIRST
         let orientedImage = image.fixedOrientation()
         logDebug("✅ [Reconstructor] Image orientation fixed")
@@ -191,46 +196,64 @@ class SinglePhotoRoomReconstructor: ObservableObject {
         // ✅ OPTIMIZATION: Downscale large images
         let fixedImage = downscaleIfNeeded(orientedImage)
 
-        await updateProgress(0.2, "Extracting depth information...")
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
+
+        await updateProgress(0.25, "Extracting depth information...")
         guard let depthMap = await depthEstimator.estimateDepth(from: fixedImage) else {
             await setError("Failed to estimate depth")
             return
         }
 
-        await updateProgress(0.4, "Using your adjusted boundaries...")
-        
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
+
+        await updateProgress(0.4, "Analyzing boundaries...")
+
         // Use the adjusted boundaries instead of detecting new ones
         var roomStructure = boundaries
         roomStructure.floorRegion = CGRect(x: 0, y: boundaries.floorY, width: 1.0, height: 1.0 - boundaries.floorY)
         roomStructure.ceilingRegion = CGRect(x: 0, y: 0, width: 1.0, height: boundaries.ceilingY)
         roomStructure.vanishingPoint = CGPoint(x: boundaries.vanishingX, y: boundaries.vanishingY)
-        
+
         logDebug("✅ [Reconstructor] Using adjusted boundaries:")
         logDebug("   - Floor region: \(roomStructure.floorRegion!)")
         logDebug("   - Ceiling region: \(roomStructure.ceilingRegion!)")
-        
-        await updateProgress(0.6, "Calculating dimensions with boundaries...")
+
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
+
+        await updateProgress(0.55, "Calculating room dimensions...")
         let dimensions = await estimateDimensions(from: roomStructure, image: fixedImage)
-        
+
         await MainActor.run {
             self.estimatedDimensions = dimensions
         }
-        
-        await updateProgress(0.8, "Building 3D model...")
+
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
+
+        await updateProgress(0.7, "Creating textures...")
+
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
+
+        await updateProgress(0.85, "Building 3D model...")
         let roomScene = await build3DRoom(
             dimensions: dimensions,
             structure: roomStructure,
             originalImage: fixedImage,
             depthMap: depthMap
         )
-        
+
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 sec
+
+        await updateProgress(0.95, "Finalizing...")
+
+        try? await Task.sleep(nanoseconds: 150_000_000) // 0.15 sec
+
         await MainActor.run {
             self.generatedRoomScene = roomScene
             self.isProcessing = false
             self.progress = 1.0
-            self.statusMessage = "Room rebuilt!"
+            self.statusMessage = "Room ready!"
         }
-        
+
         logDebug("🎉 [Reconstructor] ========== BOUNDARY PROCESSING COMPLETE ==========")
     }
     

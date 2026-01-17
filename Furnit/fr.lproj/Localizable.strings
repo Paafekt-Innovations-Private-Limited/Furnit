@@ -270,7 +270,8 @@
 "photoRoom.loading" = "Loading 3D room...";
 "photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
 "photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
-"photoRoom.error" = "An error occurred while generating your 3D model.";
+"photoRoom.error" = "Une erreur s'est produite lors de la génération de votre modèle 3D.";
+"photoRoom.buildingRoom" = "Construction de votre pièce 3D...";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "Portrait";

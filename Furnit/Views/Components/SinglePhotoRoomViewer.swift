@@ -7,9 +7,13 @@ import CoreML
 struct RoomBoundaryDetectionView: View {
     let originalImage: UIImage
     @Binding var savedBoundaries: RoomStructure?
+    // Optional: pass reconstructor for in-view processing
+    @ObservedObject var reconstructor: SinglePhotoRoomReconstructor
+    var roomDimensions: SinglePhotoRoomReconstructor.RoomDimensions?
+    var onProcessingComplete: (() -> Void)?
 
     @Environment(\.dismiss) var dismiss
-    
+
     // Boundary positions (as percentages of image dimensions)
     @State private var floorY: CGFloat = 0.85
     @State private var ceilingY: CGFloat = 0.15
@@ -17,7 +21,10 @@ struct RoomBoundaryDetectionView: View {
     @State private var rightX: CGFloat = 0.88
     @State private var vanishingX: CGFloat = 0.5
     @State private var vanishingY: CGFloat = 0.45
-    
+
+    // Processing state for progress overlay
+    @State private var isProcessingInView = false
+
     // Custom magenta color
     private let magentaColor = Color(red: 1.0, green: 0.0, blue: 1.0)
     
@@ -105,15 +112,41 @@ struct RoomBoundaryDetectionView: View {
                                 boundaries.vanishingX = vanishingX
                                 boundaries.vanishingY = vanishingY
 
-                                savedBoundaries = boundaries
                                 logDebug("✅ Saved adjusted boundaries:")
                                 logDebug("   Floor: \(floorY), Ceiling: \(ceilingY)")
                                 logDebug("   Left: \(leftX), Right: \(rightX)")
                                 logDebug("   VP: (\(vanishingX), \(vanishingY))")
 
-                                dismiss()
+                                // Process within this view with progress overlay
+                                isProcessingInView = true
+                                Task {
+                                    let startTime = Date()
+                                    let minimumDisplayTime: TimeInterval = 2.0 // Show progress for at least 2 seconds
+
+                                    // Apply dimensions if provided
+                                    if let dims = roomDimensions {
+                                        await MainActor.run {
+                                            reconstructor.estimatedDimensions = dims
+                                        }
+                                    }
+                                    await reconstructor.processPhotoWithBoundaries(originalImage, boundaries: boundaries)
+
+                                    // Ensure progress is shown for minimum time
+                                    let elapsed = Date().timeIntervalSince(startTime)
+                                    if elapsed < minimumDisplayTime {
+                                        try? await Task.sleep(nanoseconds: UInt64((minimumDisplayTime - elapsed) * 1_000_000_000))
+                                    }
+
+                                    await MainActor.run {
+                                        savedBoundaries = boundaries
+                                        isProcessingInView = false
+                                        onProcessingComplete?()
+                                        dismiss()
+                                    }
+                                }
                             }
                             .buttonStyle(.borderedProminent)
+                            .disabled(isProcessingInView)
                         }
                         .padding(.bottom, 8)
                     }
@@ -131,11 +164,56 @@ struct RoomBoundaryDetectionView: View {
                         // Dismiss without saving changes
                         dismiss()
                     }
+                    .disabled(isProcessingInView)
+                }
+            }
+            // Progress overlay when processing
+            .overlay {
+                if isProcessingInView {
+                    ZStack {
+                        Color.black.opacity(0.7)
+                            .ignoresSafeArea()
+
+                        VStack(spacing: 16) {
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.orange.opacity(0.3), lineWidth: 8)
+                                    .frame(width: 60, height: 60)
+                                Circle()
+                                    .trim(from: 0, to: CGFloat(reconstructor.progress))
+                                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                                    .frame(width: 60, height: 60)
+                                    .rotationEffect(.degrees(-90))
+                                    .animation(.easeInOut(duration: 0.3), value: reconstructor.progress)
+                                Image(systemName: "cube.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.orange)
+                            }
+
+                            Text(reconstructor.statusMessage)
+                                .font(.headline)
+                                .foregroundColor(.white)
+
+                            Text("\(Int(reconstructor.progress * 100))%")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.orange)
+
+                            Text(NSLocalizedString("photoRoom.buildingRoom", comment: "Building your 3D room"))
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                        .padding(32)
+                        .background(Color(.systemBackground).opacity(0.95))
+                        .cornerRadius(16)
+                        .shadow(radius: 10)
+                    }
                 }
             }
         }
+        .interactiveDismissDisabled(isProcessingInView)
     }
-    
+
     func drawBoundariesOnImage() async -> UIImage {
         // Use originalImage (already orientation-fixed)
         let sourceImage = originalImage
@@ -833,6 +911,43 @@ struct SinglePhotoRoomView: View {
                     onCancel: { sharpService.cancelGeneration() }
                 )
             }
+
+            // Progress overlay for manual room reconstruction
+            if reconstructor.isProcessing {
+                VStack(spacing: 16) {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.orange.opacity(0.3), lineWidth: 8)
+                            .frame(width: 60, height: 60)
+                        Circle()
+                            .trim(from: 0, to: CGFloat(reconstructor.progress))
+                            .stroke(Color.orange, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .frame(width: 60, height: 60)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeInOut(duration: 0.3), value: reconstructor.progress)
+                        Image(systemName: "cube.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.orange)
+                    }
+
+                    Text(reconstructor.statusMessage)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    Text("\(Int(reconstructor.progress * 100))%")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.orange)
+
+                    Text(NSLocalizedString("photoRoom.buildingRoom", comment: "Building your 3D room"))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(32)
+                .background(Color(.systemBackground).opacity(0.95))
+                .cornerRadius(16)
+                .shadow(radius: 10)
+            }
         }
         .navigationTitle("Photo to 3D Room")
         .navigationBarTitleDisplayMode(.inline)
@@ -861,7 +976,19 @@ struct SinglePhotoRoomView: View {
         .sheet(item: $fixedImageItem) { item in
             RoomBoundaryDetectionView(
                 originalImage: item.image,
-                savedBoundaries: $adjustedBoundaries
+                savedBoundaries: $adjustedBoundaries,
+                reconstructor: reconstructor,
+                roomDimensions: SinglePhotoRoomReconstructor.RoomDimensions(
+                    width: Float(roomWidth),
+                    depth: Float(roomDepth),
+                    height: Float(roomHeight)
+                ),
+                onProcessingComplete: {
+                    // Navigate to viewer when processing is complete
+                    if reconstructor.generatedRoomScene != nil {
+                        navigateToViewer = true
+                    }
+                }
             )
             .onAppear {
                 logDebug("✅ [Sheet] Opening RoomBoundaryDetectionView with image: \(item.image.size)")
@@ -876,33 +1003,17 @@ struct SinglePhotoRoomView: View {
             }
             // Dimensions are now managed by @AppStorage
         }
-        // ✅ Watch for boundary changes and rebuild automatically, then navigate to viewer
+        // ✅ Watch for boundary changes - processing is now done in the sheet
+        // This handler just navigates if the scene is ready (from sheet processing)
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
             logDebug("📋 [View] adjustedBoundaries onChange triggered")
             logDebug("   oldValue: \(oldValue != nil ? "set" : "nil")")
             logDebug("   newValue: \(newValue != nil ? "set" : "nil")")
-            logDebug("   fixedImage: \(fixedImage != nil ? "set" : "nil")")
-            if let boundaries = newValue, let image = fixedImage {
-                logDebug("🔄 [View] Boundaries adjusted, rebuilding room...")
-                Task {
-                    // Use dimensions from settings
-                    var updatedDimensions = reconstructor.estimatedDimensions ?? SinglePhotoRoomReconstructor.RoomDimensions()
-                    updatedDimensions.width = Float(roomWidth)
-                    updatedDimensions.depth = Float(roomDepth)
-                    updatedDimensions.height = Float(roomHeight)
-                    
-                    await MainActor.run {
-                        reconstructor.estimatedDimensions = updatedDimensions
-                    }
-                    
-                    await reconstructor.processPhotoWithBoundaries(image, boundaries: boundaries)
-                    // Auto-navigate to 3D viewer (save screen) once room is ready
-                    if reconstructor.generatedRoomScene != nil {
-                        await MainActor.run {
-                            navigateToViewer = true
-                        }
-                    }
-                }
+            // Processing is now handled in RoomBoundaryDetectionView with progress overlay
+            // Navigation is triggered by onProcessingComplete callback
+            if newValue != nil && reconstructor.generatedRoomScene != nil {
+                logDebug("✅ [View] Scene ready from sheet processing, navigating to viewer")
+                navigateToViewer = true
             }
         }
         // Programmatic navigation using the modern API (iOS 16+).  When
@@ -1074,8 +1185,11 @@ struct SceneKitViewer: View {
     @State private var showControls = true
     @State private var cameraNode: SCNNode?
 
-    // Save room state
-    @StateObject private var modelManager = USDZModelManager()
+    // Loading state for initial setup
+    @State private var isSettingUp = true
+
+    // Save room state - lazy initialization to avoid loading on appear
+    @State private var modelManager: USDZModelManager?
     @State private var isSavingRoom = false
     @State private var saveProgress: Double = 0.0
     @State private var savingTimer: Timer?
@@ -1100,11 +1214,41 @@ struct SceneKitViewer: View {
             .onAppear {
                 logDebug("🎬 [Viewer] SceneKit viewer appeared")
                 logDebug("   - Scene nodes: \(scene.rootNode.childNodes.count)")
-                setupCamera()
-                loadMLModel()
+                Task {
+                    setupCamera()
+                    // Small delay to ensure camera is ready
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    await MainActor.run {
+                        isSettingUp = false
+                    }
+                    // Load ML model in background (not blocking)
+                    loadMLModel()
+                }
             }
             .onDisappear {
                 GlobalCameraController.shared.clearCamera()
+            }
+
+            // Loading overlay while setting up
+            if isSettingUp {
+                ZStack {
+                    Color.black.opacity(0.8)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(.orange)
+
+                        Text("Loading 3D Room...")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                    }
+                    .padding(32)
+                    .background(Color(.systemBackground).opacity(0.95))
+                    .cornerRadius(16)
+                }
+                .transition(.opacity)
             }
 
             // Save progress overlay
@@ -1322,35 +1466,40 @@ struct SceneKitViewer: View {
         guard !roomName.isEmpty else {
             return
         }
-        
+
+        // Lazy-initialize modelManager only when saving
+        if modelManager == nil {
+            modelManager = USDZModelManager()
+        }
+
         let savedName = roomName  // ✅ Capture the name BEFORE clearing
         logDebug("💾 [Viewer] Starting room save process: \(savedName)")
-        
+
         withAnimation(.easeIn(duration: 0.3)) {
             isSavingRoom = true
             saveProgress = 0.0
         }
-        
+
         var saveStarted = false
         var saveCompleted = false
         var saveSuccess = false
         var saveError: String?
-        
+
         // Progress timer
         savingTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
             // Only advance progress if not waiting for save completion
             if !saveStarted || (saveStarted && saveCompleted) {
                 self.saveProgress += 0.015
             }
-            
+
             if self.saveProgress >= 0.3 && self.saveProgress < 0.32 {
                 logDebug("📦 [Viewer] Preparing model...")
             } else if self.saveProgress >= 0.6 && !saveStarted {
                 logDebug("📄 [Viewer] Exporting USDZ...")
                 saveStarted = true
-                
+
                 // ✅ Actually save the room with completion handler
-                self.modelManager.saveRoom(scene: scene, name: savedName) { success, error in
+                self.modelManager?.saveRoom(scene: scene, name: savedName) { success, error in
                     DispatchQueue.main.async {
                         saveCompleted = true
                         saveSuccess = success
@@ -1361,16 +1510,16 @@ struct SceneKitViewer: View {
             } else if self.saveProgress >= 0.9 && self.saveProgress < 0.92 {
                 logDebug("💾 [Viewer] Finalizing...")
             }
-            
+
             // ✅ Only finish when BOTH progress complete AND save completed
             if self.saveProgress >= 1.0 && saveCompleted {
                 timer.invalidate()
                 self.savingTimer = nil
-                
+
                 withAnimation(.easeOut(duration: 0.3)) {
                     self.isSavingRoom = false
                 }
-                
+
                 // Show result based on actual save status
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     if saveSuccess {

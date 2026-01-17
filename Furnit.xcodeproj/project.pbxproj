@@ -348,7 +348,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Furnit/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is required for AR furniture detection and placement";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Furnit needs access to save screenshots of your 3D rooms";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Paafekt needs access to save screenshots of your 3D rooms";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Paafekt needs access to your photos to create 3D rooms from your room photos";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -363,6 +364,7 @@
 				NEW_SETTING = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.pafekt.Furnit2025;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				INFOPLIST_KEY_CFBundleDisplayName = "Paafekt";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Furnit/Native/Native-Bridging.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -390,7 +392,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Furnit/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is required for AR furniture detection and placement";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Furnit needs access to save screenshots of your 3D rooms";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Paafekt needs access to save screenshots of your 3D rooms";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Paafekt needs access to your photos to create 3D rooms from your room photos";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -405,6 +408,7 @@
 				NEW_SETTING = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.pafekt.Furnit2025;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				INFOPLIST_KEY_CFBundleDisplayName = "Paafekt";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Furnit/Native/Native-Bridging.h";
 				SWIFT_VERSION = 5.0;

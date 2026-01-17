@@ -595,7 +595,7 @@ struct ProfileTab: View {
                     HStack {
                         Label("Developer", systemImage: "person.2")
                         Spacer()
-                        Text("Furnit Team")
+                        Text("Paafekt Team")
                             .foregroundColor(.secondary)
                     }
                 }
@@ -797,7 +797,7 @@ struct GeneralSettingsView: View {
 
 struct AboutView: View {
     var body: some View {
-        Text("About Furnit")
+        Text("About Paafekt")
             .navigationTitle("About")
             .navigationBarTitleDisplayMode(.inline)
     }
@@ -962,8 +962,8 @@ struct SupportView: View {
 
     private func openMailComposer() {
         let email = "support@paafekt.com"
-        let subject = "Furnit App Support"
-        let body = "Hi Furnit Support Team,\n\nI need help with:\n\n"
+        let subject = "Paafekt App Support"
+        let body = "Hi Paafekt Support Team,\n\nI need help with:\n\n"
 
         let urlString = "mailto:\(email)?subject=\(subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&body=\(body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
 

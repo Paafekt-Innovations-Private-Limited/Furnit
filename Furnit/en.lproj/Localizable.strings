@@ -9,7 +9,7 @@
 "app.name" = "Paafekt Beta";
 "app.tagline" = "3D Room Explorer";
 "app.version" = "Version";
-"app.developer" = "Furnit Team";
+"app.developer" = "Paafekt Team";
 
 // MARK: - Common Actions
 "common.done" = "Done";
@@ -235,6 +235,7 @@
 "photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
 "photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
 "photoRoom.error" = "An error occurred while generating your 3D model.";
+"photoRoom.buildingRoom" = "Building your 3D room...";
 
 // MARK: - 3D Room Viewer
 "roomViewer.title" = "3D Room View";

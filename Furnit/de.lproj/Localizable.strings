@@ -9,7 +9,7 @@
 "app.name" = "Paafekt Beta";
 "app.tagline" = "3D-Raum-Explorer";
 "app.version" = "Version";
-"app.developer" = "Furnit Team";
+"app.developer" = "Paafekt Team";
 
 // MARK: - Common Actions
 "common.done" = "Fertig";
@@ -275,7 +275,8 @@
 "photoRoom.loading" = "Loading 3D room...";
 "photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
 "photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
-"photoRoom.error" = "An error occurred while generating your 3D model.";
+"photoRoom.error" = "Bei der Erstellung Ihres 3D-Modells ist ein Fehler aufgetreten.";
+"photoRoom.buildingRoom" = "Ihr 3D-Raum wird erstellt...";
 
 // MARK: - Orientation Labels
 "orientation.portrait" = "Portrait";
