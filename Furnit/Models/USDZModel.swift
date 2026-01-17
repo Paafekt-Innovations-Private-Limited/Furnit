@@ -154,25 +154,34 @@ struct USDZModel: Identifiable, Hashable {
             if debugMode {
                 logDebug("🔍 [USDZModel.temporaryURL] Processing BUNDLE room")
             }
-            
+
             guard let data = dataAsset?.data else {
                 if debugMode {
                     logDebug("❌ [USDZModel.temporaryURL] No dataAsset data for bundle room: \(fileName)")
                 }
                 return nil
             }
-            
+
+            // Use stable filename (no UUID) to avoid re-writing on every render
+            let tempDirectory = FileManager.default.temporaryDirectory
+            let tempURL = tempDirectory.appendingPathComponent("\(fileName)_bundle.usdz")
+
+            // Check if file already exists with correct size - skip writing if so
+            if FileManager.default.fileExists(atPath: tempURL.path) {
+                if let existingSize = try? FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? Int,
+                   existingSize == data.count {
+                    if debugMode {
+                        logDebug("✅ [USDZModel.temporaryURL] Using cached temp file: \(tempURL.lastPathComponent)")
+                    }
+                    return tempURL
+                }
+            }
+
             if debugMode {
                 logDebug("🔍 [USDZModel.temporaryURL] Bundle data size: \(data.count) bytes")
-            }
-            
-            let tempDirectory = FileManager.default.temporaryDirectory
-            let tempURL = tempDirectory.appendingPathComponent("\(fileName)_\(id.uuidString).usdz")
-            
-            if debugMode {
                 logDebug("🔍 [USDZModel.temporaryURL] Writing to temp path: \(tempURL.path)")
             }
-            
+
             do {
                 try data.write(to: tempURL)
                 if debugMode {

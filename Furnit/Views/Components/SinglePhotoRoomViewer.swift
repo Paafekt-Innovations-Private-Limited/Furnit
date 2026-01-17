@@ -1092,7 +1092,7 @@ struct SceneKitViewer: View {
             }
 
             // ✅ GLOBAL JOYSTICK - uses GlobalCameraController
-            SimpleJoystickOverlay()
+            SimpleJoystickOverlay(photoOrientation: .portrait)
                 .zIndex(99997)
 
             if showControls {

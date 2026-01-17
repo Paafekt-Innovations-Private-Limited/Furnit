@@ -198,19 +198,52 @@ class GlobalCameraController {
 
 struct SimpleJoystickOverlay: View {
     @State private var offset: CGSize = .zero
+    var photoOrientation: PhotoOrientation = .portrait
 
     var body: some View {
         VStack {
             Spacer()
             HStack {
                 Spacer() // Push joystick to center
-                VirtualJoystick(joystickOffset: $offset)
-                    .onChange(of: offset) { _, newOffset in
-                        GlobalCameraController.shared.updateJoystick(newOffset)
+                VStack(spacing: 8) {
+                    VirtualJoystick(joystickOffset: $offset)
+                        .onChange(of: offset) { _, newOffset in
+                            GlobalCameraController.shared.updateJoystick(newOffset)
+                        }
+                    VStack(spacing: 1) {
+                        Text(orientationSubtitle)
+                            .font(.caption2)
+                        Text(orientationTitle)
+                            .font(.caption2)
+                            .fontWeight(.medium)
                     }
-                    .padding(.bottom, 40)
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.4))
+                    .cornerRadius(6)
+                }
+                .padding(.bottom, 40)
                 Spacer() // Push joystick to center
             }
+        }
+    }
+
+    private var orientationTitle: String {
+        switch photoOrientation {
+        case .portrait, .square:
+            return "Portrait"
+        case .landscape:
+            return "Landscape"
+        }
+    }
+
+    private var orientationSubtitle: String {
+        switch photoOrientation {
+        case .portrait, .square:
+            return "held vertically"
+        case .landscape:
+            return "held horizontally"
         }
     }
 }

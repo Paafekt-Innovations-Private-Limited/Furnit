@@ -315,6 +315,7 @@ struct SharpRoomView: View {
     @State private var showSaveAlert = false
     @State private var saveAlertMessage = ""
     @State private var saveWasSuccessful = false
+    @State private var isDismissing = false
     @State private var showRoomNameInput = false
     @State private var roomName = ""
     @State private var showShareSheet = false
@@ -456,8 +457,22 @@ struct SharpRoomView: View {
                             .allowsHitTesting(false)
 
                         // Joystick (center) - rotated 90° for horizontal viewing
-                        JoystickControl()
-                            .rotationEffect(.degrees(90))
+                        VStack(spacing: 8) {
+                            JoystickControl()
+                            VStack(spacing: 1) {
+                                Text("held horizontally")
+                                    .font(.caption2)
+                                Text("Landscape")
+                                    .font(.caption2)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.black.opacity(0.4))
+                            .cornerRadius(6)
+                        }
+                        .rotationEffect(.degrees(90))
 
                         Spacer()
                             .allowsHitTesting(false)
@@ -486,7 +501,7 @@ struct SharpRoomView: View {
                 // Portrait layout: standard bottom controls
 
                 // Joystick at bottom center
-                WebGLJoystickOverlay()
+                WebGLJoystickOverlay(photoOrientation: photoOrientation)
                     .zIndex(99999)  // Above SmartyPants overlay
 
                 // Buttons at bottom row
@@ -603,12 +618,42 @@ struct SharpRoomView: View {
         .alert("Room Save", isPresented: $showSaveAlert) {
             Button("OK", role: .cancel) {
                 if saveWasSuccessful {
-                    // Dismiss entire sheet and go back to home view
-                    NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                    // Show dismissing indicator
+                    isDismissing = true
+                    // Release resources in background, then dismiss
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        // Release SHARP model memory
+                        DispatchQueue.main.async {
+                            SHARPService.shared.releaseResources()
+                        }
+                        // Small delay to let cleanup complete
+                        Thread.sleep(forTimeInterval: 0.1)
+                        DispatchQueue.main.async {
+                            // Dismiss entire sheet and go back to home view
+                            NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
+                        }
+                    }
                 }
             }
         } message: {
             Text(saveAlertMessage)
+        }
+        // Dismissing overlay
+        .overlay {
+            if isDismissing {
+                ZStack {
+                    Color.black.opacity(0.7)
+                        .ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(.white)
+                        Text("Going back...")
+                            .foregroundColor(.white)
+                            .font(.headline)
+                    }
+                }
+            }
         }
     }
 
@@ -763,8 +808,6 @@ struct SharpRoomView: View {
                     if saveSuccess {
                         self.saveAlertMessage = "Room '\(savedName)' saved successfully!"
                         self.saveWasSuccessful = true
-                        // Release SHARP model to free memory after successful save
-                        SHARPService.shared.releaseResources()
                     } else {
                         self.saveAlertMessage = "Failed to save: \(saveError ?? "Unknown error")"
                         self.saveWasSuccessful = false
@@ -1726,15 +1769,49 @@ struct JoystickControl: View {
 
 /// Joystick overlay for portrait mode - positioned at bottom center
 struct WebGLJoystickOverlay: View {
+    var photoOrientation: PhotoOrientation = .portrait
+
     var body: some View {
         VStack {
             Spacer()
             HStack {
                 Spacer()
-                JoystickControl()
+                VStack(spacing: 8) {
+                    JoystickControl()
+                    VStack(spacing: 1) {
+                        Text(orientationSubtitle)
+                            .font(.caption2)
+                        Text(orientationTitle)
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.4))
+                    .cornerRadius(6)
+                }
                 Spacer()
             }
             .padding(.bottom, 40)
+        }
+    }
+
+    private var orientationTitle: String {
+        switch photoOrientation {
+        case .portrait, .square:
+            return "Portrait"
+        case .landscape:
+            return "Landscape"
+        }
+    }
+
+    private var orientationSubtitle: String {
+        switch photoOrientation {
+        case .portrait, .square:
+            return "held vertically"
+        case .landscape:
+            return "held horizontally"
         }
     }
 }

@@ -615,6 +615,16 @@ struct HomeViewModelRow: View {
         }
     }
 
+    // Orientation label text
+    private var orientationLabel: String {
+        switch model.photoOrientation {
+        case .portrait, .square:
+            return "Portrait - held vertically"
+        case .landscape:
+            return "Landscape - held horizontally"
+        }
+    }
+
     var body: some View {
         HStack {
             Image(systemName: model.fileType.iconName)
@@ -628,7 +638,7 @@ struct HomeViewModelRow: View {
                 Text(model.displayName)
                     .font(.headline)
                     .foregroundColor(.primary)
-                
+
                 Text(L10n.Home.roomModel)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -647,6 +657,14 @@ struct HomeViewModelRow: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
+
+                    // Show orientation
+                    Text("•")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(orientationLabel)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
 

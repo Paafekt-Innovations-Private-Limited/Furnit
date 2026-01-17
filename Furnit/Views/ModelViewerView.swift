@@ -166,7 +166,7 @@ struct ModelViewerView: View {
                 .allowsHitTesting(true)
                 
                 // ✅ GLOBAL JOYSTICK - uses GlobalCameraController
-                SimpleJoystickOverlay()
+                SimpleJoystickOverlay(photoOrientation: model.photoOrientation)
                     .opacity(isCapturingSnapshot ? 0 : 1)
                     .zIndex(99997)
 
