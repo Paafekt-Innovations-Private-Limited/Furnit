@@ -115,6 +115,9 @@
 "settings.currentValue" = "தற்போதைய மதிப்பு:";
 "settings.account" = "கணக்கு";
 "settings.loggedInAs" = "உள்நுழைந்தவர்";
+"settings.legal" = "சட்டபூர்வமான";
+"settings.privacyPolicy" = "தனியுரிமைக் கொள்கை";
+"settings.termsOfService" = "சேவை விதிமுறைகள்";
 
 // MARK: - Quality Options
 "quality.standard" = "நிலையான";

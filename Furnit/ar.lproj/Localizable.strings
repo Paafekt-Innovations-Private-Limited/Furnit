@@ -115,6 +115,9 @@
 "settings.currentValue" = "القيمة الحالية:";
 "settings.account" = "الحساب";
 "settings.loggedInAs" = "مسجل الدخول كـ";
+"settings.legal" = "قانوني";
+"settings.privacyPolicy" = "سياسة الخصوصية";
+"settings.termsOfService" = "شروط الخدمة";
 
 // MARK: - Quality Options
 "quality.standard" = "قياسي";

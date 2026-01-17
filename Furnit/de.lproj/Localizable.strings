@@ -115,6 +115,9 @@
 "settings.currentValue" = "Aktueller Wert:";
 "settings.account" = "Konto";
 "settings.loggedInAs" = "Angemeldet als";
+"settings.legal" = "Rechtliches";
+"settings.privacyPolicy" = "Datenschutzrichtlinie";
+"settings.termsOfService" = "Nutzungsbedingungen";
 
 // MARK: - Quality Options
 "quality.standard" = "Standard";

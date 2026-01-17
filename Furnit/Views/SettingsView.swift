@@ -183,6 +183,35 @@ struct SettingsView: View {
                         .font(.footnote)
                 }
 
+                // Legal Section
+                Section {
+                    Link(destination: URL(string: "https://paafekt.com/privacy")!) {
+                        HStack {
+                            Image(systemName: "hand.raised.fill")
+                                .foregroundColor(.blue)
+                            Text(L10n.Settings.privacyPolicy)
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+                    }
+
+                    Link(destination: URL(string: "https://paafekt.com/terms")!) {
+                        HStack {
+                            Image(systemName: "doc.text.fill")
+                                .foregroundColor(.blue)
+                            Text(L10n.Settings.termsOfService)
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+                    }
+                } header: {
+                    Text(L10n.Settings.legal)
+                }
+
                 // Account Section
                 Section {
                     if let user = authManager.currentUser {

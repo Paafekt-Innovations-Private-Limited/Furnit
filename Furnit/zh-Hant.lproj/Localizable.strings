@@ -115,6 +115,9 @@
 "settings.currentValue" = "目前值：";
 "settings.account" = "帳戶";
 "settings.loggedInAs" = "已登入為";
+"settings.legal" = "法律";
+"settings.privacyPolicy" = "隱私政策";
+"settings.termsOfService" = "服務條款";
 
 // MARK: - Quality Options
 "quality.standard" = "標準";

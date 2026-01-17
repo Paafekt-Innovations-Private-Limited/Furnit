@@ -115,6 +115,9 @@
 "settings.currentValue" = "ప్రస్తుత విలువ:";
 "settings.account" = "ఖాతా";
 "settings.loggedInAs" = "లాగిన్ అయి ఉన్నది";
+"settings.legal" = "చట్టపరమైన";
+"settings.privacyPolicy" = "గోప్యతా విధానం";
+"settings.termsOfService" = "సేవా నిబంధనలు";
 
 // MARK: - Quality Options
 "quality.standard" = "స్టాండర్డ్";

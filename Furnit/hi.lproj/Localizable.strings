@@ -115,6 +115,9 @@
 "settings.currentValue" = "वर्तमान मान:";
 "settings.account" = "खाता";
 "settings.loggedInAs" = "इस रूप में लॉग इन";
+"settings.legal" = "कानूनी";
+"settings.privacyPolicy" = "गोपनीयता नीति";
+"settings.termsOfService" = "सेवा की शर्तें";
 
 // MARK: - Quality Options
 "quality.standard" = "मानक";
