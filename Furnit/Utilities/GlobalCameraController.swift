@@ -232,18 +232,18 @@ struct SimpleJoystickOverlay: View {
     private var orientationTitle: String {
         switch photoOrientation {
         case .portrait, .square:
-            return "Portrait"
+            return NSLocalizedString("orientation.portrait", comment: "")
         case .landscape:
-            return "Landscape"
+            return NSLocalizedString("orientation.landscape", comment: "")
         }
     }
 
     private var orientationSubtitle: String {
         switch photoOrientation {
         case .portrait, .square:
-            return "held vertically"
+            return NSLocalizedString("orientation.heldVertically", comment: "")
         case .landscape:
-            return "held horizontally"
+            return NSLocalizedString("orientation.heldHorizontally", comment: "")
         }
     }
 }

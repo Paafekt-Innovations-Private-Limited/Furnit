@@ -460,9 +460,9 @@ struct SharpRoomView: View {
                         VStack(spacing: 8) {
                             JoystickControl()
                             VStack(spacing: 1) {
-                                Text("held horizontally")
+                                Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
                                     .font(.caption2)
-                                Text("Landscape")
+                                Text(NSLocalizedString("orientation.landscape", comment: ""))
                                     .font(.caption2)
                                     .fontWeight(.medium)
                             }
@@ -1800,18 +1800,18 @@ struct WebGLJoystickOverlay: View {
     private var orientationTitle: String {
         switch photoOrientation {
         case .portrait, .square:
-            return "Portrait"
+            return NSLocalizedString("orientation.portrait", comment: "")
         case .landscape:
-            return "Landscape"
+            return NSLocalizedString("orientation.landscape", comment: "")
         }
     }
 
     private var orientationSubtitle: String {
         switch photoOrientation {
         case .portrait, .square:
-            return "held vertically"
+            return NSLocalizedString("orientation.heldVertically", comment: "")
         case .landscape:
-            return "held horizontally"
+            return NSLocalizedString("orientation.heldHorizontally", comment: "")
         }
     }
 }

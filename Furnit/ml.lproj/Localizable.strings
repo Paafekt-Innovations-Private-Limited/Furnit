@@ -268,3 +268,12 @@
 "photoRoom.downloadSuccess" = "Successfully downloaded %@. View it in your models list.";
 "photoRoom.saveSuccess" = "Your 3D model has been saved successfully.";
 "photoRoom.error" = "An error occurred while generating your 3D model.";
+
+// MARK: - Orientation Labels
+"orientation.portrait" = "Portrait";
+"orientation.landscape" = "Landscape";
+"orientation.heldVertically" = "held vertically";
+"orientation.heldHorizontally" = "held horizontally";
+
+// MARK: - Photo Selection Warning
+"photoRoom.screenshotWarning" = "Do not select screenshots - they may cause black patches";

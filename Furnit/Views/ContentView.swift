@@ -335,8 +335,11 @@ struct HomeTab: View {
                 }
 
                 // Handle PLY files - navigate to SharpRoomView (Gaussian splat viewer)
+                // Use lazy NavigationLink to avoid parsing PLY files until tapped
                 if model.fileType == .ply {
-                    NavigationLink(destination: SharpRoomView(plyURL: modelURL, roomMeasurements: nil, allowSave: false, photoOrientation: model.photoOrientation)) {
+                    NavigationLink {
+                        SharpRoomView(plyURL: modelURL, roomMeasurements: nil, allowSave: false, photoOrientation: model.photoOrientation)
+                    } label: {
                         HomeViewModelRow(model: model)
                     }
                     .onAppear {
@@ -346,7 +349,9 @@ struct HomeTab: View {
                     }
                 } else {
                     // USDZ files - navigate to viewer
-                    NavigationLink(destination: ModelViewerView(model: model)) {
+                    NavigationLink {
+                        ModelViewerView(model: model)
+                    } label: {
                         HomeViewModelRow(model: model)
                     }
                     .onAppear {
@@ -617,12 +622,17 @@ struct HomeViewModelRow: View {
 
     // Orientation label text
     private var orientationLabel: String {
+        let title: String
+        let subtitle: String
         switch model.photoOrientation {
         case .portrait, .square:
-            return "Portrait - held vertically"
+            title = NSLocalizedString("orientation.portrait", comment: "")
+            subtitle = NSLocalizedString("orientation.heldVertically", comment: "")
         case .landscape:
-            return "Landscape - held horizontally"
+            title = NSLocalizedString("orientation.landscape", comment: "")
+            subtitle = NSLocalizedString("orientation.heldHorizontally", comment: "")
         }
+        return "\(title) - \(subtitle)"
     }
 
     var body: some View {

@@ -750,6 +750,16 @@ struct SinglePhotoRoomView: View {
                         }
                         .padding(.horizontal)
 
+                        // Warning about screenshots
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.subheadline)
+                            Text(NSLocalizedString("photoRoom.screenshotWarning", comment: ""))
+                                .font(.subheadline)
+                        }
+                        .foregroundColor(.red)
+                        .padding(.top, 12)
+
                         Spacer()
                     }
                 }
