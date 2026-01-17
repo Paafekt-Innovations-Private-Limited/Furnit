@@ -492,10 +492,8 @@ struct SharpRoomView: View {
                             .allowsHitTesting(false)
 
                         // Joystick (center) - rotated 90° for horizontal viewing
-                        if !showingSmartyPants {
-                            JoystickControl()
-                                .rotationEffect(.degrees(90))
-                        }
+                        JoystickControl()
+                            .rotationEffect(.degrees(90))
 
                         Spacer()
                             .allowsHitTesting(false)
@@ -524,10 +522,8 @@ struct SharpRoomView: View {
                 // Portrait layout: standard bottom controls
 
                 // Joystick at bottom center
-                if !showingSmartyPants {
-                    WebGLJoystickOverlay()
-                        .zIndex(99997)
-                }
+                WebGLJoystickOverlay()
+                    .zIndex(99999)  // Above SmartyPants overlay
 
                 // Buttons at bottom row
                 VStack {
@@ -572,7 +568,7 @@ struct SharpRoomView: View {
                     }
                     .padding(.bottom, 20)
                 }
-                .zIndex(201)
+                .zIndex(99998)  // Higher than joystick (99997) to allow button taps
             }
         }
         .background(Color.gray)
