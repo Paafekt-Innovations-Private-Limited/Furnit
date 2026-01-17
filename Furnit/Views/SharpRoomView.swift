@@ -763,6 +763,8 @@ struct SharpRoomView: View {
                     if saveSuccess {
                         self.saveAlertMessage = "Room '\(savedName)' saved successfully!"
                         self.saveWasSuccessful = true
+                        // Release SHARP model to free memory after successful save
+                        SHARPService.shared.releaseResources()
                     } else {
                         self.saveAlertMessage = "Failed to save: \(saveError ?? "Unknown error")"
                         self.saveWasSuccessful = false
