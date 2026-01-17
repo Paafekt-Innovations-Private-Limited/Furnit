@@ -1,5 +1,24 @@
 import SwiftUI
 
+// MARK: - Lazy View Wrapper
+/// Wrapper that delays view creation until it's actually rendered
+/// Prevents NavigationLink from eagerly creating destination views
+struct LazyView<Content: View>: View {
+    let build: () -> Content
+
+    init(_ build: @autoclosure @escaping () -> Content) {
+        self.build = build
+    }
+
+    init(@ViewBuilder _ build: @escaping () -> Content) {
+        self.build = build
+    }
+
+    var body: Content {
+        build()
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var authManager: AuthenticationManager
 
@@ -335,10 +354,12 @@ struct HomeTab: View {
                 }
 
                 // Handle PLY files - navigate to SharpRoomView (Gaussian splat viewer)
-                // Use lazy NavigationLink to avoid parsing PLY files until tapped
+                // Use LazyView to ensure PLY files are only parsed when actually opened
                 if model.fileType == .ply {
                     NavigationLink {
-                        SharpRoomView(plyURL: modelURL, roomMeasurements: nil, allowSave: false, photoOrientation: model.photoOrientation)
+                        LazyView {
+                            SharpRoomView(plyURL: modelURL, roomMeasurements: nil, allowSave: false, photoOrientation: model.photoOrientation)
+                        }
                     } label: {
                         HomeViewModelRow(model: model)
                     }
@@ -350,7 +371,9 @@ struct HomeTab: View {
                 } else {
                     // USDZ files - navigate to viewer
                     NavigationLink {
-                        ModelViewerView(model: model)
+                        LazyView {
+                            ModelViewerView(model: model)
+                        }
                     } label: {
                         HomeViewModelRow(model: model)
                     }
