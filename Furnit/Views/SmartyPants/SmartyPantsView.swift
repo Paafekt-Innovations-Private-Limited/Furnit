@@ -353,6 +353,12 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     // MARK: - Public
     func setModel(_ model: MLModel?) {
         detectionQueue.sync { self.mlModel = model }
+        // Log model outputs for debugging
+        if let model = model {
+            let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
+            let outputNames = model.modelDescription.outputDescriptionsByName.keys.joined(separator: ", ")
+            logDebug("🧠 [SmartyPants] Model set - inputs: [\(inputNames)], outputs: [\(outputNames)]")
+        }
     }
     
     func startIfNeeded() {
@@ -505,11 +511,26 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // No pre-rotation needed - frames match device orientation
         let processBuffer = pixelBuffer
 
+        // Determine model's expected input size from input description
+        let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
+        let modelInputSize: Int
+        if let imageConstraint = imageInputDesc?.imageConstraint {
+            modelInputSize = imageConstraint.pixelsWide
+            if debugMode {
+                logDebug("📐 Model expects input size: \(modelInputSize)x\(imageConstraint.pixelsHigh)")
+            }
+        } else {
+            modelInputSize = 1280  // Fallback to default
+            if debugMode {
+                logDebug("📐 Using default input size: \(modelInputSize)")
+            }
+        }
+
         // STAGE 1: Resize to square
         let t1 = Date()
         setProgress(0.15, text: "Resizing…")
 
-        guard let sq = resizeToSquare(processBuffer, size: 1280) else {
+        guard let sq = resizeToSquare(processBuffer, size: modelInputSize) else {
             if debugMode { logDebug("❌ STAGE 1 FAILED: Resize to square") }
             resetProcessingFlag()
             return
@@ -634,6 +655,20 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let t5 = Date()
 
         let totalCount = detArray.count
+
+        // Safety check: prevent memory allocation crash for unexpected tensor sizes
+        // Standard model: ~1.2M elements for [1,144,8400]
+        // Prompt-free model: ~155M elements for [1,4621,33600] - needs ~620MB
+        // Allow up to 200M elements (800MB) for prompt-free models
+        let maxAllowedCount = 200_000_000
+        guard totalCount <= maxAllowedCount else {
+            logDebug("❌ STAGE 5 FAILED: Detection tensor too large (\(totalCount) elements, max \(maxAllowedCount))")
+            logDebug("   detArray shape: \(detArray.shape.map { $0.intValue })")
+            logDebug("   This may indicate an incompatible model or corrupted output")
+            resetProcessingFlag()
+            return
+        }
+
         let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
         defer { detBuf.deallocate() }
 

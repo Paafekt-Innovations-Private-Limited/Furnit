@@ -203,8 +203,10 @@ struct SimpleJoystickOverlay: View {
     var body: some View {
         VStack {
             Spacer()
+                .allowsHitTesting(false)
             HStack {
                 Spacer() // Push joystick to center
+                    .allowsHitTesting(false)
                 VStack(spacing: 8) {
                     VirtualJoystick(joystickOffset: $offset)
                         .onChange(of: offset) { _, newOffset in
@@ -225,6 +227,7 @@ struct SimpleJoystickOverlay: View {
                 }
                 .padding(.bottom, 40)
                 Spacer() // Push joystick to center
+                    .allowsHitTesting(false)
             }
         }
     }

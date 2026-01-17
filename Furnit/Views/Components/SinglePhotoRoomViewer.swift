@@ -1,6 +1,7 @@
 import SwiftUI
 import SceneKit
 import Accelerate
+import CoreML
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
@@ -877,6 +878,10 @@ struct SinglePhotoRoomView: View {
         }
         // ✅ Watch for boundary changes and rebuild automatically, then navigate to viewer
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
+            logDebug("📋 [View] adjustedBoundaries onChange triggered")
+            logDebug("   oldValue: \(oldValue != nil ? "set" : "nil")")
+            logDebug("   newValue: \(newValue != nil ? "set" : "nil")")
+            logDebug("   fixedImage: \(fixedImage != nil ? "set" : "nil")")
             if let boundaries = newValue, let image = fixedImage {
                 logDebug("🔄 [View] Boundaries adjusted, rebuilding room...")
                 Task {
@@ -1080,6 +1085,11 @@ struct SceneKitViewer: View {
     @State private var showRoomNameInput = false
     @State private var roomName = ""
 
+    // SmartyPants and screenshot state
+    @State private var showingSmartyPants = false
+    @State private var mlModel: MLModel? = nil
+    @State private var showScreenshotFlash = false
+
     var body: some View {
         ZStack {
             SceneView(
@@ -1091,6 +1101,7 @@ struct SceneKitViewer: View {
                 logDebug("🎬 [Viewer] SceneKit viewer appeared")
                 logDebug("   - Scene nodes: \(scene.rootNode.childNodes.count)")
                 setupCamera()
+                loadMLModel()
             }
             .onDisappear {
                 GlobalCameraController.shared.clearCamera()
@@ -1101,9 +1112,66 @@ struct SceneKitViewer: View {
                 saveRoomProgressOverlay
             }
 
+            // Screenshot flash effect
+            if showScreenshotFlash {
+                Color.white
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
+
             // ✅ GLOBAL JOYSTICK - uses GlobalCameraController
             SimpleJoystickOverlay(photoOrientation: .portrait)
+                .allowsHitTesting(true)
+                .zIndex(99996)
+
+            // SmartyPants overlay when active
+            if showingSmartyPants {
+                SmartyPantsUIView(
+                    capturedImage: .constant(nil),
+                    roomImage: nil,
+                    mlModel: mlModel,
+                    processInterval: 0.07,
+                    active: true
+                )
+                .ignoresSafeArea()
                 .zIndex(99997)
+            }
+
+            // Bottom row buttons (Brain + Screenshot) - HIGHEST zIndex to stay on top of SmartyPants
+            VStack {
+                Spacer()
+                    .allowsHitTesting(false)
+                HStack {
+                    // Brain button (bottom-left)
+                    Button(action: {
+                        showingSmartyPants.toggle()
+                    }) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+                    }
+                    .padding(.leading, 20)
+
+                    Spacer()
+                        .allowsHitTesting(false)
+
+                    // Screenshot button (bottom-right)
+                    Button(action: {
+                        takeScreenshot()
+                    }) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(Color.blue).shadow(radius: 5))
+                    }
+                    .padding(.trailing, 20)
+                }
+                .padding(.bottom, 30)
+            }
+            .zIndex(99999)
 
             if showControls {
                 VStack {
@@ -1404,6 +1472,61 @@ struct SceneKitViewer: View {
         GlobalCameraController.shared.registerSceneKitCamera(camNode)
 
         logDebug("   ✅ Camera setup complete and registered with GlobalCameraController")
+    }
+
+    // MARK: - Screenshot
+    private func takeScreenshot() {
+        logDebug("📸 Taking screenshot...")
+
+        // Capture the window
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let windows = scenes.flatMap { $0.windows }
+        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else {
+            logDebug("❌ No window found")
+            return
+        }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+        let image = renderer.image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+
+        logDebug("📸 Screenshot captured, saving to Photos...")
+
+        // Save to photos
+        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+        logDebug("✅ Screenshot saved to Photos")
+
+        // Show flash effect
+        withAnimation(.easeIn(duration: 0.1)) {
+            showScreenshotFlash = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            withAnimation(.easeOut(duration: 0.2)) {
+                showScreenshotFlash = false
+            }
+        }
+    }
+
+    // MARK: - ML Model Loading
+    private func loadMLModel() {
+        Task {
+            do {
+                if let modelURL = Bundle.main.url(forResource: "yoloe-11l-seg-pf", withExtension: "mlmodelc") {
+                    let config = MLModelConfiguration()
+                    config.computeUnits = .cpuAndNeuralEngine
+                    let model = try MLModel(contentsOf: modelURL, configuration: config)
+                    await MainActor.run {
+                        self.mlModel = model
+                    }
+                    logDebug("✅ [SceneKitViewer] ML model loaded")
+                }
+            } catch {
+                logDebug("❌ [SceneKitViewer] Failed to load ML model: \(error)")
+            }
+        }
     }
 }
 
