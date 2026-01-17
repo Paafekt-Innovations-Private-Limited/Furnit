@@ -12,6 +12,27 @@ import simd
 @MainActor
 class SHARPService: ObservableObject {
 
+    // MARK: - Singleton
+    /// Shared instance - reuses loaded model across views to prevent memory pressure
+    static let shared = SHARPService()
+
+    // MARK: - On-Demand Resources
+
+    /// Tag for the SHARP model in On-Demand Resources
+    private static let sharpModelTag = "SHARPModel"
+
+    /// Resource request for ODR
+    private var resourceRequest: NSBundleResourceRequest?
+
+    /// Whether the ODR resources are currently being downloaded
+    @Published var isDownloadingResources: Bool = false
+
+    /// Download progress (0.0 to 1.0) for ODR
+    @Published var downloadProgress: Double = 0.0
+
+    /// Whether ODR resources are available locally
+    @Published var resourcesAvailable: Bool = false
+
     // MARK: - Published Properties
 
     /// Current generation status
@@ -48,6 +69,9 @@ class SHARPService: ObservableObject {
     /// Metal Performance Shaders image scaler
     private let imageScaler: MPSImageBilinearScale?
 
+    /// Progress observation for ODR download
+    private var progressObservation: NSKeyValueObservation?
+
     // MARK: - File Management
 
     /// Directory for generated PLY files (temp until user explicitly saves)
@@ -71,10 +95,133 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Metal not available, using CPU fallback")
         }
 
-        // Load CoreML model
+        // Check ODR availability and preload if available
         Task {
-            await loadModel()
+            await checkResourceAvailability()
+            if resourcesAvailable {
+                await loadModel()
+            }
         }
+    }
+
+    // MARK: - On-Demand Resources
+
+    /// Check if running from Xcode (development) vs App Store
+    private var isRunningFromXcode: Bool {
+        #if DEBUG
+        // Debug builds are always from Xcode - ODR only works in App Store/TestFlight
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// Check if SHARP model resources are available locally
+    func checkResourceAvailability() async {
+        // When running from Xcode, model is bundled - skip ODR
+        if isRunningFromXcode {
+            logDebug("SHARP: Running from Xcode - model bundled locally, skipping ODR")
+            resourcesAvailable = true
+            return
+        }
+
+        let tags: Set<String> = [Self.sharpModelTag]
+
+        // Check if resources are already downloaded
+        let available = Bundle.main.preservationPriority(forTag: Self.sharpModelTag) > 0
+        logDebug("SHARP: ODR availability check - preservationPriority > 0: \(available)")
+
+        // Also check by attempting conditional begin access
+        let request = NSBundleResourceRequest(tags: tags)
+        request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
+
+        let conditionallyAvailable = await request.conditionallyBeginAccessingResources()
+        resourcesAvailable = conditionallyAvailable
+        logDebug("SHARP: ODR conditionallyBeginAccessingResources: \(conditionallyAvailable)")
+
+        if conditionallyAvailable {
+            // Keep the request alive to prevent purging
+            self.resourceRequest = request
+        }
+    }
+
+    /// Download SHARP model resources if not available
+    /// - Returns: true if resources are available after this call
+    func downloadResourcesIfNeeded() async throws -> Bool {
+        // When running from Xcode, model is bundled - no download needed
+        if isRunningFromXcode {
+            logDebug("SHARP: Running from Xcode - model bundled, no download needed")
+            resourcesAvailable = true
+            return true
+        }
+
+        // Already available
+        if resourcesAvailable {
+            logDebug("SHARP: Resources already available")
+            return true
+        }
+
+        // Already downloading
+        if isDownloadingResources {
+            logDebug("SHARP: Download already in progress")
+            // Wait for existing download to complete
+            while isDownloadingResources {
+                try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            }
+            return resourcesAvailable
+        }
+
+        logDebug("SHARP: Starting ODR download...")
+        isDownloadingResources = true
+        downloadProgress = 0.0
+        statusMessage = "Downloading 3D engine..."
+
+        let tags: Set<String> = [Self.sharpModelTag]
+        let request = NSBundleResourceRequest(tags: tags)
+        request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
+
+        // Observe download progress
+        progressObservation = request.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+            Task { @MainActor in
+                self?.downloadProgress = progress.fractionCompleted
+                let percent = Int(progress.fractionCompleted * 100)
+                self?.statusMessage = "Downloading 3D engine... \(percent)%"
+            }
+        }
+
+        do {
+            try await request.beginAccessingResources()
+            logDebug("SHARP: ODR download complete")
+
+            resourcesAvailable = true
+            isDownloadingResources = false
+            downloadProgress = 1.0
+            statusMessage = "Download complete"
+
+            // Keep the request alive
+            self.resourceRequest = request
+            progressObservation = nil
+
+            return true
+        } catch {
+            logDebug("SHARP: ODR download failed: \(error)")
+
+            isDownloadingResources = false
+            downloadProgress = 0.0
+            statusMessage = "Download failed"
+            progressObservation = nil
+
+            throw error
+        }
+    }
+
+    /// Release ODR resources (call when no longer needed to free disk space)
+    func releaseResources() {
+        resourceRequest?.endAccessingResources()
+        resourceRequest = nil
+        resourcesAvailable = false
+        model = nil
+        logDebug("SHARP: Released ODR resources")
     }
 
     // MARK: - Model Loading
@@ -102,6 +249,25 @@ class SHARPService: ObservableObject {
             isLoadingModel = false
             statusMessage = "Not enough space on device"
             return
+        }
+
+        // Ensure ODR resources are available
+        if !resourcesAvailable {
+            logDebug("SHARP: Resources not available, downloading...")
+            do {
+                let downloaded = try await downloadResourcesIfNeeded()
+                if !downloaded {
+                    logDebug("SHARP: Failed to download resources")
+                    isLoadingModel = false
+                    statusMessage = "Download required"
+                    return
+                }
+            } catch {
+                logDebug("SHARP: ODR download error: \(error)")
+                isLoadingModel = false
+                statusMessage = "Download failed"
+                return
+            }
         }
 
         progress = 0.3

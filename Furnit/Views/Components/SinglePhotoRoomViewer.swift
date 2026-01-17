@@ -577,7 +577,7 @@ struct DraggableHandle: View {
 
 struct SinglePhotoRoomView: View {
     @StateObject private var reconstructor = SinglePhotoRoomReconstructor()
-    @StateObject private var sharpService = SHARPService()
+    @ObservedObject private var sharpService = SHARPService.shared
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var adjustedBoundaries: RoomStructure?
@@ -755,8 +755,44 @@ struct SinglePhotoRoomView: View {
                 }
             }
 
+            // Progress overlay for ODR downloading
+            if sharpService.isDownloadingResources {
+                VStack(spacing: 16) {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.purple.opacity(0.3), lineWidth: 8)
+                            .frame(width: 60, height: 60)
+                        Circle()
+                            .trim(from: 0, to: sharpService.downloadProgress)
+                            .stroke(Color.purple, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .frame(width: 60, height: 60)
+                            .rotationEffect(.degrees(-90))
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.purple)
+                    }
+
+                    Text(sharpService.statusMessage)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    Text("\(Int(sharpService.downloadProgress * 100))%")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.purple)
+
+                    Text("One-time download (~1.2 GB)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(32)
+                .background(Color(.systemBackground).opacity(0.95))
+                .cornerRadius(16)
+                .shadow(radius: 10)
+            }
+
             // Progress overlay for model loading
-            if sharpService.isLoadingModel {
+            if sharpService.isLoadingModel && !sharpService.isDownloadingResources {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.5)

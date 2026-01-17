@@ -72,29 +72,7 @@ struct RoomBoundaryManager {
         return (eye: eye, target: target)
     }
 
-    /// Calculate camera position to fit front wall in view
-    /// - Parameter fovDegrees: Camera field of view in degrees
-    /// - Returns: (eye position, target position) for lookAt camera
-    func getCameraFittingFrontWall(fovDegrees: Float = 60) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
-        let maxDim = max(width, height)
-        let tanHalfFov = tan(fovDegrees * .pi / 360)  // tan(fov/2) in radians
-        var distance = (maxDim / 2) / tanHalfFov
-        distance *= 1.1  // 10% padding
 
-        let eye = SIMD3<Float>(
-            centerX,
-            centerY,
-            frontWallZ + distance  // In front of front wall
-        )
-
-        let target = SIMD3<Float>(
-            centerX,
-            centerY,
-            frontWallZ  // Look at front wall
-        )
-
-        return (eye: eye, target: target)
-    }
 }
 
 // MARK: - Orbit Gesture View (like antimatter15/splat)
@@ -323,8 +301,6 @@ struct SharpRoomView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var showingSmartyPants = false
-    @State private var capturedImage: UIImage? = nil
-    @State private var roomSnapshot: UIImage? = nil
     @State private var mlModel: MLModel? = nil
 
     // JS-measured front wall dimensions (from actual splat bounds)
@@ -350,17 +326,6 @@ struct SharpRoomView: View {
         let classicURL = URL(fileURLWithPath: classicPath)
         if FileManager.default.fileExists(atPath: classicPath) {
             return classicURL
-        }
-        return plyURL
-    }
-
-    /// Compute 3DGS PLY URL (SuperSplat compatible format)
-    private var threeDGSPlyURL: URL {
-        let path = plyURL.path
-        let threeDGSPath = path.replacingOccurrences(of: ".ply", with: "_3dgs.ply")
-        let threeDGSURL = URL(fileURLWithPath: threeDGSPath)
-        if FileManager.default.fileExists(atPath: threeDGSPath) {
-            return threeDGSURL
         }
         return plyURL
     }
@@ -445,8 +410,8 @@ struct SharpRoomView: View {
             // SmartyPants overlay (when active) - full screen
             if showingSmartyPants {
                 SmartyPantsUIView(
-                    capturedImage: $capturedImage,
-                    roomImage: roomSnapshot,
+                    capturedImage: .constant(nil),
+                    roomImage: nil,
                     mlModel: mlModel,
                     processInterval: 0.07,
                     active: true
@@ -472,10 +437,7 @@ struct SharpRoomView: View {
                             if showingSmartyPants {
                                 showingSmartyPants = false
                             } else {
-                                NotificationCenter.default.post(name: NSNotification.Name("CaptureMetalSnapshot"), object: nil)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    showingSmartyPants = true
-                                }
+                                showingSmartyPants = true
                             }
                         }) {
                             Image(systemName: "brain.head.profile")
@@ -535,10 +497,7 @@ struct SharpRoomView: View {
                             if showingSmartyPants {
                                 showingSmartyPants = false
                             } else {
-                                NotificationCenter.default.post(name: NSNotification.Name("CaptureMetalSnapshot"), object: nil)
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                    showingSmartyPants = true
-                                }
+                                showingSmartyPants = true
                             }
                         }) {
                             Image(systemName: "brain.head.profile")
@@ -607,7 +566,11 @@ struct SharpRoomView: View {
         }
         .sheet(isPresented: $showShareSheet) {
             // Share the 3DGS format (SuperSplat compatible)
-            ShareSheet(activityItems: [threeDGSPlyURL])
+            let threeDGSPath = plyURL.path.replacingOccurrences(of: ".ply", with: "_3dgs.ply")
+            let shareURL = FileManager.default.fileExists(atPath: threeDGSPath)
+                ? URL(fileURLWithPath: threeDGSPath)
+                : plyURL
+            ShareSheet(activityItems: [shareURL])
         }
         .onAppear {
             loadMLModel()
@@ -708,23 +671,6 @@ struct SharpRoomView: View {
             ?? 3.0
 
         return String(format: "%.1f × %.1f m", wallWidth, wallHeight)
-    }
-
-    /// Get file size of the PLY file
-    private func getFileSize() -> String {
-        let url = classicPlyURL
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? UInt64 else {
-            return "Unknown"
-        }
-
-        let mb = Double(size) / (1024 * 1024)
-        if mb >= 1.0 {
-            return String(format: "%.1f MB", mb)
-        } else {
-            let kb = Double(size) / 1024
-            return String(format: "%.0f KB", kb)
-        }
     }
 
     // MARK: - Save Room Progress Overlay
@@ -907,7 +853,7 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
 
         // Serve the local main.js (modified antimatter15/splat)
         if path == "/main.js" {
-            // Try bundle first
+            // Try bundle resource
             if let jsURL = Bundle.main.url(forResource: "splat_main", withExtension: "js"),
                let data = try? Data(contentsOf: jsURL) {
                 let response = HTTPURLResponse(
@@ -926,26 +872,7 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
                 return
             }
 
-            // Try filesystem path as fallback
-            let fsPath = "/Users/al/Documents/tries01/Furnit/Furnit/Resources/splat_main.js"
-            if let data = try? Data(contentsOf: URL(fileURLWithPath: fsPath)) {
-                let response = HTTPURLResponse(
-                    url: requestURL,
-                    statusCode: 200,
-                    httpVersion: "HTTP/1.1",
-                    headerFields: [
-                        "Content-Type": "application/javascript; charset=utf-8",
-                        "Content-Length": "\(data.count)"
-                    ]
-                )!
-                urlSchemeTask.didReceive(response)
-                urlSchemeTask.didReceive(data)
-                urlSchemeTask.didFinish()
-                logDebug("LocalFileSchemeHandler: Served main.js from filesystem (\(data.count) bytes)")
-                return
-            }
-
-            logDebug("LocalFileSchemeHandler: main.js not found anywhere!")
+            logDebug("LocalFileSchemeHandler: main.js not found in bundle!")
         }
 
         // 404 for other paths
