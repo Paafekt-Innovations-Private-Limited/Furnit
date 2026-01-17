@@ -118,6 +118,7 @@
 "settings.legal" = "قانوني";
 "settings.privacyPolicy" = "سياسة الخصوصية";
 "settings.termsOfService" = "شروط الخدمة";
+"settings.support" = "الدعم";
 
 // MARK: - Quality Options
 "quality.standard" = "قياسي";

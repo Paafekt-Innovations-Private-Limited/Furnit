@@ -118,6 +118,7 @@
 "settings.legal" = "Rechtliches";
 "settings.privacyPolicy" = "Datenschutzrichtlinie";
 "settings.termsOfService" = "Nutzungsbedingungen";
+"settings.support" = "Support";
 
 // MARK: - Quality Options
 "quality.standard" = "Standard";

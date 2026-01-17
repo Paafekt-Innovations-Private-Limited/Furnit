@@ -118,6 +118,7 @@
 "settings.legal" = "ಕಾನೂನು";
 "settings.privacyPolicy" = "ಗೌಪ್ಯತಾ ನೀತಿ";
 "settings.termsOfService" = "ಸೇವಾ ನಿಯಮಗಳು";
+"settings.support" = "ಬೆಂಬಲ";
 
 // MARK: - Quality Options
 "quality.standard" = "ಸ್ಟ್ಯಾಂಡರ್ಡ್";

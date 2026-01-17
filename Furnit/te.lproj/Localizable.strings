@@ -118,6 +118,7 @@
 "settings.legal" = "చట్టపరమైన";
 "settings.privacyPolicy" = "గోప్యతా విధానం";
 "settings.termsOfService" = "సేవా నిబంధనలు";
+"settings.support" = "సహాయం";
 
 // MARK: - Quality Options
 "quality.standard" = "స్టాండర్డ్";

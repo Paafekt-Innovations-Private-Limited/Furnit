@@ -133,6 +133,7 @@ enum L10n {
         static let legal = "settings.legal".localized
         static let privacyPolicy = "settings.privacyPolicy".localized
         static let termsOfService = "settings.termsOfService".localized
+        static let support = "settings.support".localized
     }
 
     // MARK: Help & Support

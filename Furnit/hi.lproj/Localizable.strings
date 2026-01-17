@@ -118,6 +118,7 @@
 "settings.legal" = "कानूनी";
 "settings.privacyPolicy" = "गोपनीयता नीति";
 "settings.termsOfService" = "सेवा की शर्तें";
+"settings.support" = "सहायता";
 
 // MARK: - Quality Options
 "quality.standard" = "मानक";

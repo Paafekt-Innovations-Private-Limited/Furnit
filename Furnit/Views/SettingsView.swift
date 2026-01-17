@@ -208,6 +208,18 @@ struct SettingsView: View {
                                 .font(.caption)
                         }
                     }
+
+                    Link(destination: URL(string: "https://paafekt.com/support")!) {
+                        HStack {
+                            Image(systemName: "questionmark.circle.fill")
+                                .foregroundColor(.blue)
+                            Text(L10n.Settings.support)
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+                    }
                 } header: {
                     Text(L10n.Settings.legal)
                 }

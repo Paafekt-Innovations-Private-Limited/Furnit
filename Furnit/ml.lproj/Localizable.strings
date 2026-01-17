@@ -118,6 +118,7 @@
 "settings.legal" = "നിയമപരം";
 "settings.privacyPolicy" = "സ്വകാര്യതാ നയം";
 "settings.termsOfService" = "സേവന നിബന്ധനകൾ";
+"settings.support" = "പിന്തുണ";
 
 // MARK: - Quality Options
 "quality.standard" = "സ്റ്റാൻഡേർഡ്";

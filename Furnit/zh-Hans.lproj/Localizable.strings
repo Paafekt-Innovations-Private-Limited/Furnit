@@ -118,6 +118,7 @@
 "settings.legal" = "法律";
 "settings.privacyPolicy" = "隐私政策";
 "settings.termsOfService" = "服务条款";
+"settings.support" = "支持";
 
 // MARK: - Quality Options
 "quality.standard" = "标准";
