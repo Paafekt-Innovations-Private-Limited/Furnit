@@ -437,6 +437,8 @@ struct SharpRoomView: View {
                             if showingSmartyPants {
                                 showingSmartyPants = false
                             } else {
+                                // Release SHARP model to free memory for YOLO segmentation
+                                SHARPService.shared.releaseResources()
                                 showingSmartyPants = true
                             }
                         }) {
@@ -497,6 +499,8 @@ struct SharpRoomView: View {
                             if showingSmartyPants {
                                 showingSmartyPants = false
                             } else {
+                                // Release SHARP model to free memory for YOLO segmentation
+                                SHARPService.shared.releaseResources()
                                 showingSmartyPants = true
                             }
                         }) {
