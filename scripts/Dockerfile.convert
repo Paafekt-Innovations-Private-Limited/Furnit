@@ -16,13 +16,14 @@ RUN python -m pip install --upgrade pip setuptools wheel
 # Install PyTorch (CPU only for conversion)
 RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
-# Install ai-edge-torch (Google's official PyTorch to TFLite converter)
+# Install ultralytics and TFLite conversion dependencies
 RUN pip install \
-    ai-edge-torch \
+    ultralytics \
     tensorflow==2.15.0 \
+    onnx \
+    onnxruntime \
     numpy \
-    Pillow \
-    ultralytics
+    Pillow
 
 WORKDIR /workspace
 
