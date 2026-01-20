@@ -1,4 +1,4 @@
-name: Convert ONNX to TFLite
+name: Convert PyTorch to TFLite
 
 on:
   workflow_dispatch: {}
@@ -14,16 +14,16 @@ jobs:
 
       - name: Build conversion Docker image
         run: |
-          docker build -f scripts/Dockerfile.convert -t furnit/onnx-convert:latest .
+          docker build -f scripts/Dockerfile.convert -t furnit/pt-convert:latest .
 
-      - name: Run ONNX -> TFLite conversion
+      - name: Run PyTorch -> TFLite conversion
         run: |
           mkdir -p android/output
-          docker run --rm -v "${{ github.workspace }}":/workspace -w /workspace furnit/onnx-convert:latest \
-            android/yoloe-11l-seg-pf.onnx android/output/yoloe_11l_from_onnx.tflite /workspace/tmp_conv
+          docker run --rm -v "${{ github.workspace }}":/workspace -w /workspace furnit/pt-convert:latest \
+            android/yoloe-11l-seg-pf.pt android/output/yoloe_11l.tflite /workspace/tmp_conv
 
       - name: Upload TFLite artifact
         uses: actions/upload-artifact@v4
         with:
-          name: yoloe_11l_from_onnx.tflite
-          path: android/output/yoloe_11l_from_onnx.tflite
+          name: yoloe_11l.tflite
+          path: android/output/yoloe_11l.tflite

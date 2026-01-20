@@ -7,24 +7,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     libsndfile1 \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
 RUN python -m pip install --upgrade pip setuptools wheel
 
-# Pin compatible versions for onnx2tf
-# See: https://github.com/PINTO0309/onnx2tf
+# Install PyTorch (CPU only for conversion)
+RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install ai-edge-torch (Google's official PyTorch to TFLite converter)
 RUN pip install \
-    onnx==1.15.0 \
-    onnx2tf==1.22.3 \
+    ai-edge-torch \
     tensorflow==2.15.0 \
-    tf_keras==2.15.0 \
-    onnxruntime==1.17.0 \
-    onnx_graphsurgeon \
-    onnxsim \
-    sng4onnx \
-    psutil \
     numpy \
-    Pillow
+    Pillow \
+    ultralytics
 
 WORKDIR /workspace
 
