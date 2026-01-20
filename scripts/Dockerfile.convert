@@ -21,6 +21,7 @@ RUN pip install \
     onnxruntime==1.17.0 \
     onnx_graphsurgeon \
     sng4onnx \
+    psutil \
     numpy \
     Pillow
 
