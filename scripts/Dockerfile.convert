@@ -13,7 +13,7 @@ RUN python -m pip install --upgrade pip setuptools wheel
 
 # Pin compatible versions; these work together in a linux x86_64 container
 RUN pip install "protobuf==3.20.1" \
-    onnx==1.13.1 onnx-tf==1.11.0 tensorflow==2.11.0 onnxruntime==1.15.1 numpy Pillow
+    onnx==1.13.1 onnx-tf==1.10.0 tensorflow==2.11.0 onnxruntime==1.15.1 numpy Pillow
 
 WORKDIR /workspace
 
