@@ -1,0 +1,24 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.furnit.android">
+
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+
+    <application
+        android:allowBackup="true"
+        android:label="FurnitAndroid"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        <activity android:name="com.furnit.android.ARActivity" />
+        <activity android:name="com.furnit.android.SmartyPantsActivity" />
+        <activity android:name="com.furnit.android.ContentActivity" />
+        <activity android:name="com.furnit.android.LoginActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name="com.furnit.android.MainActivity" />
+    </application>
+
+</manifest>

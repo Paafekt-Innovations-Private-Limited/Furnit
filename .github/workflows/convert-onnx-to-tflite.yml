@@ -1,0 +1,27 @@
+name: Convert ONNX to TFLite
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build conversion Docker image
+        run: |
+          docker build -f scripts/Dockerfile.convert -t furnit/onnx-convert:latest .
+
+      - name: Run ONNX -> TFLite conversion
+        run: |
+          mkdir -p android/output
+          docker run --rm -v "${{ github.workspace }}":/workspace -w /workspace furnit/onnx-convert:latest \
+            /usr/local/bin/docker_convert_entrypoint.sh android/yoloe-11l-seg-pf.onnx android/output/yoloe_11l_from_onnx.tflite /workspace/tmp_conv
+
+      - name: Upload TFLite artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoloe_11l_from_onnx.tflite
+          path: android/output/yoloe_11l_from_onnx.tflite

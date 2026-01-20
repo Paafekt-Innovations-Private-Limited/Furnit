@@ -1,0 +1,23 @@
+FROM python:3.10-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    curl \
+    libsndfile1 \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# Pin compatible versions; these work together in a linux x86_64 container
+RUN pip install "protobuf==3.20.1" \
+    onnx==1.13.1 onnx-tf==1.11.0 tensorflow==2.11.0 onnxruntime==1.15.1 numpy Pillow
+
+WORKDIR /workspace
+
+COPY docker_convert_entrypoint.sh /usr/local/bin/docker_convert_entrypoint.sh
+RUN chmod +x /usr/local/bin/docker_convert_entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/docker_convert_entrypoint.sh"]
