@@ -24,11 +24,13 @@ def main():
     print(f"Converting ONNX: {input_path} -> TFLite: {output_path}")
 
     # onnx2tf converts directly to TFLite
+    # Use static batch size to avoid dynamic dimension issues
     onnx2tf.convert(
         input_onnx_file_path=input_path,
         output_folder_path=args.tmpdir,
         copy_onnx_input_output_names_to_tflite=True,
         non_verbose=False,
+        overwrite_input_shape=['images:1,3,768,768'],  # Static input shape for YOLO model
     )
 
     # Find the generated tflite file
