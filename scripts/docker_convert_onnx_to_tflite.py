@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Convert a PyTorch YOLO model (.pt) to TFLite using ultralytics export.
+"""Convert YOLO ONNX model to TFLite using onnx2tf with shape overrides.
 
 Usage:
-  python docker_convert_onnx_to_tflite.py --input model.pt --output model.tflite
+  python docker_convert_onnx_to_tflite.py --input model.onnx --output model.tflite
 """
 import argparse
 import os
 import shutil
+import subprocess
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--input', required=True, help='Input model path (.pt)')
+    p.add_argument('--input', required=True, help='Input model path (.pt or .onnx)')
     p.add_argument('--output', required=True, help='Output TFLite model path')
     p.add_argument('--tmpdir', default='/tmp/convert_output', help='Temp directory')
     args = p.parse_args()
@@ -23,43 +24,74 @@ def main():
 
     print(f"Converting: {input_path} -> {output_path}")
 
-    from ultralytics import YOLO
+    # If input is .pt, first export to ONNX using ultralytics
+    if input_path.endswith('.pt'):
+        from ultralytics import YOLO
+        print("Loading YOLO model and exporting to ONNX...")
+        model = YOLO(input_path)
+        # Export to ONNX only (not TFLite, we'll do that manually)
+        onnx_path = model.export(format='onnx', imgsz=768, simplify=True, opset=17)
+        print(f"ONNX exported to: {onnx_path}")
+        input_path = onnx_path
 
-    print("Loading YOLO model...")
-    model = YOLO(input_path)
+    # Convert ONNX to TFLite using onnx2tf CLI with special options
+    print("Converting ONNX to TFLite using onnx2tf...")
 
-    print("Exporting to TFLite...")
-    # ultralytics export creates the tflite file in the same directory as the .pt
-    export_result = model.export(format='tflite', imgsz=768)
+    cmd = [
+        'onnx2tf',
+        '-i', input_path,
+        '-o', args.tmpdir,
+        '-oiqt',  # Output integer quantized tflite
+        '-ioqd', 'uint8',  # Input/output quantization dtype
+        '-cind', 'images', '1,3,768,768', '[[[[0.0,0.0,0.0]]]]', '[[[[1.0,1.0,1.0]]]]',  # Calibration
+        '-coion',  # Copy ONNX input/output names
+        '-b', '1',  # Batch size
+        '-kat', 'images',  # Keep as-is for input tensor
+    ]
 
-    print(f"Export result: {export_result}")
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        print(result.stdout)
+        if result.returncode != 0:
+            print(f"onnx2tf failed: {result.stderr}")
+            # Try simpler conversion without quantization
+            print("Trying simpler conversion...")
+            cmd_simple = [
+                'onnx2tf',
+                '-i', input_path,
+                '-o', args.tmpdir,
+                '-coion',
+                '-b', '1',
+            ]
+            result = subprocess.run(cmd_simple, capture_output=True, text=True, timeout=600)
+            print(result.stdout)
+            if result.returncode != 0:
+                print(f"Simple conversion also failed: {result.stderr}")
+                raise RuntimeError("onnx2tf conversion failed")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("onnx2tf conversion timed out")
 
-    # Find the generated tflite file
-    if export_result and os.path.exists(export_result):
-        shutil.copy(export_result, output_path)
-        print(f"TFLite model saved to {output_path}")
-    else:
-        # Look for tflite in common locations
-        base_dir = os.path.dirname(input_path)
-        base_name = os.path.splitext(os.path.basename(input_path))[0]
-
-        possible_paths = [
-            os.path.join(base_dir, f"{base_name}_saved_model", f"{base_name}_float32.tflite"),
-            os.path.join(base_dir, f"{base_name}_float32.tflite"),
-            os.path.join(base_dir, f"{base_name}.tflite"),
-        ]
-
-        for p in possible_paths:
-            if os.path.exists(p):
-                shutil.copy(p, output_path)
+    # Find generated tflite file
+    tflite_files = [f for f in os.listdir(args.tmpdir) if f.endswith('.tflite')]
+    if tflite_files:
+        # Prefer float32 version
+        for f in tflite_files:
+            if 'float32' in f:
+                src = os.path.join(args.tmpdir, f)
+                shutil.copy(src, output_path)
                 print(f"TFLite model saved to {output_path}")
                 break
         else:
-            # List directory to help debug
-            print(f"Files in {base_dir}:")
-            for f in os.listdir(base_dir):
-                print(f"  {f}")
-            raise FileNotFoundError(f"Could not find generated TFLite file")
+            # Just use first one
+            src = os.path.join(args.tmpdir, tflite_files[0])
+            shutil.copy(src, output_path)
+            print(f"TFLite model saved to {output_path}")
+    else:
+        # List directory to help debug
+        print(f"Files in {args.tmpdir}:")
+        for f in os.listdir(args.tmpdir):
+            print(f"  {f}")
+        raise FileNotFoundError(f"No TFLite file generated in {args.tmpdir}")
 
     print('Done')
 

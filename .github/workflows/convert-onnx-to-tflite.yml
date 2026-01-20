@@ -16,11 +16,11 @@ jobs:
         run: |
           docker build -f scripts/Dockerfile.convert -t furnit/pt-convert:latest .
 
-      - name: Run PyTorch -> TFLite conversion
+      - name: Run ONNX -> TFLite conversion
         run: |
           mkdir -p android/output
           docker run --rm -v "${{ github.workspace }}":/workspace -w /workspace furnit/pt-convert:latest \
-            android/yoloe-11l-seg-pf.pt android/output/yoloe_11l.tflite /workspace/tmp_conv
+            android/yoloe-11l-seg-pf.onnx android/output/yoloe_11l.tflite /workspace/tmp_conv
 
       - name: Upload TFLite artifact
         uses: actions/upload-artifact@v4
