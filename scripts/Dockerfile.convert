@@ -20,6 +20,7 @@ RUN pip install \
     tf_keras==2.15.0 \
     onnxruntime==1.17.0 \
     onnx_graphsurgeon \
+    onnxsim \
     sng4onnx \
     psutil \
     numpy \
