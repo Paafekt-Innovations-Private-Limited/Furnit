@@ -17,7 +17,7 @@ RUN pip install "protobuf==3.20.1" \
 
 WORKDIR /workspace
 
-COPY docker_convert_entrypoint.sh /usr/local/bin/docker_convert_entrypoint.sh
+COPY scripts/docker_convert_entrypoint.sh /usr/local/bin/docker_convert_entrypoint.sh
 RUN chmod +x /usr/local/bin/docker_convert_entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/docker_convert_entrypoint.sh"]
