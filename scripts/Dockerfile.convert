@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m pip install --upgrade pip setuptools wheel
 
 # Use onnx2tf which is more modern and handles version compatibility better
-RUN pip install onnx onnx2tf tensorflow onnxruntime numpy Pillow
+RUN pip install onnx onnx2tf tensorflow tf_keras onnxruntime numpy Pillow
 
 WORKDIR /workspace
 

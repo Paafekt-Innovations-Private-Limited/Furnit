@@ -18,7 +18,7 @@ jobs:
         run: |
           mkdir -p android/output
           docker run --rm -v "${{ github.workspace }}":/workspace -w /workspace furnit/onnx-convert:latest \
-            /usr/local/bin/docker_convert_entrypoint.sh android/yoloe-11l-seg-pf.onnx android/output/yoloe_11l_from_onnx.tflite /workspace/tmp_conv
+            android/yoloe-11l-seg-pf.onnx android/output/yoloe_11l_from_onnx.tflite /workspace/tmp_conv
 
       - name: Upload TFLite artifact
         uses: actions/upload-artifact@v4
