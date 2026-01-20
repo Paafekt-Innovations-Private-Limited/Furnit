@@ -16,14 +16,21 @@ RUN python -m pip install --upgrade pip setuptools wheel
 # Install PyTorch (CPU only for conversion)
 RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
-# Install ultralytics and TFLite conversion dependencies
+# Install all TFLite export dependencies upfront with compatible versions
+# This prevents ultralytics from auto-updating and breaking compatibility
 RUN pip install \
-    ultralytics \
-    tensorflow==2.15.0 \
-    onnx \
-    onnxruntime \
+    tensorflow==2.17.0 \
+    tf_keras==2.17.0 \
+    onnx==1.17.0 \
+    onnxruntime==1.19.0 \
+    onnx2tf==1.26.3 \
+    onnxslim>=0.1.71 \
+    onnx_graphsurgeon>=0.3.26 \
+    sng4onnx>=1.0.1 \
+    ai-edge-litert>=1.2.0 \
     numpy \
-    Pillow
+    Pillow \
+    ultralytics
 
 WORKDIR /workspace
 
