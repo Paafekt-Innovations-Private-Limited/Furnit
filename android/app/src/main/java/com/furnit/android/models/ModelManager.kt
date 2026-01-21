@@ -6,8 +6,9 @@ class ModelManager(private val context: Context) {
     private val models = mutableListOf<Model>()
 
     init {
-        // Load bundled models from assets or list from a server
-        models.add(Model("chair_01", "Chair", "models/chair_01.glb"))
+        // Load bundled models from assets
+        models.add(Model("vintage", "Vintage Living Room", "models/vintage.glb"))
+        models.add(Model("cozy_room", "Cozy Living Room", "models/cozy_room.glb"))
     }
 
     fun listModels(): List<Model> = models

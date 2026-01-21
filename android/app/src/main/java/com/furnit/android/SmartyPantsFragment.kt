@@ -1,10 +1,16 @@
 package com.furnit.android
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageFormat
+import android.graphics.Matrix
+import android.graphics.Rect
+import android.graphics.YuvImage
 import android.os.Bundle
 import android.util.Log
 import android.view.*
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.camera.core.*
@@ -13,48 +19,64 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.furnit.android.services.SmartyPantsManager
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class SmartyPantsFragment : Fragment() {
     private lateinit var previewView: PreviewView
     private lateinit var overlay: SmartyPantsOverlayView
-    private lateinit var progressBar: ProgressBar
-    private lateinit var progressLabel: TextView
+    private lateinit var statusLabel: TextView
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
     private lateinit var manager: SmartyPantsManager
+    private var isProcessing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         cameraExecutor = Executors.newSingleThreadExecutor()
         manager = SmartyPantsManager(requireContext())
+        // Initialize ONNX model
+        manager.initializeOnnx("yoloe-11l-seg-pf.onnx")
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val root = FrameLayout(requireContext())
+
         previewView = PreviewView(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
-        overlay = SmartyPantsOverlayView(requireContext())
-        progressBar = ProgressBar(requireContext(), null, android.R.attr.progressBarStyleHorizontal).apply {
-            isIndeterminate = false
-            max = 100
-            progress = 0
-            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, 8)
-            lp.topMargin = 40
-            layoutParams = lp
+
+        overlay = SmartyPantsOverlayView(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
-        progressLabel = TextView(requireContext()).apply {
-            text = ""
-            setPadding(8,8,8,8)
+
+        statusLabel = TextView(requireContext()).apply {
+            text = "Initializing..."
+            setTextColor(0xFFFFFFFF.toInt())
+            setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
+            setPadding(24, 48, 24, 24)
+            textSize = 14f
+        }
+
+        // Back button
+        val backButton = ImageButton(requireContext()).apply {
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            setBackgroundColor(0x80000000.toInt())
+            setPadding(16, 16, 16, 16)
+            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.setMargins(16, 48, 0, 0)
+            layoutParams = lp
+            setOnClickListener { activity?.finish() }
         }
 
         root.addView(previewView)
         root.addView(overlay)
-        root.addView(progressBar)
-        root.addView(progressLabel)
+        root.addView(statusLabel)
+        root.addView(backButton)
+
         startCamera()
         return root
     }
@@ -76,6 +98,7 @@ class SmartyPantsFragment : Fragment() {
         }
 
         val analysis = ImageAnalysis.Builder()
+            .setTargetResolution(android.util.Size(768, 768))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
 
@@ -85,27 +108,41 @@ class SmartyPantsFragment : Fragment() {
 
         try {
             cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            activity?.runOnUiThread {
+                statusLabel.text = "Camera ready - detecting furniture..."
+            }
         } catch (e: Exception) {
             Log.e("SmartyPants", "bindToLifecycle failed", e)
+            activity?.runOnUiThread {
+                statusLabel.text = "Camera error: ${e.message}"
+            }
         }
     }
 
     private fun processFrame(imageProxy: ImageProxy) {
-        // Convert to Bitmap quickly (basic YUV->RGB conversion) and pass to manager
-        val bitmap = imageProxy.toBitmap() // extension helper below
-        // Update progress UI
-        activity?.runOnUiThread {
-            progressLabel.text = "Processing"
-            progressBar.progress = 10
+        if (isProcessing) {
+            imageProxy.close()
+            return
+        }
+        isProcessing = true
+
+        val bitmap = imageProxy.toBitmapSafe()
+        if (bitmap == null) {
+            isProcessing = false
+            imageProxy.close()
+            return
         }
 
         manager.segmentImageAsync(bitmap) { maskBitmap ->
-            // maskBitmap may be null for stub
             activity?.runOnUiThread {
-                progressBar.progress = 100
-                progressLabel.text = "Done"
-                overlay.setMask(maskBitmap)
+                if (maskBitmap != null) {
+                    statusLabel.text = "Furniture detected"
+                    overlay.setMask(maskBitmap)
+                } else {
+                    statusLabel.text = "Processing..."
+                }
             }
+            isProcessing = false
         }
 
         imageProxy.close()
@@ -118,13 +155,40 @@ class SmartyPantsFragment : Fragment() {
     }
 }
 
-// Simple extension to convert ImageProxy (YUV) to Bitmap. This is an approximate conversion and
-// sufficient for prototyping. For production use a more efficient pipeline or RenderScript.
-fun ImageProxy.toBitmap(): Bitmap? {
-    val plane = planes[0]
-    val buffer = plane.buffer
-    val bytes = ByteArray(buffer.capacity())
-    buffer.get(bytes)
-    // Not a correct conversion; return null if we can't convert quickly.
-    return null
+// Convert ImageProxy to Bitmap - handles YUV_420_888 format
+fun ImageProxy.toBitmapSafe(): Bitmap? {
+    return try {
+        val yBuffer = planes[0].buffer
+        val uBuffer = planes[1].buffer
+        val vBuffer = planes[2].buffer
+
+        val ySize = yBuffer.remaining()
+        val uSize = uBuffer.remaining()
+        val vSize = vBuffer.remaining()
+
+        val nv21 = ByteArray(ySize + uSize + vSize)
+        yBuffer.get(nv21, 0, ySize)
+        vBuffer.get(nv21, ySize, vSize)
+        uBuffer.get(nv21, ySize + vSize, uSize)
+
+        val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
+        val out = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(Rect(0, 0, width, height), 80, out)
+        val imageBytes = out.toByteArray()
+
+        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+
+        // Rotate if needed based on image rotation
+        val rotation = imageInfo.rotationDegrees
+        if (rotation != 0) {
+            val matrix = Matrix()
+            matrix.postRotate(rotation.toFloat())
+            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        } else {
+            bitmap
+        }
+    } catch (e: Exception) {
+        Log.e("SmartyPants", "toBitmap failed: ${e.message}")
+        null
+    }
 }

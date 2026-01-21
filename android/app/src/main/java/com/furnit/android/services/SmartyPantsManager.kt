@@ -221,7 +221,8 @@ class SmartyPantsManager(private val context: Context) {
                 val outputs = ArrayList<FloatArray>()
                 var idx = 0
                 for (out in results) {
-                    val v = out.value
+                    val onnxValue = out.value
+                    val v = onnxValue.value
                     try {
                         val fa = when (v) {
                             is FloatArray -> v
@@ -233,7 +234,7 @@ class SmartyPantsManager(private val context: Context) {
                             }
                             is Array<*> -> flattenArrayToFloat(v)
                             else -> {
-                                Log.w("SmartyPantsManager", "Unsupported ONNX output type: ${v::class.java}")
+                                Log.w("SmartyPantsManager", "Unsupported ONNX output type: ${v?.let { it::class.java }}")
                                 FloatArray(0)
                             }
                         }

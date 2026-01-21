@@ -38,8 +38,17 @@ class ModelViewerActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
 
-            val btn = Button(this).apply {
-                text = "View in AR"
+            val viewBtn = Button(this).apply {
+                text = "View 3D"
+                setOnClickListener {
+                    val i = Intent(this@ModelViewerActivity, ModelDetailActivity::class.java)
+                    i.putExtra("MODEL_ID", model.id)
+                    startActivity(i)
+                }
+            }
+
+            val arBtn = Button(this).apply {
+                text = "AR"
                 setOnClickListener {
                     val i = Intent(this@ModelViewerActivity, ARActivity::class.java)
                     i.putExtra("MODEL_ID", model.id)
@@ -48,7 +57,8 @@ class ModelViewerActivity : AppCompatActivity() {
             }
 
             row.addView(name)
-            row.addView(btn)
+            row.addView(viewBtn)
+            row.addView(arBtn)
             layout.addView(row)
         }
 

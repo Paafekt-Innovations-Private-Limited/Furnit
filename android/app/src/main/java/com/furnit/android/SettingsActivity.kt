@@ -9,6 +9,7 @@ import android.widget.RadioGroup
 import android.widget.RadioButton
 import android.widget.TextView
 import android.content.Context
+import android.view.View
 import com.furnit.android.models.QualitySettings
 
 class SettingsActivity : AppCompatActivity() {
@@ -27,23 +28,26 @@ class SettingsActivity : AppCompatActivity() {
         val title = TextView(this).apply { text = "Settings"; textSize = 20f }
 
         val rg = RadioGroup(this)
-        val low = RadioButton(this).apply { text = "Low"; id = 1 }
-        val med = RadioButton(this).apply { text = "Medium"; id = 2 }
-        val high = RadioButton(this).apply { text = "High"; id = 3 }
+        val lowId = View.generateViewId()
+        val medId = View.generateViewId()
+        val highId = View.generateViewId()
+        val low = RadioButton(this).apply { text = "Low"; id = lowId }
+        val med = RadioButton(this).apply { text = "Medium"; id = medId }
+        val high = RadioButton(this).apply { text = "High"; id = highId }
         rg.addView(low); rg.addView(med); rg.addView(high)
 
         val current = prefs.getString("quality", QualitySettings.MEDIUM)
         when (current) {
-            QualitySettings.LOW -> rg.check(1)
-            QualitySettings.MEDIUM -> rg.check(2)
-            QualitySettings.HIGH -> rg.check(3)
+            QualitySettings.LOW -> rg.check(lowId)
+            QualitySettings.MEDIUM -> rg.check(medId)
+            QualitySettings.HIGH -> rg.check(highId)
         }
 
         rg.setOnCheckedChangeListener { _, checkedId ->
             val v = when (checkedId) {
-                1 -> QualitySettings.LOW
-                2 -> QualitySettings.MEDIUM
-                3 -> QualitySettings.HIGH
+                lowId -> QualitySettings.LOW
+                medId -> QualitySettings.MEDIUM
+                highId -> QualitySettings.HIGH
                 else -> QualitySettings.MEDIUM
             }
             prefs.edit().putString("quality", v).apply()
