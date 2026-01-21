@@ -144,3 +144,32 @@ ehthumbs.db
 
 # Asset cache
 *.xcassets/.DS_Store
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.iml
+android/app/*.iml
+.gradle/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Android Studio
+android/.idea/
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+
+# Kotlin
+*.kotlin_module
