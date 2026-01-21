@@ -1,0 +1,714 @@
+package com.furnit.android
+
+import android.annotation.SuppressLint
+import android.graphics.Color
+import android.graphics.Typeface
+import android.os.Bundle
+import android.util.Base64
+import android.util.Log
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.*
+import android.widget.*
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import com.furnit.android.models.Model
+import com.furnit.android.models.ModelManager
+import java.io.File
+import kotlin.math.abs
+
+/**
+ * SharpRoomActivity - WebGL-based 3D Gaussian Splat viewer
+ * (Matches Swift's SharpRoomView)
+ *
+ * Uses THREE.js and SparkJS to render PLY files in a WebView
+ */
+class SharpRoomActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "SharpRoomActivity"
+        const val EXTRA_PLY_PATH = "ply_path"
+        const val EXTRA_ROOM_FOLDER = "room_folder"
+        const val EXTRA_ROOM_WIDTH = "room_width"
+        const val EXTRA_ROOM_HEIGHT = "room_height"
+        const val EXTRA_ROOM_DEPTH = "room_depth"
+        const val EXTRA_ALLOW_SAVE = "allow_save"
+    }
+
+    private lateinit var webView: WebView
+    private lateinit var loadingOverlay: FrameLayout
+    private lateinit var joystickView: View
+    private var plyPath: String? = null
+    private var roomFolder: String? = null
+    private var allowSave: Boolean = true
+
+    // Gesture tracking
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private var isDragging = false
+
+    // Joystick state
+    private var joystickCenterX = 0f
+    private var joystickCenterY = 0f
+    private var joystickKnobX = 0f
+    private var joystickKnobY = 0f
+    private val joystickMaxOffset = 70f
+
+    @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        plyPath = intent.getStringExtra(EXTRA_PLY_PATH)
+        roomFolder = intent.getStringExtra(EXTRA_ROOM_FOLDER)
+        allowSave = intent.getBooleanExtra(EXTRA_ALLOW_SAVE, true)
+
+        Log.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath")
+
+        if (plyPath == null) {
+            Toast.makeText(this, "No PLY file provided", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        val rootLayout = FrameLayout(this)
+        rootLayout.setBackgroundColor(Color.parseColor("#808080"))
+
+        // WebView for 3D rendering
+        webView = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.allowFileAccess = true
+            settings.allowContentAccess = true
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            settings.mediaPlaybackRequiresUserGesture = false
+            setBackgroundColor(Color.TRANSPARENT)
+
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
+                    Log.d(TAG, "WebGL: ${message?.message()}")
+                    return true
+                }
+            }
+
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    Log.d(TAG, "WebView page loaded")
+                    // Hide loading after a delay for splat rendering
+                    postDelayed({
+                        loadingOverlay.visibility = View.GONE
+                    }, 2000)
+                }
+
+                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                    Log.e(TAG, "WebView error: ${error?.description}")
+                }
+            }
+
+            // Add JavaScript interface for communication
+            addJavascriptInterface(WebAppInterface(), "Android")
+        }
+        rootLayout.addView(webView, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+
+        // Gesture overlay for orbit controls
+        val gestureOverlay = View(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnTouchListener { _, event ->
+                handleGesture(event)
+                true
+            }
+        }
+        rootLayout.addView(gestureOverlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+
+        // Top bar
+        val topBar = createTopBar()
+        rootLayout.addView(topBar, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.TOP })
+
+        // Bottom controls
+        val bottomControls = createBottomControls()
+        rootLayout.addView(bottomControls, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.BOTTOM })
+
+        // Loading overlay
+        loadingOverlay = createLoadingOverlay()
+        rootLayout.addView(loadingOverlay)
+
+        setContentView(rootLayout)
+
+        // Load the WebGL viewer
+        loadWebGLViewer()
+    }
+
+    private fun createTopBar(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#CC2A2A2A"))
+            setPadding(16, 48, 16, 16)
+            gravity = Gravity.CENTER_VERTICAL
+
+            val backBtn = TextView(this@SharpRoomActivity).apply {
+                text = "< Back"
+                textSize = 16f
+                setTextColor(Color.parseColor("#007AFF"))
+                setOnClickListener { finish() }
+            }
+            addView(backBtn)
+
+            val title = TextView(this@SharpRoomActivity).apply {
+                text = "AI Room"
+                textSize = 18f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            addView(title)
+
+            // Recenter button
+            val recenterBtn = TextView(this@SharpRoomActivity).apply {
+                text = "Recenter"
+                textSize = 14f
+                setTextColor(Color.parseColor("#007AFF"))
+                setPadding(16, 8, 16, 8)
+                setOnClickListener {
+                    webView.evaluateJavascript("if(typeof recenterCamera==='function')recenterCamera();", null)
+                }
+            }
+            addView(recenterBtn)
+
+            // Save button (if allowed)
+            if (allowSave) {
+                val saveBtn = TextView(this@SharpRoomActivity).apply {
+                    text = "Save"
+                    textSize = 16f
+                    setTextColor(Color.parseColor("#4CAF50"))
+                    setPadding(16, 8, 0, 8)
+                    setOnClickListener { showSaveDialog() }
+                }
+                addView(saveBtn)
+            }
+        }
+    }
+
+    private fun createBottomControls(): FrameLayout {
+        return FrameLayout(this).apply {
+            setPadding(0, 0, 0, 40)
+
+            // Joystick container (center)
+            val joystickContainer = FrameLayout(this@SharpRoomActivity).apply {
+                val size = 240
+                layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+                    bottomMargin = 20
+                }
+
+                // Outer ring
+                val outerRing = View(this@SharpRoomActivity).apply {
+                    setBackgroundResource(android.R.drawable.dialog_holo_light_frame)
+                    alpha = 0.5f
+                }
+                addView(outerRing, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ))
+
+                // Joystick knob
+                val knobSize = 100
+                val knob = View(this@SharpRoomActivity).apply {
+                    setBackgroundColor(Color.WHITE)
+                    alpha = 0.8f
+                }
+                val knobParams = FrameLayout.LayoutParams(knobSize, knobSize).apply {
+                    gravity = Gravity.CENTER
+                }
+                addView(knob, knobParams)
+
+                joystickView = knob
+
+                // Touch handling
+                setOnTouchListener { _, event ->
+                    handleJoystick(event, this, knob, size.toFloat(), knobSize.toFloat())
+                    true
+                }
+
+                post {
+                    joystickCenterX = width / 2f
+                    joystickCenterY = height / 2f
+                }
+            }
+            addView(joystickContainer)
+
+            // Label
+            val label = TextView(this@SharpRoomActivity).apply {
+                text = "Walk around"
+                textSize = 12f
+                setTextColor(Color.WHITE)
+                alpha = 0.7f
+                gravity = Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+                    bottomMargin = 280
+                }
+            }
+            addView(label)
+        }
+    }
+
+    private fun createLoadingOverlay(): FrameLayout {
+        return FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#CC000000"))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+
+            val content = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(48, 48, 48, 48)
+                setBackgroundColor(Color.parseColor("#F5F5F5"))
+
+                val progress = ProgressBar(this@SharpRoomActivity).apply {
+                    isIndeterminate = true
+                }
+                addView(progress)
+
+                val text = TextView(this@SharpRoomActivity).apply {
+                    text = "Loading 3D Room..."
+                    textSize = 16f
+                    setTextColor(Color.parseColor("#333333"))
+                    gravity = Gravity.CENTER
+                    setPadding(0, 24, 0, 0)
+                }
+                addView(text)
+            }
+
+            addView(content, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.CENTER })
+        }
+    }
+
+    private fun handleGesture(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lastTouchX = event.x
+                lastTouchY = event.y
+                isDragging = true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (isDragging) {
+                    val deltaX = event.x - lastTouchX
+                    val deltaY = event.y - lastTouchY
+                    lastTouchX = event.x
+                    lastTouchY = event.y
+
+                    // Send orbit command to WebGL
+                    webView.evaluateJavascript(
+                        "if(typeof orbitCamera==='function')orbitCamera($deltaX, $deltaY);",
+                        null
+                    )
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                isDragging = false
+            }
+        }
+        return true
+    }
+
+    private fun handleJoystick(
+        event: MotionEvent,
+        container: View,
+        knob: View,
+        containerSize: Float,
+        knobSize: Float
+    ): Boolean {
+        val centerX = containerSize / 2f
+        val centerY = containerSize / 2f
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                var dx = event.x - centerX
+                var dy = event.y - centerY
+
+                // Clamp to max offset
+                val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+                if (distance > joystickMaxOffset) {
+                    val scale = joystickMaxOffset / distance
+                    dx *= scale
+                    dy *= scale
+                }
+
+                // Move knob
+                knob.translationX = dx
+                knob.translationY = dy
+
+                // Send movement to WebGL (normalize to -1 to 1)
+                val normalizedX = dx / joystickMaxOffset
+                val normalizedY = -dy / joystickMaxOffset  // Invert Y
+
+                webView.evaluateJavascript(
+                    "if(typeof moveCamera==='function')moveCamera($normalizedX, $normalizedY);",
+                    null
+                )
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                // Return knob to center
+                knob.animate()
+                    .translationX(0f)
+                    .translationY(0f)
+                    .setDuration(150)
+                    .start()
+
+                // Stop movement
+                webView.evaluateJavascript(
+                    "if(typeof moveCamera==='function')moveCamera(0, 0);",
+                    null
+                )
+            }
+        }
+        return true
+    }
+
+    private fun loadWebGLViewer() {
+        val plyFile = File(plyPath!!)
+        if (!plyFile.exists()) {
+            Log.e(TAG, "PLY file not found: $plyPath")
+            Toast.makeText(this, "PLY file not found", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        // Read PLY file and encode as base64 for inline loading
+        val plyData = plyFile.readBytes()
+        val plyBase64 = Base64.encodeToString(plyData, Base64.NO_WRAP)
+
+        Log.d(TAG, "Loading PLY file: ${plyFile.name} (${plyData.size} bytes)")
+
+        // Generate and load HTML
+        val html = generateWebGLHTML(plyBase64)
+        webView.loadDataWithBaseURL(
+            "https://local/",
+            html,
+            "text/html",
+            "UTF-8",
+            null
+        )
+    }
+
+    private fun generateWebGLHTML(plyBase64: String): String {
+        return """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Room</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #808080;
+            touch-action: none;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.170.0/three.module.min.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+            "@aspect/splat": "https://cdn.jsdelivr.net/npm/@aspect/splat@0.1.0/dist/splat.module.js"
+        }
+    }
+    </script>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        console.log('WebGL viewer initializing...');
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x808080);
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 5);
+        camera.up.set(0, 1, 0);
+
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Orbit controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.rotateSpeed = 0.8;
+        controls.target.set(0, 0, 0);
+
+        // Initial camera position
+        let initialCameraPosition = camera.position.clone();
+        let initialControlsTarget = controls.target.clone();
+
+        // Load PLY data from base64
+        const plyBase64 = '$plyBase64';
+        const binaryString = atob(plyBase64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        console.log('PLY data loaded:', bytes.length, 'bytes');
+
+        // Parse PLY file
+        function parsePLY(data) {
+            const text = new TextDecoder().decode(data);
+            const headerEnd = text.indexOf('end_header\n');
+            if (headerEnd === -1) {
+                console.error('Invalid PLY: no end_header');
+                return null;
+            }
+
+            const header = text.substring(0, headerEnd);
+            const vertexMatch = header.match(/element vertex (\d+)/);
+            if (!vertexMatch) {
+                console.error('Invalid PLY: no vertex count');
+                return null;
+            }
+
+            const vertexCount = parseInt(vertexMatch[1]);
+            console.log('Parsing', vertexCount, 'vertices');
+
+            // Binary data starts after header
+            const headerBytes = new TextEncoder().encode(text.substring(0, headerEnd + 11));
+            const binaryStart = headerBytes.length;
+
+            // Each vertex: 11 floats (44 bytes) + 3 bytes RGB = 47 bytes
+            const bytesPerVertex = 47;
+            const positions = [];
+            const colors = [];
+
+            const dataView = new DataView(data.buffer);
+
+            for (let i = 0; i < vertexCount; i++) {
+                const offset = binaryStart + i * bytesPerVertex;
+                if (offset + bytesPerVertex > data.length) break;
+
+                // Position
+                const x = dataView.getFloat32(offset, true);
+                const y = dataView.getFloat32(offset + 4, true);
+                const z = dataView.getFloat32(offset + 8, true);
+
+                positions.push(x, y, z);
+
+                // Skip scale (12 bytes), rotation (16 bytes), opacity (4 bytes)
+                // RGB at offset + 44
+                const r = data[offset + 44] / 255;
+                const g = data[offset + 45] / 255;
+                const b = data[offset + 46] / 255;
+
+                colors.push(r, g, b);
+            }
+
+            console.log('Parsed', positions.length / 3, 'vertices');
+            return { positions, colors };
+        }
+
+        // Create point cloud from PLY
+        const plyData = parsePLY(bytes);
+        if (plyData) {
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(plyData.positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(plyData.colors, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.03,
+                vertexColors: true,
+                sizeAttenuation: true
+            });
+
+            const points = new THREE.Points(geometry, material);
+            scene.add(points);
+
+            // Calculate bounds and center camera
+            geometry.computeBoundingBox();
+            const box = geometry.boundingBox;
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = camera.fov * (Math.PI / 180);
+            const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 1.5;
+
+            camera.position.set(center.x, center.y, center.z + cameraDistance);
+            controls.target.copy(center);
+            controls.update();
+
+            // Save initial position
+            initialCameraPosition.copy(camera.position);
+            initialControlsTarget.copy(controls.target);
+
+            console.log('Room centered at:', center);
+            console.log('Camera at distance:', cameraDistance);
+
+            // Notify Android that loading is complete
+            if (window.Android) {
+                window.Android.onLoaded();
+            }
+        }
+
+        // Camera control functions (called from Android)
+        window.orbitCamera = function(deltaX, deltaY) {
+            const rotateSpeed = 0.005;
+            const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+            const spherical = new THREE.Spherical().setFromVector3(offset);
+
+            spherical.theta -= deltaX * rotateSpeed;
+            spherical.phi += deltaY * rotateSpeed;
+            spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+
+            offset.setFromSpherical(spherical);
+            camera.position.copy(controls.target).add(offset);
+            controls.update();
+        };
+
+        window.moveCamera = function(dx, dy) {
+            const moveSpeed = 0.05;
+            camera.position.x += dx * moveSpeed;
+            camera.position.z -= dy * moveSpeed;
+            controls.target.x += dx * moveSpeed;
+            controls.target.z -= dy * moveSpeed;
+        };
+
+        window.recenterCamera = function() {
+            camera.position.copy(initialCameraPosition);
+            controls.target.copy(initialControlsTarget);
+            controls.update();
+        };
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        console.log('WebGL viewer ready');
+    </script>
+</body>
+</html>
+        """.trimIndent()
+    }
+
+    private fun showSaveDialog() {
+        val input = EditText(this).apply {
+            hint = "Enter room name"
+            setPadding(48, 32, 48, 32)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Save Room")
+            .setMessage("Enter a name for your room")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val name = input.text.toString().ifEmpty { "AI Room" }
+                saveRoom(name)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun saveRoom(name: String) {
+        val folder = roomFolder
+        if (folder == null) {
+            Toast.makeText(this, "Cannot save: room folder not found", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            // Update metadata with user's name
+            val metadataFile = File(folder, "metadata.txt")
+            metadataFile.writeText("name=$name\ncreated=${System.currentTimeMillis()}\ntype=sharp")
+
+            Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Room saved: $name at $folder")
+
+            // Finish and return to home
+            setResult(RESULT_OK)
+            finish()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save room", e)
+            Toast.makeText(this, "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // JavaScript interface for communication from WebView
+    inner class WebAppInterface {
+        @JavascriptInterface
+        fun onLoaded() {
+            runOnUiThread {
+                loadingOverlay.visibility = View.GONE
+                Log.d(TAG, "WebGL viewer reported loaded")
+            }
+        }
+
+        @JavascriptInterface
+        fun log(message: String) {
+            Log.d(TAG, "WebGL: $message")
+        }
+    }
+
+    override fun onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+    override fun onDestroy() {
+        webView.destroy()
+        super.onDestroy()
+    }
+}

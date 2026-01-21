@@ -29,7 +29,8 @@ import java.nio.channels.FileChannel
  * Place your converted `yoloe_11l.tflite` in `app/src/main/assets/` and call `initialize()`.
  */
 class SmartyPantsManager(private val context: Context) {
-    private val handler = Handler(Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val inferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var interpreter: Interpreter? = null
     private var inputShape: IntArray? = null
     private var inputDataType: DataType? = null
@@ -57,12 +58,21 @@ class SmartyPantsManager(private val context: Context) {
 
     /** Initialize ONNX Runtime session from asset ONNX model. */
     fun initializeOnnx(onnxAssetName: String = "yoloe-11l-seg-pf.onnx") {
+        Log.i("SmartyPantsManager", "initializeOnnx called with '$onnxAssetName'")
         try {
+            Log.d("SmartyPantsManager", "Copying asset to cache...")
             val file = copyAssetToFile(onnxAssetName)
+            Log.d("SmartyPantsManager", "Asset copied to: ${file.absolutePath}, size: ${file.length()}")
+
+            Log.d("SmartyPantsManager", "Getting ORT environment...")
             ortEnv = OrtEnvironment.getEnvironment()
+
+            Log.d("SmartyPantsManager", "Creating ONNX session...")
             val opts = SessionOptions()
             ortSession = ortEnv!!.createSession(file.absolutePath, opts)
+
             // Log input/output info
+            Log.i("SmartyPantsManager", "ONNX model loaded successfully")
             for ((name, info) in ortSession!!.inputInfo) {
                 Log.i("SmartyPantsManager", "ONNX input: $name -> ${info.info}")
             }
@@ -71,7 +81,7 @@ class SmartyPantsManager(private val context: Context) {
             }
             Log.i("SmartyPantsManager", "Loaded ONNX model '$onnxAssetName' into ONNX Runtime")
         } catch (e: Exception) {
-            Log.w("SmartyPantsManager", "Failed to load onnx: ${e.message}")
+            Log.e("SmartyPantsManager", "Failed to load onnx: ${e.message}", e)
             ortSession = null
             ortEnv = null
         }
@@ -79,22 +89,22 @@ class SmartyPantsManager(private val context: Context) {
 
     fun segmentImageAsync(frame: Bitmap?, callback: (Bitmap?) -> Unit) {
         if (frame == null) {
-            handler.postDelayed({ callback(null) }, 200)
+            mainHandler.postDelayed({ callback(null) }, 200)
             return
         }
 
-        handler.post {
+        inferenceExecutor.execute {
             try {
                 // Prefer ONNX Runtime if available
                 if (ortSession != null) {
                     runOnnxInference(frame, callback)
-                    return@post
+                    return@execute
                 }
 
                 // Fallback to TFLite if initialized
                 if (interpreter == null) {
-                    callback(null)
-                    return@post
+                    mainHandler.post { callback(null) }
+                    return@execute
                 }
 
                 val inShape = inputShape ?: throw IllegalArgumentException("Missing input shape")
@@ -144,29 +154,38 @@ class SmartyPantsManager(private val context: Context) {
                 // Run inference
                 interpreter!!.runForMultipleInputsOutputs(arrayOf(bb), outputMap)
 
-                callback(null)
+                mainHandler.post { callback(null) }
             } catch (e: Exception) {
                 Log.e("SmartyPantsManager", "inference error", e)
-                callback(null)
+                mainHandler.post { callback(null) }
             }
         }
     }
 
     private fun runOnnxInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
         try {
-            val session = ortSession ?: run { callback(null); return }
-            val env = ortEnv ?: run { callback(null); return }
+            val session = ortSession ?: run {
+                Log.e("SmartyPantsManager", "ortSession is null")
+                mainHandler.post { callback(null) }
+                return
+            }
+            val env = ortEnv ?: run {
+                Log.e("SmartyPantsManager", "ortEnv is null")
+                mainHandler.post { callback(null) }
+                return
+            }
 
             // Use first input info to determine shape
             val firstInput = session.inputInfo.entries.firstOrNull()
             if (firstInput == null) {
                 Log.w("SmartyPantsManager", "ONNX session has no inputs")
-                callback(null)
+                mainHandler.post { callback(null) }
                 return
             }
 
             val inputName = firstInput.key
             val tensorInfo = firstInput.value.info
+
             val shape = when (tensorInfo) {
                 is ai.onnxruntime.TensorInfo -> tensorInfo.shape
                 else -> null
@@ -214,7 +233,7 @@ class SmartyPantsManager(private val context: Context) {
 
             val shapeLong = longArrayOf(1, 3, h.toLong(), w.toLong())
             val tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
-
+            var maskResult: Bitmap? = null
             session.run(mapOf(inputName to tensor)).use { results ->
                 // Collect outputs into FloatArray(s)
                 val outInfos = ortSession!!.outputInfo.entries.toList()
@@ -259,8 +278,10 @@ class SmartyPantsManager(private val context: Context) {
                 }
 
                 if (protoIndex == -1 || detIndex == -1) {
-                    Log.w("SmartyPantsManager", "Could not identify proto/detection outputs; returning null mask")
-                    return@use
+                    Log.w("SmartyPantsManager", "Could not identify proto/detection outputs (protoIdx=$protoIndex, detIdx=$detIndex); returning null mask")
+                    mainHandler.post { callback(null) }
+                    tensor.close()
+                    return
                 }
 
                 val protoInfo = ortSession!!.outputInfo.entries.elementAt(protoIndex).value.info as ai.onnxruntime.TensorInfo
@@ -273,8 +294,10 @@ class SmartyPantsManager(private val context: Context) {
                 val det = outputs[detIndex]
 
                 if (proto.isEmpty() || det.isEmpty()) {
-                    Log.w("SmartyPantsManager", "Empty outputs from ONNX; returning null mask")
-                    return@use
+                    Log.w("SmartyPantsManager", "Empty outputs from ONNX (proto size=${proto.size}, det size=${det.size}); returning null mask")
+                    mainHandler.post { callback(null) }
+                    tensor.close()
+                    return
                 }
 
                 val P = protoShape[1]
@@ -331,19 +354,29 @@ class SmartyPantsManager(private val context: Context) {
 
                 // Scale mask to original frame size
                 val outMask = Bitmap.createScaledBitmap(maskBmp, frame.width, frame.height, true)
-                callback(outMask)
+                maskResult = outMask
             }
 
             tensor.close()
+            val finalMask = maskResult
+            mainHandler.post { callback(finalMask) }
         } catch (e: OrtException) {
             Log.e("SmartyPantsManager", "ONNX inference failed", e)
-            callback(null)
+            mainHandler.post { callback(null) }
+        } catch (e: Exception) {
+            Log.e("SmartyPantsManager", "ONNX inference exception", e)
+            mainHandler.post { callback(null) }
         }
     }
 
     fun close() {
         interpreter?.close()
         interpreter = null
+        ortSession?.close()
+        ortSession = null
+        ortEnv?.close()
+        ortEnv = null
+        inferenceExecutor.shutdown()
     }
 
     @Throws(IOException::class)

@@ -34,10 +34,13 @@ class SmartyPantsFragment : Fragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("SmartyPants", "Fragment onCreate - initializing...")
         cameraExecutor = Executors.newSingleThreadExecutor()
         manager = SmartyPantsManager(requireContext())
         // Initialize ONNX model
+        Log.d("SmartyPants", "Calling initializeOnnx...")
         manager.initializeOnnx("yoloe-11l-seg-pf.onnx")
+        Log.d("SmartyPants", "initializeOnnx completed")
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -128,6 +131,7 @@ class SmartyPantsFragment : Fragment() {
 
         val bitmap = imageProxy.toBitmapSafe()
         if (bitmap == null) {
+            Log.w("SmartyPants", "Failed to convert imageProxy to bitmap")
             isProcessing = false
             imageProxy.close()
             return
