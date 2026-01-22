@@ -660,7 +660,7 @@ struct SinglePhotoRoomView: View {
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
     @State private var showCameraCapture = false  // Show camera capture view
-    @State private var captureOrientation: CaptureOrientation = .landscape  // Camera orientation selection
+    @State private var captureOrientation: CaptureOrientation = .standard  // Camera mode selection
     @State private var adjustedBoundaries: RoomStructure?
     @State private var navigateToViewer = false
     @State private var fixedImage: UIImage? // ✅ Store fixed image separately
@@ -1237,32 +1237,28 @@ struct PhotoPickerView: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - Photo Orientation Enum
+// MARK: - Camera Mode Enum
 enum CaptureOrientation: String, CaseIterable {
-    case portrait = "Portrait"
-    case landscape = "Landscape"
+    case standard = "Standard"
     case wideAngle = "Wide Angle"
 
     var icon: String {
         switch self {
-        case .portrait: return "rectangle.portrait"
-        case .landscape: return "rectangle"
+        case .standard: return "camera"
         case .wideAngle: return "camera.filters"
         }
     }
 
     var description: String {
         switch self {
-        case .portrait: return NSLocalizedString("camera.portrait.desc", comment: "Best for narrow rooms")
-        case .landscape: return NSLocalizedString("camera.landscape.desc", comment: "Best for wide rooms")
+        case .standard: return NSLocalizedString("camera.standard.desc", comment: "Standard 1x camera")
         case .wideAngle: return NSLocalizedString("camera.wideAngle.desc", comment: "Ultra-wide 0.5x lens")
         }
     }
 
     var localizationKey: String {
         switch self {
-        case .portrait: return "camera.portrait"
-        case .landscape: return "camera.landscape"
+        case .standard: return "camera.standard"
         case .wideAngle: return "camera.wideAngle"
         }
     }
@@ -1283,17 +1279,17 @@ struct CameraCaptureView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 24) {
-                // Orientation Selection Header
+                // Camera Mode Selection Header
                 VStack(spacing: 8) {
                     Image(systemName: "camera.viewfinder")
                         .font(.system(size: 50))
                         .foregroundColor(.blue)
 
-                    Text(NSLocalizedString("camera.chooseOrientation", comment: "Choose Photo Orientation"))
+                    Text(NSLocalizedString("camera.chooseMode", comment: "Choose Camera Mode"))
                         .font(.title2)
                         .fontWeight(.bold)
 
-                    Text(NSLocalizedString("camera.orientationHint", comment: "Select how you want to capture your room"))
+                    Text(NSLocalizedString("camera.chooseModeHint", comment: "Select camera lens for your room"))
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -1372,9 +1368,9 @@ struct CameraCaptureView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 20)
                 } else {
-                    // Regular camera button for portrait/landscape
+                    // Standard camera button - works in any orientation
                     Button(action: {
-                        logDebug("📷 [Camera] Opening camera with orientation: \(selectedOrientation.rawValue)")
+                        logDebug("📷 [Camera] Opening standard camera")
                         showCamera = true
                     }) {
                         HStack(spacing: 12) {
@@ -1800,302 +1796,49 @@ struct OrientationOptionButton: View {
     }
 }
 
-// MARK: - Oriented Camera View (AVFoundation-based with forced orientation)
+// MARK: - Standard Camera View (UIImagePickerController - works in any orientation)
 struct CameraViewRepresentable: UIViewControllerRepresentable {
     @Binding var capturedImage: UIImage?
     let orientation: CaptureOrientation
     @Environment(\.dismiss) var dismiss
 
-    func makeUIViewController(context: Context) -> OrientedCameraViewController {
-        logDebug("📷 [Camera] Creating oriented camera for \(orientation.rawValue) mode")
-        let controller = OrientedCameraViewController(captureOrientation: orientation)
-        controller.delegate = context.coordinator
-        return controller
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        logDebug("📷 [Camera] Opening standard camera")
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        picker.allowsEditing = false
+        picker.cameraCaptureMode = .photo
+        return picker
     }
 
-    func updateUIViewController(_ uiViewController: OrientedCameraViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    class Coordinator: NSObject, OrientedCameraDelegate {
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
         let parent: CameraViewRepresentable
 
         init(_ parent: CameraViewRepresentable) {
             self.parent = parent
-            logDebug("📷 [Camera] Coordinator initialized for \(parent.orientation.rawValue) mode")
+            logDebug("📷 [Camera] Coordinator initialized")
         }
 
-        func orientedCameraDidCapture(_ image: UIImage) {
-            logDebug("📷 [Camera] Photo captured: \(image.size)")
-            parent.capturedImage = image.fixedOrientation()
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            logDebug("📷 [Camera] Photo captured")
+            if let image = info[.originalImage] as? UIImage {
+                logDebug("✅ [Camera] Got UIImage: \(image.size)")
+                parent.capturedImage = image.fixedOrientation()
+            } else {
+                logDebug("❌ [Camera] Failed to get UIImage")
+            }
             parent.dismiss()
         }
 
-        func orientedCameraDidCancel() {
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             logDebug("📷 [Camera] User cancelled")
             parent.dismiss()
         }
-    }
-}
-
-protocol OrientedCameraDelegate: AnyObject {
-    func orientedCameraDidCapture(_ image: UIImage)
-    func orientedCameraDidCancel()
-}
-
-class OrientedCameraViewController: UIViewController {
-    weak var delegate: OrientedCameraDelegate?
-    let captureOrientation: CaptureOrientation
-
-    private var captureSession: AVCaptureSession?
-    private var photoOutput: AVCapturePhotoOutput?
-    private var previewLayer: AVCaptureVideoPreviewLayer?
-
-    // UI Elements
-    private let captureButton = UIButton(type: .system)
-    private let cancelButton = UIButton(type: .system)
-    private let orientationLabel = UILabel()
-    private let gridOverlay = UIView()
-
-    init(captureOrientation: CaptureOrientation) {
-        self.captureOrientation = captureOrientation
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        switch captureOrientation {
-        case .portrait:
-            return .portrait
-        case .landscape:
-            return .landscape
-        case .wideAngle:
-            return .landscape
-        }
-    }
-
-    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
-        switch captureOrientation {
-        case .portrait:
-            return .portrait
-        case .landscape, .wideAngle:
-            return .landscapeRight
-        }
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .black
-        setupCamera()
-        setupUI()
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        previewLayer?.frame = view.bounds
-        updateGridOverlay()
-    }
-
-    private func setupCamera() {
-        captureSession = AVCaptureSession()
-        captureSession?.sessionPreset = .photo
-
-        // Use standard wide-angle camera for portrait/landscape
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            logDebug("❌ [OrientedCamera] No camera available")
-            return
-        }
-
-        do {
-            let input = try AVCaptureDeviceInput(device: device)
-            if captureSession?.canAddInput(input) == true {
-                captureSession?.addInput(input)
-            }
-
-            photoOutput = AVCapturePhotoOutput()
-            if let photoOutput = photoOutput, captureSession?.canAddOutput(photoOutput) == true {
-                captureSession?.addOutput(photoOutput)
-                // Configure for high resolution using maxPhotoDimensions (iOS 16+)
-                photoOutput.maxPhotoDimensions = device.activeFormat.supportedMaxPhotoDimensions.first ?? CMVideoDimensions(width: 4032, height: 3024)
-            }
-
-            previewLayer = AVCaptureVideoPreviewLayer(session: captureSession!)
-            previewLayer?.videoGravity = .resizeAspectFill
-            previewLayer?.frame = view.bounds
-
-            if let previewLayer = previewLayer {
-                view.layer.addSublayer(previewLayer)
-            }
-
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                self?.captureSession?.startRunning()
-            }
-
-            logDebug("📷 [OrientedCamera] Camera setup complete for \(captureOrientation.rawValue)")
-
-        } catch {
-            logDebug("❌ [OrientedCamera] Camera setup error: \(error)")
-        }
-    }
-
-    private func setupUI() {
-        // Orientation label at top
-        let modeText = captureOrientation == .portrait ?
-            NSLocalizedString("camera.portrait.mode", comment: "Portrait Mode") :
-            NSLocalizedString("camera.landscape.mode", comment: "Landscape Mode")
-        orientationLabel.text = modeText
-        orientationLabel.textColor = .white
-        orientationLabel.font = .systemFont(ofSize: 16, weight: .medium)
-        orientationLabel.textAlignment = .center
-        orientationLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        orientationLabel.layer.cornerRadius = 8
-        orientationLabel.clipsToBounds = true
-        orientationLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(orientationLabel)
-
-        // Grid overlay for composition
-        gridOverlay.translatesAutoresizingMaskIntoConstraints = false
-        gridOverlay.isUserInteractionEnabled = false
-        view.addSubview(gridOverlay)
-
-        // Capture button
-        captureButton.setImage(UIImage(systemName: "circle.inset.filled", withConfiguration: UIImage.SymbolConfiguration(pointSize: 70)), for: .normal)
-        captureButton.tintColor = .white
-        captureButton.translatesAutoresizingMaskIntoConstraints = false
-        captureButton.addTarget(self, action: #selector(capturePhoto), for: .touchUpInside)
-        view.addSubview(captureButton)
-
-        // Cancel button
-        cancelButton.setTitle(NSLocalizedString("common.cancel", comment: "Cancel"), for: .normal)
-        cancelButton.setTitleColor(.white, for: .normal)
-        cancelButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .medium)
-        cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.addTarget(self, action: #selector(cancelCapture), for: .touchUpInside)
-        view.addSubview(cancelButton)
-
-        // Layout depends on orientation
-        if captureOrientation == .portrait {
-            NSLayoutConstraint.activate([
-                orientationLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-                orientationLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-                orientationLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 150),
-                orientationLabel.heightAnchor.constraint(equalToConstant: 36),
-
-                gridOverlay.topAnchor.constraint(equalTo: view.topAnchor),
-                gridOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                gridOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                gridOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-
-                captureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -30),
-                captureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-
-                cancelButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -40),
-                cancelButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 30)
-            ])
-        } else {
-            // Landscape layout
-            NSLayoutConstraint.activate([
-                orientationLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-                orientationLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-                orientationLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 150),
-                orientationLabel.heightAnchor.constraint(equalToConstant: 36),
-
-                gridOverlay.topAnchor.constraint(equalTo: view.topAnchor),
-                gridOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                gridOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                gridOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-
-                captureButton.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-                captureButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -30),
-
-                cancelButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-                cancelButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20)
-            ])
-        }
-    }
-
-    private func updateGridOverlay() {
-        gridOverlay.layer.sublayers?.forEach { $0.removeFromSuperlayer() }
-
-        let bounds = gridOverlay.bounds
-        let lineColor = UIColor.white.withAlphaComponent(0.3).cgColor
-
-        // Rule of thirds grid
-        for i in 1...2 {
-            // Horizontal lines
-            let y = bounds.height * CGFloat(i) / 3
-            let hLine = CAShapeLayer()
-            let hPath = UIBezierPath()
-            hPath.move(to: CGPoint(x: 0, y: y))
-            hPath.addLine(to: CGPoint(x: bounds.width, y: y))
-            hLine.path = hPath.cgPath
-            hLine.strokeColor = lineColor
-            hLine.lineWidth = 1
-            gridOverlay.layer.addSublayer(hLine)
-
-            // Vertical lines
-            let x = bounds.width * CGFloat(i) / 3
-            let vLine = CAShapeLayer()
-            let vPath = UIBezierPath()
-            vPath.move(to: CGPoint(x: x, y: 0))
-            vPath.addLine(to: CGPoint(x: x, y: bounds.height))
-            vLine.path = vPath.cgPath
-            vLine.strokeColor = lineColor
-            vLine.lineWidth = 1
-            gridOverlay.layer.addSublayer(vLine)
-        }
-    }
-
-    @objc private func capturePhoto() {
-        guard let photoOutput = photoOutput else { return }
-
-        let settings = AVCapturePhotoSettings()
-        // Use maxPhotoDimensions from photoOutput (iOS 16+)
-        settings.maxPhotoDimensions = photoOutput.maxPhotoDimensions
-        settings.flashMode = .off
-
-        photoOutput.capturePhoto(with: settings, delegate: self)
-
-        // Visual feedback
-        UIView.animate(withDuration: 0.1) {
-            self.view.alpha = 0.5
-        } completion: { _ in
-            UIView.animate(withDuration: 0.1) {
-                self.view.alpha = 1.0
-            }
-        }
-    }
-
-    @objc private func cancelCapture() {
-        captureSession?.stopRunning()
-        delegate?.orientedCameraDidCancel()
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        captureSession?.stopRunning()
-    }
-}
-
-extension OrientedCameraViewController: AVCapturePhotoCaptureDelegate {
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        if let error = error {
-            logDebug("❌ [OrientedCamera] Photo capture error: \(error)")
-            return
-        }
-
-        guard let imageData = photo.fileDataRepresentation(),
-              let image = UIImage(data: imageData) else {
-            logDebug("❌ [OrientedCamera] Failed to create image from photo data")
-            return
-        }
-
-        logDebug("✅ [OrientedCamera] Photo captured: \(image.size)")
-        captureSession?.stopRunning()
-        delegate?.orientedCameraDidCapture(image)
     }
 }
 

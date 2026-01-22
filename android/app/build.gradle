@@ -6,6 +6,7 @@ plugins {
 android {
     namespace 'com.furnit.android'
     compileSdk 34
+    ndkVersion "26.3.11579264"
 
     defaultConfig {
         applicationId "com.furnit.android"
@@ -15,6 +16,34 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // NCNN native library support
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+
+        // CMake configuration for NCNN
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -frtti -fexceptions"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+    }
+
+    // CMake build configuration
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    // Include native libraries from jniLibs
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
     }
 
     buildTypes {
@@ -29,6 +58,12 @@ android {
     }
     kotlinOptions {
         jvmTarget = '11'
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -56,7 +91,8 @@ dependencies {
     // TensorFlow Lite placeholder (for on-device ML)
     implementation 'org.tensorflow:tensorflow-lite:2.12.0'
     // ONNX Runtime Mobile for running exported ONNX models directly on Android
-    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.15.1'
+    // Version 1.18.0+ supports IR version 10 (required by newer ONNX exports)
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.18.0'
 
     // SceneView for 3D model rendering (GLB/GLTF)
     implementation 'io.github.sceneview:sceneview:2.0.3'

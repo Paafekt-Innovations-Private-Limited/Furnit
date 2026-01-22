@@ -277,18 +277,13 @@
 // MARK: - Camera Capture
 "camera.title" = "Camera";
 "camera.takePhoto" = "Take Photo";
-"camera.chooseOrientation" = "Choose Photo Orientation";
-"camera.chooseOrientationShort" = "Portrait, Landscape, or Wide Angle";
-"camera.orientationHint" = "Select how you want to capture your room";
-"camera.portrait" = "Portrait";
-"camera.landscape" = "Landscape";
+"camera.chooseMode" = "Choose Camera Mode";
+"camera.chooseModeHint" = "Select camera lens for your room";
+"camera.standard" = "Standard";
 "camera.wideAngle" = "Wide Angle";
-"camera.portrait.desc" = "Best for narrow rooms";
-"camera.landscape.desc" = "Best for wide rooms";
-"camera.wideAngle.desc" = "Ultra-wide 0.5x lens for large spaces";
+"camera.standard.desc" = "Standard 1x lens • Hold in any orientation";
+"camera.wideAngle.desc" = "Ultra-wide 0.5x lens • Captures more area";
 "camera.wideAngle.info" = "Uses ultra-wide 0.5x lens for wider field of view";
 "camera.selectWideAngle" = "Select Wide Photo";
 "camera.captureWideAngle" = "Capture Wide Photo";
 "camera.wideAngle.holdSteady" = "Hold steady • Ultra-wide lens captures more";
-"camera.portrait.mode" = "Portrait Mode • Hold phone upright";
-"camera.landscape.mode" = "Landscape Mode • Hold phone sideways";

@@ -37,10 +37,10 @@ class SmartyPantsFragment : Fragment() {
         Log.d("SmartyPants", "Fragment onCreate - initializing...")
         cameraExecutor = Executors.newSingleThreadExecutor()
         manager = SmartyPantsManager(requireContext())
-        // Initialize ONNX model
-        Log.d("SmartyPants", "Calling initializeOnnx...")
-        manager.initializeOnnx("yoloe-11l-seg-pf.onnx")
-        Log.d("SmartyPants", "initializeOnnx completed")
+        // Initialize model - try NCNN first (1280x1280, more efficient), fall back to ONNX
+        Log.d("SmartyPants", "Calling initializeAuto...")
+        val success = manager.initializeAuto()
+        Log.d("SmartyPants", "initializeAuto completed, success=$success")
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {

@@ -169,7 +169,8 @@ android/app/*.iml
 android/.idea/
 android/captures/
 android/.externalNativeBuild/
-android/.cxx/
+**/.cxx/
+android/app/src/main/cpp/ncnn-android-vulkan/
 
 # Kotlin
 *.kotlin_module

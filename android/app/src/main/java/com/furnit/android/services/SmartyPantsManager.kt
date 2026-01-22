@@ -22,11 +22,15 @@ import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
 /**
- * SmartyPantsManager handles loading a TensorFlow Lite model (e.g. a converted `yoloe-11l.tflite`)
- * and running inference on camera frames. This is a best-effort skeleton that inspects the
- * model's input tensor shape and attempts to prepare an input buffer from a provided Bitmap.
+ * SmartyPantsManager handles object detection and segmentation using YOLOE models.
  *
- * Place your converted `yoloe_11l.tflite` in `app/src/main/assets/` and call `initialize()`.
+ * Inference backends (in order of preference):
+ * 1. NCNN - Fastest, GPU-accelerated with Vulkan (recommended)
+ * 2. ONNX Runtime - Good performance, cross-platform
+ * 3. TensorFlow Lite - Fallback option
+ *
+ * For best performance, use NCNN with exported .param/.bin model files.
+ * Place model files in `app/src/main/assets/`.
  */
 class SmartyPantsManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -37,6 +41,9 @@ class SmartyPantsManager(private val context: Context) {
     // ONNX Runtime objects
     private var ortEnv: OrtEnvironment? = null
     private var ortSession: OrtSession? = null
+    // NCNN inference engine (preferred)
+    private var ncnnYoloe: NcnnYoloe? = null
+    private var useNcnn = false
 
     fun initialize(tfliteAssetName: String = "yoloe_11l.tflite") {
         try {
@@ -54,6 +61,87 @@ class SmartyPantsManager(private val context: Context) {
             Log.w("SmartyPantsManager", "Failed to load tflite: ${e.message}")
             interpreter = null
         }
+    }
+
+    /**
+     * Initialize NCNN backend for high-performance inference.
+     * This is the recommended backend for best performance on Android.
+     *
+     * @param paramAsset NCNN .param file in assets (default: "yoloe-11l-seg.param")
+     * @param binAsset NCNN .bin file in assets (default: "yoloe-11l-seg.bin")
+     * @param useGpu Whether to use GPU (Vulkan) acceleration (default: true)
+     * @return true if NCNN initialization succeeded
+     */
+    fun initializeNcnn(
+        paramAsset: String = "yoloe-11l-seg.param",
+        binAsset: String = "yoloe-11l-seg.bin",
+        useGpu: Boolean = true
+    ): Boolean {
+        Log.i("SmartyPantsManager", "initializeNcnn called with param='$paramAsset', bin='$binAsset', gpu=$useGpu")
+
+        if (!NcnnYoloe.isAvailable()) {
+            val error = NcnnYoloe.getLoadError() ?: "unknown reason"
+            Log.w("SmartyPantsManager", "NCNN native library not available: $error")
+            return false
+        }
+
+        try {
+            ncnnYoloe = NcnnYoloe()
+            val success = ncnnYoloe!!.init(context, paramAsset, binAsset, useGpu)
+
+            if (success) {
+                useNcnn = true
+                Log.i("SmartyPantsManager", "NCNN initialization successful (GPU: ${ncnnYoloe!!.hasGpu()})")
+                return true
+            } else {
+                Log.e("SmartyPantsManager", "NCNN initialization failed")
+                ncnnYoloe = null
+                return false
+            }
+        } catch (e: Exception) {
+            Log.e("SmartyPantsManager", "NCNN init exception: ${e.message}", e)
+            ncnnYoloe = null
+            return false
+        }
+    }
+
+    /**
+     * Auto-initialize with the best available backend.
+     * Tries NCNN first, then ONNX, then TFLite.
+     */
+    fun initializeAuto(): Boolean {
+        Log.i("SmartyPantsManager", "Auto-initializing with best available backend...")
+
+        // Try NCNN first (best performance)
+        if (initializeNcnn()) {
+            Log.i("SmartyPantsManager", "Using NCNN backend")
+            return true
+        }
+
+        // Fall back to ONNX Runtime (640x640 model, ~156MB output)
+        try {
+            initializeOnnx()
+            if (ortSession != null) {
+                Log.i("SmartyPantsManager", "Using ONNX Runtime backend")
+                return true
+            }
+        } catch (e: Exception) {
+            Log.w("SmartyPantsManager", "ONNX initialization failed: ${e.message}")
+        }
+
+        // Fall back to TFLite
+        try {
+            initialize()
+            if (interpreter != null) {
+                Log.i("SmartyPantsManager", "Using TFLite backend")
+                return true
+            }
+        } catch (e: Exception) {
+            Log.w("SmartyPantsManager", "TFLite initialization failed: ${e.message}")
+        }
+
+        Log.e("SmartyPantsManager", "No inference backend available - segmentation disabled")
+        return false
     }
 
     /** Initialize ONNX Runtime session from asset ONNX model. */
@@ -95,6 +183,12 @@ class SmartyPantsManager(private val context: Context) {
 
         inferenceExecutor.execute {
             try {
+                // Prefer NCNN if available (best performance)
+                if (useNcnn && ncnnYoloe != null) {
+                    runNcnnInference(frame, callback)
+                    return@execute
+                }
+
                 // Prefer ONNX Runtime if available
                 if (ortSession != null) {
                     runOnnxInference(frame, callback)
@@ -162,6 +256,84 @@ class SmartyPantsManager(private val context: Context) {
         }
     }
 
+    /**
+     * Run inference using NCNN backend (fastest).
+     */
+    private fun runNcnnInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
+        try {
+            val ncnn = ncnnYoloe ?: run {
+                Log.e("SmartyPantsManager", "NCNN not initialized")
+                mainHandler.post { callback(null) }
+                return
+            }
+
+            val startTime = System.currentTimeMillis()
+
+            // Run detection with mask generation
+            val result = ncnn.detectWithMask(
+                bitmap = frame,
+                confThreshold = 0.25f,
+                iouThreshold = 0.45f,
+                maskThreshold = 0.5f
+            )
+
+            val inferenceTime = System.currentTimeMillis() - startTime
+            Log.d("SmartyPantsManager", "NCNN inference: ${result.detections.size} detections in ${inferenceTime}ms")
+
+            // Log top detections
+            for ((idx, det) in result.detections.take(5).withIndex()) {
+                Log.d("SmartyPantsManager", "  [$idx] ${det.label} (${det.classId}): conf=${det.confidence}, bbox=(${det.x},${det.y},${det.width},${det.height})")
+            }
+
+            // Return the mask bitmap
+            if (result.mask != null) {
+                mainHandler.post { callback(result.mask) }
+            } else if (result.detections.isEmpty()) {
+                // No detections, return null mask
+                mainHandler.post { callback(null) }
+            } else {
+                // Detections but no mask - create a simple bounding box visualization
+                val maskBmp = createBboxMask(frame, result.detections)
+                mainHandler.post { callback(maskBmp) }
+            }
+        } catch (e: Exception) {
+            Log.e("SmartyPantsManager", "NCNN inference error: ${e.message}", e)
+            mainHandler.post { callback(null) }
+        }
+    }
+
+    /**
+     * Create a simple mask from bounding boxes (fallback when segmentation masks unavailable).
+     */
+    private fun createBboxMask(frame: Bitmap, detections: List<NcnnYoloe.Detection>): Bitmap {
+        val mask = Bitmap.createBitmap(frame.width, frame.height, Config.ARGB_8888)
+        val pixels = IntArray(frame.width * frame.height)
+
+        // Fill with transparent
+        for (i in pixels.indices) {
+            pixels[i] = 0x00000000
+        }
+
+        // Draw filled rectangles for each detection
+        for (det in detections) {
+            val left = maxOf(0, det.left.toInt())
+            val top = maxOf(0, det.top.toInt())
+            val right = minOf(frame.width - 1, det.right.toInt())
+            val bottom = minOf(frame.height - 1, det.bottom.toInt())
+
+            // Fill with semi-transparent green
+            val color = 0xCC00FF00.toInt()
+            for (y in top..bottom) {
+                for (x in left..right) {
+                    pixels[y * frame.width + x] = color
+                }
+            }
+        }
+
+        mask.setPixels(pixels, 0, frame.width, 0, 0, frame.width, frame.height)
+        return mask
+    }
+
     private fun runOnnxInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
         try {
             val session = ortSession ?: run {
@@ -191,16 +363,10 @@ class SmartyPantsManager(private val context: Context) {
                 else -> null
             }
 
-            // YOLOe expects [1, 3, 1536, 1536]
-            var h = 1536
-            var w = 1536
-            if (shape != null && shape.size >= 4) {
-                val s1 = shape.map { if (it < 0) -1L else it }
-                if (s1[1] == 3L) { // N C H W
-                    if (s1[2] > 0) h = s1[2].toInt()
-                    if (s1[3] > 0) w = s1[3].toInt()
-                }
-            }
+            // YOLOe model expects [1, 3, 640, 640] for 640 export
+            // Output tensor is ~156MB (vs 900MB for 1536)
+            var h = 640
+            var w = 640
 
             Log.d("SmartyPantsManager", "Resizing frame ${frame.width}x${frame.height} to ${w}x${h}")
             val resized = Bitmap.createScaledBitmap(frame, w, h, true).copy(Config.ARGB_8888, false)
@@ -363,7 +529,13 @@ class SmartyPantsManager(private val context: Context) {
 
                 val detections = mutableListOf<Detection>()
 
-                Log.d("SmartyPantsManager", "Scanning $numAnchors anchors with norm threshold $normThreshold...")
+                // OPTIMIZATION: Only sample a subset of embeddings for norm calculation
+                // Using first 64 embeddings is enough to detect objects without processing all 4585
+                val embeddingSampleSize = minOf(64, numEmbeddings)
+                // OPTIMIZATION: Skip anchors - process every Nth anchor to reduce computation
+                val anchorStride = maxOf(1, numAnchors / 5000)  // Process ~5000 anchors max
+
+                Log.d("SmartyPantsManager", "Scanning $numAnchors anchors (stride=$anchorStride, ~${numAnchors/anchorStride} samples) with norm threshold $normThreshold...")
                 val startTime = System.currentTimeMillis()
 
                 // Define accessor function based on available format
@@ -373,25 +545,9 @@ class SmartyPantsManager(private val context: Context) {
                     { feature, anchor -> detFlat!![feature * stride + anchor] }
                 }
 
-                // Log sample values from first few anchors to understand data format
-                Log.d("SmartyPantsManager", "Sample data from first 5 anchors:")
-                for (a in 0 until minOf(5, numAnchors)) {
-                    val x = getDetValue(0, a)
-                    val y = getDetValue(1, a)
-                    val dw = getDetValue(2, a)
-                    val dh = getDetValue(3, a)
-                    // Calculate embedding norm for this anchor
-                    var normSq = 0f
-                    for (e in 0 until minOf(100, numEmbeddings)) {
-                        val v = getDetValue(embeddingStart + e, a)
-                        normSq += v * v
-                    }
-                    val sampleNorm = kotlin.math.sqrt(normSq)
-                    Log.d("SmartyPantsManager", "  Anchor[$a]: bbox=($x,$y,$dw,$dh), embeddingNorm=$sampleNorm")
-                }
-
-                // Scan ALL anchors - use embedding norm as confidence proxy
-                for (anchor in 0 until numAnchors) {
+                // Scan anchors with stride - use embedding norm as confidence proxy
+                var anchor = 0
+                while (anchor < numAnchors) {
                     // Get bbox values
                     val x = getDetValue(0, anchor)
                     val y = getDetValue(1, anchor)
@@ -399,64 +555,41 @@ class SmartyPantsManager(private val context: Context) {
                     val dh = getDetValue(3, anchor)
 
                     // Validate bbox - quick rejection
-                    if (!x.isFinite() || !y.isFinite() || !dw.isFinite() || !dh.isFinite()) continue
-                    if (dw <= 0 || dh <= 0 || dw > 2000 || dh > 2000) continue
+                    if (x.isFinite() && y.isFinite() && dw.isFinite() && dh.isFinite() &&
+                        dw > 0 && dh > 0 && dw < 2000 && dh < 2000) {
 
-                    // Calculate embedding L2 norm as objectness score
-                    var normSq = 0f
-                    for (e in 0 until numEmbeddings) {
-                        val v = getDetValue(embeddingStart + e, anchor)
-                        normSq += v * v
-                    }
-                    val embeddingNorm = kotlin.math.sqrt(normSq)
-
-                    if (embeddingNorm > normThreshold) {
-                        // Extract mask coefficients (last 32 features)
-                        val coeffs = FloatArray(numProtos)
-                        for (c in 0 until numProtos) {
-                            coeffs[c] = getDetValue(maskCoeffStart + c, anchor)
+                        // Calculate embedding L2 norm using sampled embeddings
+                        var normSq = 0f
+                        for (e in 0 until embeddingSampleSize) {
+                            val v = getDetValue(embeddingStart + e, anchor)
+                            normSq += v * v
                         }
+                        val embeddingNorm = kotlin.math.sqrt(normSq)
 
-                        detections.add(Detection(
-                            anchorIdx = anchor,
-                            x = x, y = y, w = dw, h = dh,
-                            confidence = embeddingNorm,
-                            classId = 0,  // Unknown class for prompt-free
-                            coeffs = coeffs
-                        ))
+                        if (embeddingNorm > normThreshold) {
+                            // Extract mask coefficients (last 32 features)
+                            val coeffs = FloatArray(numProtos)
+                            for (c in 0 until numProtos) {
+                                coeffs[c] = getDetValue(maskCoeffStart + c, anchor)
+                            }
+
+                            detections.add(Detection(
+                                anchorIdx = anchor,
+                                x = x, y = y, w = dw, h = dh,
+                                confidence = embeddingNorm,
+                                classId = 0,  // Unknown class for prompt-free
+                                coeffs = coeffs
+                            ))
+
+                            // Early exit if we have enough good detections
+                            if (detections.size >= maxDetections * 2) break
+                        }
                     }
-
-                    // Early exit if we have enough good detections
-                    if (detections.size >= maxDetections * 2) break
+                    anchor += anchorStride
                 }
 
                 val scanTime = System.currentTimeMillis() - startTime
                 Log.d("SmartyPantsManager", "Found ${detections.size} detections above norm threshold $normThreshold in ${scanTime}ms")
-
-                // Debug: print first few anchor values
-                if (detections.isEmpty() && numAnchors > 0) {
-                    Log.d("SmartyPantsManager", "No detections. Checking anchor embedding norms:")
-                    var maxNorm = 0f
-                    var maxNormAnchor = 0
-                    for (a in 0 until numAnchors) {
-                        var normSq = 0f
-                        for (e in 0 until numEmbeddings) {
-                            val v = getDetValue(embeddingStart + e, a)
-                            normSq += v * v
-                        }
-                        val norm = kotlin.math.sqrt(normSq)
-                        if (norm > maxNorm) {
-                            maxNorm = norm
-                            maxNormAnchor = a
-                        }
-                    }
-                    Log.d("SmartyPantsManager", "  Max embedding norm: $maxNorm at anchor $maxNormAnchor")
-                    val x = getDetValue(0, maxNormAnchor)
-                    val y = getDetValue(1, maxNormAnchor)
-                    val dw = getDetValue(2, maxNormAnchor)
-                    val dh = getDetValue(3, maxNormAnchor)
-                    Log.d("SmartyPantsManager", "  Anchor[$maxNormAnchor]: bbox=($x,$y,$dw,$dh)")
-                }
 
                 if (detections.isEmpty()) {
                     // No detections - return empty mask
@@ -603,6 +736,11 @@ class SmartyPantsManager(private val context: Context) {
     )
 
     fun close() {
+        // Release NCNN resources
+        ncnnYoloe?.release()
+        ncnnYoloe = null
+        useNcnn = false
+
         interpreter?.close()
         interpreter = null
         ortSession?.close()

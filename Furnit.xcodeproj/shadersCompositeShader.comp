@@ -1,0 +1,50 @@
+// CompositeShader.comp
+// Vulkan compute shader for compositing mask onto camera frame
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+// Input textures
+layout(binding = 0, rgba8) uniform readonly image2D inputFrame;
+layout(binding = 1, r8) uniform readonly image2D maskImage;
+
+// Output texture
+layout(binding = 2, rgba8) uniform writeonly image2D outputFrame;
+
+// Push constants for crop region
+layout(push_constant) uniform PushConstants {
+    ivec4 cropRect;  // (x1, y1, x2, y2)
+} params;
+
+void main() {
+    ivec2 coords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imageDim = imageSize(outputFrame);
+    
+    if (coords.x >= imageDim.x || coords.y >= imageDim.y) {
+        return;
+    }
+    
+    // Check if pixel is within crop region
+    bool inCropRegion = coords.x >= params.cropRect.x && 
+                        coords.x < params.cropRect.z &&
+                        coords.y >= params.cropRect.y && 
+                        coords.y < params.cropRect.w;
+    
+    if (!inCropRegion) {
+        // Outside crop region - transparent
+        imageStore(outputFrame, coords, vec4(0.0, 0.0, 0.0, 0.0));
+        return;
+    }
+    
+    // Read mask value
+    float maskValue = imageLoad(maskImage, coords).r;
+    
+    if (maskValue > 0.5) {
+        // Inside mask - copy from input
+        vec4 color = imageLoad(inputFrame, coords);
+        imageStore(outputFrame, coords, color);
+    } else {
+        // Outside mask - transparent
+        imageStore(outputFrame, coords, vec4(0.0, 0.0, 0.0, 0.0));
+    }
+}
