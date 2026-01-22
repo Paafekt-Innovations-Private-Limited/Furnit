@@ -29,8 +29,8 @@ class SharpService(private val context: Context) {
         private const val TAG = "SharpService"
 
         // PLY generation parameters
-        private const val GRID_SIZE = 64  // Reduced for mobile performance
-        private const val SPLAT_SCALE = 0.015f
+        private const val GRID_SIZE = 96  // Denser grid for better quality
+        private const val SPLAT_SCALE = 0.02f
     }
 
     data class GenerationResult(
@@ -195,11 +195,11 @@ class SharpService(private val context: Context) {
 
                 gaussians.add(GaussianSplat(
                     x = x, y = y, z = z,
-                    scaleX = SPLAT_SCALE,
-                    scaleY = SPLAT_SCALE,
-                    scaleZ = SPLAT_SCALE * 0.5f,
+                    scaleX = SPLAT_SCALE * 1.5f,
+                    scaleY = SPLAT_SCALE * 1.5f,
+                    scaleZ = SPLAT_SCALE * 0.3f,
                     rotW = 1f, rotX = 0f, rotY = 0f, rotZ = 0f,
-                    opacity = 0.9f,
+                    opacity = 0.95f,
                     r = r, g = g, b = b
                 ))
             }
@@ -225,7 +225,7 @@ class SharpService(private val context: Context) {
         roomDepth: Float
     ) {
         val floorY = -roomHeight / 2f
-        val gridSize = GRID_SIZE / 2
+        val gridSize = GRID_SIZE * 2 / 3  // Denser floor
 
         // Sample floor color from bottom portion of image
         val floorStartY = (image.height * 0.75f).toInt()
@@ -246,11 +246,11 @@ class SharpService(private val context: Context) {
 
                 gaussians.add(GaussianSplat(
                     x = x, y = floorY, z = z,
-                    scaleX = SPLAT_SCALE * 2f,
-                    scaleY = SPLAT_SCALE * 0.3f,
-                    scaleZ = SPLAT_SCALE * 2f,
+                    scaleX = SPLAT_SCALE * 2.5f,
+                    scaleY = SPLAT_SCALE * 0.2f,
+                    scaleZ = SPLAT_SCALE * 2.5f,
                     rotW = 1f, rotX = 0f, rotY = 0f, rotZ = 0f,
-                    opacity = 0.85f,
+                    opacity = 0.9f,
                     r = r, g = g, b = b
                 ))
             }

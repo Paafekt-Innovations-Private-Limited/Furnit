@@ -1221,8 +1221,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                             }
 
                             const center = box.getCenter(new THREE.Vector3());
-                            let roomWidth  = size.x;
-                            let roomHeight = size.y;
+                            // After 90° Z rotation, X and Y axes are swapped
+                            // Front wall width = Y axis, height = X axis
+                            let roomWidth  = size.y;
+                            let roomHeight = size.x;
                             let roomDepth  = size.z;
 
                             console.log('Box3 size:', roomWidth.toFixed(2), roomHeight.toFixed(2), roomDepth.toFixed(2));

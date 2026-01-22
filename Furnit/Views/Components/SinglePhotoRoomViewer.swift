@@ -659,10 +659,12 @@ struct SinglePhotoRoomView: View {
     @ObservedObject private var sharpService = SHARPService.shared
     @State private var selectedImage: UIImage?
     @State private var showImagePicker = false
+    @State private var showCameraCapture = false  // Show camera capture view
+    @State private var captureOrientation: CaptureOrientation = .landscape  // Camera orientation selection
     @State private var adjustedBoundaries: RoomStructure?
     @State private var navigateToViewer = false
     @State private var fixedImage: UIImage? // ✅ Store fixed image separately
-    
+
     // Identifiable wrapper for reliable sheet(item:) presentation
     @State private var fixedImageItem: IdentifiedImage?
 
@@ -670,7 +672,7 @@ struct SinglePhotoRoomView: View {
         let id = UUID()
         let image: UIImage
     }
-    
+
     // Read dimensions from settings
     @AppStorage("singlePhotoRoom.width") private var roomWidth: Double = 4.0
     @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
@@ -801,6 +803,51 @@ struct SinglePhotoRoomView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
 
+                        // Camera button - NEW
+                        Button(action: {
+                            logDebug("📷 [View] Camera button tapped")
+                            showCameraCapture = true
+                        }) {
+                            VStack(spacing: 16) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(.blue)
+
+                                VStack(spacing: 4) {
+                                    Text(NSLocalizedString("camera.takePhoto", comment: ""))
+                                        .font(.headline)
+                                    Text(NSLocalizedString("camera.chooseOrientationShort", comment: ""))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(24)
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(16)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.blue, lineWidth: 2)
+                            )
+                        }
+                        .padding(.horizontal)
+
+                        // Divider with "or"
+                        HStack {
+                            Rectangle()
+                                .fill(Color.secondary.opacity(0.3))
+                                .frame(height: 1)
+                            Text(NSLocalizedString("common.or", comment: ""))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 8)
+                            Rectangle()
+                                .fill(Color.secondary.opacity(0.3))
+                                .frame(height: 1)
+                        }
+                        .padding(.horizontal, 32)
+
+                        // Photo library button
                         Button(action: {
                             logDebug("🖼️ [View] Select photo button tapped")
                             showImagePicker = true
@@ -960,6 +1007,18 @@ struct SinglePhotoRoomView: View {
                         showMethodPicker = true
                     } else {
                         logDebug("⚠️ [View] No image selected")
+                    }
+                }
+        }
+        .sheet(isPresented: $showCameraCapture) {
+            CameraCaptureView(selectedImage: $selectedImage, selectedOrientation: $captureOrientation)
+                .onDisappear {
+                    logDebug("📷 [View] Camera capture dismissed")
+                    if selectedImage != nil {
+                        logDebug("✅ [View] Photo captured with orientation: \(captureOrientation.rawValue), showing method picker...")
+                        showMethodPicker = true
+                    } else {
+                        logDebug("⚠️ [View] No photo captured")
                     }
                 }
         }
@@ -1173,6 +1232,222 @@ struct PhotoPickerView: UIViewControllerRepresentable {
         
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             logDebug("❌ [PhotoPicker] User cancelled")
+            parent.dismiss()
+        }
+    }
+}
+
+// MARK: - Photo Orientation Enum
+enum CaptureOrientation: String, CaseIterable {
+    case portrait = "Portrait"
+    case landscape = "Landscape"
+    case panoramic = "Panoramic"
+
+    var icon: String {
+        switch self {
+        case .portrait: return "rectangle.portrait"
+        case .landscape: return "rectangle"
+        case .panoramic: return "pano"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .portrait: return NSLocalizedString("camera.portrait.desc", comment: "Best for narrow rooms")
+        case .landscape: return NSLocalizedString("camera.landscape.desc", comment: "Best for wide rooms")
+        case .panoramic: return NSLocalizedString("camera.panoramic.desc", comment: "Best for large spaces")
+        }
+    }
+}
+
+// MARK: - Camera Capture View with Orientation Selection
+struct CameraCaptureView: View {
+    @Binding var selectedImage: UIImage?
+    @Binding var selectedOrientation: CaptureOrientation
+    @Environment(\.dismiss) var dismiss
+
+    @State private var showCamera = false
+    @State private var capturedImage: UIImage?
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                // Orientation Selection Header
+                VStack(spacing: 8) {
+                    Image(systemName: "camera.viewfinder")
+                        .font(.system(size: 50))
+                        .foregroundColor(.blue)
+
+                    Text(NSLocalizedString("camera.chooseOrientation", comment: "Choose Photo Orientation"))
+                        .font(.title2)
+                        .fontWeight(.bold)
+
+                    Text(NSLocalizedString("camera.orientationHint", comment: "Select how you want to capture your room"))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                .padding(.top, 20)
+
+                // Orientation Options
+                VStack(spacing: 12) {
+                    ForEach(CaptureOrientation.allCases, id: \.self) { orientation in
+                        OrientationOptionButton(
+                            orientation: orientation,
+                            isSelected: selectedOrientation == orientation,
+                            action: { selectedOrientation = orientation }
+                        )
+                    }
+                }
+                .padding(.horizontal)
+
+                Spacer()
+
+                // Capture Button
+                Button(action: {
+                    logDebug("📷 [Camera] Opening camera with orientation: \(selectedOrientation.rawValue)")
+                    showCamera = true
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "camera.fill")
+                            .font(.title2)
+                        Text(NSLocalizedString("camera.takePhoto", comment: "Take Photo"))
+                            .font(.headline)
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.blue)
+                    .cornerRadius(12)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 20)
+            }
+            .navigationTitle(NSLocalizedString("camera.title", comment: "Camera"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(L10n.Common.cancel) {
+                        dismiss()
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraViewRepresentable(
+                    capturedImage: $capturedImage,
+                    orientation: selectedOrientation
+                )
+                .ignoresSafeArea()
+            }
+            .onChange(of: capturedImage) { _, newImage in
+                if let image = newImage {
+                    logDebug("📷 [Camera] Photo captured: \(image.size)")
+                    selectedImage = image
+                    dismiss()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Orientation Option Button
+struct OrientationOptionButton: View {
+    let orientation: CaptureOrientation
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                // Orientation icon
+                Image(systemName: orientation.icon)
+                    .font(.system(size: 28))
+                    .foregroundColor(isSelected ? .blue : .secondary)
+                    .frame(width: 50)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(NSLocalizedString("camera.\(orientation.rawValue.lowercased())", comment: ""))
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Text(orientation.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                // Selection indicator
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .blue : .secondary)
+            }
+            .padding()
+            .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+            )
+        }
+    }
+}
+
+// MARK: - Camera View Representable (UIKit Camera)
+struct CameraViewRepresentable: UIViewControllerRepresentable {
+    @Binding var capturedImage: UIImage?
+    let orientation: CaptureOrientation
+    @Environment(\.dismiss) var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        logDebug("📷 [Camera] Creating camera controller")
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        picker.allowsEditing = false
+
+        // Set camera capture mode based on orientation
+        switch orientation {
+        case .panoramic:
+            // iOS doesn't have native panorama in UIImagePickerController
+            // We'll capture in landscape and user can pan
+            picker.cameraCaptureMode = .photo
+            logDebug("📷 [Camera] Panoramic mode - using photo mode")
+        case .landscape, .portrait:
+            picker.cameraCaptureMode = .photo
+        }
+
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraViewRepresentable
+
+        init(_ parent: CameraViewRepresentable) {
+            self.parent = parent
+            logDebug("📷 [Camera] Coordinator initialized for \(parent.orientation.rawValue) mode")
+        }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            logDebug("📷 [Camera] Photo captured")
+            if let image = info[.originalImage] as? UIImage {
+                logDebug("✅ [Camera] Got UIImage: \(image.size), orientation: \(image.imageOrientation.rawValue)")
+
+                // Fix orientation before returning
+                let fixedImage = image.fixedOrientation()
+                parent.capturedImage = fixedImage
+            } else {
+                logDebug("❌ [Camera] Failed to get UIImage")
+            }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            logDebug("❌ [Camera] User cancelled")
             parent.dismiss()
         }
     }

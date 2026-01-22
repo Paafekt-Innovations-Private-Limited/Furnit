@@ -2,6 +2,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
 
@@ -22,6 +23,11 @@
         <activity android:name=".LoginActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="false" />
         <activity android:name=".ModelDetailActivity" android:exported="false" />
+        <activity android:name=".SinglePhotoRoomActivity" android:exported="false" />
+        <activity android:name=".RoomBoundaryActivity" android:exported="false" />
+        <activity android:name=".RoomViewerActivity" android:exported="false" />
+        <activity android:name=".SharpRoomActivity" android:exported="false" />
+        <activity android:name=".SettingsActivity" android:exported="false" />
     </application>
 
 </manifest>

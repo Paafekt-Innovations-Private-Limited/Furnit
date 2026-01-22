@@ -544,17 +544,37 @@ class SharpRoomActivity : AppCompatActivity() {
             return { positions, colors };
         }
 
-        // Create point cloud from PLY
+        // Create point cloud from PLY with larger splats for better visualization
         const plyData = parsePLY(bytes);
         if (plyData) {
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.Float32BufferAttribute(plyData.positions, 3));
             geometry.setAttribute('color', new THREE.Float32BufferAttribute(plyData.colors, 3));
 
+            // Use sprite-based rendering for softer splats
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(0.3, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(0.7, 'rgba(255,255,255,0.3)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 64, 64);
+
+            const splatTexture = new THREE.CanvasTexture(canvas);
+
             const material = new THREE.PointsMaterial({
-                size: 0.03,
+                size: 0.12,
                 vertexColors: true,
-                sizeAttenuation: true
+                sizeAttenuation: true,
+                map: splatTexture,
+                transparent: true,
+                alphaTest: 0.01,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
             });
 
             const points = new THREE.Points(geometry, material);
