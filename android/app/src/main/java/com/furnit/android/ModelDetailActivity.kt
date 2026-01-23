@@ -36,14 +36,16 @@ class ModelDetailActivity : AppCompatActivity() {
         val backButton: ImageButton = findViewById(R.id.backButton)
         backButton.setOnClickListener { finish() }
 
-        // Brain button launches SmartyPants segmentation
-        brainButton.setOnClickListener {
-            val intent = Intent(this, SmartyPantsActivity::class.java)
-            startActivity(intent)
-        }
-
         val modelId = intent.getStringExtra("MODEL_ID") ?: return
         val model = modelManager.getModel(modelId) ?: return
+
+        // Brain button launches SmartyPants segmentation with this room as background
+        brainButton.setOnClickListener {
+            val intent = Intent(this, SmartyPantsActivity::class.java)
+            intent.putExtra("ROOM_ID", model.id)
+            intent.putExtra("ROOM_NAME", model.name)
+            startActivity(intent)
+        }
 
         modelTitle.text = model.name
 

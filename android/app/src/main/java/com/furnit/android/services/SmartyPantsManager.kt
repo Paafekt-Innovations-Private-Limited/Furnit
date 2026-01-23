@@ -1158,6 +1158,7 @@ class SmartyPantsManager(private val context: Context) {
         fun rec(a: Any?) {
             when (a) {
                 is Float -> list.add(a)
+
                 is java.lang.Float -> list.add(a.toFloat())
                 is Double -> list.add(a.toFloat())
                 is java.lang.Double -> list.add(a.toDouble().toFloat())

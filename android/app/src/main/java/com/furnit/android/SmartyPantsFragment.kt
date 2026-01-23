@@ -11,22 +11,25 @@ import android.util.Log
 import android.view.*
 import android.widget.FrameLayout
 import android.widget.ImageButton
-import android.widget.ImageView
-import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.furnit.android.services.SmartyPantsManager
+import io.github.sceneview.SceneView
+import io.github.sceneview.math.Position
+import io.github.sceneview.node.ModelNode
+import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class SmartyPantsFragment : Fragment() {
     private lateinit var previewView: PreviewView
-    private lateinit var roomBackgroundView: ImageView
+    private lateinit var roomSceneView: SceneView
     private lateinit var overlay: SmartyPantsOverlayView
     private lateinit var statusLabel: TextView
     private lateinit var cameraExecutor: ExecutorService
@@ -34,10 +37,16 @@ class SmartyPantsFragment : Fragment() {
     private lateinit var manager: SmartyPantsManager
     private var isProcessing = false
     private var showRoomBackground = true  // Show room behind segmented furniture
+    private var selectedRoomId: String? = null
+    private var selectedRoomName: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d("SmartyPants", "Fragment onCreate - initializing...")
+
+        // Get room info from arguments
+        selectedRoomId = arguments?.getString("ROOM_ID")
+        selectedRoomName = arguments?.getString("ROOM_NAME")
+        Log.d("SmartyPants", "Fragment onCreate - room: $selectedRoomName (id=$selectedRoomId)")
         cameraExecutor = Executors.newSingleThreadExecutor()
         manager = SmartyPantsManager(requireContext())
         // Initialize model - try NCNN first (1280x1280, more efficient), fall back to ONNX
@@ -54,13 +63,12 @@ class SmartyPantsFragment : Fragment() {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
 
-        // Room background layer - shows behind segmented furniture
-        roomBackgroundView = ImageView(requireContext()).apply {
+        // Room background layer - 3D room rendered with SceneView
+        roomSceneView = SceneView(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            scaleType = ImageView.ScaleType.CENTER_CROP
             visibility = View.GONE  // Hidden initially until segmentation starts
         }
-        loadRoomBackground()
+        loadRoom3D()
 
         overlay = SmartyPantsOverlayView(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
@@ -87,7 +95,7 @@ class SmartyPantsFragment : Fragment() {
         }
 
         root.addView(previewView)
-        root.addView(roomBackgroundView)  // Room background between camera and overlay
+        root.addView(roomSceneView)  // 3D room background between camera and overlay
         root.addView(overlay)
         root.addView(statusLabel)
         root.addView(backButton)
@@ -159,14 +167,14 @@ class SmartyPantsFragment : Fragment() {
                     statusLabel.text = if (labels.isNotEmpty()) labels else "Detected"
                     overlay.setMaskAndDetections(result.mask, result.detections, result.inputSize)
 
-                    // Show room background behind segmented furniture
+                    // Show 3D room behind segmented furniture
                     if (showRoomBackground && result.detections.isNotEmpty()) {
-                        roomBackgroundView.visibility = View.VISIBLE
+                        roomSceneView.visibility = View.VISIBLE
                     }
                 } else {
                     statusLabel.text = "Scanning..."
                     overlay.setMaskAndDetections(null, emptyList())
-                    roomBackgroundView.visibility = View.GONE
+                    roomSceneView.visibility = View.GONE
                 }
             }
             isProcessing = false
@@ -181,69 +189,41 @@ class SmartyPantsFragment : Fragment() {
         manager.close()
     }
 
-    private fun loadRoomBackground() {
-        // Try to load Vintage Living Room or first available room
-        try {
-            // First try assets
-            val assetFiles = requireContext().assets.list("room_previews") ?: emptyArray()
-            if (assetFiles.contains("vintage.png")) {
-                val bitmap = requireContext().assets.open("room_previews/vintage.png").use {
-                    BitmapFactory.decodeStream(it)
-                }
-                roomBackgroundView.setImageBitmap(bitmap)
-                Log.d("SmartyPants", "Loaded vintage room from assets")
-                return
-            }
+    private fun loadRoom3D() {
+        val roomId = selectedRoomId ?: "vintage"
+        Log.d("SmartyPants", "Loading 3D room: $roomId")
 
-            // Try user-created rooms
-            val roomsDir = java.io.File(requireContext().filesDir, "rooms")
-            if (roomsDir.exists()) {
-                val roomFolders = roomsDir.listFiles { f -> f.isDirectory }
-                if (!roomFolders.isNullOrEmpty()) {
-                    val frontWall = java.io.File(roomFolders[0], "front_wall.png")
-                    if (frontWall.exists()) {
-                        val bitmap = BitmapFactory.decodeFile(frontWall.absolutePath)
-                        roomBackgroundView.setImageBitmap(bitmap)
-                        Log.d("SmartyPants", "Loaded room: ${roomFolders[0].name}")
-                        return
-                    }
-                }
-            }
-
-            // Fallback: create a simple room-like background
-            val bitmap = createDefaultRoomBackground()
-            roomBackgroundView.setImageBitmap(bitmap)
-            Log.d("SmartyPants", "Using default room background")
-        } catch (e: Exception) {
-            Log.e("SmartyPants", "Failed to load room background", e)
-            val bitmap = createDefaultRoomBackground()
-            roomBackgroundView.setImageBitmap(bitmap)
+        // Map room ID to GLB asset path
+        val assetPath = when (roomId) {
+            "vintage" -> "models/vintage.glb"
+            "modern" -> "models/modern.glb"
+            "minimalist" -> "models/minimalist.glb"
+            else -> "models/$roomId.glb"
         }
-    }
 
-    private fun createDefaultRoomBackground(): Bitmap {
-        val width = 1080
-        val height = 1920
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = android.graphics.Canvas(bitmap)
+        lifecycleScope.launch {
+            try {
+                val modelNode = ModelNode(
+                    modelInstance = roomSceneView.modelLoader.createModelInstance(
+                        assetFileLocation = assetPath
+                    ),
+                    scaleToUnits = null  // Keep original scale
+                )
 
-        // Wall color (warm beige like vintage room)
-        val wallPaint = android.graphics.Paint().apply { color = 0xFFD4C4A8.toInt() }
-        // Floor color (wood-like)
-        val floorPaint = android.graphics.Paint().apply { color = 0xFF8B7355.toInt() }
-        // Baseboard
-        val baseboardPaint = android.graphics.Paint().apply { color = 0xFFE8DCC8.toInt() }
+                modelNode.position = Position(0f, 0f, 0f)
+                roomSceneView.addChildNode(modelNode)
 
-        // Draw wall (top 70%)
-        canvas.drawRect(0f, 0f, width.toFloat(), height * 0.7f, wallPaint)
+                // Position camera at back wall, eye level, looking into room
+                roomSceneView.cameraNode.apply {
+                    position = Position(0f, 1.6f, -4f)
+                    lookAt(Position(0f, 1.6f, 4f))
+                }
 
-        // Draw baseboard
-        canvas.drawRect(0f, height * 0.68f, width.toFloat(), height * 0.72f, baseboardPaint)
-
-        // Draw floor (bottom 30%)
-        canvas.drawRect(0f, height * 0.7f, width.toFloat(), height.toFloat(), floorPaint)
-
-        return bitmap
+                Log.d("SmartyPants", "3D room loaded: $assetPath")
+            } catch (e: Exception) {
+                Log.e("SmartyPants", "Failed to load 3D room: $assetPath", e)
+            }
+        }
     }
 }
 

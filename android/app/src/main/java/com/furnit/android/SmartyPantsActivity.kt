@@ -33,8 +33,20 @@ class SmartyPantsActivity : AppCompatActivity() {
     }
 
     private fun loadFragment() {
+        val fragment = SmartyPantsFragment()
+
+        // Pass room info to fragment
+        val roomId = intent.getStringExtra("ROOM_ID")
+        val roomName = intent.getStringExtra("ROOM_NAME")
+        if (roomId != null) {
+            fragment.arguments = Bundle().apply {
+                putString("ROOM_ID", roomId)
+                putString("ROOM_NAME", roomName)
+            }
+        }
+
         supportFragmentManager.beginTransaction()
-            .replace(android.R.id.content, SmartyPantsFragment())
+            .replace(android.R.id.content, fragment)
             .commit()
     }
 }
