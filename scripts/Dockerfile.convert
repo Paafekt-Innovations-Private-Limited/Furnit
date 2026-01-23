@@ -24,6 +24,7 @@ RUN pip install \
     onnx==1.17.0 \
     onnxruntime==1.19.0 \
     onnx2tf==1.26.3 \
+    onnxsim \
     onnxslim>=0.1.71 \
     onnx_graphsurgeon>=0.3.26 \
     sng4onnx>=1.0.1 \
