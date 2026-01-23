@@ -11,6 +11,7 @@ import android.util.Log
 import android.view.*
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.camera.core.*
@@ -25,12 +26,14 @@ import java.util.concurrent.Executors
 
 class SmartyPantsFragment : Fragment() {
     private lateinit var previewView: PreviewView
+    private lateinit var roomBackgroundView: ImageView
     private lateinit var overlay: SmartyPantsOverlayView
     private lateinit var statusLabel: TextView
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
     private lateinit var manager: SmartyPantsManager
     private var isProcessing = false
+    private var showRoomBackground = true  // Show room behind segmented furniture
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,6 +53,14 @@ class SmartyPantsFragment : Fragment() {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
+
+        // Room background layer - shows behind segmented furniture
+        roomBackgroundView = ImageView(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            visibility = View.GONE  // Hidden initially until segmentation starts
+        }
+        loadRoomBackground()
 
         overlay = SmartyPantsOverlayView(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
@@ -76,6 +87,7 @@ class SmartyPantsFragment : Fragment() {
         }
 
         root.addView(previewView)
+        root.addView(roomBackgroundView)  // Room background between camera and overlay
         root.addView(overlay)
         root.addView(statusLabel)
         root.addView(backButton)
@@ -146,9 +158,15 @@ class SmartyPantsFragment : Fragment() {
                     }
                     statusLabel.text = if (labels.isNotEmpty()) labels else "Detected"
                     overlay.setMaskAndDetections(result.mask, result.detections, result.inputSize)
+
+                    // Show room background behind segmented furniture
+                    if (showRoomBackground && result.detections.isNotEmpty()) {
+                        roomBackgroundView.visibility = View.VISIBLE
+                    }
                 } else {
                     statusLabel.text = "Scanning..."
                     overlay.setMaskAndDetections(null, emptyList())
+                    roomBackgroundView.visibility = View.GONE
                 }
             }
             isProcessing = false
@@ -161,6 +179,71 @@ class SmartyPantsFragment : Fragment() {
         super.onDestroy()
         cameraExecutor.shutdown()
         manager.close()
+    }
+
+    private fun loadRoomBackground() {
+        // Try to load Vintage Living Room or first available room
+        try {
+            // First try assets
+            val assetFiles = requireContext().assets.list("room_previews") ?: emptyArray()
+            if (assetFiles.contains("vintage.png")) {
+                val bitmap = requireContext().assets.open("room_previews/vintage.png").use {
+                    BitmapFactory.decodeStream(it)
+                }
+                roomBackgroundView.setImageBitmap(bitmap)
+                Log.d("SmartyPants", "Loaded vintage room from assets")
+                return
+            }
+
+            // Try user-created rooms
+            val roomsDir = java.io.File(requireContext().filesDir, "rooms")
+            if (roomsDir.exists()) {
+                val roomFolders = roomsDir.listFiles { f -> f.isDirectory }
+                if (!roomFolders.isNullOrEmpty()) {
+                    val frontWall = java.io.File(roomFolders[0], "front_wall.png")
+                    if (frontWall.exists()) {
+                        val bitmap = BitmapFactory.decodeFile(frontWall.absolutePath)
+                        roomBackgroundView.setImageBitmap(bitmap)
+                        Log.d("SmartyPants", "Loaded room: ${roomFolders[0].name}")
+                        return
+                    }
+                }
+            }
+
+            // Fallback: create a simple room-like background
+            val bitmap = createDefaultRoomBackground()
+            roomBackgroundView.setImageBitmap(bitmap)
+            Log.d("SmartyPants", "Using default room background")
+        } catch (e: Exception) {
+            Log.e("SmartyPants", "Failed to load room background", e)
+            val bitmap = createDefaultRoomBackground()
+            roomBackgroundView.setImageBitmap(bitmap)
+        }
+    }
+
+    private fun createDefaultRoomBackground(): Bitmap {
+        val width = 1080
+        val height = 1920
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+
+        // Wall color (warm beige like vintage room)
+        val wallPaint = android.graphics.Paint().apply { color = 0xFFD4C4A8.toInt() }
+        // Floor color (wood-like)
+        val floorPaint = android.graphics.Paint().apply { color = 0xFF8B7355.toInt() }
+        // Baseboard
+        val baseboardPaint = android.graphics.Paint().apply { color = 0xFFE8DCC8.toInt() }
+
+        // Draw wall (top 70%)
+        canvas.drawRect(0f, 0f, width.toFloat(), height * 0.7f, wallPaint)
+
+        // Draw baseboard
+        canvas.drawRect(0f, height * 0.68f, width.toFloat(), height * 0.72f, baseboardPaint)
+
+        // Draw floor (bottom 30%)
+        canvas.drawRect(0f, height * 0.7f, width.toFloat(), height.toFloat(), floorPaint)
+
+        return bitmap
     }
 }
 

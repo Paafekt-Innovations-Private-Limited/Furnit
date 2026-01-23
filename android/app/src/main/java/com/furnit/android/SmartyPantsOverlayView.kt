@@ -62,19 +62,10 @@ class SmartyPantsOverlayView(context: Context) : View(context) {
         invalidate()
     }
 
-    private val bgPaint = Paint().apply {
-        color = Color.argb(200, 30, 30, 30)  // Dark semi-transparent background
-    }
-
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Draw dark background where objects will be shown
-        maskBitmap?.let {
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
-        }
-
-        // Draw segmented objects (cutout with transparent background)
+        // Draw segmented objects (cutout with transparent background) directly on camera
         maskBitmap?.let { bmp ->
             val scaleX = width.toFloat() / bmp.width
             val scaleY = height.toFloat() / bmp.height
