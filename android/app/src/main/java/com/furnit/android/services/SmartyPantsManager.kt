@@ -13,13 +13,21 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.OrtSession.SessionOptions
 import ai.onnxruntime.OrtException
+import com.furnit.android.DetectionResult
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
-import java.lang.IllegalArgumentException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
+import kotlin.math.exp
+
+// Result containing mask and detections
+data class SegmentationResult(
+    val mask: Bitmap?,
+    val detections: List<DetectionResult>,
+    val inputSize: Int = 640
+)
 
 /**
  * SmartyPantsManager handles object detection and segmentation using YOLOE models.
@@ -34,13 +42,31 @@ import java.nio.channels.FileChannel
  */
 class SmartyPantsManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    companion object {
+        private val COCO_CLASSES = arrayOf(
+            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
+            "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+            "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
+            "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball",
+            "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
+            "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+            "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake",
+            "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop",
+            "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
+            "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"
+        )
+        fun getClassName(classId: Int): String = COCO_CLASSES.getOrElse(classId) { "unknown" }
+    }
     private val inferenceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     private var interpreter: Interpreter? = null
     private var inputShape: IntArray? = null
     private var inputDataType: DataType? = null
+
     // ONNX Runtime objects
     private var ortEnv: OrtEnvironment? = null
     private var ortSession: OrtSession? = null
+
     // NCNN inference engine (preferred)
     private var ncnnYoloe: NcnnYoloe? = null
     private var useNcnn = false
@@ -56,7 +82,10 @@ class SmartyPantsManager(private val context: Context) {
             val t = interpreter!!.getInputTensor(idx)
             inputShape = t.shape()
             inputDataType = t.dataType()
-            Log.i("SmartyPantsManager", "Loaded TFLite model '$tfliteAssetName' inputShape=${inputShape?.joinToString()} dataType=$inputDataType")
+            Log.i(
+                "SmartyPantsManager",
+                "Loaded TFLite model '$tfliteAssetName' inputShape=${inputShape?.joinToString()} dataType=$inputDataType"
+            )
         } catch (e: Exception) {
             Log.w("SmartyPantsManager", "Failed to load tflite: ${e.message}")
             interpreter = null
@@ -77,7 +106,10 @@ class SmartyPantsManager(private val context: Context) {
         binAsset: String = "yoloe-11l-seg.bin",
         useGpu: Boolean = true
     ): Boolean {
-        Log.i("SmartyPantsManager", "initializeNcnn called with param='$paramAsset', bin='$binAsset', gpu=$useGpu")
+        Log.i(
+            "SmartyPantsManager",
+            "initializeNcnn called with param='$paramAsset', bin='$binAsset', gpu=$useGpu"
+        )
 
         if (!NcnnYoloe.isAvailable()) {
             val error = NcnnYoloe.getLoadError() ?: "unknown reason"
@@ -91,7 +123,10 @@ class SmartyPantsManager(private val context: Context) {
 
             if (success) {
                 useNcnn = true
-                Log.i("SmartyPantsManager", "NCNN initialization successful (GPU: ${ncnnYoloe!!.hasGpu()})")
+                Log.i(
+                    "SmartyPantsManager",
+                    "NCNN initialization successful (GPU: ${ncnnYoloe!!.hasGpu()})"
+                )
                 return true
             } else {
                 Log.e("SmartyPantsManager", "NCNN initialization failed")
@@ -118,7 +153,7 @@ class SmartyPantsManager(private val context: Context) {
             return true
         }
 
-        // Fall back to ONNX Runtime (640x640 model, ~156MB output)
+        // Fall back to ONNX Runtime
         try {
             initializeOnnx()
             if (ortSession != null) {
@@ -150,7 +185,10 @@ class SmartyPantsManager(private val context: Context) {
         try {
             Log.d("SmartyPantsManager", "Copying asset to cache...")
             val file = copyAssetToFile(onnxAssetName)
-            Log.d("SmartyPantsManager", "Asset copied to: ${file.absolutePath}, size: ${file.length()}")
+            Log.d(
+                "SmartyPantsManager",
+                "Asset copied to: ${file.absolutePath}, size: ${file.length()}"
+            )
 
             Log.d("SmartyPantsManager", "Getting ORT environment...")
             ortEnv = OrtEnvironment.getEnvironment()
@@ -176,6 +214,13 @@ class SmartyPantsManager(private val context: Context) {
     }
 
     fun segmentImageAsync(frame: Bitmap?, callback: (Bitmap?) -> Unit) {
+        // Wrapper that discards detection info
+        segmentWithDetectionsAsync(frame) { result ->
+            callback(result?.mask)
+        }
+    }
+
+    fun segmentWithDetectionsAsync(frame: Bitmap?, callback: (SegmentationResult?) -> Unit) {
         if (frame == null) {
             mainHandler.postDelayed({ callback(null) }, 200)
             return
@@ -185,13 +230,13 @@ class SmartyPantsManager(private val context: Context) {
             try {
                 // Prefer NCNN if available (best performance)
                 if (useNcnn && ncnnYoloe != null) {
-                    runNcnnInference(frame, callback)
+                    runNcnnInferenceWithDetections(frame, callback)
                     return@execute
                 }
 
                 // Prefer ONNX Runtime if available
                 if (ortSession != null) {
-                    runOnnxInference(frame, callback)
+                    runOnnxInferenceWithDetections(frame, callback)
                     return@execute
                 }
 
@@ -241,7 +286,8 @@ class SmartyPantsManager(private val context: Context) {
                         // default fallback: ByteBuffer
                         var size = 1
                         for (d in shape) size *= d
-                        outputMap[i] = ByteBuffer.allocateDirect(size * 4).order(ByteOrder.nativeOrder())
+                        outputMap[i] =
+                            ByteBuffer.allocateDirect(size * 4).order(ByteOrder.nativeOrder())
                     }
                 }
 
@@ -278,11 +324,17 @@ class SmartyPantsManager(private val context: Context) {
             )
 
             val inferenceTime = System.currentTimeMillis() - startTime
-            Log.d("SmartyPantsManager", "NCNN inference: ${result.detections.size} detections in ${inferenceTime}ms")
+            Log.d(
+                "SmartyPantsManager",
+                "NCNN inference: ${result.detections.size} detections in ${inferenceTime}ms"
+            )
 
             // Log top detections
             for ((idx, det) in result.detections.take(5).withIndex()) {
-                Log.d("SmartyPantsManager", "  [$idx] ${det.label} (${det.classId}): conf=${det.confidence}, bbox=(${det.x},${det.y},${det.width},${det.height})")
+                Log.d(
+                    "SmartyPantsManager",
+                    "  [$idx] ${det.label} (${det.classId}): conf=${det.confidence}, bbox=(${det.x},${det.y},${det.width},${det.height})"
+                )
             }
 
             // Return the mask bitmap
@@ -358,52 +410,75 @@ class SmartyPantsManager(private val context: Context) {
             val inputName = firstInput.key
             val tensorInfo = firstInput.value.info
 
-            val shape = when (tensorInfo) {
-                is ai.onnxruntime.TensorInfo -> tensorInfo.shape
-                else -> null
+            // --- FIX #1 (important): use model-declared input H/W instead of hardcoding 640 ---
+            // Many YOLOE exports are 768x768 (your anchors like 48384 and proto like 384 strongly suggest 768).
+            var inputH = 640
+            var inputW = 640
+            if (tensorInfo is ai.onnxruntime.TensorInfo) {
+                val sh = tensorInfo.shape
+                // Expected [1,3,H,W] (NCHW). H/W may be -1 if dynamic.
+                if (sh.size == 4) {
+                    val hCandidate = sh[2].toInt()
+                    val wCandidate = sh[3].toInt()
+                    if (hCandidate > 0 && wCandidate > 0) {
+                        inputH = hCandidate
+                        inputW = wCandidate
+                    }
+                }
             }
 
-            // YOLOe model expects [1, 3, 640, 640] for 640 export
-            // Output tensor is ~156MB (vs 900MB for 1536)
-            var h = 640
-            var w = 640
-
-            Log.d("SmartyPantsManager", "Resizing frame ${frame.width}x${frame.height} to ${w}x${h}")
-            val resized = Bitmap.createScaledBitmap(frame, w, h, true).copy(Config.ARGB_8888, false)
+            // Resize to model input size
+            Log.d(
+                "SmartyPantsManager",
+                "Resizing frame ${frame.width}x${frame.height} to ${inputW}x${inputH}"
+            )
+            val resized = Bitmap.createScaledBitmap(frame, inputW, inputH, true).copy(Config.ARGB_8888, false)
 
             // Prepare float array in NCHW format
-            val floatCount = 1 * 3 * h * w
+            val floatCount = 1 * 3 * inputH * inputW
             val inputFloats = FloatArray(floatCount)
             val intValues = IntArray(resized.width * resized.height)
             resized.getPixels(intValues, 0, resized.width, 0, 0, resized.width, resized.height)
 
             // Fill NCHW layout: channel-first ordering
-            for (y in 0 until h) {
-                for (x in 0 until w) {
-                    val v = intValues[y * w + x]
+            val hw = inputH * inputW
+            for (y in 0 until inputH) {
+                val rowOff = y * inputW
+                for (x in 0 until inputW) {
+                    val v = intValues[rowOff + x]
                     val r = ((v shr 16) and 0xFF) / 255.0f
                     val g = ((v shr 8) and 0xFF) / 255.0f
                     val b = (v and 0xFF) / 255.0f
-                    val pixelIdx = y * w + x
-                    inputFloats[0 * h * w + pixelIdx] = r  // R channel
-                    inputFloats[1 * h * w + pixelIdx] = g  // G channel
-                    inputFloats[2 * h * w + pixelIdx] = b  // B channel
+                    val pixelIdx = rowOff + x
+                    inputFloats[0 * hw + pixelIdx] = r
+                    inputFloats[1 * hw + pixelIdx] = g
+                    inputFloats[2 * hw + pixelIdx] = b
                 }
             }
 
-            val shapeLong = longArrayOf(1, 3, h.toLong(), w.toLong())
+            val shapeLong = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
             Log.d("SmartyPantsManager", "Creating input tensor with shape ${shapeLong.toList()}")
-            val tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
+            Log.d(
+                "SmartyPantsManager",
+                "Input sample - R[0]=${inputFloats[0]}, G[0]=${inputFloats[hw]}, B[0]=${inputFloats[2 * hw]}"
+            )
+            Log.d("SmartyPantsManager", "Input range - min=${inputFloats.minOrNull()}, max=${inputFloats.maxOrNull()}")
+
+            val tensor = OnnxTensor.createTensor(
+                env,
+                java.nio.FloatBuffer.wrap(inputFloats),
+                shapeLong
+            )
+
             var maskResult: Bitmap? = null
 
             Log.d("SmartyPantsManager", "Running ONNX inference...")
             session.run(mapOf(inputName to tensor)).use { results ->
                 Log.d("SmartyPantsManager", "Inference complete, processing outputs...")
 
-                // Get output info
                 val outInfos = ortSession!!.outputInfo.entries.toList()
 
-                // Find detection output (output0: [1, features, anchors]) and prototype output (output1: [1, 32, H, W])
+                // Find detection output (3D) and prototype output (4D)
                 var detIndex = -1
                 var protoIndex = -1
                 var detShape: LongArray? = null
@@ -435,31 +510,33 @@ class SmartyPantsManager(private val context: Context) {
                 Log.d("SmartyPantsManager", "Detection output[$detIndex] shape: ${detShape.toList()}")
                 Log.d("SmartyPantsManager", "Proto output[$protoIndex] shape: ${protoShape.toList()}")
 
-                // Extract output tensors
                 val detResult = results.get(detIndex)
                 val protoResult = results.get(protoIndex)
 
                 val detValue = detResult?.value
                 val protoValue = protoResult?.value
 
-                // Parse detection output: [1, numFeatures, numAnchors]
-                // For YOLOe prompt-free: [1, 4621, 48384] means 4621 features, 48384 anchors
-                // Structure: bbox(4) + embeddings(4585) + mask_coeffs(32) = 4621
                 val numFeatures = detShape[1].toInt()
                 val numAnchors = detShape[2].toInt()
+
                 val numMaskCoeffs = 32
-                val numEmbeddings = numFeatures - 4 - numMaskCoeffs  // 4585 for this model
-                val embeddingStart = 4
-                val maskCoeffStart = 4 + numEmbeddings  // 4589
 
-                // Parse prototype output: [1, 32, protoH, protoW]
-                val numProtos = protoShape[1].toInt()  // 32
-                val protoH = protoShape[2].toInt()     // 384
-                val protoW = protoShape[3].toInt()     // 384
+                // Your comment says prompt-free (embeddings + mask coeffs), but below you treat as standard YOLO format.
+                // We'll keep your logic as-is, but the critical fix is: input size must match model export (768 vs 640).
+                val numClasses = numFeatures - 4 - numMaskCoeffs
+                val classStartIdx = 4
+                val maskCoeffStartIdx = 4 + numClasses
 
-                Log.d("SmartyPantsManager", "Prompt-Free Format: Features=$numFeatures, Anchors=$numAnchors, Embeddings=$numEmbeddings, MaskCoeffs=$numMaskCoeffs, ProtoSize=${protoH}x${protoW}")
+                val numProtos = protoShape[1].toInt()
+                val protoH = protoShape[2].toInt()
+                val protoW = protoShape[3].toInt()
 
-                if (numFeatures < 36 || numAnchors <= 0 || numEmbeddings <= 0) {
+                Log.d(
+                    "SmartyPantsManager",
+                    "Features=$numFeatures Anchors=$numAnchors Classes=$numClasses MaskCoeffs=$numMaskCoeffs Protos=$numProtos ProtoSize=${protoW}x${protoH}"
+                )
+
+                if (numFeatures < (4 + numMaskCoeffs + 1) || numAnchors <= 0 || numProtos <= 0) {
                     Log.e("SmartyPantsManager", "Invalid tensor dimensions")
                     mainHandler.post { callback(null) }
                     tensor.close()
@@ -468,20 +545,24 @@ class SmartyPantsManager(private val context: Context) {
 
                 Log.d("SmartyPantsManager", "DetValue type: ${detValue?.javaClass}")
 
-                // Handle detection output - try 3D array first, fall back to flattened
-                // For shape [1, numFeatures, numAnchors], ONNX Runtime returns float[1][numFeatures][numAnchors]
+                // Extract detection tensor (3D preferred)
                 var det3d: Array<Array<FloatArray>>? = null
                 var detFlat: FloatArray? = null
 
                 when (detValue) {
                     is Array<*> -> {
                         try {
-                            // Try to cast as 3D array
                             @Suppress("UNCHECKED_CAST")
                             det3d = detValue as Array<Array<FloatArray>>
-                            Log.d("SmartyPantsManager", "Det as 3D array: [${det3d.size}][${det3d[0].size}][${det3d[0][0].size}]")
+                            Log.d(
+                                "SmartyPantsManager",
+                                "Det as 3D array: [${det3d.size}][${det3d[0].size}][${det3d[0][0].size}]"
+                            )
                         } catch (e: Exception) {
-                            Log.w("SmartyPantsManager", "Failed to cast as 3D array, trying flatten: ${e.message}")
+                            Log.w(
+                                "SmartyPantsManager",
+                                "Failed to cast as 3D array, trying flatten: ${e.message}"
+                            )
                             detFlat = extractFloatArray(detValue)
                         }
                     }
@@ -519,97 +600,120 @@ class SmartyPantsManager(private val context: Context) {
                     return
                 }
 
+                Log.d(
+                    "SmartyPantsManager",
+                    "Proto[0]=${proto[0]}, Proto[1]=${proto[1]}, Proto[160]=${proto.getOrNull(160)}, Proto[25600]=${proto.getOrNull(25600)}"
+                )
+
                 val stride = numAnchors
 
-                // Find best detections using embedding norm as confidence
-                // For prompt-free model, higher embedding norm indicates object presence
-                val normThreshold = 0.3f  // Embedding norm threshold
-                val iouThreshold = 0.7f
+                val confThreshold = 0.25f
+                val iouThreshold = 0.5f
                 val maxDetections = 100
 
                 val detections = mutableListOf<Detection>()
 
-                // OPTIMIZATION: Only sample a subset of embeddings for norm calculation
-                // Using first 64 embeddings is enough to detect objects without processing all 4585
-                val embeddingSampleSize = minOf(64, numEmbeddings)
-                // OPTIMIZATION: Skip anchors - process every Nth anchor to reduce computation
-                val anchorStride = maxOf(1, numAnchors / 5000)  // Process ~5000 anchors max
-
-                Log.d("SmartyPantsManager", "Scanning $numAnchors anchors (stride=$anchorStride, ~${numAnchors/anchorStride} samples) with norm threshold $normThreshold...")
-                val startTime = System.currentTimeMillis()
-
-                // Define accessor function based on available format
                 val getDetValue: (Int, Int) -> Float = if (det3d != null) {
-                    { feature, anchor -> det3d[0][feature][anchor] }
+                    { feature, anchor -> det3d!![0][feature][anchor] }
                 } else {
                     { feature, anchor -> detFlat!![feature * stride + anchor] }
                 }
 
-                // Scan anchors with stride - use embedding norm as confidence proxy
-                var anchor = 0
-                while (anchor < numAnchors) {
-                    // Get bbox values
-                    val x = getDetValue(0, anchor)
-                    val y = getDetValue(1, anchor)
-                    val dw = getDetValue(2, anchor)
-                    val dh = getDetValue(3, anchor)
-
-                    // Validate bbox - quick rejection
-                    if (x.isFinite() && y.isFinite() && dw.isFinite() && dh.isFinite() &&
-                        dw > 0 && dh > 0 && dw < 2000 && dh < 2000) {
-
-                        // Calculate embedding L2 norm using sampled embeddings
-                        var normSq = 0f
-                        for (e in 0 until embeddingSampleSize) {
-                            val v = getDetValue(embeddingStart + e, anchor)
-                            normSq += v * v
-                        }
-                        val embeddingNorm = kotlin.math.sqrt(normSq)
-
-                        if (embeddingNorm > normThreshold) {
-                            // Extract mask coefficients (last 32 features)
-                            val coeffs = FloatArray(numProtos)
-                            for (c in 0 until numProtos) {
-                                coeffs[c] = getDetValue(maskCoeffStart + c, anchor)
-                            }
-
-                            detections.add(Detection(
-                                anchorIdx = anchor,
-                                x = x, y = y, w = dw, h = dh,
-                                confidence = embeddingNorm,
-                                classId = 0,  // Unknown class for prompt-free
-                                coeffs = coeffs
-                            ))
-
-                            // Early exit if we have enough good detections
-                            if (detections.size >= maxDetections * 2) break
+                // Debug: find global max class score
+                var globalMaxScore = Float.MIN_VALUE
+                var globalMaxAnchor = -1
+                var globalMaxClass = -1
+                for (anchor in 0 until numAnchors step 10) {
+                    for (c in 0 until numClasses) {
+                        val score = getDetValue(classStartIdx + c, anchor)
+                        if (score > globalMaxScore) {
+                            globalMaxScore = score
+                            globalMaxAnchor = anchor
+                            globalMaxClass = c
                         }
                     }
-                    anchor += anchorStride
+                }
+                Log.d(
+                    "SmartyPantsManager",
+                    "Global max class score: $globalMaxScore at anchor $globalMaxAnchor, class $globalMaxClass"
+                )
+
+                val dbgAnchor = 100
+                val dbgX = getDetValue(0, dbgAnchor)
+                val dbgY = getDetValue(1, dbgAnchor)
+                val dbgW = getDetValue(2, dbgAnchor)
+                val dbgH = getDetValue(3, dbgAnchor)
+                val dbgC0 = getDetValue(4, dbgAnchor)
+                val dbgC1 = getDetValue(5, dbgAnchor)
+                Log.d(
+                    "SmartyPantsManager",
+                    "Anchor[$dbgAnchor]: bbox=($dbgX,$dbgY,$dbgW,$dbgH), class0=$dbgC0, class1=$dbgC1"
+                )
+
+                Log.d(
+                    "SmartyPantsManager",
+                    "Scanning $numAnchors anchors with conf threshold $confThreshold..."
+                )
+                val startTime = System.currentTimeMillis()
+
+                for (anchor in 0 until numAnchors) {
+                    var maxClassScore = Float.MIN_VALUE
+                    var bestClassId = -1
+                    for (c in 0 until numClasses) {
+                        val score = getDetValue(classStartIdx + c, anchor)
+                        if (score > maxClassScore) {
+                            maxClassScore = score
+                            bestClassId = c
+                        }
+                    }
+
+                    if (maxClassScore > confThreshold) {
+                        val x = getDetValue(0, anchor)
+                        val y = getDetValue(1, anchor)
+                        val bw = getDetValue(2, anchor)
+                        val bh = getDetValue(3, anchor)
+
+                        if (x.isFinite() && y.isFinite() && bw.isFinite() && bh.isFinite() && bw > 0 && bh > 0) {
+                            val coeffs = FloatArray(numProtos)
+                            for (c in 0 until numProtos) {
+                                coeffs[c] = getDetValue(maskCoeffStartIdx + c, anchor)
+                            }
+
+                            detections.add(
+                                Detection(
+                                    anchorIdx = anchor,
+                                    x = x, y = y, w = bw, h = bh,
+                                    confidence = maxClassScore,
+                                    classId = bestClassId,
+                                    coeffs = coeffs
+                                )
+                            )
+                        }
+                    }
                 }
 
                 val scanTime = System.currentTimeMillis() - startTime
-                Log.d("SmartyPantsManager", "Found ${detections.size} detections above norm threshold $normThreshold in ${scanTime}ms")
+                Log.d(
+                    "SmartyPantsManager",
+                    "Found ${detections.size} detections above conf $confThreshold in ${scanTime}ms"
+                )
 
                 if (detections.isEmpty()) {
-                    // No detections - return empty mask
                     mainHandler.post { callback(null) }
                     tensor.close()
                     return
                 }
 
-                // Log top detections
                 val topDets = detections.sortedByDescending { it.confidence }.take(5)
-                Log.d("SmartyPantsManager", "Top ${topDets.size} detections:")
+                Log.d("SmartyPantsManager", "=== TOP DETECTIONS ===")
                 for ((idx, det) in topDets.withIndex()) {
-                    Log.d("SmartyPantsManager", "  [$idx] class=${det.classId}, conf=${det.confidence}, bbox=(${det.x},${det.y},${det.w},${det.h})")
+                    val label = getClassName(det.classId)
+                    Log.d("SmartyPantsManager", "  [$idx] $label: conf=${String.format("%.3f", det.confidence)}")
                 }
+                Log.d("SmartyPantsManager", "======================")
 
-                // Sort by confidence and take top detections
                 val sortedDets = detections.sortedByDescending { it.confidence }.take(maxDetections)
-                Log.d("SmartyPantsManager", "Top detection: conf=${sortedDets[0].confidence}, class=${sortedDets[0].classId}, bbox=(${sortedDets[0].x},${sortedDets[0].y},${sortedDets[0].w},${sortedDets[0].h})")
 
-                // Simple NMS
                 val keepDets = mutableListOf<Detection>()
                 val suppressed = BooleanArray(sortedDets.size)
 
@@ -620,46 +724,73 @@ class SmartyPantsManager(private val context: Context) {
                     for (j in i + 1 until sortedDets.size) {
                         if (suppressed[j]) continue
                         val iou = calculateIoU(sortedDets[i], sortedDets[j])
-                        if (iou > iouThreshold) {
-                            suppressed[j] = true
-                        }
+                        if (iou > iouThreshold) suppressed[j] = true
                     }
                 }
 
                 Log.d("SmartyPantsManager", "After NMS: ${keepDets.size} detections kept")
 
-                // Generate combined mask from all detections
+                if (keepDets.isNotEmpty()) {
+                    val firstDet = keepDets[0]
+                    Log.d(
+                        "SmartyPantsManager",
+                        "First det coeffs[0..3]: ${firstDet.coeffs[0]}, ${firstDet.coeffs[1]}, ${firstDet.coeffs[2]}, ${firstDet.coeffs[3]}"
+                    )
+                }
+
+                // --- FIX #2: protoScale must use actual model inputW/inputH (768 vs 640) ---
+                val protoScaleX = inputW.toFloat() / protoW.toFloat()
+                val protoScaleY = inputH.toFloat() / protoH.toFloat()
+
                 val maskProto = FloatArray(protoH * protoW)
 
+                // Generate combined mask from all detections
+                // NOTE: Your bbox values might already be in input pixel coords OR model head coords.
+                // The biggest real-world cause of "green zigzag" here was resizing to 640 when the model is 768.
                 for (detection in keepDets) {
-                    // Compute mask: sum(coeff[c] * proto[c, y, x]) for each pixel
-                    for (py in 0 until protoH) {
-                        for (px in 0 until protoW) {
+                    // Convert bbox from input coords to proto coords
+                    val bboxLeft = ((detection.x - detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
+                    val bboxTop = ((detection.y - detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
+                    val bboxRight = ((detection.x + detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
+                    val bboxBottom = ((detection.y + detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
+
+                    // Only compute mask within bbox region
+                    for (py in bboxTop..bboxBottom) {
+                        val rowBase = py * protoW
+                        for (px in bboxLeft..bboxRight) {
                             var sum = 0f
-                            for (c in 0 until numProtos) {
-                                // Proto is [1, 32, H, W], flattened as [c * H * W + y * W + x]
-                                val protoIdx = c * protoH * protoW + py * protoW + px
+                            val p = rowBase + px
+                            val hwProto = protoH * protoW
+                            var c = 0
+                            while (c < numProtos) {
+                                val protoIdx = c * hwProto + p
                                 sum += detection.coeffs[c] * proto[protoIdx]
+                                c++
                             }
-                            // Apply sigmoid and take max
-                            val sigmoidVal = 1f / (1f + kotlin.math.exp(-sum))
-                            if (sigmoidVal > maskProto[py * protoW + px]) {
-                                maskProto[py * protoW + px] = sigmoidVal
+                            val sigmoidVal = 1f / (1f + exp(-sum))
+                            if (sigmoidVal > maskProto[p]) {
+                                maskProto[p] = sigmoidVal
                             }
                         }
                     }
                 }
 
-                // Create mask bitmap
+                // Debug mask values
+                val maskMin = maskProto.minOrNull() ?: 0f
+                val maskMax = maskProto.maxOrNull() ?: 0f
+                val maskAbove05 = maskProto.count { it > 0.5f }
+                Log.d("SmartyPantsManager", "Mask stats: min=$maskMin, max=$maskMax, pixels>0.5=$maskAbove05")
+
+                // Create mask bitmap from computed maskProto values
                 val maskBmp = Bitmap.createBitmap(protoW, protoH, Config.ARGB_8888)
-                for (py in 0 until protoH) {
-                    for (px in 0 until protoW) {
-                        val v = maskProto[py * protoW + px]
-                        val alpha = if (v > 0.5f) 0xCC else 0x00
-                        val color = (alpha shl 24) or 0x00FF00  // Green mask
-                        maskBmp.setPixel(px, py, color)
-                    }
+                val pixels = IntArray(protoW * protoH)
+                for (i in pixels.indices) {
+                    val v = maskProto[i]
+                    // Semi-transparent green where mask > 0.5
+                    val alpha = if (v > 0.5f) 0xCC else 0x00
+                    pixels[i] = (alpha shl 24) or 0x00FF00
                 }
+                maskBmp.setPixels(pixels, 0, protoW, 0, 0, protoW, protoH)
 
                 // Scale mask to original frame size
                 val outMask = Bitmap.createScaledBitmap(maskBmp, frame.width, frame.height, true)
@@ -680,6 +811,235 @@ class SmartyPantsManager(private val context: Context) {
         }
     }
 
+    // Version that returns detections along with mask
+    private fun runOnnxInferenceWithDetections(frame: Bitmap, callback: (SegmentationResult?) -> Unit) {
+        try {
+            val session = ortSession ?: run {
+                mainHandler.post { callback(null) }
+                return
+            }
+            val env = ortEnv ?: run {
+                mainHandler.post { callback(null) }
+                return
+            }
+
+            val firstInput = session.inputInfo.entries.firstOrNull()
+            if (firstInput == null) {
+                mainHandler.post { callback(null) }
+                return
+            }
+
+            val inputName = firstInput.key
+            val tensorInfo = firstInput.value.info
+
+            var inputH = 640
+            var inputW = 640
+            if (tensorInfo is ai.onnxruntime.TensorInfo) {
+                val sh = tensorInfo.shape
+                if (sh.size == 4) {
+                    inputH = sh[2].toInt()
+                    inputW = sh[3].toInt()
+                }
+            }
+
+            Log.d("SmartyPantsManager", "Resizing frame ${frame.width}x${frame.height} to ${inputW}x${inputH}")
+            val resized = Bitmap.createScaledBitmap(frame, inputW, inputH, true)
+                .copy(Config.ARGB_8888, false)
+
+            val floatCount = 1 * 3 * inputH * inputW
+            val inputFloats = FloatArray(floatCount)
+            val intValues = IntArray(inputW * inputH)
+            resized.getPixels(intValues, 0, inputW, 0, 0, inputW, inputH)
+
+            val hw = inputH * inputW
+            for (y in 0 until inputH) {
+                val rowOff = y * inputW
+                for (x in 0 until inputW) {
+                    val v = intValues[rowOff + x]
+                    val r = ((v shr 16) and 0xFF) / 255.0f
+                    val g = ((v shr 8) and 0xFF) / 255.0f
+                    val b = (v and 0xFF) / 255.0f
+                    val pixelIdx = rowOff + x
+                    inputFloats[0 * hw + pixelIdx] = r
+                    inputFloats[1 * hw + pixelIdx] = g
+                    inputFloats[2 * hw + pixelIdx] = b
+                }
+            }
+
+            val shapeLong = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
+            val tensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(inputFloats), shapeLong)
+
+            val results = session.run(mapOf(inputName to tensor))
+
+            val detResult = results.get(0)
+            val protoResult = results.get(1)
+
+            val detValue = detResult?.value
+            val protoValue = protoResult?.value
+
+            @Suppress("UNCHECKED_CAST")
+            val det3d = detValue as? Array<Array<FloatArray>>
+            if (det3d == null) {
+                mainHandler.post { callback(null) }
+                tensor.close()
+                return
+            }
+
+            val numFeatures = det3d[0].size
+            val numAnchors = det3d[0][0].size
+            val numClasses = 80
+            val numMaskCoeffs = 32
+            val classStartIdx = 4
+            val maskCoeffStartIdx = 4 + numClasses
+
+            val proto = extractFloatArray(protoValue)
+            val numProtos = 32
+            val protoH = 160
+            val protoW = 160
+
+            val confThreshold = 0.25f
+            val iouThreshold = 0.45f
+            val maxDetections = 100
+
+            val detections = mutableListOf<Detection>()
+            for (anchor in 0 until numAnchors) {
+                var maxScore = Float.MIN_VALUE
+                var bestClass = -1
+                for (c in 0 until numClasses) {
+                    val score = det3d[0][classStartIdx + c][anchor]
+                    if (score > maxScore) {
+                        maxScore = score
+                        bestClass = c
+                    }
+                }
+                if (maxScore > confThreshold) {
+                    val x = det3d[0][0][anchor]
+                    val y = det3d[0][1][anchor]
+                    val bw = det3d[0][2][anchor]
+                    val bh = det3d[0][3][anchor]
+                    val coeffs = FloatArray(numMaskCoeffs)
+                    for (c in 0 until numMaskCoeffs) {
+                        coeffs[c] = det3d[0][maskCoeffStartIdx + c][anchor]
+                    }
+                    detections.add(Detection(anchor, x, y, bw, bh, maxScore, bestClass, coeffs))
+                }
+            }
+
+            if (detections.isEmpty()) {
+                mainHandler.post { callback(SegmentationResult(null, emptyList(), inputW)) }
+                tensor.close()
+                return
+            }
+
+            // NMS
+            val sortedDets = detections.sortedByDescending { it.confidence }.take(maxDetections)
+            val keepDets = mutableListOf<Detection>()
+            val suppressed = BooleanArray(sortedDets.size)
+
+            for (i in sortedDets.indices) {
+                if (suppressed[i]) continue
+                keepDets.add(sortedDets[i])
+                for (j in i + 1 until sortedDets.size) {
+                    if (suppressed[j]) continue
+                    val iou = calculateIoU(sortedDets[i], sortedDets[j])
+                    if (iou > iouThreshold) suppressed[j] = true
+                }
+            }
+
+            // Convert to DetectionResult for overlay
+            val detectionResults = keepDets.map { det ->
+                DetectionResult(
+                    x = det.x,
+                    y = det.y,
+                    w = det.w,
+                    h = det.h,
+                    confidence = det.confidence,
+                    label = getClassName(det.classId)
+                )
+            }
+
+            // Generate mask
+            var maskResult: Bitmap? = null
+            if (keepDets.isNotEmpty() && proto.isNotEmpty()) {
+                val protoScaleX = inputW.toFloat() / protoW.toFloat()
+                val protoScaleY = inputH.toFloat() / protoH.toFloat()
+                val maskProto = FloatArray(protoH * protoW)
+
+                for (detection in keepDets) {
+                    val bboxLeft = ((detection.x - detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
+                    val bboxTop = ((detection.y - detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
+                    val bboxRight = ((detection.x + detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
+                    val bboxBottom = ((detection.y + detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
+
+                    for (py in bboxTop..bboxBottom) {
+                        val rowBase = py * protoW
+                        for (px in bboxLeft..bboxRight) {
+                            var sum = 0f
+                            val p = rowBase + px
+                            val hwProto = protoH * protoW
+                            var c = 0
+                            while (c < numProtos) {
+                                val protoIdx = c * hwProto + p
+                                sum += detection.coeffs[c] * proto[protoIdx]
+                                c++
+                            }
+                            val sigmoidVal = 1f / (1f + exp(-sum))
+                            if (sigmoidVal > maskProto[p]) {
+                                maskProto[p] = sigmoidVal
+                            }
+                        }
+                    }
+                }
+
+                // Scale mask to frame size and apply to original image (remove background)
+                val frameW = frame.width
+                val frameH = frame.height
+                val scaleX = frameW.toFloat() / protoW
+                val scaleY = frameH.toFloat() / protoH
+
+                // Get original frame pixels
+                val framePixels = IntArray(frameW * frameH)
+                frame.getPixels(framePixels, 0, frameW, 0, 0, frameW, frameH)
+
+                // Create output with transparent background where mask <= 0.5
+                val outPixels = IntArray(frameW * frameH)
+                for (y in 0 until frameH) {
+                    val protoY = (y / scaleY).toInt().coerceIn(0, protoH - 1)
+                    for (x in 0 until frameW) {
+                        val protoX = (x / scaleX).toInt().coerceIn(0, protoW - 1)
+                        val maskVal = maskProto[protoY * protoW + protoX]
+                        val frameIdx = y * frameW + x
+                        if (maskVal > 0.5f) {
+                            // Keep original pixel
+                            outPixels[frameIdx] = framePixels[frameIdx]
+                        } else {
+                            // Transparent background
+                            outPixels[frameIdx] = 0x00000000
+                        }
+                    }
+                }
+
+                val maskBmp = Bitmap.createBitmap(frameW, frameH, Config.ARGB_8888)
+                maskBmp.setPixels(outPixels, 0, frameW, 0, 0, frameW, frameH)
+                maskResult = maskBmp
+            }
+
+            tensor.close()
+            val result = SegmentationResult(maskResult, detectionResults, inputW)
+            mainHandler.post { callback(result) }
+        } catch (e: Exception) {
+            Log.e("SmartyPantsManager", "ONNX inference with detections failed", e)
+            mainHandler.post { callback(null) }
+        }
+    }
+
+    // Stub for NCNN with detections - falls back to mask only for now
+    private fun runNcnnInferenceWithDetections(frame: Bitmap, callback: (SegmentationResult?) -> Unit) {
+        runNcnnInference(frame) { mask ->
+            callback(SegmentationResult(mask, emptyList(), 640))
+        }
+    }
+
     private fun extractFloatArray(value: Any?): FloatArray {
         return when (value) {
             is FloatArray -> value
@@ -697,7 +1057,6 @@ class SmartyPantsManager(private val context: Context) {
     }
 
     private fun calculateIoU(det1: Detection, det2: Detection): Float {
-        // Convert from center format to corner format
         val x1Min = det1.x - det1.w / 2
         val y1Min = det1.y - det1.h / 2
         val x1Max = det1.x + det1.w / 2
@@ -708,7 +1067,6 @@ class SmartyPantsManager(private val context: Context) {
         val x2Max = det2.x + det2.w / 2
         val y2Max = det2.y + det2.h / 2
 
-        // Calculate intersection
         val interXMin = maxOf(x1Min, x2Min)
         val interYMin = maxOf(y1Min, y2Min)
         val interXMax = minOf(x1Max, x2Max)
@@ -718,7 +1076,6 @@ class SmartyPantsManager(private val context: Context) {
         val interHeight = maxOf(0f, interYMax - interYMin)
         val interArea = interWidth * interHeight
 
-        // Calculate union
         val area1 = det1.w * det1.h
         val area2 = det2.w * det2.h
         val unionArea = area1 + area2 - interArea
@@ -764,22 +1121,22 @@ class SmartyPantsManager(private val context: Context) {
     private fun convertBitmapToByteBuffer(bmp: Bitmap, channels: Int, dtype: DataType): ByteBuffer {
         val bb: ByteBuffer
         if (dtype == DataType.FLOAT32) {
-            bb = ByteBuffer.allocateDirect(4 * bmp.width * bmp.height * channels).order(ByteOrder.nativeOrder())
+            bb = ByteBuffer.allocateDirect(4 * bmp.width * bmp.height * channels)
+                .order(ByteOrder.nativeOrder())
             val intValues = IntArray(bmp.width * bmp.height)
             bmp.getPixels(intValues, 0, bmp.width, 0, 0, bmp.width, bmp.height)
             var px = 0
             for (y in 0 until bmp.height) {
                 for (x in 0 until bmp.width) {
                     val v = intValues[px++]
-                    // Extract RGB and normalize to [0,1]
                     bb.putFloat(((v shr 16 and 0xFF) / 255.0f))
                     bb.putFloat(((v shr 8 and 0xFF) / 255.0f))
                     bb.putFloat(((v and 0xFF) / 255.0f))
                 }
             }
         } else {
-            // Fallback: pack as bytes (UINT8)
-            bb = ByteBuffer.allocateDirect(bmp.width * bmp.height * channels).order(ByteOrder.nativeOrder())
+            bb = ByteBuffer.allocateDirect(bmp.width * bmp.height * channels)
+                .order(ByteOrder.nativeOrder())
             val intValues = IntArray(bmp.width * bmp.height)
             bmp.getPixels(intValues, 0, bmp.width, 0, 0, bmp.width, bmp.height)
             var px = 0

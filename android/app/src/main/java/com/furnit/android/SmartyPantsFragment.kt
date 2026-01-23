@@ -137,13 +137,18 @@ class SmartyPantsFragment : Fragment() {
             return
         }
 
-        manager.segmentImageAsync(bitmap) { maskBitmap ->
+        manager.segmentWithDetectionsAsync(bitmap) { result ->
             activity?.runOnUiThread {
-                if (maskBitmap != null) {
-                    statusLabel.text = "Furniture detected"
-                    overlay.setMask(maskBitmap)
+                if (result != null && result.mask != null) {
+                    // Show what was detected
+                    val labels = result.detections.take(3).joinToString(", ") {
+                        "${it.label} ${(it.confidence * 100).toInt()}%"
+                    }
+                    statusLabel.text = if (labels.isNotEmpty()) labels else "Detected"
+                    overlay.setMaskAndDetections(result.mask, result.detections, result.inputSize)
                 } else {
-                    statusLabel.text = "Processing..."
+                    statusLabel.text = "Scanning..."
+                    overlay.setMaskAndDetections(null, emptyList())
                 }
             }
             isProcessing = false
@@ -159,40 +164,63 @@ class SmartyPantsFragment : Fragment() {
     }
 }
 
-// Convert ImageProxy to Bitmap - handles YUV_420_888 format
+// Convert ImageProxy to Bitmap - handles YUV_420_888 format with proper stride handling
 fun ImageProxy.toBitmapSafe(): Bitmap? {
     return try {
-        val yBuffer = planes[0].buffer
-        val uBuffer = planes[1].buffer
-        val vBuffer = planes[2].buffer
+        val yPlane = planes[0]
+        val uPlane = planes[1]
+        val vPlane = planes[2]
 
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
+        val yBuffer = yPlane.buffer
+        val uBuffer = uPlane.buffer
+        val vBuffer = vPlane.buffer
 
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
+        val yRowStride = yPlane.rowStride
+        val uvRowStride = uPlane.rowStride
+        val uvPixelStride = uPlane.pixelStride
+
+        // Build NV21 byte array with proper stride handling
+        val nv21 = ByteArray(width * height * 3 / 2)
+
+        // Copy Y plane row by row (handle stride)
+        var pos = 0
+        for (row in 0 until height) {
+            yBuffer.position(row * yRowStride)
+            yBuffer.get(nv21, pos, width)
+            pos += width
+        }
+
+        // Copy UV planes (interleaved as VU for NV21)
+        val uvHeight = height / 2
+        val uvWidth = width / 2
+        for (row in 0 until uvHeight) {
+            for (col in 0 until uvWidth) {
+                val uvIndex = row * uvRowStride + col * uvPixelStride
+                vBuffer.position(uvIndex)
+                uBuffer.position(uvIndex)
+                nv21[pos++] = vBuffer.get()
+                nv21[pos++] = uBuffer.get()
+            }
+        }
 
         val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
         val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, width, height), 80, out)
+        yuvImage.compressToJpeg(Rect(0, 0, width, height), 90, out)
         val imageBytes = out.toByteArray()
 
-        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        var bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
 
         // Rotate if needed based on image rotation
         val rotation = imageInfo.rotationDegrees
         if (rotation != 0) {
             val matrix = Matrix()
             matrix.postRotate(rotation.toFloat())
-            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        } else {
-            bitmap
+            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
         }
+        bitmap
     } catch (e: Exception) {
         Log.e("SmartyPants", "toBitmap failed: ${e.message}")
+        e.printStackTrace()
         null
     }
 }
