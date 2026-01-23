@@ -150,7 +150,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "إنشاء الغرفة";
 "faq.howToCreate" = "كيف أنشئ غرفة ثلاثية الأبعاد؟";
-"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You'll see two options to choose from for creating your 3D room.";
+"faq.howToCreateAnswer" = "اضغط على أيقونة الصورة في الزاوية العلوية اليسرى من الشاشة الرئيسية، ثم التقط أو اختر صورة لغرفتك. سترى خيارين للاختيار من بينهما لإنشاء غرفتك ثلاثية الأبعاد.";
+"faq.howToTakePhoto" = "كيف ألتقط صورة لإنشاء غرفة؟";
+"faq.howToTakePhotoAnswer" = "اضغط على أيقونة الكاميرا في الشاشة الرئيسية لالتقاط صورة مباشرة. يمكنك الاختيار بين العدسة القياسية (1x) أو الزاوية الواسعة (0.5x فائقة الاتساع). أمسك جهازك بثبات واضغط على زر الالتقاط. ستُستخدم الصورة بعد ذلك لإنشاء غرفتك ثلاثية الأبعاد.";
 "faq.twoMethods" = "What are the two room creation options?";
 "faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
 "faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";

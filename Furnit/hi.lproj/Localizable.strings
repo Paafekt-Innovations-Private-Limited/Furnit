@@ -150,7 +150,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "कमरा निर्माण";
 "faq.howToCreate" = "3D कमरा कैसे बनाएं?";
-"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You'll see two options to choose from for creating your 3D room.";
+"faq.howToCreateAnswer" = "होम स्क्रीन के ऊपरी-बाएं कोने में फोटो आइकन टैप करें, फिर अपने कमरे की फोटो लें या चुनें। आपको अपना 3D कमरा बनाने के लिए दो विकल्प दिखाई देंगे।";
+"faq.howToTakePhoto" = "कमरा बनाने के लिए फोटो कैसे लें?";
+"faq.howToTakePhotoAnswer" = "सीधे फोटो लेने के लिए होम स्क्रीन पर कैमरा आइकन टैप करें। आप स्टैंडर्ड (1x) या वाइड एंगल (0.5x अल्ट्रा-वाइड) लेंस में से चुन सकते हैं। अपने डिवाइस को स्थिर रखें और कैप्चर बटन टैप करें। फोटो का उपयोग आपका 3D कमरा बनाने के लिए किया जाएगा।";
 "faq.twoMethods" = "What are the two room creation options?";
 "faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
 "faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";

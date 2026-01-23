@@ -150,7 +150,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "മുറി സൃഷ്ടി";
 "faq.howToCreate" = "3D മുറി എങ്ങനെ സൃഷ്ടിക്കാം?";
-"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You'll see two options to choose from for creating your 3D room.";
+"faq.howToCreateAnswer" = "ഹോം സ്ക്രീനിന്റെ മുകളിൽ-ഇടതുവശത്തെ ഫോട്ടോ ഐക്കൺ ടാപ്പ് ചെയ്യുക, തുടർന്ന് നിങ്ങളുടെ മുറിയുടെ ഫോട്ടോ എടുക്കുക അല്ലെങ്കിൽ തിരഞ്ഞെടുക്കുക. നിങ്ങളുടെ 3D മുറി സൃഷ്ടിക്കാൻ രണ്ട് ഓപ്ഷനുകൾ നിങ്ങൾ കാണും.";
+"faq.howToTakePhoto" = "മുറി സൃഷ്ടിക്കാൻ ഫോട്ടോ എങ്ങനെ എടുക്കാം?";
+"faq.howToTakePhotoAnswer" = "നേരിട്ട് ഫോട്ടോ എടുക്കാൻ ഹോം സ്ക്രീനിൽ ക്യാമറ ഐക്കൺ ടാപ്പ് ചെയ്യുക. സ്റ്റാൻഡേർഡ് (1x) അല്ലെങ്കിൽ വൈഡ് ആംഗിൾ (0.5x അൾട്രാ-വൈഡ്) ലെൻസ് നിങ്ങൾക്ക് തിരഞ്ഞെടുക്കാം. നിങ്ങളുടെ ഉപകരണം സ്ഥിരമായി പിടിച്ച് ക്യാപ്ചർ ബട്ടൺ ടാപ്പ് ചെയ്യുക. ഫോട്ടോ നിങ്ങളുടെ 3D മുറി സൃഷ്ടിക്കാൻ ഉപയോഗിക്കും.";
 "faq.twoMethods" = "What are the two room creation options?";
 "faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
 "faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";

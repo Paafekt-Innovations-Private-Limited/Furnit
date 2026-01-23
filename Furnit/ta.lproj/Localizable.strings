@@ -150,7 +150,9 @@
 // FAQ - Room Creation
 "faq.roomCreation" = "அறை உருவாக்கம்";
 "faq.howToCreate" = "3D அறையை எப்படி உருவாக்குவது?";
-"faq.howToCreateAnswer" = "Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You'll see two options to choose from for creating your 3D room.";
+"faq.howToCreateAnswer" = "முகப்பு திரையின் மேல்-இடது மூலையில் உள்ள புகைப்பட ஐகானைத் தட்டவும், பின்னர் உங்கள் அறையின் புகைப்படம் எடுக்கவும் அல்லது தேர்ந்தெடுக்கவும். உங்கள் 3D அறையை உருவாக்க இரண்டு விருப்பங்களைக் காண்பீர்கள்.";
+"faq.howToTakePhoto" = "அறை உருவாக்க புகைப்படம் எப்படி எடுப்பது?";
+"faq.howToTakePhotoAnswer" = "நேரடியாக புகைப்படம் எடுக்க முகப்பு திரையில் கேமரா ஐகானைத் தட்டவும். நிலையான (1x) அல்லது அகலக்கோண (0.5x அல்ட்ரா-வைட்) லென்ஸைத் தேர்வு செய்யலாம். உங்கள் சாதனத்தை நிலையாகப் பிடித்து, படப்பிடிப்பு பொத்தானைத் தட்டவும். புகைப்படம் உங்கள் 3D அறையை உருவாக்க பயன்படுத்தப்படும்.";
 "faq.twoMethods" = "What are the two room creation options?";
 "faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
 "faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
