@@ -24,9 +24,10 @@ class SmartyPantsOverlayView(context: Context) : View(context) {
     private var inputSize = 640 // Model input size
 
     // Pinch-to-zoom scale factor for furniture
-    private var furnitureScale = 1.0f
+    private var furnitureScale = 0.6f  // Start smaller to fit in room
     private var translateX = 0f
     private var translateY = 0f
+    private var initialized = false
     private var lastTouchX = 0f
     private var lastTouchY = 0f
 
@@ -125,14 +126,15 @@ class SmartyPantsOverlayView(context: Context) : View(context) {
             // Apply base scale to fit view
             matrix.setScale(baseScaleX * furnitureScale, baseScaleY * furnitureScale)
 
-            // Center the scaled furniture
+            // Position furniture on the floor (lower part of room)
             val scaledWidth = bmp.width * baseScaleX * furnitureScale
             val scaledHeight = bmp.height * baseScaleY * furnitureScale
             val centerOffsetX = (width - scaledWidth) / 2
-            val centerOffsetY = (height - scaledHeight) / 2
+            // Place furniture on floor area (bottom 40% of screen)
+            val floorOffsetY = height * 0.35f  // Move down to floor level
 
-            // Apply translation (center offset + user drag)
-            matrix.postTranslate(centerOffsetX + translateX, centerOffsetY + translateY)
+            // Apply translation (floor offset + user drag)
+            matrix.postTranslate(centerOffsetX + translateX, floorOffsetY + translateY)
 
             canvas.drawBitmap(bmp, matrix, maskPaint)
         }
@@ -143,9 +145,9 @@ class SmartyPantsOverlayView(context: Context) : View(context) {
             val baseScaleY = height.toFloat() / inputSize
 
             val scaledWidth = width * furnitureScale
-            val scaledHeight = height * furnitureScale
+            val floorOffsetY = height * 0.35f
             val centerOffsetX = (width - scaledWidth) / 2 + translateX
-            val centerOffsetY = (height - scaledHeight) / 2 + translateY
+            val centerOffsetY = floorOffsetY + translateY
 
             for (det in detections) {
                 // Convert center coords to corner coords and scale to view
