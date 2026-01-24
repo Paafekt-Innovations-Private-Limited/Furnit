@@ -25,7 +25,8 @@ class RoomBoundaryManager {
 
         // Camera positioning constants
         const val CAMERA_PADDING = 0.3f      // Distance from walls
-        const val EYE_LEVEL_OFFSET = 0.2f    // Above room center
+        const val EYE_LEVEL_HEIGHT = 1.6f    // Standing eye level from floor (meters)
+        const val EYE_LEVEL_OFFSET = 0.2f    // Above room center (legacy)
         const val BOUNDARY_PADDING = 0.5f    // For constraining movement
     }
 
@@ -101,9 +102,12 @@ class RoomBoundaryManager {
 
     /**
      * Get optimal camera position to view the room
-     * Strategy: Position at back of room, looking at front wall (photo)
+     * Strategy: Position at the middle of the back wall, looking at front wall (photo)
      *
-     * This matches iOS RoomBoundaryManager.getOptimalCameraPosition()
+     * Camera is placed:
+     * - X: center of room
+     * - Y: eye level (1.6m from floor, typical standing height)
+     * - Z: at the back wall (inside the room)
      */
     fun getOptimalCameraPosition(fovDegrees: Float = 60f): CameraSetup {
         val bounds = roomBounds ?: run {
@@ -112,15 +116,10 @@ class RoomBoundaryManager {
             roomBounds!!
         }
 
-        // Calculate optimal distance based on room size and FOV
-        val fovRadians = Math.toRadians(fovDegrees.toDouble() / 2.0)
-        val maxDimension = maxOf(bounds.width, bounds.height)
-        val optimalDistance = (maxDimension / 2f) / Math.tan(fovRadians).toFloat()
-
-        // Camera position: Center X, eye level Y, behind the back wall
-        val camX = bounds.centerX
-        val camY = bounds.centerY + EYE_LEVEL_OFFSET  // Slightly above center (eye level)
-        val camZ = bounds.backWallZ + optimalDistance * 0.5f  // Behind room, looking in
+        // Camera position: Center of back wall at eye level
+        val camX = bounds.centerX                      // Center X
+        val camY = EYE_LEVEL_HEIGHT                    // Eye level (1.6m from floor)
+        val camZ = bounds.backWallZ - CAMERA_PADDING   // At back wall, slightly inside
 
         // Look at the center of the front wall (where the photo is)
         val targetX = bounds.centerX
@@ -132,16 +131,16 @@ class RoomBoundaryManager {
             lookAt = Position(targetX, targetY, targetZ)
         )
 
-        Log.d(TAG, "Optimal camera setup:")
-        Log.d(TAG, "  Position: (${camX}, ${camY}, ${camZ})")
+        Log.d(TAG, "Camera at back wall center:")
+        Log.d(TAG, "  Room bounds: X[${bounds.minX}, ${bounds.maxX}], Y[${bounds.minY}, ${bounds.maxY}], Z[${bounds.minZ}, ${bounds.maxZ}]")
+        Log.d(TAG, "  Camera position: (${camX}, ${camY}, ${camZ})")
         Log.d(TAG, "  LookAt: (${targetX}, ${targetY}, ${targetZ})")
-        Log.d(TAG, "  Optimal distance: $optimalDistance")
 
         return cameraSetup
     }
 
     /**
-     * Get camera position at back-left corner (iOS style)
+     * Get camera position at back-left corner
      * This gives a perspective view of the room
      */
     fun getCameraAtBackLeftCorner(): CameraSetup {
@@ -150,10 +149,10 @@ class RoomBoundaryManager {
             roomBounds!!
         }
 
-        // Back-left corner with padding
+        // Back-left corner with padding, at eye level
         val camX = bounds.minX + CAMERA_PADDING
-        val camY = bounds.centerY + EYE_LEVEL_OFFSET
-        val camZ = bounds.maxZ - CAMERA_PADDING
+        val camY = EYE_LEVEL_HEIGHT
+        val camZ = bounds.backWallZ - CAMERA_PADDING
 
         // Look at front-center
         val targetX = bounds.centerX
@@ -167,7 +166,7 @@ class RoomBoundaryManager {
     }
 
     /**
-     * Get camera position centered, looking at front wall
+     * Get camera position centered at back wall, looking at front wall
      * Best for viewing the photo directly
      */
     fun getCameraCenteredView(): CameraSetup {
@@ -176,10 +175,10 @@ class RoomBoundaryManager {
             roomBounds!!
         }
 
-        // Centered, at back of room
+        // Centered at back wall, eye level
         val camX = bounds.centerX
-        val camY = bounds.centerY + EYE_LEVEL_OFFSET
-        val camZ = bounds.maxZ + 1.0f  // Just outside back wall
+        val camY = EYE_LEVEL_HEIGHT
+        val camZ = bounds.backWallZ - CAMERA_PADDING  // At back wall, inside room
 
         // Look at front wall center
         val targetX = bounds.centerX
