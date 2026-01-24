@@ -1,11 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Furnit" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="colorPrimary">@color/purple_500</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
+    <!-- Dark theme matching iOS -->
+    <style name="Theme.Furnit" parent="Theme.MaterialComponents.NoActionBar">
+        <!-- Primary colors -->
+        <item name="colorPrimary">#AF52DE</item>
+        <item name="colorPrimaryVariant">#9B47C5</item>
         <item name="colorOnPrimary">@android:color/white</item>
-        <item name="colorSecondary">@color/teal_200</item>
-        <item name="colorSecondaryVariant">@color/teal_700</item>
-        <item name="colorOnSecondary">@android:color/black</item>
+        <!-- Secondary/accent colors -->
+        <item name="colorSecondary">#34C759</item>
+        <item name="colorSecondaryVariant">#2DB84D</item>
+        <item name="colorOnSecondary">@android:color/white</item>
+        <!-- Background colors matching iOS dark theme -->
+        <item name="android:colorBackground">#1C1C1E</item>
+        <item name="colorSurface">#2C2C2E</item>
+        <item name="colorOnSurface">@android:color/white</item>
+        <!-- Status bar -->
+        <item name="android:statusBarColor">#1C1C1E</item>
+        <item name="android:navigationBarColor">#1C1C1E</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>
