@@ -1863,8 +1863,8 @@ struct SceneKitViewer: View {
     @State private var showRoomNameInput = false
     @State private var roomName = ""
 
-    // SmartyPants and screenshot state
-    @State private var showingSmartyPants = false
+    // FurnitureFit and screenshot state
+    @State private var showingFurnitureFit = false
     @State private var mlModel: MLModel? = nil
     @State private var showScreenshotFlash = false
 
@@ -1932,9 +1932,9 @@ struct SceneKitViewer: View {
                 .allowsHitTesting(true)
                 .zIndex(99996)
 
-            // SmartyPants overlay when active
-            if showingSmartyPants {
-                SmartyPantsUIView(
+            // FurnitureFit overlay when active
+            if showingFurnitureFit {
+                FurnitureFitUIView(
                     capturedImage: .constant(nil),
                     roomImage: nil,
                     mlModel: mlModel,
@@ -1945,20 +1945,20 @@ struct SceneKitViewer: View {
                 .zIndex(99997)
             }
 
-            // Bottom row buttons (Brain + Screenshot) - HIGHEST zIndex to stay on top of SmartyPants
+            // Bottom row buttons (Brain + Screenshot) - HIGHEST zIndex to stay on top of FurnitureFit
             VStack {
                 Spacer()
                     .allowsHitTesting(false)
                 HStack {
                     // Brain button (bottom-left)
                     Button(action: {
-                        showingSmartyPants.toggle()
+                        showingFurnitureFit.toggle()
                     }) {
                         Image(systemName: "brain.head.profile")
                             .font(.system(size: 28))
                             .foregroundColor(.white)
                             .frame(width: 60, height: 60)
-                            .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+                            .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
                     }
                     .padding(.leading, 20)
 

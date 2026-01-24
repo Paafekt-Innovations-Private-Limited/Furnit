@@ -27,7 +27,7 @@ struct ModelViewerView: View {
     @State private var showingSegmentExamine = false
     @State private var showingSegmentForeground = false
     @State private var showingSegmentFurniture = false
-    @State private var showingSmartyPants = false  // NEW: YOLOE
+    @State private var showingFurnitureFit = false  // FurnitureFit: YOLOE segmentation
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
     
@@ -44,7 +44,7 @@ struct ModelViewerView: View {
     }
 
     private var anyCameraOverlayActive: Bool {
-        showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingSmartyPants
+        showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit
     }
 
     var body: some View {
@@ -61,11 +61,11 @@ struct ModelViewerView: View {
                         capturedSnapshot: $roomSnapshot,
                         shouldResetCamera: $shouldResetCamera  // ✅ Camera reset trigger
                     )
-                    .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingSmartyPants))
+                    .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit))
                     .ignoresSafeArea(.all)
-                    // NEW: SmartyPants overlay
-                    if showingSmartyPants {
-                        SmartyPantsUIView(
+                    // NEW: FurnitureFit overlay
+                    if showingFurnitureFit {
+                        FurnitureFitUIView(
                             capturedImage: $capturedImage,
                             roomImage: roomSnapshot,
                             mlModel: mlModel,
@@ -97,7 +97,7 @@ struct ModelViewerView: View {
                 .allowsHitTesting(true)
 
                 // Memory info HUD (top-left, below back button)
-                if model.hasFileSize && !showingSmartyPants {
+                if model.hasFileSize && !showingFurnitureFit {
                     VStack {
                         HStack {
                             Text(model.fileSizeFormatted)
@@ -127,8 +127,8 @@ struct ModelViewerView: View {
                                 // Dismiss hint on first touch
                                 showFurnitureHint = false
                                 
-                                if showingSmartyPants {
-                                    showingSmartyPants = false
+                                if showingFurnitureFit {
+                                    showingFurnitureFit = false
                                 } else {
                                     logDebug("BRAIN FLOW: requesting snapshot")
                                     // Trigger ARView snapshot
@@ -142,8 +142,8 @@ struct ModelViewerView: View {
                                     
                                     // Wait briefly for snapshot to complete
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                        logDebug("BRAIN FLOW: showing SmartyPants overlay")
-                                        self.showingSmartyPants = true
+                                        logDebug("BRAIN FLOW: showing FurnitureFit overlay")
+                                        self.showingFurnitureFit = true
                                     }
                                 }
                             }) {
@@ -151,7 +151,7 @@ struct ModelViewerView: View {
                                     .font(.system(size: 28))
                                     .foregroundColor(.white)
                                     .frame(width: 60, height: 60)
-                                    .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+                                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
                             }
                             .contentShape(Circle())
                             .frame(width: 76, height: 76)
@@ -170,15 +170,15 @@ struct ModelViewerView: View {
                     .opacity(isCapturingSnapshot ? 0 : 1)
                     .zIndex(99997)
 
-                // SmartyPants snapshot button (separate from joystick)
-                if showingSmartyPants {
+                // FurnitureFit snapshot button (separate from joystick)
+                if showingFurnitureFit {
                     VStack {
                         Spacer()
                         HStack {
                             Spacer()
                             Button(action: {
                                 let screen = UIScreen.main.bounds.size
-                                saveSmartyPantsSnapshot(screen)
+                                saveFurnitureFitSnapshot(screen)
                             }) {
                                 Image(systemName: "square.and.arrow.down")
                                     .font(.system(size: 28, weight: .regular))
@@ -206,7 +206,7 @@ struct ModelViewerView: View {
         .onChange(of: showingSegmentExamine) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentForeground) { _, _ in manageARSessionForOverlays() }
         .onChange(of: showingSegmentFurniture) { _, _ in manageARSessionForOverlays() }
-        .onChange(of: showingSmartyPants) { _, _ in manageARSessionForOverlays() }
+        .onChange(of: showingFurnitureFit) { _, _ in manageARSessionForOverlays() }
         .onAppear {
             isARActive = true
             loadModelOnce()
@@ -299,7 +299,7 @@ struct ModelViewerView: View {
                 showingSegmentExamine = false
                 showingSegmentForeground = false
                 showingSegmentFurniture = false
-                showingSmartyPants = false
+                showingFurnitureFit = false
                 showingCameraPreview = true
             }
         }) {
@@ -315,7 +315,7 @@ struct ModelViewerView: View {
             showingCameraPreview = false
             showingSegmentForeground = false
             showingSegmentFurniture = false
-            showingSmartyPants = false
+            showingFurnitureFit = false
             showingSegmentExamine.toggle()
         }) {
             Image(systemName: "crop.rotate")
@@ -330,7 +330,7 @@ struct ModelViewerView: View {
             showingCameraPreview = false
             showingSegmentExamine = false
             showingSegmentFurniture = false
-            showingSmartyPants = false
+            showingFurnitureFit = false
             showingSegmentForeground.toggle()
         }) {
             Image(systemName: "viewfinder")
@@ -356,7 +356,7 @@ struct ModelViewerView: View {
                     showingCameraPreview = false
                     showingSegmentExamine = false
                     showingSegmentForeground = false
-                    showingSmartyPants = false
+                    showingFurnitureFit = false
                     
                     // Wait briefly for snapshot to complete, then open scanner
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -388,15 +388,15 @@ struct ModelViewerView: View {
         }
     }
 
-    // SmartyPants Button (YOLOE - 168 furniture classes!)
+    // FurnitureFit Button (YOLOE - 168 furniture classes!)
     private var smartyPantsButton: some View {
         ZStack {
             Button(action: {
                 // Dismiss hint on first touch
                 showFurnitureHint = false
                 
-                if showingSmartyPants {
-                    showingSmartyPants = false
+                if showingFurnitureFit {
+                    showingFurnitureFit = false
                 } else {
                     // Trigger ARView snapshot
                     shouldCaptureARViewSnapshot = true
@@ -409,14 +409,14 @@ struct ModelViewerView: View {
                     
                     // Wait briefly for snapshot to complete
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        self.showingSmartyPants = true
+                        self.showingFurnitureFit = true
                     }
                 }
             }) {
                 Image(systemName: "brain.head.profile")
                     .font(.system(size: 28)).foregroundColor(.white)
                     .frame(width: 60, height: 60)
-                    .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
             }
             
             // Hint badge on button
@@ -493,7 +493,7 @@ struct ModelViewerView: View {
         }
     }
     
-    private func saveSmartyPantsSnapshot(_ size: CGSize) {
+    private func saveFurnitureFitSnapshot(_ size: CGSize) {
         // Hide UI chrome briefly so it doesn't appear in the snapshot
         isCapturingSnapshot = true
         // Allow the UI to update before capturing
@@ -603,7 +603,7 @@ struct ModelViewerView: View {
 
 }
 
-struct SmartyPantsUIView: UIViewRepresentable {
+struct FurnitureFitUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
     
     var roomImage: UIImage?
@@ -612,13 +612,13 @@ struct SmartyPantsUIView: UIViewRepresentable {
     var scoreThreshold: Float = 0.25
     var active: Bool = true
     
-    func makeUIView(context: Context) -> SmartyPantsContainerView {
-        let view = SmartyPantsContainerView()
+    func makeUIView(context: Context) -> FurnitureFitContainerView {
+        let view = FurnitureFitContainerView()
         view.setModel(mlModel)
         return view
     }
 
-    func updateUIView(_ uiView: SmartyPantsContainerView, context: Context) {
+    func updateUIView(_ uiView: FurnitureFitContainerView, context: Context) {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
         if active { uiView.startIfNeeded() } else { uiView.stop() }

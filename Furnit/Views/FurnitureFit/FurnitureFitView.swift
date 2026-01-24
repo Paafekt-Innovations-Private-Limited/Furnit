@@ -1,4 +1,4 @@
-// SmartyPantsView.swift
+// FurnitureFitView.swift
 // Single-stage: detect → NMS → keepOverlapping → union mask → cutout
 // With timing at every stage
 
@@ -85,7 +85,7 @@ final class MetalMaskLogic {
 }
 
 // MARK: - SwiftUI Wrapper
-struct SmartyPantsViewSwiftUI: UIViewRepresentable {
+struct FurnitureFitViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.15
@@ -95,8 +95,8 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
     
     @ObservedObject private var appState = AppStateManager.shared
 
-    func makeUIView(context: Context) -> SmartyPantsContainerView {
-        let v = SmartyPantsContainerView()
+    func makeUIView(context: Context) -> FurnitureFitContainerView {
+        let v = FurnitureFitContainerView()
         v.processInterval = processInterval
         v.confidenceThreshold = confidenceThreshold
         v.iouThreshold = iouThreshold
@@ -106,7 +106,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         return v
     }
 
-    func updateUIView(_ uiView: SmartyPantsContainerView, context: Context) {
+    func updateUIView(_ uiView: FurnitureFitContainerView, context: Context) {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
         uiView.confidenceThreshold = confidenceThreshold
@@ -115,7 +115,7 @@ struct SmartyPantsViewSwiftUI: UIViewRepresentable {
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 
-    static func dismantleUIView(_ uiView: SmartyPantsContainerView, coordinator: ()) {
+    static func dismantleUIView(_ uiView: FurnitureFitContainerView, coordinator: ()) {
         uiView.stop()
     }
 }
@@ -129,7 +129,7 @@ struct UnionDet {
 }
 
 // MARK: - Main Container View
-final class SmartyPantsContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
+final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
@@ -312,7 +312,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         
         setupCamera()
         setupMetal()
-        if debugMode { logDebug("✅ SmartyPantsContainerView initialized") }
+        if debugMode { logDebug("✅ FurnitureFitContainerView initialized") }
     }
     
     private func setupMetal() {
@@ -357,7 +357,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if let model = model {
             let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
             let outputNames = model.modelDescription.outputDescriptionsByName.keys.joined(separator: ", ")
-            logDebug("🧠 [SmartyPants] Model set - inputs: [\(inputNames)], outputs: [\(outputNames)]")
+            logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames)]")
         }
     }
     

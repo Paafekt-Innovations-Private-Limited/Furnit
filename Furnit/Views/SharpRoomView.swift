@@ -300,7 +300,7 @@ struct SharpRoomView: View {
 
     @State private var isLoading = true
     @State private var error: String?
-    @State private var showingSmartyPants = false
+    @State private var showingFurnitureFit = false
     @State private var mlModel: MLModel? = nil
 
     // JS-measured front wall dimensions (from actual splat bounds)
@@ -374,7 +374,7 @@ struct SharpRoomView: View {
             // Gesture overlay for orbit control (captures drags and sends to WebGL)
             OrbitGestureView()
                 .ignoresSafeArea()  // Cover full screen including safe areas
-                .allowsHitTesting(!showingSmartyPants && !isLoading)
+                .allowsHitTesting(!showingFurnitureFit && !isLoading)
                 .zIndex(10)  // Above WebGL view, below other overlays
 
             // Loading overlay
@@ -408,9 +408,9 @@ struct SharpRoomView: View {
                 .cornerRadius(12)
             }
 
-            // SmartyPants overlay (when active) - full screen
-            if showingSmartyPants {
-                SmartyPantsUIView(
+            // FurnitureFit overlay (when active) - full screen
+            if showingFurnitureFit {
+                FurnitureFitUIView(
                     capturedImage: .constant(nil),
                     roomImage: nil,
                     mlModel: mlModel,
@@ -435,19 +435,19 @@ struct SharpRoomView: View {
                     VStack(spacing: 0) {
                         // Brain button (top = left when horizontal)
                         Button(action: {
-                            if showingSmartyPants {
-                                showingSmartyPants = false
+                            if showingFurnitureFit {
+                                showingFurnitureFit = false
                             } else {
                                 // Release SHARP model to free memory for YOLO segmentation
                                 SHARPService.shared.releaseResources()
-                                showingSmartyPants = true
+                                showingFurnitureFit = true
                             }
                         }) {
                             Image(systemName: "brain.head.profile")
                                 .font(.system(size: 28))
                                 .foregroundColor(.white)
                                 .frame(width: 60, height: 60)
-                                .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
                                 .rotationEffect(.degrees(90))  // Rotate icon for horizontal viewing
                         }
                         .disabled(isLoading)
@@ -502,7 +502,7 @@ struct SharpRoomView: View {
 
                 // Joystick at bottom center
                 WebGLJoystickOverlay(photoOrientation: photoOrientation)
-                    .zIndex(99999)  // Above SmartyPants overlay
+                    .zIndex(99999)  // Above FurnitureFit overlay
 
                 // Buttons at bottom row
                 VStack {
@@ -511,19 +511,19 @@ struct SharpRoomView: View {
                     HStack {
                         // Brain button (bottom-left)
                         Button(action: {
-                            if showingSmartyPants {
-                                showingSmartyPants = false
+                            if showingFurnitureFit {
+                                showingFurnitureFit = false
                             } else {
                                 // Release SHARP model to free memory for YOLO segmentation
                                 SHARPService.shared.releaseResources()
-                                showingSmartyPants = true
+                                showingFurnitureFit = true
                             }
                         }) {
                             Image(systemName: "brain.head.profile")
                                 .font(.system(size: 28))
                                 .foregroundColor(.white)
                                 .frame(width: 60, height: 60)
-                                .background(Circle().fill(showingSmartyPants ? Color.green : Color.blue).shadow(radius: 5))
+                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
                         }
                         .disabled(isLoading)
                         .padding(.leading, 16)
@@ -684,7 +684,7 @@ struct SharpRoomView: View {
         logDebug("✅ Screenshot saved to Photos")
     }
 
-    // MARK: - Load ML Model for SmartyPants
+    // MARK: - Load ML Model for FurnitureFit
 
     private func loadMLModel() {
         guard mlModel == nil else { return }
