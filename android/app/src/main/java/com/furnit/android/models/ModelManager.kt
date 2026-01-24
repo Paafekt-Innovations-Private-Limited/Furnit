@@ -39,9 +39,10 @@ class ModelManager(private val context: Context) {
 
         for (folder in roomFolders) {
             val frontWall = File(folder, "front_wall.png")
+            val glbFile = File(folder, "room.glb")
             val metadataFile = File(folder, "metadata.txt")
 
-            if (frontWall.exists()) {
+            if (frontWall.exists() || glbFile.exists()) {
                 // Read room name from metadata or use folder name
                 val roomName = if (metadataFile.exists()) {
                     try {
@@ -54,15 +55,22 @@ class ModelManager(private val context: Context) {
                     "My Room ${folder.name.substringAfter("room_")}"
                 }
 
+                // Use GLB file path if it exists, otherwise use folder path
+                val assetPath = if (glbFile.exists()) {
+                    glbFile.absolutePath
+                } else {
+                    folder.absolutePath
+                }
+
                 val model = Model(
                     id = folder.name,
                     name = roomName,
-                    assetPath = folder.absolutePath,
+                    assetPath = assetPath,
                     isUserCreated = true,
-                    thumbnailPath = frontWall.absolutePath
+                    thumbnailPath = if (frontWall.exists()) frontWall.absolutePath else null
                 )
                 models.add(model)
-                Log.d(TAG, "Loaded user room: ${model.name} at ${model.assetPath}")
+                Log.d(TAG, "Loaded user room: ${model.name} at ${model.assetPath} (GLB: ${glbFile.exists()})")
             }
         }
     }
@@ -77,9 +85,12 @@ class ModelManager(private val context: Context) {
 
     fun deleteRoom(id: String): Boolean {
         val model = models.find { it.id == id && it.isUserCreated } ?: return false
-        val folder = File(model.assetPath)
+        // assetPath may be a GLB file or a folder - get the parent folder if it's a file
+        val folder = File(model.assetPath).let {
+            if (it.isFile) it.parentFile else it
+        }
         return try {
-            folder.deleteRecursively()
+            folder?.deleteRecursively()
             models.remove(model)
             Log.d(TAG, "Deleted room: $id")
             true

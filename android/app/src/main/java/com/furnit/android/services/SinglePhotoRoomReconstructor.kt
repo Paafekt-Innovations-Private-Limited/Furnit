@@ -198,8 +198,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
     }
 
     /**
-     * Creates a simple GLB file for the room
-     * For now, saves textures and creates a placeholder - full GLB generation requires a library
+     * Creates a GLB file for the room with 5 textured planes
      */
     private fun createRoomGLB(
         dimensions: RoomDimensions,
@@ -217,12 +216,31 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         val roomFolder = File(roomDir, "room_$timestamp")
         roomFolder.mkdirs()
 
-        // Save textures as PNG files
+        // Save front wall texture for thumbnail
         saveTexture(frontWall, File(roomFolder, "front_wall.png"))
-        saveTexture(floor, File(roomFolder, "floor.png"))
-        saveTexture(ceiling, File(roomFolder, "ceiling.png"))
-        saveTexture(leftWall, File(roomFolder, "left_wall.png"))
-        saveTexture(rightWall, File(roomFolder, "right_wall.png"))
+
+        // Generate GLB file using GlbGenerator
+        val glbFile = File(roomFolder, "room.glb")
+        val generator = GlbGenerator()
+        val glbDimensions = GlbGenerator.RoomDimensions(
+            width = dimensions.width,
+            depth = dimensions.depth,
+            height = dimensions.height
+        )
+
+        val success = generator.generateGlb(
+            outputFile = glbFile,
+            dimensions = glbDimensions,
+            frontWallTexture = frontWall,
+            floorTexture = floor,
+            ceilingTexture = ceiling,
+            leftWallTexture = leftWall,
+            rightWallTexture = rightWall
+        )
+
+        if (!success) {
+            Log.e(TAG, "Failed to generate GLB, falling back to textures only")
+        }
 
         // Save dimensions
         val dimensionsFile = File(roomFolder, "dimensions.txt")
@@ -231,14 +249,10 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         // Save metadata for ModelManager
         val metadataFile = File(roomFolder, "metadata.txt")
         val roomName = "My Room ${java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(java.util.Date())}"
-        metadataFile.writeText("name=$roomName\ncreated=${System.currentTimeMillis()}")
-
-        // For now, return the front wall texture as the "model" file
-        // A full implementation would generate actual GLB here
-        val modelFile = File(roomFolder, "front_wall.png")
+        metadataFile.writeText("name=$roomName\ncreated=${System.currentTimeMillis()}\nglb=room.glb")
 
         Log.d(TAG, "Room created at: ${roomFolder.absolutePath}")
-        return modelFile
+        return if (success) glbFile else File(roomFolder, "front_wall.png")
     }
 
     private fun saveTexture(bitmap: Bitmap, file: File) {

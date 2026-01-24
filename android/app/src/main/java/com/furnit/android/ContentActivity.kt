@@ -228,10 +228,18 @@ class ContentActivity : AppCompatActivity() {
             Log.d("ContentActivity", "Room clicked: ${model.name}, isUserCreated=${model.isUserCreated}, assetPath=${model.assetPath}")
 
             if (model.isUserCreated) {
-                Log.d("ContentActivity", "Opening RoomViewerActivity with folder: ${model.assetPath}")
-                val intent = Intent(this, RoomViewerActivity::class.java)
-                intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, model.assetPath)
-                startActivity(intent)
+                // Check if this is a GLB file or legacy PNG folder
+                if (model.assetPath.endsWith(".glb")) {
+                    Log.d("ContentActivity", "Opening ModelDetailActivity with GLB: ${model.assetPath}")
+                    val intent = Intent(this, ModelDetailActivity::class.java)
+                    intent.putExtra("MODEL_ID", model.id)
+                    startActivity(intent)
+                } else {
+                    Log.d("ContentActivity", "Opening RoomViewerActivity with folder: ${model.assetPath}")
+                    val intent = Intent(this, RoomViewerActivity::class.java)
+                    intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, model.assetPath)
+                    startActivity(intent)
+                }
             } else {
                 Log.d("ContentActivity", "Opening ModelDetailActivity with id: ${model.id}")
                 val intent = Intent(this, ModelDetailActivity::class.java)

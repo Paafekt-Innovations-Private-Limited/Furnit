@@ -13,14 +13,25 @@ import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
 import kotlinx.coroutines.launch
+import java.io.File
+import java.nio.ByteBuffer
 
 class ModelDetailActivity : AppCompatActivity() {
+
+    companion object {
+        const val EXTRA_MODEL_ID = "MODEL_ID"
+        const val EXTRA_GLB_PATH = "GLB_PATH"
+        const val EXTRA_ROOM_NAME = "ROOM_NAME"
+        const val EXTRA_IS_PREVIEW = "IS_PREVIEW"  // True if this is a preview before saving
+    }
 
     private lateinit var sceneView: SceneView
     private lateinit var loadingIndicator: ProgressBar
     private lateinit var modelTitle: TextView
     private lateinit var modelManager: ModelManager
     private lateinit var brainButton: ImageButton
+    private var isPreviewMode = false
+    private var glbPath: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,29 +47,58 @@ class ModelDetailActivity : AppCompatActivity() {
         val backButton: ImageButton = findViewById(R.id.backButton)
         backButton.setOnClickListener { finish() }
 
-        val modelId = intent.getStringExtra("MODEL_ID") ?: return
-        val model = modelManager.getModel(modelId) ?: return
+        isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
 
-        // Brain button launches SmartyPants segmentation with this room as background
-        brainButton.setOnClickListener {
-            val intent = Intent(this, SmartyPantsActivity::class.java)
-            intent.putExtra("ROOM_ID", model.id)
-            intent.putExtra("ROOM_NAME", model.name)
-            startActivity(intent)
+        // Check for direct GLB path first (for preview mode)
+        val directGlbPath = intent.getStringExtra(EXTRA_GLB_PATH)
+        val roomName = intent.getStringExtra(EXTRA_ROOM_NAME)
+
+        if (directGlbPath != null) {
+            // Direct GLB path mode (preview before save)
+            glbPath = directGlbPath
+            modelTitle.text = roomName ?: "Room Preview"
+            brainButton.visibility = View.GONE  // Hide brain button in preview mode
+            loadModel(directGlbPath)
+        } else {
+            // Model ID mode (existing rooms)
+            val modelId = intent.getStringExtra(EXTRA_MODEL_ID) ?: return
+            val model = modelManager.getModel(modelId) ?: return
+
+            glbPath = model.assetPath
+            modelTitle.text = model.name
+
+            // Brain button launches SmartyPants segmentation with this room as background
+            brainButton.setOnClickListener {
+                val intent = Intent(this, SmartyPantsActivity::class.java)
+                intent.putExtra("ROOM_ID", model.id)
+                intent.putExtra("ROOM_NAME", model.name)
+                startActivity(intent)
+            }
+
+            loadModel(model.assetPath)
         }
-
-        modelTitle.text = model.name
-
-        loadModel(model.assetPath)
     }
 
     private fun loadModel(assetPath: String) {
         lifecycleScope.launch {
             try {
-                val modelNode = ModelNode(
-                    modelInstance = sceneView.modelLoader.createModelInstance(
+                val modelInstance = if (assetPath.startsWith("/")) {
+                    // File system path - load from file
+                    android.util.Log.d("ModelDetail", "Loading GLB from file: $assetPath")
+                    val file = File(assetPath)
+                    val bytes = file.readBytes()
+                    val buffer = ByteBuffer.wrap(bytes)
+                    sceneView.modelLoader.createModelInstance(buffer)
+                } else {
+                    // Asset path - load from assets
+                    android.util.Log.d("ModelDetail", "Loading GLB from assets: $assetPath")
+                    sceneView.modelLoader.createModelInstance(
                         assetFileLocation = assetPath
-                    ),
+                    )
+                }
+
+                val modelNode = ModelNode(
+                    modelInstance = modelInstance,
                     scaleToUnits = null  // Keep original scale
                 )
 
@@ -67,13 +107,14 @@ class ModelDetailActivity : AppCompatActivity() {
 
                 sceneView.addChildNode(modelNode)
 
-                // Position camera at back wall, middle, eye level, looking straight into room
+                // Position camera at back of room, eye level, looking toward front wall
+                // Room geometry: front wall at z=-2.25, back at z=+2.25
                 sceneView.cameraNode.apply {
-                    position = Position(0f, 1.6f, -4f)  // Back wall center, eye level
-                    lookAt(Position(0f, 1.6f, 4f))     // Look straight ahead (same Y)
+                    position = Position(0f, 1.6f, 3.5f)   // Back of room, eye level
+                    lookAt(Position(0f, 1.4f, -2.25f))    // Look at front wall center
                 }
 
-                android.util.Log.d("ModelDetail", "Camera at back wall looking into room")
+                android.util.Log.d("ModelDetail", "Camera at back of room looking at front wall")
 
                 loadingIndicator.visibility = View.GONE
 

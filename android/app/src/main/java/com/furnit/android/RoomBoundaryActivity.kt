@@ -325,10 +325,20 @@ class RoomBoundaryActivity : AppCompatActivity() {
                     mainHandler.post {
                         hideProgressOverlay()
                         if (glbFile != null) {
-                            // Navigate to room viewer
-                            val intent = Intent(this@RoomBoundaryActivity, RoomViewerActivity::class.java)
-                            intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, glbFile.parentFile?.absolutePath)
-                            startActivity(intent)
+                            // Check if GLB file was created for 3D preview
+                            if (glbFile.name.endsWith(".glb")) {
+                                // Navigate to 3D ModelDetailActivity for preview
+                                val intent = Intent(this@RoomBoundaryActivity, ModelDetailActivity::class.java)
+                                intent.putExtra(ModelDetailActivity.EXTRA_GLB_PATH, glbFile.absolutePath)
+                                intent.putExtra(ModelDetailActivity.EXTRA_ROOM_NAME, "Your Room")
+                                intent.putExtra(ModelDetailActivity.EXTRA_IS_PREVIEW, true)
+                                startActivity(intent)
+                            } else {
+                                // Fallback to 2D room viewer
+                                val intent = Intent(this@RoomBoundaryActivity, RoomViewerActivity::class.java)
+                                intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, glbFile.parentFile?.absolutePath)
+                                startActivity(intent)
+                            }
                             finish()
                         } else {
                             Toast.makeText(this@RoomBoundaryActivity, "Failed to create room", Toast.LENGTH_SHORT).show()
