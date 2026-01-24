@@ -540,6 +540,7 @@ class ModelDetailActivityTest {
             eraseColor(Color.parseColor("#D4C4B0"))  // Beige color like room walls
         }
 
+        // Use room_test_* naming so TestCleanup knows to delete it
         val roomsDir = File(context.filesDir, "rooms")
         roomsDir.mkdirs()
         val roomFolder = File(roomsDir, "room_test_${System.currentTimeMillis()}")
