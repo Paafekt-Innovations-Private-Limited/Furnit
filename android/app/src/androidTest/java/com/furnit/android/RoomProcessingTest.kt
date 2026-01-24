@@ -26,10 +26,11 @@ class RoomProcessingTest {
 
     @Before
     fun setup() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        // Use instrumentation context to load test assets (not targetContext)
+        val testContext = InstrumentationRegistry.getInstrumentation().context
 
         // Load TestRoom.jpg from test assets
-        testBitmap = context.assets.open("TestRoom.jpg").use { input ->
+        testBitmap = testContext.assets.open("TestRoom.jpg").use { input ->
             BitmapFactory.decodeStream(input)
         }
         assertNotNull("Failed to load TestRoom.jpg", testBitmap)
