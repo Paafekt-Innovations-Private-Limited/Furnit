@@ -1,25 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#808080">
+    android:fitsSystemWindows="false"
+    android:clipToPadding="false"
+    android:background="#000000"
+    tools:ignore="MergeRootFrame">
 
-    <!-- Full-screen 3D View -->
+    <!-- Full-screen 3D View - fills entire screen edge-to-edge like iOS ignoresSafeArea -->
     <io.github.sceneview.SceneView
         android:id="@+id/sceneView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:fitsSystemWindows="false"
+        android:clipToPadding="false" />
 
-    <!-- Top Bar - Rounded dark container matching iOS -->
+    <!-- Top Bar - Rounded dark container matching iOS (overlay on 3D view) -->
     <LinearLayout
         android:id="@+id/topBarContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_gravity="top"
         android:orientation="vertical"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
-        android:paddingTop="48dp"
-        android:paddingBottom="12dp">
+        android:paddingTop="16dp"
+        android:paddingBottom="12dp"
+        android:clipToPadding="false"
+        android:elevation="8dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -65,17 +74,29 @@
                 android:layout_marginStart="8dp"
                 android:contentDescription="Help" />
 
-            <!-- Save button (circle) -->
+            <!-- Save button (circle) - down arrow -->
             <ImageButton
                 android:id="@+id/saveButton"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
-                android:src="@drawable/ic_save"
+                android:src="@drawable/ic_download"
                 android:background="@drawable/circle_button_dark"
                 android:scaleType="centerInside"
                 android:padding="10dp"
                 android:layout_marginStart="8dp"
                 android:contentDescription="Save Room" />
+
+            <!-- Share button (circle) - up arrow -->
+            <ImageButton
+                android:id="@+id/shareButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_share"
+                android:background="@drawable/circle_button_dark"
+                android:scaleType="centerInside"
+                android:padding="10dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="Share Room" />
         </LinearLayout>
     </LinearLayout>
 
@@ -85,16 +106,21 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
+        android:elevation="8dp"
         android:visibility="visible" />
 
-    <!-- Bottom Controls matching iOS -->
+    <!-- Bottom Controls matching iOS - overlay on 3D view -->
     <FrameLayout
+        android:id="@+id/bottomControlsContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
-        android:paddingBottom="40dp">
+        android:paddingBottom="24dp"
+        android:clipToPadding="false"
+        android:clipChildren="false"
+        android:elevation="8dp">
 
         <!-- Brain icon (left) for FurnitureFit -->
         <ImageButton

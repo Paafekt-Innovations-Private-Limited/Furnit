@@ -35,11 +35,20 @@
         <activity android:name=".ModelViewerActivity" android:exported="false" />
         <activity android:name=".FurnitureFitActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="false" />
-        <activity android:name=".ModelDetailActivity" android:exported="false" />
+        <activity
+            android:name=".ModelDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Furnit.FullScreen" />
         <activity android:name=".SinglePhotoRoomActivity" android:exported="false" />
         <activity android:name=".RoomBoundaryActivity" android:exported="false" />
-        <activity android:name=".RoomViewerActivity" android:exported="false" />
-        <activity android:name=".SharpRoomActivity" android:exported="false" />
+        <activity
+            android:name=".RoomViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Furnit.FullScreen" />
+        <activity
+            android:name=".SharpRoomActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Furnit.FullScreen" />
         <activity android:name=".SettingsActivity" android:exported="false" />
 
         <!-- FileProvider for camera photos -->

@@ -15,11 +15,14 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.furnit.android.models.Model
 import com.furnit.android.models.ModelManager
 import java.io.File
@@ -69,6 +72,21 @@ class SharpRoomActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Enable true edge-to-edge display (matching iOS ignoresSafeArea)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+
+        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
+            controller.isAppearanceLightStatusBars = false
+            controller.isAppearanceLightNavigationBars = false
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
 
         plyPath = intent.getStringExtra(EXTRA_PLY_PATH)
         roomFolder = intent.getStringExtra(EXTRA_ROOM_FOLDER)
@@ -593,16 +611,22 @@ class SharpRoomActivity : AppCompatActivity() {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body {
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             overflow: hidden;
             background: #808080;
             touch-action: none;
+            position: fixed;
+            top: 0;
+            left: 0;
         }
         canvas {
-            width: 100%;
-            height: 100%;
+            width: 100vw !important;
+            height: 100vh !important;
             display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
         }
     </style>
     <script type="importmap">
@@ -631,10 +655,18 @@ class SharpRoomActivity : AppCompatActivity() {
         camera.position.set(0, 0, 5);
         camera.up.set(0, 1, 0);
 
-        // Renderer
+        // Renderer - use full viewport size
         const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        function getViewportSize() {
+            // Use the largest available dimension measurement
+            const w = Math.max(window.innerWidth, document.documentElement.clientWidth, window.screen.width);
+            const h = Math.max(window.innerHeight, document.documentElement.clientHeight, window.screen.height);
+            return { width: w, height: h };
+        }
+        const viewport = getViewportSize();
+        console.log('Viewport size:', viewport.width, 'x', viewport.height);
+        renderer.setSize(viewport.width, viewport.height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
         // Orbit controls

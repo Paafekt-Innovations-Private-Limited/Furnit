@@ -2,11 +2,14 @@ package com.furnit.android
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.os.Bundle
 import android.os.Environment
 import android.util.Log
 import android.view.View
+import android.view.WindowManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -15,8 +18,14 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.models.ModelManager
+import com.google.android.filament.Camera
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -44,6 +53,7 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var modelManager: ModelManager
     private lateinit var brainButton: ImageButton
     private lateinit var saveButton: ImageButton
+    private lateinit var shareButton: ImageButton
     private lateinit var helpButton: ImageButton
     private lateinit var screenshotButton: ImageButton
     private lateinit var orientationLabel: LinearLayout
@@ -53,6 +63,27 @@ class ModelDetailActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Enable true edge-to-edge display (matching iOS ignoresSafeArea)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // Make status bar and navigation bar transparent so content draws behind them
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+
+        // Configure window insets controller for proper edge-to-edge
+        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
+            // Show system bars but make them transparent
+            controller.isAppearanceLightStatusBars = false
+            controller.isAppearanceLightNavigationBars = false
+        }
+
+        // Enable layout in display cutout area (notch)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+
         setContentView(R.layout.activity_model_detail)
 
         modelManager = ModelManager(this)
@@ -62,9 +93,26 @@ class ModelDetailActivity : AppCompatActivity() {
         modelTitle = findViewById(R.id.modelTitle)
         brainButton = findViewById(R.id.brainButton)
         saveButton = findViewById(R.id.saveButton)
+        shareButton = findViewById(R.id.shareButton)
         helpButton = findViewById(R.id.helpButton)
         screenshotButton = findViewById(R.id.screenshotButton)
         orientationLabel = findViewById(R.id.orientationLabel)
+
+        // Handle window insets for overlay controls (like iOS safe area)
+        val topBarContainer = findViewById<LinearLayout>(R.id.topBarContainer)
+        val bottomControlsContainer = findViewById<FrameLayout>(R.id.bottomControlsContainer)
+
+        ViewCompat.setOnApplyWindowInsetsListener(topBarContainer) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(top = insets.top + 16)
+            windowInsets
+        }
+
+        ViewCompat.setOnApplyWindowInsetsListener(bottomControlsContainer) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(bottom = insets.bottom + 24)
+            windowInsets
+        }
 
         val backButton: ImageButton = findViewById(R.id.backButton)
         backButton.setOnClickListener { finish() }
@@ -86,10 +134,16 @@ class ModelDetailActivity : AppCompatActivity() {
             glbPath = directGlbPath
             modelTitle.text = "3D Room View"
 
-            // In preview mode, show save button and hide brain button
+            // In preview mode, show save button (down arrow), hide share button
             saveButton.visibility = View.VISIBLE
             saveButton.setOnClickListener { showSaveDialog() }
-            brainButton.visibility = View.GONE
+            shareButton.visibility = View.GONE
+
+            // Show brain button but prompt to save first
+            brainButton.visibility = View.VISIBLE
+            brainButton.setOnClickListener {
+                Toast.makeText(this, "Please save the room first", Toast.LENGTH_SHORT).show()
+            }
 
             loadModel(directGlbPath)
         } else {
@@ -101,8 +155,10 @@ class ModelDetailActivity : AppCompatActivity() {
             glbPath = model.assetPath
             modelTitle.text = "3D Room View"
 
-            // In view mode, hide save button and show brain button
+            // In view mode, hide save button and show share button
             saveButton.visibility = View.GONE
+            shareButton.visibility = View.VISIBLE
+            shareButton.setOnClickListener { shareRoom() }
             brainButton.visibility = View.VISIBLE
 
             // Brain button launches FurnitureFit segmentation with this room as background
@@ -127,14 +183,26 @@ class ModelDetailActivity : AppCompatActivity() {
 
     private fun showSaveDialog() {
         val input = EditText(this).apply {
-            hint = "Enter room name"
-            setPadding(48, 32, 48, 32)
+            hint = "Room Name"
+            setHintTextColor(0x80FFFFFF.toInt())
+            setTextColor(0xFFFFFFFF.toInt())
+            setBackgroundResource(R.drawable.edittext_border)
+            textSize = 16f
         }
 
-        AlertDialog.Builder(this)
+        val container = LinearLayout(this@ModelDetailActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 0)
+            addView(input, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+
+        AlertDialog.Builder(this, R.style.DarkDialogTheme)
             .setTitle("Save Room")
             .setMessage("Enter a name for your room")
-            .setView(input)
+            .setView(container)
             .setPositiveButton("Save") { _, _ ->
                 val name = input.text.toString().ifEmpty { "My Room" }
                 saveRoom(name)
@@ -162,8 +230,10 @@ class ModelDetailActivity : AppCompatActivity() {
                 Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()
                 Log.d(TAG, "Room saved: $name at ${roomFolder.absolutePath}")
 
-                // Return to home
-                setResult(RESULT_OK)
+                // Go to rooms list screen (ContentActivity)
+                val intent = Intent(this, ContentActivity::class.java)
+                intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                startActivity(intent)
                 finish()
             } else {
                 Toast.makeText(this, "Failed to save room", Toast.LENGTH_SHORT).show()
@@ -171,6 +241,28 @@ class ModelDetailActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save room", e)
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun shareRoom() {
+        val path = glbPath ?: return
+        try {
+            val glbFile = File(path)
+            if (!glbFile.exists()) {
+                Toast.makeText(this, "Room file not found", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", glbFile)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "model/gltf-binary"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share Room"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to share room", e)
+            Toast.makeText(this, "Failed to share room", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -248,27 +340,22 @@ class ModelDetailActivity : AppCompatActivity() {
                     )
                 }
 
+                // Room dimensions from GlbGenerator: width=4, depth=4.5, height=2.8
+                // Model Y goes from 0 (floor) to 2.8 (ceiling), so center Y is at 1.4
+                // Scale room to fit in ~3 units
                 val modelNode = ModelNode(
                     modelInstance = modelInstance,
-                    scaleToUnits = null  // Keep original scale
+                    scaleToUnits = 3.0f  // Scale room to fit in 3-unit cube
                 )
-
-                // Position model at origin
-                modelNode.position = Position(0f, 0f, 0f)
 
                 sceneView.addChildNode(modelNode)
 
-                // Position camera to view the room from inside
-                // Room geometry: floor at Y=0, ceiling at Y=2.8, front wall at Z=-2.25
-                // Camera should be at the back of the room looking toward front wall
-                sceneView.cameraNode.apply {
-                    // Position camera at back of room (Z=2.0), eye level (Y=1.4)
-                    position = Position(0f, 1.4f, 2.0f)
-                    // Look at front wall center, slightly below eye level to see floor
-                    lookAt(Position(0f, 1.0f, -2.0f))
-                }
+                Log.d(TAG, "Model added with scaleToUnits=3.0")
 
-                Log.d(TAG, "Camera positioned at back of room looking at front wall")
+                // Setup camera after view is ready
+                sceneView.post {
+                    setupCamera()
+                }
 
                 loadingIndicator.visibility = View.GONE
 
@@ -279,6 +366,19 @@ class ModelDetailActivity : AppCompatActivity() {
                 modelTitle.text = "Failed to load: ${e.message}"
             }
         }
+    }
+
+    private fun setupCamera() {
+        // Simple camera setup - position to view the room
+        // Room model: floor at Y=0, ceiling at Y=2.8, scaled to fit ~3 units
+        val roomCenterY = 1.0f  // Center of room after scaling
+
+        sceneView.cameraNode.apply {
+            position = Position(0f, roomCenterY, 4.5f)
+            lookAt(Position(0f, roomCenterY, 0f))
+        }
+
+        Log.d(TAG, "Camera setup: pos=(0, $roomCenterY, 4.5), lookAt=(0, $roomCenterY, 0)")
     }
 
     override fun onDestroy() {
