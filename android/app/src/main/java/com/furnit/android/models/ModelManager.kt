@@ -19,12 +19,12 @@ class ModelManager(private val context: Context) {
     private fun loadModels() {
         models.clear()
 
-        // Load bundled models from assets
-        models.add(Model("vintage", "Vintage Living Room", "models/vintage.glb"))
-        models.add(Model("cozy_room", "Cozy Living Room", "models/cozy_room.glb"))
-
-        // Load user-created rooms from file system
+        // Load user-created rooms first (sorted by newest first)
         loadUserCreatedRooms()
+
+        // Add bundled models at the bottom
+        models.add(Model("vintage", "Vintage Living Room", "models/vintage.glb", createdAt = 0L))
+        models.add(Model("cozy_room", "Cozy Living Room", "models/cozy_room.glb", createdAt = 0L))
     }
 
     private fun loadUserCreatedRooms() {
@@ -37,22 +37,28 @@ class ModelManager(private val context: Context) {
         val roomFolders = roomsDir.listFiles { file -> file.isDirectory } ?: return
         Log.d(TAG, "Found ${roomFolders.size} user-created rooms")
 
+        val userRooms = mutableListOf<Model>()
+
         for (folder in roomFolders) {
             val frontWall = File(folder, "front_wall.png")
             val glbFile = File(folder, "room.glb")
             val metadataFile = File(folder, "metadata.txt")
 
             if (frontWall.exists() || glbFile.exists()) {
-                // Read room name from metadata or use folder name
-                val roomName = if (metadataFile.exists()) {
+                // Read room name and created timestamp from metadata
+                var roomName = "My Room ${folder.name.substringAfter("room_")}"
+                var createdAt = folder.lastModified() // fallback to folder modification time
+
+                if (metadataFile.exists()) {
                     try {
-                        metadataFile.readLines().firstOrNull { it.startsWith("name=") }
-                            ?.substringAfter("name=") ?: "My Room"
+                        val lines = metadataFile.readLines()
+                        lines.firstOrNull { it.startsWith("name=") }
+                            ?.substringAfter("name=")?.let { roomName = it }
+                        lines.firstOrNull { it.startsWith("created=") }
+                            ?.substringAfter("created=")?.toLongOrNull()?.let { createdAt = it }
                     } catch (e: Exception) {
-                        "My Room"
+                        Log.w(TAG, "Failed to read metadata for ${folder.name}", e)
                     }
-                } else {
-                    "My Room ${folder.name.substringAfter("room_")}"
                 }
 
                 // Use GLB file path if it exists, otherwise use folder path
@@ -67,12 +73,17 @@ class ModelManager(private val context: Context) {
                     name = roomName,
                     assetPath = assetPath,
                     isUserCreated = true,
-                    thumbnailPath = if (frontWall.exists()) frontWall.absolutePath else null
+                    thumbnailPath = if (frontWall.exists()) frontWall.absolutePath else null,
+                    createdAt = createdAt
                 )
-                models.add(model)
-                Log.d(TAG, "Loaded user room: ${model.name} at ${model.assetPath} (GLB: ${glbFile.exists()})")
+                userRooms.add(model)
+                Log.d(TAG, "Loaded user room: ${model.name} at ${model.assetPath} (GLB: ${glbFile.exists()}, created: $createdAt)")
             }
         }
+
+        // Sort user rooms by creation date descending (newest first)
+        userRooms.sortByDescending { it.createdAt }
+        models.addAll(userRooms)
     }
 
     fun listModels(): List<Model> = models.toList()

@@ -5,5 +5,6 @@ data class Model(
     val name: String,
     val assetPath: String,
     val isUserCreated: Boolean = false,  // true for user-created rooms
-    val thumbnailPath: String? = null     // path to thumbnail image
+    val thumbnailPath: String? = null,   // path to thumbnail image
+    val createdAt: Long = 0L             // creation timestamp for sorting
 )

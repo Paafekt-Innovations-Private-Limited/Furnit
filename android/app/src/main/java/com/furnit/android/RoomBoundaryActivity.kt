@@ -162,69 +162,56 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
         mainLayout.addView(imageContainer)
 
-        // Instructions panel
+        // Instructions panel - compact to leave more room for image
         val instructionsPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#2A2A2A"))
-            setPadding(24, 16, 24, 16)
+            setPadding(16, 8, 16, 8)
 
-            val instructionText = TextView(this@RoomBoundaryActivity).apply {
-                text = "Drag the handles to adjust room boundaries"
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-            }
-            addView(instructionText)
-
-            // Legend
-            val legendLayout = LinearLayout(this@RoomBoundaryActivity).apply {
+            // Combined legend and buttons in one row
+            val controlsRow = LinearLayout(this@RoomBoundaryActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(0, 12, 0, 12)
+                gravity = Gravity.CENTER_VERTICAL
 
-                fun addLegendItem(color: Int, label: String) {
-                    val item = LinearLayout(this@RoomBoundaryActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        setPadding(12, 0, 12, 0)
+                // Legend (compact)
+                val legendLayout = LinearLayout(this@RoomBoundaryActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
 
+                    fun addLegendDot(color: Int, label: String) {
                         val dot = View(this@RoomBoundaryActivity).apply {
-                            layoutParams = LinearLayout.LayoutParams(16, 16).apply {
-                                setMargins(0, 0, 8, 0)
+                            layoutParams = LinearLayout.LayoutParams(12, 12).apply {
+                                setMargins(6, 0, 2, 0)
                             }
                             setBackgroundColor(color)
                         }
                         addView(dot)
-
                         val text = TextView(this@RoomBoundaryActivity).apply {
                             this.text = label
-                            textSize = 12f
+                            textSize = 10f
                             setTextColor(Color.LTGRAY)
                         }
                         addView(text)
                     }
-                    addView(item)
+
+                    addLegendDot(Color.GREEN, "F")
+                    addLegendDot(Color.CYAN, "C")
+                    addLegendDot(Color.RED, "L")
+                    addLegendDot(Color.YELLOW, "R")
+                    addLegendDot(Color.MAGENTA, "VP")
                 }
+                addView(legendLayout)
 
-                addLegendItem(Color.GREEN, "Floor")
-                addLegendItem(Color.CYAN, "Ceiling")
-                addLegendItem(Color.RED, "Left")
-                addLegendItem(Color.YELLOW, "Right")
-                addLegendItem(Color.MAGENTA, "VP")
-            }
-            addView(legendLayout)
-
-            // Buttons
-            val buttonLayout = LinearLayout(this@RoomBoundaryActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(0, 8, 0, 8)
-
+                // Buttons
                 val resetBtn = Button(this@RoomBoundaryActivity).apply {
                     text = "Reset"
+                    textSize = 12f
                     setTextColor(Color.WHITE)
                     setBackgroundColor(Color.parseColor("#555555"))
-                    setPadding(32, 16, 32, 16)
+                    setPadding(24, 8, 24, 8)
+                    minimumHeight = 0
+                    minHeight = 0
                     setOnClickListener {
                         structure.reset()
                         boundaryView.updateStructure(structure)
@@ -233,13 +220,16 @@ class RoomBoundaryActivity : AppCompatActivity() {
                 addView(resetBtn, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(16, 0, 16, 0) })
+                ).apply { setMargins(8, 0, 8, 0) })
 
                 val doneBtn = Button(this@RoomBoundaryActivity).apply {
                     text = "Done"
+                    textSize = 12f
                     setTextColor(Color.WHITE)
                     setBackgroundColor(Color.parseColor("#4CAF50"))
-                    setPadding(48, 16, 48, 16)
+                    setPadding(32, 8, 32, 8)
+                    minimumHeight = 0
+                    minHeight = 0
                     setOnClickListener {
                         onDonePressed()
                     }
@@ -247,9 +237,19 @@ class RoomBoundaryActivity : AppCompatActivity() {
                 addView(doneBtn, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(16, 0, 16, 0) })
+                ))
             }
-            addView(buttonLayout)
+            addView(controlsRow)
+
+            // Instruction hint
+            val instructionText = TextView(this@RoomBoundaryActivity).apply {
+                text = "Drag handles to adjust boundaries"
+                textSize = 11f
+                setTextColor(Color.GRAY)
+                gravity = Gravity.CENTER
+                setPadding(0, 4, 0, 0)
+            }
+            addView(instructionText)
         }
         mainLayout.addView(instructionsPanel)
 
