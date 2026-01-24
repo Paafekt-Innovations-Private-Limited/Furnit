@@ -3,18 +3,14 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="false"
-    android:clipToPadding="false"
     android:background="#000000"
     tools:ignore="MergeRootFrame">
 
-    <!-- Full-screen 3D View - fills entire screen edge-to-edge like iOS ignoresSafeArea -->
+    <!-- Full-screen 3D View -->
     <io.github.sceneview.SceneView
         android:id="@+id/sceneView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:fitsSystemWindows="false"
-        android:clipToPadding="false" />
+        android:layout_height="match_parent" />
 
     <!-- Top Bar - Rounded dark container matching iOS (overlay on 3D view) -->
     <LinearLayout
@@ -109,73 +105,6 @@
         android:elevation="8dp"
         android:visibility="visible" />
 
-    <!-- Bottom Controls matching iOS - overlay on 3D view -->
-    <FrameLayout
-        android:id="@+id/bottomControlsContainer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:paddingBottom="24dp"
-        android:clipToPadding="false"
-        android:clipChildren="false"
-        android:elevation="8dp">
-
-        <!-- Brain icon (left) for FurnitureFit -->
-        <ImageButton
-            android:id="@+id/brainButton"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:layout_gravity="start|bottom"
-            android:src="@drawable/ic_brain"
-            android:background="@drawable/circle_button_blue"
-            android:scaleType="centerInside"
-            android:padding="12dp"
-            android:contentDescription="AI Segment Furniture" />
-
-        <!-- Orientation label (center) -->
-        <LinearLayout
-            android:id="@+id/orientationLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal|bottom"
-            android:layout_marginBottom="80dp"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:background="@drawable/rounded_label_dark"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="held vertically"
-                android:textSize="12sp"
-                android:textColor="@android:color/white" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Portrait"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:textColor="@android:color/white" />
-        </LinearLayout>
-
-        <!-- Camera/Screenshot icon (right) -->
-        <ImageButton
-            android:id="@+id/screenshotButton"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:layout_gravity="end|bottom"
-            android:src="@drawable/ic_camera"
-            android:background="@drawable/circle_button_blue"
-            android:scaleType="centerInside"
-            android:padding="12dp"
-            android:contentDescription="Take Screenshot" />
-    </FrameLayout>
+    <!-- Bottom Controls temporarily removed until camera issue is sorted -->
 
 </FrameLayout>

@@ -125,33 +125,6 @@ class ModelDetailActivityTest {
     }
 
     @Test
-    fun testBottomControlsOverlayExists() {
-        val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
-        }
-
-        ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
-            scenario.onActivity { activity ->
-                val bottomControls = activity.findViewById<FrameLayout>(R.id.bottomControlsContainer)
-                assertNotNull("Bottom controls container should exist", bottomControls)
-
-                val brainButton = activity.findViewById<ImageButton>(R.id.brainButton)
-                assertNotNull("Brain button should exist", brainButton)
-                assertEquals("Brain button should be visible", View.VISIBLE, brainButton.visibility)
-
-                val screenshotButton = activity.findViewById<ImageButton>(R.id.screenshotButton)
-                assertNotNull("Screenshot button should exist", screenshotButton)
-                assertEquals("Screenshot button should be visible", View.VISIBLE, screenshotButton.visibility)
-
-                val orientationLabel = activity.findViewById<LinearLayout>(R.id.orientationLabel)
-                assertNotNull("Orientation label should exist", orientationLabel)
-
-                Log.d(TAG, "Bottom controls overlay verified: brain, screenshot, orientation label")
-            }
-        }
-    }
-
-    @Test
     fun testSaveButtonVisibleInPreviewMode() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
@@ -232,33 +205,6 @@ class ModelDetailActivityTest {
                 assertNotNull("Back button should exist", backButton)
                 assertTrue("Back button should be clickable", backButton.isClickable)
                 Log.d(TAG, "Back button is clickable")
-            }
-        }
-    }
-
-    @Test
-    fun testOrientationLabelContent() {
-        val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("MODEL_ID", "vintage")
-        }
-
-        ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
-            scenario.onActivity { activity ->
-                val orientationLabel = activity.findViewById<LinearLayout>(R.id.orientationLabel)
-                assertNotNull("Orientation label should exist", orientationLabel)
-
-                val childCount = orientationLabel.childCount
-                assertTrue("Orientation label should have children", childCount >= 2)
-
-                val heldVerticallyText = orientationLabel.getChildAt(0) as? TextView
-                assertNotNull("First child should be TextView", heldVerticallyText)
-                assertEquals("Should show 'held vertically'", "held vertically", heldVerticallyText?.text.toString())
-
-                val portraitText = orientationLabel.getChildAt(1) as? TextView
-                assertNotNull("Second child should be TextView", portraitText)
-                assertEquals("Should show 'Portrait'", "Portrait", portraitText?.text.toString())
-
-                Log.d(TAG, "Orientation label content verified: 'held vertically' + 'Portrait'")
             }
         }
     }
@@ -373,7 +319,7 @@ class ModelDetailActivityTest {
     }
 
     @Test
-    fun testOverlaysAreOnTopOfSceneView() {
+    fun testTopBarOverlayOnTopOfSceneView() {
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -382,30 +328,24 @@ class ModelDetailActivityTest {
             scenario.onActivity { activity ->
                 val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
                 val topBar = activity.findViewById<LinearLayout>(R.id.topBarContainer)
-                val bottomControls = activity.findViewById<FrameLayout>(R.id.bottomControlsContainer)
 
                 assertNotNull("SceneView should exist", sceneView)
                 assertNotNull("Top bar should exist", topBar)
-                assertNotNull("Bottom controls should exist", bottomControls)
 
                 val parent = sceneView.parent as? FrameLayout
                 assertNotNull("Parent should be FrameLayout", parent)
 
                 val sceneViewIndex = parent!!.indexOfChild(sceneView)
                 val topBarIndex = parent.indexOfChild(topBar)
-                val bottomControlsIndex = parent.indexOfChild(bottomControls)
 
-                Log.d(TAG, "Child indices - SceneView: $sceneViewIndex, TopBar: $topBarIndex, BottomControls: $bottomControlsIndex")
+                Log.d(TAG, "Child indices - SceneView: $sceneViewIndex, TopBar: $topBarIndex")
 
                 assertTrue("Top bar should be after SceneView in z-order (overlay)",
                     topBarIndex > sceneViewIndex)
-                assertTrue("Bottom controls should be after SceneView in z-order (overlay)",
-                    bottomControlsIndex > sceneViewIndex)
 
                 assertEquals("Top bar should be visible", View.VISIBLE, topBar.visibility)
-                assertEquals("Bottom controls should be visible", View.VISIBLE, bottomControls.visibility)
 
-                Log.d(TAG, "PASS: Overlays are correctly positioned on top of SceneView")
+                Log.d(TAG, "PASS: Top bar correctly positioned on top of SceneView")
             }
         }
     }

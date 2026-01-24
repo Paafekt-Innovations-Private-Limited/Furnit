@@ -1,14 +1,11 @@
 package com.furnit.android
 
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import android.view.View
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -21,15 +18,10 @@ import androidx.lifecycle.lifecycleScope
 import com.furnit.android.models.ModelManager
 import com.furnit.android.utils.RoomBoundaryManager
 import io.github.sceneview.SceneView
-import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
 import kotlinx.coroutines.launch
 import java.io.File
-import java.io.FileOutputStream
 import java.nio.ByteBuffer
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class ModelDetailActivity : AppCompatActivity() {
 
@@ -45,12 +37,9 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var loadingIndicator: ProgressBar
     private lateinit var modelTitle: TextView
     private lateinit var modelManager: ModelManager
-    private lateinit var brainButton: ImageButton
     private lateinit var saveButton: ImageButton
     private lateinit var shareButton: ImageButton
     private lateinit var helpButton: ImageButton
-    private lateinit var screenshotButton: ImageButton
-    private lateinit var orientationLabel: LinearLayout
     private lateinit var boundaryManager: RoomBoundaryManager
     private var isPreviewMode = false
     private var glbPath: String? = null
@@ -72,21 +61,15 @@ class ModelDetailActivity : AppCompatActivity() {
         sceneView = findViewById(R.id.sceneView)
         loadingIndicator = findViewById(R.id.loadingIndicator)
         modelTitle = findViewById(R.id.modelTitle)
-        brainButton = findViewById(R.id.brainButton)
         saveButton = findViewById(R.id.saveButton)
         shareButton = findViewById(R.id.shareButton)
         helpButton = findViewById(R.id.helpButton)
-        screenshotButton = findViewById(R.id.screenshotButton)
-        orientationLabel = findViewById(R.id.orientationLabel)
 
         val backButton: ImageButton = findViewById(R.id.backButton)
         backButton.setOnClickListener { finish() }
 
         // Help button
         helpButton.setOnClickListener { showHelpDialog() }
-
-        // Screenshot button
-        screenshotButton.setOnClickListener { takeScreenshot() }
 
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
 
@@ -104,12 +87,6 @@ class ModelDetailActivity : AppCompatActivity() {
             saveButton.setOnClickListener { showSaveDialog() }
             shareButton.visibility = View.GONE
 
-            // Show brain button but prompt to save first
-            brainButton.visibility = View.VISIBLE
-            brainButton.setOnClickListener {
-                Toast.makeText(this, "Please save the room first", Toast.LENGTH_SHORT).show()
-            }
-
             loadModel(directGlbPath)
         } else {
             // Model ID mode (existing rooms)
@@ -124,15 +101,6 @@ class ModelDetailActivity : AppCompatActivity() {
             saveButton.visibility = View.GONE
             shareButton.visibility = View.VISIBLE
             shareButton.setOnClickListener { shareRoom() }
-            brainButton.visibility = View.VISIBLE
-
-            // Brain button launches FurnitureFit segmentation with this room as background
-            brainButton.setOnClickListener {
-                val intent = Intent(this, FurnitureFitActivity::class.java)
-                intent.putExtra("ROOM_ID", model.id)
-                intent.putExtra("ROOM_NAME", model.name)
-                startActivity(intent)
-            }
 
             loadModel(model.assetPath)
         }
@@ -228,62 +196,6 @@ class ModelDetailActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to share room", e)
             Toast.makeText(this, "Failed to share room", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun takeScreenshot() {
-        try {
-            // Capture the SceneView
-            val bitmap = Bitmap.createBitmap(sceneView.width, sceneView.height, Bitmap.Config.ARGB_8888)
-            val pixelCopy = android.view.PixelCopy.request(
-                sceneView,
-                bitmap,
-                { result ->
-                    if (result == android.view.PixelCopy.SUCCESS) {
-                        saveAndShareScreenshot(bitmap)
-                    } else {
-                        runOnUiThread {
-                            Toast.makeText(this, "Failed to capture screenshot", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                },
-                android.os.Handler(mainLooper)
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Screenshot failed", e)
-            Toast.makeText(this, "Screenshot failed", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun saveAndShareScreenshot(bitmap: Bitmap) {
-        try {
-            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val fileName = "Room_$timeStamp.png"
-            val picturesDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-            val file = File(picturesDir, fileName)
-
-            FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
-
-            runOnUiThread {
-                Toast.makeText(this, "Screenshot saved", Toast.LENGTH_SHORT).show()
-            }
-
-            // Share the screenshot
-            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "image/png"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save screenshot", e)
-            runOnUiThread {
-                Toast.makeText(this, "Failed to save screenshot", Toast.LENGTH_SHORT).show()
-            }
         }
     }
 
