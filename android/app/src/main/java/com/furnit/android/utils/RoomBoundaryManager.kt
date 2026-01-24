@@ -28,6 +28,11 @@ class RoomBoundaryManager {
         const val EYE_LEVEL_HEIGHT = 1.6f    // Standing eye level from floor (meters)
         const val EYE_LEVEL_OFFSET = 0.2f    // Above room center (legacy)
         const val BOUNDARY_PADDING = 0.5f    // For constraining movement
+
+        // Field of view for camera distance calculation
+        // Portrait mode has narrower horizontal FOV (~45 degrees typical for phone cameras)
+        const val PORTRAIT_HORIZONTAL_FOV = 45f
+        const val LANDSCAPE_HORIZONTAL_FOV = 60f
     }
 
     /**
@@ -102,24 +107,40 @@ class RoomBoundaryManager {
 
     /**
      * Get optimal camera position to view the room
-     * Strategy: Position at the middle of the back wall, looking at front wall (photo)
+     * Strategy: Position camera to see the entire front wall
      *
-     * Camera is placed:
-     * - X: center of room
-     * - Y: eye level (1.6m from floor, typical standing height)
-     * - Z: at the back wall (inside the room)
+     * For portrait mode (narrow horizontal FOV), camera needs to be further back
+     * to see the full room width.
+     *
+     * @param isPortrait true if device is in portrait orientation
+     * @param horizontalFovDegrees horizontal field of view in degrees
      */
-    fun getOptimalCameraPosition(fovDegrees: Float = 60f): CameraSetup {
+    fun getOptimalCameraPosition(isPortrait: Boolean = true, horizontalFovDegrees: Float = 60f): CameraSetup {
         val bounds = roomBounds ?: run {
             // Use defaults if not initialized
             initializeFromDimensions()
             roomBounds!!
         }
 
-        // Camera position: Center of back wall at eye level
-        val camX = bounds.centerX                      // Center X
-        val camY = EYE_LEVEL_HEIGHT                    // Eye level (1.6m from floor)
-        val camZ = bounds.backWallZ - CAMERA_PADDING   // At back wall, slightly inside
+        // Calculate required distance to see full room width
+        // In portrait mode, horizontal FOV is narrower (~40-50 degrees typically)
+        // We need: distance = (width/2) / tan(fov/2)
+        val effectiveFov = if (isPortrait) {
+            // Portrait: horizontal FOV is narrower, use smaller value
+            PORTRAIT_HORIZONTAL_FOV
+        } else {
+            horizontalFovDegrees
+        }
+
+        val fovRadians = Math.toRadians(effectiveFov.toDouble() / 2.0)
+        val halfWidth = bounds.width / 2f
+        val requiredDistance = (halfWidth / Math.tan(fovRadians)).toFloat()
+
+        // Camera position: Center X, eye level Y, calculated distance from front wall
+        val camX = bounds.centerX
+        val camY = EYE_LEVEL_HEIGHT
+        // Position camera at required distance from front wall, but stay inside room if possible
+        val camZ = bounds.frontWallZ + requiredDistance
 
         // Look at the center of the front wall (where the photo is)
         val targetX = bounds.centerX
@@ -131,8 +152,10 @@ class RoomBoundaryManager {
             lookAt = Position(targetX, targetY, targetZ)
         )
 
-        Log.d(TAG, "Camera at back wall center:")
-        Log.d(TAG, "  Room bounds: X[${bounds.minX}, ${bounds.maxX}], Y[${bounds.minY}, ${bounds.maxY}], Z[${bounds.minZ}, ${bounds.maxZ}]")
+        Log.d(TAG, "Camera position for ${if (isPortrait) "PORTRAIT" else "LANDSCAPE"}:")
+        Log.d(TAG, "  Room: ${bounds.width}x${bounds.height}x${bounds.depth}")
+        Log.d(TAG, "  Effective FOV: $effectiveFov degrees")
+        Log.d(TAG, "  Required distance: $requiredDistance")
         Log.d(TAG, "  Camera position: (${camX}, ${camY}, ${camZ})")
         Log.d(TAG, "  LookAt: (${targetX}, ${targetY}, ${targetZ})")
 

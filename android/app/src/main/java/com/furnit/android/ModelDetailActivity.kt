@@ -238,8 +238,12 @@ class ModelDetailActivity : AppCompatActivity() {
                 // Initialize with default room dimensions (matches GlbGenerator)
                 boundaryManager.initializeFromDimensions()
 
+                // Detect orientation - portrait needs camera further back
+                val isPortrait = resources.configuration.orientation ==
+                    android.content.res.Configuration.ORIENTATION_PORTRAIT
+
                 // Get optimal camera position from boundary manager
-                val cameraSetup = boundaryManager.getOptimalCameraPosition()
+                val cameraSetup = boundaryManager.getOptimalCameraPosition(isPortrait = isPortrait)
 
                 // Position camera IMMEDIATELY after adding model
                 sceneView.cameraNode.apply {
