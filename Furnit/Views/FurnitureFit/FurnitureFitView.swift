@@ -121,12 +121,9 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
 }
 
 // MARK: - Detection Struct
-struct UnionDet {
-    let x, y, w, h: Float
-    let confidence: Float
-    let classIdx: Int
-    let coeffs: [Float]
-}
+// Note: Using FurnitureFitDetection from FurnitureFitUtils.swift (single source of truth)
+// typealias kept for minimal code changes
+typealias UnionDet = FurnitureFitDetection
 
 // MARK: - Main Container View
 final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {

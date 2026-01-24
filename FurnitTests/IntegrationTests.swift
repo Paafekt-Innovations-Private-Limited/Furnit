@@ -468,4 +468,79 @@ final class IntegrationTests: XCTestCase {
             ))
         }
     }
+
+    // MARK: - Detection Struct Consolidation Tests
+
+    /// Test that FurnitureFitDetection works correctly with coefficients (used in mask generation)
+    func testDetectionWithCoefficients() {
+        // Simulate detection creation as done in FurnitureFitView detection pipeline
+        let coeffs: [Float] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
+                               0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6,
+                               1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4,
+                               2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.2]  // 32 coefficients
+
+        let detection = FurnitureFitDetection(
+            x: 100, y: 100, w: 50, h: 50,
+            confidence: 0.9, classIdx: 5, coeffs: coeffs
+        )
+
+        // Verify all properties
+        XCTAssertEqual(detection.x, 100)
+        XCTAssertEqual(detection.y, 100)
+        XCTAssertEqual(detection.w, 50)
+        XCTAssertEqual(detection.h, 50)
+        XCTAssertEqual(detection.confidence, 0.9)
+        XCTAssertEqual(detection.classIdx, 5)
+        XCTAssertEqual(detection.coeffs.count, 32)
+        XCTAssertEqual(detection.coeffs[0], 0.1, accuracy: 0.001)
+        XCTAssertEqual(detection.coeffs[31], 3.2, accuracy: 0.001)
+
+        // Verify bounding box calculation
+        let box = detection.boundingBox
+        XCTAssertEqual(box.origin.x, 75, accuracy: 0.001)  // 100 - 25
+        XCTAssertEqual(box.origin.y, 75, accuracy: 0.001)  // 100 - 25
+        XCTAssertEqual(box.width, 50, accuracy: 0.001)
+        XCTAssertEqual(box.height, 50, accuracy: 0.001)
+    }
+
+    /// Test detection pipeline simulation (mimics FurnitureFitView.swift flow)
+    func testDetectionPipelineSimulation() {
+        // Simulate creating detections as done in FurnitureFitView
+        var allDets: [FurnitureFitDetection] = []
+
+        // Simulate adding detections from model output
+        for i in 0..<10 {
+            let x = Float(i * 50 + 25)
+            let y = Float(100)
+            let w: Float = 40
+            let h: Float = 40
+            let confidence = Float(0.9 - Float(i) * 0.05)
+            let classIdx = i % 3
+            let coeffs = (0..<32).map { Float($0) * 0.1 }
+
+            allDets.append(FurnitureFitDetection(
+                x: x, y: y, w: w, h: h,
+                confidence: confidence, classIdx: classIdx, coeffs: coeffs
+            ))
+        }
+
+        XCTAssertEqual(allDets.count, 10)
+
+        // Simulate NMS step (as done in FurnitureFitView)
+        let boxes = allDets.map { $0.boundingBox }
+        let scores = allDets.map { $0.confidence }
+        let keptIdx = FurnitureFitNMS.apply(boxes: boxes, scores: scores, iouThreshold: 0.5)
+
+        // Map back to detections
+        let afterNMS = keptIdx.map { allDets[$0] }
+
+        // Verify results
+        XCTAssertGreaterThan(afterNMS.count, 0)
+        XCTAssertLessThanOrEqual(afterNMS.count, allDets.count)
+
+        // Verify coefficients are preserved through the pipeline
+        for det in afterNMS {
+            XCTAssertEqual(det.coeffs.count, 32, "Coefficients should be preserved")
+        }
+    }
 }
