@@ -7,8 +7,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -17,9 +20,14 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.SharpService
+import java.io.File
 import java.io.InputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * SinglePhotoRoomActivity - Image picker with Manual/AI room creation options
@@ -43,6 +51,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private lateinit var selectedImageView: ImageView
     private var selectedBitmap: Bitmap? = null
     private var selectedImageUri: Uri? = null
+    private var cameraPhotoUri: Uri? = null
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -53,6 +62,30 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             loadImageFromUri(uri)
         } else {
             Log.d("SinglePhotoRoom", "No image selected")
+        }
+    }
+
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success: Boolean ->
+        if (success && cameraPhotoUri != null) {
+            Log.d("SinglePhotoRoom", "Photo captured: $cameraPhotoUri")
+            selectedImageUri = cameraPhotoUri
+            loadImageFromUri(cameraPhotoUri!!)
+        } else {
+            Log.d("SinglePhotoRoom", "Camera capture cancelled or failed")
+        }
+    }
+
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            Log.d("SinglePhotoRoom", "Camera permission granted")
+            launchCamera()
+        } else {
+            Log.d("SinglePhotoRoom", "Camera permission denied")
+            Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -124,20 +157,103 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
             // Subtitle
             val subtitle = TextView(this@SinglePhotoRoomActivity).apply {
-                text = "Select a photo of your room"
+                text = "Capture or select a photo of your room"
                 textSize = 16f
                 setTextColor(Color.parseColor("#666666"))
                 gravity = Gravity.CENTER
-                setPadding(0, 16, 0, 48)
+                setPadding(0, 16, 0, 32)
             }
             addView(subtitle)
 
-            // Photo selection button
+            // Take Photo button (Camera)
+            val takePhotoBtn = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(48, 36, 48, 36)
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(16).toFloat()
+                    setColor(Color.parseColor("#E3F2FD"))
+                    setStroke(dpToPx(2), Color.parseColor("#2196F3"))
+                }
+                background = bg
+
+                val icon = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "\uD83D\uDCF7" // Camera icon
+                    textSize = 48f
+                    gravity = Gravity.CENTER
+                }
+                addView(icon)
+
+                val btnText = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "Take a Photo"
+                    textSize = 18f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(Color.parseColor("#2196F3"))
+                    gravity = Gravity.CENTER
+                    setPadding(0, 16, 0, 0)
+                }
+                addView(btnText)
+
+                val btnHint = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "Use your camera"
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#666666"))
+                    gravity = Gravity.CENTER
+                    setPadding(0, 8, 0, 0)
+                }
+                addView(btnHint)
+
+                setOnClickListener {
+                    checkCameraPermissionAndLaunch()
+                }
+            }
+            addView(takePhotoBtn, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 24) })
+
+            // "or" divider
+            val dividerRow = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(32, 0, 32, 0)
+
+                val leftLine = View(this@SinglePhotoRoomActivity).apply {
+                    setBackgroundColor(Color.parseColor("#CCCCCC"))
+                }
+                addView(leftLine, LinearLayout.LayoutParams(0, dpToPx(1), 1f))
+
+                val orText = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "or"
+                    textSize = 14f
+                    setTextColor(Color.parseColor("#999999"))
+                    setPadding(dpToPx(16), 0, dpToPx(16), 0)
+                }
+                addView(orText)
+
+                val rightLine = View(this@SinglePhotoRoomActivity).apply {
+                    setBackgroundColor(Color.parseColor("#CCCCCC"))
+                }
+                addView(rightLine, LinearLayout.LayoutParams(0, dpToPx(1), 1f))
+            }
+            addView(dividerRow, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 24) })
+
+            // Photo selection button (Library)
             val selectPhotoBtn = LinearLayout(this@SinglePhotoRoomActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(48, 48, 48, 48)
-                setBackgroundColor(Color.parseColor("#E8F5E9"))
+                setPadding(48, 36, 48, 36)
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(16).toFloat()
+                    setColor(Color.parseColor("#E8F5E9"))
+                    setStroke(dpToPx(2), Color.parseColor("#4CAF50"))
+                }
+                background = bg
 
                 val icon = TextView(this@SinglePhotoRoomActivity).apply {
                     text = "\uD83D\uDDBC️" // Frame icon
@@ -172,7 +288,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             addView(selectPhotoBtn, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, 32) })
+            ).apply { setMargins(0, 0, 0, 24) })
 
             // Warning
             val warning = TextView(this@SinglePhotoRoomActivity).apply {
@@ -339,6 +455,51 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private fun openImagePicker() {
         Log.d("SinglePhotoRoom", "Opening image picker")
         imagePickerLauncher.launch("image/*")
+    }
+
+    private fun checkCameraPermissionAndLaunch() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
+                Log.d("SinglePhotoRoom", "Camera permission already granted")
+                launchCamera()
+            }
+            else -> {
+                Log.d("SinglePhotoRoom", "Requesting camera permission")
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+
+    private fun launchCamera() {
+        try {
+            val photoFile = createImageFile()
+            cameraPhotoUri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                photoFile
+            )
+            Log.d("SinglePhotoRoom", "Launching camera with URI: $cameraPhotoUri")
+            cameraLauncher.launch(cameraPhotoUri)
+        } catch (e: Exception) {
+            Log.e("SinglePhotoRoom", "Error launching camera", e)
+            Toast.makeText(this, "Error opening camera: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun createImageFile(): File {
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+        return File.createTempFile(
+            "ROOM_${timeStamp}_",
+            ".jpg",
+            storageDir
+        ).also {
+            Log.d("SinglePhotoRoom", "Created temp file: ${it.absolutePath}")
+        }
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
     }
 
     private fun loadImageFromUri(uri: Uri) {

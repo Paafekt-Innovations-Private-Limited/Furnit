@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- External files directory for camera photos -->
+    <external-files-path
+        name="room_photos"
+        path="Pictures/" />
+</paths>
