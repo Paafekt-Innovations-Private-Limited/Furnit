@@ -1,9 +1,14 @@
 package com.furnit.android
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Environment
 import android.util.Base64
 import android.util.Log
 import android.view.Gravity
@@ -14,9 +19,14 @@ import android.webkit.*
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import com.furnit.android.models.Model
 import com.furnit.android.models.ModelManager
 import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.abs
 
 /**
@@ -152,73 +162,151 @@ class SharpRoomActivity : AppCompatActivity() {
         loadWebGLViewer()
     }
 
-    private fun createTopBar(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#CC2A2A2A"))
-            setPadding(16, 48, 16, 16)
-            gravity = Gravity.CENTER_VERTICAL
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
 
+    private fun createTopBar(): FrameLayout {
+        return FrameLayout(this).apply {
+            setPadding(dpToPx(16), dpToPx(48), dpToPx(16), dpToPx(12))
+
+            // Rounded dark background container
+            val barContainer = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(25).toFloat()
+                    setColor(Color.parseColor("#1C1C1E"))
+                }
+                background = bg
+                setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
+            }
+
+            // Back button (circle with arrow)
             val backBtn = TextView(this@SharpRoomActivity).apply {
-                text = "< Back"
-                textSize = 16f
-                setTextColor(Color.parseColor("#007AFF"))
+                text = "〈"
+                textSize = 20f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#3A3A3C"))
+                }
+                background = bg
+                val size = dpToPx(40)
+                layoutParams = LinearLayout.LayoutParams(size, size)
                 setOnClickListener { finish() }
             }
-            addView(backBtn)
+            barContainer.addView(backBtn)
 
+            // Title
             val title = TextView(this@SharpRoomActivity).apply {
-                text = "AI Room"
-                textSize = 18f
+                text = "3D Room View"
+                textSize = 17f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
-            addView(title)
+            barContainer.addView(title)
 
-            // Recenter button
-            val recenterBtn = TextView(this@SharpRoomActivity).apply {
-                text = "Recenter"
-                textSize = 14f
-                setTextColor(Color.parseColor("#007AFF"))
-                setPadding(16, 8, 16, 8)
-                setOnClickListener {
-                    webView.evaluateJavascript("if(typeof recenterCamera==='function')recenterCamera();", null)
+            // Help button (circle with ?)
+            val helpBtn = TextView(this@SharpRoomActivity).apply {
+                text = "?"
+                textSize = 18f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#3A3A3C"))
                 }
+                background = bg
+                val size = dpToPx(40)
+                val params = LinearLayout.LayoutParams(size, size)
+                params.setMargins(dpToPx(8), 0, 0, 0)
+                layoutParams = params
+                setOnClickListener { showHelpDialog() }
             }
-            addView(recenterBtn)
+            barContainer.addView(helpBtn)
 
-            // Save button (if allowed)
+            // Save/Share button (circle with upload icon) - only if allowed
             if (allowSave) {
                 val saveBtn = TextView(this@SharpRoomActivity).apply {
-                    text = "Save"
-                    textSize = 16f
-                    setTextColor(Color.parseColor("#4CAF50"))
-                    setPadding(16, 8, 0, 8)
+                    text = "\u21E7" // Upload arrow
+                    textSize = 20f
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                    val bg = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor("#3A3A3C"))
+                    }
+                    background = bg
+                    val size = dpToPx(40)
+                    val params = LinearLayout.LayoutParams(size, size)
+                    params.setMargins(dpToPx(8), 0, 0, 0)
+                    layoutParams = params
                     setOnClickListener { showSaveDialog() }
                 }
-                addView(saveBtn)
+                barContainer.addView(saveBtn)
             }
+
+            addView(barContainer, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ))
         }
+    }
+
+    private fun showHelpDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("3D Room Controls")
+            .setMessage("• Drag on screen to rotate view\n\n• Use joystick to walk around\n\n• Tap save icon to save your room")
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun createBottomControls(): FrameLayout {
         return FrameLayout(this).apply {
-            setPadding(0, 0, 0, 40)
+            setPadding(dpToPx(20), 0, dpToPx(20), dpToPx(40))
 
-            // Joystick container (center)
+            // Left: Brain/AI button (FurnitureFit)
+            val brainBtn = TextView(this@SharpRoomActivity).apply {
+                text = "\uD83E\uDDE0" // Brain emoji
+                textSize = 24f
+                gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#007AFF"))
+                }
+                background = bg
+                val size = dpToPx(56)
+                layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                    gravity = Gravity.START or Gravity.BOTTOM
+                    bottomMargin = dpToPx(20)
+                }
+                setOnClickListener {
+                    Toast.makeText(this@SharpRoomActivity, "AI Furniture Detection coming soon", Toast.LENGTH_SHORT).show()
+                }
+            }
+            addView(brainBtn)
+
+            // Center: Joystick container
             val joystickContainer = FrameLayout(this@SharpRoomActivity).apply {
-                val size = 240
+                val size = dpToPx(120)
                 layoutParams = FrameLayout.LayoutParams(size, size).apply {
                     gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                    bottomMargin = 20
+                    bottomMargin = dpToPx(20)
                 }
 
                 // Outer ring
                 val outerRing = View(this@SharpRoomActivity).apply {
-                    setBackgroundResource(android.R.drawable.dialog_holo_light_frame)
-                    alpha = 0.5f
+                    val bg = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor("#40FFFFFF"))
+                        setStroke(dpToPx(2), Color.parseColor("#60FFFFFF"))
+                    }
+                    background = bg
                 }
                 addView(outerRing, FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -226,10 +314,13 @@ class SharpRoomActivity : AppCompatActivity() {
                 ))
 
                 // Joystick knob
-                val knobSize = 100
+                val knobSize = dpToPx(50)
                 val knob = View(this@SharpRoomActivity).apply {
-                    setBackgroundColor(Color.WHITE)
-                    alpha = 0.8f
+                    val bg = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor("#CCFFFFFF"))
+                    }
+                    background = bg
                 }
                 val knobParams = FrameLayout.LayoutParams(knobSize, knobSize).apply {
                     gravity = Gravity.CENTER
@@ -251,22 +342,99 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             addView(joystickContainer)
 
-            // Label
-            val label = TextView(this@SharpRoomActivity).apply {
-                text = "Walk around"
-                textSize = 12f
-                setTextColor(Color.WHITE)
-                alpha = 0.7f
+            // Center label (above joystick): Orientation info
+            val orientationLabel = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dpToPx(8).toFloat()
+                    setColor(Color.parseColor("#80000000"))
+                }
+                background = bg
+                setPadding(dpToPx(12), dpToPx(4), dpToPx(12), dpToPx(4))
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
                     gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                    bottomMargin = 280
+                    bottomMargin = dpToPx(160)
+                }
+
+                val line1 = TextView(this@SharpRoomActivity).apply {
+                    text = "held vertically"
+                    textSize = 12f
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                }
+                addView(line1)
+
+                val line2 = TextView(this@SharpRoomActivity).apply {
+                    text = "Portrait"
+                    textSize = 14f
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                }
+                addView(line2)
+            }
+            addView(orientationLabel)
+
+            // Right: Camera/Screenshot button
+            val cameraBtn = TextView(this@SharpRoomActivity).apply {
+                text = "\uD83D\uDCF7" // Camera emoji
+                textSize = 24f
+                gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#007AFF"))
+                }
+                background = bg
+                val size = dpToPx(56)
+                layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                    gravity = Gravity.END or Gravity.BOTTOM
+                    bottomMargin = dpToPx(20)
+                }
+                setOnClickListener {
+                    takeScreenshot()
                 }
             }
-            addView(label)
+            addView(cameraBtn)
+        }
+    }
+
+    private fun takeScreenshot() {
+        try {
+            // Capture WebView content
+            val bitmap = Bitmap.createBitmap(webView.width, webView.height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            webView.draw(canvas)
+
+            // Save to Pictures folder
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val fileName = "Room_$timeStamp.png"
+            val picturesDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+            val file = File(picturesDir, fileName)
+
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+
+            Toast.makeText(this, "Screenshot saved: $fileName", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Screenshot saved: ${file.absolutePath}")
+
+            // Share the screenshot
+            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to take screenshot", e)
+            Toast.makeText(this, "Failed to capture screenshot", Toast.LENGTH_SHORT).show()
         }
     }
 
