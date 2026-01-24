@@ -2,11 +2,13 @@ package com.furnit.android
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.GlbGenerator
 import com.furnit.android.services.SinglePhotoRoomReconstructor
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -18,14 +20,28 @@ import java.util.concurrent.TimeUnit
 /**
  * End-to-end room processing tests using TestRoom.jpg
  * Tests the complete flow from photo to 3D room model.
+ *
+ * IMPORTANT: Uses @Before/@After for proper cleanup of test data.
  */
 @RunWith(AndroidJUnit4::class)
 class RoomProcessingTest {
 
+    companion object {
+        private const val TAG = "RoomProcessingTest"
+    }
+
     private lateinit var testBitmap: Bitmap
+    private lateinit var context: android.content.Context
 
     @Before
     fun setup() {
+        // Get target context for cleanup
+        context = InstrumentationRegistry.getInstrumentation().targetContext
+
+        // Clean up any leftover test data
+        Log.d(TAG, "=== Test Setup: Cleaning test data ===")
+        TestCleanup.cleanAll(context)
+
         // Use instrumentation context to load test assets (not targetContext)
         val testContext = InstrumentationRegistry.getInstrumentation().context
 
@@ -34,7 +50,18 @@ class RoomProcessingTest {
             BitmapFactory.decodeStream(input)
         }
         assertNotNull("Failed to load TestRoom.jpg", testBitmap)
-        println("Loaded TestRoom.jpg: ${testBitmap.width}x${testBitmap.height}")
+        Log.d(TAG, "Loaded TestRoom.jpg: ${testBitmap.width}x${testBitmap.height}")
+    }
+
+    @After
+    fun teardown() {
+        Log.d(TAG, "=== Test Teardown: Cleaning test data ===")
+        TestCleanup.cleanAll(context)
+
+        // Recycle test bitmap if it's still valid
+        if (::testBitmap.isInitialized && !testBitmap.isRecycled) {
+            testBitmap.recycle()
+        }
     }
 
     @Test

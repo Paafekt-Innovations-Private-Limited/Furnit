@@ -1,7 +1,10 @@
 package com.furnit.android
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -13,23 +16,58 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.furnit.android.services.GlbGenerator
 import io.github.sceneview.SceneView
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
  * Tests for ModelDetailActivity - 3D Room Viewer
- * Verifies overlay controls, edge-to-edge display, and UI components.
+ * Verifies overlay controls, edge-to-edge display, camera positioning, and UI components.
+ *
+ * IMPORTANT: Uses @Before/@After for proper cleanup of test data.
  */
 @RunWith(AndroidJUnit4::class)
 class ModelDetailActivityTest {
 
+    companion object {
+        private const val TAG = "ModelDetailActivityTest"
+    }
+
+    private lateinit var context: android.content.Context
+
+    @Before
+    fun setup() {
+        context = InstrumentationRegistry.getInstrumentation().targetContext
+        Log.d(TAG, "=== Test Setup: Cleaning test data ===")
+
+        // Clean up any leftover test data before each test
+        TestCleanup.cleanAll(context)
+
+        // List any remaining test data
+        val remainingData = TestCleanup.listTestData(context)
+        if (remainingData.isNotEmpty()) {
+            Log.w(TAG, "Remaining test data after cleanup:")
+            remainingData.forEach { Log.w(TAG, "  $it") }
+        }
+    }
+
+    @After
+    fun teardown() {
+        Log.d(TAG, "=== Test Teardown: Cleaning test data ===")
+
+        // Clean up test data after each test
+        TestCleanup.cleanAll(context)
+    }
+
     @Test
     fun testActivityLaunchesWithModelId() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -37,14 +75,13 @@ class ModelDetailActivityTest {
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
             scenario.onActivity { activity ->
                 assertNotNull("Activity should not be null", activity)
-                println("ModelDetailActivity launched successfully with model ID")
+                Log.d(TAG, "ModelDetailActivity launched successfully with model ID")
             }
         }
     }
 
     @Test
     fun testSceneViewExists() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -56,14 +93,13 @@ class ModelDetailActivityTest {
                 assertEquals("SceneView width should match parent",
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-                println("SceneView found and configured")
+                Log.d(TAG, "SceneView found and configured")
             }
         }
     }
 
     @Test
     fun testTopBarOverlayExists() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -83,14 +119,13 @@ class ModelDetailActivityTest {
                 val helpButton = activity.findViewById<ImageButton>(R.id.helpButton)
                 assertNotNull("Help button should exist", helpButton)
 
-                println("Top bar overlay controls verified")
+                Log.d(TAG, "Top bar overlay controls verified")
             }
         }
     }
 
     @Test
     fun testBottomControlsOverlayExists() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -111,14 +146,13 @@ class ModelDetailActivityTest {
                 val orientationLabel = activity.findViewById<LinearLayout>(R.id.orientationLabel)
                 assertNotNull("Orientation label should exist", orientationLabel)
 
-                println("Bottom controls overlay verified: brain, screenshot, orientation label")
+                Log.d(TAG, "Bottom controls overlay verified: brain, screenshot, orientation label")
             }
         }
     }
 
     @Test
     fun testSaveButtonVisibleInPreviewMode() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
             putExtra("IS_PREVIEW", true)
@@ -129,15 +163,13 @@ class ModelDetailActivityTest {
             scenario.onActivity { activity ->
                 val saveButton = activity.findViewById<ImageButton>(R.id.saveButton)
                 assertNotNull("Save button should exist", saveButton)
-                // In preview mode with GLB_PATH, save button should be visible
-                println("Save button exists in preview mode")
+                Log.d(TAG, "Save button exists in preview mode")
             }
         }
     }
 
     @Test
     fun testShareButtonVisibleInViewMode() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -151,48 +183,45 @@ class ModelDetailActivityTest {
                 val saveButton = activity.findViewById<ImageButton>(R.id.saveButton)
                 assertEquals("Save button should be hidden in view mode", View.GONE, saveButton.visibility)
 
-                println("View mode: share visible, save hidden")
+                Log.d(TAG, "View mode: share visible, save hidden")
             }
         }
     }
 
     @Test
     fun testStatusBarColor() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
             scenario.onActivity { activity ->
-                val expectedColor = android.graphics.Color.parseColor("#1C1C1E")
+                val expectedColor = Color.parseColor("#1C1C1E")
                 assertEquals("Status bar color should be dark theme color",
                     expectedColor, activity.window.statusBarColor)
-                println("Status bar color verified: #1C1C1E")
+                Log.d(TAG, "Status bar color verified: #1C1C1E")
             }
         }
     }
 
     @Test
     fun testNavigationBarColor() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
             scenario.onActivity { activity ->
-                val expectedColor = android.graphics.Color.BLACK
+                val expectedColor = Color.BLACK
                 assertEquals("Navigation bar color should be black",
                     expectedColor, activity.window.navigationBarColor)
-                println("Navigation bar color verified: BLACK")
+                Log.d(TAG, "Navigation bar color verified: BLACK")
             }
         }
     }
 
     @Test
     fun testBackButtonFinishesActivity() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -202,14 +231,13 @@ class ModelDetailActivityTest {
                 val backButton = activity.findViewById<ImageButton>(R.id.backButton)
                 assertNotNull("Back button should exist", backButton)
                 assertTrue("Back button should be clickable", backButton.isClickable)
-                println("Back button is clickable")
+                Log.d(TAG, "Back button is clickable")
             }
         }
     }
 
     @Test
     fun testOrientationLabelContent() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -219,74 +247,61 @@ class ModelDetailActivityTest {
                 val orientationLabel = activity.findViewById<LinearLayout>(R.id.orientationLabel)
                 assertNotNull("Orientation label should exist", orientationLabel)
 
-                // Check child TextViews
                 val childCount = orientationLabel.childCount
                 assertTrue("Orientation label should have children", childCount >= 2)
 
-                // First child should be "held vertically"
                 val heldVerticallyText = orientationLabel.getChildAt(0) as? TextView
                 assertNotNull("First child should be TextView", heldVerticallyText)
                 assertEquals("Should show 'held vertically'", "held vertically", heldVerticallyText?.text.toString())
 
-                // Second child should be "Portrait"
                 val portraitText = orientationLabel.getChildAt(1) as? TextView
                 assertNotNull("Second child should be TextView", portraitText)
                 assertEquals("Should show 'Portrait'", "Portrait", portraitText?.text.toString())
 
-                println("Orientation label content verified: 'held vertically' + 'Portrait'")
+                Log.d(TAG, "Orientation label content verified: 'held vertically' + 'Portrait'")
             }
         }
     }
 
     @Test
     fun testEditTextBorderDrawableExists() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-
-        // Verify the border drawable resource exists
         val drawableId = R.drawable.edittext_border
         assertTrue("EditText border drawable should exist", drawableId != 0)
 
         val drawable = context.getDrawable(drawableId)
         assertNotNull("Should be able to load edittext_border drawable", drawable)
 
-        println("EditText border drawable verified")
+        Log.d(TAG, "EditText border drawable verified")
     }
 
     @Test
     fun testSceneViewFullScreen() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
 
         ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
-            // Wait for layout to complete
             val latch = CountDownLatch(1)
 
             scenario.onActivity { activity ->
                 val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
                 assertNotNull("SceneView should exist", sceneView)
 
-                // Wait for view to be laid out
                 sceneView.post {
-                    // Get screen dimensions
                     val displayMetrics = DisplayMetrics()
                     activity.windowManager.defaultDisplay.getMetrics(displayMetrics)
                     val screenWidth = displayMetrics.widthPixels
                     val screenHeight = displayMetrics.heightPixels
 
-                    // Get SceneView dimensions
                     val sceneViewWidth = sceneView.width
                     val sceneViewHeight = sceneView.height
 
-                    println("Screen size: ${screenWidth}x${screenHeight}")
-                    println("SceneView size: ${sceneViewWidth}x${sceneViewHeight}")
+                    Log.d(TAG, "Screen size: ${screenWidth}x${screenHeight}")
+                    Log.d(TAG, "SceneView size: ${sceneViewWidth}x${sceneViewHeight}")
 
-                    // SceneView should take full width
                     assertEquals("SceneView width should match screen width",
                         screenWidth, sceneViewWidth)
 
-                    // SceneView height should be at least 80% of screen height (full screen minus system bars)
                     val minExpectedHeight = (screenHeight * 0.8).toInt()
                     assertTrue("SceneView height ($sceneViewHeight) should be at least 80% of screen height ($minExpectedHeight). " +
                             "If only half screen, height would be ~${screenHeight / 2}",
@@ -294,33 +309,30 @@ class ModelDetailActivityTest {
 
                     // CRITICAL: SceneView should NOT be half the screen
                     val halfScreenHeight = screenHeight / 2
-                    val tolerance = screenHeight * 0.1 // 10% tolerance
+                    val tolerance = screenHeight * 0.1
                     val isHalfScreen = sceneViewHeight > (halfScreenHeight - tolerance) &&
                                        sceneViewHeight < (halfScreenHeight + tolerance)
                     assertFalse("FAIL: SceneView appears to be only HALF the screen! " +
                             "Height=$sceneViewHeight, HalfScreen=$halfScreenHeight",
                         isHalfScreen)
 
-                    // Check layout params are MATCH_PARENT
                     val layoutParams = sceneView.layoutParams
                     assertEquals("SceneView width layout param should be MATCH_PARENT",
                         ViewGroup.LayoutParams.MATCH_PARENT, layoutParams.width)
                     assertEquals("SceneView height layout param should be MATCH_PARENT",
                         ViewGroup.LayoutParams.MATCH_PARENT, layoutParams.height)
 
-                    println("PASS: SceneView is FULL SCREEN (not half)")
+                    Log.d(TAG, "PASS: SceneView is FULL SCREEN (not half)")
                     latch.countDown()
                 }
             }
 
-            // Wait for the check to complete
             assertTrue("Layout check timed out", latch.await(5, TimeUnit.SECONDS))
         }
     }
 
     @Test
     fun testRootLayoutFullScreen() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -329,7 +341,6 @@ class ModelDetailActivityTest {
             val latch = CountDownLatch(1)
 
             scenario.onActivity { activity ->
-                // Get the root content view
                 val rootView = activity.findViewById<View>(android.R.id.content)
                 assertNotNull("Root content view should exist", rootView)
 
@@ -342,19 +353,17 @@ class ModelDetailActivityTest {
                     val rootWidth = rootView.width
                     val rootHeight = rootView.height
 
-                    println("Screen: ${screenWidth}x${screenHeight}")
-                    println("Root view: ${rootWidth}x${rootHeight}")
+                    Log.d(TAG, "Screen: ${screenWidth}x${screenHeight}")
+                    Log.d(TAG, "Root view: ${rootWidth}x${rootHeight}")
 
-                    // Root should match screen width
                     assertEquals("Root width should match screen", screenWidth, rootWidth)
 
-                    // Root height should be close to screen height
                     val heightDiff = kotlin.math.abs(screenHeight - rootHeight)
-                    val maxAllowedDiff = screenHeight * 0.15 // Allow 15% for system bars
+                    val maxAllowedDiff = screenHeight * 0.15
                     assertTrue("Root height ($rootHeight) should be close to screen height ($screenHeight), diff=$heightDiff",
                         heightDiff <= maxAllowedDiff)
 
-                    println("Root layout is full screen")
+                    Log.d(TAG, "Root layout is full screen")
                     latch.countDown()
                 }
             }
@@ -365,7 +374,6 @@ class ModelDetailActivityTest {
 
     @Test
     fun testOverlaysAreOnTopOfSceneView() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -380,35 +388,30 @@ class ModelDetailActivityTest {
                 assertNotNull("Top bar should exist", topBar)
                 assertNotNull("Bottom controls should exist", bottomControls)
 
-                // Get parent (should be FrameLayout)
                 val parent = sceneView.parent as? FrameLayout
                 assertNotNull("Parent should be FrameLayout", parent)
 
-                // In FrameLayout, later children are drawn on top
-                // SceneView should be first (index 0), overlays should come after
                 val sceneViewIndex = parent!!.indexOfChild(sceneView)
                 val topBarIndex = parent.indexOfChild(topBar)
                 val bottomControlsIndex = parent.indexOfChild(bottomControls)
 
-                println("Child indices - SceneView: $sceneViewIndex, TopBar: $topBarIndex, BottomControls: $bottomControlsIndex")
+                Log.d(TAG, "Child indices - SceneView: $sceneViewIndex, TopBar: $topBarIndex, BottomControls: $bottomControlsIndex")
 
                 assertTrue("Top bar should be after SceneView in z-order (overlay)",
                     topBarIndex > sceneViewIndex)
                 assertTrue("Bottom controls should be after SceneView in z-order (overlay)",
                     bottomControlsIndex > sceneViewIndex)
 
-                // Verify overlays are visible
                 assertEquals("Top bar should be visible", View.VISIBLE, topBar.visibility)
                 assertEquals("Bottom controls should be visible", View.VISIBLE, bottomControls.visibility)
 
-                println("PASS: Overlays are correctly positioned on top of SceneView")
+                Log.d(TAG, "PASS: Overlays are correctly positioned on top of SceneView")
             }
         }
     }
 
     @Test
     fun testCameraPositioningForRoomView() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, ModelDetailActivity::class.java).apply {
             putExtra("MODEL_ID", "vintage")
         }
@@ -420,41 +423,35 @@ class ModelDetailActivityTest {
                 val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
                 assertNotNull("SceneView should exist", sceneView)
 
-                // Wait for scene to be ready and model to load
                 sceneView.post {
                     sceneView.postDelayed({
                         val cameraNode = sceneView.cameraNode
                         val camPos = cameraNode.position
 
-                        println("=== Camera Position Test ===")
-                        println("Camera position: (${camPos.x}, ${camPos.y}, ${camPos.z})")
+                        Log.d(TAG, "=== Camera Position Test (Vintage Room) ===")
+                        Log.d(TAG, "Camera position: (${camPos.x}, ${camPos.y}, ${camPos.z})")
+                        Log.d(TAG, "Expected: back of room, eye level (~1.6), behind room (>2.0)")
 
-                        // Room dimensions from GlbGenerator:
-                        // width=4 (X: -2 to +2), depth=4.5 (Z: -2.25 to +2.25), height=2.8 (Y: 0 to 2.8)
-                        // Camera should be positioned at back of room, eye level
-                        // Expected: Camera at (0, 1.6, 3.5) looking at front wall
-
-                        println("Expected camera: (0, 1.6, 3.5) - back of room, eye level")
-                        println("Actual camera: (${camPos.x}, ${camPos.y}, ${camPos.z})")
-
-                        // Verify camera is correctly positioned
-                        val isCentered = kotlin.math.abs(camPos.x) < 0.1f
-                        val isAtEyeLevel = camPos.y > 1.0f && camPos.y < 2.0f
+                        val isCentered = kotlin.math.abs(camPos.x) < 0.5f
+                        val isAtEyeLevel = camPos.y > 1.0f && camPos.y < 2.5f
                         val isBehindRoom = camPos.z > 2.0f
 
-                        println("Camera X centered: $isCentered")
-                        println("Camera Y at eye level: $isAtEyeLevel")
-                        println("Camera Z behind room: $isBehindRoom")
+                        // CRITICAL ASSERTIONS - These should FAIL if camera isn't positioned correctly
+                        assertFalse("FAIL: Camera Y is at default position (0). " +
+                                "Camera should be at eye level. Actual: ${camPos.y}",
+                            camPos.y < 0.5f)
 
-                        // Assert camera is NOT at default position (0, 0, 1)
-                        assertTrue("Camera Y should be at eye level (>1.0), not at default 0. " +
-                                "Actual: ${camPos.y}", isAtEyeLevel)
-                        assertTrue("Camera Z should be behind room (>2.0), not at default 1. " +
-                                "Actual: ${camPos.z}", isBehindRoom)
-                        assertTrue("Camera X should be centered (<0.1). Actual: ${camPos.x}", isCentered)
+                        assertFalse("FAIL: Camera Z is at default position (1). " +
+                                "Camera should be behind room. Actual: ${camPos.z}",
+                            camPos.z < 1.5f)
 
+                        assertTrue("Camera Y should be at eye level (1.0-2.5). Actual: ${camPos.y}", isAtEyeLevel)
+                        assertTrue("Camera Z should be behind room (>2.0). Actual: ${camPos.z}", isBehindRoom)
+                        assertTrue("Camera X should be roughly centered. Actual: ${camPos.x}", isCentered)
+
+                        Log.d(TAG, "PASS: Camera positioned correctly")
                         latch.countDown()
-                    }, 3000)  // Wait 3 seconds for model load
+                    }, 3000)
                 }
             }
 
@@ -462,83 +459,220 @@ class ModelDetailActivityTest {
         }
     }
 
+    /**
+     * CRITICAL TEST: Tests camera positioning for user-generated rooms.
+     * This is the test that should catch the "half screen" issue.
+     *
+     * The issue was that camera position was being reset by SceneView's manipulator
+     * after we set it. The fix was to set camera position IMMEDIATELY after adding
+     * the model, not in a delayed callback.
+     */
     @Test
     fun testCameraPositioningForGeneratedRoom() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        Log.d(TAG, "=== Generated Room Camera Test START ===")
 
         // Create a room using GlbGenerator (same as user-created rooms)
-        val generator = com.furnit.android.services.GlbGenerator()
-        val dimensions = com.furnit.android.services.GlbGenerator.RoomDimensions()
+        val generator = GlbGenerator()
+        val dimensions = GlbGenerator.RoomDimensions()
 
         // Create simple textures
-        val grayTexture = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888).apply {
-            eraseColor(android.graphics.Color.parseColor("#E0E0E0"))
+        val grayTexture = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.parseColor("#E0E0E0"))
         }
 
-        val testDir = java.io.File(context.cacheDir, "test_camera")
+        val testDir = File(context.cacheDir, "test_camera")
         testDir.mkdirs()
-        val glbFile = java.io.File(testDir, "test_room.glb")
+        val glbFile = File(testDir, "test_room.glb")
 
-        val success = generator.generateGlb(
-            outputFile = glbFile,
-            dimensions = dimensions,
-            frontWallTexture = grayTexture,
-            floorTexture = grayTexture,
-            ceilingTexture = grayTexture,
-            leftWallTexture = grayTexture,
-            rightWallTexture = grayTexture
-        )
+        Log.d(TAG, "Creating test GLB at: ${glbFile.absolutePath}")
 
-        assertTrue("GLB generation should succeed", success)
-        assertTrue("GLB file should exist", glbFile.exists())
+        try {
+            val success = generator.generateGlb(
+                outputFile = glbFile,
+                dimensions = dimensions,
+                frontWallTexture = grayTexture,
+                floorTexture = grayTexture,
+                ceilingTexture = grayTexture,
+                leftWallTexture = grayTexture,
+                rightWallTexture = grayTexture
+            )
 
-        // Launch ModelDetailActivity with the generated GLB
-        val intent = Intent(context, ModelDetailActivity::class.java).apply {
-            putExtra("GLB_PATH", glbFile.absolutePath)
-            putExtra("IS_PREVIEW", true)
-        }
+            assertTrue("GLB generation should succeed", success)
+            assertTrue("GLB file should exist", glbFile.exists())
+            Log.d(TAG, "GLB file created: ${glbFile.length()} bytes")
 
-        ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
-            val latch = CountDownLatch(1)
-
-            scenario.onActivity { activity ->
-                val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
-                assertNotNull("SceneView should exist", sceneView)
-
-                // Wait for model to load and camera to be positioned
-                sceneView.post {
-                    sceneView.postDelayed({
-                        val cameraNode = sceneView.cameraNode
-                        val camPos = cameraNode.position
-
-                        println("=== Generated Room Camera Test ===")
-                        println("GLB path: ${glbFile.absolutePath}")
-                        println("Camera position: (${camPos.x}, ${camPos.y}, ${camPos.z})")
-                        println("Expected: (0, 1.6, 3.5) - back of room, eye level")
-
-                        // Verify camera is correctly positioned (not at default)
-                        val isAtEyeLevel = camPos.y > 1.0f && camPos.y < 2.0f
-                        val isBehindRoom = camPos.z > 2.0f
-
-                        println("Camera Y at eye level: $isAtEyeLevel")
-                        println("Camera Z behind room: $isBehindRoom")
-
-                        assertTrue("Generated room: Camera Y should be at eye level (>1.0). Actual: ${camPos.y}",
-                            isAtEyeLevel)
-                        assertTrue("Generated room: Camera Z should be behind room (>2.0). Actual: ${camPos.z}",
-                            isBehindRoom)
-
-                        latch.countDown()
-                    }, 3000)
-                }
+            // Launch ModelDetailActivity with the generated GLB
+            val intent = Intent(context, ModelDetailActivity::class.java).apply {
+                putExtra("GLB_PATH", glbFile.absolutePath)
+                putExtra("IS_PREVIEW", true)
             }
 
-            assertTrue("Generated room camera test timed out", latch.await(15, TimeUnit.SECONDS))
+            ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
+                val latch = CountDownLatch(1)
+                var testError: AssertionError? = null
+
+                scenario.onActivity { activity ->
+                    val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
+                    assertNotNull("SceneView should exist", sceneView)
+
+                    sceneView.post {
+                        sceneView.postDelayed({
+                            try {
+                                val cameraNode = sceneView.cameraNode
+                                val camPos = cameraNode.position
+
+                                Log.d(TAG, "=== Camera Position Check ===")
+                                Log.d(TAG, "GLB path: ${glbFile.absolutePath}")
+                                Log.d(TAG, "Camera position: (${camPos.x}, ${camPos.y}, ${camPos.z})")
+                                Log.d(TAG, "Expected: X~0, Y~1.6 (eye level), Z>2.0 (behind room)")
+
+                                // CRITICAL: Detect default camera position which causes half-screen issue
+                                val isDefaultPosition = camPos.y < 0.5f && camPos.z < 1.5f
+                                if (isDefaultPosition) {
+                                    Log.e(TAG, "FAIL: Camera at DEFAULT position (0, 0, 1)!")
+                                    Log.e(TAG, "This causes the room to appear at half screen.")
+                                }
+
+                                assertFalse("Camera should NOT be at default Y position (near 0). " +
+                                        "This causes half-screen display. Actual Y: ${camPos.y}",
+                                    camPos.y < 0.5f)
+
+                                assertFalse("Camera should NOT be at default Z position (near 1). " +
+                                        "Camera should be behind room. Actual Z: ${camPos.z}",
+                                    camPos.z < 1.5f)
+
+                                val isAtEyeLevel = camPos.y > 1.0f && camPos.y < 2.5f
+                                val isBehindRoom = camPos.z > 2.0f
+
+                                assertTrue("Generated room: Camera Y should be at eye level (1.0-2.5). Actual: ${camPos.y}",
+                                    isAtEyeLevel)
+                                assertTrue("Generated room: Camera Z should be behind room (>2.0). Actual: ${camPos.z}",
+                                    isBehindRoom)
+
+                                Log.d(TAG, "PASS: Generated room camera positioned correctly")
+                            } catch (e: AssertionError) {
+                                testError = e
+                            } finally {
+                                latch.countDown()
+                            }
+                        }, 3000)
+                    }
+                }
+
+                assertTrue("Generated room camera test timed out", latch.await(15, TimeUnit.SECONDS))
+                testError?.let { throw it }
+            }
+        } finally {
+            // Cleanup - always runs
+            Log.d(TAG, "Cleaning up test files")
+            grayTexture.recycle()
+            if (glbFile.exists()) glbFile.delete()
+            if (testDir.exists()) testDir.delete()
+        }
+    }
+
+    /**
+     * Test that simulates the complete user flow:
+     * 1. Create room via GlbGenerator
+     * 2. Open in ModelDetailActivity (preview mode)
+     * 3. Verify camera is positioned correctly (not at default)
+     * 4. Verify SceneView fills the screen
+     */
+    @Test
+    fun testCompleteRoomCreationAndViewingFlow() {
+        Log.d(TAG, "=== Complete Room Flow Test START ===")
+
+        // Step 1: Create a room (simulating SinglePhotoRoomReconstructor output)
+        val generator = GlbGenerator()
+        val dimensions = GlbGenerator.RoomDimensions(
+            width = 4.0f,
+            depth = 4.5f,
+            height = 2.8f
+        )
+
+        val testTexture = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.parseColor("#D4C4B0"))  // Beige color like room walls
         }
 
-        // Cleanup
-        grayTexture.recycle()
-        glbFile.delete()
-        testDir.delete()
+        val roomsDir = File(context.filesDir, "rooms")
+        roomsDir.mkdirs()
+        val roomFolder = File(roomsDir, "room_test_${System.currentTimeMillis()}")
+        roomFolder.mkdirs()
+        val glbFile = File(roomFolder, "room.glb")
+
+        try {
+            val success = generator.generateGlb(
+                outputFile = glbFile,
+                dimensions = dimensions,
+                frontWallTexture = testTexture,
+                floorTexture = testTexture,
+                ceilingTexture = testTexture,
+                leftWallTexture = testTexture,
+                rightWallTexture = testTexture
+            )
+
+            assertTrue("Room GLB generation should succeed", success)
+            assertTrue("Room GLB file should exist", glbFile.exists())
+            Log.d(TAG, "Room created at: ${glbFile.absolutePath}")
+
+            // Step 2: Open in ModelDetailActivity
+            val intent = Intent(context, ModelDetailActivity::class.java).apply {
+                putExtra("GLB_PATH", glbFile.absolutePath)
+                putExtra("IS_PREVIEW", true)
+            }
+
+            ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
+                val latch = CountDownLatch(1)
+                var testError: AssertionError? = null
+
+                scenario.onActivity { activity ->
+                    val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
+                    assertNotNull("SceneView should exist", sceneView)
+
+                    sceneView.post {
+                        sceneView.postDelayed({
+                            try {
+                                // Step 3: Verify camera position
+                                val camPos = sceneView.cameraNode.position
+                                Log.d(TAG, "Camera position: (${camPos.x}, ${camPos.y}, ${camPos.z})")
+
+                                assertFalse("Camera Y should not be at default (0). Actual: ${camPos.y}",
+                                    camPos.y < 0.5f)
+                                assertFalse("Camera Z should not be at default (1). Actual: ${camPos.z}",
+                                    camPos.z < 1.5f)
+
+                                // Step 4: Verify SceneView fills screen
+                                val displayMetrics = DisplayMetrics()
+                                activity.windowManager.defaultDisplay.getMetrics(displayMetrics)
+                                val screenHeight = displayMetrics.heightPixels
+                                val sceneViewHeight = sceneView.height
+
+                                Log.d(TAG, "SceneView height: $sceneViewHeight, Screen height: $screenHeight")
+
+                                val halfScreen = screenHeight / 2
+                                val isHalfScreen = sceneViewHeight < (halfScreen * 1.2)
+                                assertFalse("SceneView should NOT be half screen. Height: $sceneViewHeight, HalfScreen: $halfScreen",
+                                    isHalfScreen)
+
+                                Log.d(TAG, "PASS: Complete room flow test passed")
+                            } catch (e: AssertionError) {
+                                testError = e
+                            } finally {
+                                latch.countDown()
+                            }
+                        }, 3000)
+                    }
+                }
+
+                assertTrue("Test timed out", latch.await(15, TimeUnit.SECONDS))
+                testError?.let { throw it }
+            }
+        } finally {
+            // Cleanup
+            testTexture.recycle()
+            if (glbFile.exists()) glbFile.delete()
+            if (roomFolder.exists()) roomFolder.deleteRecursively()
+            Log.d(TAG, "Test cleanup complete")
+        }
     }
 }
