@@ -7,21 +7,33 @@
     <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
 
     <application
+        android:name=".FurnitApplication"
         android:allowBackup="true"
         android:extractNativeLibs="true"
-        android:label="FurnitAndroid"
+        android:label="Furnit"
         android:supportsRtl="true"
         android:theme="@style/Theme.Furnit">
-        <activity android:name=".ARActivity" android:exported="false" />
-        <activity android:name=".ModelViewerActivity" android:exported="false" />
-        <activity android:name=".SmartyPantsActivity" android:exported="false" />
-        <activity android:name=".ContentActivity" android:exported="true">
+
+        <!-- Auth Activities -->
+        <activity
+            android:name=".auth.LoginActivity"
+            android:exported="true"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".LoginActivity" android:exported="false" />
+        <activity
+            android:name=".auth.OTPVerificationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- Main Activities -->
+        <activity android:name=".ContentActivity" android:exported="false" />
+        <activity android:name=".ARActivity" android:exported="false" />
+        <activity android:name=".ModelViewerActivity" android:exported="false" />
+        <activity android:name=".SmartyPantsActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="false" />
         <activity android:name=".ModelDetailActivity" android:exported="false" />
         <activity android:name=".SinglePhotoRoomActivity" android:exported="false" />

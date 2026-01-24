@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "613415224058",
+    "project_id": "paafektprod",
+    "storage_bucket": "paafektprod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:613415224058:android:furnit2025android",
+        "android_client_info": {
+          "package_name": "com.furnit.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD4154IxE-cDFQk5bdtsAJ-lfPyO-rCflI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

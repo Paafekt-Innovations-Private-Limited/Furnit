@@ -15,24 +15,50 @@ import android.graphics.Typeface
 import android.view.View
 import android.widget.ScrollView
 import android.widget.Toast
+import com.furnit.android.auth.AuthenticationManager
+import com.furnit.android.auth.LoginActivity
 import com.furnit.android.models.Model
 import com.furnit.android.models.ModelManager
 
 class ContentActivity : AppCompatActivity() {
     private lateinit var modelManager: ModelManager
+    private lateinit var authManager: AuthenticationManager
     private lateinit var roomsContainer: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        authManager = AuthenticationManager.getInstance(this)
+
+        // Check authentication
+        if (!authManager.isAuthenticated) {
+            navigateToLogin()
+            return
+        }
+
         modelManager = ModelManager(this)
         setupUI()
     }
 
     override fun onResume() {
         super.onResume()
+
+        // Check authentication on resume
+        if (!authManager.isAuthenticated) {
+            navigateToLogin()
+            return
+        }
+
         // Refresh models when returning to this activity
         modelManager.refresh()
         refreshRoomsList()
+    }
+
+    private fun navigateToLogin() {
+        val intent = Intent(this, LoginActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        startActivity(intent)
+        finish()
     }
 
     private fun setupUI() {
