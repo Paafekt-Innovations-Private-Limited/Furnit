@@ -1,7 +1,10 @@
 package com.furnit.android
 
 import android.content.Intent
+import android.util.DisplayMetrics
 import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -14,6 +17,8 @@ import io.github.sceneview.SceneView
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Tests for ModelDetailActivity - 3D Room Viewer
@@ -245,5 +250,159 @@ class ModelDetailActivityTest {
         assertNotNull("Should be able to load edittext_border drawable", drawable)
 
         println("EditText border drawable verified")
+    }
+
+    @Test
+    fun testSceneViewFullScreen() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val intent = Intent(context, ModelDetailActivity::class.java).apply {
+            putExtra("MODEL_ID", "vintage")
+        }
+
+        ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
+            // Wait for layout to complete
+            val latch = CountDownLatch(1)
+
+            scenario.onActivity { activity ->
+                val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
+                assertNotNull("SceneView should exist", sceneView)
+
+                // Wait for view to be laid out
+                sceneView.post {
+                    // Get screen dimensions
+                    val displayMetrics = DisplayMetrics()
+                    activity.windowManager.defaultDisplay.getMetrics(displayMetrics)
+                    val screenWidth = displayMetrics.widthPixels
+                    val screenHeight = displayMetrics.heightPixels
+
+                    // Get SceneView dimensions
+                    val sceneViewWidth = sceneView.width
+                    val sceneViewHeight = sceneView.height
+
+                    println("Screen size: ${screenWidth}x${screenHeight}")
+                    println("SceneView size: ${sceneViewWidth}x${sceneViewHeight}")
+
+                    // SceneView should take full width
+                    assertEquals("SceneView width should match screen width",
+                        screenWidth, sceneViewWidth)
+
+                    // SceneView height should be at least 80% of screen height (full screen minus system bars)
+                    val minExpectedHeight = (screenHeight * 0.8).toInt()
+                    assertTrue("SceneView height ($sceneViewHeight) should be at least 80% of screen height ($minExpectedHeight). " +
+                            "If only half screen, height would be ~${screenHeight / 2}",
+                        sceneViewHeight >= minExpectedHeight)
+
+                    // CRITICAL: SceneView should NOT be half the screen
+                    val halfScreenHeight = screenHeight / 2
+                    val tolerance = screenHeight * 0.1 // 10% tolerance
+                    val isHalfScreen = sceneViewHeight > (halfScreenHeight - tolerance) &&
+                                       sceneViewHeight < (halfScreenHeight + tolerance)
+                    assertFalse("FAIL: SceneView appears to be only HALF the screen! " +
+                            "Height=$sceneViewHeight, HalfScreen=$halfScreenHeight",
+                        isHalfScreen)
+
+                    // Check layout params are MATCH_PARENT
+                    val layoutParams = sceneView.layoutParams
+                    assertEquals("SceneView width layout param should be MATCH_PARENT",
+                        ViewGroup.LayoutParams.MATCH_PARENT, layoutParams.width)
+                    assertEquals("SceneView height layout param should be MATCH_PARENT",
+                        ViewGroup.LayoutParams.MATCH_PARENT, layoutParams.height)
+
+                    println("PASS: SceneView is FULL SCREEN (not half)")
+                    latch.countDown()
+                }
+            }
+
+            // Wait for the check to complete
+            assertTrue("Layout check timed out", latch.await(5, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun testRootLayoutFullScreen() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val intent = Intent(context, ModelDetailActivity::class.java).apply {
+            putExtra("MODEL_ID", "vintage")
+        }
+
+        ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
+            val latch = CountDownLatch(1)
+
+            scenario.onActivity { activity ->
+                // Get the root content view
+                val rootView = activity.findViewById<View>(android.R.id.content)
+                assertNotNull("Root content view should exist", rootView)
+
+                rootView.post {
+                    val displayMetrics = DisplayMetrics()
+                    activity.windowManager.defaultDisplay.getMetrics(displayMetrics)
+                    val screenWidth = displayMetrics.widthPixels
+                    val screenHeight = displayMetrics.heightPixels
+
+                    val rootWidth = rootView.width
+                    val rootHeight = rootView.height
+
+                    println("Screen: ${screenWidth}x${screenHeight}")
+                    println("Root view: ${rootWidth}x${rootHeight}")
+
+                    // Root should match screen width
+                    assertEquals("Root width should match screen", screenWidth, rootWidth)
+
+                    // Root height should be close to screen height
+                    val heightDiff = kotlin.math.abs(screenHeight - rootHeight)
+                    val maxAllowedDiff = screenHeight * 0.15 // Allow 15% for system bars
+                    assertTrue("Root height ($rootHeight) should be close to screen height ($screenHeight), diff=$heightDiff",
+                        heightDiff <= maxAllowedDiff)
+
+                    println("Root layout is full screen")
+                    latch.countDown()
+                }
+            }
+
+            assertTrue("Layout check timed out", latch.await(5, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun testOverlaysAreOnTopOfSceneView() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val intent = Intent(context, ModelDetailActivity::class.java).apply {
+            putExtra("MODEL_ID", "vintage")
+        }
+
+        ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
+            scenario.onActivity { activity ->
+                val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
+                val topBar = activity.findViewById<LinearLayout>(R.id.topBarContainer)
+                val bottomControls = activity.findViewById<FrameLayout>(R.id.bottomControlsContainer)
+
+                assertNotNull("SceneView should exist", sceneView)
+                assertNotNull("Top bar should exist", topBar)
+                assertNotNull("Bottom controls should exist", bottomControls)
+
+                // Get parent (should be FrameLayout)
+                val parent = sceneView.parent as? FrameLayout
+                assertNotNull("Parent should be FrameLayout", parent)
+
+                // In FrameLayout, later children are drawn on top
+                // SceneView should be first (index 0), overlays should come after
+                val sceneViewIndex = parent!!.indexOfChild(sceneView)
+                val topBarIndex = parent.indexOfChild(topBar)
+                val bottomControlsIndex = parent.indexOfChild(bottomControls)
+
+                println("Child indices - SceneView: $sceneViewIndex, TopBar: $topBarIndex, BottomControls: $bottomControlsIndex")
+
+                assertTrue("Top bar should be after SceneView in z-order (overlay)",
+                    topBarIndex > sceneViewIndex)
+                assertTrue("Bottom controls should be after SceneView in z-order (overlay)",
+                    bottomControlsIndex > sceneViewIndex)
+
+                // Verify overlays are visible
+                assertEquals("Top bar should be visible", View.VISIBLE, topBar.visibility)
+                assertEquals("Bottom controls should be visible", View.VISIBLE, bottomControls.visibility)
+
+                println("PASS: Overlays are correctly positioned on top of SceneView")
+            }
+        }
     }
 }
