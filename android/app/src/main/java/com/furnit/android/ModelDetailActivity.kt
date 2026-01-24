@@ -235,14 +235,14 @@ class ModelDetailActivity : AppCompatActivity() {
             try {
                 val modelInstance = if (assetPath.startsWith("/")) {
                     // File system path - load from file
-                    android.util.Log.d("ModelDetail", "Loading GLB from file: $assetPath")
+                    Log.d(TAG, "Loading GLB from file: $assetPath")
                     val file = File(assetPath)
                     val bytes = file.readBytes()
                     val buffer = ByteBuffer.wrap(bytes)
                     sceneView.modelLoader.createModelInstance(buffer)
                 } else {
                     // Asset path - load from assets
-                    android.util.Log.d("ModelDetail", "Loading GLB from assets: $assetPath")
+                    Log.d(TAG, "Loading GLB from assets: $assetPath")
                     sceneView.modelLoader.createModelInstance(
                         assetFileLocation = assetPath
                     )
@@ -258,18 +258,22 @@ class ModelDetailActivity : AppCompatActivity() {
 
                 sceneView.addChildNode(modelNode)
 
-                // Position camera at back of room, eye level, looking toward front wall
-                // Room geometry: front wall at z=-2.25, back at z=+2.25
+                // Position camera to view the room from inside
+                // Room geometry: floor at Y=0, ceiling at Y=2.8, front wall at Z=-2.25
+                // Camera should be at the back of the room looking toward front wall
                 sceneView.cameraNode.apply {
-                    position = Position(0f, 1.6f, 3.5f)   // Back of room, eye level
-                    lookAt(Position(0f, 1.4f, -2.25f))    // Look at front wall center
+                    // Position camera at back of room (Z=2.0), eye level (Y=1.4)
+                    position = Position(0f, 1.4f, 2.0f)
+                    // Look at front wall center, slightly below eye level to see floor
+                    lookAt(Position(0f, 1.0f, -2.0f))
                 }
 
-                android.util.Log.d("ModelDetail", "Camera at back of room looking at front wall")
+                Log.d(TAG, "Camera positioned at back of room looking at front wall")
 
                 loadingIndicator.visibility = View.GONE
 
             } catch (e: Exception) {
+                Log.e(TAG, "Failed to load model", e)
                 e.printStackTrace()
                 loadingIndicator.visibility = View.GONE
                 modelTitle.text = "Failed to load: ${e.message}"
