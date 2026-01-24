@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.os.Environment
 import android.util.Log
 import android.view.View
-import android.view.WindowManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -18,14 +17,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.models.ModelManager
-import com.google.android.filament.Camera
+import com.furnit.android.utils.RoomBoundaryManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -57,6 +51,7 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var helpButton: ImageButton
     private lateinit var screenshotButton: ImageButton
     private lateinit var orientationLabel: LinearLayout
+    private lateinit var boundaryManager: RoomBoundaryManager
     private var isPreviewMode = false
     private var glbPath: String? = null
     private var currentModelId: String? = null
@@ -64,29 +59,15 @@ class ModelDetailActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Enable true edge-to-edge display (matching iOS ignoresSafeArea)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-
-        // Make status bar and navigation bar transparent so content draws behind them
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
-
-        // Configure window insets controller for proper edge-to-edge
-        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
-            // Show system bars but make them transparent
-            controller.isAppearanceLightStatusBars = false
-            controller.isAppearanceLightNavigationBars = false
-        }
-
-        // Enable layout in display cutout area (notch)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-            window.attributes.layoutInDisplayCutoutMode =
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        }
+        // Simple setup - let system handle insets normally
+        // Edge-to-edge was causing SceneView rendering issues
+        window.statusBarColor = Color.parseColor("#1C1C1E")
+        window.navigationBarColor = Color.BLACK
 
         setContentView(R.layout.activity_model_detail)
 
         modelManager = ModelManager(this)
+        boundaryManager = RoomBoundaryManager()
 
         sceneView = findViewById(R.id.sceneView)
         loadingIndicator = findViewById(R.id.loadingIndicator)
@@ -97,22 +78,6 @@ class ModelDetailActivity : AppCompatActivity() {
         helpButton = findViewById(R.id.helpButton)
         screenshotButton = findViewById(R.id.screenshotButton)
         orientationLabel = findViewById(R.id.orientationLabel)
-
-        // Handle window insets for overlay controls (like iOS safe area)
-        val topBarContainer = findViewById<LinearLayout>(R.id.topBarContainer)
-        val bottomControlsContainer = findViewById<FrameLayout>(R.id.bottomControlsContainer)
-
-        ViewCompat.setOnApplyWindowInsetsListener(topBarContainer) { view, windowInsets ->
-            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(top = insets.top + 16)
-            windowInsets
-        }
-
-        ViewCompat.setOnApplyWindowInsetsListener(bottomControlsContainer) { view, windowInsets ->
-            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(bottom = insets.bottom + 24)
-            windowInsets
-        }
 
         val backButton: ImageButton = findViewById(R.id.backButton)
         backButton.setOnClickListener { finish() }
@@ -325,37 +290,54 @@ class ModelDetailActivity : AppCompatActivity() {
     private fun loadModel(assetPath: String) {
         lifecycleScope.launch {
             try {
-                val modelInstance = if (assetPath.startsWith("/")) {
-                    // File system path - load from file
-                    Log.d(TAG, "Loading GLB from file: $assetPath")
+                val isFileSystemPath = assetPath.startsWith("/")
+                Log.d(TAG, "=== Loading Model ===")
+                Log.d(TAG, "  Path type: ${if (isFileSystemPath) "FILE SYSTEM" else "ASSETS"}")
+                Log.d(TAG, "  Path: $assetPath")
+
+                val modelInstance = if (isFileSystemPath) {
+                    // File system path - load from file (user-created rooms)
                     val file = File(assetPath)
+                    Log.d(TAG, "  File exists: ${file.exists()}, size: ${file.length()} bytes")
                     val bytes = file.readBytes()
                     val buffer = ByteBuffer.wrap(bytes)
                     sceneView.modelLoader.createModelInstance(buffer)
                 } else {
-                    // Asset path - load from assets
-                    Log.d(TAG, "Loading GLB from assets: $assetPath")
+                    // Asset path - load from assets (bundled rooms like vintage)
                     sceneView.modelLoader.createModelInstance(
                         assetFileLocation = assetPath
                     )
                 }
 
                 // Room dimensions from GlbGenerator: width=4, depth=4.5, height=2.8
-                // Model Y goes from 0 (floor) to 2.8 (ceiling), so center Y is at 1.4
-                // Scale room to fit in ~3 units
+                // Model Y goes from 0 (floor) to 2.8 (ceiling)
+                // Don't scale - keep original size for proper camera positioning
                 val modelNode = ModelNode(
                     modelInstance = modelInstance,
-                    scaleToUnits = 3.0f  // Scale room to fit in 3-unit cube
+                    scaleToUnits = null  // Keep original scale
                 )
 
                 sceneView.addChildNode(modelNode)
 
-                Log.d(TAG, "Model added with scaleToUnits=3.0")
+                // Log model position
+                Log.d(TAG, "  Model added, position: ${modelNode.position}")
 
-                // Setup camera after view is ready
-                sceneView.post {
-                    setupCamera()
+                // Use RoomBoundaryManager for camera positioning (like iOS)
+                // Initialize with default room dimensions (matches GlbGenerator)
+                boundaryManager.initializeFromDimensions()
+
+                // Get optimal camera position from boundary manager
+                val cameraSetup = boundaryManager.getOptimalCameraPosition()
+
+                // Position camera IMMEDIATELY after adding model
+                sceneView.cameraNode.apply {
+                    position = cameraSetup.position
+                    lookAt(cameraSetup.lookAt)
                 }
+
+                Log.d(TAG, "  Camera position: ${cameraSetup.position}")
+                Log.d(TAG, "  Camera lookAt: ${cameraSetup.lookAt}")
+                Log.d(TAG, "=== Model Load Complete ===")
 
                 loadingIndicator.visibility = View.GONE
 
@@ -366,19 +348,6 @@ class ModelDetailActivity : AppCompatActivity() {
                 modelTitle.text = "Failed to load: ${e.message}"
             }
         }
-    }
-
-    private fun setupCamera() {
-        // Simple camera setup - position to view the room
-        // Room model: floor at Y=0, ceiling at Y=2.8, scaled to fit ~3 units
-        val roomCenterY = 1.0f  // Center of room after scaling
-
-        sceneView.cameraNode.apply {
-            position = Position(0f, roomCenterY, 4.5f)
-            lookAt(Position(0f, roomCenterY, 0f))
-        }
-
-        Log.d(TAG, "Camera setup: pos=(0, $roomCenterY, 4.5), lookAt=(0, $roomCenterY, 0)")
     }
 
     override fun onDestroy() {

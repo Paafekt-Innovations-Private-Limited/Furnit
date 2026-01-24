@@ -405,4 +405,140 @@ class ModelDetailActivityTest {
             }
         }
     }
+
+    @Test
+    fun testCameraPositioningForRoomView() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val intent = Intent(context, ModelDetailActivity::class.java).apply {
+            putExtra("MODEL_ID", "vintage")
+        }
+
+        ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
+            val latch = CountDownLatch(1)
+
+            scenario.onActivity { activity ->
+                val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
+                assertNotNull("SceneView should exist", sceneView)
+
+                // Wait for scene to be ready and model to load
+                sceneView.post {
+                    sceneView.postDelayed({
+                        val cameraNode = sceneView.cameraNode
+                        val camPos = cameraNode.position
+
+                        println("=== Camera Position Test ===")
+                        println("Camera position: (${camPos.x}, ${camPos.y}, ${camPos.z})")
+
+                        // Room dimensions from GlbGenerator:
+                        // width=4 (X: -2 to +2), depth=4.5 (Z: -2.25 to +2.25), height=2.8 (Y: 0 to 2.8)
+                        // Camera should be positioned at back of room, eye level
+                        // Expected: Camera at (0, 1.6, 3.5) looking at front wall
+
+                        println("Expected camera: (0, 1.6, 3.5) - back of room, eye level")
+                        println("Actual camera: (${camPos.x}, ${camPos.y}, ${camPos.z})")
+
+                        // Verify camera is correctly positioned
+                        val isCentered = kotlin.math.abs(camPos.x) < 0.1f
+                        val isAtEyeLevel = camPos.y > 1.0f && camPos.y < 2.0f
+                        val isBehindRoom = camPos.z > 2.0f
+
+                        println("Camera X centered: $isCentered")
+                        println("Camera Y at eye level: $isAtEyeLevel")
+                        println("Camera Z behind room: $isBehindRoom")
+
+                        // Assert camera is NOT at default position (0, 0, 1)
+                        assertTrue("Camera Y should be at eye level (>1.0), not at default 0. " +
+                                "Actual: ${camPos.y}", isAtEyeLevel)
+                        assertTrue("Camera Z should be behind room (>2.0), not at default 1. " +
+                                "Actual: ${camPos.z}", isBehindRoom)
+                        assertTrue("Camera X should be centered (<0.1). Actual: ${camPos.x}", isCentered)
+
+                        latch.countDown()
+                    }, 3000)  // Wait 3 seconds for model load
+                }
+            }
+
+            assertTrue("Camera test timed out", latch.await(15, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun testCameraPositioningForGeneratedRoom() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+
+        // Create a room using GlbGenerator (same as user-created rooms)
+        val generator = com.furnit.android.services.GlbGenerator()
+        val dimensions = com.furnit.android.services.GlbGenerator.RoomDimensions()
+
+        // Create simple textures
+        val grayTexture = android.graphics.Bitmap.createBitmap(256, 256, android.graphics.Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.parseColor("#E0E0E0"))
+        }
+
+        val testDir = java.io.File(context.cacheDir, "test_camera")
+        testDir.mkdirs()
+        val glbFile = java.io.File(testDir, "test_room.glb")
+
+        val success = generator.generateGlb(
+            outputFile = glbFile,
+            dimensions = dimensions,
+            frontWallTexture = grayTexture,
+            floorTexture = grayTexture,
+            ceilingTexture = grayTexture,
+            leftWallTexture = grayTexture,
+            rightWallTexture = grayTexture
+        )
+
+        assertTrue("GLB generation should succeed", success)
+        assertTrue("GLB file should exist", glbFile.exists())
+
+        // Launch ModelDetailActivity with the generated GLB
+        val intent = Intent(context, ModelDetailActivity::class.java).apply {
+            putExtra("GLB_PATH", glbFile.absolutePath)
+            putExtra("IS_PREVIEW", true)
+        }
+
+        ActivityScenario.launch<ModelDetailActivity>(intent).use { scenario ->
+            val latch = CountDownLatch(1)
+
+            scenario.onActivity { activity ->
+                val sceneView = activity.findViewById<SceneView>(R.id.sceneView)
+                assertNotNull("SceneView should exist", sceneView)
+
+                // Wait for model to load and camera to be positioned
+                sceneView.post {
+                    sceneView.postDelayed({
+                        val cameraNode = sceneView.cameraNode
+                        val camPos = cameraNode.position
+
+                        println("=== Generated Room Camera Test ===")
+                        println("GLB path: ${glbFile.absolutePath}")
+                        println("Camera position: (${camPos.x}, ${camPos.y}, ${camPos.z})")
+                        println("Expected: (0, 1.6, 3.5) - back of room, eye level")
+
+                        // Verify camera is correctly positioned (not at default)
+                        val isAtEyeLevel = camPos.y > 1.0f && camPos.y < 2.0f
+                        val isBehindRoom = camPos.z > 2.0f
+
+                        println("Camera Y at eye level: $isAtEyeLevel")
+                        println("Camera Z behind room: $isBehindRoom")
+
+                        assertTrue("Generated room: Camera Y should be at eye level (>1.0). Actual: ${camPos.y}",
+                            isAtEyeLevel)
+                        assertTrue("Generated room: Camera Z should be behind room (>2.0). Actual: ${camPos.z}",
+                            isBehindRoom)
+
+                        latch.countDown()
+                    }, 3000)
+                }
+            }
+
+            assertTrue("Generated room camera test timed out", latch.await(15, TimeUnit.SECONDS))
+        }
+
+        // Cleanup
+        grayTexture.recycle()
+        glbFile.delete()
+        testDir.delete()
+    }
 }
