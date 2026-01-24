@@ -33,7 +33,7 @@
         <activity android:name=".ContentActivity" android:exported="false" />
         <activity android:name=".ARActivity" android:exported="false" />
         <activity android:name=".ModelViewerActivity" android:exported="false" />
-        <activity android:name=".SmartyPantsActivity" android:exported="false" />
+        <activity android:name=".FurnitureFitActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="false" />
         <activity android:name=".ModelDetailActivity" android:exported="false" />
         <activity android:name=".SinglePhotoRoomActivity" android:exported="false" />

@@ -42,7 +42,7 @@
         android:layout_gravity="center"
         android:visibility="visible" />
 
-    <!-- Brain icon for SmartyPants segmentation -->
+    <!-- Brain icon for FurnitureFit segmentation -->
     <FrameLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

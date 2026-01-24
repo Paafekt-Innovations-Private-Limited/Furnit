@@ -8,7 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 
-class SmartyPantsActivity : AppCompatActivity() {
+class FurnitureFitActivity : AppCompatActivity() {
 
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -33,7 +33,7 @@ class SmartyPantsActivity : AppCompatActivity() {
     }
 
     private fun loadFragment() {
-        val fragment = SmartyPantsFragment()
+        val fragment = FurnitureFitFragment()
 
         // Pass room info to fragment
         val roomId = intent.getStringExtra("ROOM_ID")

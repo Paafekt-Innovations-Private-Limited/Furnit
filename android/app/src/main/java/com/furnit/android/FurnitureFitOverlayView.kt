@@ -18,7 +18,7 @@ data class DetectionResult(
     val label: String
 )
 
-class SmartyPantsOverlayView(context: Context) : View(context) {
+class FurnitureFitOverlayView(context: Context) : View(context) {
     private var maskBitmap: Bitmap? = null
     private var detections: List<DetectionResult> = emptyList()
     private var inputSize = 640 // Model input size

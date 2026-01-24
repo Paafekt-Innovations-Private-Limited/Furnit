@@ -15,7 +15,7 @@ import java.io.FileOutputStream
 import kotlin.math.exp
 
 @RunWith(AndroidJUnit4::class)
-class SmartyPantsMaskTest {
+class FurnitureFitMaskTest {
 
     @Test
     fun testMaskGenerationWithBusImage() {

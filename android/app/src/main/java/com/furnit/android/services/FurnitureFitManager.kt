@@ -30,7 +30,7 @@ data class SegmentationResult(
 )
 
 /**
- * SmartyPantsManager handles object detection and segmentation using YOLOE models.
+ * FurnitureFitManager handles object detection and segmentation using YOLOE models.
  *
  * Inference backends (in order of preference):
  * 1. NCNN - Fastest, GPU-accelerated with Vulkan (recommended)
@@ -40,7 +40,7 @@ data class SegmentationResult(
  * For best performance, use NCNN with exported .param/.bin model files.
  * Place model files in `app/src/main/assets/`.
  */
-class SmartyPantsManager(private val context: Context) {
+class FurnitureFitManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
@@ -83,11 +83,11 @@ class SmartyPantsManager(private val context: Context) {
             inputShape = t.shape()
             inputDataType = t.dataType()
             Log.i(
-                "SmartyPantsManager",
+                "FurnitureFitManager",
                 "Loaded TFLite model '$tfliteAssetName' inputShape=${inputShape?.joinToString()} dataType=$inputDataType"
             )
         } catch (e: Exception) {
-            Log.w("SmartyPantsManager", "Failed to load tflite: ${e.message}")
+            Log.w("FurnitureFitManager", "Failed to load tflite: ${e.message}")
             interpreter = null
         }
     }
@@ -107,13 +107,13 @@ class SmartyPantsManager(private val context: Context) {
         useGpu: Boolean = true
     ): Boolean {
         Log.i(
-            "SmartyPantsManager",
+            "FurnitureFitManager",
             "initializeNcnn called with param='$paramAsset', bin='$binAsset', gpu=$useGpu"
         )
 
         if (!NcnnYoloe.isAvailable()) {
             val error = NcnnYoloe.getLoadError() ?: "unknown reason"
-            Log.w("SmartyPantsManager", "NCNN native library not available: $error")
+            Log.w("FurnitureFitManager", "NCNN native library not available: $error")
             return false
         }
 
@@ -124,17 +124,17 @@ class SmartyPantsManager(private val context: Context) {
             if (success) {
                 useNcnn = true
                 Log.i(
-                    "SmartyPantsManager",
+                    "FurnitureFitManager",
                     "NCNN initialization successful (GPU: ${ncnnYoloe!!.hasGpu()})"
                 )
                 return true
             } else {
-                Log.e("SmartyPantsManager", "NCNN initialization failed")
+                Log.e("FurnitureFitManager", "NCNN initialization failed")
                 ncnnYoloe = null
                 return false
             }
         } catch (e: Exception) {
-            Log.e("SmartyPantsManager", "NCNN init exception: ${e.message}", e)
+            Log.e("FurnitureFitManager", "NCNN init exception: ${e.message}", e)
             ncnnYoloe = null
             return false
         }
@@ -145,11 +145,11 @@ class SmartyPantsManager(private val context: Context) {
      * Tries NCNN first, then ONNX, then TFLite.
      */
     fun initializeAuto(): Boolean {
-        Log.i("SmartyPantsManager", "Auto-initializing with best available backend...")
+        Log.i("FurnitureFitManager", "Auto-initializing with best available backend...")
 
         // Try NCNN first (best performance)
         if (initializeNcnn()) {
-            Log.i("SmartyPantsManager", "Using NCNN backend")
+            Log.i("FurnitureFitManager", "Using NCNN backend")
             return true
         }
 
@@ -157,57 +157,57 @@ class SmartyPantsManager(private val context: Context) {
         try {
             initializeOnnx()
             if (ortSession != null) {
-                Log.i("SmartyPantsManager", "Using ONNX Runtime backend")
+                Log.i("FurnitureFitManager", "Using ONNX Runtime backend")
                 return true
             }
         } catch (e: Exception) {
-            Log.w("SmartyPantsManager", "ONNX initialization failed: ${e.message}")
+            Log.w("FurnitureFitManager", "ONNX initialization failed: ${e.message}")
         }
 
         // Fall back to TFLite
         try {
             initialize()
             if (interpreter != null) {
-                Log.i("SmartyPantsManager", "Using TFLite backend")
+                Log.i("FurnitureFitManager", "Using TFLite backend")
                 return true
             }
         } catch (e: Exception) {
-            Log.w("SmartyPantsManager", "TFLite initialization failed: ${e.message}")
+            Log.w("FurnitureFitManager", "TFLite initialization failed: ${e.message}")
         }
 
-        Log.e("SmartyPantsManager", "No inference backend available - segmentation disabled")
+        Log.e("FurnitureFitManager", "No inference backend available - segmentation disabled")
         return false
     }
 
     /** Initialize ONNX Runtime session from asset ONNX model. */
     fun initializeOnnx(onnxAssetName: String = "yoloe-11l-seg-pf.onnx") {
-        Log.i("SmartyPantsManager", "initializeOnnx called with '$onnxAssetName'")
+        Log.i("FurnitureFitManager", "initializeOnnx called with '$onnxAssetName'")
         try {
-            Log.d("SmartyPantsManager", "Copying asset to cache...")
+            Log.d("FurnitureFitManager", "Copying asset to cache...")
             val file = copyAssetToFile(onnxAssetName)
             Log.d(
-                "SmartyPantsManager",
+                "FurnitureFitManager",
                 "Asset copied to: ${file.absolutePath}, size: ${file.length()}"
             )
 
-            Log.d("SmartyPantsManager", "Getting ORT environment...")
+            Log.d("FurnitureFitManager", "Getting ORT environment...")
             ortEnv = OrtEnvironment.getEnvironment()
 
-            Log.d("SmartyPantsManager", "Creating ONNX session...")
+            Log.d("FurnitureFitManager", "Creating ONNX session...")
             val opts = SessionOptions()
             ortSession = ortEnv!!.createSession(file.absolutePath, opts)
 
             // Log input/output info
-            Log.i("SmartyPantsManager", "ONNX model loaded successfully")
+            Log.i("FurnitureFitManager", "ONNX model loaded successfully")
             for ((name, info) in ortSession!!.inputInfo) {
-                Log.i("SmartyPantsManager", "ONNX input: $name -> ${info.info}")
+                Log.i("FurnitureFitManager", "ONNX input: $name -> ${info.info}")
             }
             for ((name, info) in ortSession!!.outputInfo) {
-                Log.i("SmartyPantsManager", "ONNX output: $name -> ${info.info}")
+                Log.i("FurnitureFitManager", "ONNX output: $name -> ${info.info}")
             }
-            Log.i("SmartyPantsManager", "Loaded ONNX model '$onnxAssetName' into ONNX Runtime")
+            Log.i("FurnitureFitManager", "Loaded ONNX model '$onnxAssetName' into ONNX Runtime")
         } catch (e: Exception) {
-            Log.e("SmartyPantsManager", "Failed to load onnx: ${e.message}", e)
+            Log.e("FurnitureFitManager", "Failed to load onnx: ${e.message}", e)
             ortSession = null
             ortEnv = null
         }
@@ -296,7 +296,7 @@ class SmartyPantsManager(private val context: Context) {
 
                 mainHandler.post { callback(null) }
             } catch (e: Exception) {
-                Log.e("SmartyPantsManager", "inference error", e)
+                Log.e("FurnitureFitManager", "inference error", e)
                 mainHandler.post { callback(null) }
             }
         }
@@ -308,7 +308,7 @@ class SmartyPantsManager(private val context: Context) {
     private fun runNcnnInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
         try {
             val ncnn = ncnnYoloe ?: run {
-                Log.e("SmartyPantsManager", "NCNN not initialized")
+                Log.e("FurnitureFitManager", "NCNN not initialized")
                 mainHandler.post { callback(null) }
                 return
             }
@@ -325,14 +325,14 @@ class SmartyPantsManager(private val context: Context) {
 
             val inferenceTime = System.currentTimeMillis() - startTime
             Log.d(
-                "SmartyPantsManager",
+                "FurnitureFitManager",
                 "NCNN inference: ${result.detections.size} detections in ${inferenceTime}ms"
             )
 
             // Log top detections
             for ((idx, det) in result.detections.take(5).withIndex()) {
                 Log.d(
-                    "SmartyPantsManager",
+                    "FurnitureFitManager",
                     "  [$idx] ${det.label} (${det.classId}): conf=${det.confidence}, bbox=(${det.x},${det.y},${det.width},${det.height})"
                 )
             }
@@ -349,7 +349,7 @@ class SmartyPantsManager(private val context: Context) {
                 mainHandler.post { callback(maskBmp) }
             }
         } catch (e: Exception) {
-            Log.e("SmartyPantsManager", "NCNN inference error: ${e.message}", e)
+            Log.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)
             mainHandler.post { callback(null) }
         }
     }
@@ -389,12 +389,12 @@ class SmartyPantsManager(private val context: Context) {
     private fun runOnnxInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
         try {
             val session = ortSession ?: run {
-                Log.e("SmartyPantsManager", "ortSession is null")
+                Log.e("FurnitureFitManager", "ortSession is null")
                 mainHandler.post { callback(null) }
                 return
             }
             val env = ortEnv ?: run {
-                Log.e("SmartyPantsManager", "ortEnv is null")
+                Log.e("FurnitureFitManager", "ortEnv is null")
                 mainHandler.post { callback(null) }
                 return
             }
@@ -402,7 +402,7 @@ class SmartyPantsManager(private val context: Context) {
             // Use first input info to determine shape
             val firstInput = session.inputInfo.entries.firstOrNull()
             if (firstInput == null) {
-                Log.w("SmartyPantsManager", "ONNX session has no inputs")
+                Log.w("FurnitureFitManager", "ONNX session has no inputs")
                 mainHandler.post { callback(null) }
                 return
             }
@@ -429,7 +429,7 @@ class SmartyPantsManager(private val context: Context) {
 
             // Resize to model input size
             Log.d(
-                "SmartyPantsManager",
+                "FurnitureFitManager",
                 "Resizing frame ${frame.width}x${frame.height} to ${inputW}x${inputH}"
             )
             val resized = Bitmap.createScaledBitmap(frame, inputW, inputH, true).copy(Config.ARGB_8888, false)
@@ -457,12 +457,12 @@ class SmartyPantsManager(private val context: Context) {
             }
 
             val shapeLong = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
-            Log.d("SmartyPantsManager", "Creating input tensor with shape ${shapeLong.toList()}")
+            Log.d("FurnitureFitManager", "Creating input tensor with shape ${shapeLong.toList()}")
             Log.d(
-                "SmartyPantsManager",
+                "FurnitureFitManager",
                 "Input sample - R[0]=${inputFloats[0]}, G[0]=${inputFloats[hw]}, B[0]=${inputFloats[2 * hw]}"
             )
-            Log.d("SmartyPantsManager", "Input range - min=${inputFloats.minOrNull()}, max=${inputFloats.maxOrNull()}")
+            Log.d("FurnitureFitManager", "Input range - min=${inputFloats.minOrNull()}, max=${inputFloats.maxOrNull()}")
 
             val tensor = OnnxTensor.createTensor(
                 env,
@@ -472,9 +472,9 @@ class SmartyPantsManager(private val context: Context) {
 
             var maskResult: Bitmap? = null
 
-            Log.d("SmartyPantsManager", "Running ONNX inference...")
+            Log.d("FurnitureFitManager", "Running ONNX inference...")
             session.run(mapOf(inputName to tensor)).use { results ->
-                Log.d("SmartyPantsManager", "Inference complete, processing outputs...")
+                Log.d("FurnitureFitManager", "Inference complete, processing outputs...")
 
                 val outInfos = ortSession!!.outputInfo.entries.toList()
 
@@ -488,7 +488,7 @@ class SmartyPantsManager(private val context: Context) {
                     val info = outInfos[i].value.info
                     if (info is ai.onnxruntime.TensorInfo) {
                         val sh = info.shape
-                        Log.d("SmartyPantsManager", "Output $i shape: ${sh.toList()}")
+                        Log.d("FurnitureFitManager", "Output $i shape: ${sh.toList()}")
                         if (sh.size == 3 && detIndex == -1) {
                             detIndex = i
                             detShape = sh
@@ -501,14 +501,14 @@ class SmartyPantsManager(private val context: Context) {
                 }
 
                 if (detIndex == -1 || protoIndex == -1 || detShape == null || protoShape == null) {
-                    Log.w("SmartyPantsManager", "Could not find detection/prototype outputs")
+                    Log.w("FurnitureFitManager", "Could not find detection/prototype outputs")
                     mainHandler.post { callback(null) }
                     tensor.close()
                     return
                 }
 
-                Log.d("SmartyPantsManager", "Detection output[$detIndex] shape: ${detShape.toList()}")
-                Log.d("SmartyPantsManager", "Proto output[$protoIndex] shape: ${protoShape.toList()}")
+                Log.d("FurnitureFitManager", "Detection output[$detIndex] shape: ${detShape.toList()}")
+                Log.d("FurnitureFitManager", "Proto output[$protoIndex] shape: ${protoShape.toList()}")
 
                 val detResult = results.get(detIndex)
                 val protoResult = results.get(protoIndex)
@@ -532,18 +532,18 @@ class SmartyPantsManager(private val context: Context) {
                 val protoW = protoShape[3].toInt()
 
                 Log.d(
-                    "SmartyPantsManager",
+                    "FurnitureFitManager",
                     "Features=$numFeatures Anchors=$numAnchors Classes=$numClasses MaskCoeffs=$numMaskCoeffs Protos=$numProtos ProtoSize=${protoW}x${protoH}"
                 )
 
                 if (numFeatures < (4 + numMaskCoeffs + 1) || numAnchors <= 0 || numProtos <= 0) {
-                    Log.e("SmartyPantsManager", "Invalid tensor dimensions")
+                    Log.e("FurnitureFitManager", "Invalid tensor dimensions")
                     mainHandler.post { callback(null) }
                     tensor.close()
                     return
                 }
 
-                Log.d("SmartyPantsManager", "DetValue type: ${detValue?.javaClass}")
+                Log.d("FurnitureFitManager", "DetValue type: ${detValue?.javaClass}")
 
                 // Extract detection tensor (3D preferred)
                 var det3d: Array<Array<FloatArray>>? = null
@@ -555,12 +555,12 @@ class SmartyPantsManager(private val context: Context) {
                             @Suppress("UNCHECKED_CAST")
                             det3d = detValue as Array<Array<FloatArray>>
                             Log.d(
-                                "SmartyPantsManager",
+                                "FurnitureFitManager",
                                 "Det as 3D array: [${det3d.size}][${det3d[0].size}][${det3d[0][0].size}]"
                             )
                         } catch (e: Exception) {
                             Log.w(
-                                "SmartyPantsManager",
+                                "FurnitureFitManager",
                                 "Failed to cast as 3D array, trying flatten: ${e.message}"
                             )
                             detFlat = extractFloatArray(detValue)
@@ -568,40 +568,40 @@ class SmartyPantsManager(private val context: Context) {
                     }
                     is FloatArray -> {
                         detFlat = detValue
-                        Log.d("SmartyPantsManager", "Det as flat FloatArray: ${detFlat.size}")
+                        Log.d("FurnitureFitManager", "Det as flat FloatArray: ${detFlat.size}")
                     }
                     is java.nio.FloatBuffer -> {
                         detFlat = FloatArray(detValue.remaining())
                         detValue.get(detFlat)
-                        Log.d("SmartyPantsManager", "Det as FloatBuffer: ${detFlat.size}")
+                        Log.d("FurnitureFitManager", "Det as FloatBuffer: ${detFlat.size}")
                     }
                     else -> {
-                        Log.w("SmartyPantsManager", "Unknown det type: ${detValue?.javaClass}")
+                        Log.w("FurnitureFitManager", "Unknown det type: ${detValue?.javaClass}")
                         detFlat = extractFloatArray(detValue)
                     }
                 }
 
                 if (det3d == null && (detFlat == null || detFlat.isEmpty())) {
-                    Log.e("SmartyPantsManager", "Could not extract detection tensor")
+                    Log.e("FurnitureFitManager", "Could not extract detection tensor")
                     mainHandler.post { callback(null) }
                     tensor.close()
                     return
                 }
 
                 // Extract prototype tensor
-                Log.d("SmartyPantsManager", "Extracting proto array...")
+                Log.d("FurnitureFitManager", "Extracting proto array...")
                 val proto = extractFloatArray(protoValue)
-                Log.d("SmartyPantsManager", "Proto extracted: ${proto.size} floats")
+                Log.d("FurnitureFitManager", "Proto extracted: ${proto.size} floats")
 
                 if (proto.isEmpty()) {
-                    Log.w("SmartyPantsManager", "Empty proto output")
+                    Log.w("FurnitureFitManager", "Empty proto output")
                     mainHandler.post { callback(null) }
                     tensor.close()
                     return
                 }
 
                 Log.d(
-                    "SmartyPantsManager",
+                    "FurnitureFitManager",
                     "Proto[0]=${proto[0]}, Proto[1]=${proto[1]}, Proto[160]=${proto.getOrNull(160)}, Proto[25600]=${proto.getOrNull(25600)}"
                 )
 
@@ -634,7 +634,7 @@ class SmartyPantsManager(private val context: Context) {
                     }
                 }
                 Log.d(
-                    "SmartyPantsManager",
+                    "FurnitureFitManager",
                     "Global max class score: $globalMaxScore at anchor $globalMaxAnchor, class $globalMaxClass"
                 )
 
@@ -646,12 +646,12 @@ class SmartyPantsManager(private val context: Context) {
                 val dbgC0 = getDetValue(4, dbgAnchor)
                 val dbgC1 = getDetValue(5, dbgAnchor)
                 Log.d(
-                    "SmartyPantsManager",
+                    "FurnitureFitManager",
                     "Anchor[$dbgAnchor]: bbox=($dbgX,$dbgY,$dbgW,$dbgH), class0=$dbgC0, class1=$dbgC1"
                 )
 
                 Log.d(
-                    "SmartyPantsManager",
+                    "FurnitureFitManager",
                     "Scanning $numAnchors anchors with conf threshold $confThreshold..."
                 )
                 val startTime = System.currentTimeMillis()
@@ -694,7 +694,7 @@ class SmartyPantsManager(private val context: Context) {
 
                 val scanTime = System.currentTimeMillis() - startTime
                 Log.d(
-                    "SmartyPantsManager",
+                    "FurnitureFitManager",
                     "Found ${detections.size} detections above conf $confThreshold in ${scanTime}ms"
                 )
 
@@ -705,12 +705,12 @@ class SmartyPantsManager(private val context: Context) {
                 }
 
                 val topDets = detections.sortedByDescending { it.confidence }.take(5)
-                Log.d("SmartyPantsManager", "=== TOP DETECTIONS ===")
+                Log.d("FurnitureFitManager", "=== TOP DETECTIONS ===")
                 for ((idx, det) in topDets.withIndex()) {
                     val label = getClassName(det.classId)
-                    Log.d("SmartyPantsManager", "  [$idx] $label: conf=${String.format("%.3f", det.confidence)}")
+                    Log.d("FurnitureFitManager", "  [$idx] $label: conf=${String.format("%.3f", det.confidence)}")
                 }
-                Log.d("SmartyPantsManager", "======================")
+                Log.d("FurnitureFitManager", "======================")
 
                 val sortedDets = detections.sortedByDescending { it.confidence }.take(maxDetections)
 
@@ -728,12 +728,12 @@ class SmartyPantsManager(private val context: Context) {
                     }
                 }
 
-                Log.d("SmartyPantsManager", "After NMS: ${keepDets.size} detections kept")
+                Log.d("FurnitureFitManager", "After NMS: ${keepDets.size} detections kept")
 
                 if (keepDets.isNotEmpty()) {
                     val firstDet = keepDets[0]
                     Log.d(
-                        "SmartyPantsManager",
+                        "FurnitureFitManager",
                         "First det coeffs[0..3]: ${firstDet.coeffs[0]}, ${firstDet.coeffs[1]}, ${firstDet.coeffs[2]}, ${firstDet.coeffs[3]}"
                     )
                 }
@@ -779,7 +779,7 @@ class SmartyPantsManager(private val context: Context) {
                 val maskMin = maskProto.minOrNull() ?: 0f
                 val maskMax = maskProto.maxOrNull() ?: 0f
                 val maskAbove05 = maskProto.count { it > 0.5f }
-                Log.d("SmartyPantsManager", "Mask stats: min=$maskMin, max=$maskMax, pixels>0.5=$maskAbove05")
+                Log.d("FurnitureFitManager", "Mask stats: min=$maskMin, max=$maskMax, pixels>0.5=$maskAbove05")
 
                 // Create mask bitmap from computed maskProto values
                 val maskBmp = Bitmap.createBitmap(protoW, protoH, Config.ARGB_8888)
@@ -795,17 +795,17 @@ class SmartyPantsManager(private val context: Context) {
                 // Scale mask to original frame size
                 val outMask = Bitmap.createScaledBitmap(maskBmp, frame.width, frame.height, true)
                 maskResult = outMask
-                Log.d("SmartyPantsManager", "Mask generated: ${outMask.width}x${outMask.height}")
+                Log.d("FurnitureFitManager", "Mask generated: ${outMask.width}x${outMask.height}")
             }
 
             tensor.close()
             val finalMask = maskResult
             mainHandler.post { callback(finalMask) }
         } catch (e: OrtException) {
-            Log.e("SmartyPantsManager", "ONNX inference failed", e)
+            Log.e("FurnitureFitManager", "ONNX inference failed", e)
             mainHandler.post { callback(null) }
         } catch (e: Exception) {
-            Log.e("SmartyPantsManager", "ONNX inference exception", e)
+            Log.e("FurnitureFitManager", "ONNX inference exception", e)
             e.printStackTrace()
             mainHandler.post { callback(null) }
         }
@@ -842,7 +842,7 @@ class SmartyPantsManager(private val context: Context) {
                 }
             }
 
-            Log.d("SmartyPantsManager", "Resizing frame ${frame.width}x${frame.height} to ${inputW}x${inputH}")
+            Log.d("FurnitureFitManager", "Resizing frame ${frame.width}x${frame.height} to ${inputW}x${inputH}")
             val resized = Bitmap.createScaledBitmap(frame, inputW, inputH, true)
                 .copy(Config.ARGB_8888, false)
 
@@ -1028,7 +1028,7 @@ class SmartyPantsManager(private val context: Context) {
             val result = SegmentationResult(maskResult, detectionResults, inputW)
             mainHandler.post { callback(result) }
         } catch (e: Exception) {
-            Log.e("SmartyPantsManager", "ONNX inference with detections failed", e)
+            Log.e("FurnitureFitManager", "ONNX inference with detections failed", e)
             mainHandler.post { callback(null) }
         }
     }
@@ -1050,7 +1050,7 @@ class SmartyPantsManager(private val context: Context) {
                 arr
             }
             else -> {
-                Log.w("SmartyPantsManager", "Unknown output type: ${value?.javaClass}")
+                Log.w("FurnitureFitManager", "Unknown output type: ${value?.javaClass}")
                 FloatArray(0)
             }
         }
@@ -1158,7 +1158,6 @@ class SmartyPantsManager(private val context: Context) {
         fun rec(a: Any?) {
             when (a) {
                 is Float -> list.add(a)
-
                 is java.lang.Float -> list.add(a.toFloat())
                 is Double -> list.add(a.toFloat())
                 is java.lang.Double -> list.add(a.toDouble().toFloat())

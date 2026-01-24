@@ -104,10 +104,10 @@ cd android
 
 ```kotlin
 // In your Activity or Fragment
-val smartyPants = SmartyPantsManager(context)
+val furnitureFit = FurnitureFitManager(context)
 
 // Initialize with NCNN (recommended for best performance)
-if (smartyPants.initializeNcnn(
+if (furnitureFit.initializeNcnn(
     paramAsset = "yoloe-11l-seg.param",
     binAsset = "yoloe-11l-seg.bin",
     useGpu = true  // Uses Vulkan GPU acceleration
@@ -115,19 +115,19 @@ if (smartyPants.initializeNcnn(
     // NCNN initialized successfully
 } else {
     // Fall back to ONNX Runtime
-    smartyPants.initializeOnnx()
+    furnitureFit.initializeOnnx()
 }
 
 // Or use auto-initialization (tries NCNN -> ONNX -> TFLite)
-smartyPants.initializeAuto()
+furnitureFit.initializeAuto()
 
 // Run inference
-smartyPants.segmentImageAsync(cameraBitmap) { maskBitmap ->
+furnitureFit.segmentImageAsync(cameraBitmap) { maskBitmap ->
     // maskBitmap contains the segmentation mask
 }
 
 // Don't forget to release resources
-smartyPants.close()
+furnitureFit.close()
 ```
 
 ## Troubleshooting

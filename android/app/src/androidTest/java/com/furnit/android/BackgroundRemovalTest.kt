@@ -5,7 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.furnit.android.services.SmartyPantsManager
+import com.furnit.android.services.FurnitureFitManager
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,8 +32,8 @@ class BackgroundRemovalTest {
         assertNotNull("Failed to load bus.jpg", bitmap)
         println("Loaded bus.jpg: ${bitmap.width}x${bitmap.height}")
 
-        // Initialize SmartyPantsManager with ONNX
-        val manager = SmartyPantsManager(context)
+        // Initialize FurnitureFitManager with ONNX
+        val manager = FurnitureFitManager(context)
         manager.initializeOnnx("yoloe-11l-seg-pf.onnx")
 
         // Run segmentation with detections

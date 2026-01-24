@@ -67,9 +67,9 @@ class ModelDetailActivity : AppCompatActivity() {
             glbPath = model.assetPath
             modelTitle.text = model.name
 
-            // Brain button launches SmartyPants segmentation with this room as background
+            // Brain button launches FurnitureFit segmentation with this room as background
             brainButton.setOnClickListener {
-                val intent = Intent(this, SmartyPantsActivity::class.java)
+                val intent = Intent(this, FurnitureFitActivity::class.java)
                 intent.putExtra("ROOM_ID", model.id)
                 intent.putExtra("ROOM_NAME", model.name)
                 startActivity(intent)

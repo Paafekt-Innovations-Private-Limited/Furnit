@@ -18,7 +18,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import com.furnit.android.services.SmartyPantsManager
+import com.furnit.android.services.FurnitureFitManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -27,14 +27,14 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-class SmartyPantsFragment : Fragment() {
+class FurnitureFitFragment : Fragment() {
     private lateinit var previewView: PreviewView
     private lateinit var roomSceneView: SceneView
-    private lateinit var overlay: SmartyPantsOverlayView
+    private lateinit var overlay: FurnitureFitOverlayView
     private lateinit var statusLabel: TextView
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
-    private lateinit var manager: SmartyPantsManager
+    private lateinit var manager: FurnitureFitManager
     private var isProcessing = false
     private var showRoomBackground = true  // Show room behind segmented furniture
     private var selectedRoomId: String? = null
@@ -46,13 +46,13 @@ class SmartyPantsFragment : Fragment() {
         // Get room info from arguments
         selectedRoomId = arguments?.getString("ROOM_ID")
         selectedRoomName = arguments?.getString("ROOM_NAME")
-        Log.d("SmartyPants", "Fragment onCreate - room: $selectedRoomName (id=$selectedRoomId)")
+        Log.d("FurnitureFit", "Fragment onCreate - room: $selectedRoomName (id=$selectedRoomId)")
         cameraExecutor = Executors.newSingleThreadExecutor()
-        manager = SmartyPantsManager(requireContext())
+        manager = FurnitureFitManager(requireContext())
         // Initialize model - try NCNN first (1280x1280, more efficient), fall back to ONNX
-        Log.d("SmartyPants", "Calling initializeAuto...")
+        Log.d("FurnitureFit", "Calling initializeAuto...")
         val success = manager.initializeAuto()
-        Log.d("SmartyPants", "initializeAuto completed, success=$success")
+        Log.d("FurnitureFit", "initializeAuto completed, success=$success")
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -70,7 +70,7 @@ class SmartyPantsFragment : Fragment() {
         }
         loadRoom3D()
 
-        overlay = SmartyPantsOverlayView(requireContext()).apply {
+        overlay = FurnitureFitOverlayView(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
 
@@ -135,7 +135,7 @@ class SmartyPantsFragment : Fragment() {
                 statusLabel.text = "Camera ready - detecting furniture..."
             }
         } catch (e: Exception) {
-            Log.e("SmartyPants", "bindToLifecycle failed", e)
+            Log.e("FurnitureFit", "bindToLifecycle failed", e)
             activity?.runOnUiThread {
                 statusLabel.text = "Camera error: ${e.message}"
             }
@@ -151,7 +151,7 @@ class SmartyPantsFragment : Fragment() {
 
         val bitmap = imageProxy.toBitmapSafe()
         if (bitmap == null) {
-            Log.w("SmartyPants", "Failed to convert imageProxy to bitmap")
+            Log.w("FurnitureFit", "Failed to convert imageProxy to bitmap")
             isProcessing = false
             imageProxy.close()
             return
@@ -191,7 +191,7 @@ class SmartyPantsFragment : Fragment() {
 
     private fun loadRoom3D() {
         val roomId = selectedRoomId ?: "vintage"
-        Log.d("SmartyPants", "Loading 3D room: $roomId")
+        Log.d("FurnitureFit", "Loading 3D room: $roomId")
 
         // Map room ID to GLB asset path
         val assetPath = when (roomId) {
@@ -219,9 +219,9 @@ class SmartyPantsFragment : Fragment() {
                     lookAt(Position(0f, 1.6f, 4f))
                 }
 
-                Log.d("SmartyPants", "3D room loaded: $assetPath")
+                Log.d("FurnitureFit", "3D room loaded: $assetPath")
             } catch (e: Exception) {
-                Log.e("SmartyPants", "Failed to load 3D room: $assetPath", e)
+                Log.e("FurnitureFit", "Failed to load 3D room: $assetPath", e)
             }
         }
     }
@@ -282,7 +282,7 @@ fun ImageProxy.toBitmapSafe(): Bitmap? {
         }
         bitmap
     } catch (e: Exception) {
-        Log.e("SmartyPants", "toBitmap failed: ${e.message}")
+        Log.e("FurnitureFit", "toBitmap failed: ${e.message}")
         e.printStackTrace()
         null
     }

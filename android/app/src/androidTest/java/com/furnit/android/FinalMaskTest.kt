@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.furnit.android.services.SmartyPantsManager
+import com.furnit.android.services.FurnitureFitManager
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -14,7 +14,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Test that saves the final mask from SmartyPantsManager for visual inspection.
+ * Test that saves the final mask from FurnitureFitManager for visual inspection.
  */
 @RunWith(AndroidJUnit4::class)
 class FinalMaskTest {
@@ -30,8 +30,8 @@ class FinalMaskTest {
         assertNotNull("Failed to load bus.jpg", bitmap)
         println("Loaded bus.jpg: ${bitmap.width}x${bitmap.height}")
 
-        // Initialize SmartyPantsManager with ONNX
-        val manager = SmartyPantsManager(context)
+        // Initialize FurnitureFitManager with ONNX
+        val manager = FurnitureFitManager(context)
         manager.initializeOnnx("yoloe-11l-seg-pf.onnx")
 
         // Run segmentation
