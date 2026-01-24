@@ -34,6 +34,9 @@ class AuthenticationManager private constructor(context: Context) {
         private const val LOCKOUT_DURATION_MS = 30 * 60 * 1000L // 30 minutes
         private const val HOUR_MS = 60 * 60 * 1000L
 
+        // Set to true to bypass OTP authentication (for development/testing)
+        const val BYPASS_AUTH = true
+
         @Volatile
         private var instance: AuthenticationManager? = null
 
@@ -94,6 +97,19 @@ class AuthenticationManager private constructor(context: Context) {
      * Check if user is already authenticated
      */
     fun checkAuthenticationStatus() {
+        // Bypass authentication for development/testing
+        if (BYPASS_AUTH) {
+            currentUser = User(
+                id = "dev_user",
+                name = "Developer",
+                phoneNumber = "+1234567890"
+            )
+            isAuthenticated = true
+            Log.d(TAG, "Auth bypassed - using dev user")
+            notifyListeners()
+            return
+        }
+
         val firebaseUser = auth.currentUser
         if (firebaseUser != null) {
             // User is signed in with Firebase

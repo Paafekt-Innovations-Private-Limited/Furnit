@@ -600,7 +600,18 @@ class SharpRoomActivity : AppCompatActivity() {
         )
     }
 
+    private fun loadAssetAsBase64(filename: String): String {
+        return try {
+            val bytes = assets.open(filename).readBytes()
+            Base64.encodeToString(bytes, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load asset: $filename", e)
+            ""
+        }
+    }
+
     private fun generateWebGLHTML(plyBase64: String): String {
+        // Using SparkJS for proper Gaussian splat rendering (matching iOS implementation)
         return """
 <!DOCTYPE html>
 <html>
@@ -629,22 +640,23 @@ class SharpRoomActivity : AppCompatActivity() {
             left: 0;
         }
     </style>
+</head>
+<body>
     <script type="importmap">
     {
         "imports": {
-            "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.170.0/three.module.min.js",
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
             "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-            "@aspect/splat": "https://cdn.jsdelivr.net/npm/@aspect/splat@0.1.0/dist/splat.module.js"
+            "@sparkjsdev/spark": "https://cdn.jsdelivr.net/npm/@sparkjsdev/spark@0.1.9/dist/spark.module.min.js"
         }
     }
     </script>
-</head>
-<body>
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
 
-        console.log('WebGL viewer initializing...');
+        console.log('WebGL Gaussian Splat viewer initializing with SparkJS...');
 
         // Scene setup
         const scene = new THREE.Scene();
@@ -655,19 +667,27 @@ class SharpRoomActivity : AppCompatActivity() {
         camera.position.set(0, 0, 5);
         camera.up.set(0, 1, 0);
 
-        // Renderer - use full viewport size
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        function getViewportSize() {
-            // Use the largest available dimension measurement
-            const w = Math.max(window.innerWidth, document.documentElement.clientWidth, window.screen.width);
-            const h = Math.max(window.innerHeight, document.documentElement.clientHeight, window.screen.height);
-            return { width: w, height: h };
-        }
-        const viewport = getViewportSize();
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        const viewport = {
+            width: Math.max(window.innerWidth, document.documentElement.clientWidth),
+            height: Math.max(window.innerHeight, document.documentElement.clientHeight)
+        };
         console.log('Viewport size:', viewport.width, 'x', viewport.height);
         renderer.setSize(viewport.width, viewport.height);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
+
+        // SparkRenderer for Gaussian splatting (reduced blur for fallback PLY data)
+        const spark = new SparkRenderer({
+            renderer: renderer,
+            maxStdDev: 1.0,           // Reduced from 3.0 - smaller splats
+            preBlurAmount: 0.0,       // No pre-blur
+            blurAmount: 0.0,          // No post-blur
+            falloff: 1.0,             // Sharp falloff
+            focalAdjustment: 1.0      // No focal adjustment
+        });
+        camera.add(spark);  // Add SparkRenderer as child of camera
 
         // Orbit controls
         const controls = new OrbitControls(camera, renderer.domElement);
@@ -680,114 +700,125 @@ class SharpRoomActivity : AppCompatActivity() {
         let initialCameraPosition = camera.position.clone();
         let initialControlsTarget = controls.target.clone();
 
-        // Load PLY data from base64
+        // Create PLY blob URL from base64 data
         const plyBase64 = '$plyBase64';
         const binaryString = atob(plyBase64);
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
             bytes[i] = binaryString.charCodeAt(i);
         }
+        const plyBlob = new Blob([bytes], { type: 'application/octet-stream' });
+        const plyURL = URL.createObjectURL(plyBlob);
 
         console.log('PLY data loaded:', bytes.length, 'bytes');
 
-        // Parse PLY file
-        function parsePLY(data) {
+        // Create SplatMesh using SparkJS (matching iOS)
+        let splatMesh = null;
+        try {
+            splatMesh = new SplatMesh({
+                url: plyURL,
+                maxSh: 0  // No spherical harmonics for fallback data
+            });
+
+            scene.add(splatMesh);
+
+            // Classic PLY is pre-rotated, flip 180° around X + 90° around Z for correct viewing (matching iOS)
+            splatMesh.rotation.x = Math.PI;
+            splatMesh.rotation.z = Math.PI / 2;
+            console.log('SplatMesh created and rotated (180° X + 90° Z)');
+
+            // Wait for the splat mesh to load and position camera
+            splatMesh.addEventListener('load', () => {
+                console.log('SplatMesh loaded');
+
+                // Get bounding box and center camera
+                const box = new THREE.Box3().setFromObject(splatMesh);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 1.5;
+
+                camera.position.set(center.x, center.y, center.z + cameraDistance);
+                controls.target.copy(center);
+                controls.update();
+
+                // Save initial position
+                initialCameraPosition.copy(camera.position);
+                initialControlsTarget.copy(controls.target);
+
+                console.log('Room centered at:', center);
+                console.log('Room size:', size);
+                console.log('Camera at distance:', cameraDistance);
+
+                // Notify Android that loading is complete
+                if (window.Android) {
+                    window.Android.onLoaded();
+                }
+            });
+
+        } catch (e) {
+            console.error('Failed to create SplatMesh:', e);
+            // Fallback to basic point cloud visualization
+            createFallbackPointCloud(bytes);
+        }
+
+        // Fallback point cloud if SparkJS fails
+        function createFallbackPointCloud(data) {
+            console.log('Using fallback point cloud visualization');
+
             const text = new TextDecoder().decode(data);
             const headerEnd = text.indexOf('end_header\n');
-            if (headerEnd === -1) {
-                console.error('Invalid PLY: no end_header');
-                return null;
-            }
+            if (headerEnd === -1) return;
 
             const header = text.substring(0, headerEnd);
             const vertexMatch = header.match(/element vertex (\d+)/);
-            if (!vertexMatch) {
-                console.error('Invalid PLY: no vertex count');
-                return null;
-            }
+            if (!vertexMatch) return;
 
             const vertexCount = parseInt(vertexMatch[1]);
-            console.log('Parsing', vertexCount, 'vertices');
-
-            // Binary data starts after header
             const headerBytes = new TextEncoder().encode(text.substring(0, headerEnd + 11));
             const binaryStart = headerBytes.length;
-
-            // Each vertex: 11 floats (44 bytes) + 3 bytes RGB = 47 bytes
             const bytesPerVertex = 47;
-            const positions = [];
-            const colors = [];
 
+            const positions = new Float32Array(vertexCount * 3);
+            const colors = new Float32Array(vertexCount * 3);
             const dataView = new DataView(data.buffer);
 
             for (let i = 0; i < vertexCount; i++) {
                 const offset = binaryStart + i * bytesPerVertex;
                 if (offset + bytesPerVertex > data.length) break;
 
-                // Position
-                const x = dataView.getFloat32(offset, true);
-                const y = dataView.getFloat32(offset + 4, true);
-                const z = dataView.getFloat32(offset + 8, true);
+                const idx3 = i * 3;
+                positions[idx3] = dataView.getFloat32(offset, true);
+                positions[idx3 + 1] = dataView.getFloat32(offset + 4, true);
+                positions[idx3 + 2] = dataView.getFloat32(offset + 8, true);
 
-                positions.push(x, y, z);
-
-                // Skip scale (12 bytes), rotation (16 bytes), opacity (4 bytes)
-                // RGB at offset + 44
-                const r = data[offset + 44] / 255;
-                const g = data[offset + 45] / 255;
-                const b = data[offset + 46] / 255;
-
-                colors.push(r, g, b);
+                colors[idx3] = data[offset + 44] / 255;
+                colors[idx3 + 1] = data[offset + 45] / 255;
+                colors[idx3 + 2] = data[offset + 46] / 255;
             }
 
-            console.log('Parsed', positions.length / 3, 'vertices');
-            return { positions, colors };
-        }
-
-        // Create point cloud from PLY with larger splats for better visualization
-        const plyData = parsePLY(bytes);
-        if (plyData) {
             const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(plyData.positions, 3));
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(plyData.colors, 3));
-
-            // Use sprite-based rendering for softer splats
-            const canvas = document.createElement('canvas');
-            canvas.width = 64;
-            canvas.height = 64;
-            const ctx = canvas.getContext('2d');
-            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-            gradient.addColorStop(0, 'rgba(255,255,255,1)');
-            gradient.addColorStop(0.3, 'rgba(255,255,255,0.8)');
-            gradient.addColorStop(0.7, 'rgba(255,255,255,0.3)');
-            gradient.addColorStop(1, 'rgba(255,255,255,0)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 64, 64);
-
-            const splatTexture = new THREE.CanvasTexture(canvas);
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
             const material = new THREE.PointsMaterial({
-                size: 0.12,
+                size: 0.02,
                 vertexColors: true,
-                sizeAttenuation: true,
-                map: splatTexture,
-                transparent: true,
-                alphaTest: 0.01,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending
+                sizeAttenuation: true
             });
 
             const points = new THREE.Points(geometry, material);
             scene.add(points);
 
-            // Calculate bounds and center camera
+            // Center camera
             geometry.computeBoundingBox();
-            const box = geometry.boundingBox;
             const center = new THREE.Vector3();
-            box.getCenter(center);
-
+            geometry.boundingBox.getCenter(center);
             const size = new THREE.Vector3();
-            box.getSize(size);
+            geometry.boundingBox.getSize(size);
+
             const maxDim = Math.max(size.x, size.y, size.z);
             const fov = camera.fov * (Math.PI / 180);
             const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 1.5;
@@ -796,14 +827,9 @@ class SharpRoomActivity : AppCompatActivity() {
             controls.target.copy(center);
             controls.update();
 
-            // Save initial position
             initialCameraPosition.copy(camera.position);
             initialControlsTarget.copy(controls.target);
 
-            console.log('Room centered at:', center);
-            console.log('Camera at distance:', cameraDistance);
-
-            // Notify Android that loading is complete
             if (window.Android) {
                 window.Android.onLoaded();
             }
@@ -845,15 +871,18 @@ class SharpRoomActivity : AppCompatActivity() {
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Animation loop
+        // Animation loop with SparkRenderer
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
+
+            // Use SparkRenderer's update method for optimized Gaussian rendering
+            spark.update({ scene });
             renderer.render(scene, camera);
         }
         animate();
 
-        console.log('WebGL viewer ready');
+        console.log('WebGL Gaussian splat viewer ready with SparkJS');
     </script>
 </body>
 </html>

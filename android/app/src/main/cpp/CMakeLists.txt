@@ -32,14 +32,14 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 # 16KB ELF page alignment for Android 15+ compatibility
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
 
-# Create shared library
+# Create YOLOE shared library
 add_library(
     yoloe_ncnn
     SHARED
     yoloe_ncnn.cpp
 )
 
-# Link libraries
+# Link YOLOE libraries
 target_link_libraries(
     yoloe_ncnn
     ncnn
@@ -49,9 +49,33 @@ target_link_libraries(
     ${jnigraphics-lib}
 )
 
-# Set NCNN include directory
+# Set YOLOE NCNN include directory
 target_include_directories(
     yoloe_ncnn
+    PRIVATE
+    ${NCNN_DIR}/include
+)
+
+# Create SHARP shared library
+add_library(
+    sharp_ncnn
+    SHARED
+    sharp_ncnn.cpp
+)
+
+# Link SHARP libraries
+target_link_libraries(
+    sharp_ncnn
+    ncnn
+    OpenMP::OpenMP_CXX
+    ${log-lib}
+    ${android-lib}
+    ${jnigraphics-lib}
+)
+
+# Set SHARP NCNN include directory
+target_include_directories(
+    sharp_ncnn
     PRIVATE
     ${NCNN_DIR}/include
 )
