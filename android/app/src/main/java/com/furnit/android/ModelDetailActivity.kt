@@ -247,8 +247,28 @@ class ModelDetailActivity : AppCompatActivity() {
                     lookAt(cameraSetup.lookAt)
                 }
 
-                Log.d(TAG, "  Camera position: ${cameraSetup.position}")
+                Log.d(TAG, "  Camera position set: ${cameraSetup.position}")
                 Log.d(TAG, "  Camera lookAt: ${cameraSetup.lookAt}")
+
+                // Re-apply camera position after a frame to override any manipulator reset
+                sceneView.post {
+                    sceneView.cameraNode.apply {
+                        position = cameraSetup.position
+                        lookAt(cameraSetup.lookAt)
+                    }
+                    Log.d(TAG, "  Camera position re-applied (post)")
+                }
+
+                // Also re-apply after a short delay to handle async initialization
+                sceneView.postDelayed({
+                    sceneView.cameraNode.apply {
+                        position = cameraSetup.position
+                        lookAt(cameraSetup.lookAt)
+                    }
+                    Log.d(TAG, "  Camera position re-applied (delayed)")
+                    Log.d(TAG, "  Final camera: ${sceneView.cameraNode.position}")
+                }, 100)
+
                 Log.d(TAG, "=== Model Load Complete ===")
 
                 loadingIndicator.visibility = View.GONE
