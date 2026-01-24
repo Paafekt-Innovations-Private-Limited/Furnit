@@ -7,7 +7,7 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:613415224058:android:furnit2025android",
+        "mobilesdk_app_id": "1:613415224058:android:c4d35380e0a5e0f4a13f43",
         "android_client_info": {
           "package_name": "com.furnit.android"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyD4154IxE-cDFQk5bdtsAJ-lfPyO-rCflI"
+          "current_key": "AIzaSyAZVZsjg0q8mhSTy4_Q5XF2zLNMaYtzUNg"
         }
       ],
       "services": {

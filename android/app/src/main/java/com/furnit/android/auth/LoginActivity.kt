@@ -38,12 +38,15 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private lateinit var errorText: TextView
 
-    private var selectedCountry: CountryCode = CountryCode.getDefaultCountry()
+    private lateinit var selectedCountry: CountryCode
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         authManager = AuthenticationManager.getInstance(this)
+
+        // Initialize country code based on SIM/network/locale
+        selectedCountry = CountryCode.getDefaultCountry(this)
 
         // Check if already authenticated
         if (authManager.isAuthenticated) {
