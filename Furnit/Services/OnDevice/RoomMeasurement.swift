@@ -126,14 +126,13 @@ class RoomMeasurement {
         // Convert to SIMD for faster math
         let points = positions.map { SIMD3<Float>($0.0, $0.1, $0.2) }
 
-        // Compute overall bounding box
-        var minBound = SIMD3<Float>(Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude, Float.greatestFiniteMagnitude)
-        var maxBound = SIMD3<Float>(-Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude, -Float.greatestFiniteMagnitude)
-
-        for p in points {
-            minBound = min(minBound, p)
-            maxBound = max(maxBound, p)
+        // Compute overall bounding box using utility function
+        guard let bounds = SharpRoomBoundsUtils.calculateBoundingBox(points: points) else {
+            logDebug("RoomMeasurement: Failed to calculate bounding box")
+            return nil
         }
+        let minBound = bounds.min
+        let maxBound = bounds.max
 
         let boundingBox = maxBound - minBound
         logDebug("RoomMeasurement: Bounding box: \(boundingBox.x) × \(boundingBox.y) × \(boundingBox.z)")

@@ -43,33 +43,20 @@ struct RoomBoundaryManager {
     ///   - 0.1  => 10% of room depth inside from the front wall
     ///   - 0.5  => at room center
     func getCameraAtBackWall(fovDegrees: Float = 60) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
-        // Move camera INSIDE the room (towards negative Z),
-        // slightly behind the front wall so the room fills more of the view.
-        let insideFactor: Float = 0.15   // 15% into the room from the front wall
-
-        // frontWallZ = maxZ (closest wall to camera, least negative)
-        // backWallZ  = minZ (far wall, most negative)
-        //
-        // depth = frontWallZ - backWallZ (positive)
-        // eyeZ = frontWallZ - depth * insideFactor  → moves towards backWallZ (more negative)
-        let eyeZ = frontWallZ - depth * insideFactor
-
-        let eye = SIMD3<Float>(
-            centerX,
-            centerY,
-            eyeZ
-        )
-
-        let target = SIMD3<Float>(
-            centerX,
-            centerY,
-            centerZ   // look at room center
+        // Delegate to SharpRoomCameraUtils for camera position calculation
+        let result = SharpRoomCameraUtils.calculateCameraPosition(
+            frontWallZ: frontWallZ,
+            backWallZ: backWallZ,
+            centerX: centerX,
+            centerY: centerY,
+            centerZ: centerZ,
+            insideFactor: 0.15  // 15% into the room from the front wall
         )
 
         logDebug("📷 [BoundaryManager] frontWallZ=\(frontWallZ), backWallZ=\(backWallZ), depth=\(depth)")
-        logDebug("📷 [BoundaryManager] INSIDE room: eye=(\(eye.x), \(eye.y), \(eye.z)) target=(\(target.x), \(target.y), \(target.z))")
+        logDebug("📷 [BoundaryManager] INSIDE room: eye=(\(result.eye.x), \(result.eye.y), \(result.eye.z)) target=(\(result.target.x), \(result.target.y), \(result.target.z))")
 
-        return (eye: eye, target: target)
+        return result
     }
 
 

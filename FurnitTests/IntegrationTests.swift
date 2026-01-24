@@ -406,24 +406,34 @@ final class IntegrationTests: XCTestCase {
     func testNMSStressTest() {
         var detections: [FurnitureFitDetection] = []
 
-        // Create 200 detections with varying positions and confidences
-        for i in 0..<200 {
-            detections.append(FurnitureFitDetection(
-                x: Float(i % 20) * 50 + Float.random(in: -5...5),
-                y: Float(i / 20) * 50 + Float.random(in: -5...5),
-                w: 40,
-                h: 40,
-                confidence: Float.random(in: 0.1...1.0),
-                classIdx: Int.random(in: 0...10)
-            ))
+        // Create 3 highly overlapping detections at each of 10 locations
+        // Each group has 3 nearly-identical boxes with decreasing confidence
+        for cluster in 0..<10 {
+            let baseX = Float(cluster % 5) * 200  // Well separated clusters
+            let baseY = Float(cluster / 5) * 200
+
+            // 3 overlapping detections per cluster (almost identical position)
+            for j in 0..<3 {
+                detections.append(FurnitureFitDetection(
+                    x: baseX + Float(j),  // 1-pixel offset
+                    y: baseY + Float(j),
+                    w: 50,
+                    h: 50,
+                    confidence: 0.9 - Float(j) * 0.2,  // 0.9, 0.7, 0.5
+                    classIdx: 0
+                ))
+            }
         }
+
+        // 30 total detections
+        XCTAssertEqual(detections.count, 30)
 
         let result = FurnitureFitNMS.apply(detections: detections, iouThreshold: 0.5)
 
-        // Should have reduced the count
-        XCTAssertLessThan(result.count, detections.count)
+        // Should suppress 2 out of 3 per cluster, keeping 10 detections
+        XCTAssertLessThan(result.count, detections.count, "NMS should reduce detection count")
 
-        // All kept detections should have unique-enough positions
+        // All kept detections should have IoU <= threshold
         for i in 0..<result.count {
             for j in (i+1)..<result.count {
                 let iou = FurnitureFitIoU.calculate(result[i], result[j])

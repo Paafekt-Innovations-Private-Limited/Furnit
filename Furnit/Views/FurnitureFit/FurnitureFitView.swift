@@ -1533,35 +1533,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
     }
 
-    // MARK: - NMS
+    // MARK: - NMS (delegates to FurnitureFitNMS utility)
     func applyNMS(boxes: [CGRect], scores: [Float], iouThreshold: Float) -> [Int] {
-        var indices = scores.enumerated().sorted(by: { $0.element > $1.element }).map { $0.offset }
-        var keep = [Int]()
-        
-        while !indices.isEmpty {
-            let current = indices.removeFirst()
-            keep.append(current)
-            
-            indices.removeAll { next in
-                let intersection = boxes[current].intersection(boxes[next])
-                let iou = intersection.area / (boxes[current].area + boxes[next].area - intersection.area)
-                return iou > CGFloat(iouThreshold)
-            }
-        }
-        return keep
-    }
-    
-    private func iou(_ a: UnionDet, _ b: UnionDet) -> Float {
-        let ax1 = a.x - a.w * 0.5, ax2 = a.x + a.w * 0.5
-        let ay1 = a.y - a.h * 0.5, ay2 = a.y + a.h * 0.5
-        let bx1 = b.x - b.w * 0.5, bx2 = b.x + b.w * 0.5
-        let by1 = b.y - b.h * 0.5, by2 = b.y + b.h * 0.5
-        
-        let ix = max(Float(0), min(ax2, bx2) - max(ax1, bx1))
-        let iy = max(Float(0), min(ay2, by2) - max(ay1, by1))
-        let inter = ix * iy
-        let union = a.w * a.h + b.w * b.h - inter
-        return union > 0 ? inter / union : 0.0
+        return FurnitureFitNMS.apply(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
     }
 
     // MARK: - Parse Prototypes
@@ -1912,9 +1886,5 @@ extension UIView {
         }
         return nil
     }
-}
-
-extension CGRect {
-    var area: CGFloat { width * height }
 }
 
