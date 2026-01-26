@@ -23,9 +23,23 @@ fileprivate func blas_sgemv_rowmajor(m: BLASInt, n: BLASInt, alpha: Float, A: Un
     BlasSgemv(true, false, m, n, alpha, A, lda, x, incx, beta, y, incy)
 }
 
+/// SGEMV with transpose: y = A^T * x
+/// A is (m x n), A^T is (n x m), x is (m,), y is (n,)
+@inline(__always)
+fileprivate func blas_sgemv_rowmajor_trans(m: BLASInt, n: BLASInt, alpha: Float, A: UnsafePointer<Float>, lda: BLASInt, x: UnsafePointer<Float>, incx: BLASInt, beta: Float, y: UnsafeMutablePointer<Float>, incy: BLASInt) {
+    BlasSgemv(true, true, m, n, alpha, A, lda, x, incx, beta, y, incy)
+}
+
 @inline(__always)
 fileprivate func blas_sgemm_rowmajor(m: BLASInt, n: BLASInt, k: BLASInt, alpha: Float, A: UnsafePointer<Float>, lda: BLASInt, B: UnsafePointer<Float>, ldb: BLASInt, beta: Float, C: UnsafeMutablePointer<Float>, ldc: BLASInt) {
     BlasSgemm(true, false, false, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
+}
+
+/// SGEMM with A transposed: C = A^T * B
+/// A is (k x m), A^T is (m x k), B is (k x n), C is (m x n)
+@inline(__always)
+fileprivate func blas_sgemm_rowmajor_transA(m: BLASInt, n: BLASInt, k: BLASInt, alpha: Float, A: UnsafePointer<Float>, lda: BLASInt, B: UnsafePointer<Float>, ldb: BLASInt, beta: Float, C: UnsafeMutablePointer<Float>, ldc: BLASInt) {
+    BlasSgemm(true, true, false, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc)
 }
 
 
@@ -1082,14 +1096,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let frameCx = frameW / 2
         let frameCy = frameH / 2
 
-        // Reorganize planes for BLAS: A is (planeSize x 32) row-major
-        var A = [Float](repeating: 0, count: planeSize * 32)
-        for ch in 0..<32 {
-            for px in 0..<planeSize {
-                A[px * 32 + ch] = planes[ch * planeSize + px]
-            }
-        }
-
         var primaryIdx = -1
         var maxScore: Float = -1
         let minConf: Float = 0.15
@@ -1271,15 +1277,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         // STAGE 5b: Batched SGEMM for all candidate logits + overlap classification
 
-        // Build primary logits first (single SGEMV)
+        // Build primary logits using transposed SGEMV (no matrix transpose needed!)
+        // planes is (32 x planeSize), we compute: y = planes^T * coeffs
+        // Result: y[px] = sum_ch(planes[ch, px] * coeffs[ch]) for each pixel
         var primaryLogits = [Float](repeating: 0, count: planeSize)
-        A.withUnsafeBufferPointer { aPtr in
+        planes.withUnsafeBufferPointer { planesPtr in
             primary.coeffs.withUnsafeBufferPointer { xPtr in
                 primaryLogits.withUnsafeMutableBufferPointer { yPtr in
-                    let m = BLASInt(planeSize)
-                    let n = BLASInt(32)
-                    let lda = BLASInt(32)
-                    blas_sgemv_rowmajor(m: m, n: n, alpha: 1.0, A: aPtr.baseAddress!, lda: lda, x: xPtr.baseAddress!, incx: 1, beta: 0.0, y: yPtr.baseAddress!, incy: 1)
+                    // planes is (32 x planeSize), transposed gives (planeSize x 32)
+                    // m=32, n=planeSize, lda=planeSize
+                    blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0, A: planesPtr.baseAddress!, lda: BLASInt(planeSize), x: xPtr.baseAddress!, incx: 1, beta: 0.0, y: yPtr.baseAddress!, incy: 1)
                 }
             }
         }
@@ -1313,57 +1320,68 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 for k in 0..<32 { B[k * N + j] = coeffs[k] }
             }
 
-            // SGEMM: C = A * B where A is (planeSize x 32), B is (32 x N), C is (planeSize x N)
+            // SGEMM: C = planes^T * B where planes is (32 x planeSize), B is (32 x N), C is (planeSize x N)
             var C = [Float](repeating: 0, count: planeSize * N)
 
-            A.withUnsafeBufferPointer { aPtr in
+            planes.withUnsafeBufferPointer { planesPtr in
                 B.withUnsafeBufferPointer { bPtr in
                     C.withUnsafeMutableBufferPointer { cPtr in
                         let M = BLASInt(planeSize)
                         let Nbl = BLASInt(N)
                         let K = BLASInt(32)
-                        let lda = BLASInt(32)
+                        let lda = BLASInt(planeSize)  // leading dim of planes (32 x planeSize)
                         let ldb = Nbl
                         let ldc = Nbl
-                        blas_sgemm_rowmajor(m: M, n: Nbl, k: K, alpha: 1.0, A: aPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: 0.0, C: cPtr.baseAddress!, ldc: ldc)
+                        blas_sgemm_rowmajor_transA(m: M, n: Nbl, k: K, alpha: 1.0, A: planesPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: 0.0, C: cPtr.baseAddress!, ldc: ldc)
                     }
                 }
             }
 
-            // Precompute mask positive pixels for each candidate (for deduplication)
-            var candMasks: [[Int]] = Array(repeating: [], count: N)  // indices of positive pixels
-            var candAreas: [Int] = Array(repeating: 0, count: N)
+            // Compute candArea and interWithPrimary in ONE streaming pass (no [Int] allocations!)
+            var candArea = [Int](repeating: 0, count: N)
+            var interWithPrimary = [Int](repeating: 0, count: N)
 
-            for j in 0..<N {
-                var positivePixels: [Int] = []
-                for px in 0..<planeSize {
-                    if C[px * N + j] > 0 {
-                        positivePixels.append(px)
+            C.withUnsafeBufferPointer { cPtr in
+                primaryLogits.withUnsafeBufferPointer { pPtr in
+                    for px in 0..<planeSize {
+                        let rowBase = px * N
+                        let pOn = pPtr[px] > 0
+                        for j in 0..<N {
+                            let v = cPtr[rowBase + j]
+                            if v > 0 {
+                                candArea[j] &+= 1
+                                if pOn { interWithPrimary[j] &+= 1 }
+                            }
+                        }
                     }
                 }
-                candMasks[j] = positivePixels
-                candAreas[j] = positivePixels.count
             }
 
-            // Track kept mask indices for deduplication
-            var keptMaskIndices: [Int] = []
-            let maskDupeThreshold: Float = 0.7  // If IoU > 70% with kept mask, it's a duplicate
+            // Bbox IoU helper for cheap deduplication gate
+            func bboxIoU(_ a: UnionDet, _ b: UnionDet) -> Float {
+                let ax1 = a.x - a.w * 0.5, ay1 = a.y - a.h * 0.5
+                let ax2 = a.x + a.w * 0.5, ay2 = a.y + a.h * 0.5
+                let bx1 = b.x - b.w * 0.5, by1 = b.y - b.h * 0.5
+                let bx2 = b.x + b.w * 0.5, by2 = b.y + b.h * 0.5
+                let ix1 = max(ax1, bx1), iy1 = max(ay1, by1)
+                let ix2 = min(ax2, bx2), iy2 = min(ay2, by2)
+                let iw = max(0, ix2 - ix1), ih = max(0, iy2 - iy1)
+                let inter = iw * ih
+                let aArea = a.w * a.h, bArea = b.w * b.h
+                let uni = aArea + bArea - inter
+                return uni > 0 ? inter / uni : 0
+            }
 
-            // Mask overlap check with deduplication
+            let bboxDupeThreshold: Float = 0.7  // Bbox IoU gate for deduplication
+
+            // Filter by overlap with primary + dedupe by bbox IoU (cheap!)
             for j in 0..<N {
                 let (origIdx, d) = prunedCandidates[j]
-                let candPositives = candMasks[j]
-                let candArea = candAreas[j]
+                let area = candArea[j]
+                if area == 0 { continue }
 
-                // Count intersection with primary
-                var interWithPrimary = 0
-                for px in candPositives {
-                    if primaryLogits[px] > 0 { interWithPrimary += 1 }
-                }
-
-                // Overlap = fraction of CANDIDATE inside primary (so small items on top survive)
-                // e.g., pillow on bed: pillow is small, most of pillow overlaps bed → high overlap
-                let overlap: Float = candArea > 0 ? Float(interWithPrimary) / Float(candArea) : 0
+                // Overlap = fraction of CANDIDATE inside primary
+                let overlap = Float(interWithPrimary[j]) / Float(area)
 
                 if overlap < overlapThreshold {
                     if debugMode {
@@ -1372,24 +1390,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     continue
                 }
 
-                // Check for duplicate mask with already-kept candidates
+                // Check for duplicate using cheap bbox IoU (no Set operations!)
                 var isDuplicate = false
-                for keptIdx in keptMaskIndices {
-                    let keptPositives = Set(candMasks[keptIdx])
-                    let keptArea = candAreas[keptIdx]
-
-                    // Compute IoU between this candidate and kept mask
-                    var interCount = 0
-                    for px in candPositives {
-                        if keptPositives.contains(px) { interCount += 1 }
-                    }
-                    let unionCount = candArea + keptArea - interCount
-                    let iou: Float = unionCount > 0 ? Float(interCount) / Float(unionCount) : 0
-
-                    if iou > maskDupeThreshold {
+                for keptDet in kept2 {
+                    let iou = bboxIoU(d, keptDet)
+                    if iou > bboxDupeThreshold {
                         isDuplicate = true
                         if debugMode {
-                            logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) DUPLICATE (IoU=\(String(format: "%.1f", iou * 100))% with kept mask)")
+                            logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) DUPLICATE (bbox IoU=\(String(format: "%.1f", iou * 100))%)")
                         }
                         break
                     }
@@ -1397,7 +1405,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
                 if !isDuplicate {
                     kept2.append(d)
-                    keptMaskIndices.append(j)
                     if debugMode {
                         logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(String(format: "%.1f", overlap * 100))%")
                     }
@@ -1480,12 +1487,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 var tmp = [Float](repeating: 0, count: planeSize)
 
                 for d in detections {
-                    // tmp = A * coeffs  (A is planeSize x 32, row-major, lda = 32)
-                    A.withUnsafeBufferPointer { aPtr in
+                    // tmp = planes^T * coeffs using transposed SGEMV (no matrix copy needed)
+                    planes.withUnsafeBufferPointer { planesPtr in
                         d.coeffs.withUnsafeBufferPointer { xPtr in
                             tmp.withUnsafeMutableBufferPointer { yPtr in
-                                let lda = BLASInt(32)
-                                blas_sgemv_rowmajor(m: M, n: K, alpha: alpha, A: aPtr.baseAddress!, lda: lda, x: xPtr.baseAddress!, incx: 1, beta: beta, y: yPtr.baseAddress!, incy: 1)
+                                blas_sgemv_rowmajor_trans(m: K, n: M, alpha: alpha, A: planesPtr.baseAddress!, lda: M, x: xPtr.baseAddress!, incx: 1, beta: beta, y: yPtr.baseAddress!, incy: 1)
                             }
                         }
                     }
@@ -1518,13 +1524,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     // C is M x N (row-major), each row is contiguous length N
                     var C = [Float](repeating: 0, count: planeSize * Bn)
 
-                    A.withUnsafeBufferPointer { aPtr in
+                    // C = planes^T * B using transposed SGEMM (no matrix copy needed)
+                    planes.withUnsafeBufferPointer { planesPtr in
                         B.withUnsafeBufferPointer { bPtr in
                             C.withUnsafeMutableBufferPointer { cPtr in
-                                let lda = BLASInt(32)
+                                let lda = M  // leading dim of planes (32 x planeSize)
                                 let ldb = N
                                 let ldc = N
-                                blas_sgemm_rowmajor(m: M, n: N, k: K, alpha: alpha, A: aPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: beta, C: cPtr.baseAddress!, ldc: ldc)
+                                blas_sgemm_rowmajor_transA(m: M, n: N, k: K, alpha: alpha, A: planesPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: beta, C: cPtr.baseAddress!, ldc: ldc)
                             }
                         }
                     }
