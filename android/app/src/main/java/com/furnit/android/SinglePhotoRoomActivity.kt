@@ -539,8 +539,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         // Show progress overlay
         showProgressOverlay()
 
-        // Start Sharp generation
-        val sharpService = SharpService(this)
+        // Start Sharp generation (singleton - model stays loaded)
+        val sharpService = SharpService.getInstance(this)
         sharpService.generateGaussians(bitmap, object : SharpService.ProgressCallback {
             override fun onProgress(progress: Float, message: String) {
                 runOnUiThread {

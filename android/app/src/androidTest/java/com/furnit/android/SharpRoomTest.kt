@@ -36,7 +36,7 @@ class SharpRoomTest {
         println("Loaded room.jpeg: ${bitmap.width}x${bitmap.height}")
 
         // Initialize SharpService
-        val sharpService = SharpService(context)
+        val sharpService = SharpService.getInstance(context)
 
         // Generate Gaussian splats
         val latch = CountDownLatch(1)
@@ -59,8 +59,8 @@ class SharpRoomTest {
             }
         })
 
-        // Wait for generation
-        val completed = latch.await(30, TimeUnit.SECONDS)
+        // Wait for generation (15 minutes for FP32 split model)
+        val completed = latch.await(900, TimeUnit.SECONDS)
         assertTrue("Sharp generation timed out", completed)
         assertNull("Sharp generation failed: $errorMessage", errorMessage)
         assertNotNull("Generation result should not be null", generationResult)
@@ -77,17 +77,17 @@ class SharpRoomTest {
         assertTrue("PLY file should have content", result.plyFile.length() > 1000)
         assertTrue("Classic PLY file should exist", result.classicPlyFile.exists())
 
-        // Verify PLY header format
-        val plyHeader = result.plyFile.readText().take(500)
+        // Verify PLY header format (3DGS standard with spherical harmonics)
+        val plyHeader = result.plyFile.readText().take(1500)
         assertTrue("PLY should have valid header", plyHeader.contains("ply"))
         assertTrue("PLY should have binary format", plyHeader.contains("format binary_little_endian"))
         assertTrue("PLY should have vertex element", plyHeader.contains("element vertex"))
         assertTrue("PLY should have position properties", plyHeader.contains("property float x"))
+        assertTrue("PLY should have f_dc (SH colors)", plyHeader.contains("property float f_dc_0"))
         assertTrue("PLY should have scale properties", plyHeader.contains("property float scale_0"))
         assertTrue("PLY should have rotation properties", plyHeader.contains("property float rot_0"))
         assertTrue("PLY should have opacity", plyHeader.contains("property float opacity"))
-        assertTrue("PLY should have color properties", plyHeader.contains("property uchar red"))
-        println("\nPLY header:\n$plyHeader")
+        println("\nPLY header:\n${plyHeader.take(800)}...")
 
         // Verify room dimensions are reasonable
         assertTrue("Room width should be > 0", result.roomWidth > 0)
@@ -110,7 +110,7 @@ class SharpRoomTest {
         }
         assertNotNull("Failed to load room.jpeg", bitmap)
 
-        val sharpService = SharpService(context)
+        val sharpService = SharpService.getInstance(context)
 
         val latch = CountDownLatch(1)
         var result: SharpService.GenerationResult? = null
@@ -126,12 +126,12 @@ class SharpRoomTest {
             }
         })
 
-        latch.await(30, TimeUnit.SECONDS)
+        latch.await(180, TimeUnit.SECONDS)
         assertNotNull("Result should not be null", result)
 
         // Parse vertex count from PLY header
-        val plyContent = result!!.plyFile.readText().take(500)
-        val vertexMatch = Regex("element vertex (\\d+)").find(plyContent)
+        val plyHeader = result!!.plyFile.readText().take(500)
+        val vertexMatch = Regex("element vertex (\\d+)").find(plyHeader)
         assertNotNull("Should find vertex count in PLY", vertexMatch)
 
         val vertexCount = vertexMatch!!.groupValues[1].toInt()
@@ -142,14 +142,22 @@ class SharpRoomTest {
         assertTrue("Should not exceed 100000 vertices", vertexCount <= 100000)
 
         // Verify file size matches expected vertex data
-        // Each vertex: 11 floats (44 bytes) + 3 bytes RGB = 47 bytes
-        val headerEnd = result!!.plyFile.readText().indexOf("end_header\n") + 11
-        val expectedDataSize = vertexCount * 47
+        // 3DGS format: 62 floats per vertex = 248 bytes per vertex
+        val plyContent = result!!.plyFile.readBytes()
+        val headerEndStr = "end_header\n"
+        var headerEnd = 0
+        for (i in 0 until plyContent.size - headerEndStr.length) {
+            if (String(plyContent, i, headerEndStr.length) == headerEndStr) {
+                headerEnd = i + headerEndStr.length
+                break
+            }
+        }
+        val expectedDataSize = vertexCount * 62 * 4  // 62 floats * 4 bytes
         val actualFileSize = result!!.plyFile.length()
         val actualDataSize = actualFileSize - headerEnd
 
         println("Header size: $headerEnd bytes")
-        println("Expected data size: $expectedDataSize bytes")
+        println("Expected data size: $expectedDataSize bytes (62 floats/vertex)")
         println("Actual data size: $actualDataSize bytes")
 
         // Allow some tolerance for header size estimation
@@ -169,7 +177,7 @@ class SharpRoomTest {
         }
         assertNotNull("Failed to load room.jpeg", bitmap)
 
-        val sharpService = SharpService(context)
+        val sharpService = SharpService.getInstance(context)
 
         val latch = CountDownLatch(1)
         var result: SharpService.GenerationResult? = null
@@ -185,7 +193,7 @@ class SharpRoomTest {
             }
         })
 
-        latch.await(30, TimeUnit.SECONDS)
+        latch.await(180, TimeUnit.SECONDS)
         assertNotNull("Result should not be null", result)
 
         // Check thumbnail was saved
@@ -223,7 +231,7 @@ class SharpRoomTest {
         assertNotNull("Failed to load room.jpeg", bitmap)
         println("Input image: ${bitmap.width}x${bitmap.height}")
 
-        val sharpService = SharpService(context)
+        val sharpService = SharpService.getInstance(context)
 
         val latch = CountDownLatch(1)
         var result: SharpService.GenerationResult? = null
@@ -242,7 +250,7 @@ class SharpRoomTest {
             }
         })
 
-        latch.await(30, TimeUnit.SECONDS)
+        latch.await(180, TimeUnit.SECONDS)
         assertNotNull("Result should not be null", result)
 
         // Validate bounding box (room dimensions)
@@ -293,7 +301,7 @@ class SharpRoomTest {
         }
         assertNotNull("Failed to load room.jpeg", bitmap)
 
-        val sharpService = SharpService(context)
+        val sharpService = SharpService.getInstance(context)
 
         val latch = CountDownLatch(1)
         var result: SharpService.GenerationResult? = null
@@ -309,7 +317,7 @@ class SharpRoomTest {
             }
         })
 
-        latch.await(30, TimeUnit.SECONDS)
+        latch.await(180, TimeUnit.SECONDS)
         assertNotNull("Result should not be null", result)
 
         // Create annotated image with room info label

@@ -16,6 +16,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.content.res.ColorStateList
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import com.furnit.android.ContentActivity
@@ -219,6 +220,10 @@ class OTPVerificationActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTypeface(null, Typeface.BOLD)
             setBackgroundColor(Color.parseColor("#F5F5F5"))
+            // Force black text color with ColorStateList to override theme
+            setTextColor(ColorStateList.valueOf(Color.parseColor("#000000")))
+            setHintTextColor(ColorStateList.valueOf(Color.parseColor("#999999")))
+            highlightColor = Color.parseColor("#667eea")
             filters = arrayOf(InputFilter.LengthFilter(1))
             imeOptions = if (index == OTP_LENGTH - 1) EditorInfo.IME_ACTION_DONE else EditorInfo.IME_ACTION_NEXT
 

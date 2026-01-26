@@ -23,6 +23,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.WebViewAssetLoader
 import com.furnit.android.models.Model
 import com.furnit.android.models.ModelManager
 import java.io.File
@@ -103,6 +104,23 @@ class SharpRoomActivity : AppCompatActivity() {
         val rootLayout = FrameLayout(this)
         rootLayout.setBackgroundColor(Color.parseColor("#808080"))
 
+        // Copy PLY file to internal files dir for WebViewAssetLoader
+        val plyFile = File(plyPath!!)
+        val internalPlyDir = File(filesDir, "webview_assets")
+        internalPlyDir.mkdirs()
+        val internalPlyFile = File(internalPlyDir, "room.ply")
+        if (plyFile.exists()) {
+            plyFile.copyTo(internalPlyFile, overwrite = true)
+            Log.d(TAG, "Copied PLY to internal storage: ${internalPlyFile.absolutePath}")
+        }
+
+        // WebViewAssetLoader serves files from internal storage via https:// URL
+        // This allows SparkJS fetch() to work properly
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/files/", WebViewAssetLoader.InternalStoragePathHandler(this, internalPlyDir))
+            .build()
+
         // WebView for 3D rendering
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
@@ -132,6 +150,15 @@ class SharpRoomActivity : AppCompatActivity() {
 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                     Log.e(TAG, "WebView error: ${error?.description}")
+                }
+
+                // Use WebViewAssetLoader to serve files
+                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                    val url = request?.url ?: return null
+                    Log.d(TAG, "shouldInterceptRequest: $url")
+
+                    // Let WebViewAssetLoader handle appassets.androidplatform.net URLs
+                    return assetLoader.shouldInterceptRequest(url)
                 }
             }
 
@@ -248,7 +275,7 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             barContainer.addView(helpBtn)
 
-            // Save/Share button (circle with upload icon) - only if allowed
+            // Save button (circle with upload icon) - only if allowed
             if (allowSave) {
                 val saveBtn = TextView(this@SharpRoomActivity).apply {
                     text = "\u21E7" // Upload arrow
@@ -268,6 +295,25 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
                 barContainer.addView(saveBtn)
             }
+
+            // Share button (circle with share icon)
+            val shareBtn = TextView(this@SharpRoomActivity).apply {
+                text = "\u2197" // Arrow pointing upper right (share-like)
+                textSize = 20f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#3A3A3C"))
+                }
+                background = bg
+                val size = dpToPx(40)
+                val params = LinearLayout.LayoutParams(size, size)
+                params.setMargins(dpToPx(8), 0, 0, 0)
+                layoutParams = params
+                setOnClickListener { sharePlyFile() }
+            }
+            barContainer.addView(shareBtn)
 
             addView(barContainer, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -583,16 +629,13 @@ class SharpRoomActivity : AppCompatActivity() {
             return
         }
 
-        // Read PLY file and encode as base64 for inline loading
-        val plyData = plyFile.readBytes()
-        val plyBase64 = Base64.encodeToString(plyData, Base64.NO_WRAP)
+        Log.d(TAG, "Loading PLY file: ${plyFile.name} (${plyFile.length()} bytes)")
 
-        Log.d(TAG, "Loading PLY file: ${plyFile.name} (${plyData.size} bytes)")
-
-        // Generate and load HTML
-        val html = generateWebGLHTML(plyBase64)
+        // Load HTML using WebViewAssetLoader base URL
+        // SparkJS will fetch PLY from https://appassets.androidplatform.net/files/room.ply
+        val html = generateWebGLHTML()
         webView.loadDataWithBaseURL(
-            "https://local/",
+            "https://appassets.androidplatform.net/",
             html,
             "text/html",
             "UTF-8",
@@ -600,18 +643,8 @@ class SharpRoomActivity : AppCompatActivity() {
         )
     }
 
-    private fun loadAssetAsBase64(filename: String): String {
-        return try {
-            val bytes = assets.open(filename).readBytes()
-            Base64.encodeToString(bytes, Base64.NO_WRAP)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load asset: $filename", e)
-            ""
-        }
-    }
-
-    private fun generateWebGLHTML(plyBase64: String): String {
-        // Using SparkJS for proper Gaussian splat rendering (matching iOS implementation)
+    private fun generateWebGLHTML(): String {
+        // SparkJS implementation matching iOS exactly
         return """
 <!DOCTYPE html>
 <html>
@@ -622,43 +655,40 @@ class SharpRoomActivity : AppCompatActivity() {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body {
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
             background: #808080;
             touch-action: none;
-            position: fixed;
-            top: 0;
-            left: 0;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
         }
         canvas {
-            width: 100vw !important;
-            height: 100vh !important;
+            width: 100%;
+            height: 100%;
             display: block;
-            position: fixed;
-            top: 0;
-            left: 0;
+            touch-action: none;
         }
     </style>
-</head>
-<body>
     <script type="importmap">
     {
         "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.170.0/three.module.min.js",
             "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-            "@sparkjsdev/spark": "https://cdn.jsdelivr.net/npm/@sparkjsdev/spark@0.1.9/dist/spark.module.min.js"
+            "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/0.1.10/spark.module.js"
         }
     }
     </script>
+</head>
+<body>
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
 
-        console.log('WebGL Gaussian Splat viewer initializing with SparkJS...');
+        console.log('[WebGL] SparkJS Gaussian Splat viewer initializing...');
 
-        // Scene setup
+        // Scene setup (matching iOS exactly)
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x808080);
 
@@ -667,187 +697,159 @@ class SharpRoomActivity : AppCompatActivity() {
         camera.position.set(0, 0, 5);
         camera.up.set(0, 1, 0);
 
-        // Renderer
-        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        const viewport = {
-            width: Math.max(window.innerWidth, document.documentElement.clientWidth),
-            height: Math.max(window.innerHeight, document.documentElement.clientHeight)
-        };
-        console.log('Viewport size:', viewport.width, 'x', viewport.height);
-        renderer.setSize(viewport.width, viewport.height);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        // THREE.js Renderer (antialias: false per SparkJS docs)
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // SparkRenderer for Gaussian splatting (reduced blur for fallback PLY data)
+        // SparkRenderer with settings matching iOS exactly
         const spark = new SparkRenderer({
             renderer: renderer,
-            maxStdDev: 1.0,           // Reduced from 3.0 - smaller splats
-            preBlurAmount: 0.0,       // No pre-blur
-            blurAmount: 0.0,          // No post-blur
-            falloff: 1.0,             // Sharp falloff
-            focalAdjustment: 1.0      // No focal adjustment
+            maxStdDev: 3.0,
+            preBlurAmount: 0.5,
+            blurAmount: 0.3,
+            falloff: 0.8,
+            focalAdjustment: 1.5
         });
-        camera.add(spark);  // Add SparkRenderer as child of camera
+        camera.add(spark);
 
         // Orbit controls
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.rotateSpeed = 0.8;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 0.01;
+        controls.maxDistance = 100;
         controls.target.set(0, 0, 0);
+        controls.minAzimuthAngle = -Infinity;
+        controls.maxAzimuthAngle = Infinity;
+        controls.minPolarAngle = 0.01;
+        controls.maxPolarAngle = Math.PI - 0.01;
 
-        // Initial camera position
         let initialCameraPosition = camera.position.clone();
         let initialControlsTarget = controls.target.clone();
+        let needsRender = true;
 
-        // Create PLY blob URL from base64 data
-        const plyBase64 = '$plyBase64';
-        const binaryString = atob(plyBase64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        const plyBlob = new Blob([bytes], { type: 'application/octet-stream' });
-        const plyURL = URL.createObjectURL(plyBlob);
+        controls.addEventListener('change', function() {
+            needsRender = true;
+        });
 
-        console.log('PLY data loaded:', bytes.length, 'bytes');
-
-        // Create SplatMesh using SparkJS (matching iOS)
         let splatMesh = null;
+
+        // Load PLY using SparkJS SplatMesh (matching iOS exactly)
+        // URL served by WebViewAssetLoader
+        const plyURL = 'https://appassets.androidplatform.net/files/room.ply';
+        console.log('[WebGL] Loading splat from:', plyURL);
+
         try {
             splatMesh = new SplatMesh({
                 url: plyURL,
-                maxSh: 0  // No spherical harmonics for fallback data
+                maxSh: 0  // Disable spherical harmonics for cleaner look
             });
-
             scene.add(splatMesh);
 
-            // Classic PLY is pre-rotated, flip 180° around X + 90° around Z for correct viewing (matching iOS)
+            // Classic PLY rotation matching iOS: 180° X + 90° Z
             splatMesh.rotation.x = Math.PI;
             splatMesh.rotation.z = Math.PI / 2;
-            console.log('SplatMesh created and rotated (180° X + 90° Z)');
+            console.log('[WebGL] SplatMesh: rotated 180° X + 90° Z');
 
-            // Wait for the splat mesh to load and position camera
-            splatMesh.addEventListener('load', () => {
-                console.log('SplatMesh loaded');
+            // Start auto-framing after delay for async load
+            setTimeout(autoFrameRoom, 500);
 
-                // Get bounding box and center camera
-                const box = new THREE.Box3().setFromObject(splatMesh);
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
-
-                const maxDim = Math.max(size.x, size.y, size.z);
-                const fov = camera.fov * (Math.PI / 180);
-                const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 1.5;
-
-                camera.position.set(center.x, center.y, center.z + cameraDistance);
-                controls.target.copy(center);
-                controls.update();
-
-                // Save initial position
-                initialCameraPosition.copy(camera.position);
-                initialControlsTarget.copy(controls.target);
-
-                console.log('Room centered at:', center);
-                console.log('Room size:', size);
-                console.log('Camera at distance:', cameraDistance);
-
-                // Notify Android that loading is complete
-                if (window.Android) {
-                    window.Android.onLoaded();
-                }
-            });
-
-        } catch (e) {
-            console.error('Failed to create SplatMesh:', e);
-            // Fallback to basic point cloud visualization
-            createFallbackPointCloud(bytes);
+        } catch (err) {
+            console.error('[WebGL] Failed to create SplatMesh:', err);
         }
 
-        // Fallback point cloud if SparkJS fails
-        function createFallbackPointCloud(data) {
-            console.log('Using fallback point cloud visualization');
+        // Auto-frame when loaded (matching iOS exactly)
+        let frameAttempts = 0;
+        const maxFrameAttempts = 50;
 
-            const text = new TextDecoder().decode(data);
-            const headerEnd = text.indexOf('end_header\n');
-            if (headerEnd === -1) return;
+        function autoFrameRoom() {
+            frameAttempts++;
+            console.log('[WebGL] autoFrameRoom() called, attempt:', frameAttempts);
 
-            const header = text.substring(0, headerEnd);
-            const vertexMatch = header.match(/element vertex (\d+)/);
-            if (!vertexMatch) return;
-
-            const vertexCount = parseInt(vertexMatch[1]);
-            const headerBytes = new TextEncoder().encode(text.substring(0, headerEnd + 11));
-            const binaryStart = headerBytes.length;
-            const bytesPerVertex = 47;
-
-            const positions = new Float32Array(vertexCount * 3);
-            const colors = new Float32Array(vertexCount * 3);
-            const dataView = new DataView(data.buffer);
-
-            for (let i = 0; i < vertexCount; i++) {
-                const offset = binaryStart + i * bytesPerVertex;
-                if (offset + bytesPerVertex > data.length) break;
-
-                const idx3 = i * 3;
-                positions[idx3] = dataView.getFloat32(offset, true);
-                positions[idx3 + 1] = dataView.getFloat32(offset + 4, true);
-                positions[idx3 + 2] = dataView.getFloat32(offset + 8, true);
-
-                colors[idx3] = data[offset + 44] / 255;
-                colors[idx3 + 1] = data[offset + 45] / 255;
-                colors[idx3 + 2] = data[offset + 46] / 255;
+            if (!splatMesh) {
+                if (frameAttempts < maxFrameAttempts) {
+                    setTimeout(autoFrameRoom, 200);
+                } else {
+                    console.error('[WebGL] Gave up waiting for splatMesh');
+                }
+                return;
             }
 
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            const box = new THREE.Box3().setFromObject(splatMesh);
+            const size = box.getSize(new THREE.Vector3());
 
-            const material = new THREE.PointsMaterial({
-                size: 0.02,
-                vertexColors: true,
-                sizeAttenuation: true
-            });
+            if (size.length() < 0.01) {
+                if (frameAttempts < maxFrameAttempts) {
+                    console.log('[WebGL] Box3 too small, waiting for splatMesh to load...');
+                    setTimeout(autoFrameRoom, 200);
+                } else {
+                    console.error('[WebGL] Gave up - mesh has no geometry');
+                    camera.position.set(0, 0, 5);
+                    controls.target.set(0, 0, 0);
+                    controls.update();
+                    if (window.Android) {
+                        window.Android.onLoaded();
+                    }
+                }
+                return;
+            }
 
-            const points = new THREE.Points(geometry, material);
-            scene.add(points);
+            const center = box.getCenter(new THREE.Vector3());
+            // After 90° Z rotation, X and Y axes are swapped
+            let roomWidth = size.y;
+            let roomHeight = size.x;
+            let roomDepth = size.z;
 
-            // Center camera
-            geometry.computeBoundingBox();
-            const center = new THREE.Vector3();
-            geometry.boundingBox.getCenter(center);
-            const size = new THREE.Vector3();
-            geometry.boundingBox.getSize(size);
+            console.log('[WebGL] Box3 size:', roomWidth.toFixed(2), roomHeight.toFixed(2), roomDepth.toFixed(2));
+            console.log('[WebGL] Box3 center:', center.x.toFixed(2), center.y.toFixed(2), center.z.toFixed(2));
 
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const fov = camera.fov * (Math.PI / 180);
-            const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 1.5;
+            // Shrink bounds to ignore foggy outer 15% (matching iOS)
+            const fogFactor = 0.15;
+            const shrinkX = roomWidth * fogFactor * 0.5;
+            const shrinkY = roomHeight * fogFactor * 0.5;
+            const shrinkZ = roomDepth * fogFactor * 0.5;
 
-            camera.position.set(center.x, center.y, center.z + cameraDistance);
-            controls.target.copy(center);
+            const innerCenterX = center.x;
+            const innerCenterY = center.y;
+            const innerCenterZ = center.z;
+
+            const roomRadius = Math.max(roomWidth, roomHeight, roomDepth) * 0.5;
+
+            // Position camera at back wall center looking at room center
+            const cameraDistance = roomRadius * 1.5;
+            camera.position.set(innerCenterX, innerCenterY, innerCenterZ + cameraDistance);
+            controls.target.set(innerCenterX, innerCenterY, innerCenterZ);
             controls.update();
 
             initialCameraPosition.copy(camera.position);
             initialControlsTarget.copy(controls.target);
+
+            console.log('[WebGL] Camera positioned at distance:', cameraDistance);
+            needsRender = true;
 
             if (window.Android) {
                 window.Android.onLoaded();
             }
         }
 
-        // Camera control functions (called from Android)
+        // Note: autoFrameRoom is called from loadSplat() after mesh loads
+
+        // Camera controls (called from Android)
         window.orbitCamera = function(deltaX, deltaY) {
             const rotateSpeed = 0.005;
             const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
             const spherical = new THREE.Spherical().setFromVector3(offset);
-
             spherical.theta -= deltaX * rotateSpeed;
             spherical.phi += deltaY * rotateSpeed;
             spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
-
             offset.setFromSpherical(spherical);
             camera.position.copy(controls.target).add(offset);
             controls.update();
+            needsRender = true;
         };
 
         window.moveCamera = function(dx, dy) {
@@ -856,22 +858,24 @@ class SharpRoomActivity : AppCompatActivity() {
             camera.position.z -= dy * moveSpeed;
             controls.target.x += dx * moveSpeed;
             controls.target.z -= dy * moveSpeed;
+            needsRender = true;
         };
 
         window.recenterCamera = function() {
             camera.position.copy(initialCameraPosition);
             controls.target.copy(initialControlsTarget);
             controls.update();
+            needsRender = true;
         };
 
-        // Resize handler
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            needsRender = true;
         });
 
-        // Animation loop with SparkRenderer
+        // Animation loop (matching iOS exactly)
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
@@ -882,7 +886,7 @@ class SharpRoomActivity : AppCompatActivity() {
         }
         animate();
 
-        console.log('WebGL Gaussian splat viewer ready with SparkJS');
+        console.log('[WebGL] SparkJS viewer ready');
     </script>
 </body>
 </html>
@@ -929,6 +933,37 @@ class SharpRoomActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save room", e)
             Toast.makeText(this, "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun sharePlyFile() {
+        val plyFile = File(plyPath ?: return)
+        if (!plyFile.exists()) {
+            Toast.makeText(this, "PLY file not found", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            val uri = FileProvider.getUriForFile(
+                this,
+                "${packageName}.fileprovider",
+                plyFile
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/octet-stream"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "3D Room PLY File")
+                putExtra(Intent.EXTRA_TEXT, "Check out this 3D room scan!")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            startActivity(Intent.createChooser(shareIntent, "Share PLY File"))
+            Log.d(TAG, "Sharing PLY file: ${plyFile.name}")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to share PLY file", e)
+            Toast.makeText(this, "Failed to share: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 

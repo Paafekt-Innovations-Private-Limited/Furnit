@@ -180,6 +180,70 @@ Java_com_furnit_android_services_NcnnSharp_nativeInit(
 }
 
 /**
+ * Initialize NCNN network from file system paths
+ */
+JNIEXPORT jlong JNICALL
+Java_com_furnit_android_services_NcnnSharp_nativeInitFromPath(
+    JNIEnv* env,
+    jobject thiz,
+    jstring paramPath,
+    jstring binPath,
+    jboolean useGpu,
+    jint numThreads
+) {
+    if (g_net != nullptr) {
+        delete g_net;
+        g_net = nullptr;
+    }
+
+    const char* paramPathStr = env->GetStringUTFChars(paramPath, nullptr);
+    const char* binPathStr = env->GetStringUTFChars(binPath, nullptr);
+
+    LOGI("Loading SHARP NCNN model from files: %s, %s", paramPathStr, binPathStr);
+
+    g_net = new ncnn::Net();
+
+    // Configure network options (CPU-only, optimized for mobile)
+    g_net->opt.use_vulkan_compute = false;
+    g_net->opt.num_threads = numThreads > 0 ? numThreads : 4;
+    g_net->opt.use_fp16_packed = true;
+    g_net->opt.use_fp16_storage = true;
+    g_net->opt.use_fp16_arithmetic = true;
+    g_net->opt.use_packing_layout = true;
+    g_net->opt.lightmode = true;
+
+    // Load param file
+    int ret = g_net->load_param(paramPathStr);
+    if (ret != 0) {
+        LOGE("Failed to load param file: %s (error: %d)", paramPathStr, ret);
+        env->ReleaseStringUTFChars(paramPath, paramPathStr);
+        env->ReleaseStringUTFChars(binPath, binPathStr);
+        delete g_net;
+        g_net = nullptr;
+        return 0;
+    }
+    LOGI("Loaded param file successfully");
+
+    // Load bin file
+    ret = g_net->load_model(binPathStr);
+    if (ret != 0) {
+        LOGE("Failed to load model file: %s (error: %d)", binPathStr, ret);
+        env->ReleaseStringUTFChars(paramPath, paramPathStr);
+        env->ReleaseStringUTFChars(binPath, binPathStr);
+        delete g_net;
+        g_net = nullptr;
+        return 0;
+    }
+
+    env->ReleaseStringUTFChars(paramPath, paramPathStr);
+    env->ReleaseStringUTFChars(binPath, binPathStr);
+
+    LOGI("SHARP NCNN model loaded from files successfully, input size: %d", INPUT_SIZE);
+
+    return reinterpret_cast<jlong>(g_net);
+}
+
+/**
  * Run SHARP inference on a bitmap
  * Returns float array with interleaved Gaussian parameters:
  * [x, y, z, scale_x, scale_y, scale_z, rot_w, rot_x, rot_y, rot_z, opacity, r, g, b] × N
@@ -243,86 +307,77 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
     ex.input("in0", in);
 
     // Extract outputs
-    // SHARP model outputs 5 tensors:
-    // - positions: N × 3
-    // - scales: N × 3
-    // - rotations: N × 4
-    // - colors: N × 3
-    // - opacity: N
+    // SHARP model outputs 5 tensors (from pnnx conversion):
+    // - out0: positions (1179648, 3) - N gaussians with x,y,z
+    // - out1: scales (1179648, 3) - N gaussians with sx,sy,sz
+    // - out2: rotations (1179648, 4) - N gaussians with quaternion w,x,y,z
+    // - out3: colors (1179648, 3) - N gaussians with r,g,b
+    // - out4: opacity (1179648,) - N gaussians with opacity
 
     ncnn::Mat positionsOut, scalesOut, rotationsOut, colorsOut, opacityOut;
+    int ret;
 
-    // Output layer names (these should match the pnnx-converted model)
-    // Common naming conventions after pnnx conversion
-    int ret = ex.extract("positions", positionsOut);
+    LOGI("Extracting SHARP outputs...");
+
+    // Extract all outputs using exact names from pnnx conversion
+    ret = ex.extract("out0", positionsOut);
     if (ret != 0) {
-        // Try alternative naming
-        ret = ex.extract("out0", positionsOut);
-    }
-    if (ret != 0) {
-        LOGE("Failed to extract positions output");
+        LOGE("Failed to extract out0 (positions): %d", ret);
         return nullptr;
     }
 
-    ret = ex.extract("scales", scalesOut);
+    ret = ex.extract("out1", scalesOut);
     if (ret != 0) {
-        ret = ex.extract("out1", scalesOut);
-    }
-    if (ret != 0) {
-        LOGE("Failed to extract scales output");
+        LOGE("Failed to extract out1 (scales): %d", ret);
         return nullptr;
     }
 
-    ret = ex.extract("rotations", rotationsOut);
+    ret = ex.extract("out2", rotationsOut);
     if (ret != 0) {
-        ret = ex.extract("out2", rotationsOut);
-    }
-    if (ret != 0) {
-        LOGE("Failed to extract rotations output");
+        LOGE("Failed to extract out2 (rotations): %d", ret);
         return nullptr;
     }
 
-    ret = ex.extract("colors", colorsOut);
+    ret = ex.extract("out3", colorsOut);
     if (ret != 0) {
-        ret = ex.extract("out3", colorsOut);
-    }
-    if (ret != 0) {
-        LOGE("Failed to extract colors output");
+        LOGE("Failed to extract out3 (colors): %d", ret);
         return nullptr;
     }
 
-    ret = ex.extract("opacity", opacityOut);
+    ret = ex.extract("out4", opacityOut);
     if (ret != 0) {
-        ret = ex.extract("out4", opacityOut);
-    }
-    if (ret != 0) {
-        LOGE("Failed to extract opacity output");
+        LOGE("Failed to extract out4 (opacity): %d", ret);
         return nullptr;
     }
 
-    LOGD("Positions output: c=%d h=%d w=%d", positionsOut.c, positionsOut.h, positionsOut.w);
-    LOGD("Scales output: c=%d h=%d w=%d", scalesOut.c, scalesOut.h, scalesOut.w);
-    LOGD("Rotations output: c=%d h=%d w=%d", rotationsOut.c, rotationsOut.h, rotationsOut.w);
-    LOGD("Colors output: c=%d h=%d w=%d", colorsOut.c, colorsOut.h, colorsOut.w);
-    LOGD("Opacity output: c=%d h=%d w=%d", opacityOut.c, opacityOut.h, opacityOut.w);
+    LOGI("Positions output: dims=%d c=%d h=%d w=%d total=%zu",
+         positionsOut.dims, positionsOut.c, positionsOut.h, positionsOut.w, positionsOut.total());
+    LOGI("Scales output: dims=%d c=%d h=%d w=%d total=%zu",
+         scalesOut.dims, scalesOut.c, scalesOut.h, scalesOut.w, scalesOut.total());
+    LOGI("Rotations output: dims=%d c=%d h=%d w=%d total=%zu",
+         rotationsOut.dims, rotationsOut.c, rotationsOut.h, rotationsOut.w, rotationsOut.total());
+    LOGI("Colors output: dims=%d c=%d h=%d w=%d total=%zu",
+         colorsOut.dims, colorsOut.c, colorsOut.h, colorsOut.w, colorsOut.total());
+    LOGI("Opacity output: dims=%d c=%d h=%d w=%d total=%zu",
+         opacityOut.dims, opacityOut.c, opacityOut.h, opacityOut.w, opacityOut.total());
 
     // Determine number of Gaussians from positions output
-    // Positions should be [N, 3] or [1, N, 3]
+    // pnnx output format: (h=N, w=3) for positions, meaning N gaussians with 3 components each
     int numGaussians = 0;
 
-    // Handle different possible output shapes
-    if (positionsOut.dims == 2) {
-        // Shape [N, 3]
+    if (positionsOut.dims == 2 && positionsOut.w == 3) {
+        // Shape (h=N, w=3) - standard format from pnnx
         numGaussians = positionsOut.h;
-    } else if (positionsOut.dims == 3) {
-        // Shape [1, N, 3] or [N, 3, 1]
-        numGaussians = positionsOut.c > positionsOut.w ? positionsOut.h : positionsOut.c;
     } else if (positionsOut.dims == 1) {
-        // Flattened [N*3]
+        // Flattened (w=N*3)
         numGaussians = positionsOut.w / 3;
+    } else if (positionsOut.dims == 2 && positionsOut.h == 3) {
+        // Transposed shape (h=3, w=N)
+        numGaussians = positionsOut.w;
     } else {
-        LOGE("Unexpected positions output dims: %d", positionsOut.dims);
-        return nullptr;
+        // Fallback: use total elements / 3
+        numGaussians = positionsOut.total() / 3;
+        LOGI("Using fallback gaussian count calculation");
     }
 
     LOGI("Processing %d Gaussians", numGaussians);
@@ -339,63 +394,75 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
     // Interleave Gaussian parameters
     // Format: [x, y, z, scale_x, scale_y, scale_z, rot_w, rot_x, rot_y, rot_z, opacity, r, g, b]
 
+    // Get raw data pointers
+    const float* posData = (const float*)positionsOut.data;
+    const float* scaleData = (const float*)scalesOut.data;
+    const float* rotData = (const float*)rotationsOut.data;
+    const float* colorData = (const float*)colorsOut.data;
+    const float* opacityData = (const float*)opacityOut.data;
+
+    // Determine data layout: row-major (N,C) or column-major (C,N)
+    bool posRowMajor = (positionsOut.dims == 2 && positionsOut.w == 3);
+    bool scaleRowMajor = (scalesOut.dims == 2 && scalesOut.w == 3);
+    bool rotRowMajor = (rotationsOut.dims == 2 && rotationsOut.w == 4);
+    bool colorRowMajor = (colorsOut.dims == 2 && colorsOut.w == 3);
+
+    LOGI("Data layout - pos:%s scale:%s rot:%s color:%s",
+         posRowMajor ? "row" : "col", scaleRowMajor ? "row" : "col",
+         rotRowMajor ? "row" : "col", colorRowMajor ? "row" : "col");
+
     for (int i = 0; i < numGaussians; i++) {
         int offset = i * PARAMS_PER_GAUSSIAN;
 
         // Positions (3 values)
-        if (positionsOut.dims == 2) {
-            result[offset + 0] = positionsOut.row(i)[0];
-            result[offset + 1] = positionsOut.row(i)[1];
-            result[offset + 2] = positionsOut.row(i)[2];
+        if (posRowMajor) {
+            // Row-major: data[i*3 + component]
+            result[offset + 0] = posData[i * 3 + 0];
+            result[offset + 1] = posData[i * 3 + 1];
+            result[offset + 2] = posData[i * 3 + 2];
         } else {
-            // Handle flattened or different layout
-            result[offset + 0] = ((float*)positionsOut.data)[i * 3 + 0];
-            result[offset + 1] = ((float*)positionsOut.data)[i * 3 + 1];
-            result[offset + 2] = ((float*)positionsOut.data)[i * 3 + 2];
+            // Column-major: data[component * N + i]
+            result[offset + 0] = posData[0 * numGaussians + i];
+            result[offset + 1] = posData[1 * numGaussians + i];
+            result[offset + 2] = posData[2 * numGaussians + i];
         }
 
         // Scales (3 values)
-        if (scalesOut.dims == 2) {
-            result[offset + 3] = scalesOut.row(i)[0];
-            result[offset + 4] = scalesOut.row(i)[1];
-            result[offset + 5] = scalesOut.row(i)[2];
+        if (scaleRowMajor) {
+            result[offset + 3] = scaleData[i * 3 + 0];
+            result[offset + 4] = scaleData[i * 3 + 1];
+            result[offset + 5] = scaleData[i * 3 + 2];
         } else {
-            result[offset + 3] = ((float*)scalesOut.data)[i * 3 + 0];
-            result[offset + 4] = ((float*)scalesOut.data)[i * 3 + 1];
-            result[offset + 5] = ((float*)scalesOut.data)[i * 3 + 2];
+            result[offset + 3] = scaleData[0 * numGaussians + i];
+            result[offset + 4] = scaleData[1 * numGaussians + i];
+            result[offset + 5] = scaleData[2 * numGaussians + i];
         }
 
         // Rotations (4 values - quaternion)
-        if (rotationsOut.dims == 2) {
-            result[offset + 6] = rotationsOut.row(i)[0];
-            result[offset + 7] = rotationsOut.row(i)[1];
-            result[offset + 8] = rotationsOut.row(i)[2];
-            result[offset + 9] = rotationsOut.row(i)[3];
+        if (rotRowMajor) {
+            result[offset + 6] = rotData[i * 4 + 0];
+            result[offset + 7] = rotData[i * 4 + 1];
+            result[offset + 8] = rotData[i * 4 + 2];
+            result[offset + 9] = rotData[i * 4 + 3];
         } else {
-            result[offset + 6] = ((float*)rotationsOut.data)[i * 4 + 0];
-            result[offset + 7] = ((float*)rotationsOut.data)[i * 4 + 1];
-            result[offset + 8] = ((float*)rotationsOut.data)[i * 4 + 2];
-            result[offset + 9] = ((float*)rotationsOut.data)[i * 4 + 3];
+            result[offset + 6] = rotData[0 * numGaussians + i];
+            result[offset + 7] = rotData[1 * numGaussians + i];
+            result[offset + 8] = rotData[2 * numGaussians + i];
+            result[offset + 9] = rotData[3 * numGaussians + i];
         }
 
-        // Opacity (1 value)
-        if (opacityOut.dims == 2) {
-            result[offset + 10] = opacityOut.row(i)[0];
-        } else if (opacityOut.dims == 1) {
-            result[offset + 10] = ((float*)opacityOut.data)[i];
-        } else {
-            result[offset + 10] = ((float*)opacityOut.data)[i];
-        }
+        // Opacity (1 value) - always linear
+        result[offset + 10] = opacityData[i];
 
         // Colors (3 values)
-        if (colorsOut.dims == 2) {
-            result[offset + 11] = colorsOut.row(i)[0];
-            result[offset + 12] = colorsOut.row(i)[1];
-            result[offset + 13] = colorsOut.row(i)[2];
+        if (colorRowMajor) {
+            result[offset + 11] = colorData[i * 3 + 0];
+            result[offset + 12] = colorData[i * 3 + 1];
+            result[offset + 13] = colorData[i * 3 + 2];
         } else {
-            result[offset + 11] = ((float*)colorsOut.data)[i * 3 + 0];
-            result[offset + 12] = ((float*)colorsOut.data)[i * 3 + 1];
-            result[offset + 13] = ((float*)colorsOut.data)[i * 3 + 2];
+            result[offset + 11] = colorData[0 * numGaussians + i];
+            result[offset + 12] = colorData[1 * numGaussians + i];
+            result[offset + 13] = colorData[2 * numGaussians + i];
         }
     }
 

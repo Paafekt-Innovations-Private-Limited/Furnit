@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.content.res.ColorStateList
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -131,6 +132,8 @@ class LoginActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#F5F5F5"))
             setPadding(24, 24, 24, 24)
             textSize = 16f
+            setTextColor(ColorStateList.valueOf(Color.parseColor("#000000")))
+            setHintTextColor(ColorStateList.valueOf(Color.parseColor("#999999")))
         }
         cardLayout.addView(nameInput, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -155,6 +158,7 @@ class LoginActivity : AppCompatActivity() {
         countryButton = Button(this).apply {
             text = selectedCountry.shortDisplay
             textSize = 14f
+            setTextColor(ColorStateList.valueOf(Color.parseColor("#000000")))
             setBackgroundColor(Color.parseColor("#E8E8E8"))
             setPadding(16, 16, 16, 16)
             setOnClickListener { showCountryPicker() }
@@ -170,6 +174,8 @@ class LoginActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#F5F5F5"))
             setPadding(24, 24, 24, 24)
             textSize = 16f
+            setTextColor(ColorStateList.valueOf(Color.parseColor("#000000")))
+            setHintTextColor(ColorStateList.valueOf(Color.parseColor("#999999")))
             filters = arrayOf(InputFilter.LengthFilter(15))
             imeOptions = EditorInfo.IME_ACTION_DONE
         }

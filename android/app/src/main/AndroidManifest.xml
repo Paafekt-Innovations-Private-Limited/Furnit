@@ -10,6 +10,7 @@
         android:name=".FurnitApplication"
         android:allowBackup="true"
         android:extractNativeLibs="true"
+        android:largeHeap="true"
         android:label="Furnit"
         android:supportsRtl="true"
         android:theme="@style/Theme.Furnit">
