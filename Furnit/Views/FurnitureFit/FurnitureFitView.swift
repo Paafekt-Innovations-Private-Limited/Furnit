@@ -1183,8 +1183,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // Helper: Build full-resolution mask from current kept detections
+        // Each detection's mask is cropped to its bbox before union (standard YOLO approach)
         func buildFullMask(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
-            // Stage 13: Compute per-pixel max logits across detections
+            // Stage 13: Compute per-pixel max logits across detections, with bbox cropping
             var maxLogits = [Float](repeating: -Float.greatestFiniteMagnitude, count: planeSize)
 
             let M = BLASInt(planeSize)
@@ -1192,77 +1193,37 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let alpha: Float = 1
             let beta: Float = 0
 
-            // If list is small, SGEMV + vmax is usually faster than SGEMM + per-pixel reductions.
-            let smallN = detections.count <= 8
+            // Scale factor from model space (1280) to prototype space (pW x pH)
+            let protoScaleX = Float(pW) / Float(modelInputSize)
+            let protoScaleY = Float(pH) / Float(modelInputSize)
 
-            if smallN {
-                var tmp = [Float](repeating: 0, count: planeSize)
+            var tmp = [Float](repeating: 0, count: planeSize)
 
-                for d in detections {
-                    // tmp = A * coeffs  (A is planeSize x 32, row-major, lda = 32)
-                    A.withUnsafeBufferPointer { aPtr in
-                        d.coeffs.withUnsafeBufferPointer { xPtr in
-                            tmp.withUnsafeMutableBufferPointer { yPtr in
-                                let lda = BLASInt(32)
-                                blas_sgemv_rowmajor(m: M, n: K, alpha: alpha, A: aPtr.baseAddress!, lda: lda, x: xPtr.baseAddress!, incx: 1, beta: beta, y: yPtr.baseAddress!, incy: 1)
-                            }
-                        }
-                    }
+            for d in detections {
+                // Compute detection bbox in prototype space
+                let bboxX1 = max(0, Int(floor((d.x - d.w * 0.5) * protoScaleX)))
+                let bboxY1 = max(0, Int(floor((d.y - d.h * 0.5) * protoScaleY)))
+                let bboxX2 = min(pW, Int(ceil((d.x + d.w * 0.5) * protoScaleX)))
+                let bboxY2 = min(pH, Int(ceil((d.y + d.h * 0.5) * protoScaleY)))
 
-                    // maxLogits = max(maxLogits, tmp) (vectorized)
-                    maxLogits.withUnsafeMutableBufferPointer { mPtr in
-                        tmp.withUnsafeBufferPointer { tPtr in
-                            vDSP_vmax(mPtr.baseAddress!, 1, tPtr.baseAddress!, 1,
-                                      mPtr.baseAddress!, 1, vDSP_Length(planeSize))
+                // tmp = A * coeffs  (A is planeSize x 32, row-major, lda = 32)
+                A.withUnsafeBufferPointer { aPtr in
+                    d.coeffs.withUnsafeBufferPointer { xPtr in
+                        tmp.withUnsafeMutableBufferPointer { yPtr in
+                            let lda = BLASInt(32)
+                            blas_sgemv_rowmajor(m: M, n: K, alpha: alpha, A: aPtr.baseAddress!, lda: lda, x: xPtr.baseAddress!, incx: 1, beta: beta, y: yPtr.baseAddress!, incy: 1)
                         }
                     }
                 }
-            } else {
-                // Larger N: keep SGEMM batching (your current approach), but avoid tiny per-pixel vDSP_maxv calls.
-                let batchSize = 64
-                var bStart = 0
 
-                while bStart < detections.count {
-                    let bEnd = min(detections.count, bStart + batchSize)
-                    let Bn = bEnd - bStart
-                    let N = BLASInt(Bn)
-
-                    // B is K x N in row-major layout as (k major, n minor): B[k*N + j]
-                    var B = [Float](repeating: 0, count: 32 * Bn)
-                    for j in 0..<Bn {
-                        let coeffs = detections[bStart + j].coeffs
-                        for k in 0..<32 { B[k * Bn + j] = coeffs[k] }
-                    }
-
-                    // C is M x N (row-major), each row is contiguous length N
-                    var C = [Float](repeating: 0, count: planeSize * Bn)
-
-                    A.withUnsafeBufferPointer { aPtr in
-                        B.withUnsafeBufferPointer { bPtr in
-                            C.withUnsafeMutableBufferPointer { cPtr in
-                                let lda = BLASInt(32)
-                                let ldb = N
-                                let ldc = N
-                                blas_sgemm_rowmajor(m: M, n: N, k: K, alpha: alpha, A: aPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: beta, C: cPtr.baseAddress!, ldc: ldc)
-                            }
+                // Only update maxLogits within detection's bbox (standard YOLO mask cropping)
+                for py in bboxY1..<bboxY2 {
+                    for px in bboxX1..<bboxX2 {
+                        let idx = py * pW + px
+                        if tmp[idx] > maxLogits[idx] {
+                            maxLogits[idx] = tmp[idx]
                         }
                     }
-
-                    // Reduce C row-wise into maxLogits (tight loop; N is small-ish, so a simple loop is fine)
-                    C.withUnsafeBufferPointer { cPtr in
-                        maxLogits.withUnsafeMutableBufferPointer { mPtr in
-                            for px in 0..<planeSize {
-                                let row = cPtr.baseAddress!.advanced(by: px * Bn)
-                                var localMax = row[0]
-                                if Bn > 1 {
-                                    for j in 1..<Bn { if row[j] > localMax { localMax = row[j] } }
-                                }
-                                if localMax > mPtr[px] { mPtr[px] = localMax }
-                            }
-                        }
-                    }
-
-                    bStart = bEnd
                 }
             }
 
@@ -1288,41 +1249,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // Helper: Build full-resolution mask using Metal for the heavy logits->maskSmall step
-        // Logic preserved: maskSmall[i] = 255 iff maxLogit > 0.0, then reuse the same upscaleMask() path.
+        // NOTE: Metal path doesn't support per-detection bbox cropping yet, so we use CPU path
+        // which properly crops each detection's mask to its bbox (standard YOLO approach)
         func buildFullMaskMetal(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
-            guard let mm = metalMaskLogic else {
-                return buildFullMask(from: detections)
-            }
-            let detCount = detections.count
-            if detCount == 0 {
-                return ([UInt8](repeating: 0, count: origW * origH), 0)
-            }
-            // Flatten coeffs (detCount x 32) row-major
-            var coeffFlat = [Float](repeating: 0, count: detCount * 32)
-            for j in 0..<detCount {
-                let c = detections[j].coeffs
-                // Safety: handle models that output !=32 coeffs (keep your original guard behavior)
-                if c.count >= 32 {
-                    for k in 0..<32 { coeffFlat[j*32 + k] = c[k] }
-                } else {
-                    for k in 0..<c.count { coeffFlat[j*32 + k] = c[k] }
-                }
-            }
-            // planes is [Float] length 32*planeSize in the current scope (same as CPU path)
-            let maskSmall = mm.buildMaskSmall(planes: planes, coeffs: coeffFlat, planeSize: planeSize, detCount: detCount)
-            var positiveCount = 0
-            // Count positives (same as CPU)
-            for v in maskSmall { if v > 0 { positiveCount += 1 } }
-
-            // Reuse your existing upscale/crop pipeline exactly (same signature as your original)
-            // NOTE: keep resizeGain/padX/padY mapping identical to CPU path.
-            let maskFull = upscaleMask(maskSmall: maskSmall,
-                                      pW: pW, pH: pH,
-                                      modelInput: 1280,
-                                      origW: origW, origH: origH,
-                                      resizeGain: resizeGain,
-                                      padX: padX, padY: padY)
-            return (maskFull, positiveCount)
+            // Use CPU path for correct bbox-cropped mask generation
+            return buildFullMask(from: detections)
         }
 
         // STAGE 13–15b: Build initial mask from kept2 (pre-bbox filter)
