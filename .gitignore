@@ -174,3 +174,8 @@ android/app/src/main/cpp/ncnn-android-vulkan/
 
 # Kotlin
 *.kotlin_module
+
+# SHARP/ONNX model extracted weights
+android/predictor.*
+android/onnx__*
+android/_predictor_*

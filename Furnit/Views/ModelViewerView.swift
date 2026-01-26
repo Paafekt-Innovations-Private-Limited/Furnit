@@ -7,7 +7,8 @@ import AVFoundation
 import UIKit
 
 struct ModelViewerView: View {
-    @State private var mlModel: MLModel? = nil
+    @State private var mlModel: MLModel? = nil       // 1280 model for high-res masks
+    @State private var mlModel640: MLModel? = nil    // 640 model for primary detection (better confidence)
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass
     let model: USDZModel
@@ -63,12 +64,13 @@ struct ModelViewerView: View {
                     )
                     .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit))
                     .ignoresSafeArea(.all)
-                    // NEW: FurnitureFit overlay
+                    // NEW: FurnitureFit overlay (Two-stage: 640 for detection, 1280 for masks)
                     if showingFurnitureFit {
                         FurnitureFitUIView(
                             capturedImage: $capturedImage,
                             roomImage: roomSnapshot,
                             mlModel: mlModel,
+                            mlModel640: mlModel640,
                             processInterval: 0.07,
                             active: true
                         )
@@ -538,58 +540,63 @@ struct ModelViewerView: View {
     
     private func loadModelOnce() {
         guard mlModel == nil else {
-            logDebug("✅ ML Model already loaded")
+            logDebug("✅ ML Models already loaded")
             return
         }
 
-        // YOLOE-26l model at 1280x1280 with NMS-free outputs
-        let candidateNames = [
+        // Two-stage inference: 640 for primary detection (better confidence), 1280 for high-res masks
+        let model640Candidates = [
+            ("yoloe_26l_seg_pf_640", "mlmodelc"),
+        ]
+        let model1280Candidates = [
             ("yoloe_26l_seg_pf_1280", "mlmodelc"),
         ]
 
-        logDebug("🔍 Looking for ML Model (preferring .mlpackage):", candidateNames.map { "\($0.0).\($0.1)" }.joined(separator: ", "))
+        logDebug("🔍 Loading two-stage models: 640 for detection, 1280 for masks")
 
-        var loaded: MLModel? = nil
+        let config = MLModelConfiguration()
+        // Use CPU-only to avoid ANE "No memory object bound to port" crashes
+        config.computeUnits = .cpuOnly
 
-        for (name, ext) in candidateNames {
+        // Load 640 model (primary detection)
+        for (name, ext) in model640Candidates {
             if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                logDebug("📦 Found model file at: \(url.lastPathComponent)")
                 do {
-                    let config = MLModelConfiguration()
-                    // Use CPU-only to avoid ANE "No memory object bound to port" crashes
-                    config.computeUnits = .cpuOnly
                     let model = try MLModel(contentsOf: url, configuration: config)
-                    loaded = model
-                    logDebug("✅ Loaded MLModel '\(name).\(ext)' with computeUnits=\(config.computeUnits)")
-
-                    // Log input constraint to verify shape & dtype (Float16 vs Float32)
-                    let inputs = model.modelDescription.inputDescriptionsByName
-                    if let img = inputs["image"] {
-                        if let mac = img.multiArrayConstraint {
-                            let shp = mac.shape.map { $0.intValue }
-                            logDebug("📥 Model 'image' MultiArray constraint: shape=\(shp) dataType=\(mac.dataType)")
-                            if mac.dataType == .float32 {
-                                logDebug("⚠️ Model expects Float32 input — higher memory usage. Consider exporting an FP16 model to reduce memory.")
-                            }
-                        } else if let ic = img.imageConstraint {
-                            logDebug("📥 Model 'image' Image constraint: \(ic.pixelsWide)x\(ic.pixelsHigh) pixelFormat=\(ic.pixelFormatType)")
-                        } else {
-                            logDebug("ℹ️ No detailed constraint for 'image' input")
-                        }
-                    }
-
+                    self.mlModel640 = model
+                    logDebug("✅ Loaded 640 model '\(name).\(ext)' for primary detection")
+                    logModelInputInfo(model, name: name)
                     break
                 } catch {
-                    logDebug("❌ Failed to load \(name).\(ext):", error)
-                    continue
+                    logDebug("❌ Failed to load 640 model \(name).\(ext):", error)
                 }
             }
         }
 
-        if let model = loaded {
-            self.mlModel = model
+        // Load 1280 model (high-res masks)
+        for (name, ext) in model1280Candidates {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+                do {
+                    let model = try MLModel(contentsOf: url, configuration: config)
+                    self.mlModel = model
+                    logDebug("✅ Loaded 1280 model '\(name).\(ext)' for high-res masks")
+                    logModelInputInfo(model, name: name)
+                    break
+                } catch {
+                    logDebug("❌ Failed to load 1280 model \(name).\(ext):", error)
+                }
+            }
+        }
+
+        // Summary
+        if mlModel640 != nil && mlModel != nil {
+            logDebug("🧠 Two-stage mode enabled: 640→1280")
+        } else if mlModel != nil {
+            logDebug("🧠 Single-stage mode: 1280 only")
+        } else if mlModel640 != nil {
+            logDebug("🧠 Single-stage mode: 640 only")
         } else {
-            logDebug("❌ No matching model found in bundle (tried candidates above)")
+            logDebug("❌ No models loaded")
             // List bundle contents to help debug
             if let bundleContents = try? FileManager.default.contentsOfDirectory(atPath: Bundle.main.bundlePath) {
                 logDebug("📁 Bundle contents (mlmodel/mlpackage only):")
@@ -599,27 +606,50 @@ struct ModelViewerView: View {
             }
         }
     }
+
+    private func logModelInputInfo(_ model: MLModel, name: String) {
+        let inputs = model.modelDescription.inputDescriptionsByName
+        if let img = inputs["image"] {
+            if let mac = img.multiArrayConstraint {
+                let shp = mac.shape.map { $0.intValue }
+                logDebug("📥 '\(name)' MultiArray constraint: shape=\(shp) dataType=\(mac.dataType)")
+            } else if let ic = img.imageConstraint {
+                logDebug("📥 '\(name)' Image constraint: \(ic.pixelsWide)x\(ic.pixelsHigh)")
+            }
+        }
+    }
     
 
 }
 
 struct FurnitureFitUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
-    
+
     var roomImage: UIImage?
-    var mlModel: MLModel?
+    var mlModel: MLModel?          // 1280 model for high-res masks
+    var mlModel640: MLModel?       // 640 model for primary detection
     var processInterval: Double = 0.07
     var scoreThreshold: Float = 0.25
     var active: Bool = true
-    
+
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
-        view.setModel(mlModel)
+        // Use two-stage if both models available, otherwise single model
+        if mlModel640 != nil && mlModel != nil {
+            view.setModels(primary: mlModel640, highRes: mlModel)
+        } else {
+            view.setModel(mlModel ?? mlModel640)
+        }
         return view
     }
 
     func updateUIView(_ uiView: FurnitureFitContainerView, context: Context) {
-        uiView.setModel(mlModel)
+        // Use two-stage if both models available, otherwise single model
+        if mlModel640 != nil && mlModel != nil {
+            uiView.setModels(primary: mlModel640, highRes: mlModel)
+        } else {
+            uiView.setModel(mlModel ?? mlModel640)
+        }
         uiView.processInterval = processInterval
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }

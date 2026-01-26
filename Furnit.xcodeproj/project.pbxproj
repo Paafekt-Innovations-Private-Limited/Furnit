@@ -10,6 +10,8 @@
 		613061F92EF8AFF1001EB3AF /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 613061F82EF8AFF1001EB3AF /* FirebaseAppCheck */; };
 		613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */; settings = {ASSET_TAGS = (SHARPModel, ); }; };
 		61A6214C2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 61A6214B2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage */; };
+		61A6214E2F17C08800FE755A /* yoloe_26l_seg_pf_1280.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 61A6214D2F17C08800FE755A /* yoloe_26l_seg_pf_1280.mlpackage */; };
+		61A621502F17C08900FE755A /* yoloe_26l_seg_pf_640.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 61A6214F2F17C08900FE755A /* yoloe_26l_seg_pf_640.mlpackage */; };
 		61A6AB692EF71F5B00D05B9D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB682EF71F5B00D05B9D /* FirebaseAuth */; };
 		61A6AB6B2EF71F5B00D05B9D /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 61A6AB6A2EF71F5B00D05B9D /* FirebaseCore */; };
 		61MS00012F01000000000001 /* MetalSplatter in Frameworks */ = {isa = PBXBuildFile; productRef = 61MS00002F01000000000001 /* MetalSplatter */; };
@@ -31,11 +33,13 @@
 		045F5BD92E6D302900C5585D /* Furnit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Furnit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = SHARP_fp32_1536.mlpackage; sourceTree = "<group>"; };
 		61A6214B2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "yoloe-11l-seg-pf.mlpackage"; sourceTree = "<group>"; };
+		61A6214D2F17C08800FE755A /* yoloe_26l_seg_pf_1280.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = yoloe_26l_seg_pf_1280.mlpackage; sourceTree = "<group>"; };
+		61A6214F2F17C08900FE755A /* yoloe_26l_seg_pf_640.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = yoloe_26l_seg_pf_640.mlpackage; sourceTree = "<group>"; };
 		61A62FAD2F24C31500FE755A /* FurnitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FurnitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		6184BEC22EC028D900595021 /* Exceptions for "Furnit" folder in "Furnit" target */ = {
+		616C17B12F27CD5A00A10214 /* Exceptions for "Furnit" folder in "Furnit" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -48,7 +52,7 @@
 		045F5BDB2E6D302900C5585D /* Furnit */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				6184BEC22EC028D900595021 /* Exceptions for "Furnit" folder in "Furnit" target */,
+				616C17B12F27CD5A00A10214 /* Exceptions for "Furnit" folder in "Furnit" target */,
 			);
 			path = Furnit;
 			sourceTree = "<group>";
@@ -91,6 +95,8 @@
 				61A62FAE2F24C31500FE755A /* FurnitTests */,
 				045F5BDA2E6D302900C5585D /* Products */,
 				61A6214B2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage */,
+				61A6214D2F17C08800FE755A /* yoloe_26l_seg_pf_1280.mlpackage */,
+				61A6214F2F17C08900FE755A /* yoloe_26l_seg_pf_640.mlpackage */,
 				613A5CAD2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage */,
 				613061F72EF8AFF1001EB3AF /* Frameworks */,
 			);
@@ -250,6 +256,8 @@
 			files = (
 				613A5CAE2F0F2118004D15E4 /* SHARP_fp32_1536.mlpackage in Sources */,
 				61A6214C2F17C08700FE755A /* yoloe-11l-seg-pf.mlpackage in Sources */,
+				61A6214E2F17C08800FE755A /* yoloe_26l_seg_pf_1280.mlpackage in Sources */,
+				61A621502F17C08900FE755A /* yoloe_26l_seg_pf_640.mlpackage in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -410,6 +418,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Furnit/Furnit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				COREML_CODEGEN_LANGUAGE = Swift;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = W38QXPUZWC;
 				ENABLE_ON_DEMAND_RESOURCES = YES;
@@ -456,6 +465,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Furnit/Furnit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
+				COREML_CODEGEN_LANGUAGE = Swift;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = W38QXPUZWC;
 				ENABLE_ON_DEMAND_RESOURCES = YES;

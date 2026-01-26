@@ -135,7 +135,7 @@ public struct SharpRoomPlaneUtils {
     ) -> SIMD3<Float>? {
         let v1 = p2 - p1
         let v2 = p3 - p1
-        var normal = cross(v1, v2)
+        let normal = cross(v1, v2)
 
         let normalLength = simd_length(normal)
         guard normalLength > 1e-6 else { return nil }
