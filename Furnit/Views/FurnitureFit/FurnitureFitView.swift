@@ -1097,11 +1097,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
                 switch relation {
                 case .overlay:
+                    // Keep overlays - they overlap with primary
+                    kept2.append(d)
                     if debugMode {
-                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) OVERLAY: \(String(format: "%.0f", covCand * 100))% inside primary, ratio=\(String(format: "%.1f", ratio))")
+                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) OVERLAY: \(String(format: "%.0f", covCand * 100))% inside primary, ratio=\(String(format: "%.1f", ratio))")
                     }
 
                 case .underlay:
+                    // Drop underlays - these are large detections that encompass the primary (e.g., scene labels)
                     if debugMode {
                         logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) UNDERLAY: covers \(String(format: "%.0f", covPrimary * 100))% of primary, ratio=\(String(format: "%.1f", ratio))")
                     }
@@ -1113,8 +1116,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     }
 
                 case .ambiguous:
+                    // Keep ambiguous - they have partial overlap with primary
+                    kept2.append(d)
                     if debugMode {
-                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) AMBIGUOUS: covPri=\(String(format: "%.0f", covPrimary * 100))% covCand=\(String(format: "%.0f", covCand * 100))%")
+                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) AMBIGUOUS: covPri=\(String(format: "%.0f", covPrimary * 100))% covCand=\(String(format: "%.0f", covCand * 100))%")
                     }
                 }
             }
