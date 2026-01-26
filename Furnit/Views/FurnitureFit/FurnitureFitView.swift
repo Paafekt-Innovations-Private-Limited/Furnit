@@ -1,5 +1,5 @@
 // FurnitureFitView.swift
-// Single-stage: detect → NMS → keepOverlapping → union mask → cutout
+// Single-stage: detect → primary selection → mask overlap filter → union mask → cutout
 // With timing at every stage
 
 import SwiftUI
@@ -89,7 +89,6 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
     let mlModel: MLModel?
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.15
-    var iouThreshold: Float = 0.5
     var useBilinearUpscaling: Bool = false
     var active: Bool = false
     
@@ -99,7 +98,6 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
         let v = FurnitureFitContainerView()
         v.processInterval = processInterval
         v.confidenceThreshold = confidenceThreshold
-        v.iouThreshold = iouThreshold
         v.useBilinearUpscaling = useBilinearUpscaling
         v.setModel(mlModel)
         if active { v.startIfNeeded() }
@@ -110,7 +108,6 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
         uiView.confidenceThreshold = confidenceThreshold
-        uiView.iouThreshold = iouThreshold
         uiView.useBilinearUpscaling = useBilinearUpscaling
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
@@ -131,7 +128,6 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.1
-    var iouThreshold: Float = 0.7
     var useBilinearUpscaling: Bool = false
     
     // Debug mode - read from settings
@@ -601,11 +597,17 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 4: Extract tensors (handle different model output names)
         let t4 = Date()
 
-        // Try model output names for yoloe-11l
+        // Try model output names - yoloe-26l first (preferred), then yoloe-11l fallbacks
         let detArray: MLMultiArray
         let protoArray: MLMultiArray
 
-        if let det = output.featureValue(for: "var_2374")?.multiArrayValue,
+        if let det = output.featureValue(for: "detections")?.multiArrayValue,
+           let proto = output.featureValue(for: "protos")?.multiArrayValue {
+            // yoloe-26l model outputs (new export with named outputs)
+            detArray = det
+            protoArray = proto
+            if debugMode { logDebug("📦 Using yoloe-26l output tensors (detections/protos)") }
+        } else if let det = output.featureValue(for: "var_2374")?.multiArrayValue,
            let proto = output.featureValue(for: "var_2412")?.multiArrayValue {
             // yoloe-11l model outputs (export with proper cv3/cv4 heads)
             detArray = det
@@ -693,6 +695,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if isNewFormat {
             // NEW FORMAT: [1, numDetections, featuresPerDetection]
             // featuresPerDetection = 38 = 4 (bbox) + 1 (conf) + 1 (class) + 32 (mask coeffs)
+            // IMPORTANT: YOLO-E outputs bbox in XYXY format (x1,y1,x2,y2), NOT XYWH!
             let numDetections = dim1
             let featuresPerDet = dim2
 
@@ -712,26 +715,33 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         let idx = 0 * detStride + f * featStride
                         rawVals.append(detBuf[idx])
                     }
-                    logDebug("   First det raw[0..9]: \(rawVals.map { String(format: "%.2f", $0) })")
+                    logDebug("   First det raw[0..9] (xyxy,conf,cls,...): \(rawVals.map { String(format: "%.2f", $0) })")
                 }
             }
 
-            // Layout: [x, y, w, h, conf, class_id, coeff0..coeff31]
-            // Ultralytics NMS-free export: conf at index 4, class at index 5
+            // Layout: [x1, y1, x2, y2, conf, class_id, coeff0..coeff31]
+            // YOLO-E post-NMS export: bbox in xyxy corner format
 
             for detIdx in 0..<numDetections {
                 // Use actual strides for memory access
                 let base = detIdx * detStride
 
-                let x = detBuf[base + 0 * featStride]
-                let y = detBuf[base + 1 * featStride]
-                let w = detBuf[base + 2 * featStride]
-                let h = detBuf[base + 3 * featStride]
+                // Read xyxy corner coordinates
+                let x1 = detBuf[base + 0 * featStride]
+                let y1 = detBuf[base + 1 * featStride]
+                let x2 = detBuf[base + 2 * featStride]
+                let y2 = detBuf[base + 3 * featStride]
                 let confidence = detBuf[base + 4 * featStride]
                 let classIdxFloat = detBuf[base + 5 * featStride]
 
                 // Skip if any value is NaN or Inf
-                guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, confidence.isFinite, classIdxFloat.isFinite else { continue }
+                guard x1.isFinite, y1.isFinite, x2.isFinite, y2.isFinite, confidence.isFinite, classIdxFloat.isFinite else { continue }
+
+                // Convert xyxy to xywh (center format)
+                let w = x2 - x1
+                let h = y2 - y1
+                let x = (x1 + x2) / 2.0  // center x
+                let y = (y1 + y2) / 2.0  // center y
 
                 // Validate ranges - confidence should be 0-1, bbox should be reasonable
                 guard confidence > confidenceThreshold, confidence <= 1.0 else { continue }
@@ -829,59 +839,18 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
 
-        // STAGE 7: Apply NMS
-        let t7 = Date()
-        let boxes: [CGRect] = allDets.map { d in
-            CGRect(x: CGFloat(d.x - d.w * 0.5),
-                   y: CGFloat(d.y - d.h * 0.5),
-                   width: CGFloat(d.w),
-                   height: CGFloat(d.h))
-        }
-        let scores: [Float] = allDets.map { $0.confidence }
-        let keptIdx = applyNMS(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
-        let afterNMS: [UnionDet] = keptIdx.map { allDets[$0] }
-        let t7End = Date()
+        // STAGE 7: All detections are candidates (YOLO-E is end-to-end NMS-free)
+        let candidates: [UnionDet] = allDets
         if debugMode {
-            let nmsMs = String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)
-            logDebug("⏱️ STAGE 7 - NMS: \(nmsMs) ms, kept: \(afterNMS.count)")
+            logDebug("⏱️ STAGE 7 - Candidates: \(candidates.count) dets")
         }
 
-        // STAGE 8: Find primary (conf > 0.5, largest area)
+        // STAGE 8: Parse prototypes (moved before primary selection to enable mask-based scoring)
         let t8 = Date()
+        setProgress(0.60, text: "Parsing prototypes…")
 
-        var primaryIdx = -1
-        var maxArea: Float = 0
-        for (i, d) in afterNMS.enumerated() {
-            if d.confidence > 0.5 {
-                let area = d.w * d.h
-                if area > maxArea {
-                    maxArea = area
-                    primaryIdx = i
-                }
-            }
-        }
-
-        if primaryIdx < 0 {
-            if debugMode { logDebug("   ⚠️ No detection with conf > 0.5") }
-            DispatchQueue.main.async { self.maskImageView.image = nil }
-            resetProcessingFlag()
-            return
-        }
-        
-        let primary = afterNMS[primaryIdx]
-        let t8End = Date()
-        if debugMode {
-            let primaryMs = String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)
-            logDebug("⏱️ STAGE 8 - Primary: \(primaryMs) ms")
-            logDebug("   🎯 PRIMARY[\(primaryIdx)]: \u{001B}[1m\(className(primary.classIdx))\u{001B}[0m conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
-        }
-
-        // STAGE 9: Parse prototypes
-        let t9 = Date()
-        setProgress(0.65, text: "Building mask…")
-        
         guard let protoInfo = parsePrototypes(protoArray) else {
-            if debugMode { logDebug("❌ STAGE 9 FAILED: Parse prototypes") }
+            if debugMode { logDebug("❌ STAGE 8 FAILED: Parse prototypes") }
             resetProcessingFlag()
             return
         }
@@ -889,172 +858,272 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let pH = protoInfo.height
         let pW = protoInfo.width
         let planeSize = pH * pW
-        
+
+        let t8End = Date()
+        if debugMode {
+            let protoMs = String(format: "%.2f", t8End.timeIntervalSince(t8) * 1000)
+            logDebug("⏱️ STAGE 8 - Parse prototypes: \(protoMs) ms, size=\(pW)x\(pH)")
+        }
+
+        // STAGE 9: Find primary using composite scoring
+        // Score = conf^1.5 * area_norm^1.2 * center_term * mask_solidity_term
+        let t9 = Date()
+        setProgress(0.65, text: "Selecting primary…")
+
+        // Frame dimensions for normalization
+        let frameW = Float(modelInputSize)
+        let frameH = Float(modelInputSize)
+        let frameArea = frameW * frameH
+        let frameCx = frameW / 2
+        let frameCy = frameH / 2
+
+        // Reorganize planes for BLAS: A is (planeSize x 32) row-major
+        var A = [Float](repeating: 0, count: planeSize * 32)
+        for ch in 0..<32 {
+            for px in 0..<planeSize {
+                A[px * 32 + ch] = planes[ch * planeSize + px]
+            }
+        }
+
+        // Primary selection using bbox-only scoring (fast, no mask computation)
+        // score = conf^1.5 * area_norm^1.2 * (0.5 + 0.5*center)
+        var primaryIdx = -1
+        var maxScore: Float = -1
+        let minConf: Float = 0.15
+        let minAreaNorm: Float = 0.02
+
+        for (i, d) in candidates.enumerated() {
+            // Light filters
+            let areaNorm = (d.w * d.h) / frameArea
+            if d.confidence < minConf || areaNorm < minAreaNorm { continue }
+
+            // Center score: 1 at center, ~0 at corners
+            let dx = (d.x - frameCx) / frameCx
+            let dy = (d.y - frameCy) / frameCy
+            let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
+            let centerScore = 1.0 - centerDist
+
+            // Fast composite score (no mask computation)
+            let confTerm = pow(d.confidence, 1.5)
+            let areaTerm = pow(areaNorm, 1.2)
+            let centerTerm = 0.5 + 0.5 * Float(centerScore)
+
+            let score = confTerm * areaTerm * centerTerm
+
+            if debugMode && score > 0.001 {
+                logDebug("   [\(i)] \(className(d.classIdx)): conf=\(String(format: "%.2f", d.confidence)) area=\(String(format: "%.1f", areaNorm * 100))% center=\(String(format: "%.2f", centerScore)) → score=\(String(format: "%.4f", score))")
+            }
+
+            if score > maxScore {
+                maxScore = score
+                primaryIdx = i
+            }
+        }
+
+        if primaryIdx < 0 {
+            if debugMode { logDebug("   ⚠️ No valid primary candidate") }
+            DispatchQueue.main.async { self.maskImageView.image = nil }
+            resetProcessingFlag()
+            return
+        }
+
+        let primary = candidates[primaryIdx]
         let t9End = Date()
         if debugMode {
-            let protoMs = String(format: "%.2f", t9End.timeIntervalSince(t9) * 1000)
-            logDebug("⏱️ STAGE 9 - Prototypes: \(protoMs) ms")
+            let primaryMs = String(format: "%.2f", t9End.timeIntervalSince(t9) * 1000)
+            logDebug("⏱️ STAGE 9 - Primary selection: \(primaryMs) ms")
+            logDebug("   🎯 PRIMARY[\(primaryIdx)]: \u{001B}[1m\(className(primary.classIdx))\u{001B}[0m conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h)) score=\(String(format: "%.4f", maxScore))")
         }
 
-        // STAGE 10: Reorganize prototypes
+        // STAGE 10: Prune candidates BEFORE mask BLAS (Phase 3 optimization)
+        // - Drop non-overlapping bboxes
+        // - Drop candidates much smaller than primary (area < 5%)
+        // - Drop low confidence (< 0.1)
+        // - Cap to top-K (by confidence)
         let t10 = Date()
-        
-        var A = [Float](repeating: 0, count: planeSize * 32)
-        var zero: Float = 0
-        A.withUnsafeMutableBufferPointer { dstPtr in
-            planes.withUnsafeBufferPointer { srcPtr in
-                for k in 0..<32 {
-                    let srcStart = srcPtr.baseAddress!.advanced(by: k * planeSize)
-                    let dstStart = dstPtr.baseAddress!.advanced(by: k)
-                    vDSP_vsadd(srcStart, 1, &zero, dstStart, 32, vDSP_Length(planeSize))
-                }
-            }
+
+        let primaryBboxX1 = primary.x - primary.w * 0.5
+        let primaryBboxY1 = primary.y - primary.h * 0.5
+        let primaryBboxX2 = primary.x + primary.w * 0.5
+        let primaryBboxY2 = primary.y + primary.h * 0.5
+        let primaryBboxArea = primary.w * primary.h
+
+        // Helper: check if two bboxes overlap
+        func bboxesOverlap(_ d: UnionDet) -> Bool {
+            let dx1 = d.x - d.w * 0.5
+            let dy1 = d.y - d.h * 0.5
+            let dx2 = d.x + d.w * 0.5
+            let dy2 = d.y + d.h * 0.5
+            return !(dx2 < primaryBboxX1 || dx1 > primaryBboxX2 || dy2 < primaryBboxY1 || dy1 > primaryBboxY2)
         }
-        
+
+        // Filter and collect candidates for mask BLAS
+        var prunedCandidates: [(idx: Int, det: UnionDet)] = []
+        let minCandConf: Float = 0.1
+        let minAreaRatio: Float = 0.05  // must be at least 5% of primary area
+
+        for (i, d) in candidates.enumerated() {
+            if i == primaryIdx { continue }
+
+            // Confidence filter
+            if d.confidence < minCandConf {
+                if debugMode { logDebug("   ⏭️ [\(i)] \(className(d.classIdx)): conf \(String(format: "%.2f", d.confidence)) < \(minCandConf)") }
+                continue
+            }
+
+            // Size filter: drop very small candidates
+            let candArea = d.w * d.h
+            if candArea < primaryBboxArea * minAreaRatio {
+                if debugMode { logDebug("   ⏭️ [\(i)] \(className(d.classIdx)): area \(String(format: "%.1f", candArea / primaryBboxArea * 100))% < \(Int(minAreaRatio * 100))%") }
+                continue
+            }
+
+            // Bbox overlap filter: drop non-overlapping
+            if !bboxesOverlap(d) {
+                if debugMode { logDebug("   ⏭️ [\(i)] \(className(d.classIdx)): no bbox overlap with primary") }
+                continue
+            }
+
+            prunedCandidates.append((i, d))
+        }
+
         let t10End = Date()
         if debugMode {
-            let reorgMs = String(format: "%.2f", t10End.timeIntervalSince(t10) * 1000)
-            logDebug("⏱️ STAGE 10 - Reorganize: \(reorgMs) ms")
+            let pruneMs = String(format: "%.2f", t10End.timeIntervalSince(t10) * 1000)
+            logDebug("⏱️ STAGE 10 - Prune: \(pruneMs) ms, \(candidates.count - 1) → \(prunedCandidates.count) candidates")
         }
 
-        // STAGE 11: Filter - use mask overlap with primary instead of bbox overlap
+        // STAGE 11: Batched SGEMM for all candidate logits + overlap classification
         let t11 = Date()
 
-        // Build primary logits and mask in prototype space (pW x pH)
-        // A is (planeSize x 32) in row-major where each row (pixel) has 32 prototype values.
-        // We'll compute logits = A * coeffs (SGEMV) and threshold at 0.
-        func logitsForDetection(_ coeffs: [Float]) -> [Float] {
-            var result = [Float](repeating: 0, count: planeSize)
-            A.withUnsafeBufferPointer { aPtr in
-                coeffs.withUnsafeBufferPointer { xPtr in
-                    result.withUnsafeMutableBufferPointer { yPtr in
-                        let m = BLASInt(planeSize)
-                        let n = BLASInt(32)
-                        let lda = BLASInt(32)
-                        let incx: BLASInt = 1
-                        let incy: BLASInt = 1
-                        blas_sgemv_rowmajor(m: m, n: n, alpha: 1.0, A: aPtr.baseAddress!, lda: lda, x: xPtr.baseAddress!, incx: incx, beta: 0.0, y: yPtr.baseAddress!, incy: incy)
-                    }
+        // Build primary logits first (single SGEMV)
+        var primaryLogits = [Float](repeating: 0, count: planeSize)
+        A.withUnsafeBufferPointer { aPtr in
+            primary.coeffs.withUnsafeBufferPointer { xPtr in
+                primaryLogits.withUnsafeMutableBufferPointer { yPtr in
+                    let m = BLASInt(planeSize)
+                    let n = BLASInt(32)
+                    let lda = BLASInt(32)
+                    blas_sgemv_rowmajor(m: m, n: n, alpha: 1.0, A: aPtr.baseAddress!, lda: lda, x: xPtr.baseAddress!, incx: 1, beta: 0.0, y: yPtr.baseAddress!, incy: 1)
                 }
             }
-            return result
         }
 
-        func maskFromLogits(_ logits: [Float]) -> [UInt8] {
-            var mask = [UInt8](repeating: 0, count: planeSize)
-            for i in 0..<planeSize { if logits[i] > 0 { mask[i] = 255 } }
-            return mask
-        }
-
-        // Primary mask in prototype space
-        let primaryLogits = logitsForDetection(primary.coeffs)
-
-        // PERF: Precompute indices of primary mask pixels (in prototype space) once.
-        // This keeps Stage 11 from scanning the entire plane for every candidate.
-        var primaryMaskIndices: [Int] = []
-        primaryMaskIndices.reserveCapacity(planeSize / 4)
+        // Count primary mask area
+        var primaryMaskArea = 0
         for i in 0..<planeSize {
-            if primaryLogits[i] > 0 { primaryMaskIndices.append(i) }
+            if primaryLogits[i] > 0 { primaryMaskArea += 1 }
         }
-
-        // Helper: compute fraction of PRIMARY mask covered by candidate mask (in prototype space)
-        func intersectionCoverage(candidateCoeffs: [Float]) -> Float {
-            // Fraction of PRIMARY mask pixels covered by candidate (both in prototype space).
-            // PERF: Iterate only over primary mask indices (sparse), not the entire plane.
-            if primaryMaskIndices.isEmpty { return 0 }
-            let candLogits = logitsForDetection(candidateCoeffs)
-            var interCount: Int = 0
-            for idx in primaryMaskIndices {
-                if candLogits[idx] > 0 { interCount += 1 }
-            }
-            return Float(interCount) / Float(primaryMaskIndices.count)
-        }
-
-        // Helper: compute mask density (positive pixels / mask bounding box area)
-        // Returns (density, valid) - valid is false if mask is empty
-        func maskDensity(coeffs: [Float]) -> (Float, Bool) {
-            let logits = logitsForDetection(coeffs)
-            var minX = pW, maxX = 0, minY = pH, maxY = 0
-            var positiveCount = 0
-            for idx in 0..<planeSize {
-                if logits[idx] > 0 {
-                    positiveCount += 1
-                    let x = idx % pW
-                    let y = idx / pW
-                    if x < minX { minX = x }
-                    if x > maxX { maxX = x }
-                    if y < minY { minY = y }
-                    if y > maxY { maxY = y }
-                }
-            }
-            let maskW = maxX - minX + 1
-            let maskH = maxY - minY + 1
-            if maskW <= 0 || maskH <= 0 || positiveCount == 0 { return (0, false) }
-            let boundingArea = maskW * maskH
-            return (Float(positiveCount) / Float(boundingArea), true)
-        }
-
-        // Compute bbox edges for size comparison
-        let pLeft = primary.x - primary.w * 0.5
-        let pRight = primary.x + primary.w * 0.5
-        let pTop = primary.y - primary.h * 0.5
-        let pBottom = primary.y + primary.h * 0.5
 
         if debugMode {
             logDebug("   📦 PRIMARY: center=(\(Int(primary.x)),\(Int(primary.y))) size=\(Int(primary.w))x\(Int(primary.h))")
-            logDebug("      edges: L=\(Int(pLeft)) R=\(Int(pRight)) T=\(Int(pTop)) B=\(Int(pBottom))")
+            logDebug("      mask pixels: \(primaryMaskArea)")
         }
 
+        // Overlay relation enum
+        enum OverlayRelation {
+            case overlay    // candidate is small and mostly inside primary (pillow on bed)
+            case underlay   // candidate is big and contains primary (scene label)
+            case sideBySide // barely touching
+            case ambiguous  // partial overlap
+        }
+
+        func classifyRelation(candArea: Int, covPrimary: Float, covCand: Float) -> OverlayRelation {
+            let ratio = Float(candArea) / Float(max(1, primaryMaskArea))
+            if covCand > 0.8 && ratio < 0.5 { return .overlay }
+            if covPrimary > 0.8 && ratio > 2.0 { return .underlay }
+            if covPrimary < 0.2 && covCand < 0.2 { return .sideBySide }
+            return .ambiguous
+        }
+
+        // Keep primary by definition
         var kept2: [UnionDet] = [primary]
-        let threshold = AppStateManager.shared.qualitySettings.maskOverlapThreshold
 
-        for (i, d) in afterNMS.enumerated() {
-            if i == primaryIdx { continue }
-
-            // Guard against division by zero / NaN
-            let wPct = primary.w > 0 ? Int(d.w / primary.w * 100) : 0
-            let hPct = primary.h > 0 ? Int(d.h / primary.h * 100) : 0
-
-            // Mask-based overlap: fraction of PRIMARY mask pixels that are also in candidate mask
-            let coverageOfCandidate = intersectionCoverage(candidateCoeffs: d.coeffs)
-
-            if coverageOfCandidate < threshold {
-                if debugMode {
-                    let pct = String(format: "%.2f", coverageOfCandidate * 100)
-                    let thresholdPct = String(format: "%.2f", threshold * 100)
-                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] PRIMARY COVERED < \(thresholdPct)% (\(pct)%)")
-                }
-                continue
+        // If no candidates to check, skip SGEMM
+        if prunedCandidates.isEmpty {
+            if debugMode { logDebug("   No candidates to check after pruning") }
+        } else {
+            // Build coefficient matrix B for ALL pruned candidates: B is (32 x N) row-major
+            // B[k * N + j] = coeffs[k] for candidate j
+            let N = prunedCandidates.count
+            var B = [Float](repeating: 0, count: 32 * N)
+            for j in 0..<N {
+                let coeffs = prunedCandidates[j].det.coeffs
+                for k in 0..<32 { B[k * N + j] = coeffs[k] }
             }
 
-            let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
-            if tooLarge {
-                if debugMode {
-                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] TOO LARGE")
+            // SGEMM: C = A * B where A is (planeSize x 32), B is (32 x N), C is (planeSize x N)
+            // C[px * N + j] = logit for pixel px, candidate j
+            var C = [Float](repeating: 0, count: planeSize * N)
+
+            A.withUnsafeBufferPointer { aPtr in
+                B.withUnsafeBufferPointer { bPtr in
+                    C.withUnsafeMutableBufferPointer { cPtr in
+                        let M = BLASInt(planeSize)
+                        let Nbl = BLASInt(N)
+                        let K = BLASInt(32)
+                        let lda = BLASInt(32)
+                        let ldb = Nbl
+                        let ldc = Nbl
+                        blas_sgemm_rowmajor(m: M, n: Nbl, k: K, alpha: 1.0, A: aPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: 0.0, C: cPtr.baseAddress!, ldc: ldc)
+                    }
                 }
-                continue
             }
 
-            // Check mask density - reject sparse/fragmented masks
-            let (density, densityValid) = maskDensity(coeffs: d.coeffs)
-            if densityValid && density < 0.2 {
-                // Less than 20% of mask bounding box is filled - likely sparse noise
-                if debugMode {
-                    logDebug("   ❌ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) SPARSE MASK density=\(String(format: "%.1f", density * 100))%")
-                }
-                continue
-            }
+            // Now compute overlap metrics from C (no additional SGEMV calls!)
+            for j in 0..<N {
+                let (origIdx, d) = prunedCandidates[j]
 
-            kept2.append(d)
-            if debugMode {
-                logDebug("   ✅ [\(i)]: \(className(d.classIdx)) center=(\(Int(d.x)),\(Int(d.y))) size=\(Int(d.w))x\(Int(d.h)) [\(wPct)%,\(hPct)%] (ok)")
+                // Count candidate mask pixels and intersection with primary
+                var candPixelCount = 0
+                var interCount = 0
+
+                for px in 0..<planeSize {
+                    let candLogit = C[px * N + j]
+                    let candPositive = candLogit > 0
+                    let primPositive = primaryLogits[px] > 0
+
+                    if candPositive {
+                        candPixelCount += 1
+                        if primPositive { interCount += 1 }
+                    }
+                }
+
+                let covPrimary: Float = primaryMaskArea > 0 ? Float(interCount) / Float(primaryMaskArea) : 0
+                let covCand: Float = candPixelCount > 0 ? Float(interCount) / Float(candPixelCount) : 0
+
+                let relation = classifyRelation(candArea: candPixelCount, covPrimary: covPrimary, covCand: covCand)
+                let ratio = Float(candPixelCount) / Float(max(1, primaryMaskArea))
+
+                switch relation {
+                case .overlay:
+                    if debugMode {
+                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) OVERLAY: \(String(format: "%.0f", covCand * 100))% inside primary, ratio=\(String(format: "%.1f", ratio))")
+                    }
+
+                case .underlay:
+                    if debugMode {
+                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) UNDERLAY: covers \(String(format: "%.0f", covPrimary * 100))% of primary, ratio=\(String(format: "%.1f", ratio))")
+                    }
+
+                case .sideBySide:
+                    kept2.append(d)
+                    if debugMode {
+                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) SIDE-BY-SIDE: covPri=\(String(format: "%.0f", covPrimary * 100))% covCand=\(String(format: "%.0f", covCand * 100))%")
+                    }
+
+                case .ambiguous:
+                    if debugMode {
+                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) AMBIGUOUS: covPri=\(String(format: "%.0f", covPrimary * 100))% covCand=\(String(format: "%.0f", covCand * 100))%")
+                    }
+                }
             }
         }
 
         let t11End = Date()
         if debugMode {
             let filterMs = String(format: "%.2f", t11End.timeIntervalSince(t11) * 1000)
-            logDebug("⏱️ STAGE 11 - Filter: \(filterMs) ms, kept=\(kept2.count)")
+            logDebug("⏱️ STAGE 11 - Filter (SGEMM): \(filterMs) ms, kept=\(kept2.count)")
         }
 
         if kept2.isEmpty {
@@ -1097,6 +1166,15 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let unionMs = String(format: "%.2f", t12End.timeIntervalSince(t12) * 1000)
             logDebug("⏱️ STAGE 12 - Union bbox: \(unionMs) ms")
             logDebug("   image: [\(bx1),\(by1)]→[\(bx2),\(by2)] = \(bx2-bx1)x\(by2-by1)")
+        }
+
+        // Compute PRIMARY bbox in image coordinates (for clipping mask later)
+        let primaryBx1 = max(0, Int(round((primary.x - primary.w * 0.5 - padX) / resizeGain)))
+        let primaryBy1 = max(0, Int(round((primary.y - primary.h * 0.5 - padY) / resizeGain)))
+        let primaryBx2 = min(origW, Int(round((primary.x + primary.w * 0.5 - padX) / resizeGain)))
+        let primaryBy2 = min(origH, Int(round((primary.y + primary.h * 0.5 - padY) / resizeGain)))
+        if debugMode {
+            logDebug("   PRIMARY bbox: [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
         }
 
         // Helper: Build full-resolution mask from current kept detections
@@ -1245,10 +1323,31 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 13–15b: Build initial mask from kept2 (pre-bbox filter)
         let t13to15b = Date()
         let build1 = buildFullMaskMetal(from: kept2)
-        let maskFull = build1.maskFull
+        var maskFull = build1.maskFull
         if debugMode {
             let buildPreMs = String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)
             logDebug("⏱️ STAGE 13–15b - Build mask (pre-bbox): \(buildPreMs) ms, positive: \(build1.positiveCount)")
+        }
+
+        // STAGE 15c: Clip mask to PRIMARY bbox (zero out pixels outside primary)
+        // This removes noise from detections that extend beyond the primary object
+        let t15c = Date()
+        var clippedCount = 0
+        for y in 0..<origH {
+            for x in 0..<origW {
+                let idx = y * origW + x
+                if maskFull[idx] > 0 {
+                    // Check if pixel is outside primary bbox
+                    if x < primaryBx1 || x >= primaryBx2 || y < primaryBy1 || y >= primaryBy2 {
+                        maskFull[idx] = 0
+                        clippedCount += 1
+                    }
+                }
+            }
+        }
+        if debugMode {
+            let clipMs = String(format: "%.2f", Date().timeIntervalSince(t15c) * 1000)
+            logDebug("⏱️ STAGE 15c - Clip to primary bbox: \(clipMs) ms, clipped: \(clippedCount) pixels")
         }
 
         // Prepare flattened coeffs for fused GPU path
@@ -1528,11 +1627,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ FRAME TOTAL: \(frameTotalMs) ms")
             logDebug("⏱️ ═══════════════════════════════════════════\n")
         }
-    }
-
-    // MARK: - NMS (delegates to FurnitureFitNMS utility)
-    func applyNMS(boxes: [CGRect], scores: [Float], iouThreshold: Float) -> [Int] {
-        return FurnitureFitNMS.apply(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
     }
 
     // MARK: - Parse Prototypes

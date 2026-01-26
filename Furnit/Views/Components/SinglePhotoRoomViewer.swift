@@ -2327,7 +2327,7 @@ struct SceneKitViewer: View {
     private func loadMLModel() {
         Task {
             do {
-                if let modelURL = Bundle.main.url(forResource: "yoloe-11l-seg-pf", withExtension: "mlmodelc") {
+                if let modelURL = Bundle.main.url(forResource: "yoloe_26l_seg_pf_1280", withExtension: "mlmodelc") {
                     let config = MLModelConfiguration()
                     config.computeUnits = .cpuAndNeuralEngine
                     let model = try MLModel(contentsOf: modelURL, configuration: config)

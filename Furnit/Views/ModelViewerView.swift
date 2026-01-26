@@ -542,9 +542,9 @@ struct ModelViewerView: View {
             return
         }
 
-        // YOLOE-11l model with proper cv3/cv4 heads for CoreML export
+        // YOLOE-26l model at 1280x1280 with NMS-free outputs
         let candidateNames = [
-            ("yoloe-11l-seg-pf", "mlmodelc"),
+            ("yoloe_26l_seg_pf_1280", "mlmodelc"),
         ]
 
         logDebug("🔍 Looking for ML Model (preferring .mlpackage):", candidateNames.map { "\($0.0).\($0.1)" }.joined(separator: ", "))
