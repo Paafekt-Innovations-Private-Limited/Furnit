@@ -148,18 +148,21 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return AppStateManager.shared.qualitySettings.debugMode
     }
 
-    // MARK: - Ignored Classes (loaded from blacklist.json)
-    private lazy var clsToIgnore: Set<Int> = {
-        guard let url = Bundle.main.url(forResource: "blacklist", withExtension: "json"),
+    // MARK: - Ignored Classes (loaded from blacklist.json or blacklist_11l.json)
+    private var clsToIgnore: Set<Int> = []
+
+    private func loadBlacklist() {
+        let filename = using11lModel ? "blacklist_11l" : "blacklist"
+        guard let url = Bundle.main.url(forResource: filename, withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            if debugMode { logDebug("⚠️ Failed to load blacklist.json") }
-            return []
+            if debugMode { logDebug("⚠️ Failed to load \(filename).json") }
+            clsToIgnore = []
+            return
         }
-        let blacklistSet = Set(dict.keys.compactMap { Int($0) })
-        if debugMode { logDebug("✅ Loaded \(blacklistSet.count) blacklisted classes") }
-        return blacklistSet
-    }()
+        clsToIgnore = Set(dict.keys.compactMap { Int($0) })
+        if debugMode { logDebug("✅ Loaded \(clsToIgnore.count) blacklisted classes from \(filename).json") }
+    }
 
     // MARK: Camera
     private let captureSession = AVCaptureSession()
@@ -224,6 +227,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     // MARK: Model & State
     private var mlModel: MLModel?        // 1280 model for high-res masks
     private var mlModel640: MLModel?     // 640 model for primary detection (better confidence)
+    private var using11lModel: Bool = false  // Track if 11l model is used (for correct blacklist)
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
@@ -363,9 +367,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Log model outputs for debugging
         if let model = model {
             let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
-            let outputNames = model.modelDescription.outputDescriptionsByName.keys.joined(separator: ", ")
-            logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames)]")
+            let outputNames = model.modelDescription.outputDescriptionsByName.keys
+            logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
+            // Detect if this is yoloe-11l by checking output names
+            using11lModel = outputNames.contains("var_2374") || outputNames.contains("var_2412") ||
+                            outputNames.contains("p") // yoloe-11l output names
         }
+        loadBlacklist()
     }
 
     /// Set both models for two-stage inference: 640 for primary detection, 1280 for high-res masks
@@ -375,7 +383,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             self.mlModel = model1280
         }
         if model640 != nil { logDebug("🧠 [FurnitureFit] 640 model set for primary detection") }
-        if model1280 != nil { logDebug("🧠 [FurnitureFit] 1280 model set for high-res masks") }
+        if let model = model1280 {
+            // Detect if this is yoloe-11l by checking output names
+            let outputNames = model.modelDescription.outputDescriptionsByName.keys
+            using11lModel = outputNames.contains("var_2374") || outputNames.contains("var_2412") ||
+                            outputNames.contains("p") // yoloe-11l output names
+            logDebug("🧠 [FurnitureFit] 1280 model set for high-res masks (11l: \(using11lModel))")
+        }
+        loadBlacklist()
     }
 
     func startIfNeeded() {

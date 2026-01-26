@@ -8,10 +8,15 @@ kernel void sp_compositeMask(texture2d<float, access::read>  src   [[texture(0)]
                           texture2d<float, access::write> out   [[texture(2)]],
                           uint2 gid [[thread_position_in_grid]]) {
     if (gid.x >= out.get_width() || gid.y >= out.get_height()) return;
-    float4 s = src.read(gid);  // BGRA: s.r=Blue, s.g=Green, s.b=Red
     float  m = mask.read(gid).r; // R8Unorm -> normalized float in [0,1]
+    // For premultiplied alpha: when mask=0, RGB must also be 0
+    if (m < 0.5f) {
+        out.write(float4(0.0, 0.0, 0.0, 0.0), gid);
+        return;
+    }
+    float4 s = src.read(gid);  // BGRA: s.r=Blue, s.g=Green, s.b=Red
     // Swap B and R for correct RGB output
-    float4 outCol = float4(s.b, s.g, s.r, m);  // R, G, B, A
+    float4 outCol = float4(s.b, s.g, s.r, 1.0);  // R, G, B, A=1 (fully opaque)
     out.write(outCol, gid);
 }
 
