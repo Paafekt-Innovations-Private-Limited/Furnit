@@ -1439,30 +1439,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // Compute PRIMARY bbox in image coordinates (for clipping mask later)
-        // In two-stage mode, use 640's bbox (already scaled to model space in pX1/pY1/pX2/pY2)
-        let primaryBx1: Int
-        let primaryBy1: Int
-        let primaryBx2: Int
-        let primaryBy2: Int
-
-        if primaryInfo640 != nil {
-            // Use scaled 640 bbox (pX1/pY1/pX2/pY2 are already in 1280-space)
-            primaryBx1 = max(0, Int(round((pX1 - padX) / resizeGain)))
-            primaryBy1 = max(0, Int(round((pY1 - padY) / resizeGain)))
-            primaryBx2 = min(origW, Int(round((pX2 - padX) / resizeGain)))
-            primaryBy2 = min(origH, Int(round((pY2 - padY) / resizeGain)))
-            if debugMode {
-                logDebug("   PRIMARY bbox (from 640): [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
-            }
-        } else {
-            // Use 1280 primary bbox
-            primaryBx1 = max(0, Int(round((primary.x - primary.w * 0.5 - padX) / resizeGain)))
-            primaryBy1 = max(0, Int(round((primary.y - primary.h * 0.5 - padY) / resizeGain)))
-            primaryBx2 = min(origW, Int(round((primary.x + primary.w * 0.5 - padX) / resizeGain)))
-            primaryBy2 = min(origH, Int(round((primary.y + primary.h * 0.5 - padY) / resizeGain)))
-            if debugMode {
-                logDebug("   PRIMARY bbox: [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
-            }
+        // Always use 1280 model's primary bbox (yoloe-11l-seg-pf gave stable results)
+        let primaryBx1 = max(0, Int(round((primary.x - primary.w * 0.5 - padX) / resizeGain)))
+        let primaryBy1 = max(0, Int(round((primary.y - primary.h * 0.5 - padY) / resizeGain)))
+        let primaryBx2 = min(origW, Int(round((primary.x + primary.w * 0.5 - padX) / resizeGain)))
+        let primaryBy2 = min(origH, Int(round((primary.y + primary.h * 0.5 - padY) / resizeGain)))
+        if debugMode {
+            logDebug("   PRIMARY bbox: [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
         }
 
         // Helper: Build full-resolution mask from current kept detections
@@ -1787,7 +1770,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 let origRow = y * CVPixelBufferGetBytesPerRow(processBuffer)
                 for x in 0..<origW {
                     let outIdx = outRow + x * 4
-                    if x < bx1 || x >= bx2 || y < by1 || y >= by2 {
+                    if x < primaryBx1 || x >= primaryBx2 || y < primaryBy1 || y >= primaryBy2 {
                         outBase[outIdx+3] = 0
                         continue
                     }

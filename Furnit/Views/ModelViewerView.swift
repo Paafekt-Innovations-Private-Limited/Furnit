@@ -549,7 +549,9 @@ struct ModelViewerView: View {
             ("yoloe_26l_seg_pf_640", "mlmodelc"),
         ]
         let model1280Candidates = [
-            ("yoloe_26l_seg_pf_1280", "mlmodelc"),
+            ("yoloe-11l-seg-pf", "mlmodelc"),      // Prefer 11l for stable bbox
+            ("yoloe-11l-seg-pf", "mlpackage"),     // Try mlpackage if mlmodelc not found
+            ("yoloe_26l_seg_pf_1280", "mlmodelc"), // Fallback to 26l
         ]
 
         logDebug("🔍 Loading two-stage models: 640 for detection, 1280 for masks")
