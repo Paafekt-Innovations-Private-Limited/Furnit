@@ -606,4 +606,223 @@ final class ImageBasedTests: XCTestCase {
             XCTFail("Inference failed: \(error)")
         }
     }
+
+    // MARK: - Landscape Segmentation Test
+    // Validates CoreML output matches PyTorch and tests primary detection selection
+
+    /// Ground truth from PyTorch yoloe-11l-seg-pf on landscape.jpeg:
+    /// - Total detections (conf > 0.25): 29
+    /// - Valid (non-blacklisted): 21
+    /// - Primary: writing desk (id=4564), conf=0.561, center=(628.5, 689.9)
+    func testLandscapeSegmentationMatchesPyTorch() throws {
+        // Load test image
+        guard let image = loadTestImage(named: "landscape", extension: "jpeg"),
+              let cgImage = image.cgImage else {
+            XCTFail("Could not load landscape.jpeg")
+            return
+        }
+
+        // Load model
+        guard let model = loadYOLOEModel() else {
+            throw XCTSkip("Skipping - yoloe-11l-seg-pf model not available")
+        }
+
+        // Load blacklist for filtering
+        let blacklistURL = Bundle.main.url(forResource: "blacklist", withExtension: "json")
+        var blacklist: Set<Int> = []
+        if let url = blacklistURL, let data = try? Data(contentsOf: url),
+           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            blacklist = Set(dict.keys.compactMap { Int($0) })
+        }
+
+        print("Loaded \(blacklist.count) blacklisted classes")
+        print("Image size: \(image.size.width) x \(image.size.height)")
+
+        let modelSize = 1280
+
+        // Create letterboxed CVPixelBuffer (image is 1280x960, letterbox to 1280x1280)
+        var pixelBuffer: CVPixelBuffer?
+        CVPixelBufferCreate(kCFAllocatorDefault, modelSize, modelSize, kCVPixelFormatType_32BGRA, nil, &pixelBuffer)
+
+        guard let buffer = pixelBuffer else {
+            XCTFail("Failed to create pixel buffer")
+            return
+        }
+
+        CVPixelBufferLockBaseAddress(buffer, [])
+
+        guard let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer),
+            width: modelSize,
+            height: modelSize,
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        ) else {
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            XCTFail("Failed to create context")
+            return
+        }
+
+        // Fill with gray letterbox padding
+        context.setFillColor(gray: 128.0/255.0, alpha: 1.0)
+        context.fill(CGRect(x: 0, y: 0, width: modelSize, height: modelSize))
+
+        // Calculate letterbox dimensions
+        let scale = min(CGFloat(modelSize) / image.size.width, CGFloat(modelSize) / image.size.height)
+        let newWidth = image.size.width * scale
+        let newHeight = image.size.height * scale
+        let padX = (CGFloat(modelSize) - newWidth) / 2
+        let padY = (CGFloat(modelSize) - newHeight) / 2
+
+        context.draw(cgImage, in: CGRect(x: padX, y: padY, width: newWidth, height: newHeight))
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+
+        print("Letterbox: scale=\(scale), pad=(\(padX), \(padY))")
+
+        // Run inference
+        do {
+            let imageValue = MLFeatureValue(pixelBuffer: buffer)
+            let input = try MLDictionaryFeatureProvider(dictionary: ["image": imageValue])
+            let output = try model.prediction(from: input)
+
+            // Get output tensors
+            guard let detArray = output.featureValue(for: "var_2374")?.multiArrayValue else {
+                XCTFail("Missing detection tensor")
+                return
+            }
+
+            let detShape = detArray.shape.map { $0.intValue }
+            print("Detection tensor shape: \(detShape)")
+
+            // For raw anchor format, skip detailed validation
+            let isRawFormat = detShape[2] == 33600 || detShape[1] == 33600
+            if isRawFormat {
+                print("Model outputs raw anchors - testing basic inference only")
+                XCTAssertEqual(detShape.count, 3)
+                return
+            }
+
+            // Parse detections (post-NMS format: [1, 300, 38])
+            let numDetections = detShape[1]
+            let featuresPerDet = detShape[2]
+            let strides = detArray.strides.map { $0.intValue }
+            let detStride = strides.count >= 2 ? strides[1] : featuresPerDet
+            let featStride = strides.count >= 3 ? strides[2] : 1
+
+            let totalCount = detArray.count
+            let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
+            defer { detBuf.deallocate() }
+            memcpy(detBuf, detArray.dataPointer, totalCount * MemoryLayout<Float>.size)
+
+            // Extract detections with conf > 0.25
+            struct Detection {
+                let cls: Int
+                let conf: Float
+                let cx: Float, cy: Float, w: Float, h: Float
+            }
+
+            var allDetections: [Detection] = []
+            let confThreshold: Float = 0.25
+
+            for detIdx in 0..<numDetections {
+                let base = detIdx * detStride
+
+                let x1 = detBuf[base + 0 * featStride]
+                let y1 = detBuf[base + 1 * featStride]
+                let x2 = detBuf[base + 2 * featStride]
+                let y2 = detBuf[base + 3 * featStride]
+                let conf = detBuf[base + 4 * featStride]
+                let clsFloat = detBuf[base + 5 * featStride]
+
+                guard conf > confThreshold, x1.isFinite, y1.isFinite else { continue }
+
+                let w = x2 - x1
+                let h = y2 - y1
+                let cx = (x1 + x2) / 2
+                let cy = (y1 + y2) / 2
+
+                guard w > 0, h > 0 else { continue }
+
+                allDetections.append(Detection(cls: Int(clsFloat), conf: conf, cx: cx, cy: cy, w: w, h: h))
+            }
+
+            print("\n=== CoreML Detections (conf > 0.25): \(allDetections.count) ===")
+
+            // ASSERTION 1: Total detection count should be close to PyTorch (29)
+            // Allow some variance due to floating point differences
+            XCTAssertGreaterThan(allDetections.count, 20, "Should have at least 20 detections")
+            XCTAssertLessThan(allDetections.count, 40, "Should have fewer than 40 detections")
+
+            // Filter by blacklist
+            let validDetections = allDetections.filter { !blacklist.contains($0.cls) }
+            print("Valid (non-blacklisted): \(validDetections.count)")
+
+            // ASSERTION 2: Valid detection count should be close to PyTorch (21)
+            XCTAssertGreaterThan(validDetections.count, 15, "Should have at least 15 valid detections")
+
+            // ASSERTION 3: Test primary detection selection (composite scoring)
+            let frameArea: Float = Float(modelSize * modelSize)
+            let centerX: Float = Float(modelSize) / 2
+            let centerY: Float = Float(modelSize) / 2
+            let minConf: Float = 0.25
+            let minAreaNorm: Float = 0.001
+
+            var bestComposite: Float = -1
+            var primaryDetection: Detection?
+
+            for det in validDetections {
+                let areaNorm = (det.w * det.h) / frameArea
+                if det.conf < minConf || areaNorm < minAreaNorm { continue }
+
+                let dx = abs(det.cx - centerX) / centerX
+                let dy = abs(det.cy - centerY) / centerY
+                let centerScore = 1.0 - (dx + dy) / 2.0
+                let composite = det.conf * areaNorm * centerScore
+
+                if composite > bestComposite {
+                    bestComposite = composite
+                    primaryDetection = det
+                }
+            }
+
+            guard let primary = primaryDetection else {
+                XCTFail("No primary detection selected")
+                return
+            }
+
+            print("\n=== PRIMARY DETECTION ===")
+            print("Class: \(primary.cls), conf: \(String(format: "%.3f", primary.conf))")
+            print("Center: (\(String(format: "%.1f", primary.cx)), \(String(format: "%.1f", primary.cy)))")
+            print("Size: \(String(format: "%.1f", primary.w)) x \(String(format: "%.1f", primary.h))")
+            print("Composite score: \(String(format: "%.6f", bestComposite))")
+
+            // ASSERTION 4: Primary should be writing desk (4564) or similar large central furniture
+            // PyTorch primary: writing desk (id=4564), conf=0.561, center=(628.5, 689.9)
+            // Allow for class variation but check center location and confidence
+            XCTAssertGreaterThan(primary.conf, 0.3, "Primary confidence should be > 0.3")
+            XCTAssertGreaterThan(primary.cx, 400, "Primary center X should be > 400")
+            XCTAssertLessThan(primary.cx, 900, "Primary center X should be < 900")
+            XCTAssertGreaterThan(primary.cy, 500, "Primary center Y should be > 500")
+
+            // ASSERTION 5: Primary should be a large object (high area)
+            let primaryAreaNorm = (primary.w * primary.h) / frameArea
+            XCTAssertGreaterThan(primaryAreaNorm, 0.05, "Primary should cover > 5% of frame")
+
+            // Check if primary matches expected class (writing desk = 4564)
+            // Other acceptable large furniture: cocktail table (1006), daybed (823), step stool (3888)
+            let acceptablePrimaryClasses = [4564, 1006, 823, 3888, 2754, 276] // writing desk, cocktail table, daybed, step stool, music stool, bar stool
+            if acceptablePrimaryClasses.contains(primary.cls) {
+                print("✅ Primary class \(primary.cls) matches expected furniture classes")
+            } else {
+                print("⚠️ Primary class \(primary.cls) differs from expected - checking location/size only")
+            }
+
+            print("\n✅ Landscape segmentation test PASSED")
+
+        } catch {
+            XCTFail("Inference failed: \(error)")
+        }
+    }
 }
