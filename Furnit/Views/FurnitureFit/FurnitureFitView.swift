@@ -1037,8 +1037,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Keep primary by definition
         var kept2: [UnionDet] = [primary]
 
-        // Mask overlap threshold from settings
-        let overlapThreshold = AppStateManager.shared.qualitySettings.maskOverlapThreshold
 
         // If no candidates to check, skip SGEMM
         if prunedCandidates.isEmpty {
@@ -1112,15 +1110,15 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 let area = candArea[j]
                 if area == 0 { continue }
 
-                // Overlap = fraction of CANDIDATE inside primary
-                let overlap = Float(interWithPrimary[j]) / Float(area)
-
-                if overlap < overlapThreshold {
+                // Reject if no mask overlap at all
+                let overlapPixels = interWithPrimary[j]
+                if overlapPixels == 0 {
                     if debugMode {
-                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) overlap=\(String(format: "%.1f", overlap * 100))% < \(String(format: "%.1f", overlapThreshold * 100))%")
+                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) no mask overlap")
                     }
                     continue
                 }
+                let overlap = Float(overlapPixels) / Float(area)
 
                 // Check for duplicate using cheap bbox IoU (no Set operations!)
                 var isDuplicate = false

@@ -39,6 +39,11 @@ struct ModelViewerView: View {
 
     @State private var isCapturingSnapshot = false
 
+    // VLM Suggest state
+    @State private var showingSuggestions = false
+    @State private var isLoadingSuggestions = false
+    @State private var suggestionResult: PlacementResult?
+
     init(model: USDZModel) {
         self.model = model
     }
@@ -170,32 +175,66 @@ struct ModelViewerView: View {
                     .opacity(isCapturingSnapshot ? 0 : 1)
                     .zIndex(99997)
 
-                // FurnitureFit snapshot button (separate from joystick)
+                // FurnitureFit buttons (suggest + snapshot)
                 if showingFurnitureFit {
                     VStack {
                         Spacer()
                         HStack {
                             Spacer()
-                            Button(action: {
-                                let screen = UIScreen.main.bounds.size
-                                saveFurnitureFitSnapshot(screen)
-                            }) {
-                                Image(systemName: "square.and.arrow.down")
-                                    .font(.system(size: 28, weight: .regular))
-                                    .foregroundColor(.white)
-                                    .frame(width: 48, height: 48)
-                                    .background(
+                            HStack(spacing: 12) {
+                                // Suggest button (VLM spatial reasoning)
+                                Button(action: {
+                                    runSpatialSuggestion()
+                                }) {
+                                    ZStack {
                                         Circle()
-                                            .fill(Color.blue)
-                                    )
+                                            .fill(showingSuggestions ? Color.green : Color.purple)
+                                            .frame(width: 48, height: 48)
+
+                                        if isLoadingSuggestions {
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                                .scaleEffect(0.8)
+                                        } else {
+                                            Image(systemName: "sparkles")
+                                                .font(.system(size: 24, weight: .regular))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                }
+                                .disabled(isCapturingSnapshot || isLoadingSuggestions)
+
+                                // Snapshot button
+                                Button(action: {
+                                    let screen = UIScreen.main.bounds.size
+                                    saveFurnitureFitSnapshot(screen)
+                                }) {
+                                    Image(systemName: "square.and.arrow.down")
+                                        .font(.system(size: 28, weight: .regular))
+                                        .foregroundColor(.white)
+                                        .frame(width: 48, height: 48)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.blue)
+                                        )
+                                }
+                                .disabled(isCapturingSnapshot)
                             }
-                            .disabled(isCapturingSnapshot)
                             .padding(.trailing, 30)
                             .padding(.bottom, 40)
                         }
                     }
                     .opacity(isCapturingSnapshot ? 0 : 1)
                     .zIndex(99996)
+
+                    // Suggestions overlay
+                    if showingSuggestions, let result = suggestionResult {
+                        SuggestionsOverlay(
+                            result: result,
+                            isShowing: $showingSuggestions
+                        )
+                        .zIndex(99995)
+                    }
                 }
             }
         }
@@ -590,8 +629,230 @@ struct ModelViewerView: View {
             }
         }
     }
-    
 
+    // MARK: - VLM Spatial Reasoning
+
+    private func runSpatialSuggestion() {
+        guard !isLoadingSuggestions else { return }
+
+        isLoadingSuggestions = true
+        logDebug("🧠 Running spatial suggestion...")
+
+        Task {
+            // Create sample room context (in real app, this would come from SHARP reconstruction)
+            let room = RoomContext(
+                dimensions: RoomDimensions(width: 4.0, depth: 3.5, height: 2.5),
+                walls: [
+                    WallInfo(id: "wall_north", startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: 4, y: 0)),
+                    WallInfo(id: "wall_east", startPoint: CGPoint(x: 4, y: 0), endPoint: CGPoint(x: 4, y: 3.5)),
+                    WallInfo(id: "wall_south", startPoint: CGPoint(x: 4, y: 3.5), endPoint: CGPoint(x: 0, y: 3.5)),
+                    WallInfo(id: "wall_west", startPoint: CGPoint(x: 0, y: 3.5), endPoint: CGPoint(x: 0, y: 0))
+                ],
+                styleHint: "modern"
+            )
+
+            // Create furniture from model dimensions (in real app, get actual dims)
+            let furniture = FurnitureItem(
+                id: model.id.uuidString,
+                name: model.displayName,
+                category: "furniture",
+                width: 1.5,  // TODO: Get from model bounds
+                depth: 0.8,
+                height: 0.9,
+                clearance: FurnitureClearance(front: 0.6, back: 0.1, left: 0.3, right: 0.3),
+                placementHints: PlacementHints(preferAgainstWall: true)
+            )
+
+            // Run spatial reasoning (no VLM API call, just geometry solver)
+            let result = await VLMManager.shared.analyzePlacement(
+                furniture: furniture,
+                room: room,
+                includeVLM: false  // Just use geometry solver for now
+            )
+
+            await MainActor.run {
+                self.suggestionResult = result
+                self.showingSuggestions = true
+                self.isLoadingSuggestions = false
+                logDebug("✅ Spatial suggestion complete: \(result.candidates.count) candidates, fits=\(result.fits)")
+            }
+        }
+    }
+
+}
+
+// MARK: - Suggestions Overlay View
+
+struct SuggestionsOverlay: View {
+    let result: PlacementResult
+    @Binding var isShowing: Bool
+
+    var body: some View {
+        VStack {
+            Spacer()
+
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
+                HStack {
+                    Image(systemName: "sparkles")
+                        .foregroundColor(.purple)
+                    Text("Placement Analysis")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Spacer()
+                    Button(action: { isShowing = false }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.gray)
+                            .font(.title2)
+                    }
+                }
+
+                Divider().background(Color.gray)
+
+                // Fit status
+                HStack {
+                    Image(systemName: result.fits ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundColor(result.fits ? .green : .red)
+                    Text(result.fits ? "Furniture fits in room" : "Furniture may not fit well")
+                        .foregroundColor(.white)
+                }
+
+                // Best candidate info
+                if let best = result.bestCandidate {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Best Placement")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text("Position")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                Text(String(format: "%.1fm × %.1fm", best.x, best.z))
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(.white)
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .leading) {
+                                Text("Rotation")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                Text(String(format: "%.0f°", best.yaw * 180 / .pi))
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(.white)
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .leading) {
+                                Text("Score")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                Text(String(format: "%.0f%%", best.compositeScore * 100))
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(.green)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.black.opacity(0.3))
+                    .cornerRadius(8)
+
+                    // Score breakdown
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Score Breakdown")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+
+                        ScoreBar(label: "Fit", value: best.scores.fit)
+                        ScoreBar(label: "Clearance", value: best.scores.clearance)
+                        ScoreBar(label: "Walkway", value: best.scores.walkway)
+                        ScoreBar(label: "Alignment", value: best.scores.wallAlignment)
+                    }
+
+                    // Warnings
+                    let warnings = best.violations.filter { $0.severity == .warning }
+                    if !warnings.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Notes")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+
+                            ForEach(warnings.prefix(3), id: \.message) { violation in
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.caption2)
+                                        .foregroundColor(.orange)
+                                    Text(violation.message)
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Candidates count
+                Text("\(result.candidates.filter { $0.isValid }.count) valid placements found")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+
+                // Solver time
+                Text(String(format: "Analyzed in %.0fms", result.solverTimeMs))
+                    .font(.caption2)
+                    .foregroundColor(.gray.opacity(0.7))
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.black.opacity(0.85))
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 100)
+        }
+    }
+}
+
+struct ScoreBar: View {
+    let label: String
+    let value: Float
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.gray)
+                .frame(width: 60, alignment: .leading)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(height: 6)
+
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(barColor)
+                        .frame(width: geo.size.width * CGFloat(value), height: 6)
+                }
+            }
+            .frame(height: 6)
+
+            Text(String(format: "%.0f%%", value * 100))
+                .font(.caption2)
+                .foregroundColor(.white)
+                .frame(width: 35, alignment: .trailing)
+        }
+    }
+
+    private var barColor: Color {
+        if value >= 0.8 { return .green }
+        if value >= 0.5 { return .yellow }
+        return .red
+    }
 }
 
 struct FurnitureFitUIView: UIViewRepresentable {

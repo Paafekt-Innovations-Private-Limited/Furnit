@@ -149,14 +149,6 @@ class QualitySettings: ObservableObject {
         }
     }
 
-    // Mask overlap threshold (published for UI updates)
-    // Controls how much overlap is required for detections to be merged
-    @Published var maskOverlapThreshold: Float {
-        didSet {
-            saveMaskOverlapThreshold()
-        }
-    }
-
     // BBox-in-mask threshold (published for UI updates)
     // Controls how much of a bbox must be covered by the final mask
     @Published var bboxInMaskThreshold: Float {
@@ -169,7 +161,6 @@ class QualitySettings: ObservableObject {
     private let qualityKey = "selected_asset_quality"
     private let movementSpeedKey = "selected_movement_speed"
     private let debugModeKey = "debug_mode"
-    private let maskOverlapThresholdKey = "mask_overlap_threshold"
     private let bboxInMaskThresholdKey = "bbox_in_mask_threshold"
     
     // Initialize with saved quality or default to high
@@ -194,10 +185,6 @@ class QualitySettings: ObservableObject {
         // Load debug mode setting, default to false
         self.debugMode = UserDefaults.standard.bool(forKey: debugModeKey)
 
-        // Load mask overlap threshold setting, default to 0.55
-        let savedMaskThreshold = UserDefaults.standard.float(forKey: maskOverlapThresholdKey)
-        self.maskOverlapThreshold = savedMaskThreshold > 0 ? savedMaskThreshold : 0.55
-
         // Load bbox-in-mask threshold setting, default to 0.30
         let savedBboxThreshold = UserDefaults.standard.float(forKey: bboxInMaskThresholdKey)
         self.bboxInMaskThreshold = savedBboxThreshold > 0 ? savedBboxThreshold : 0.30
@@ -219,12 +206,6 @@ class QualitySettings: ObservableObject {
     private func saveDebugMode() {
         UserDefaults.standard.set(debugMode, forKey: debugModeKey)
         logDebug("💾 Saved debug mode setting: \(debugMode)")
-    }
-
-    // Save mask overlap threshold setting to UserDefaults
-    private func saveMaskOverlapThreshold() {
-        UserDefaults.standard.set(maskOverlapThreshold, forKey: maskOverlapThresholdKey)
-        logDebug("💾 Saved mask overlap threshold setting: \(maskOverlapThreshold)")
     }
 
     // Save bbox-in-mask threshold setting to UserDefaults
@@ -270,7 +251,6 @@ class QualitySettings: ObservableObject {
         selectedQuality = .high
         selectedMovementSpeed = .normal
         debugMode = false
-        maskOverlapThreshold = 0.55
         bboxInMaskThreshold = 0.30
     }
 }
