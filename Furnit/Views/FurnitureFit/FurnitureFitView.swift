@@ -174,7 +174,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     
     // MARK: Config
     var processInterval: TimeInterval = 0.1
-    var confidenceThreshold: Float = 0.1
+    var confidenceThreshold: Float = 0.0
     var useBilinearUpscaling: Bool = false
     
     // Debug mode - read from settings
@@ -1185,7 +1185,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 if !isDuplicate {
                     kept2.append(d)
                     if debugMode {
-                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(String(format: "%.1f", overlap * 100))%")
+                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(String(format: "%.1f", overlap * 100))% (\(overlapPixels)px) bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
                     }
                 }
             }
