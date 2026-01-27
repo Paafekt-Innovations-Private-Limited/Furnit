@@ -548,21 +548,26 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
 
-        // Capture orientation at start of processing
-        let orientation = currentDeviceOrientation
-        let isLandscape = orientation == .landscapeLeft || orientation == .landscapeRight
+        // Camera delivers frames via dynamic videoRotationAngle
+        let processBuffer = pixelBuffer
+
+        // CRITICAL: Derive isLandscape from actual buffer dimensions, not device orientation
+        // Device orientation can be unreliable (flat on table, certain angles, etc.)
+        // Buffer dimensions are always correct - what the model actually sees
+        let bufW = CVPixelBufferGetWidth(processBuffer)
+        let bufH = CVPixelBufferGetHeight(processBuffer)
+        let isLandscape = bufW > bufH
+
+        // Keep device orientation for final display rotation (portrait UI)
+        let deviceOrientation = currentDeviceOrientation
 
         if debugMode {
             logDebug("\n⏱️ ═══════════════════════════════════════════")
             logDebug("⏱️ FRAME START @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
-            logDebug("⏱️ Orientation: \(orientation.rawValue), isLandscape: \(isLandscape)")
+            logDebug("⏱️ Buffer: \(bufW)x\(bufH), isLandscape: \(isLandscape), device: \(deviceOrientation.rawValue)")
             logDebug("⏱️ Mode: \(twoStageMode ? "TWO-STAGE (640→1280)" : "SINGLE-STAGE")")
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
-
-        // Camera now delivers correctly oriented frames via dynamic videoRotationAngle
-        // No pre-rotation needed - frames match device orientation
-        let processBuffer = pixelBuffer
 
         // ============================================================================
         // TWO-STAGE: First run 640 model to find primary with better confidence scores
@@ -685,15 +690,23 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     let maxIdx = base + 5 * featStride640
                     guard maxIdx < totalCount640 else { continue }
 
-                    let x = detBuf640[base + 0 * featStride640]
-                    let y = detBuf640[base + 1 * featStride640]
-                    let w = detBuf640[base + 2 * featStride640]
-                    let h = detBuf640[base + 3 * featStride640]
+                    // XYXY format: x1, y1, x2, y2 (corner coordinates)
+                    let x1 = detBuf640[base + 0 * featStride640]
+                    let y1 = detBuf640[base + 1 * featStride640]
+                    let x2 = detBuf640[base + 2 * featStride640]
+                    let y2 = detBuf640[base + 3 * featStride640]
                     let conf = detBuf640[base + 4 * featStride640]
                     let clsFloat = detBuf640[base + 5 * featStride640]
 
                     // Check all values are finite before using
-                    guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, conf.isFinite, clsFloat.isFinite else { continue }
+                    guard x1.isFinite, y1.isFinite, x2.isFinite, y2.isFinite, conf.isFinite, clsFloat.isFinite else { continue }
+
+                    // Convert XYXY to XYWH (center format)
+                    let w = x2 - x1
+                    let h = y2 - y1
+                    let x = (x1 + x2) / 2  // center x
+                    let y = (y1 + y2) / 2  // center y
+
                     guard w > 0, h > 0 else { continue }
 
                     let cls = Int(clsFloat)
@@ -731,10 +744,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
                     // Un-letterbox: convert from 640-padded space to original image space
                     // img_coord = (model_coord - pad) / gain
-                    let imgX1 = (bx1_640 - sq640.padX) / sq640.gain
-                    let imgY1 = (by1_640 - sq640.padY) / sq640.gain
-                    let imgX2 = (bx2_640 - sq640.padX) / sq640.gain
-                    let imgY2 = (by2_640 - sq640.padY) / sq640.gain
+                    let imgX1 = (bx1_640 - Float(sq640.padX)) / sq640.gain
+                    let imgY1 = (by1_640 - Float(sq640.padY)) / sq640.gain
+                    let imgX2 = (bx2_640 - Float(sq640.padX)) / sq640.gain
+                    let imgY2 = (by2_640 - Float(sq640.padY)) / sq640.gain
 
                     primaryInfo640 = PrimaryInfo(
                         classIdx: det.cls,
@@ -788,8 +801,15 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
         let resizeGain = sq.gain
-        let padX = sq.padX
-        let padY = sq.padY
+        let padX = sq.padX        // Integer - exact pixel offset
+        let padY = sq.padY        // Integer - exact pixel offset
+        let contentW = sq.newW    // Integer - exact content width in model space
+        let contentH = sq.newH    // Integer - exact content height in model space
+
+        // Debug landscape letterbox parameters
+        if debugMode && isLandscape {
+            logDebug("🔶 LANDSCAPE: buf=\(bufW)x\(bufH), gain=\(resizeGain), pad=(\(padX),\(padY)), content=\(contentW)x\(contentH)")
+        }
 
         // Check if model expects Image or MultiArray input
         let inputDesc = model.modelDescription.inputDescriptionsByName["image"]
@@ -1104,10 +1124,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if let p640 = primaryInfo640 {
             // TWO-STAGE MODE: Find the 1280 detection that matches 640's primary
             // Convert 640's image-space bbox to 1280-model space for matching
-            let p640_x1_1280 = p640.imgBboxX1 * resizeGain + padX
-            let p640_y1_1280 = p640.imgBboxY1 * resizeGain + padY
-            let p640_x2_1280 = p640.imgBboxX2 * resizeGain + padX
-            let p640_y2_1280 = p640.imgBboxY2 * resizeGain + padY
+            let p640_x1_1280 = p640.imgBboxX1 * resizeGain + Float(padX)
+            let p640_y1_1280 = p640.imgBboxY1 * resizeGain + Float(padY)
+            let p640_x2_1280 = p640.imgBboxX2 * resizeGain + Float(padX)
+            let p640_y2_1280 = p640.imgBboxY2 * resizeGain + Float(padY)
 
             if debugMode {
                 logDebug("🔷 STAGE 9 (TWO-STAGE): Looking for 1280 match of 640 primary class=\(p640.classIdx)")
@@ -1219,10 +1239,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if let p640 = primaryInfo640 {
             // Convert 640's image-space bbox to 1280-model space
             // model_coord = img_coord * resizeGain + pad
-            pX1 = p640.imgBboxX1 * resizeGain + padX
-            pY1 = p640.imgBboxY1 * resizeGain + padY
-            pX2 = p640.imgBboxX2 * resizeGain + padX
-            pY2 = p640.imgBboxY2 * resizeGain + padY
+            pX1 = p640.imgBboxX1 * resizeGain + Float(padX)
+            pY1 = p640.imgBboxY1 * resizeGain + Float(padY)
+            pX2 = p640.imgBboxX2 * resizeGain + Float(padX)
+            pY2 = p640.imgBboxY2 * resizeGain + Float(padY)
             if debugMode {
                 logDebug("🔷 STAGE 5: Using 640's primary bbox (in 1280-space): [\(Int(pX1)),\(Int(pY1))]-[\(Int(pX2)),\(Int(pY2))]")
             }
@@ -1443,10 +1463,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let origW = CVPixelBufferGetWidth(processBuffer)
         let origH = CVPixelBufferGetHeight(processBuffer)
 
-        var bx1 = Int(round((ux1 - padX) / resizeGain))
-        var by1 = Int(round((uy1 - padY) / resizeGain))
-        var bx2 = Int(round((ux2 - padX) / resizeGain))
-        var by2 = Int(round((uy2 - padY) / resizeGain))
+        // Convert Int pad values to Float for bbox calculations
+        let padXf = Float(padX)
+        let padYf = Float(padY)
+
+        var bx1 = Int(round((ux1 - padXf) / resizeGain))
+        var by1 = Int(round((uy1 - padYf) / resizeGain))
+        var bx2 = Int(round((ux2 - padXf) / resizeGain))
+        var by2 = Int(round((uy2 - padYf) / resizeGain))
 
         bx1 = max(0, min(origW - 1, bx1))
         by1 = max(0, min(origH - 1, by1))
@@ -1462,10 +1486,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         // Compute PRIMARY bbox in image coordinates (for clipping mask later)
         // Always use 1280 model's primary bbox (yoloe-11l-seg-pf gave stable results)
-        let primaryBx1 = max(0, Int(round((primary.x - primary.w * 0.5 - padX) / resizeGain)))
-        let primaryBy1 = max(0, Int(round((primary.y - primary.h * 0.5 - padY) / resizeGain)))
-        let primaryBx2 = min(origW, Int(round((primary.x + primary.w * 0.5 - padX) / resizeGain)))
-        let primaryBy2 = min(origH, Int(round((primary.y + primary.h * 0.5 - padY) / resizeGain)))
+        let primaryBx1 = max(0, Int(round((primary.x - primary.w * 0.5 - padXf) / resizeGain)))
+        let primaryBy1 = max(0, Int(round((primary.y - primary.h * 0.5 - padYf) / resizeGain)))
+        let primaryBx2 = min(origW, Int(round((primary.x + primary.w * 0.5 - padXf) / resizeGain)))
+        let primaryBy2 = min(origH, Int(round((primary.y + primary.h * 0.5 - padYf) / resizeGain)))
         if debugMode {
             logDebug("   PRIMARY bbox: [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
         }
@@ -1567,10 +1591,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Stage 15: Upscale + crop back (morphology disabled)
             let maskFull = upscaleMask(maskSmall: maskSmall,
                                        pW: pW, pH: pH,
-                                       modelInput: 1280,
+                                       modelInput: modelInputSize,
                                        origW: origW, origH: origH,
-                                       resizeGain: resizeGain,
-                                       padX: padX, padY: padY)
+                                       padX: padX, padY: padY,
+                                       contentW: contentW, contentH: contentH)
 
             return (maskFull, positiveCount)
         }
@@ -1602,14 +1626,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Count positives (same as CPU)
             for v in maskSmall { if v > 0 { positiveCount += 1 } }
 
-            // Reuse your existing upscale/crop pipeline exactly (same signature as your original)
-            // NOTE: keep resizeGain/padX/padY mapping identical to CPU path.
+            // Reuse upscale/crop pipeline with exact integer values from resizeToSquare
             let maskFull = upscaleMask(maskSmall: maskSmall,
                                       pW: pW, pH: pH,
-                                      modelInput: 1280,
+                                      modelInput: modelInputSize,
                                       origW: origW, origH: origH,
-                                      resizeGain: resizeGain,
-                                      padX: padX, padY: padY)
+                                      padX: padX, padY: padY,
+                                      contentW: contentW, contentH: contentH)
             return (maskFull, positiveCount)
         }
 
@@ -1705,10 +1728,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         var det_u = UInt32(detCountFused)
                         var origW_u = UInt32(origW)
                         var origH_u = UInt32(origH)
-                        var modelInput_u = UInt32(1280)
+                        var modelInput_u = UInt32(modelInputSize)
                         var resizeGain_f = resizeGain
-                        var padX_f = padX
-                        var padY_f = padY
+                        var padX_f = Float(padX)  // Convert Int to Float for shader
+                        var padY_f = Float(padY)  // Convert Int to Float for shader
                         enc.setBytes(&pW_u, length: MemoryLayout<UInt32>.size, index: 2)
                         enc.setBytes(&pH_u, length: MemoryLayout<UInt32>.size, index: 3)
                         enc.setBytes(&det_u, length: MemoryLayout<UInt32>.size, index: 4)
@@ -1836,10 +1859,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Always draw class name labels
             let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 36, nil)
             for (_, d) in kept2.enumerated() {
-                let dx1 = Int(round((d.x - d.w * 0.5 - padX) / resizeGain))
-                let dy1 = Int(round((d.y - d.h * 0.5 - padY) / resizeGain))
-                let dx2 = Int(round((d.x + d.w * 0.5 - padX) / resizeGain))
-                let dy2 = Int(round((d.y + d.h * 0.5 - padY) / resizeGain))
+                let dx1 = Int(round((d.x - d.w * 0.5 - padXf) / resizeGain))
+                let dy1 = Int(round((d.y - d.h * 0.5 - padYf) / resizeGain))
+                let dx2 = Int(round((d.x + d.w * 0.5 - padXf) / resizeGain))
+                let dy2 = Int(round((d.y + d.h * 0.5 - padYf) / resizeGain))
 
                 let clampedX1 = max(0, dx1)
                 let clampedY1 = max(0, dy1)
@@ -1885,10 +1908,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
 
             // Draw PRIMARY bounding box in red (thick) - use same coords as cyan box
-            let pDx1 = Int(round((primary.x - primary.w * 0.5 - padX) / resizeGain))
-            let pDy1 = Int(round((primary.y - primary.h * 0.5 - padY) / resizeGain))
-            let pDx2 = Int(round((primary.x + primary.w * 0.5 - padX) / resizeGain))
-            let pDy2 = Int(round((primary.y + primary.h * 0.5 - padY) / resizeGain))
+            let pDx1 = Int(round((primary.x - primary.w * 0.5 - padXf) / resizeGain))
+            let pDy1 = Int(round((primary.y - primary.h * 0.5 - padYf) / resizeGain))
+            let pDx2 = Int(round((primary.x + primary.w * 0.5 - padXf) / resizeGain))
+            let pDy2 = Int(round((primary.y + primary.h * 0.5 - padYf) / resizeGain))
             let pClampedX1 = max(0, pDx1)
             let pClampedY1 = max(0, pDy1)
             let pClampedW = min(origW - pClampedX1, pDx2 - pDx1)
@@ -1912,7 +1935,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             if var cgImg = composedImage {
                 if isLandscape {
                     // Rotate back for portrait display: landscapeLeft -> 90° CCW, landscapeRight -> 90° CW
-                    let rotatedImg = self.rotateCGImage90(cgImg, clockwise: orientation == .landscapeLeft)
+                    let rotatedImg = self.rotateCGImage90(cgImg, clockwise: deviceOrientation == .landscapeLeft)
                     cgImg = rotatedImg ?? cgImg
                 }
                 self.maskImageView.image = UIImage(cgImage: cgImg)
@@ -1986,7 +2009,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     // MARK: - Upscale Mask
-    private func upscaleMask(maskSmall: [UInt8], pW: Int, pH: Int, modelInput: Int, origW: Int, origH: Int, resizeGain: Float, padX: Float, padY: Float) -> [UInt8] {
+    // Uses exact integer values from resizeToSquare to ensure pixel-perfect reverse mapping
+    private func upscaleMask(maskSmall: [UInt8], pW: Int, pH: Int, modelInput: Int, origW: Int, origH: Int, padX: Int, padY: Int, contentW: Int, contentH: Int) -> [UInt8] {
         var maskModel = [UInt8](repeating: 0, count: modelInput * modelInput)
         maskModel.withUnsafeMutableBufferPointer { dstPtr in
             maskSmall.withUnsafeBufferPointer { srcPtr in
@@ -1996,21 +2020,20 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 vImageScale_Planar8(&s, &d, nil, flags)
             }
         }
-        
-        let contentW = Int(round(Float(origW) * resizeGain))
-        let contentH = Int(round(Float(origH) * resizeGain))
-        let x0 = max(0, min(modelInput - 1, Int(round(padX))))
-        let y0 = max(0, min(modelInput - 1, Int(round(padY))))
+
+        // Use exact integer values from resizeToSquare (no recomputation = no drift)
+        let x0 = max(0, min(modelInput - 1, padX))
+        let y0 = max(0, min(modelInput - 1, padY))
         let cW = max(1, min(modelInput - x0, contentW))
         let cH = max(1, min(modelInput - y0, contentH))
-        
+
         var cropped = [UInt8](repeating: 0, count: cW * cH)
         for y in 0..<cH {
             let srcRow = (y0 + y) * modelInput + x0
             let dstRow = y * cW
             for x in 0..<cW { cropped[dstRow + x] = maskModel[srcRow + x] }
         }
-        
+
         var maskFull = [UInt8](repeating: 0, count: origW * origH)
         maskFull.withUnsafeMutableBufferPointer { dstPtr in
             cropped.withUnsafeBufferPointer { srcPtr in
@@ -2024,40 +2047,42 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     // MARK: - Resize to Square
-    private func resizeToSquare(_ src: CVPixelBuffer, size: Int) -> (buffer: CVPixelBuffer, gain: Float, padX: Float, padY: Float)? {
+    // Returns integer pad values to ensure exact matching in reverse mapping (upscaleMask)
+    private func resizeToSquare(_ src: CVPixelBuffer, size: Int) -> (buffer: CVPixelBuffer, gain: Float, padX: Int, padY: Int, newW: Int, newH: Int)? {
         CVPixelBufferLockBaseAddress(src, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(src, .readOnly) }
-        
+
         let srcW = CVPixelBufferGetWidth(src)
         let srcH = CVPixelBufferGetHeight(src)
-        
+
         let gain = min(Float(size) / Float(srcW), Float(size) / Float(srcH))
         let newW = Int(Float(srcW) * gain)
         let newH = Int(Float(srcH) * gain)
-        let padX = Float(size - newW) / 2.0
-        let padY = Float(size - newH) / 2.0
-        
+        // Use integer division to get exact pixel offset (same as forward placement)
+        let padX = (size - newW) / 2
+        let padY = (size - newH) / 2
+
         var dstOpt: CVPixelBuffer?
         guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &dstOpt) == kCVReturnSuccess,
               let dst = dstOpt else { return nil }
-        
+
         CVPixelBufferLockBaseAddress(dst, [])
         defer { CVPixelBufferUnlockBaseAddress(dst, []) }
-        
+
         guard let srcBase = CVPixelBufferGetBaseAddress(src),
               let dstBase = CVPixelBufferGetBaseAddress(dst) else { return nil }
-        
+
         memset(dstBase, 128, size * size * 4)
-        
+
         var srcBuffer = vImage_Buffer(data: srcBase, height: vImagePixelCount(srcH), width: vImagePixelCount(srcW), rowBytes: CVPixelBufferGetBytesPerRow(src))
         let dstPtr = dstBase.assumingMemoryBound(to: UInt8.self)
         let dstRowBytes = CVPixelBufferGetBytesPerRow(dst)
-        let offsetPtr = dstPtr.advanced(by: Int(padY) * dstRowBytes + Int(padX) * 4)
+        let offsetPtr = dstPtr.advanced(by: padY * dstRowBytes + padX * 4)
         var dstBuffer = vImage_Buffer(data: offsetPtr, height: vImagePixelCount(newH), width: vImagePixelCount(newW), rowBytes: dstRowBytes)
-        
+
         guard vImageScale_ARGB8888(&srcBuffer, &dstBuffer, nil, vImage_Flags(0)) == kvImageNoError else { return nil }
-        
-        return (buffer: dst, gain: gain, padX: padX, padY: padY)
+
+        return (buffer: dst, gain: gain, padX: padX, padY: padY, newW: newW, newH: newH)
     }
 
     // MARK: - MLMultiArray
@@ -2183,15 +2208,18 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let dstWidth = srcHeight
         let dstHeight = srcWidth
 
-        guard let colorSpace = image.colorSpace,
-              let context = CGContext(
+        // Explicitly use premultiplied alpha to preserve transparency after rotation
+        let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+
+        guard let context = CGContext(
                   data: nil,
                   width: dstWidth,
                   height: dstHeight,
-                  bitsPerComponent: image.bitsPerComponent,
-                  bytesPerRow: 0,
+                  bitsPerComponent: 8,
+                  bytesPerRow: dstWidth * 4,
                   space: colorSpace,
-                  bitmapInfo: image.bitmapInfo.rawValue
+                  bitmapInfo: bitmapInfo
               ) else { return nil }
 
         // Apply rotation transform
