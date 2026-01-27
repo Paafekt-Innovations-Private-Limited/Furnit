@@ -2326,19 +2326,28 @@ struct SceneKitViewer: View {
     // MARK: - ML Model Loading
     private func loadMLModel() {
         Task {
-            do {
-                if let modelURL = Bundle.main.url(forResource: "yoloe_26l_seg_pf_1280", withExtension: "mlmodelc") {
-                    let config = MLModelConfiguration()
-                    config.computeUnits = .cpuAndNeuralEngine
-                    let model = try MLModel(contentsOf: modelURL, configuration: config)
-                    await MainActor.run {
-                        self.mlModel = model
+            let candidates = [
+                ("yoloe-11l-seg-pf", "mlmodelc"),
+                ("yoloe-11l-seg-pf", "mlpackage"),
+            ]
+
+            for (name, ext) in candidates {
+                if let modelURL = Bundle.main.url(forResource: name, withExtension: ext) {
+                    do {
+                        let config = MLModelConfiguration()
+                        config.computeUnits = .cpuAndNeuralEngine
+                        let model = try MLModel(contentsOf: modelURL, configuration: config)
+                        await MainActor.run {
+                            self.mlModel = model
+                        }
+                        logDebug("✅ [SceneKitViewer] ML model loaded: \(name).\(ext)")
+                        return
+                    } catch {
+                        logDebug("❌ [SceneKitViewer] Failed to load ML model \(name).\(ext): \(error)")
                     }
-                    logDebug("✅ [SceneKitViewer] ML model loaded")
                 }
-            } catch {
-                logDebug("❌ [SceneKitViewer] Failed to load ML model: \(error)")
             }
+            logDebug("❌ [SceneKitViewer] No ML model found")
         }
     }
 }

@@ -7,8 +7,7 @@ import AVFoundation
 import UIKit
 
 struct ModelViewerView: View {
-    @State private var mlModel: MLModel? = nil       // 1280 model for high-res masks
-    @State private var mlModel640: MLModel? = nil    // 640 model for primary detection (better confidence)
+    @State private var mlModel: MLModel? = nil  // yoloe-11l 1280 model
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass
     let model: USDZModel
@@ -64,13 +63,12 @@ struct ModelViewerView: View {
                     )
                     .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit))
                     .ignoresSafeArea(.all)
-                    // NEW: FurnitureFit overlay (Two-stage: 640 for detection, 1280 for masks)
+                    // FurnitureFit overlay (yoloe-11l 1280)
                     if showingFurnitureFit {
                         FurnitureFitUIView(
                             capturedImage: $capturedImage,
                             roomImage: roomSnapshot,
                             mlModel: mlModel,
-                            mlModel640: mlModel640,
                             processInterval: 0.07,
                             active: true
                         )
@@ -544,62 +542,34 @@ struct ModelViewerView: View {
             return
         }
 
-        // Two-stage inference: 640 for primary detection (better confidence), 1280 for high-res masks
-        let model640Candidates = [
-            ("yoloe_26l_seg_pf_640", "mlmodelc"),
-        ]
-        let model1280Candidates = [
-            ("yoloe-11l-seg-pf", "mlmodelc"),      // Prefer 11l for stable bbox
-            ("yoloe-11l-seg-pf", "mlpackage"),     // Try mlpackage if mlmodelc not found
-            ("yoloe_26l_seg_pf_1280", "mlmodelc"), // Fallback to 26l
+        // Single-stage using 11l 1280 model
+        let modelCandidates = [
+            ("yoloe-11l-seg-pf", "mlmodelc"),
+            ("yoloe-11l-seg-pf", "mlpackage"),
         ]
 
-        logDebug("🔍 Loading two-stage models: 640 for detection, 1280 for masks")
+        logDebug("🔍 Loading 11l 1280 model (single-stage)")
 
         let config = MLModelConfiguration()
         // Use CPU-only to avoid ANE "No memory object bound to port" crashes
         config.computeUnits = .cpuOnly
 
-        // Load 640 model (primary detection)
-        for (name, ext) in model640Candidates {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                do {
-                    let model = try MLModel(contentsOf: url, configuration: config)
-                    self.mlModel640 = model
-                    logDebug("✅ Loaded 640 model '\(name).\(ext)' for primary detection")
-                    logModelInputInfo(model, name: name)
-                    break
-                } catch {
-                    logDebug("❌ Failed to load 640 model \(name).\(ext):", error)
-                }
-            }
-        }
-
-        // Load 1280 model (high-res masks)
-        for (name, ext) in model1280Candidates {
+        for (name, ext) in modelCandidates {
             if let url = Bundle.main.url(forResource: name, withExtension: ext) {
                 do {
                     let model = try MLModel(contentsOf: url, configuration: config)
                     self.mlModel = model
-                    logDebug("✅ Loaded 1280 model '\(name).\(ext)' for high-res masks")
+                    logDebug("✅ Loaded 11l 1280 model '\(name).\(ext)'")
                     logModelInputInfo(model, name: name)
                     break
                 } catch {
-                    logDebug("❌ Failed to load 1280 model \(name).\(ext):", error)
+                    logDebug("❌ Failed to load model \(name).\(ext):", error)
                 }
             }
         }
 
-        // Summary
-        if mlModel640 != nil && mlModel != nil {
-            logDebug("🧠 Two-stage mode enabled: 640→1280")
-        } else if mlModel != nil {
-            logDebug("🧠 Single-stage mode: 1280 only")
-        } else if mlModel640 != nil {
-            logDebug("🧠 Single-stage mode: 640 only")
-        } else {
-            logDebug("❌ No models loaded")
-            // List bundle contents to help debug
+        if mlModel == nil {
+            logDebug("❌ No model loaded")
             if let bundleContents = try? FileManager.default.contentsOfDirectory(atPath: Bundle.main.bundlePath) {
                 logDebug("📁 Bundle contents (mlmodel/mlpackage only):")
                 bundleContents.filter { $0.contains("mlmodel") || $0.contains("mlpackage") }.forEach { file in
@@ -628,30 +598,19 @@ struct FurnitureFitUIView: UIViewRepresentable {
     @Binding var capturedImage: UIImage?
 
     var roomImage: UIImage?
-    var mlModel: MLModel?          // 1280 model for high-res masks
-    var mlModel640: MLModel?       // 640 model for primary detection
+    var mlModel: MLModel?  // yoloe-11l 1280 model
     var processInterval: Double = 0.07
     var scoreThreshold: Float = 0.25
     var active: Bool = true
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
-        // Use two-stage if both models available, otherwise single model
-        if mlModel640 != nil && mlModel != nil {
-            view.setModels(primary: mlModel640, highRes: mlModel)
-        } else {
-            view.setModel(mlModel ?? mlModel640)
-        }
+        view.setModel(mlModel)
         return view
     }
 
     func updateUIView(_ uiView: FurnitureFitContainerView, context: Context) {
-        // Use two-stage if both models available, otherwise single model
-        if mlModel640 != nil && mlModel != nil {
-            uiView.setModels(primary: mlModel640, highRes: mlModel)
-        } else {
-            uiView.setModel(mlModel ?? mlModel640)
-        }
+        uiView.setModel(mlModel)
         uiView.processInterval = processInterval
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }

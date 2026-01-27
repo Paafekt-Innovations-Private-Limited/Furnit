@@ -29,7 +29,7 @@ final class ImageBasedTests: XCTestCase {
         config.computeUnits = .cpuAndNeuralEngine
 
         // Try different model names
-        let modelNames = ["yoloe_26l_seg_pf_1280"]
+        let modelNames = ["yoloe-11l-seg-pf"]
 
         for modelName in modelNames {
             if let modelURL = Bundle.main.url(forResource: modelName, withExtension: "mlmodelc") {
@@ -370,19 +370,14 @@ final class ImageBasedTests: XCTestCase {
         }
     }
 
-    // MARK: - End-to-End YOLOE-26L Inference Test
+    // MARK: - End-to-End YOLOE-11L Inference Test
     // Validates Swift inference matches Python ground truth
 
-    /// Ground truth from Python: python scripts/infer_yoloe26_bus.py
-    /// Model: yoloe-26l-seg-pf (prompt-free LVIS ~4600 classes)
+    /// Ground truth from Python inference
+    /// Model: yoloe-11l-seg-pf (prompt-free)
     /// Image: bus.jpg at 1280x1280
-    ///
-    /// Key detections (Python):
-    /// - Bus (class 640): conf=0.702, center=(279.8, 421.2), size=(549.3x379.7)
-    /// - Person (class 2163): 5 detections, best conf=0.852
-    /// - Stop sign (class 3913): conf=0.742
 
-    func testYOLOE26LInferenceMatchesPython() {
+    func testYOLOE11LInferenceMatchesPython() {
         // Load test image
         guard let image = loadTestImage(named: "bus", extension: "jpg"),
               let cgImage = image.cgImage else {
@@ -392,7 +387,7 @@ final class ImageBasedTests: XCTestCase {
 
         // Load model
         guard let model = loadYOLOEModel() else {
-            XCTFail("Could not load yoloe_26l_seg_pf_1280 model")
+            XCTFail("Could not load yoloe-11l-seg-pf model")
             return
         }
 

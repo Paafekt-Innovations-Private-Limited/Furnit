@@ -677,7 +677,8 @@ struct SharpRoomView: View {
         guard mlModel == nil else { return }
 
         let candidateNames = [
-            ("yoloe_26l_seg_pf_1280", "mlmodelc"),
+            ("yoloe-11l-seg-pf", "mlmodelc"),
+            ("yoloe-11l-seg-pf", "mlpackage"),
         ]
 
         for (name, ext) in candidateNames {

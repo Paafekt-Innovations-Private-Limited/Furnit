@@ -136,19 +136,6 @@ struct FurnitureFitViewSwiftUI: UIViewRepresentable {
 // typealias kept for minimal code changes
 typealias UnionDet = FurnitureFitDetection
 
-// MARK: - Two-Stage Primary Info
-// Holds primary detection info from 640 model for two-stage inference
-// Stores bbox in ORIGINAL IMAGE coordinates (not model space) for correct cross-model mapping
-private struct PrimaryInfo {
-    let classIdx: Int
-    let confidence: Float
-    // Bbox in ORIGINAL IMAGE coordinates (after un-letterboxing from 640 space)
-    let imgBboxX1: Float
-    let imgBboxY1: Float
-    let imgBboxX2: Float
-    let imgBboxY2: Float
-}
-
 // MARK: - Main Container View
 final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
     
@@ -239,8 +226,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     return MetalMaskLogic(device: d)
 }()
     // MARK: Model & State
-    private var mlModel: MLModel?        // 1280 model for high-res masks
-    private var mlModel640: MLModel?     // 640 model for primary detection (better confidence)
+    private var mlModel: MLModel?  // yoloe-11l 1280 model
     private var using11lModel: Bool = false  // Track if 11l model is used (for correct blacklist)
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
@@ -387,29 +373,15 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             using11lModel = outputNames.contains("var_2374") || outputNames.contains("var_2412") ||
                             outputNames.contains("p") // yoloe-11l output names
         }
-        loadBlacklist()
-    }
-
-    /// Set both models for two-stage inference: 640 for primary detection, 1280 for high-res masks
-    func setModels(primary model640: MLModel?, highRes model1280: MLModel?) {
-        detectionQueue.sync {
-            self.mlModel640 = model640
-            self.mlModel = model1280
-        }
-        if model640 != nil { logDebug("🧠 [FurnitureFit] 640 model set for primary detection") }
-        if let model = model1280 {
-            // Detect if this is yoloe-11l by checking output names
-            let outputNames = model.modelDescription.outputDescriptionsByName.keys
-            using11lModel = outputNames.contains("var_2374") || outputNames.contains("var_2412") ||
-                            outputNames.contains("p") // yoloe-11l output names
-            logDebug("🧠 [FurnitureFit] 1280 model set for high-res masks (11l: \(using11lModel))")
-        }
-        loadBlacklist()
+        // Note: loadBlacklist() is called in startIfNeeded() to avoid repeated calls from updateUIView
     }
 
     func startIfNeeded() {
         hasFirstDetection = false
         setProgress(0.05, text: "Starting camera…")
+
+        // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
+        loadBlacklist()
 
         // Setup orientation detection for landscape support
         currentDeviceOrientation = UIDevice.current.orientation.isValidInterfaceOrientation
@@ -537,13 +509,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private func processFrame(_ pixelBuffer: CVPixelBuffer) {
         let frameStart = Date()
 
-        // Two-stage inference: if both models exist, use 640 for primary detection, 1280 for masks
-        let twoStageMode = mlModel640 != nil && mlModel != nil
-
-        // Primary model: 640 if two-stage, else whatever is available
-        // High-res model: 1280 for masks
-        guard let primaryModel = twoStageMode ? mlModel640 : (mlModel640 ?? mlModel),
-              let highResModel = twoStageMode ? mlModel : (mlModel640 ?? mlModel) else {
+        guard let model = mlModel else {
             resetProcessingFlag()
             return
         }
@@ -565,216 +531,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("\n⏱️ ═══════════════════════════════════════════")
             logDebug("⏱️ FRAME START @ \(String(format: "%.3f", frameStart.timeIntervalSince1970))")
             logDebug("⏱️ Buffer: \(bufW)x\(bufH), isLandscape: \(isLandscape), device: \(deviceOrientation.rawValue)")
-            logDebug("⏱️ Mode: \(twoStageMode ? "TWO-STAGE (640→1280)" : "SINGLE-STAGE")")
             logDebug("⏱️ ═══════════════════════════════════════════")
         }
-
-        // ============================================================================
-        // TWO-STAGE: First run 640 model to find primary with better confidence scores
-        // ============================================================================
-        var primaryInfo640: PrimaryInfo? = nil
-
-        if twoStageMode {
-            if debugMode { logDebug("🔷 TWO-STAGE: Running 640 model for primary detection...") }
-
-            let primaryInputSize = 640
-            guard let sq640 = resizeToSquare(processBuffer, size: primaryInputSize) else {
-                if debugMode { logDebug("❌ TWO-STAGE: Failed to resize to 640") }
-                resetProcessingFlag()
-                return
-            }
-
-            // Prepare input for 640 model
-            let inputDesc640 = primaryModel.modelDescription.inputDescriptionsByName["image"]
-            let expectsImage640 = inputDesc640?.type == .image
-
-            if debugMode {
-                logDebug("🔷 TWO-STAGE: 640 model expects \(expectsImage640 ? "Image" : "MultiArray") input")
-                logDebug("🔷 TWO-STAGE: sq640.buffer size: \(CVPixelBufferGetWidth(sq640.buffer))x\(CVPixelBufferGetHeight(sq640.buffer))")
-            }
-
-            let inputProvider640: MLFeatureProvider
-            if expectsImage640 {
-                guard let imageValue = MLFeatureValue(pixelBuffer: sq640.buffer) as MLFeatureValue? else {
-                    if debugMode { logDebug("❌ TWO-STAGE: 640 MLFeatureValue(pixelBuffer:) failed") }
-                    resetProcessingFlag()
-                    return
-                }
-                guard let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": imageValue]) else {
-                    if debugMode { logDebug("❌ TWO-STAGE: 640 MLDictionaryFeatureProvider failed") }
-                    resetProcessingFlag()
-                    return
-                }
-                inputProvider640 = provider
-            } else {
-                guard let inputArray = pixelBufferToMLMultiArray(sq640.buffer) else {
-                    if debugMode { logDebug("❌ TWO-STAGE: 640 pixelBufferToMLMultiArray failed") }
-                    resetProcessingFlag()
-                    return
-                }
-                if debugMode {
-                    logDebug("🔷 TWO-STAGE: 640 inputArray shape: \(inputArray.shape.map { $0.intValue })")
-                }
-                guard let provider = try? MLDictionaryFeatureProvider(dictionary: ["image": inputArray]) else {
-                    if debugMode { logDebug("❌ TWO-STAGE: 640 MLDictionaryFeatureProvider failed") }
-                    resetProcessingFlag()
-                    return
-                }
-                inputProvider640 = provider
-            }
-
-            // Run 640 inference
-            guard let output640 = try? primaryModel.prediction(from: inputProvider640) else {
-                if debugMode { logDebug("❌ TWO-STAGE: 640 inference failed") }
-                resetProcessingFlag()
-                return
-            }
-
-            // Extract detections from 640 model
-            guard let det640 = output640.featureValue(for: "detections")?.multiArrayValue else {
-                if debugMode { logDebug("❌ TWO-STAGE: 640 missing detections tensor") }
-                resetProcessingFlag()
-                return
-            }
-
-            // Parse 640 detections to find primary
-            let dim1_640 = det640.shape[1].intValue
-            let dim2_640 = det640.shape[2].intValue
-            let isNewFormat640 = dim2_640 < 100
-
-            // Debug: print 640 tensor info
-            if debugMode {
-                logDebug("🔷 TWO-STAGE: 640 det tensor shape: \(det640.shape.map { $0.intValue })")
-                logDebug("🔷 TWO-STAGE: 640 det tensor strides: \(det640.strides.map { $0.intValue })")
-                logDebug("🔷 TWO-STAGE: isNewFormat640=\(isNewFormat640), dim1=\(dim1_640), dim2=\(dim2_640)")
-            }
-
-            if isNewFormat640 {
-                // Parse new format [1, numDets, 38]: 4 bbox + 1 conf + 1 class + 32 coeffs
-                let numDets = dim1_640
-                let totalCount640 = det640.count
-
-                // Get strides for proper memory access
-                let strides640 = det640.strides.map { $0.intValue }
-                let detStride640 = strides640.count > 1 ? strides640[1] : dim2_640
-                let featStride640 = strides640.count > 2 ? strides640[2] : 1
-
-                let detBuf640 = UnsafeMutablePointer<Float>.allocate(capacity: totalCount640)
-                defer { detBuf640.deallocate() }
-                let ptr640 = det640.dataPointer.bindMemory(to: Float.self, capacity: totalCount640)
-                memcpy(detBuf640, ptr640, totalCount640 * MemoryLayout<Float>.size)
-
-                // Debug: print first detection raw values
-                if debugMode && numDets > 0 {
-                    let base0 = 0 * detStride640
-                    logDebug("🔷 TWO-STAGE: 640 first det raw[0..9] (using detStride=\(detStride640)): [\(String(format: "%.2f", detBuf640[base0 + 0*featStride640])), \(String(format: "%.2f", detBuf640[base0 + 1*featStride640])), \(String(format: "%.2f", detBuf640[base0 + 2*featStride640])), \(String(format: "%.2f", detBuf640[base0 + 3*featStride640])), \(String(format: "%.2f", detBuf640[base0 + 4*featStride640])), \(String(format: "%.2f", detBuf640[base0 + 5*featStride640])), \(String(format: "%.2f", detBuf640[base0 + 6*featStride640])), \(String(format: "%.2f", detBuf640[base0 + 7*featStride640])), \(String(format: "%.2f", detBuf640[base0 + 8*featStride640])), \(String(format: "%.2f", detBuf640[base0 + 9*featStride640]))]")
-                }
-
-                // Find primary using composite scoring (same logic as stage 9)
-                let frameW640 = Float(primaryInputSize)
-                let frameH640 = Float(primaryInputSize)
-                let frameArea640 = frameW640 * frameH640
-                let frameCx640 = frameW640 / 2
-                let frameCy640 = frameH640 / 2
-
-                var bestScore640: Float = -1
-                var bestIdx640 = -1
-                var bestDet640: (x: Float, y: Float, w: Float, h: Float, conf: Float, cls: Int)? = nil
-                let minConf640: Float = 0.15
-                let minAreaNorm640: Float = 0.02
-
-                for detIdx in 0..<numDets {
-                    let base = detIdx * detStride640
-
-                    // Bounds check
-                    let maxIdx = base + 5 * featStride640
-                    guard maxIdx < totalCount640 else { continue }
-
-                    // XYXY format: x1, y1, x2, y2 (corner coordinates)
-                    let x1 = detBuf640[base + 0 * featStride640]
-                    let y1 = detBuf640[base + 1 * featStride640]
-                    let x2 = detBuf640[base + 2 * featStride640]
-                    let y2 = detBuf640[base + 3 * featStride640]
-                    let conf = detBuf640[base + 4 * featStride640]
-                    let clsFloat = detBuf640[base + 5 * featStride640]
-
-                    // Check all values are finite before using
-                    guard x1.isFinite, y1.isFinite, x2.isFinite, y2.isFinite, conf.isFinite, clsFloat.isFinite else { continue }
-
-                    // Convert XYXY to XYWH (center format)
-                    let w = x2 - x1
-                    let h = y2 - y1
-                    let x = (x1 + x2) / 2  // center x
-                    let y = (y1 + y2) / 2  // center y
-
-                    guard w > 0, h > 0 else { continue }
-
-                    let cls = Int(clsFloat)
-                    guard conf >= minConf640, !clsToIgnore.contains(cls) else { continue }
-
-                    let areaNorm = (w * h) / frameArea640
-                    guard areaNorm >= minAreaNorm640 else { continue }
-
-                    // Center score
-                    let dx = (x - frameCx640) / frameCx640
-                    let dy = (y - frameCy640) / frameCy640
-                    let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
-                    let centerScore = 1.0 - centerDist
-
-                    // Composite score
-                    let confTerm = pow(conf, 1.5)
-                    let areaTerm = pow(areaNorm, 1.2)
-                    let centerTerm = 0.5 + 0.5 * Float(centerScore)
-                    let score = confTerm * areaTerm * centerTerm
-
-                    if score > bestScore640 {
-                        bestScore640 = score
-                        bestIdx640 = detIdx
-                        bestDet640 = (x, y, w, h, conf, cls)
-                    }
-                }
-
-                if let det = bestDet640 {
-                    // Convert bbox from 640-model space to ORIGINAL IMAGE space
-                    // This allows correct mapping to any other model size (1280, etc.)
-                    let bx1_640 = det.x - det.w * 0.5
-                    let by1_640 = det.y - det.h * 0.5
-                    let bx2_640 = det.x + det.w * 0.5
-                    let by2_640 = det.y + det.h * 0.5
-
-                    // Un-letterbox: convert from 640-padded space to original image space
-                    // img_coord = (model_coord - pad) / gain
-                    let imgX1 = (bx1_640 - Float(sq640.padX)) / sq640.gain
-                    let imgY1 = (by1_640 - Float(sq640.padY)) / sq640.gain
-                    let imgX2 = (bx2_640 - Float(sq640.padX)) / sq640.gain
-                    let imgY2 = (by2_640 - Float(sq640.padY)) / sq640.gain
-
-                    primaryInfo640 = PrimaryInfo(
-                        classIdx: det.cls,
-                        confidence: det.conf,
-                        imgBboxX1: imgX1,
-                        imgBboxY1: imgY1,
-                        imgBboxX2: imgX2,
-                        imgBboxY2: imgY2
-                    )
-
-                    if debugMode {
-                        logDebug("🔷 TWO-STAGE: Primary from 640: \(className(det.cls)) conf=\(String(format: "%.2f", det.conf))")
-                        logDebug("   640-space bbox: [\(Int(bx1_640)),\(Int(by1_640))]-[\(Int(bx2_640)),\(Int(by2_640))]")
-                        logDebug("   image-space bbox: [\(Int(imgX1)),\(Int(imgY1))]-[\(Int(imgX2)),\(Int(imgY2))]")
-                    }
-                } else {
-                    if debugMode { logDebug("🔷 TWO-STAGE: No valid primary found in 640 model") }
-                }
-            } else {
-                if debugMode { logDebug("⚠️ TWO-STAGE: 640 model has old format - skipping two-stage") }
-            }
-        }
-
-        // ============================================================================
-        // MAIN PIPELINE: Now run high-res model (1280) for masks
-        // ============================================================================
-        let model = highResModel
 
         // Determine model's expected input size from input description
         let imageInputDesc = model.modelDescription.inputDescriptionsByName["image"]
@@ -857,17 +615,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 3: Parse outputs (tensors + detections + prototypes)
         let t3 = Date()
 
-        // Try model output names - yoloe-26l first (preferred), then yoloe-11l fallbacks
+        // Try model output names for yoloe-11l
         let detArray: MLMultiArray
         let protoArray: MLMultiArray
 
-        if let det = output.featureValue(for: "detections")?.multiArrayValue,
-           let proto = output.featureValue(for: "protos")?.multiArrayValue {
-            // yoloe-26l model outputs (new export with named outputs)
-            detArray = det
-            protoArray = proto
-            if debugMode { logDebug("📦 Using yoloe-26l output tensors (detections/protos)") }
-        } else if let det = output.featureValue(for: "var_2374")?.multiArrayValue,
+        if let det = output.featureValue(for: "var_2374")?.multiArrayValue,
            let proto = output.featureValue(for: "var_2412")?.multiArrayValue {
             // yoloe-11l model outputs (export with proper cv3/cv4 heads)
             detArray = det
@@ -878,7 +630,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // yoloe-11l model outputs (old export format)
             detArray = det
             protoArray = proto
-            if debugMode { logDebug("📦 Using yoloe-11l output tensors (old format)") }
+            if debugMode { logDebug("📦 Using yoloe-11l output tensors (var_2497/p)") }
+        } else if let det = output.featureValue(for: "detections")?.multiArrayValue,
+           let proto = output.featureValue(for: "protos")?.multiArrayValue {
+            // Generic named outputs fallback
+            detArray = det
+            protoArray = proto
+            if debugMode { logDebug("📦 Using generic output tensors (detections/protos)") }
         } else {
             if debugMode {
                 logDebug("❌ STAGE 4 FAILED: Missing output tensors")
@@ -1121,93 +879,32 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let minConf: Float = 0.15
         let minAreaNorm: Float = 0.02
 
-        if let p640 = primaryInfo640 {
-            // TWO-STAGE MODE: Find the 1280 detection that matches 640's primary
-            // Convert 640's image-space bbox to 1280-model space for matching
-            let p640_x1_1280 = p640.imgBboxX1 * resizeGain + Float(padX)
-            let p640_y1_1280 = p640.imgBboxY1 * resizeGain + Float(padY)
-            let p640_x2_1280 = p640.imgBboxX2 * resizeGain + Float(padX)
-            let p640_y2_1280 = p640.imgBboxY2 * resizeGain + Float(padY)
+        // Select primary using composite scoring: conf * area * center
+        for (i, d) in candidates.enumerated() {
+            // Light filters
+            let areaNorm = (d.w * d.h) / frameArea
+            if d.confidence < minConf || areaNorm < minAreaNorm { continue }
 
-            if debugMode {
-                logDebug("🔷 STAGE 9 (TWO-STAGE): Looking for 1280 match of 640 primary class=\(p640.classIdx)")
-                logDebug("   640 primary in 1280-space: [\(Int(p640_x1_1280)),\(Int(p640_y1_1280))]-[\(Int(p640_x2_1280)),\(Int(p640_y2_1280))]")
+            // Center score: 1 at center, ~0 at corners
+            let dx = (d.x - frameCx) / frameCx
+            let dy = (d.y - frameCy) / frameCy
+            let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
+            let centerScore = 1.0 - centerDist
+
+            // Fast composite score (no mask computation)
+            let confTerm = pow(d.confidence, 1.5)
+            let areaTerm = pow(areaNorm, 1.2)
+            let centerTerm = 0.5 + 0.5 * Float(centerScore)
+
+            let score = confTerm * areaTerm * centerTerm
+
+            if debugMode && score > 0.001 {
+                logDebug("   [\(i)] \(className(d.classIdx)): conf=\(String(format: "%.2f", d.confidence)) area=\(String(format: "%.1f", areaNorm * 100))% center=\(String(format: "%.2f", centerScore)) → score=\(String(format: "%.4f", score))")
             }
 
-            // Find best matching 1280 detection: same class preferred, must overlap bbox
-            var bestMatchIdx = -1
-            var bestMatchScore: Float = -1
-
-            for (i, d) in candidates.enumerated() {
-                let dx1 = d.x - d.w * 0.5
-                let dy1 = d.y - d.h * 0.5
-                let dx2 = d.x + d.w * 0.5
-                let dy2 = d.y + d.h * 0.5
-
-                // Check bbox overlap with 640's primary (in 1280-space)
-                let noOverlap = dx2 < p640_x1_1280 || dx1 > p640_x2_1280 || dy2 < p640_y1_1280 || dy1 > p640_y2_1280
-                if noOverlap { continue }
-
-                // Compute IoU for scoring
-                let interX1 = max(dx1, p640_x1_1280)
-                let interY1 = max(dy1, p640_y1_1280)
-                let interX2 = min(dx2, p640_x2_1280)
-                let interY2 = min(dy2, p640_y2_1280)
-                let interArea = max(0, interX2 - interX1) * max(0, interY2 - interY1)
-                let dArea = d.w * d.h
-                let p640Area = (p640_x2_1280 - p640_x1_1280) * (p640_y2_1280 - p640_y1_1280)
-                let unionArea = dArea + p640Area - interArea
-                let iou = unionArea > 0 ? interArea / unionArea : 0
-
-                // Score: prefer same class, high IoU, high confidence
-                let classBonus: Float = (d.classIdx == p640.classIdx) ? 2.0 : 1.0
-                let score = classBonus * iou * d.confidence
-
-                if score > bestMatchScore {
-                    bestMatchScore = score
-                    bestMatchIdx = i
-                }
-            }
-
-            primaryIdx = bestMatchIdx
-            maxScore = bestMatchScore
-
-            if debugMode {
-                if primaryIdx >= 0 {
-                    let d = candidates[primaryIdx]
-                    logDebug("   🔷 Matched 1280 detection[\(primaryIdx)]: \(className(d.classIdx)) conf=\(String(format: "%.2f", d.confidence)) score=\(String(format: "%.4f", maxScore))")
-                } else {
-                    logDebug("   🔷 No matching 1280 detection found for 640 primary")
-                }
-            }
-        } else {
-            // SINGLE-STAGE MODE: Use standard composite scoring
-            for (i, d) in candidates.enumerated() {
-                // Light filters
-                let areaNorm = (d.w * d.h) / frameArea
-                if d.confidence < minConf || areaNorm < minAreaNorm { continue }
-
-                // Center score: 1 at center, ~0 at corners
-                let dx = (d.x - frameCx) / frameCx
-                let dy = (d.y - frameCy) / frameCy
-                let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
-                let centerScore = 1.0 - centerDist
-
-                // Fast composite score (no mask computation)
-                let confTerm = pow(d.confidence, 1.5)
-                let areaTerm = pow(areaNorm, 1.2)
-                let centerTerm = 0.5 + 0.5 * Float(centerScore)
-
-                let score = confTerm * areaTerm * centerTerm
-
-                if debugMode && score > 0.001 {
-                    logDebug("   [\(i)] \(className(d.classIdx)): conf=\(String(format: "%.2f", d.confidence)) area=\(String(format: "%.1f", areaNorm * 100))% center=\(String(format: "%.2f", centerScore)) → score=\(String(format: "%.4f", score))")
-                }
-
-                if score > maxScore {
-                    maxScore = score
-                    primaryIdx = i
-                }
+            if score > maxScore {
+                maxScore = score
+                primaryIdx = i
             }
         }
 
@@ -1225,37 +922,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("   🎯 PRIMARY[\(primaryIdx)]: \(className(primary.classIdx)) conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
         }
 
-        // STAGE 5: Filter candidates (bbox overlap + mask overlap)
+        // STAGE 5: Filter candidates by mask overlap with primary
         let t5 = Date()
 
-        // Primary bbox edges for filtering
-        // In two-stage mode, use 640's primary bbox (scaled to 1280-space)
-        // Otherwise, use 1280's primary bbox
-        var pX1: Float
-        var pY1: Float
-        var pX2: Float
-        var pY2: Float
+        // Primary bbox edges for pre-filtering (cheap gate before mask overlap)
+        var pX1 = primary.x - primary.w * 0.5
+        var pY1 = primary.y - primary.h * 0.5
+        var pX2 = primary.x + primary.w * 0.5
+        var pY2 = primary.y + primary.h * 0.5
 
-        if let p640 = primaryInfo640 {
-            // Convert 640's image-space bbox to 1280-model space
-            // model_coord = img_coord * resizeGain + pad
-            pX1 = p640.imgBboxX1 * resizeGain + Float(padX)
-            pY1 = p640.imgBboxY1 * resizeGain + Float(padY)
-            pX2 = p640.imgBboxX2 * resizeGain + Float(padX)
-            pY2 = p640.imgBboxY2 * resizeGain + Float(padY)
-            if debugMode {
-                logDebug("🔷 STAGE 5: Using 640's primary bbox (in 1280-space): [\(Int(pX1)),\(Int(pY1))]-[\(Int(pX2)),\(Int(pY2))]")
-            }
-        } else {
-            // Use 1280's primary bbox
-            pX1 = primary.x - primary.w * 0.5
-            pY1 = primary.y - primary.h * 0.5
-            pX2 = primary.x + primary.w * 0.5
-            pY2 = primary.y + primary.h * 0.5
-        }
-
-        // Add small margin to account for model variance between 640/1280
-        // This prevents accidentally dropping real overlaps due to bbox jitter
+        // Add margin for bbox pre-filter
         let primaryBboxWidth = pX2 - pX1
         let primaryBboxHeight = pY2 - pY1
         let bboxPad = max(8.0, 0.03 * min(primaryBboxWidth, primaryBboxHeight))
@@ -1265,7 +941,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         pY2 += bboxPad
 
         if debugMode {
-            logDebug("   STAGE 5: bbox with pad=\(Int(bboxPad)): [\(Int(pX1)),\(Int(pY1))]-[\(Int(pX2)),\(Int(pY2))]")
+            logDebug("   STAGE 5: primary bbox with pad=\(Int(bboxPad)): [\(Int(pX1)),\(Int(pY1))]-[\(Int(pX2)),\(Int(pY2))]")
         }
 
         var prunedCandidates: [(idx: Int, det: UnionDet)] = []
@@ -1645,16 +1321,27 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ STAGE 13–15b - Build mask (pre-bbox): \(buildPreMs) ms, positive: \(build1.positiveCount)")
         }
 
-        // STAGE 15c: Clip mask to PRIMARY bbox (zero out pixels outside primary)
-        // This removes noise from detections that extend beyond the primary object
+        // STAGE 15c: Clip mask to bbox (zero out pixels outside bbox)
+        // Using UNION bbox to include all overlapping detections
+        // TODO: To test with PRIMARY bbox instead, uncomment the primaryBx lines below and use them
         let t15c = Date()
         var clippedCount = 0
+        // Use union bbox for clipping
+        let clipBx1 = bx1
+        let clipBy1 = by1
+        let clipBx2 = bx2
+        let clipBy2 = by2
+        // UNCOMMENT BELOW TO USE PRIMARY BBOX INSTEAD:
+        // let clipBx1 = primaryBx1
+        // let clipBy1 = primaryBy1
+        // let clipBx2 = primaryBx2
+        // let clipBy2 = primaryBy2
         for y in 0..<origH {
             for x in 0..<origW {
                 let idx = y * origW + x
                 if maskFull[idx] > 0 {
-                    // Check if pixel is outside primary bbox
-                    if x < primaryBx1 || x >= primaryBx2 || y < primaryBy1 || y >= primaryBy2 {
+                    // Check if pixel is outside clip bbox
+                    if x < clipBx1 || x >= clipBx2 || y < clipBy1 || y >= clipBy2 {
                         maskFull[idx] = 0
                         clippedCount += 1
                     }
@@ -1663,7 +1350,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
         if debugMode {
             let clipMs = String(format: "%.2f", Date().timeIntervalSince(t15c) * 1000)
-            logDebug("⏱️ STAGE 15c - Clip to primary bbox: \(clipMs) ms, clipped: \(clippedCount) pixels")
+            logDebug("⏱️ STAGE 15c - Clip to union bbox: \(clipMs) ms, clipped: \(clippedCount) pixels")
         }
 
         // Prepare flattened coeffs for fused GPU path
@@ -1741,11 +1428,17 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         enc.setBytes(&resizeGain_f, length: MemoryLayout<Float>.size, index: 8)
                         enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 9)
                         enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 10)
-                        // Use PRIMARY bbox (not union) to clip mask to primary object only
-                        var bx1_u = UInt32(primaryBx1)
-                        var by1_u = UInt32(primaryBy1)
-                        var bx2_u = UInt32(primaryBx2)
-                        var by2_u = UInt32(primaryBy2)
+                        // Use UNION bbox to clip mask (includes all overlapping detections)
+                        // TODO: To test with PRIMARY bbox, change bx1/by1/bx2/by2 to primaryBx1/etc
+                        var bx1_u = UInt32(bx1)  // union bbox
+                        var by1_u = UInt32(by1)
+                        var bx2_u = UInt32(bx2)
+                        var by2_u = UInt32(by2)
+                        // UNCOMMENT BELOW TO USE PRIMARY BBOX INSTEAD:
+                        // var bx1_u = UInt32(primaryBx1)
+                        // var by1_u = UInt32(primaryBy1)
+                        // var bx2_u = UInt32(primaryBx2)
+                        // var by2_u = UInt32(primaryBy2)
                         enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 11)
                         enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 12)
                         enc.setBytes(&bx2_u, length: MemoryLayout<UInt32>.size, index: 13)
