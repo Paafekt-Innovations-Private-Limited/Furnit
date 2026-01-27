@@ -769,46 +769,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         let totalCount = detArray.count
 
-        // Safety check: prevent memory allocation crash for unexpected tensor sizes
-        // Standard model: ~1.2M elements for [1,144,8400]
-        // Tighter cap to prevent OOM - 50M elements = ~200MB for Float32
-        let maxAllowedCount = 50_000_000
-        guard totalCount <= maxAllowedCount else {
-            logDebug("❌ STAGE 3 FAILED: Detection tensor too large (\(totalCount) elements, max \(maxAllowedCount))")
-            logDebug("   detArray shape: \(detArray.shape.map { $0.intValue })")
-            logDebug("   Consider using NEW FORMAT model with smaller output")
+        // Model must be float32 - no allocation needed, just alias CoreML's buffer
+        guard detArray.dataType == .float32 else {
+            logDebug("❌ STAGE 3 FAILED: Model must output float32, got \(detArray.dataType)")
             resetProcessingFlag()
             return
         }
 
-        // FIXED: Don't always allocate ~600MB buffer - reuse CoreML's memory when possible
-        var detBuf: UnsafeMutablePointer<Float>!
-        var ownsDetBuf = false
-
-        if detArray.dataType == .float32 {
-            // Just alias CoreML's buffer - no extra memory allocation
-            detBuf = detArray.dataPointer.bindMemory(to: Float.self, capacity: totalCount)
-        } else if detArray.dataType == .float16 {
-            // Only allocate when we truly need conversion
-            detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
-            ownsDetBuf = true
-
-            let src = detArray.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
-            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 2)
-            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
-            vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-        } else {
-            logDebug("❌ Unsupported detArray.dataType: \(detArray.dataType)")
-            resetProcessingFlag()
-            return
-        }
-
-        // Only free if we allocated
-        defer {
-            if ownsDetBuf {
-                detBuf.deallocate()
-            }
-        }
+        let detBuf = detArray.dataPointer.bindMemory(to: Float.self, capacity: totalCount)
 
         setProgress(0.55, text: "Parsing detections…")
 
@@ -1447,7 +1415,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Zero top rows (y < clipBy1) using memset - much faster than per-pixel
         if clipBy1 > 0 {
             let topBytes = clipBy1 * origW
-            maskFull.withUnsafeMutableBufferPointer { ptr in
+            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
                 memset(ptr.baseAddress!, 0, topBytes)
             }
         }
@@ -1456,7 +1424,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if clipBy2 < origH {
             let bottomStart = clipBy2 * origW
             let bottomBytes = (origH - clipBy2) * origW
-            maskFull.withUnsafeMutableBufferPointer { ptr in
+            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
                 memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
             }
         }
@@ -1825,6 +1793,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let planeSize = h * w
         let total = shape[0] * shape[1] * shape[2]
 
+        // Model must be float32
+        guard proto.dataType == .float32 else { return nil }
+
         // FIXED: Reuse instance-level buffers instead of allocating per frame
         if protoRawFloats.count != total {
             protoRawFloats = [Float](repeating: 0, count: total)
@@ -1833,16 +1804,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             protoPlanes = [Float](repeating: 0, count: count * planeSize)
         }
 
-        if proto.dataType == .float16 {
-            let src = proto.dataPointer.bindMemory(to: UInt16.self, capacity: total)
-            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(total), rowBytes: total * 2)
-            protoRawFloats.withUnsafeMutableBufferPointer { dstPtr in
-                var dstBuf = vImage_Buffer(data: dstPtr.baseAddress, height: 1, width: vImagePixelCount(total), rowBytes: total * 4)
-                vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-            }
-        } else if proto.dataType == .float32 {
-            memcpy(&protoRawFloats, proto.dataPointer, total * MemoryLayout<Float>.size)
-        }
+        memcpy(&protoRawFloats, proto.dataPointer, total * MemoryLayout<Float>.size)
 
         if cIdx == 0 {
             memcpy(&protoPlanes, protoRawFloats, count * planeSize * MemoryLayout<Float>.size)
