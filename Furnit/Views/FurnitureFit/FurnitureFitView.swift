@@ -182,22 +182,27 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     }()
     
     // MARK: Progress UI
+    private let progressContainer: UIView = {
+        let v = UIView()
+        v.translatesAutoresizingMaskIntoConstraints = false
+        v.isHidden = true
+        return v
+    }()
+
     private let progressView: UIProgressView = {
         let pv = UIProgressView(progressViewStyle: .default)
         pv.translatesAutoresizingMaskIntoConstraints = false
         pv.tintColor = .systemGreen
         pv.trackTintColor = UIColor(white: 1.0, alpha: 0.3)
-        pv.isHidden = true
         return pv
     }()
-    
+
     private let progressLabel: UILabel = {
         let l = UILabel()
         l.translatesAutoresizingMaskIntoConstraints = false
         l.textColor = .white
         l.font = .systemFont(ofSize: 14, weight: .medium)
         l.textAlignment = .center
-        l.isHidden = true
         l.backgroundColor = UIColor.black.withAlphaComponent(0.4)
         l.layer.cornerRadius = 10
         l.clipsToBounds = true
@@ -296,13 +301,24 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             maskImageView.trailingAnchor.constraint(equalTo: trailingAnchor)
         ])
         
-        addSubview(progressView)
-        addSubview(progressLabel)
+        // Progress container holds both progress bar and label, rotates with device orientation
+        addSubview(progressContainer)
+        progressContainer.addSubview(progressView)
+        progressContainer.addSubview(progressLabel)
         NSLayoutConstraint.activate([
-            progressView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 40),
-            progressView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -40),
-            progressView.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 12),
-            progressLabel.centerXAnchor.constraint(equalTo: progressView.centerXAnchor),
+            // Container centered horizontally, near top
+            progressContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
+            progressContainer.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 40),
+            progressContainer.widthAnchor.constraint(equalToConstant: 280),
+            progressContainer.heightAnchor.constraint(equalToConstant: 50),
+
+            // Progress bar inside container
+            progressView.leadingAnchor.constraint(equalTo: progressContainer.leadingAnchor),
+            progressView.trailingAnchor.constraint(equalTo: progressContainer.trailingAnchor),
+            progressView.bottomAnchor.constraint(equalTo: progressContainer.bottomAnchor),
+
+            // Label above progress bar
+            progressLabel.centerXAnchor.constraint(equalTo: progressContainer.centerXAnchor),
             progressLabel.bottomAnchor.constraint(equalTo: progressView.topAnchor, constant: -6),
             progressLabel.heightAnchor.constraint(equalToConstant: 24),
             progressLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80)
@@ -396,10 +412,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         requestCameraPermissionAndStart()
 
-        // Set initial video rotation after camera starts
+        // Set initial video rotation and progress orientation after camera starts
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self = self else { return }
             self.updateVideoRotationForOrientation(self.currentDeviceOrientation)
+            self.updateProgressOrientationOnMain(self.currentDeviceOrientation)
         }
     }
 
@@ -409,6 +426,25 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             currentDeviceOrientation = orientation
             // Update video rotation to match device orientation for full FOV
             updateVideoRotationForOrientation(orientation)
+            // Rotate progress UI to align with device orientation
+            updateProgressOrientationOnMain(orientation)
+        }
+    }
+
+    private func updateProgressOrientationOnMain(_ orientation: UIDeviceOrientation) {
+        DispatchQueue.main.async {
+            UIView.animate(withDuration: 0.25) {
+                switch orientation {
+                case .landscapeLeft:
+                    self.progressContainer.transform = CGAffineTransform(rotationAngle: .pi / 2)
+                case .landscapeRight:
+                    self.progressContainer.transform = CGAffineTransform(rotationAngle: -.pi / 2)
+                case .portraitUpsideDown:
+                    self.progressContainer.transform = CGAffineTransform(rotationAngle: .pi)
+                default:
+                    self.progressContainer.transform = .identity
+                }
+            }
         }
     }
 
@@ -1928,25 +1964,21 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private func setProgress(_ value: Float, text: String) {
         guard !hasFirstDetection else { return }
         DispatchQueue.main.async {
-            self.progressView.isHidden = false
-            self.progressLabel.isHidden = false
+            self.progressContainer.isHidden = false
             self.progressView.progress = value
             self.progressLabel.text = "  \(text)  "
         }
     }
-    
+
     private func finishFirstDetectionIfNeeded() {
         guard !hasFirstDetection else { return }
         hasFirstDetection = true
         DispatchQueue.main.async {
             UIView.animate(withDuration: 0.25) {
-                self.progressView.alpha = 0
-                self.progressLabel.alpha = 0
+                self.progressContainer.alpha = 0
             } completion: { _ in
-                self.progressView.isHidden = true
-                self.progressLabel.isHidden = true
-                self.progressView.alpha = 1
-                self.progressLabel.alpha = 1
+                self.progressContainer.isHidden = true
+                self.progressContainer.alpha = 1
             }
         }
     }
