@@ -51,11 +51,34 @@ final class MetalMaskLogic {
     private let queue: MTLCommandQueue
     private let pipelineMaxMask: MTLComputePipelineState
 
+    // MARK: - Cached buffers for reuse (prevents allocation per frame)
+    private var cachedPlanesBuf: MTLBuffer?
+    private var cachedCoeffBuf: MTLBuffer?
+    private var cachedOutBuf: MTLBuffer?
+    private var cachedPlanesCapacity: Int = 0
+    private var cachedCoeffCapacity: Int = 0
+    private var cachedOutCapacity: Int = 0
+
     init(device: MTLDevice) {
         self.device = device
         self.queue = device.makeCommandQueue()!
         let library = device.makeDefaultLibrary()!
         self.pipelineMaxMask = try! device.makeComputePipelineState(function: library.makeFunction(name: "sp_maxMaskFromPrototypes")!)
+    }
+
+    /// Get or create a buffer with at least the required capacity
+    private func getOrCreateBuffer(cached: inout MTLBuffer?, capacity: inout Int, required: Int) -> MTLBuffer? {
+        if let buf = cached, capacity >= required {
+            return buf
+        }
+        // Allocate with some headroom to reduce reallocations
+        let newCapacity = max(required, capacity * 2, 1024)
+        guard let newBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared) else {
+            return nil
+        }
+        cached = newBuf
+        capacity = newCapacity
+        return newBuf
     }
 
     func buildMaskSmall(planes: [Float], coeffs: [Float], planeSize: Int, detCount: Int) -> [UInt8] {
@@ -66,35 +89,45 @@ final class MetalMaskLogic {
         let coeffBytes = coeffs.count * MemoryLayout<Float>.size
         let outBytes = planeSize * MemoryLayout<UInt8>.size
 
-        let planesBuf = device.makeBuffer(bytes: planes, length: planesBytes, options: .storageModeShared)!
-        let coeffBuf = device.makeBuffer(bytes: coeffs, length: coeffBytes, options: .storageModeShared)!
-        let outBuf = device.makeBuffer(length: outBytes, options: .storageModeShared)!
-
-        guard let cmd = queue.makeCommandBuffer(),
-              let enc = cmd.makeComputeCommandEncoder() else {
+        // Reuse buffers instead of allocating new ones each frame
+        guard let planesBuf = getOrCreateBuffer(cached: &cachedPlanesBuf, capacity: &cachedPlanesCapacity, required: planesBytes),
+              let coeffBuf = getOrCreateBuffer(cached: &cachedCoeffBuf, capacity: &cachedCoeffCapacity, required: coeffBytes),
+              let outBuf = getOrCreateBuffer(cached: &cachedOutBuf, capacity: &cachedOutCapacity, required: outBytes) else {
             return [UInt8](repeating: 0, count: planeSize)
         }
 
-        enc.setComputePipelineState(pipelineMaxMask)
-        enc.setBuffer(planesBuf, offset: 0, index: 0)
-        enc.setBuffer(coeffBuf, offset: 0, index: 1)
-        enc.setBuffer(outBuf, offset: 0, index: 2)
+        // Copy data into reused buffers
+        memcpy(planesBuf.contents(), planes, planesBytes)
+        memcpy(coeffBuf.contents(), coeffs, coeffBytes)
 
-        var ps = UInt32(planeSize)
-        var dc = UInt32(detCount)
-        enc.setBytes(&ps, length: MemoryLayout<UInt32>.size, index: 3)
-        enc.setBytes(&dc, length: MemoryLayout<UInt32>.size, index: 4)
+        // Wrap Metal work in autoreleasepool to ensure command buffers are released
+        return autoreleasepool {
+            guard let cmd = queue.makeCommandBuffer(),
+                  let enc = cmd.makeComputeCommandEncoder() else {
+                return [UInt8](repeating: 0, count: planeSize)
+            }
 
-        let tgW = pipelineMaxMask.threadExecutionWidth
-        let threadsPerTG = MTLSize(width: tgW, height: 1, depth: 1)
-        let threads = MTLSize(width: planeSize, height: 1, depth: 1)
-        enc.dispatchThreads(threads, threadsPerThreadgroup: threadsPerTG)
-        enc.endEncoding()
-        cmd.commit()
-        cmd.waitUntilCompleted()
+            enc.setComputePipelineState(pipelineMaxMask)
+            enc.setBuffer(planesBuf, offset: 0, index: 0)
+            enc.setBuffer(coeffBuf, offset: 0, index: 1)
+            enc.setBuffer(outBuf, offset: 0, index: 2)
 
-        let ptr = outBuf.contents().bindMemory(to: UInt8.self, capacity: planeSize)
-        return Array(UnsafeBufferPointer(start: ptr, count: planeSize))
+            var ps = UInt32(planeSize)
+            var dc = UInt32(detCount)
+            enc.setBytes(&ps, length: MemoryLayout<UInt32>.size, index: 3)
+            enc.setBytes(&dc, length: MemoryLayout<UInt32>.size, index: 4)
+
+            let tgW = pipelineMaxMask.threadExecutionWidth
+            let threadsPerTG = MTLSize(width: tgW, height: 1, depth: 1)
+            let threads = MTLSize(width: planeSize, height: 1, depth: 1)
+            enc.dispatchThreads(threads, threadsPerThreadgroup: threadsPerTG)
+            enc.endEncoding()
+            cmd.commit()
+            cmd.waitUntilCompleted()
+
+            let ptr = outBuf.contents().bindMemory(to: UInt8.self, capacity: planeSize)
+            return Array(UnsafeBufferPointer(start: ptr, count: planeSize))
+        }
     }
 }
 
@@ -212,16 +245,18 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var hasFirstDetection = false
     private var currentScale: CGFloat = 1.0
     
-    // MARK: - Metal
-    private var metalDevice: MTLDevice? = MTLCreateSystemDefaultDevice()
-    private var metalCommandQueue: MTLCommandQueue? {
-        metalDevice?.makeCommandQueue()
-    }
-    private var metalLibrary: MTLLibrary? {
-        metalDevice?.makeDefaultLibrary()
-    }
-    private var compositePipeline: MTLComputePipelineState? = nil
-    private var fusedMaskCompositePipeline: MTLComputePipelineState? = nil
+    // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
+    private var metalDevice: MTLDevice?
+    private var metalCommandQueue: MTLCommandQueue?  // FIXED: was computed property creating new queue on every access
+    private var metalLibrary: MTLLibrary?            // FIXED: was computed property creating new library on every access
+    private var compositePipeline: MTLComputePipelineState?
+    private var fusedMaskCompositePipeline: MTLComputePipelineState?
+
+    // MARK: - Cached Metal buffers for fused compositing (prevents allocation per frame)
+    private var cachedFusedPlanesBuf: MTLBuffer?
+    private var cachedFusedCoeffBuf: MTLBuffer?
+    private var cachedFusedPlanesCapacity: Int = 0
+    private var cachedFusedCoeffCapacity: Int = 0
 
 
 
@@ -343,12 +378,37 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
     
     private func setupMetal() {
-        guard let device = metalDevice, let library = metalLibrary else { return }
+        // FIXED: Initialize Metal resources once as stored properties (not computed)
+        // This prevents the OOM crash caused by creating new command queues per frame
+        if metalDevice == nil {
+            metalDevice = MTLCreateSystemDefaultDevice()
+        }
+        guard let device = metalDevice else {
+            if debugMode { logDebug("❌ Metal not supported on this device") }
+            return
+        }
+
+        // Create command queue ONCE and store it
+        if metalCommandQueue == nil {
+            metalCommandQueue = device.makeCommandQueue()
+        }
+
+        // Create library ONCE and store it
+        if metalLibrary == nil {
+            metalLibrary = device.makeDefaultLibrary()
+        }
+
+        guard let library = metalLibrary else {
+            if debugMode { logDebug("❌ Failed to create Metal library") }
+            return
+        }
+
+        // Create pipelines only once
         do {
-            if let fn = library.makeFunction(name: "sp_compositeMask") {
+            if compositePipeline == nil, let fn = library.makeFunction(name: "sp_compositeMask") {
                 compositePipeline = try device.makeComputePipelineState(function: fn)
             }
-            if let fn2 = library.makeFunction(name: "sp_maxMaskAndComposite") {
+            if fusedMaskCompositePipeline == nil, let fn2 = library.makeFunction(name: "sp_maxMaskAndComposite") {
                 fusedMaskCompositePipeline = try device.makeComputePipelineState(function: fn2)
             }
         } catch {
@@ -1346,45 +1406,58 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return (maskFull, positiveCount)
         }
 
-        // STAGE 13–15b: Build initial mask from kept2 (pre-bbox filter)
+        // STAGE 13–15b: Build initial mask from kept2
         let t13to15b = Date()
         let build1 = buildFullMaskMetal(from: kept2)
         var maskFull = build1.maskFull
         if debugMode {
             let buildPreMs = String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)
-            logDebug("⏱️ STAGE 13–15b - Build mask (pre-bbox): \(buildPreMs) ms, positive: \(build1.positiveCount)")
+            logDebug("⏱️ STAGE 13–15b - Build mask: \(buildPreMs) ms, positive: \(build1.positiveCount)")
         }
 
         // STAGE 15c: Clip mask to bbox (zero out pixels outside bbox)
-        // Using UNION bbox to include all overlapping detections
-        // TODO: To test with PRIMARY bbox instead, uncomment the primaryBx lines below and use them
+        // OPTIMIZED: Use memset for entire rows/regions instead of per-pixel checks
         let t15c = Date()
-        var clippedCount = 0
-        // Use union bbox for clipping
         let clipBx1 = bx1
         let clipBy1 = by1
         let clipBx2 = bx2
         let clipBy2 = by2
-        // UNCOMMENT BELOW TO USE PRIMARY BBOX INSTEAD:
-        // let clipBx1 = primaryBx1
-        // let clipBy1 = primaryBy1
-        // let clipBx2 = primaryBx2
-        // let clipBy2 = primaryBy2
-        for y in 0..<origH {
-            for x in 0..<origW {
-                let idx = y * origW + x
-                if maskFull[idx] > 0 {
-                    // Check if pixel is outside clip bbox
-                    if x < clipBx1 || x >= clipBx2 || y < clipBy1 || y >= clipBy2 {
-                        maskFull[idx] = 0
-                        clippedCount += 1
+
+        // Zero top rows (y < clipBy1) using memset - much faster than per-pixel
+        if clipBy1 > 0 {
+            let topBytes = clipBy1 * origW
+            maskFull.withUnsafeMutableBufferPointer { ptr in
+                memset(ptr.baseAddress!, 0, topBytes)
+            }
+        }
+
+        // Zero bottom rows (y >= clipBy2) using memset
+        if clipBy2 < origH {
+            let bottomStart = clipBy2 * origW
+            let bottomBytes = (origH - clipBy2) * origW
+            maskFull.withUnsafeMutableBufferPointer { ptr in
+                memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
+            }
+        }
+
+        // Zero left and right columns in middle rows
+        if clipBx1 > 0 || clipBx2 < origW {
+            maskFull.withUnsafeMutableBufferPointer { ptr in
+                for y in clipBy1..<clipBy2 {
+                    let rowStart = y * origW
+                    if clipBx1 > 0 {
+                        memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipBx1)
+                    }
+                    if clipBx2 < origW {
+                        memset(ptr.baseAddress!.advanced(by: rowStart + clipBx2), 0, origW - clipBx2)
                     }
                 }
             }
         }
+
         if debugMode {
             let clipMs = String(format: "%.2f", Date().timeIntervalSince(t15c) * 1000)
-            logDebug("⏱️ STAGE 15c - Clip to union bbox: \(clipMs) ms, clipped: \(clippedCount) pixels")
+            logDebug("⏱️ STAGE 15c - Clip to bbox (memset): \(clipMs) ms")
         }
 
         // Prepare flattened coeffs for fused GPU path
@@ -1430,8 +1503,34 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     // Prepare buffers: planes (32*planeSize floats) and coeffs (detCount*32 floats)
                     let planesBytes = planes.count * MemoryLayout<Float>.size
                     let coeffBytes = coeffFlatFused.count * MemoryLayout<Float>.size
-                    let planesBuf = device.makeBuffer(bytes: planes, length: planesBytes, options: .storageModeShared)
-                    let coeffBuf = device.makeBuffer(bytes: coeffFlatFused, length: coeffBytes, options: .storageModeShared)
+
+                    // Reuse cached buffers instead of allocating new ones each frame
+                    let planesBuf: MTLBuffer?
+                    if let cached = cachedFusedPlanesBuf, cachedFusedPlanesCapacity >= planesBytes {
+                        planesBuf = cached
+                    } else {
+                        let newCapacity = max(planesBytes, cachedFusedPlanesCapacity * 2, 1024)
+                        cachedFusedPlanesBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared)
+                        cachedFusedPlanesCapacity = newCapacity
+                        planesBuf = cachedFusedPlanesBuf
+                    }
+                    let coeffBuf: MTLBuffer?
+                    if let cached = cachedFusedCoeffBuf, cachedFusedCoeffCapacity >= coeffBytes {
+                        coeffBuf = cached
+                    } else {
+                        let newCapacity = max(coeffBytes, cachedFusedCoeffCapacity * 2, 1024)
+                        cachedFusedCoeffBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared)
+                        cachedFusedCoeffCapacity = newCapacity
+                        coeffBuf = cachedFusedCoeffBuf
+                    }
+
+                    // Copy data into reused buffers
+                    if let pb = planesBuf {
+                        memcpy(pb.contents(), planes, planesBytes)
+                    }
+                    if let cb = coeffBuf {
+                        memcpy(cb.contents(), coeffFlatFused, coeffBytes)
+                    }
 
                     // Output texture
                     let outDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: origW, height: origH, mipmapped: false)
