@@ -182,20 +182,19 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
         return AppStateManager.shared.qualitySettings.debugMode
     }
 
-    // MARK: - Ignored Classes (loaded from blacklist.json or blacklist_11l.json)
+    // MARK: - Ignored Classes (loaded from blacklist.json)
     private var clsToIgnore: Set<Int> = []
 
     private func loadBlacklist() {
-        let filename = using11lModel ? "blacklist_11l" : "blacklist"
-        guard let url = Bundle.main.url(forResource: filename, withExtension: "json"),
+        guard let url = Bundle.main.url(forResource: "blacklist", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            if debugMode { logDebug("⚠️ Failed to load \(filename).json") }
+            if debugMode { logDebug("⚠️ Failed to load blacklist.json") }
             clsToIgnore = []
             return
         }
         clsToIgnore = Set(dict.keys.compactMap { Int($0) })
-        if debugMode { logDebug("✅ Loaded \(clsToIgnore.count) blacklisted classes from \(filename).json") }
+        if debugMode { logDebug("✅ Loaded \(clsToIgnore.count) blacklisted classes") }
     }
 
     // MARK: Camera
@@ -270,7 +269,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 }()
     // MARK: Model & State
     private var mlModel: MLModel?  // yoloe-11l 1280 model
-    private var using11lModel: Bool = false  // Track if 11l model is used (for correct blacklist)
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
@@ -453,9 +451,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
             let outputNames = model.modelDescription.outputDescriptionsByName.keys
             logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
-            // Detect if this is yoloe-11l by checking output names
-            using11lModel = outputNames.contains("var_2374") || outputNames.contains("var_2412") ||
-                            outputNames.contains("p") // yoloe-11l output names
         }
         // Note: loadBlacklist() is called in startIfNeeded() to avoid repeated calls from updateUIView
     }
