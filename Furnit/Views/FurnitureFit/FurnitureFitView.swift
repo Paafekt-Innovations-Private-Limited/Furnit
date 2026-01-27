@@ -460,6 +460,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     func startIfNeeded() {
         hasFirstDetection = false
+
+        // CRITICAL: Reset processing state to avoid delay when switching furniture
+        // Without this, isProcessing might still be true from previous session
+        frameLock.lock()
+        isProcessing = false
+        lastProcessTime = Date.distantPast
+        frameLock.unlock()
+
         setProgress(0.05, text: "Starting camera…")
 
         // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
@@ -1149,7 +1157,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Compute candArea: threshold C > 0 to binary, then sum columns via SGEMV
             // C is (planeSize x N) row-major, we want column sums
             var Cbin = [Float](repeating: 0, count: planeSize * N)
-            var lo: Float = 0, hi: Float = 1
             C.withUnsafeBufferPointer { cPtr in
                 Cbin.withUnsafeMutableBufferPointer { binPtr in
                     // vDSP_vclip + vDSP_vthrsc for thresholding > 0 to 1
@@ -1164,7 +1171,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
             }
             // candAreaF = ones^T * Cbin using cblas_sgemv with transpose
-            var ones = [Float](repeating: 1, count: planeSize)
+            let ones = [Float](repeating: 1, count: planeSize)
             var candAreaF = [Float](repeating: 0, count: N)
             Cbin.withUnsafeBufferPointer { binPtr in
                 ones.withUnsafeBufferPointer { onesPtr in
