@@ -70,7 +70,8 @@ struct ModelViewerView: View {
                             roomImage: roomSnapshot,
                             mlModel: mlModel,
                             processInterval: 0.07,
-                            active: true
+                            active: true,
+                            lockedOrientation: model.photoOrientation  // Lock to room's orientation
                         )
                         .zIndex(9000)
                     }
@@ -126,21 +127,22 @@ struct ModelViewerView: View {
                                 logDebug("BRAIN FLOW: tap received")
                                 // Dismiss hint on first touch
                                 showFurnitureHint = false
-                                
+
                                 if showingFurnitureFit {
                                     showingFurnitureFit = false
                                 } else {
                                     logDebug("BRAIN FLOW: requesting snapshot")
+
                                     // Trigger ARView snapshot
                                     shouldCaptureARViewSnapshot = true
-                                    
+
                                     // Hide other overlays
                                     showingCameraPreview = false
                                     showingSegmentExamine = false
                                     showingSegmentForeground = false
                                     showingSegmentFurniture = false
-                                    
-                                    // Wait briefly for snapshot to complete
+
+                                    // Wait for snapshot to complete
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                         logDebug("BRAIN FLOW: showing FurnitureFit overlay")
                                         self.showingFurnitureFit = true
@@ -211,10 +213,24 @@ struct ModelViewerView: View {
         .onAppear {
             isARActive = true
             loadModelOnce()
+
+            // Lock orientation for bundle models (vintage=landscape, cozy=portrait)
+            if !model.isSavedRoom {
+                switch model.photoOrientation {
+                case .landscape:
+                    OrientationLockManager.shared.lockToLandscape()
+                case .portrait, .square:
+                    OrientationLockManager.shared.lockToPortrait()
+                }
+            }
             // ✅ Reset camera to optimal position every time view appears
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 shouldResetCamera = true
             }
+        }
+        .onDisappear {
+            // Unlock orientation when leaving the view
+            OrientationLockManager.shared.unlock()
         }
     }
 
@@ -395,20 +411,20 @@ struct ModelViewerView: View {
             Button(action: {
                 // Dismiss hint on first touch
                 showFurnitureHint = false
-                
+
                 if showingFurnitureFit {
                     showingFurnitureFit = false
                 } else {
                     // Trigger ARView snapshot
                     shouldCaptureARViewSnapshot = true
-                    
+
                     // Hide other overlays
                     showingCameraPreview = false
                     showingSegmentExamine = false
                     showingSegmentForeground = false
                     showingSegmentFurniture = false
-                    
-                    // Wait briefly for snapshot to complete
+
+                    // Wait for snapshot to complete
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         self.showingFurnitureFit = true
                     }
@@ -602,16 +618,19 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var processInterval: Double = 0.07
     var scoreThreshold: Float = 0.25
     var active: Bool = true
+    var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation for bundle models
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
         view.setModel(mlModel)
+        view.lockedOrientation = lockedOrientation
         return view
     }
 
     func updateUIView(_ uiView: FurnitureFitContainerView, context: Context) {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
+        uiView.lockedOrientation = lockedOrientation
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }

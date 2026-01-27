@@ -25,6 +25,7 @@
   "3331": "recreation room",
   "3377": "restroom",
   "3439": "room",
+  "3440": "room divider",
   "3600": "server room",
   "3917": "storage room",
   "3956": "studio",
@@ -131,5 +132,6 @@
   "1676": "flash",
   "2424": "lens flare",
   "1582": "fashion designer",
-  "2881": "outdoor"
+  "2881": "outdoor",
+  "2259": "jail cell"
 }

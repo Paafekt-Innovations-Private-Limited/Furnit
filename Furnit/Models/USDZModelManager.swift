@@ -48,26 +48,34 @@ class USDZModelManager: ObservableObject {
             logDebug("📦 [USDZModelManager] Starting to load models...")
         }
         
-        let modelNames = [
-            "vintage_living_room",
-            "cozy_living_room_baked"
+        // Bundle models with their fixed orientations
+        let bundleModelConfigs: [(name: String, orientation: PhotoOrientation)] = [
+            ("vintage_living_room", .landscape),
+            ("cozy_living_room_baked", .portrait)
         ]
-        
+
         if debugMode {
-            logDebug("📦 [USDZModelManager] Loading bundle models: \(modelNames)")
+            logDebug("📦 [USDZModelManager] Loading bundle models: \(bundleModelConfigs.map { $0.name })")
         }
-        
-        // Load bundle models
-        let bundleModels = modelNames.compactMap { name in
-            let model = USDZModel(name: name, fileName: name, isSavedRoom: false)
+
+        // Load bundle models with fixed orientations
+        let bundleModels = bundleModelConfigs.compactMap { config -> USDZModel? in
+            let model = USDZModel(
+                name: config.name,
+                fileName: config.name,
+                isSavedRoom: false,
+                fileType: .usdz,
+                fileSize: nil,
+                photoOrientation: config.orientation
+            )
             if model.dataAsset != nil {
                 if debugMode {
-                    logDebug("   ✅ Bundle model loaded: \(name)")
+                    logDebug("   ✅ Bundle model loaded: \(config.name) (orientation: \(config.orientation.rawValue))")
                 }
                 return model
             } else {
                 if debugMode {
-                    logDebug("   ❌ Bundle model failed: \(name)")
+                    logDebug("   ❌ Bundle model failed: \(config.name)")
                 }
                 return nil
             }

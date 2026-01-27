@@ -28,6 +28,20 @@ class OrientationLockManager {
         }
     }
 
+    /// Lock to landscape only
+    func lockToLandscape() {
+        lockedOrientation = .landscape
+
+        // Force orientation update on iOS 16+
+        if #available(iOS 16.0, *) {
+            let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+            windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+            windowScene?.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+        }
+    }
+
     /// Unlock to allow all orientations
     func unlock() {
         lockedOrientation = .all
