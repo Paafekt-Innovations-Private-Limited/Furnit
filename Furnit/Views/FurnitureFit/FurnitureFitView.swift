@@ -258,6 +258,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var cachedFusedPlanesCapacity: Int = 0
     private var cachedFusedCoeffCapacity: Int = 0
 
+    // MARK: - CVMetalTextureCache (FIXED: was created per-frame causing memory leak)
+    private var cvTextureCache: CVMetalTextureCache?
+
 
 
 // GPU mask builder (optional)
@@ -414,6 +417,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         } catch {
             if debugMode { logDebug("⚠️ Metal pipeline setup failed: \(error.localizedDescription)") }
             CrashReporter.shared.report(error, context: "Metal Pipeline Setup")
+        }
+
+        // FIXED: Create texture cache ONCE (was being created per-frame causing memory leak)
+        if cvTextureCache == nil {
+            CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &cvTextureCache)
         }
     }
     
@@ -1477,13 +1485,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         var composedImage: CGImage?
 
         if let device = metalDevice,
-           let queue = metalCommandQueue {
-
-            var cvTextureCache: CVMetalTextureCache?
-            CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &cvTextureCache)
+           let queue = metalCommandQueue,
+           let textureCache = cvTextureCache {  // Use cached texture cache (created once in setupMetal)
 
             func makeTexture(from pixelBuffer: CVPixelBuffer, pixelFormat: MTLPixelFormat) -> MTLTexture? {
-                guard let cache = cvTextureCache else { return nil }
+                let cache = textureCache
                 var cvTexture: CVMetalTexture?
                 let w = CVPixelBufferGetWidth(pixelBuffer)
                 let h = CVPixelBufferGetHeight(pixelBuffer)
