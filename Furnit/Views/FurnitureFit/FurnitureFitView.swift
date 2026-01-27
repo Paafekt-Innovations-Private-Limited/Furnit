@@ -1025,23 +1025,20 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 5: Filter candidates by mask overlap with primary
         let t5 = Date()
 
-        // Primary bbox edges for pre-filtering (cheap gate before mask overlap)
-        var pX1 = primary.x - primary.w * 0.5
-        var pY1 = primary.y - primary.h * 0.5
-        var pX2 = primary.x + primary.w * 0.5
-        var pY2 = primary.y + primary.h * 0.5
+        // Primary bbox edges for encompasses check
+        let origPX1 = primary.x - primary.w * 0.5
+        let origPY1 = primary.y - primary.h * 0.5
+        let origPX2 = primary.x + primary.w * 0.5
+        let origPY2 = primary.y + primary.h * 0.5
 
-        // Add margin for bbox pre-filter
-        let primaryBboxWidth = pX2 - pX1
-        let primaryBboxHeight = pY2 - pY1
-        let bboxPad = max(8.0, 0.03 * min(primaryBboxWidth, primaryBboxHeight))
-        pX1 -= bboxPad
-        pY1 -= bboxPad
-        pX2 += bboxPad
-        pY2 += bboxPad
-
-        if debugMode {
-            logDebug("   STAGE 5: primary bbox with pad=\(Int(bboxPad)): [\(Int(pX1)),\(Int(pY1))]-[\(Int(pX2)),\(Int(pY2))]")
+        // Helper: check if candidate bbox fully encompasses primary bbox
+        // (indicates background/room detection that wraps the primary object)
+        let encompassTolerance: Float = 2.0  // pixels tolerance for floating-point noise
+        func bboxEncompassesPrimary(candX1: Float, candY1: Float, candX2: Float, candY2: Float) -> Bool {
+            return candX1 <= origPX1 + encompassTolerance &&
+                   candY1 <= origPY1 + encompassTolerance &&
+                   candX2 >= origPX2 - encompassTolerance &&
+                   candY2 >= origPY2 - encompassTolerance
         }
 
         var prunedCandidates: [(idx: Int, det: UnionDet)] = []
@@ -1053,14 +1050,19 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Confidence filter
             if d.confidence < minCandConf { continue }
 
-            // AABB intersection test: reject if completely separated from primary
-            // Keep anything that touches or overlaps (conservative gate)
+            // Candidate bbox corners
             let dx1 = d.x - d.w * 0.5
             let dy1 = d.y - d.h * 0.5
             let dx2 = d.x + d.w * 0.5
             let dy2 = d.y + d.h * 0.5
-            let noOverlap = dx2 < pX1 || dx1 > pX2 || dy2 < pY1 || dy1 > pY2
-            if noOverlap { continue }
+
+            // Skip if candidate bbox fully encompasses primary (background/room detection)
+            if bboxEncompassesPrimary(candX1: dx1, candY1: dy1, candX2: dx2, candY2: dy2) {
+                if debugMode {
+                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox encompasses primary")
+                }
+                continue
+            }
 
             prunedCandidates.append((i, d))
         }
@@ -1131,22 +1133,82 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
             }
 
-            // Compute candArea and interWithPrimary in ONE streaming pass (no [Int] allocations!)
+            // Compute candArea and interWithPrimary - only count overlap within bbox intersection
             var candArea = [Int](repeating: 0, count: N)
             var interWithPrimary = [Int](repeating: 0, count: N)
 
+            // Scale factor from model coords to proto coords
+            let protoScale = Float(pW) / Float(modelInputSize)
+
+            // Primary bbox in proto coords (clamped to valid range)
+            let pProtoX1 = max(0, Int(floor((primary.x - primary.w * 0.5) * protoScale)))
+            let pProtoY1 = max(0, Int(floor((primary.y - primary.h * 0.5) * protoScale)))
+            let pProtoX2 = min(pW, Int(ceil((primary.x + primary.w * 0.5) * protoScale)))
+            let pProtoY2 = min(pH, Int(ceil((primary.y + primary.h * 0.5) * protoScale)))
+
+            // Compute candArea: threshold C > 0 to binary, then sum columns via SGEMV
+            // C is (planeSize x N) row-major, we want column sums
+            var Cbin = [Float](repeating: 0, count: planeSize * N)
+            var lo: Float = 0, hi: Float = 1
+            C.withUnsafeBufferPointer { cPtr in
+                Cbin.withUnsafeMutableBufferPointer { binPtr in
+                    // vDSP_vclip + vDSP_vthrsc for thresholding > 0 to 1
+                    // Simpler: manual SIMD-friendly loop (compiler will vectorize)
+                    let count = planeSize * N
+                    for i in stride(from: 0, to: count, by: 4) {
+                        let end = min(i + 4, count)
+                        for k in i..<end {
+                            binPtr[k] = cPtr[k] > 0 ? 1 : 0
+                        }
+                    }
+                }
+            }
+            // candAreaF = ones^T * Cbin using cblas_sgemv with transpose
+            var ones = [Float](repeating: 1, count: planeSize)
+            var candAreaF = [Float](repeating: 0, count: N)
+            Cbin.withUnsafeBufferPointer { binPtr in
+                ones.withUnsafeBufferPointer { onesPtr in
+                    candAreaF.withUnsafeMutableBufferPointer { outPtr in
+                        cblas_sgemv(CblasRowMajor, CblasTrans, Int32(planeSize), Int32(N), 1.0,
+                                    binPtr.baseAddress!, Int32(N), onesPtr.baseAddress!, 1,
+                                    0.0, outPtr.baseAddress!, 1)
+                    }
+                }
+            }
+            for j in 0..<N { candArea[j] = Int(candAreaF[j]) }
+
+            // Compute interWithPrimary: only iterate over bbox intersection region per candidate
             C.withUnsafeBufferPointer { cPtr in
                 primaryLogits.withUnsafeBufferPointer { pPtr in
-                    for px in 0..<planeSize {
-                        let rowBase = px * N
-                        let pOn = pPtr[px] > 0
-                        for j in 0..<N {
-                            let v = cPtr[rowBase + j]
-                            if v > 0 {
-                                candArea[j] &+= 1
-                                if pOn { interWithPrimary[j] &+= 1 }
+                    for j in 0..<N {
+                        let d = prunedCandidates[j].det
+                        // Candidate bbox in proto coords
+                        let cx1 = max(0, Int(floor((d.x - d.w * 0.5) * protoScale)))
+                        let cy1 = max(0, Int(floor((d.y - d.h * 0.5) * protoScale)))
+                        let cx2 = min(pW, Int(ceil((d.x + d.w * 0.5) * protoScale)))
+                        let cy2 = min(pH, Int(ceil((d.y + d.h * 0.5) * protoScale)))
+
+                        // Intersection with primary bbox
+                        let ix1 = max(cx1, pProtoX1)
+                        let iy1 = max(cy1, pProtoY1)
+                        let ix2 = min(cx2, pProtoX2)
+                        let iy2 = min(cy2, pProtoY2)
+
+                        // Skip if no intersection
+                        if ix2 <= ix1 || iy2 <= iy1 { continue }
+
+                        // Count overlap only within intersection region
+                        var overlap = 0
+                        for py in iy1..<iy2 {
+                            let rowStart = py * pW
+                            for px in ix1..<ix2 {
+                                let pixelIdx = rowStart + px
+                                if cPtr[pixelIdx * N + j] > 0 && pPtr[pixelIdx] > 0 {
+                                    overlap += 1
+                                }
                             }
                         }
+                        interWithPrimary[j] = overlap
                     }
                 }
             }
