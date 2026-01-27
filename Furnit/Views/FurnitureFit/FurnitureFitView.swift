@@ -260,7 +260,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // MARK: - CVMetalTextureCache (FIXED: was created per-frame causing memory leak)
     private var cvTextureCache: CVMetalTextureCache?
 
-
+    // MARK: - Reusable prototype buffers (FIXED: prevents ~26MB allocation per frame)
+    private var protoRawFloats: [Float] = []
+    private var protoPlanes: [Float] = []
 
 // GPU mask builder (optional)
 private lazy var metalMaskLogic: MetalMaskLogic? = {
@@ -769,27 +771,43 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         // Safety check: prevent memory allocation crash for unexpected tensor sizes
         // Standard model: ~1.2M elements for [1,144,8400]
-        // Prompt-free model: ~155M elements for [1,4621,33600] - needs ~620MB
-        // Allow up to 200M elements (800MB) for prompt-free models
-        let maxAllowedCount = 200_000_000
+        // Tighter cap to prevent OOM - 50M elements = ~200MB for Float32
+        let maxAllowedCount = 50_000_000
         guard totalCount <= maxAllowedCount else {
             logDebug("❌ STAGE 3 FAILED: Detection tensor too large (\(totalCount) elements, max \(maxAllowedCount))")
             logDebug("   detArray shape: \(detArray.shape.map { $0.intValue })")
-            logDebug("   This may indicate an incompatible model or corrupted output")
+            logDebug("   Consider using NEW FORMAT model with smaller output")
             resetProcessingFlag()
             return
         }
 
-        let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
-        defer { detBuf.deallocate() }
+        // FIXED: Don't always allocate ~600MB buffer - reuse CoreML's memory when possible
+        var detBuf: UnsafeMutablePointer<Float>!
+        var ownsDetBuf = false
 
         if detArray.dataType == .float32 {
-            memcpy(detBuf, detArray.dataPointer, totalCount * MemoryLayout<Float>.size)
+            // Just alias CoreML's buffer - no extra memory allocation
+            detBuf = detArray.dataPointer.bindMemory(to: Float.self, capacity: totalCount)
         } else if detArray.dataType == .float16 {
+            // Only allocate when we truly need conversion
+            detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
+            ownsDetBuf = true
+
             let src = detArray.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
             var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 2)
             var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
             vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
+        } else {
+            logDebug("❌ Unsupported detArray.dataType: \(detArray.dataType)")
+            resetProcessingFlag()
+            return
+        }
+
+        // Only free if we allocated
+        defer {
+            if ownsDetBuf {
+                detBuf.deallocate()
+            }
         }
 
         setProgress(0.55, text: "Parsing detections…")
@@ -1787,52 +1805,59 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     // MARK: - Parse Prototypes
+    // FIXED: Reuses instance-level buffers to prevent ~26MB allocation per frame
     private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], count: Int, height: Int, width: Int)? {
         var shape = proto.shape.map { $0.intValue }
         if shape.count == 4 && shape[0] == 1 { shape.removeFirst() }
         guard shape.count == 3 else { return nil }
-        
+
         let cIdx: Int
         if shape[0] == 32 { cIdx = 0 }
         else if shape[2] == 32 { cIdx = 2 }
         else { cIdx = shape.firstIndex(of: 32) ?? -1 }
         guard cIdx >= 0 else { return nil }
-        
+
         let count = 32
         let h: Int, w: Int
         if cIdx == 0 { h = shape[1]; w = shape[2] }
         else { h = shape[0]; w = shape[1] }
-        
+
         let planeSize = h * w
         let total = shape[0] * shape[1] * shape[2]
-        
-        var rawFloats = [Float](repeating: 0, count: total)
+
+        // FIXED: Reuse instance-level buffers instead of allocating per frame
+        if protoRawFloats.count != total {
+            protoRawFloats = [Float](repeating: 0, count: total)
+        }
+        if protoPlanes.count != count * planeSize {
+            protoPlanes = [Float](repeating: 0, count: count * planeSize)
+        }
+
         if proto.dataType == .float16 {
             let src = proto.dataPointer.bindMemory(to: UInt16.self, capacity: total)
             var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(total), rowBytes: total * 2)
-            rawFloats.withUnsafeMutableBufferPointer { dstPtr in
+            protoRawFloats.withUnsafeMutableBufferPointer { dstPtr in
                 var dstBuf = vImage_Buffer(data: dstPtr.baseAddress, height: 1, width: vImagePixelCount(total), rowBytes: total * 4)
                 vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
             }
         } else if proto.dataType == .float32 {
-            memcpy(&rawFloats, proto.dataPointer, total * MemoryLayout<Float>.size)
+            memcpy(&protoRawFloats, proto.dataPointer, total * MemoryLayout<Float>.size)
         }
-        
-        var planes = [Float](repeating: 0, count: count * planeSize)
+
         if cIdx == 0 {
-            memcpy(&planes, rawFloats, count * planeSize * MemoryLayout<Float>.size)
+            memcpy(&protoPlanes, protoRawFloats, count * planeSize * MemoryLayout<Float>.size)
         } else if cIdx == 2 {
             for y in 0..<h {
                 for x in 0..<w {
                     let baseHW = (y * w + x) * count
                     let dstBase = y * w + x
                     for k in 0..<count {
-                        planes[k * planeSize + dstBase] = rawFloats[baseHW + k]
+                        protoPlanes[k * planeSize + dstBase] = protoRawFloats[baseHW + k]
                     }
                 }
             }
         }
-        return (planes, count, h, w)
+        return (protoPlanes, count, h, w)
     }
 
     // MARK: - Upscale Mask
