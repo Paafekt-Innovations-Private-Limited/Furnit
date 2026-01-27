@@ -86,24 +86,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             print("🔥 [AppDelegate] didFinishLaunching END")
         }
 
-        // Configure VLM from saved settings
-        configureVLMFromSettings()
-
         return true
-    }
-
-    private func configureVLMFromSettings() {
-        let defaults = UserDefaults.standard
-        let providerRaw = defaults.string(forKey: "vlm.provider") ?? VLMProvider.claude.rawValue
-        let apiKey = defaults.string(forKey: "vlm.apiKey")
-
-        let provider = VLMProvider(rawValue: providerRaw) ?? .claude
-        VLMManager.shared.configure(provider: provider, apiKey: apiKey)
-
-        let debugMode = AppStateManager.shared.qualitySettings.debugMode
-        if debugMode {
-            print("🧠 [AppDelegate] VLM configured: provider=\(provider.displayName), hasKey=\(apiKey != nil && !apiKey!.isEmpty)")
-        }
     }
 
     // Handle URL schemes for phone auth (reCAPTCHA callback)

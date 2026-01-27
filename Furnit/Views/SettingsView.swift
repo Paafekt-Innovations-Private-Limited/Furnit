@@ -11,16 +11,6 @@ struct SettingsView: View {
     @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
 
-    // VLM API Settings
-    @AppStorage("vlm.provider") private var vlmProviderRaw: String = VLMProvider.claude.rawValue
-    @AppStorage("vlm.apiKey") private var vlmAPIKey: String = ""
-    @State private var showingAPIKey = false
-
-    private var vlmProvider: VLMProvider {
-        get { VLMProvider(rawValue: vlmProviderRaw) ?? .claude }
-        set { vlmProviderRaw = newValue.rawValue }
-    }
-
     var body: some View {
         NavigationView {
             Form {
@@ -152,105 +142,6 @@ struct SettingsView: View {
                         .font(.footnote)
                 }
 
-                // VLM API Settings Section
-                Section {
-                    // Provider picker
-                    Picker(selection: Binding(
-                        get: { vlmProviderRaw },
-                        set: { newValue in
-                            vlmProviderRaw = newValue
-                            configureVLM()
-                        }
-                    )) {
-                        ForEach(VLMProvider.allCases, id: \.rawValue) { provider in
-                            Text(provider.displayName).tag(provider.rawValue)
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: "brain")
-                                .foregroundColor(.purple)
-                            Text("Provider")
-                        }
-                    }
-
-                    // API Key input
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "key.fill")
-                                .foregroundColor(.purple)
-                            Text("API Key")
-                                .font(.headline)
-                        }
-
-                        HStack {
-                            if showingAPIKey {
-                                TextField("Enter API key", text: $vlmAPIKey)
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.system(.body, design: .monospaced))
-                                    .autocapitalization(.none)
-                                    .disableAutocorrection(true)
-                                    .onChange(of: vlmAPIKey) { _, _ in
-                                        configureVLM()
-                                    }
-                            } else {
-                                SecureField("Enter API key", text: $vlmAPIKey)
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.system(.body, design: .monospaced))
-                                    .onChange(of: vlmAPIKey) { _, _ in
-                                        configureVLM()
-                                    }
-                            }
-
-                            Button(action: { showingAPIKey.toggle() }) {
-                                Image(systemName: showingAPIKey ? "eye.slash" : "eye")
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-
-                        // Status indicator
-                        HStack(spacing: 6) {
-                            if vlmAPIKey.isEmpty {
-                                Image(systemName: "circle")
-                                    .foregroundColor(.gray)
-                                Text("Not configured")
-                                    .foregroundColor(.secondary)
-                            } else {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                Text("Configured")
-                                    .foregroundColor(.green)
-                            }
-                        }
-                        .font(.caption)
-                    }
-                    .padding(.vertical, 4)
-
-                    // Help links
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Get your API key:")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        HStack(spacing: 16) {
-                            Link("Claude", destination: URL(string: "https://console.anthropic.com")!)
-                                .font(.caption)
-                            Link("OpenAI", destination: URL(string: "https://platform.openai.com/api-keys")!)
-                                .font(.caption)
-                            Link("Gemini", destination: URL(string: "https://aistudio.google.com")!)
-                                .font(.caption)
-                        }
-                    }
-                } header: {
-                    HStack {
-                        Text("AI Suggestions")
-                        Image(systemName: "sparkles")
-                            .foregroundColor(.purple)
-                    }
-                } footer: {
-                    Text("Enable AI-powered placement suggestions. Your API key is stored locally on your device.")
-                        .font(.footnote)
-                }
-
                 // Legal Section
                 Section {
                     Link(destination: URL(string: "https://paafekt.com/privacy")!) {
@@ -336,17 +227,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .onAppear {
-                configureVLM()
-            }
         }
-    }
-
-    private func configureVLM() {
-        let provider = VLMProvider(rawValue: vlmProviderRaw) ?? .claude
-        let key = vlmAPIKey.isEmpty ? nil : vlmAPIKey
-        VLMManager.shared.configure(provider: provider, apiKey: key)
-        logDebug("🧠 VLM configured: provider=\(provider.displayName), hasKey=\(key != nil)")
     }
 }
 
