@@ -90,13 +90,41 @@ class GlobalCameraController {
         logDebug("📷 [GlobalCameraController] Camera cleared")
     }
 
-    // MARK: - Joystick Input
+    // MARK: - Joystick/Drag Input
+
+    /// Last drag translation for delta calculation
+    private var lastDragTranslation: CGSize = .zero
 
     func updateJoystick(_ offset: CGSize) {
         joystickOffset = offset
         if offset.width != 0 || offset.height != 0 {
             logDebug("🎮 [GlobalCameraController] Joystick update: \(offset)")
         }
+    }
+
+    /// Update from drag gesture - calculates delta from last position
+    func updateFromDrag(_ translation: CGSize) {
+        // Calculate delta from last translation
+        let deltaX = translation.width - lastDragTranslation.width
+        let deltaY = translation.height - lastDragTranslation.height
+
+        // Store for next delta calculation
+        lastDragTranslation = translation
+
+        // Convert delta to movement (scale for smooth control)
+        let scaledOffset = CGSize(width: deltaX * 0.5, height: deltaY * 0.5)
+        joystickOffset = scaledOffset
+
+        if abs(deltaX) > 0.1 || abs(deltaY) > 0.1 {
+            logDebug("🎮 [GlobalCameraController] Drag delta: \(deltaX), \(deltaY)")
+        }
+    }
+
+    /// Reset drag state when gesture ends
+    func endDrag() {
+        lastDragTranslation = .zero
+        joystickOffset = .zero
+        logDebug("🎮 [GlobalCameraController] Drag ended")
     }
 
     // MARK: - Movement Update (60fps)
@@ -194,40 +222,62 @@ class GlobalCameraController {
     }
 }
 
-// MARK: - Simple Joystick Overlay using GlobalCameraController
+// MARK: - Touch-Anywhere Drag Overlay (replaces joystick)
 
-struct SimpleJoystickOverlay: View {
-    @State private var offset: CGSize = .zero
+struct TouchDragOverlay: View {
     var photoOrientation: PhotoOrientation = .portrait
+    @State private var isDragging = false
+
+    // Sensitivity for drag-to-camera movement conversion
+    private let dragSensitivity: CGFloat = 0.8
 
     var body: some View {
-        VStack {
-            Spacer()
-                .allowsHitTesting(false)
-            HStack {
-                Spacer() // Push joystick to center
-                    .allowsHitTesting(false)
-                VStack(spacing: 8) {
-                    VirtualJoystick(joystickOffset: $offset)
-                        .onChange(of: offset) { _, newOffset in
-                            GlobalCameraController.shared.updateJoystick(newOffset)
+        GeometryReader { geometry in
+            ZStack {
+                // Transparent drag area (full screen)
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { value in
+                                isDragging = true
+                                // Use delta-based drag for smooth continuous movement
+                                GlobalCameraController.shared.updateFromDrag(value.translation)
+                            }
+                            .onEnded { _ in
+                                isDragging = false
+                                // Reset drag state
+                                GlobalCameraController.shared.endDrag()
+                            }
+                    )
+
+                // Bottom hint and orientation label
+                VStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        // Drag hint
+                        Text("Drag to move camera")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
+                            .shadow(color: .black, radius: 2, x: 1, y: 1)
+
+                        // Orientation label
+                        VStack(spacing: 1) {
+                            Text(orientationSubtitle)
+                                .font(.caption2)
+                            Text(orientationTitle)
+                                .font(.caption2)
+                                .fontWeight(.medium)
                         }
-                    VStack(spacing: 1) {
-                        Text(orientationSubtitle)
-                            .font(.caption2)
-                        Text(orientationTitle)
-                            .font(.caption2)
-                            .fontWeight(.medium)
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.4))
+                        .cornerRadius(6)
                     }
-                    .foregroundColor(.white.opacity(0.8))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.4))
-                    .cornerRadius(6)
+                    .padding(.bottom, 40)
                 }
-                .padding(.bottom, 40)
-                Spacer() // Push joystick to center
-                    .allowsHitTesting(false)
+                .allowsHitTesting(false) // Let touches pass through to drag gesture
             }
         }
     }
@@ -248,5 +298,17 @@ struct SimpleJoystickOverlay: View {
         case .landscape:
             return NSLocalizedString("orientation.heldHorizontally", comment: "")
         }
+    }
+}
+
+// MARK: - Simple Joystick Overlay (legacy - use TouchDragOverlay instead)
+
+struct SimpleJoystickOverlay: View {
+    @State private var offset: CGSize = .zero
+    var photoOrientation: PhotoOrientation = .portrait
+
+    var body: some View {
+        // Now just wraps TouchDragOverlay for backwards compatibility
+        TouchDragOverlay(photoOrientation: photoOrientation)
     }
 }
