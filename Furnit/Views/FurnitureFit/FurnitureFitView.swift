@@ -482,14 +482,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
         loadBlacklist()
 
-        // Setup orientation based on locked orientation (ignores device rotation)
-        // Convert PhotoOrientation to UIDeviceOrientation
-        switch lockedOrientation {
-        case .landscape:
-            currentDeviceOrientation = .landscapeLeft
-        case .portrait, .square:
-            currentDeviceOrientation = .portrait
-        }
+        // Setup orientation detection for landscape support
+        currentDeviceOrientation = UIDevice.current.orientation.isValidInterfaceOrientation
+            ? UIDevice.current.orientation : .portrait
 
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
         NotificationCenter.default.addObserver(
@@ -501,23 +496,15 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         requestCameraPermissionAndStart()
 
-        // Set initial video rotation based on locked orientation
-        // Progress bar should NOT be rotated when UI is locked (UI is already in correct orientation)
+        // Set initial video rotation and progress orientation after camera starts
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self = self else { return }
             self.updateVideoRotationForOrientation(self.currentDeviceOrientation)
-            // Keep progress bar identity transform - no rotation needed when UI is locked
-            self.progressContainer.transform = .identity
+            self.updateProgressOrientationOnMain(self.currentDeviceOrientation)
         }
     }
 
     @objc private func deviceOrientationDidChange() {
-        // When orientation is locked, ignore device rotation changes
-        if lockedOrientation == .landscape || lockedOrientation == .portrait {
-            // Keep video and progress fixed to locked orientation
-            return
-        }
-
         let orientation = UIDevice.current.orientation
         if orientation.isValidInterfaceOrientation {
             currentDeviceOrientation = orientation
@@ -1848,11 +1835,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             composedImage = img
         }
 
-        // Present result - for landscape, rotate the composite back for portrait UI
-        // BUT skip rotation if UI is locked to landscape (vintage room)
+        // Present result - for landscape, rotate the composite back for the portrait UI
         DispatchQueue.main.async {
             if var cgImg = composedImage {
-                if isLandscape && self.lockedOrientation != .landscape {
+                if isLandscape {
                     // Rotate back for portrait display: landscapeLeft -> 90° CCW, landscapeRight -> 90° CW
                     let rotatedImg = self.rotateCGImage90(cgImg, clockwise: deviceOrientation == .landscapeLeft)
                     cgImg = rotatedImg ?? cgImg
