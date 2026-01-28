@@ -320,7 +320,7 @@ class GlbGenerator {
         }
         sb.append("],")
 
-        // Materials - one per plane with texture
+        // Materials - one per plane with texture (doubleSided for visibility from both sides)
         sb.append("\"materials\":[")
         for (i in planes.indices) {
             if (i > 0) sb.append(",")
@@ -328,7 +328,7 @@ class GlbGenerator {
             sb.append("\"baseColorTexture\":{\"index\":$i},")
             sb.append("\"metallicFactor\":0.0,")
             sb.append("\"roughnessFactor\":1.0")
-            sb.append("},\"name\":\"${textureNames[i]}_material\"}")
+            sb.append("},\"doubleSided\":true,\"name\":\"${textureNames[i]}_material\"}")
         }
         sb.append("],")
 
