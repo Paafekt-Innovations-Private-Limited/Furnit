@@ -1808,10 +1808,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             composedImage = img
         }
 
-        // Present result - for landscape, rotate the composite back for the portrait UI
+        // Present result - for landscape buffers, rotate back for portrait UI
+        // UNLESS lockedOrientation is .landscape (room is naturally landscape, no rotation needed)
         DispatchQueue.main.async {
             if var cgImg = composedImage {
-                if isLandscape {
+                if isLandscape && self.lockedOrientation != .landscape {
                     // Rotate back for portrait display: landscapeLeft -> 90° CCW, landscapeRight -> 90° CW
                     let rotatedImg = self.rotateCGImage90(cgImg, clockwise: deviceOrientation == .landscapeLeft)
                     cgImg = rotatedImg ?? cgImg

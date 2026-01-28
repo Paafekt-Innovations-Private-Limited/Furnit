@@ -70,7 +70,8 @@ struct ModelViewerView: View {
                             roomImage: roomSnapshot,
                             mlModel: mlModel,
                             processInterval: 0.07,
-                            active: true
+                            active: true,
+                            lockedOrientation: model.photoOrientation
                         )
                         .zIndex(9000)
                     }
@@ -602,16 +603,19 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var processInterval: Double = 0.07
     var scoreThreshold: Float = 0.25
     var active: Bool = true
+    var lockedOrientation: PhotoOrientation = .portrait  // Room's photo orientation
 
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
         view.setModel(mlModel)
+        view.lockedOrientation = lockedOrientation
         return view
     }
 
     func updateUIView(_ uiView: FurnitureFitContainerView, context: Context) {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
+        uiView.lockedOrientation = lockedOrientation
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }
