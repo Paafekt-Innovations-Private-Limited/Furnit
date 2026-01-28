@@ -35,7 +35,7 @@ class AuthenticationManager private constructor(context: Context) {
         private const val HOUR_MS = 60 * 60 * 1000L
 
         // Set to true to bypass OTP authentication (for development/testing)
-        const val BYPASS_AUTH = true
+        const val BYPASS_AUTH = false
 
         @Volatile
         private var instance: AuthenticationManager? = null
