@@ -208,12 +208,15 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         leftWall: Bitmap,
         rightWall: Bitmap
     ): File {
-        // Create room directory
-        val roomDir = File(context.filesDir, "rooms")
-        roomDir.mkdirs()
+        // Create room in preview directory (NOT in rooms folder yet)
+        // Room will be moved to rooms folder when user clicks Save in preview
+        val previewDir = File(context.filesDir, "room_preview")
+        // Clear any previous preview
+        previewDir.deleteRecursively()
+        previewDir.mkdirs()
 
         val timestamp = System.currentTimeMillis()
-        val roomFolder = File(roomDir, "room_$timestamp")
+        val roomFolder = File(previewDir, "room_$timestamp")
         roomFolder.mkdirs()
 
         // Save front wall texture for thumbnail

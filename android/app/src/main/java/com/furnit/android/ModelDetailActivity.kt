@@ -201,15 +201,27 @@ class ModelDetailActivity : AppCompatActivity() {
 
         try {
             val glbFile = File(path)
-            val roomFolder = glbFile.parentFile
+            val previewRoomFolder = glbFile.parentFile
 
-            if (roomFolder != null) {
-                // Update metadata with user's name
-                val metadataFile = File(roomFolder, "metadata.txt")
+            if (previewRoomFolder != null) {
+                // Move room from preview directory to rooms directory
+                val roomsDir = File(filesDir, "rooms")
+                roomsDir.mkdirs()
+
+                val savedRoomFolder = File(roomsDir, previewRoomFolder.name)
+
+                // Copy all files from preview to rooms folder
+                previewRoomFolder.copyRecursively(savedRoomFolder, overwrite = true)
+
+                // Update metadata with user's name in the saved location
+                val metadataFile = File(savedRoomFolder, "metadata.txt")
                 metadataFile.writeText("name=$name\ncreated=${System.currentTimeMillis()}\ntype=manual")
 
+                // Clean up preview directory
+                previewRoomFolder.parentFile?.deleteRecursively()
+
                 Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()
-                Log.d(TAG, "Room saved: $name at ${roomFolder.absolutePath}")
+                Log.d(TAG, "Room saved: $name at ${savedRoomFolder.absolutePath}")
 
                 // Go to rooms list screen (ContentActivity)
                 val intent = Intent(this, ContentActivity::class.java)
@@ -303,8 +315,8 @@ class ModelDetailActivity : AppCompatActivity() {
     }
 
     private fun moveCamera(normalizedX: Float, normalizedY: Float) {
-        // Movement speed
-        val moveSpeed = 0.05f
+        // Movement speed - larger for bigger room
+        val moveSpeed = 0.2f
         val deadZone = 0.1f
 
         // Skip small movements
@@ -320,15 +332,12 @@ class ModelDetailActivity : AppCompatActivity() {
         val deltaX = normalizedX * moveSpeed
         val deltaZ = normalizedY * moveSpeed
 
-        // Calculate new position and constrain within room bounds
-        val newPosition = io.github.sceneview.math.Position(
+        // Apply movement directly (no constraints for debug viewing from outside)
+        camera.position = io.github.sceneview.math.Position(
             position.x + deltaX,
             position.y,
             position.z + deltaZ
         )
-
-        // Constrain camera within room boundaries
-        camera.position = boundaryManager.constrainCameraPosition(newPosition)
     }
 
     private fun updateOrientationLabel() {
