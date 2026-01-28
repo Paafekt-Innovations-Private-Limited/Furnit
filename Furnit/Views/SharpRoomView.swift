@@ -1405,8 +1405,11 @@ struct AntimatterSplatView: UIViewRepresentable {
                     // Stop auto orbit when user pinches
                     autoOrbitEnabled = false;
 
+                    // Amplify zoom speed (2x) - scale deviation from 1.0 is doubled
+                    const amplifiedScale = 1 + (scale - 1) * 2;
+
                     const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
-                    offset.multiplyScalar(1 / scale);
+                    offset.multiplyScalar(1 / amplifiedScale);
 
                     // Clamp distance
                     const dist = offset.length();
