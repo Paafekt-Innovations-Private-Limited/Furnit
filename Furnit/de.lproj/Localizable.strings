@@ -110,8 +110,6 @@
 "settings.developerFooter" = "Aktivieren Sie den Debug-Modus, um detaillierte Erkennungsinformationen und Leistungsmetriken anzuzeigen. Passen Sie Schwellenwerte an, um die Erkennungsempfindlichkeit und das Filterverhalten zu steuern.";
 "settings.debugMode" = "Debug-Modus";
 "settings.debugModeDescription" = "Erkennungsrahmen und Zeitinformationen anzeigen";
-"settings.maskOverlapThreshold" = "Maskenüberlappungs-Schwellenwert";
-"settings.maskOverlapDescription" = "Steuert, wie viel Maskenüberlappung erforderlich ist, damit Erkennungen zusammengeführt werden. Niedrigere Werte führen ähnlichere Objekte zusammen.";
 "settings.currentValue" = "Aktueller Wert:";
 "settings.account" = "Konto";
 "settings.loggedInAs" = "Angemeldet als";

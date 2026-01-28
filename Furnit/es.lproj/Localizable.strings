@@ -110,8 +110,6 @@
 "settings.developerFooter" = "Activa el modo de depuración para ver información detallada de detección y métricas de rendimiento. Ajusta los umbrales para controlar la sensibilidad de detección y el comportamiento de filtrado.";
 "settings.debugMode" = "Modo de depuración";
 "settings.debugModeDescription" = "Mostrar cajas de detección e información de tiempo";
-"settings.maskOverlapThreshold" = "Umbral de superposición de máscara";
-"settings.maskOverlapDescription" = "Controla cuánta superposición de máscara se requiere para fusionar detecciones. Valores más bajos fusionan objetos más similares.";
 "settings.currentValue" = "Valor actual:";
 "settings.account" = "Cuenta";
 "settings.loggedInAs" = "Conectado como";

@@ -110,8 +110,6 @@
 "settings.developerFooter" = "启用除错模式以查看详细的侦测资讯和效能指标。调整閾值以控制侦测灵敏度和筛选行为。";
 "settings.debugMode" = "除错模式";
 "settings.debugModeDescription" = "显示侦测框和计时资讯";
-"settings.maskOverlapThreshold" = "遮罩重疊閾值";
-"settings.maskOverlapDescription" = "控制合併侦测所需的遮罩重疊量。较低的值会合併更多相似的物件。";
 "settings.currentValue" = "目前值：";
 "settings.account" = "账户";
 "settings.loggedInAs" = "已登入为";

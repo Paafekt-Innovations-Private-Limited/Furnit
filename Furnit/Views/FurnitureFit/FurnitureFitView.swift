@@ -1480,7 +1480,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Zero top rows (y < clipBy1) using memset - much faster than per-pixel
         if clipBy1 > 0 {
             let topBytes = clipBy1 * origW
-            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+            maskFull.withUnsafeMutableBufferPointer { ptr in
                 memset(ptr.baseAddress!, 0, topBytes)
             }
         }
@@ -1489,7 +1489,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if clipBy2 < origH {
             let bottomStart = clipBy2 * origW
             let bottomBytes = (origH - clipBy2) * origW
-            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+            maskFull.withUnsafeMutableBufferPointer { ptr in
                 memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
             }
         }

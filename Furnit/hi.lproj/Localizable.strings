@@ -110,8 +110,6 @@
 "settings.developerFooter" = "विस्तृत पहचान जानकारी और प्रदर्शन मेट्रिक्स देखने के लिए डीबग मोड सक्षम करें। पहचान संवेदनशीलता और फ़िल्टरिंग व्यवहार को नियंत्रित करने के लिए थ्रेशोल्ड समायोजित करें।";
 "settings.debugMode" = "डीबग मोड";
 "settings.debugModeDescription" = "पहचान बॉक्स और समय जानकारी दिखाएं";
-"settings.maskOverlapThreshold" = "मास्क ओवरलैप थ्रेशोल्ड";
-"settings.maskOverlapDescription" = "पहचान को मर्ज करने के लिए कितना मास्क ओवरलैप आवश्यक है इसे नियंत्रित करता है। कम मान अधिक समान वस्तुओं को मर्ज करते हैं।";
 "settings.currentValue" = "वर्तमान मान:";
 "settings.account" = "खाता";
 "settings.loggedInAs" = "इस रूप में लॉग इन";

@@ -125,8 +125,6 @@ enum L10n {
         static let developerFooter = "settings.developerFooter".localized
         static let debugMode = "settings.debugMode".localized
         static let debugModeDescription = "settings.debugModeDescription".localized
-        static let maskOverlapThreshold = "settings.maskOverlapThreshold".localized
-        static let maskOverlapDescription = "settings.maskOverlapDescription".localized
         static let currentValue = "settings.currentValue".localized
         static let account = "settings.account".localized
         static let loggedInAs = "settings.loggedInAs".localized

@@ -110,8 +110,6 @@
 "settings.developerFooter" = "বিস্তারিত শনাক্তকরণ তথ্য এবং পারফরম্যান্স মেট্রিক্স দেখতে ডিবাগ মোড সক্রিয় করুন। শনাক্তকরণ সংবেদনশীলতা এবং ফিল্টারিং আচরণ নিয়ন্ত্রণ করতে থ্রেশহোল্ড সামঞ্জস্য করুন।";
 "settings.debugMode" = "ডিবাগ মোড";
 "settings.debugModeDescription" = "শনাক্তকরণ বক্স এবং সময় তথ্য দেখান";
-"settings.maskOverlapThreshold" = "মাস্ক ওভারল্যাপ থ্রেশহোল্ড";
-"settings.maskOverlapDescription" = "শনাক্তকরণ একত্রিত করতে প্রয়োজনীয় মাস্ক ওভারল্যাপ নিয়ন্ত্রণ করে। কম মান আরো অনুরূপ বস্তু একত্রিত করবে।";
 "settings.currentValue" = "বর্তমান মান:";
 "settings.account" = "অ্যাকাউন্ট";
 "settings.loggedInAs" = "লগইন করা হয়েছে";

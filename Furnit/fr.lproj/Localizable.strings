@@ -110,8 +110,6 @@
 "settings.developerFooter" = "Activez le mode débogage pour voir les informations de détection détaillées et les métriques de performance. Ajustez les seuils pour contrôler la sensibilité de détection et le comportement de filtrage.";
 "settings.debugMode" = "Mode débogage";
 "settings.debugModeDescription" = "Afficher les boîtes de détection et les informations de chronométrage";
-"settings.maskOverlapThreshold" = "Seuil de chevauchement des masques";
-"settings.maskOverlapDescription" = "Contrôle le chevauchement de masque requis pour fusionner les détections. Des valeurs plus basses fusionnent des objets plus similaires.";
 "settings.currentValue" = "Valeur actuelle :";
 "settings.account" = "Compte";
 "settings.loggedInAs" = "Connecté en tant que";

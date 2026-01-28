@@ -111,8 +111,6 @@
 "settings.developerFooter" = "Enable debug mode to see detailed detection information and performance metrics. Adjust thresholds to control detection sensitivity and filtering behavior.";
 "settings.debugMode" = "Debug Mode";
 "settings.debugModeDescription" = "Show detection boxes and timing information";
-"settings.maskOverlapThreshold" = "Mask Overlap Threshold";
-"settings.maskOverlapDescription" = "Controls how much mask overlap is required for detections to be merged. Lower values merge more similar objects.";
 "settings.currentValue" = "Current value:";
 "settings.account" = "Account";
 "settings.loggedInAs" = "Logged in as";
