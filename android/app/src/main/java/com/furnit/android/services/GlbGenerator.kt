@@ -35,9 +35,9 @@ class GlbGenerator {
     )
 
     data class RoomDimensions(
-        val width: Float = 4.0f,
-        val depth: Float = 4.5f,
-        val height: Float = 2.8f
+        val width: Float = 8.0f,
+        val depth: Float = 9.0f,
+        val height: Float = 5.6f
     )
 
     /**

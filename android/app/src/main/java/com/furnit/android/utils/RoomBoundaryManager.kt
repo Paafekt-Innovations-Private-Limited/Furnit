@@ -18,10 +18,10 @@ class RoomBoundaryManager {
     companion object {
         private const val TAG = "RoomBoundaryManager"
 
-        // Default room dimensions (matches GlbGenerator defaults)
-        const val DEFAULT_WIDTH = 4.0f
-        const val DEFAULT_DEPTH = 4.5f
-        const val DEFAULT_HEIGHT = 2.8f
+        // Default room dimensions (doubled for better visibility)
+        const val DEFAULT_WIDTH = 8.0f
+        const val DEFAULT_DEPTH = 9.0f
+        const val DEFAULT_HEIGHT = 5.6f
 
         // Camera positioning constants
         const val CAMERA_PADDING = 0.3f      // Distance from walls
