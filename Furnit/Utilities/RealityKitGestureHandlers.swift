@@ -2,7 +2,7 @@ import RealityKit
 import UIKit
 
 // RealityKit-based gesture handlers to replace SceneKit gesture handlers
-class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
+class RealityKitGestureHandlers {
     weak var arView: ARView?
     private var boundaryManager: RealityKitBoundaryManager?
 
@@ -40,7 +40,6 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
     
     init(arView: ARView) {
         self.arView = arView
-        super.init()
         setupGestureRecognizers()
 
         // Prepare haptic feedback generator for lower latency
@@ -81,24 +80,18 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
         doublePanGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePositionPanGesture(_:)))
         doublePanGesture?.minimumNumberOfTouches = 2
         doublePanGesture?.maximumNumberOfTouches = 2
-        doublePanGesture?.delegate = self  // Allow simultaneous recognition
         if let doublePan = doublePanGesture {
             arView.addGestureRecognizer(doublePan)
         }
 
         // Pinch gesture for zoom
         pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinchGesture(_:)))
-        pinchGesture?.delegate = self  // Allow simultaneous recognition
         if let pinch = pinchGesture {
             arView.addGestureRecognizer(pinch)
         }
 
-        // Keep rotation gesture as fallback for advanced users
-        rotationGesture = UIRotationGestureRecognizer(target: self, action: #selector(handleRotationGesture(_:)))
-        rotationGesture?.delegate = self  // Allow simultaneous recognition
-        if let rotation = rotationGesture {
-            arView.addGestureRecognizer(rotation)
-        }
+        // Note: Two-finger rotation gesture removed - single-finger pan handles rotation
+        // This allows two-finger pan to work for strafe movement without conflicts
 
         // Long press gesture for object manipulation
         longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPressGesture(_:)))
@@ -521,22 +514,6 @@ class RealityKitGestureHandlers: NSObject, UIGestureRecognizerDelegate {
         }
 
         logDebug("🎮 Gestures \(enabled ? "enabled" : "disabled")")
-    }
-
-    // MARK: - UIGestureRecognizerDelegate
-
-    // Allow two-finger gestures (pan, pinch, rotation) to work simultaneously
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        // Allow simultaneous recognition for all two-finger gestures
-        let twoFingerGestures: [UIGestureRecognizer?] = [doublePanGesture, pinchGesture, rotationGesture]
-        let isTwoFingerGesture = twoFingerGestures.contains { $0 === gestureRecognizer }
-        let otherIsTwoFingerGesture = twoFingerGestures.contains { $0 === otherGestureRecognizer }
-
-        if isTwoFingerGesture && otherIsTwoFingerGesture {
-            return true
-        }
-
-        return false
     }
 
 }
