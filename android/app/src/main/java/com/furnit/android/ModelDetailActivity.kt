@@ -1,11 +1,18 @@
 package com.furnit.android
 
 import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.view.PixelCopy
 import android.view.View
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -17,11 +24,16 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.models.ModelManager
 import com.furnit.android.utils.RoomBoundaryManager
+import com.furnit.android.views.JoystickView
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.ModelNode
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.FileOutputStream
 import java.nio.ByteBuffer
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class ModelDetailActivity : AppCompatActivity() {
 
@@ -40,10 +52,15 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var saveButton: ImageButton
     private lateinit var shareButton: ImageButton
     private lateinit var helpButton: ImageButton
+    private lateinit var brainButton: ImageButton
+    private lateinit var screenshotButton: ImageButton
+    private lateinit var joystickView: JoystickView
+    private lateinit var orientationLabel: LinearLayout
     private lateinit var boundaryManager: RoomBoundaryManager
     private var isPreviewMode = false
     private var glbPath: String? = null
     private var currentModelId: String? = null
+    private var currentModelNode: ModelNode? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,12 +81,27 @@ class ModelDetailActivity : AppCompatActivity() {
         saveButton = findViewById(R.id.saveButton)
         shareButton = findViewById(R.id.shareButton)
         helpButton = findViewById(R.id.helpButton)
+        brainButton = findViewById(R.id.brainButton)
+        screenshotButton = findViewById(R.id.screenshotButton)
+        joystickView = findViewById(R.id.joystickView)
+        orientationLabel = findViewById(R.id.orientationLabel)
 
         val backButton: ImageButton = findViewById(R.id.backButton)
         backButton.setOnClickListener { finish() }
 
         // Help button
         helpButton.setOnClickListener { showHelpDialog() }
+
+        // Screenshot button
+        screenshotButton.setOnClickListener { takeScreenshot() }
+
+        // Joystick for camera movement
+        joystickView.onJoystickMove = { x, y ->
+            moveCamera(x, y)
+        }
+
+        // Update orientation label based on device orientation
+        updateOrientationLabel()
 
         isPreviewMode = intent.getBooleanExtra(EXTRA_IS_PREVIEW, false)
 
@@ -87,6 +119,12 @@ class ModelDetailActivity : AppCompatActivity() {
             saveButton.setOnClickListener { showSaveDialog() }
             shareButton.visibility = View.GONE
 
+            // Show brain button but prompt to save first
+            brainButton.visibility = View.VISIBLE
+            brainButton.setOnClickListener {
+                Toast.makeText(this, "Please save the room first", Toast.LENGTH_SHORT).show()
+            }
+
             loadModel(directGlbPath)
         } else {
             // Model ID mode (existing rooms)
@@ -101,6 +139,15 @@ class ModelDetailActivity : AppCompatActivity() {
             saveButton.visibility = View.GONE
             shareButton.visibility = View.VISIBLE
             shareButton.setOnClickListener { shareRoom() }
+
+            // Brain button launches FurnitureFit segmentation with this room as background
+            brainButton.visibility = View.VISIBLE
+            brainButton.setOnClickListener {
+                val intent = Intent(this, FurnitureFitActivity::class.java)
+                intent.putExtra("ROOM_ID", model.id)
+                intent.putExtra("ROOM_NAME", model.name)
+                startActivity(intent)
+            }
 
             loadModel(model.assetPath)
         }
@@ -199,6 +246,106 @@ class ModelDetailActivity : AppCompatActivity() {
         }
     }
 
+    private fun takeScreenshot() {
+        try {
+            val bitmap = Bitmap.createBitmap(sceneView.width, sceneView.height, Bitmap.Config.ARGB_8888)
+            PixelCopy.request(
+                sceneView,
+                bitmap,
+                { result ->
+                    if (result == PixelCopy.SUCCESS) {
+                        saveAndShareScreenshot(bitmap)
+                    } else {
+                        runOnUiThread {
+                            Toast.makeText(this, "Failed to capture screenshot", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                Handler(Looper.getMainLooper())
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Screenshot failed", e)
+            Toast.makeText(this, "Screenshot failed", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun saveAndShareScreenshot(bitmap: Bitmap) {
+        try {
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val fileName = "Room_$timeStamp.png"
+            val picturesDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+            val file = File(picturesDir, fileName)
+
+            FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+
+            runOnUiThread {
+                Toast.makeText(this, "Screenshot saved", Toast.LENGTH_SHORT).show()
+            }
+
+            // Share the screenshot
+            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save screenshot", e)
+            runOnUiThread {
+                Toast.makeText(this, "Failed to save screenshot", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun moveCamera(normalizedX: Float, normalizedY: Float) {
+        // Movement speed
+        val moveSpeed = 0.05f
+        val deadZone = 0.1f
+
+        // Skip small movements
+        val magnitude = kotlin.math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY)
+        if (magnitude < deadZone) return
+
+        // Get camera's current transform
+        val camera = sceneView.cameraNode
+        val position = camera.position
+
+        // Calculate movement in camera's local space
+        // X axis = left/right, Z axis = forward/backward
+        val deltaX = normalizedX * moveSpeed
+        val deltaZ = normalizedY * moveSpeed
+
+        // Apply movement
+        camera.position = io.github.sceneview.math.Position(
+            position.x + deltaX,
+            position.y,
+            position.z + deltaZ
+        )
+    }
+
+    private fun updateOrientationLabel() {
+        val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        val subtitleView = findViewById<TextView>(R.id.orientationSubtitle)
+        val titleView = findViewById<TextView>(R.id.orientationTitle)
+
+        if (isPortrait) {
+            subtitleView.text = "held vertically"
+            titleView.text = "Portrait"
+        } else {
+            subtitleView.text = "held horizontally"
+            titleView.text = "Landscape"
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateOrientationLabel()
+    }
+
     private fun loadModel(assetPath: String) {
         lifecycleScope.launch {
             try {
@@ -230,6 +377,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 )
 
                 sceneView.addChildNode(modelNode)
+                currentModelNode = modelNode
 
                 // Log model position
                 Log.d(TAG, "  Model added, position: ${modelNode.position}")
