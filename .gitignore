@@ -180,5 +180,24 @@ android/predictor.*
 android/onnx__*
 android/_predictor_*
 
+# Large model files (NCNN, PyTorch, ONNX Runtime)
+android/*.bin
+android/*.param
+android/*.pt
+android/*.ort
+android/sharp_split/
+android/sharp_split4/
+android/app/src/main/cpp/ncnn-android.zip
+android/app/src/main/assets/*.bin
+android/app/src/main/assets/*.param
+
+# Test images
+android/TestRoom.jpg
+android/room.jpeg
+android/app/src/main/assets/room.jpeg
+
+# iOS mlpackage models (large, stored locally)
+*.mlpackage/
+
 # ML Experiments folder (scripts, outputs, models for development)
 ml_experiments/
