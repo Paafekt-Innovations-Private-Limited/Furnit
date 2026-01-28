@@ -484,10 +484,9 @@ struct SharpRoomView: View {
                 .zIndex(99997)
             } else {
                 // Portrait layout: standard bottom controls
-
-                // Touch-anywhere drag overlay for camera control
-                SimpleJoystickOverlay(photoOrientation: photoOrientation)
-                    .zIndex(99997)
+                // NOTE: OrbitGestureView (zIndex 10) handles all camera gestures for WebGL
+                // Do NOT add SimpleJoystickOverlay here - it sends to GlobalCameraController
+                // which has no camera registered for WebGL rooms
 
                 // Buttons at bottom row
                 VStack {
