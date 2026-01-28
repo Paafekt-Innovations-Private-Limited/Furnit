@@ -10,6 +10,7 @@ struct ModelViewerView: View {
     @State private var mlModel: MLModel? = nil  // yoloe-11l 1280 model
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass
+    @EnvironmentObject var authManager: AuthenticationManager
     let model: USDZModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.presentationMode) var presentationMode
@@ -171,12 +172,30 @@ struct ModelViewerView: View {
                     .opacity(isCapturingSnapshot ? 0 : 1)
                     .zIndex(99997)
 
-                // FurnitureFit snapshot button
+                // FurnitureFit snapshot and share buttons
                 if showingFurnitureFit {
                     VStack {
                         Spacer()
                         HStack {
                             Spacer()
+                            // Share button (only for allowed users)
+                            if authManager.canShare {
+                                Button(action: {
+                                    let screen = UIScreen.main.bounds.size
+                                    shareFurnitureFitSnapshot(screen)
+                                }) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 28, weight: .regular))
+                                        .foregroundColor(.white)
+                                        .frame(width: 48, height: 48)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.green)
+                                        )
+                                }
+                                .disabled(isCapturingSnapshot)
+                                .padding(.trailing, 12)
+                            }
                             // Snapshot button
                             Button(action: {
                                 let screen = UIScreen.main.bounds.size
@@ -509,6 +528,48 @@ struct ModelViewerView: View {
             DispatchQueue.main.async {
                 self.isCapturingSnapshot = false
             }
+        }
+    }
+
+    private func shareFurnitureFitSnapshot(_ size: CGSize) {
+        // Hide UI chrome briefly so it doesn't appear in the snapshot
+        isCapturingSnapshot = true
+        // Allow the UI to update before capturing
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            guard let uiImage = self.captureAppWindowImage() else {
+                self.isCapturingSnapshot = false
+                logDebug("❌ Failed to capture app window image for sharing")
+                return
+            }
+            DispatchQueue.main.async {
+                self.isCapturingSnapshot = false
+                self.presentShareSheet(with: uiImage)
+            }
+        }
+    }
+
+    private func presentShareSheet(with image: UIImage) {
+        let activityVC = UIActivityViewController(
+            activityItems: [image],
+            applicationActivities: nil
+        )
+
+        // Find the presenting view controller
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootVC = windowScene.windows.first?.rootViewController {
+            var presentingVC = rootVC
+            while let presented = presentingVC.presentedViewController {
+                presentingVC = presented
+            }
+
+            // For iPad, set popover source
+            if let popover = activityVC.popoverPresentationController {
+                popover.sourceView = presentingVC.view
+                popover.sourceRect = CGRect(x: presentingVC.view.bounds.midX, y: presentingVC.view.bounds.maxY - 100, width: 0, height: 0)
+            }
+
+            presentingVC.present(activityVC, animated: true)
+            logDebug("📤 Share sheet presented")
         }
     }
     

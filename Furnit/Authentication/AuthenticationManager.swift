@@ -384,4 +384,23 @@ class AuthenticationManager: ObservableObject {
 
         return cleanNumber
     }
+
+    // MARK: - Feature Access Control
+
+    /// Check if current user has access to share functionality
+    /// Only specific phone numbers are allowed to share
+    var canShare: Bool {
+        guard let phone = currentUser?.phoneNumber else { return false }
+
+        // Normalize phone number for comparison (remove spaces, dashes)
+        let normalizedPhone = phone.filter { $0.isNumber || $0 == "+" }
+
+        // Allowed phone numbers
+        let allowedPhones: Set<String> = [
+            "+917795002599",   // India
+            "+18588595200"     // USA
+        ]
+
+        return allowedPhones.contains(normalizedPhone)
+    }
 }
