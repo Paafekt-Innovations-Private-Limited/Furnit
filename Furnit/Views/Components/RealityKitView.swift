@@ -530,8 +530,9 @@ struct RealityKitView: UIViewRepresentable {
                     // ✅ Add camera to scene AFTER model and AFTER positioning (ensures camera takes precedence)
                     coordinator.addCameraToScene(arView: arView)
 
-                    // ❌ DO NOT register with GlobalCameraController - RealityKitGestureHandlers handles all gestures
-                    logDebug("✅ [RealityKitView] Camera ready - gestures handled by RealityKitGestureHandlers")
+                    // ✅ Sync gesture handler rotation state with camera's new orientation
+                    coordinator.gestureHandlers?.syncRotationState()
+                    logDebug("✅ [RealityKitView] Camera ready - gestures synced with camera orientation")
                 } else if let cameraAnchor = coordinator.cameraAnchor {
                     // Fallback if no bounds - use default position
                     logDebug("⚠️ [RealityKitView] NO BOUNDS - using DEFAULT position")
@@ -548,8 +549,9 @@ struct RealityKitView: UIViewRepresentable {
                     // ✅ Add camera to scene AFTER model and AFTER positioning
                     coordinator.addCameraToScene(arView: arView)
 
-                    // ❌ DO NOT register with GlobalCameraController - RealityKitGestureHandlers handles all gestures
-                    logDebug("✅ [RealityKitView] Camera ready - gestures handled by RealityKitGestureHandlers")
+                    // ✅ Sync gesture handler rotation state with camera's new orientation
+                    coordinator.gestureHandlers?.syncRotationState()
+                    logDebug("✅ [RealityKitView] Camera ready - gestures synced with camera orientation")
                 } else {
                     logDebug("❌ [RealityKitView] NO CAMERA ANCHOR - cannot position camera!")
                 }

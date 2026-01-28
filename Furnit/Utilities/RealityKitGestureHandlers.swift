@@ -63,7 +63,39 @@ class RealityKitGestureHandlers: NSObject {
     func setCameraReferences(camera: PerspectiveCamera, cameraAnchor: AnchorEntity) {
         self.cameraEntity = camera
         self.cameraAnchor = cameraAnchor
+
+        // Initialize accumulated rotation from camera's current orientation
+        initializeRotationFromCamera()
+
         logDebug("📷 Camera references set for direct camera control")
+    }
+
+    /// Re-sync rotation state after camera is repositioned (e.g., after model loads)
+    /// Call this after setting camera position/rotation programmatically
+    func syncRotationState() {
+        initializeRotationFromCamera()
+    }
+
+    /// Initialize accumulated yaw/pitch from camera's current orientation
+    /// This ensures rotation gestures work correctly for cameras with non-zero initial orientation
+    private func initializeRotationFromCamera() {
+        guard let anchor = cameraAnchor else { return }
+
+        let rotation = anchor.transform.rotation
+
+        // Extract yaw (Y-axis rotation) and pitch (X-axis rotation) from quaternion
+        // Using standard quaternion to euler conversion
+        let sinP = 2.0 * (rotation.real * rotation.imag.x - rotation.imag.z * rotation.imag.y)
+        let pitch = abs(sinP) >= 1 ? copysign(Float.pi / 2, sinP) : asin(sinP)
+
+        let sinY = 2.0 * (rotation.real * rotation.imag.y + rotation.imag.x * rotation.imag.z)
+        let cosY = 1.0 - 2.0 * (rotation.imag.x * rotation.imag.x + rotation.imag.y * rotation.imag.y)
+        let yaw = atan2(sinY, cosY)
+
+        accumulatedYaw = yaw
+        accumulatedPitch = pitch
+
+        logDebug("📷 Initialized rotation from camera: Yaw=\(yaw), Pitch=\(pitch)")
     }
     
     // Set up gesture recognizers for camera control
