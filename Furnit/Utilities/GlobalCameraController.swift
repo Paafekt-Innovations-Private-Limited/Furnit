@@ -104,6 +104,9 @@ class GlobalCameraController {
 
     /// Update from drag gesture - calculates delta from last position
     func updateFromDrag(_ translation: CGSize) {
+        logDebug("🎮 [GlobalCameraController] updateFromDrag called: \(translation)")
+        logDebug("   hasRealityKit: \(realityKitAnchor != nil), hasSceneKit: \(sceneKitCamera != nil)")
+
         // Calculate delta from last translation
         let deltaX = translation.width - lastDragTranslation.width
         let deltaY = translation.height - lastDragTranslation.height
@@ -210,6 +213,7 @@ class GlobalCameraController {
     }
 
     private func moveSceneKitCamera(_ camera: SCNNode) {
+        logDebug("📷 [SceneKit] moveSceneKitCamera CALLED - velocity: \(currentVelocity)")
         let normalizedX = currentVelocity.x
         let normalizedY = -currentVelocity.y  // Invert for intuitive control
 
@@ -251,11 +255,13 @@ struct TouchDragOverlay: View {
                     .highPriorityGesture(
                         DragGesture(minimumDistance: 1)
                             .onChanged { value in
+                                logDebug("👆 [TouchDragOverlay] onChanged: \(value.translation)")
                                 isDragging = true
                                 // Use delta-based drag for smooth continuous movement
                                 GlobalCameraController.shared.updateFromDrag(value.translation)
                             }
                             .onEnded { _ in
+                                logDebug("👆 [TouchDragOverlay] onEnded")
                                 isDragging = false
                                 // Reset drag state
                                 GlobalCameraController.shared.endDrag()
