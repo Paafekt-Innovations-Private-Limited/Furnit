@@ -477,7 +477,7 @@ class RealityKitGestureHandlers: NSObject {
         case .changed:
             // Calculate zoom factor (scale change from initial)
             let scale = gesture.scale
-            let zoomFactor = (scale - 1.0) * 1.0 // 2x faster zoom (was 0.5)
+            let zoomFactor = (scale - 1.0) * 1.5 // 3x faster zoom (was 0.5)
             
             // Get camera's current transform for directional reference
             let cameraTransform = cameraAnchor.transform
