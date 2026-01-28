@@ -99,11 +99,7 @@ class ModelDetailActivity : AppCompatActivity() {
         // Screenshot button
         screenshotButton.setOnClickListener { takeScreenshot() }
 
-        // Touch-anywhere drag for camera control
-        sceneView.setOnTouchListener { _, event ->
-            handleCameraDrag(event)
-            true
-        }
+        // Touch overlay is handled via dispatchTouchEvent override
 
         // Update orientation label based on device orientation
         updateOrientationLabel()
@@ -355,6 +351,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 lastTouchX = event.x
                 lastTouchY = event.y
                 isDragging = true
+                Log.d(TAG, "Touch DOWN at ($lastTouchX, $lastTouchY)")
             }
             MotionEvent.ACTION_MOVE -> {
                 if (isDragging) {
@@ -367,10 +364,15 @@ class ModelDetailActivity : AppCompatActivity() {
                     val camera = sceneView.cameraNode
                     val position = camera.position
 
+                    val newX = position.x - deltaX * sensitivity
+                    val newZ = position.z - deltaY * sensitivity
+
+                    Log.d(TAG, "Touch MOVE delta=($deltaX, $deltaY) -> camera ($newX, ${position.y}, $newZ)")
+
                     camera.position = io.github.sceneview.math.Position(
-                        position.x - deltaX * sensitivity,
+                        newX,
                         position.y,
-                        position.z - deltaY * sensitivity
+                        newZ
                     )
 
                     lastTouchX = event.x
@@ -379,6 +381,7 @@ class ModelDetailActivity : AppCompatActivity() {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 isDragging = false
+                Log.d(TAG, "Touch UP")
             }
         }
     }
@@ -589,5 +592,24 @@ class ModelDetailActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // Handle camera drag for touches not on buttons
+        val touchOverlay = findViewById<View>(R.id.touchOverlay)
+        if (touchOverlay != null) {
+            // Check if touch is within the 3D view area (not on top bar or bottom controls)
+            val topBar = findViewById<View>(R.id.topBarContainer)
+            val bottomControls = findViewById<View>(R.id.bottomControlsContainer)
+
+            val topBarBottom = topBar?.bottom ?: 0
+            val bottomControlsTop = bottomControls?.top ?: Int.MAX_VALUE
+
+            if (event.y > topBarBottom && event.y < bottomControlsTop) {
+                handleCameraDrag(event)
+            }
+        }
+
+        return super.dispatchTouchEvent(event)
     }
 }

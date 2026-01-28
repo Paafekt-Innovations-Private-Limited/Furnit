@@ -12,6 +12,13 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Transparent touch layer for camera drag control -->
+    <View
+        android:id="@+id/touchOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent" />
+
     <!-- Top Bar - Rounded dark container matching iOS (overlay on 3D view) -->
     <LinearLayout
         android:id="@+id/topBarContainer"
