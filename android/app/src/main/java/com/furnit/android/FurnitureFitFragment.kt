@@ -1,29 +1,44 @@
 package com.furnit.android
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.os.Bundle
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.*
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.views.JoystickView
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -94,14 +109,117 @@ class FurnitureFitFragment : Fragment() {
             setOnClickListener { activity?.finish() }
         }
 
+        // Bottom controls container
+        val bottomControls = FrameLayout(requireContext()).apply {
+            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+            lp.gravity = Gravity.BOTTOM
+            lp.setMargins(20, 0, 20, 24)
+            layoutParams = lp
+        }
+
+        // Joystick (center) for camera control
+        val joystickContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+            lp.gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+            layoutParams = lp
+        }
+
+        val joystick = JoystickView(requireContext()).apply {
+            val size = (100 * resources.displayMetrics.density).toInt()
+            layoutParams = LinearLayout.LayoutParams(size, size)
+            onJoystickMove = { x, y ->
+                moveRoomCamera(x, y)
+            }
+        }
+        joystickContainer.addView(joystick)
+        bottomControls.addView(joystickContainer)
+
+        // Screenshot button (right)
+        val screenshotButton = ImageButton(requireContext()).apply {
+            setImageResource(android.R.drawable.ic_menu_camera)
+            setBackgroundResource(android.R.drawable.btn_default)
+            val size = (56 * resources.displayMetrics.density).toInt()
+            val lp = FrameLayout.LayoutParams(size, size)
+            lp.gravity = Gravity.END or Gravity.BOTTOM
+            layoutParams = lp
+            setOnClickListener { takeScreenshot(root) }
+        }
+        bottomControls.addView(screenshotButton)
+
         root.addView(previewView)
         root.addView(roomSceneView)  // 3D room background between camera and overlay
         root.addView(overlay)
         root.addView(statusLabel)
         root.addView(backButton)
+        root.addView(bottomControls)
 
         startCamera()
         return root
+    }
+
+    private fun moveRoomCamera(normalizedX: Float, normalizedY: Float) {
+        val moveSpeed = 0.1f
+        val deadZone = 0.1f
+
+        val magnitude = kotlin.math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY)
+        if (magnitude < deadZone) return
+
+        val camera = roomSceneView.cameraNode
+        val position = camera.position
+
+        val deltaX = normalizedX * moveSpeed
+        val deltaZ = normalizedY * moveSpeed
+
+        camera.position = Position(
+            position.x + deltaX,
+            position.y,
+            position.z + deltaZ
+        )
+    }
+
+    private fun takeScreenshot(rootView: View) {
+        try {
+            // Create bitmap from the entire view (room + overlay)
+            val bitmap = Bitmap.createBitmap(rootView.width, rootView.height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            rootView.draw(canvas)
+
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val fileName = "FurnitureFit_$timeStamp.png"
+
+            // Save to gallery using MediaStore (Android 10+)
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Screenshots")
+            }
+
+            val resolver = requireContext().contentResolver
+            val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+                Toast.makeText(requireContext(), "Saved to Screenshots", Toast.LENGTH_SHORT).show()
+
+                // Share the screenshot
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/png"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
+            } else {
+                Toast.makeText(requireContext(), "Failed to save screenshot", Toast.LENGTH_SHORT).show()
+            }
+
+        } catch (e: Exception) {
+            Log.e("FurnitureFit", "Screenshot failed", e)
+            Toast.makeText(requireContext(), "Screenshot failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun startCamera() {

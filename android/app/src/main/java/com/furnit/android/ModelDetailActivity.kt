@@ -305,30 +305,43 @@ class ModelDetailActivity : AppCompatActivity() {
         try {
             val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val fileName = "Room_$timeStamp.png"
-            val picturesDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-            val file = File(picturesDir, fileName)
 
-            FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            // Save to gallery using MediaStore (Android 10+)
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Screenshots")
             }
 
-            runOnUiThread {
-                Toast.makeText(this, "Screenshot saved", Toast.LENGTH_SHORT).show()
-            }
+            val resolver = contentResolver
+            val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
 
-            // Share the screenshot
-            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = "image/png"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+
+                runOnUiThread {
+                    Toast.makeText(this, "Saved to Screenshots", Toast.LENGTH_SHORT).show()
+                }
+
+                // Share the screenshot
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/png"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
+            } else {
+                runOnUiThread {
+                    Toast.makeText(this, "Failed to save screenshot", Toast.LENGTH_SHORT).show()
+                }
             }
-            startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save screenshot", e)
             runOnUiThread {
-                Toast.makeText(this, "Failed to save screenshot", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Failed to save screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
