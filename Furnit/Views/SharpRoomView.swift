@@ -306,6 +306,7 @@ struct SharpRoomView: View {
     @State private var showRoomNameInput = false
     @State private var roomName = ""
     @State private var showShareSheet = false
+    @EnvironmentObject var authManager: AuthenticationManager
 
     /// Compute classic PLY URL (pre-rotated for antimatter15/splat)
     private var classicPlyURL: URL {
@@ -541,8 +542,8 @@ struct SharpRoomView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
-                // Share button - only in debug mode
-                if AppStateManager.shared.qualitySettings.debugMode {
+                // Share button - only for authorized users
+                if authManager.canShare {
                     Button(action: {
                         showShareSheet = true
                     }) {
