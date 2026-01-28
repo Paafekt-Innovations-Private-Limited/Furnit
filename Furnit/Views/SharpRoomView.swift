@@ -1405,8 +1405,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                     // Stop auto orbit when user pinches
                     autoOrbitEnabled = false;
 
-                    // Amplify zoom speed (5x) - scale deviation from 1.0
-                    const amplifiedScale = 1 + (scale - 1) * 5;
+                    // Amplify zoom speed (2.5x) - matching RealityKit/SceneKit feel
+                    const amplifiedScale = 1 + (scale - 1) * 2.5;
 
                     const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
                     offset.multiplyScalar(1 / amplifiedScale);
