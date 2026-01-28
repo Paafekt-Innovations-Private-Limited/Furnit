@@ -76,26 +76,35 @@ class RealityKitGestureHandlers: NSObject {
         initializeRotationFromCamera()
     }
 
-    /// Initialize accumulated yaw/pitch from camera's current orientation
+    /// Initialize accumulated yaw/pitch from camera's current look direction
     /// This ensures rotation gestures work correctly for cameras with non-zero initial orientation
+    /// Uses direct look direction calculation to avoid quaternion decomposition mismatches
     private func initializeRotationFromCamera() {
         guard let anchor = cameraAnchor else { return }
 
+        // Get camera's forward direction (camera looks along -Z in local space)
         let rotation = anchor.transform.rotation
+        let forward = rotation.act(SIMD3<Float>(0, 0, -1))  // Transform -Z by rotation
 
-        // Extract yaw (Y-axis rotation) and pitch (X-axis rotation) from quaternion
-        // Using standard quaternion to euler conversion
-        let sinP = 2.0 * (rotation.real * rotation.imag.x - rotation.imag.z * rotation.imag.y)
-        let pitch = abs(sinP) >= 1 ? copysign(Float.pi / 2, sinP) : asin(sinP)
+        // Calculate yaw from the horizontal component of forward direction
+        // yaw = 0 means looking toward -Z (forward in world space)
+        // Positive yaw means looking toward -X (left in world space)
+        let yaw = atan2(-forward.x, -forward.z)
 
-        let sinY = 2.0 * (rotation.real * rotation.imag.y + rotation.imag.x * rotation.imag.z)
-        let cosY = 1.0 - 2.0 * (rotation.imag.x * rotation.imag.x + rotation.imag.y * rotation.imag.y)
-        let yaw = atan2(sinY, cosY)
+        // Calculate pitch from the vertical component
+        // pitch = 0 means looking horizontal
+        // Positive pitch means looking down
+        // Using the length of horizontal component for proper angle calculation
+        let horizontalLength = sqrt(forward.x * forward.x + forward.z * forward.z)
+        let pitch = atan2(-forward.y, horizontalLength)
 
         accumulatedYaw = yaw
         accumulatedPitch = pitch
 
-        logDebug("📷 Initialized rotation from camera: Yaw=\(yaw), Pitch=\(pitch)")
+        logDebug("📷 Initialized rotation from look direction:")
+        logDebug("   Forward: (\(forward.x), \(forward.y), \(forward.z))")
+        logDebug("   Yaw: \(yaw) rad (\(yaw * 180 / Float.pi)°)")
+        logDebug("   Pitch: \(pitch) rad (\(pitch * 180 / Float.pi)°)")
     }
     
     // Set up gesture recognizers for camera control
