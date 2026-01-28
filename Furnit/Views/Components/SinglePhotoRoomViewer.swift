@@ -1946,7 +1946,7 @@ struct SceneKitViewer: View {
                 .zIndex(99997)
             }
 
-            // Bottom row buttons (Brain + Screenshot) - HIGHEST zIndex to stay on top of FurnitureFit
+            // Bottom row buttons (Brain + Screenshot) - below joystick overlay so touches pass through
             VStack {
                 Spacer()
                     .allowsHitTesting(false)
@@ -1980,7 +1980,7 @@ struct SceneKitViewer: View {
                 }
                 .padding(.bottom, 30)
             }
-            .zIndex(99999)
+            .zIndex(99995)  // Below SimpleJoystickOverlay (99996) so touches go to drag overlay first
 
             if showControls {
                 VStack {
@@ -1996,6 +1996,7 @@ struct SceneKitViewer: View {
                     .padding()
                     .padding(.bottom, 100) // Move above joystick
                 }
+                .allowsHitTesting(false)  // Don't block touches
                 .onAppear {
                     logDebug("ℹ️ [Viewer] Controls hint displayed")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
