@@ -209,13 +209,15 @@ class GlobalCameraController {
         let forward = camera.worldFront
         let right = camera.worldRight
 
+        logDebug("📷 [SceneKit] velocity: (\(normalizedX), \(normalizedY)) forward: \(forward) right: \(right)")
+
         let moveX = right.x * normalizedX * moveSpeed + forward.x * normalizedY * moveSpeed
         let moveZ = right.z * normalizedX * moveSpeed + forward.z * normalizedY * moveSpeed
 
         let oldPos = camera.position
         camera.position.x += moveX
         camera.position.z += moveZ
-        logDebug("📍 [SceneKit] Move: (\(oldPos.x), \(oldPos.z)) → (\(camera.position.x), \(camera.position.z))")
+        logDebug("📍 [SceneKit] Move: (\(oldPos.x), \(oldPos.z)) → (\(camera.position.x), \(camera.position.z)) delta: (\(moveX), \(moveZ))")
     }
 
     private func normalize(_ v: SIMD3<Float>) -> SIMD3<Float> {
@@ -239,7 +241,7 @@ struct TouchDragOverlay: View {
                 // Transparent drag area (full screen)
                 Color.clear
                     .contentShape(Rectangle())
-                    .gesture(
+                    .highPriorityGesture(
                         DragGesture(minimumDistance: 1)
                             .onChanged { value in
                                 isDragging = true
