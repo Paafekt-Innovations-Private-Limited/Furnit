@@ -51,11 +51,34 @@ final class MetalMaskLogic {
     private let queue: MTLCommandQueue
     private let pipelineMaxMask: MTLComputePipelineState
 
+    // MARK: - Cached buffers for reuse (prevents allocation per frame)
+    private var cachedPlanesBuf: MTLBuffer?
+    private var cachedCoeffBuf: MTLBuffer?
+    private var cachedOutBuf: MTLBuffer?
+    private var cachedPlanesCapacity: Int = 0
+    private var cachedCoeffCapacity: Int = 0
+    private var cachedOutCapacity: Int = 0
+
     init(device: MTLDevice) {
         self.device = device
         self.queue = device.makeCommandQueue()!
         let library = device.makeDefaultLibrary()!
         self.pipelineMaxMask = try! device.makeComputePipelineState(function: library.makeFunction(name: "sp_maxMaskFromPrototypes")!)
+    }
+
+    /// Get or create a buffer with at least the required capacity
+    private func getOrCreateBuffer(cached: inout MTLBuffer?, capacity: inout Int, required: Int) -> MTLBuffer? {
+        if let buf = cached, capacity >= required {
+            return buf
+        }
+        // Allocate with some headroom to reduce reallocations
+        let newCapacity = max(required, capacity * 2, 1024)
+        guard let newBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared) else {
+            return nil
+        }
+        cached = newBuf
+        capacity = newCapacity
+        return newBuf
     }
 
     func buildMaskSmall(planes: [Float], coeffs: [Float], planeSize: Int, detCount: Int) -> [UInt8] {
@@ -66,35 +89,45 @@ final class MetalMaskLogic {
         let coeffBytes = coeffs.count * MemoryLayout<Float>.size
         let outBytes = planeSize * MemoryLayout<UInt8>.size
 
-        let planesBuf = device.makeBuffer(bytes: planes, length: planesBytes, options: .storageModeShared)!
-        let coeffBuf = device.makeBuffer(bytes: coeffs, length: coeffBytes, options: .storageModeShared)!
-        let outBuf = device.makeBuffer(length: outBytes, options: .storageModeShared)!
-
-        guard let cmd = queue.makeCommandBuffer(),
-              let enc = cmd.makeComputeCommandEncoder() else {
+        // Reuse buffers instead of allocating new ones each frame
+        guard let planesBuf = getOrCreateBuffer(cached: &cachedPlanesBuf, capacity: &cachedPlanesCapacity, required: planesBytes),
+              let coeffBuf = getOrCreateBuffer(cached: &cachedCoeffBuf, capacity: &cachedCoeffCapacity, required: coeffBytes),
+              let outBuf = getOrCreateBuffer(cached: &cachedOutBuf, capacity: &cachedOutCapacity, required: outBytes) else {
             return [UInt8](repeating: 0, count: planeSize)
         }
 
-        enc.setComputePipelineState(pipelineMaxMask)
-        enc.setBuffer(planesBuf, offset: 0, index: 0)
-        enc.setBuffer(coeffBuf, offset: 0, index: 1)
-        enc.setBuffer(outBuf, offset: 0, index: 2)
+        // Copy data into reused buffers
+        memcpy(planesBuf.contents(), planes, planesBytes)
+        memcpy(coeffBuf.contents(), coeffs, coeffBytes)
 
-        var ps = UInt32(planeSize)
-        var dc = UInt32(detCount)
-        enc.setBytes(&ps, length: MemoryLayout<UInt32>.size, index: 3)
-        enc.setBytes(&dc, length: MemoryLayout<UInt32>.size, index: 4)
+        // Wrap Metal work in autoreleasepool to ensure command buffers are released
+        return autoreleasepool {
+            guard let cmd = queue.makeCommandBuffer(),
+                  let enc = cmd.makeComputeCommandEncoder() else {
+                return [UInt8](repeating: 0, count: planeSize)
+            }
 
-        let tgW = pipelineMaxMask.threadExecutionWidth
-        let threadsPerTG = MTLSize(width: tgW, height: 1, depth: 1)
-        let threads = MTLSize(width: planeSize, height: 1, depth: 1)
-        enc.dispatchThreads(threads, threadsPerThreadgroup: threadsPerTG)
-        enc.endEncoding()
-        cmd.commit()
-        cmd.waitUntilCompleted()
+            enc.setComputePipelineState(pipelineMaxMask)
+            enc.setBuffer(planesBuf, offset: 0, index: 0)
+            enc.setBuffer(coeffBuf, offset: 0, index: 1)
+            enc.setBuffer(outBuf, offset: 0, index: 2)
 
-        let ptr = outBuf.contents().bindMemory(to: UInt8.self, capacity: planeSize)
-        return Array(UnsafeBufferPointer(start: ptr, count: planeSize))
+            var ps = UInt32(planeSize)
+            var dc = UInt32(detCount)
+            enc.setBytes(&ps, length: MemoryLayout<UInt32>.size, index: 3)
+            enc.setBytes(&dc, length: MemoryLayout<UInt32>.size, index: 4)
+
+            let tgW = pipelineMaxMask.threadExecutionWidth
+            let threadsPerTG = MTLSize(width: tgW, height: 1, depth: 1)
+            let threads = MTLSize(width: planeSize, height: 1, depth: 1)
+            enc.dispatchThreads(threads, threadsPerThreadgroup: threadsPerTG)
+            enc.endEncoding()
+            cmd.commit()
+            cmd.waitUntilCompleted()
+
+            let ptr = outBuf.contents().bindMemory(to: UInt8.self, capacity: planeSize)
+            return Array(UnsafeBufferPointer(start: ptr, count: planeSize))
+        }
     }
 }
 
@@ -143,26 +176,26 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.1
     var useBilinearUpscaling: Bool = false
-    
+    var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
+
     // Debug mode - read from settings
     var debugMode: Bool {
         return AppStateManager.shared.qualitySettings.debugMode
     }
 
-    // MARK: - Ignored Classes (loaded from blacklist.json or blacklist_11l.json)
+    // MARK: - Ignored Classes (loaded from blacklist.json)
     private var clsToIgnore: Set<Int> = []
 
     private func loadBlacklist() {
-        let filename = using11lModel ? "blacklist_11l" : "blacklist"
-        guard let url = Bundle.main.url(forResource: filename, withExtension: "json"),
+        guard let url = Bundle.main.url(forResource: "blacklist", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
-            if debugMode { logDebug("⚠️ Failed to load \(filename).json") }
+            if debugMode { logDebug("⚠️ Failed to load blacklist.json") }
             clsToIgnore = []
             return
         }
         clsToIgnore = Set(dict.keys.compactMap { Int($0) })
-        if debugMode { logDebug("✅ Loaded \(clsToIgnore.count) blacklisted classes from \(filename).json") }
+        if debugMode { logDebug("✅ Loaded \(clsToIgnore.count) blacklisted classes") }
     }
 
     // MARK: Camera
@@ -212,18 +245,25 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var hasFirstDetection = false
     private var currentScale: CGFloat = 1.0
     
-    // MARK: - Metal
-    private var metalDevice: MTLDevice? = MTLCreateSystemDefaultDevice()
-    private var metalCommandQueue: MTLCommandQueue? {
-        metalDevice?.makeCommandQueue()
-    }
-    private var metalLibrary: MTLLibrary? {
-        metalDevice?.makeDefaultLibrary()
-    }
-    private var compositePipeline: MTLComputePipelineState? = nil
-    private var fusedMaskCompositePipeline: MTLComputePipelineState? = nil
+    // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
+    private var metalDevice: MTLDevice?
+    private var metalCommandQueue: MTLCommandQueue?  // FIXED: was computed property creating new queue on every access
+    private var metalLibrary: MTLLibrary?            // FIXED: was computed property creating new library on every access
+    private var compositePipeline: MTLComputePipelineState?
+    private var fusedMaskCompositePipeline: MTLComputePipelineState?
 
+    // MARK: - Cached Metal buffers for fused compositing (prevents allocation per frame)
+    private var cachedFusedPlanesBuf: MTLBuffer?
+    private var cachedFusedCoeffBuf: MTLBuffer?
+    private var cachedFusedPlanesCapacity: Int = 0
+    private var cachedFusedCoeffCapacity: Int = 0
 
+    // MARK: - CVMetalTextureCache (FIXED: was created per-frame causing memory leak)
+    private var cvTextureCache: CVMetalTextureCache?
+
+    // MARK: - Reusable prototype buffers (FIXED: prevents ~26MB allocation per frame)
+    private var protoRawFloats: [Float] = []
+    private var protoPlanes: [Float] = []
 
 // GPU mask builder (optional)
 private lazy var metalMaskLogic: MetalMaskLogic? = {
@@ -232,11 +272,12 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 }()
     // MARK: Model & State
     private var mlModel: MLModel?  // yoloe-11l 1280 model
-    private var using11lModel: Bool = false  // Track if 11l model is used (for correct blacklist)
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
     private let frameLock = NSLock() // Protects lastProcessTime and isProcessing for early-exit checks
+    private var sessionGeneration: Int = 0  // Incremented on start to invalidate queued frames
+    private var isStarted = false  // Prevent startIfNeeded() from being called multiple times
 
     // MARK: Orientation
     private var currentDeviceOrientation: UIDeviceOrientation = .portrait
@@ -343,17 +384,47 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
     
     private func setupMetal() {
-        guard let device = metalDevice, let library = metalLibrary else { return }
+        // FIXED: Initialize Metal resources once as stored properties (not computed)
+        // This prevents the OOM crash caused by creating new command queues per frame
+        if metalDevice == nil {
+            metalDevice = MTLCreateSystemDefaultDevice()
+        }
+        guard let device = metalDevice else {
+            if debugMode { logDebug("❌ Metal not supported on this device") }
+            return
+        }
+
+        // Create command queue ONCE and store it
+        if metalCommandQueue == nil {
+            metalCommandQueue = device.makeCommandQueue()
+        }
+
+        // Create library ONCE and store it
+        if metalLibrary == nil {
+            metalLibrary = device.makeDefaultLibrary()
+        }
+
+        guard let library = metalLibrary else {
+            if debugMode { logDebug("❌ Failed to create Metal library") }
+            return
+        }
+
+        // Create pipelines only once
         do {
-            if let fn = library.makeFunction(name: "sp_compositeMask") {
+            if compositePipeline == nil, let fn = library.makeFunction(name: "sp_compositeMask") {
                 compositePipeline = try device.makeComputePipelineState(function: fn)
             }
-            if let fn2 = library.makeFunction(name: "sp_maxMaskAndComposite") {
+            if fusedMaskCompositePipeline == nil, let fn2 = library.makeFunction(name: "sp_maxMaskAndComposite") {
                 fusedMaskCompositePipeline = try device.makeComputePipelineState(function: fn2)
             }
         } catch {
             if debugMode { logDebug("⚠️ Metal pipeline setup failed: \(error.localizedDescription)") }
             CrashReporter.shared.report(error, context: "Metal Pipeline Setup")
+        }
+
+        // FIXED: Create texture cache ONCE (was being created per-frame causing memory leak)
+        if cvTextureCache == nil {
+            CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &cvTextureCache)
         }
     }
     
@@ -379,29 +450,47 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     // MARK: - Public
     func setModel(_ model: MLModel?) {
+        // Avoid blocking sync call if model hasn't changed
+        if model === mlModel { return }
         detectionQueue.sync { self.mlModel = model }
         // Log model outputs for debugging
         if let model = model {
             let inputNames = model.modelDescription.inputDescriptionsByName.keys.joined(separator: ", ")
             let outputNames = model.modelDescription.outputDescriptionsByName.keys
             logDebug("🧠 [FurnitureFit] Model set - inputs: [\(inputNames)], outputs: [\(outputNames.joined(separator: ", "))]")
-            // Detect if this is yoloe-11l by checking output names
-            using11lModel = outputNames.contains("var_2374") || outputNames.contains("var_2412") ||
-                            outputNames.contains("p") // yoloe-11l output names
         }
         // Note: loadBlacklist() is called in startIfNeeded() to avoid repeated calls from updateUIView
     }
 
     func startIfNeeded() {
+        // Guard against being called multiple times (SwiftUI updateUIView calls this repeatedly)
+        guard !isStarted else { return }
+        isStarted = true
+
         hasFirstDetection = false
+
+        // CRITICAL: Reset processing state to avoid delay when switching furniture
+        // Without this, isProcessing might still be true from previous session
+        frameLock.lock()
+        isProcessing = false
+        lastProcessTime = Date.distantPast
+        sessionGeneration += 1  // Invalidate any queued frames from previous session
+        frameLock.unlock()
+
         setProgress(0.05, text: "Starting camera…")
 
         // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
         loadBlacklist()
 
-        // Setup orientation detection for landscape support
-        currentDeviceOrientation = UIDevice.current.orientation.isValidInterfaceOrientation
-            ? UIDevice.current.orientation : .portrait
+        // Setup orientation based on locked orientation (ignores device rotation)
+        // Convert PhotoOrientation to UIDeviceOrientation
+        switch lockedOrientation {
+        case .landscape:
+            currentDeviceOrientation = .landscapeLeft
+        case .portrait, .square:
+            currentDeviceOrientation = .portrait
+        }
+
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
         NotificationCenter.default.addObserver(
             self,
@@ -412,15 +501,23 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         requestCameraPermissionAndStart()
 
-        // Set initial video rotation and progress orientation after camera starts
+        // Set initial video rotation based on locked orientation
+        // Progress bar should NOT be rotated when UI is locked (UI is already in correct orientation)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self = self else { return }
             self.updateVideoRotationForOrientation(self.currentDeviceOrientation)
-            self.updateProgressOrientationOnMain(self.currentDeviceOrientation)
+            // Keep progress bar identity transform - no rotation needed when UI is locked
+            self.progressContainer.transform = .identity
         }
     }
 
     @objc private func deviceOrientationDidChange() {
+        // When orientation is locked, ignore device rotation changes
+        if lockedOrientation == .landscape || lockedOrientation == .portrait {
+            // Keep video and progress fixed to locked orientation
+            return
+        }
+
         let orientation = UIDevice.current.orientation
         if orientation.isValidInterfaceOrientation {
             currentDeviceOrientation = orientation
@@ -463,6 +560,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     func stop() {
+        isStarted = false
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
@@ -527,6 +625,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let now = Date()
         frameLock.lock()
         let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval && !isProcessing
+        let capturedGeneration = sessionGeneration
         if shouldProcess {
             isProcessing = true
             lastProcessTime = now
@@ -538,11 +637,20 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             resetProcessingFlag()
             return
         }
-        detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer) }
+        detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer, generation: capturedGeneration) }
     }
 
     // MARK: - Main Processing Pipeline
-    private func processFrame(_ pixelBuffer: CVPixelBuffer) {
+    private func processFrame(_ pixelBuffer: CVPixelBuffer, generation: Int) {
+        // Skip if this frame is from a stale session (user switched furniture)
+        frameLock.lock()
+        let isStale = generation != sessionGeneration
+        frameLock.unlock()
+        if isStale {
+            resetProcessingFlag()
+            return
+        }
+
         let frameStart = Date()
 
         guard let model = mlModel else {
@@ -704,30 +812,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         let totalCount = detArray.count
 
-        // Safety check: prevent memory allocation crash for unexpected tensor sizes
-        // Standard model: ~1.2M elements for [1,144,8400]
-        // Prompt-free model: ~155M elements for [1,4621,33600] - needs ~620MB
-        // Allow up to 200M elements (800MB) for prompt-free models
-        let maxAllowedCount = 200_000_000
-        guard totalCount <= maxAllowedCount else {
-            logDebug("❌ STAGE 3 FAILED: Detection tensor too large (\(totalCount) elements, max \(maxAllowedCount))")
-            logDebug("   detArray shape: \(detArray.shape.map { $0.intValue })")
-            logDebug("   This may indicate an incompatible model or corrupted output")
+        // Model must be float32 - no allocation needed, just alias CoreML's buffer
+        guard detArray.dataType == .float32 else {
+            logDebug("❌ STAGE 3 FAILED: Model must output float32, got \(detArray.dataType)")
             resetProcessingFlag()
             return
         }
 
-        let detBuf = UnsafeMutablePointer<Float>.allocate(capacity: totalCount)
-        defer { detBuf.deallocate() }
-
-        if detArray.dataType == .float32 {
-            memcpy(detBuf, detArray.dataPointer, totalCount * MemoryLayout<Float>.size)
-        } else if detArray.dataType == .float16 {
-            let src = detArray.dataPointer.bindMemory(to: UInt16.self, capacity: totalCount)
-            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 2)
-            var dstBuf = vImage_Buffer(data: UnsafeMutableRawPointer(detBuf), height: 1, width: vImagePixelCount(totalCount), rowBytes: totalCount * 4)
-            vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-        }
+        let detBuf = detArray.dataPointer.bindMemory(to: Float.self, capacity: totalCount)
 
         setProgress(0.55, text: "Parsing detections…")
 
@@ -961,23 +1053,20 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // STAGE 5: Filter candidates by mask overlap with primary
         let t5 = Date()
 
-        // Primary bbox edges for pre-filtering (cheap gate before mask overlap)
-        var pX1 = primary.x - primary.w * 0.5
-        var pY1 = primary.y - primary.h * 0.5
-        var pX2 = primary.x + primary.w * 0.5
-        var pY2 = primary.y + primary.h * 0.5
+        // Primary bbox edges for encompasses check
+        let origPX1 = primary.x - primary.w * 0.5
+        let origPY1 = primary.y - primary.h * 0.5
+        let origPX2 = primary.x + primary.w * 0.5
+        let origPY2 = primary.y + primary.h * 0.5
 
-        // Add margin for bbox pre-filter
-        let primaryBboxWidth = pX2 - pX1
-        let primaryBboxHeight = pY2 - pY1
-        let bboxPad = max(8.0, 0.03 * min(primaryBboxWidth, primaryBboxHeight))
-        pX1 -= bboxPad
-        pY1 -= bboxPad
-        pX2 += bboxPad
-        pY2 += bboxPad
-
-        if debugMode {
-            logDebug("   STAGE 5: primary bbox with pad=\(Int(bboxPad)): [\(Int(pX1)),\(Int(pY1))]-[\(Int(pX2)),\(Int(pY2))]")
+        // Helper: check if candidate bbox fully encompasses primary bbox
+        // (indicates background/room detection that wraps the primary object)
+        let encompassTolerance: Float = 2.0  // pixels tolerance for floating-point noise
+        func bboxEncompassesPrimary(candX1: Float, candY1: Float, candX2: Float, candY2: Float) -> Bool {
+            return candX1 <= origPX1 + encompassTolerance &&
+                   candY1 <= origPY1 + encompassTolerance &&
+                   candX2 >= origPX2 - encompassTolerance &&
+                   candY2 >= origPY2 - encompassTolerance
         }
 
         var prunedCandidates: [(idx: Int, det: UnionDet)] = []
@@ -989,14 +1078,19 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             // Confidence filter
             if d.confidence < minCandConf { continue }
 
-            // AABB intersection test: reject if completely separated from primary
-            // Keep anything that touches or overlaps (conservative gate)
+            // Candidate bbox corners
             let dx1 = d.x - d.w * 0.5
             let dy1 = d.y - d.h * 0.5
             let dx2 = d.x + d.w * 0.5
             let dy2 = d.y + d.h * 0.5
-            let noOverlap = dx2 < pX1 || dx1 > pX2 || dy2 < pY1 || dy1 > pY2
-            if noOverlap { continue }
+
+            // Skip if candidate bbox fully encompasses primary (background/room detection)
+            if bboxEncompassesPrimary(candX1: dx1, candY1: dy1, candX2: dx2, candY2: dy2) {
+                if debugMode {
+                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox encompasses primary")
+                }
+                continue
+            }
 
             prunedCandidates.append((i, d))
         }
@@ -1067,22 +1161,82 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
             }
 
-            // Compute candArea and interWithPrimary in ONE streaming pass (no [Int] allocations!)
+            // Compute candArea and interWithPrimary - only count overlap within bbox intersection
             var candArea = [Int](repeating: 0, count: N)
             var interWithPrimary = [Int](repeating: 0, count: N)
 
+            // Scale factor from model coords to proto coords
+            let protoScale = Float(pW) / Float(modelInputSize)
+
+            // Primary bbox in proto coords (clamped to valid range)
+            let pProtoX1 = max(0, Int(floor((primary.x - primary.w * 0.5) * protoScale)))
+            let pProtoY1 = max(0, Int(floor((primary.y - primary.h * 0.5) * protoScale)))
+            let pProtoX2 = min(pW, Int(ceil((primary.x + primary.w * 0.5) * protoScale)))
+            let pProtoY2 = min(pH, Int(ceil((primary.y + primary.h * 0.5) * protoScale)))
+
+            // Compute candArea: threshold C > 0 to binary, then sum columns via SGEMV
+            // C is (planeSize x N) row-major, we want column sums
+            var Cbin = [Float](repeating: 0, count: planeSize * N)
+            C.withUnsafeBufferPointer { cPtr in
+                Cbin.withUnsafeMutableBufferPointer { binPtr in
+                    // vDSP_vclip + vDSP_vthrsc for thresholding > 0 to 1
+                    // Simpler: manual SIMD-friendly loop (compiler will vectorize)
+                    let count = planeSize * N
+                    for i in stride(from: 0, to: count, by: 4) {
+                        let end = min(i + 4, count)
+                        for k in i..<end {
+                            binPtr[k] = cPtr[k] > 0 ? 1 : 0
+                        }
+                    }
+                }
+            }
+            // candAreaF = ones^T * Cbin using BLAS wrapper (avoids deprecation warning)
+            let ones = [Float](repeating: 1, count: planeSize)
+            var candAreaF = [Float](repeating: 0, count: N)
+            Cbin.withUnsafeBufferPointer { binPtr in
+                ones.withUnsafeBufferPointer { onesPtr in
+                    candAreaF.withUnsafeMutableBufferPointer { outPtr in
+                        blas_sgemv_rowmajor_trans(m: Int32(planeSize), n: Int32(N), alpha: 1.0,
+                                                  A: binPtr.baseAddress!, lda: Int32(N),
+                                                  x: onesPtr.baseAddress!, incx: 1,
+                                                  beta: 0.0, y: outPtr.baseAddress!, incy: 1)
+                    }
+                }
+            }
+            for j in 0..<N { candArea[j] = Int(candAreaF[j]) }
+
+            // Compute interWithPrimary: only iterate over bbox intersection region per candidate
             C.withUnsafeBufferPointer { cPtr in
                 primaryLogits.withUnsafeBufferPointer { pPtr in
-                    for px in 0..<planeSize {
-                        let rowBase = px * N
-                        let pOn = pPtr[px] > 0
-                        for j in 0..<N {
-                            let v = cPtr[rowBase + j]
-                            if v > 0 {
-                                candArea[j] &+= 1
-                                if pOn { interWithPrimary[j] &+= 1 }
+                    for j in 0..<N {
+                        let d = prunedCandidates[j].det
+                        // Candidate bbox in proto coords
+                        let cx1 = max(0, Int(floor((d.x - d.w * 0.5) * protoScale)))
+                        let cy1 = max(0, Int(floor((d.y - d.h * 0.5) * protoScale)))
+                        let cx2 = min(pW, Int(ceil((d.x + d.w * 0.5) * protoScale)))
+                        let cy2 = min(pH, Int(ceil((d.y + d.h * 0.5) * protoScale)))
+
+                        // Intersection with primary bbox
+                        let ix1 = max(cx1, pProtoX1)
+                        let iy1 = max(cy1, pProtoY1)
+                        let ix2 = min(cx2, pProtoX2)
+                        let iy2 = min(cy2, pProtoY2)
+
+                        // Skip if no intersection
+                        if ix2 <= ix1 || iy2 <= iy1 { continue }
+
+                        // Count overlap only within intersection region
+                        var overlap = 0
+                        for py in iy1..<iy2 {
+                            let rowStart = py * pW
+                            for px in ix1..<ix2 {
+                                let pixelIdx = rowStart + px
+                                if cPtr[pixelIdx * N + j] > 0 && pPtr[pixelIdx] > 0 {
+                                    overlap += 1
+                                }
                             }
                         }
+                        interWithPrimary[j] = overlap
                     }
                 }
             }
@@ -1136,7 +1290,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 if !isDuplicate {
                     kept2.append(d)
                     if debugMode {
-                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(String(format: "%.1f", overlap * 100))%")
+                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(String(format: "%.1f", overlap * 100))% (\(overlapPixels)px) bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
                     }
                 }
             }
@@ -1346,45 +1500,58 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return (maskFull, positiveCount)
         }
 
-        // STAGE 13–15b: Build initial mask from kept2 (pre-bbox filter)
+        // STAGE 13–15b: Build initial mask from kept2
         let t13to15b = Date()
         let build1 = buildFullMaskMetal(from: kept2)
         var maskFull = build1.maskFull
         if debugMode {
             let buildPreMs = String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)
-            logDebug("⏱️ STAGE 13–15b - Build mask (pre-bbox): \(buildPreMs) ms, positive: \(build1.positiveCount)")
+            logDebug("⏱️ STAGE 13–15b - Build mask: \(buildPreMs) ms, positive: \(build1.positiveCount)")
         }
 
         // STAGE 15c: Clip mask to bbox (zero out pixels outside bbox)
-        // Using UNION bbox to include all overlapping detections
-        // TODO: To test with PRIMARY bbox instead, uncomment the primaryBx lines below and use them
+        // OPTIMIZED: Use memset for entire rows/regions instead of per-pixel checks
         let t15c = Date()
-        var clippedCount = 0
-        // Use union bbox for clipping
         let clipBx1 = bx1
         let clipBy1 = by1
         let clipBx2 = bx2
         let clipBy2 = by2
-        // UNCOMMENT BELOW TO USE PRIMARY BBOX INSTEAD:
-        // let clipBx1 = primaryBx1
-        // let clipBy1 = primaryBy1
-        // let clipBx2 = primaryBx2
-        // let clipBy2 = primaryBy2
-        for y in 0..<origH {
-            for x in 0..<origW {
-                let idx = y * origW + x
-                if maskFull[idx] > 0 {
-                    // Check if pixel is outside clip bbox
-                    if x < clipBx1 || x >= clipBx2 || y < clipBy1 || y >= clipBy2 {
-                        maskFull[idx] = 0
-                        clippedCount += 1
+
+        // Zero top rows (y < clipBy1) using memset - much faster than per-pixel
+        if clipBy1 > 0 {
+            let topBytes = clipBy1 * origW
+            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                memset(ptr.baseAddress!, 0, topBytes)
+            }
+        }
+
+        // Zero bottom rows (y >= clipBy2) using memset
+        if clipBy2 < origH {
+            let bottomStart = clipBy2 * origW
+            let bottomBytes = (origH - clipBy2) * origW
+            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
+            }
+        }
+
+        // Zero left and right columns in middle rows
+        if clipBx1 > 0 || clipBx2 < origW {
+            maskFull.withUnsafeMutableBufferPointer { ptr in
+                for y in clipBy1..<clipBy2 {
+                    let rowStart = y * origW
+                    if clipBx1 > 0 {
+                        memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipBx1)
+                    }
+                    if clipBx2 < origW {
+                        memset(ptr.baseAddress!.advanced(by: rowStart + clipBx2), 0, origW - clipBx2)
                     }
                 }
             }
         }
+
         if debugMode {
             let clipMs = String(format: "%.2f", Date().timeIntervalSince(t15c) * 1000)
-            logDebug("⏱️ STAGE 15c - Clip to union bbox: \(clipMs) ms, clipped: \(clippedCount) pixels")
+            logDebug("⏱️ STAGE 15c - Clip to bbox (memset): \(clipMs) ms")
         }
 
         // Prepare flattened coeffs for fused GPU path
@@ -1404,13 +1571,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         var composedImage: CGImage?
 
         if let device = metalDevice,
-           let queue = metalCommandQueue {
-
-            var cvTextureCache: CVMetalTextureCache?
-            CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, device, nil, &cvTextureCache)
+           let queue = metalCommandQueue,
+           let textureCache = cvTextureCache {  // Use cached texture cache (created once in setupMetal)
 
             func makeTexture(from pixelBuffer: CVPixelBuffer, pixelFormat: MTLPixelFormat) -> MTLTexture? {
-                guard let cache = cvTextureCache else { return nil }
+                let cache = textureCache
                 var cvTexture: CVMetalTexture?
                 let w = CVPixelBufferGetWidth(pixelBuffer)
                 let h = CVPixelBufferGetHeight(pixelBuffer)
@@ -1430,8 +1595,34 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     // Prepare buffers: planes (32*planeSize floats) and coeffs (detCount*32 floats)
                     let planesBytes = planes.count * MemoryLayout<Float>.size
                     let coeffBytes = coeffFlatFused.count * MemoryLayout<Float>.size
-                    let planesBuf = device.makeBuffer(bytes: planes, length: planesBytes, options: .storageModeShared)
-                    let coeffBuf = device.makeBuffer(bytes: coeffFlatFused, length: coeffBytes, options: .storageModeShared)
+
+                    // Reuse cached buffers instead of allocating new ones each frame
+                    let planesBuf: MTLBuffer?
+                    if let cached = cachedFusedPlanesBuf, cachedFusedPlanesCapacity >= planesBytes {
+                        planesBuf = cached
+                    } else {
+                        let newCapacity = max(planesBytes, cachedFusedPlanesCapacity * 2, 1024)
+                        cachedFusedPlanesBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared)
+                        cachedFusedPlanesCapacity = newCapacity
+                        planesBuf = cachedFusedPlanesBuf
+                    }
+                    let coeffBuf: MTLBuffer?
+                    if let cached = cachedFusedCoeffBuf, cachedFusedCoeffCapacity >= coeffBytes {
+                        coeffBuf = cached
+                    } else {
+                        let newCapacity = max(coeffBytes, cachedFusedCoeffCapacity * 2, 1024)
+                        cachedFusedCoeffBuf = device.makeBuffer(length: newCapacity, options: .storageModeShared)
+                        cachedFusedCoeffCapacity = newCapacity
+                        coeffBuf = cachedFusedCoeffBuf
+                    }
+
+                    // Copy data into reused buffers
+                    if let pb = planesBuf {
+                        memcpy(pb.contents(), planes, planesBytes)
+                    }
+                    if let cb = coeffBuf {
+                        memcpy(cb.contents(), coeffFlatFused, coeffBytes)
+                    }
 
                     // Output texture
                     let outDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: origW, height: origH, mipmapped: false)
@@ -1657,10 +1848,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             composedImage = img
         }
 
-        // Present result - for landscape, rotate the composite back for the portrait UI
+        // Present result - for landscape, rotate the composite back for portrait UI
+        // BUT skip rotation if UI is locked to landscape (vintage room)
         DispatchQueue.main.async {
             if var cgImg = composedImage {
-                if isLandscape {
+                if isLandscape && self.lockedOrientation != .landscape {
                     // Rotate back for portrait display: landscapeLeft -> 90° CCW, landscapeRight -> 90° CW
                     let rotatedImg = self.rotateCGImage90(cgImg, clockwise: deviceOrientation == .landscapeLeft)
                     cgImg = rotatedImg ?? cgImg
@@ -1687,52 +1879,53 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     // MARK: - Parse Prototypes
+    // FIXED: Reuses instance-level buffers to prevent ~26MB allocation per frame
     private func parsePrototypes(_ proto: MLMultiArray) -> (planes: [Float], count: Int, height: Int, width: Int)? {
         var shape = proto.shape.map { $0.intValue }
         if shape.count == 4 && shape[0] == 1 { shape.removeFirst() }
         guard shape.count == 3 else { return nil }
-        
+
         let cIdx: Int
         if shape[0] == 32 { cIdx = 0 }
         else if shape[2] == 32 { cIdx = 2 }
         else { cIdx = shape.firstIndex(of: 32) ?? -1 }
         guard cIdx >= 0 else { return nil }
-        
+
         let count = 32
         let h: Int, w: Int
         if cIdx == 0 { h = shape[1]; w = shape[2] }
         else { h = shape[0]; w = shape[1] }
-        
+
         let planeSize = h * w
         let total = shape[0] * shape[1] * shape[2]
-        
-        var rawFloats = [Float](repeating: 0, count: total)
-        if proto.dataType == .float16 {
-            let src = proto.dataPointer.bindMemory(to: UInt16.self, capacity: total)
-            var srcBuf = vImage_Buffer(data: UnsafeMutableRawPointer(mutating: src), height: 1, width: vImagePixelCount(total), rowBytes: total * 2)
-            rawFloats.withUnsafeMutableBufferPointer { dstPtr in
-                var dstBuf = vImage_Buffer(data: dstPtr.baseAddress, height: 1, width: vImagePixelCount(total), rowBytes: total * 4)
-                vImageConvert_Planar16FtoPlanarF(&srcBuf, &dstBuf, vImage_Flags(kvImageNoFlags))
-            }
-        } else if proto.dataType == .float32 {
-            memcpy(&rawFloats, proto.dataPointer, total * MemoryLayout<Float>.size)
+
+        // Model must be float32
+        guard proto.dataType == .float32 else { return nil }
+
+        // FIXED: Reuse instance-level buffers instead of allocating per frame
+        if protoRawFloats.count != total {
+            protoRawFloats = [Float](repeating: 0, count: total)
         }
-        
-        var planes = [Float](repeating: 0, count: count * planeSize)
+        if protoPlanes.count != count * planeSize {
+            protoPlanes = [Float](repeating: 0, count: count * planeSize)
+        }
+
+        memcpy(&protoRawFloats, proto.dataPointer, total * MemoryLayout<Float>.size)
+
         if cIdx == 0 {
-            memcpy(&planes, rawFloats, count * planeSize * MemoryLayout<Float>.size)
+            memcpy(&protoPlanes, protoRawFloats, count * planeSize * MemoryLayout<Float>.size)
         } else if cIdx == 2 {
             for y in 0..<h {
                 for x in 0..<w {
                     let baseHW = (y * w + x) * count
                     let dstBase = y * w + x
                     for k in 0..<count {
-                        planes[k * planeSize + dstBase] = rawFloats[baseHW + k]
+                        protoPlanes[k * planeSize + dstBase] = protoRawFloats[baseHW + k]
                     }
                 }
             }
         }
-        return (planes, count, h, w)
+        return (protoPlanes, count, h, w)
     }
 
     // MARK: - Upscale Mask
