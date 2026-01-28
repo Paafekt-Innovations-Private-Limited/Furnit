@@ -1873,7 +1873,7 @@ struct SceneKitViewer: View {
             SceneView(
                 scene: scene,
                 pointOfView: cameraNode,
-                options: [.autoenablesDefaultLighting]  // Removed .allowsCameraControl - GlobalCameraController handles gestures
+                options: [.autoenablesDefaultLighting]  // Removed .allowsCameraControl - SceneKitGestureOverlay handles gestures
             )
             .allowsHitTesting(false)  // Let TouchDragOverlay receive all touches
             .onAppear {
@@ -1891,7 +1891,7 @@ struct SceneKitViewer: View {
                 }
             }
             .onDisappear {
-                GlobalCameraController.shared.clearCamera()
+                // Camera cleanup handled by SceneKitGestureOverlay
             }
 
             // Loading overlay while setting up
@@ -1928,8 +1928,8 @@ struct SceneKitViewer: View {
                     .transition(.opacity)
             }
 
-            // ✅ GLOBAL JOYSTICK - uses GlobalCameraController
-            SimpleJoystickOverlay(photoOrientation: .portrait)
+            // ✅ UNIFIED GESTURE HANDLER - same gestures as RealityKit rooms
+            SceneKitGestureOverlay(cameraNode: cameraNode)
                 .allowsHitTesting(true)
                 .zIndex(99996)
 
@@ -2283,10 +2283,8 @@ struct SceneKitViewer: View {
         scene.rootNode.addChildNode(camNode)
         cameraNode = camNode
 
-        // ✅ Register with GlobalCameraController for joystick movement
-        GlobalCameraController.shared.registerSceneKitCamera(camNode)
-
-        logDebug("   ✅ Camera setup complete and registered with GlobalCameraController")
+        // Camera control handled by SceneKitGestureOverlay (unified gesture handler)
+        logDebug("   ✅ Camera setup complete - gestures handled by SceneKitGestureOverlay")
     }
 
     // MARK: - Screenshot

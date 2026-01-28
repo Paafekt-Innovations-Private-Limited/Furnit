@@ -63,9 +63,10 @@ struct RealityKitView: UIViewRepresentable {
     }
     
     func updateUIView(_ uiView: ARView, context: Context) {
-        // ✅ ALWAYS register camera with global controller (both anchor and camera entity)
+        // ❌ DO NOT register with GlobalCameraController - RealityKitGestureHandlers handles all gestures
+        // GlobalCameraController is only for SceneKit rooms (vintage/cozy/manual)
+        // Registering here causes conflicts with RealityKitGestureHandlers' rotation
         if let cameraAnchor = context.coordinator.cameraAnchor {
-            GlobalCameraController.shared.registerRealityKitCamera(cameraAnchor, camera: context.coordinator.cameraEntity, arView: uiView)
             cameraMovementManager.setCameraAnchor(cameraAnchor)
         }
 
@@ -529,9 +530,8 @@ struct RealityKitView: UIViewRepresentable {
                     // ✅ Add camera to scene AFTER model and AFTER positioning (ensures camera takes precedence)
                     coordinator.addCameraToScene(arView: arView)
 
-                    // Register with GlobalCameraController
-                    GlobalCameraController.shared.registerRealityKitCamera(cameraAnchor, camera: coordinator.cameraEntity)
-                    logDebug("✅ [RealityKitView] Camera registered with GlobalCameraController")
+                    // ❌ DO NOT register with GlobalCameraController - RealityKitGestureHandlers handles all gestures
+                    logDebug("✅ [RealityKitView] Camera ready - gestures handled by RealityKitGestureHandlers")
                 } else if let cameraAnchor = coordinator.cameraAnchor {
                     // Fallback if no bounds - use default position
                     logDebug("⚠️ [RealityKitView] NO BOUNDS - using DEFAULT position")
@@ -548,9 +548,8 @@ struct RealityKitView: UIViewRepresentable {
                     // ✅ Add camera to scene AFTER model and AFTER positioning
                     coordinator.addCameraToScene(arView: arView)
 
-                    // Register with GlobalCameraController
-                    GlobalCameraController.shared.registerRealityKitCamera(cameraAnchor, camera: coordinator.cameraEntity)
-                    logDebug("✅ [RealityKitView] Camera registered with GlobalCameraController")
+                    // ❌ DO NOT register with GlobalCameraController - RealityKitGestureHandlers handles all gestures
+                    logDebug("✅ [RealityKitView] Camera ready - gestures handled by RealityKitGestureHandlers")
                 } else {
                     logDebug("❌ [RealityKitView] NO CAMERA ANCHOR - cannot position camera!")
                 }
