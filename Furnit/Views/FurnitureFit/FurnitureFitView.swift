@@ -265,11 +265,46 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var protoRawFloats: [Float] = []
     private var protoPlanes: [Float] = []
 
+    // MARK: - BLAS / mask scratch buffers (reused per frame, O(planeSize) not O(planeSize*N))
+    private var scratchPrimaryLogits: [Float] = []
+    private var scratchCandidateLogits: [Float] = []
+
+    private func ensureFloatCapacity(_ arr: inout [Float], count: Int) {
+        if arr.count < count {
+            arr = [Float](repeating: 0, count: count)
+        } else {
+            arr.withUnsafeMutableBufferPointer { buf in
+                memset(buf.baseAddress!, 0, count * MemoryLayout<Float>.size)
+            }
+        }
+    }
+
+    // MARK: - Reusable CVPixelBuffer & MLMultiArray (prevents allocation per frame)
+    private var cachedSquareBuffer: CVPixelBuffer?
+    private var cachedSquareSize: Int = 0
+    private var cachedMLArray: MLMultiArray?
+    private var cachedMLArraySize: Int = 0
+
 // GPU mask builder (optional)
 private lazy var metalMaskLogic: MetalMaskLogic? = {
     guard let d = metalDevice else { return nil }
     return MetalMaskLogic(device: d)
 }()
+    // MARK: - Memory Logging
+    private func logMemory(_ tag: String) {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        if result == KERN_SUCCESS {
+            let usedMB = Double(info.resident_size) / 1024.0 / 1024.0
+            logDebug("🧠 [\(tag)] Memory: \(String(format: "%.1f", usedMB)) MB")
+        }
+    }
+
     // MARK: Model & State
     private var mlModel: MLModel?  // yoloe-11l 1280 model
     private let detectionQueue = DispatchQueue(label: "com.furnit.detection", qos: .userInitiated)
@@ -612,7 +647,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     // MARK: - Main Processing Pipeline
     private func processFrame(_ pixelBuffer: CVPixelBuffer) {
+        autoreleasepool {
+            processFrameInner(pixelBuffer)
+        }
+    }
+
+    private func processFrameInner(_ pixelBuffer: CVPixelBuffer) {
         let frameStart = Date()
+        if debugMode { logMemory("FRAME START") }
 
         guard let model = mlModel else {
             resetProcessingFlag()
@@ -715,6 +757,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let t2End = Date()
         if debugMode {
             logDebug("⏱️ STAGE 2 - Inference: \(String(format: "%.2f", t2End.timeIntervalSince(t2) * 1000)) ms")
+            logMemory("AFTER INFERENCE")
         }
 
         // STAGE 3: Parse outputs (tensors + detections + prototypes)
@@ -1087,18 +1130,18 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ STAGE 5a - Prune: \(pruneMs) ms, \(candidates.count - 1) → \(prunedCandidates.count) candidates")
         }
 
-        // STAGE 5b: Batched SGEMM for all candidate logits + overlap classification
+        // STAGE 5b: Per-candidate SGEMV (memory-efficient: O(planeSize) not O(planeSize*N))
 
-        // Build primary logits using transposed SGEMV (no matrix transpose needed!)
-        // planes is (32 x planeSize), we compute: y = planes^T * coeffs
-        // Result: y[px] = sum_ch(planes[ch, px] * coeffs[ch]) for each pixel
-        var primaryLogits = [Float](repeating: 0, count: planeSize)
+        // Build primary logits into scratch buffer (reused every frame)
+        ensureFloatCapacity(&scratchPrimaryLogits, count: planeSize)
+
         planes.withUnsafeBufferPointer { planesPtr in
             primary.coeffs.withUnsafeBufferPointer { xPtr in
-                primaryLogits.withUnsafeMutableBufferPointer { yPtr in
-                    // planes is (32 x planeSize), transposed gives (planeSize x 32)
-                    // m=32, n=planeSize, lda=planeSize
-                    blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0, A: planesPtr.baseAddress!, lda: BLASInt(planeSize), x: xPtr.baseAddress!, incx: 1, beta: 0.0, y: yPtr.baseAddress!, incy: 1)
+                scratchPrimaryLogits.withUnsafeMutableBufferPointer { yPtr in
+                    blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0,
+                                              A: planesPtr.baseAddress!, lda: BLASInt(planeSize),
+                                              x: xPtr.baseAddress!, incx: 1,
+                                              beta: 0.0, y: yPtr.baseAddress!, incy: 1)
                 }
             }
         }
@@ -1106,7 +1149,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         // Count primary mask area
         var primaryMaskArea = 0
         for i in 0..<planeSize {
-            if primaryLogits[i] > 0 { primaryMaskArea += 1 }
+            if scratchPrimaryLogits[i] > 0 { primaryMaskArea += 1 }
         }
 
         if debugMode {
@@ -1114,122 +1157,98 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("      mask pixels: \(primaryMaskArea)")
         }
 
-        // Keep primary by definition
+        // Bbox IoU helper for cheap deduplication gate
+        func bboxIoU(_ a: UnionDet, _ b: UnionDet) -> Float {
+            let ax1 = a.x - a.w * 0.5, ay1 = a.y - a.h * 0.5
+            let ax2 = a.x + a.w * 0.5, ay2 = a.y + a.h * 0.5
+            let bx1 = b.x - b.w * 0.5, by1 = b.y - b.h * 0.5
+            let bx2 = b.x + b.w * 0.5, by2 = b.y + b.h * 0.5
+            let ix1 = max(ax1, bx1), iy1 = max(ay1, by1)
+            let ix2 = min(ax2, bx2), iy2 = min(ay2, by2)
+            let iw = max(0, ix2 - ix1), ih = max(0, iy2 - iy1)
+            let inter = iw * ih
+            let aArea = a.w * a.h, bArea = b.w * b.h
+            let uni = aArea + bArea - inter
+            return uni > 0 ? inter / uni : 0
+        }
+
+        let bboxDupeThreshold: Float = 0.7
+
+        // Result container: start with primary already selected
         var kept2: [UnionDet] = [primary]
 
-
-        // If no candidates to check, skip SGEMM
         if prunedCandidates.isEmpty {
             if debugMode { logDebug("   No candidates to check after pruning") }
         } else {
-            // 1) Build coefficient matrix B for ALL pruned candidates: B is (32 x N) row-major
-            let N = prunedCandidates.count
-            var B = [Float](repeating: 0, count: 32 * N)
-            for j in 0..<N {
-                let coeffs = prunedCandidates[j].det.coeffs
-                for k in 0..<32 { B[k * N + j] = coeffs[k] }
-            }
-
-            // 2) SGEMM: C = planes^T * B where planes is (32 x planeSize), B is (32 x N), C is (planeSize x N)
-            var C = [Float](repeating: 0, count: planeSize * N)
+            // Scratch buffer for candidate logits (reused per candidate)
+            ensureFloatCapacity(&scratchCandidateLogits, count: planeSize)
 
             planes.withUnsafeBufferPointer { planesPtr in
-                B.withUnsafeBufferPointer { bPtr in
-                    C.withUnsafeMutableBufferPointer { cPtr in
-                        let M = BLASInt(planeSize)
-                        let Nbl = BLASInt(N)
-                        let K = BLASInt(32)
-                        let lda = BLASInt(planeSize)
-                        let ldb = Nbl
-                        let ldc = Nbl
-                        blas_sgemm_rowmajor_transA(m: M, n: Nbl, k: K, alpha: 1.0, A: planesPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: 0.0, C: cPtr.baseAddress!, ldc: ldc)
-                    }
-                }
-            }
+                scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
 
-            // 3) Threshold C in-place with vDSP_vthr: values <= 0 → 0, positives unchanged
-            C.withUnsafeMutableBufferPointer { cPtr in
-                var thresh: Float = 0.0
-                vDSP_vthr(cPtr.baseAddress!, 1, &thresh, cPtr.baseAddress!, 1, vDSP_Length(planeSize * N))
-            }
+                    for (_, candPair) in prunedCandidates.enumerated() {
+                        let origIdx = candPair.idx
+                        let d = candPair.det
 
-            // 4) Fused pass over C to compute candArea + interWithPrimary
-            var candArea = [Int](repeating: 0, count: N)
-            var interWithPrimary = [Int](repeating: 0, count: N)
-
-            C.withUnsafeBufferPointer { cPtr in
-                primaryLogits.withUnsafeBufferPointer { pPtr in
-                    for px in 0..<planeSize {
-                        let rowBase = px * N
-                        let pOn = pPtr[px] > 0
-                        for j in 0..<N {
-                            if cPtr[rowBase + j] > 0 {
-                                candArea[j] &+= 1
-                                if pOn { interWithPrimary[j] &+= 1 }
+                        // 1. Compute candidate logits: tmp = planes^T * coeffs
+                        scratchCandidateLogits.withUnsafeMutableBufferPointer { yPtr in
+                            d.coeffs.withUnsafeBufferPointer { xPtr in
+                                blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0,
+                                                          A: planesPtr.baseAddress!, lda: BLASInt(planeSize),
+                                                          x: xPtr.baseAddress!, incx: 1,
+                                                          beta: 0.0, y: yPtr.baseAddress!, incy: 1)
                             }
                         }
-                    }
-                }
-            }
 
-            // Bbox IoU helper for cheap deduplication gate
-            func bboxIoU(_ a: UnionDet, _ b: UnionDet) -> Float {
-                let ax1 = a.x - a.w * 0.5, ay1 = a.y - a.h * 0.5
-                let ax2 = a.x + a.w * 0.5, ay2 = a.y + a.h * 0.5
-                let bx1 = b.x - b.w * 0.5, by1 = b.y - b.h * 0.5
-                let bx2 = b.x + b.w * 0.5, by2 = b.y + b.h * 0.5
-                let ix1 = max(ax1, bx1), iy1 = max(ay1, by1)
-                let ix2 = min(ax2, bx2), iy2 = min(ay2, by2)
-                let iw = max(0, ix2 - ix1), ih = max(0, iy2 - iy1)
-                let inter = iw * ih
-                let aArea = a.w * a.h, bArea = b.w * b.h
-                let uni = aArea + bArea - inter
-                return uni > 0 ? inter / uni : 0
-            }
+                        // 2. Compute area & intersection with primary in a single pass
+                        var area = 0
+                        var inter = 0
 
-            let bboxDupeThreshold: Float = 0.7  // Bbox IoU gate for deduplication
-
-            // Filter by overlap with primary (must overlap within primary's bbox)
-            for j in 0..<N {
-                let (origIdx, d) = prunedCandidates[j]
-                let area = candArea[j]
-                if area == 0 { continue }
-
-                // Reject if no mask overlap within primary's bbox
-                let overlapPixels = interWithPrimary[j]
-                if overlapPixels == 0 {
-                    if debugMode {
-                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) no overlap within primary bbox")
-                    }
-                    continue
-                }
-
-                // Reject if candidate is too large compared to primary
-                let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
-                if tooLarge {
-                    if debugMode {
-                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) TOO LARGE")
-                    }
-                    continue
-                }
-
-                // Check for duplicate using cheap bbox IoU (no Set operations!)
-                var isDuplicate = false
-                for keptDet in kept2 {
-                    let iou = bboxIoU(d, keptDet)
-                    if iou > bboxDupeThreshold {
-                        isDuplicate = true
-                        if debugMode {
-                            logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) DUPLICATE (bbox IoU=\(String(format: "%.1f", iou * 100))%)")
+                        scratchCandidateLogits.withUnsafeBufferPointer { cPtr in
+                            for px in 0..<planeSize {
+                                if cPtr[px] > 0 {
+                                    area &+= 1
+                                    if pPtr[px] > 0 { inter &+= 1 }
+                                }
+                            }
                         }
-                        break
-                    }
-                }
 
-                if !isDuplicate {
-                    kept2.append(d)
-                    if debugMode {
-                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(overlapPixels)px bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
+                        if area == 0 {
+                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) area=0") }
+                            continue
+                        }
+
+                        if inter == 0 {
+                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) no mask overlap") }
+                            continue
+                        }
+
+                        // Reject if candidate is too large compared to primary
+                        let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
+                        if tooLarge {
+                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) TOO LARGE") }
+                            continue
+                        }
+
+                        // 3. Bbox IoU dedupe gate
+                        var isDuplicate = false
+                        for keptDet in kept2 {
+                            let iou = bboxIoU(d, keptDet)
+                            if iou > bboxDupeThreshold {
+                                isDuplicate = true
+                                if debugMode {
+                                    logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) DUPLICATE (bbox IoU=\(String(format: "%.1f", iou * 100))%)")
+                                }
+                                break
+                            }
+                        }
+
+                        if !isDuplicate {
+                            kept2.append(d)
+                            if debugMode {
+                                logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(inter)px bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
+                            }
+                        }
                     }
                 }
             }
@@ -1238,7 +1257,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let t5End = Date()
         if debugMode {
             let filterMs = String(format: "%.2f", t5End.timeIntervalSince(t5a) * 1000)
-            logDebug("⏱️ STAGE 5b - Filter (SGEMM): \(filterMs) ms, kept=\(kept2.count)")
+            logDebug("⏱️ STAGE 5b - Filter (SGEMV): \(filterMs) ms, kept=\(kept2.count)")
+            logMemory("AFTER STAGE 5b")
         }
 
         if kept2.isEmpty {
@@ -1446,6 +1466,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if debugMode {
             let buildPreMs = String(format: "%.2f", Date().timeIntervalSince(t13to15b) * 1000)
             logDebug("⏱️ STAGE 13–15b - Build mask: \(buildPreMs) ms, positive: \(build1.positiveCount)")
+            logMemory("AFTER BUILD MASK")
         }
 
         // STAGE 15c: Clip mask to bbox (zero out pixels outside bbox)
@@ -1811,6 +1832,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let finalizeMs = String(format: "%.2f", t7End.timeIntervalSince(t7) * 1000)
             let frameTotalMs = String(format: "%.2f", frameEnd.timeIntervalSince(frameStart) * 1000)
             logDebug("⏱️ STAGE 7 - Finalize: \(finalizeMs) ms")
+            logMemory("FRAME END")
             logDebug("⏱️ FRAME TOTAL: \(frameTotalMs) ms")
             logDebug("⏱️ ═══════════════════════════════════════════\n")
         }
@@ -1938,9 +1960,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let padX = (size - newW) / 2
         let padY = (size - newH) / 2
 
-        var dstOpt: CVPixelBuffer?
-        guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &dstOpt) == kCVReturnSuccess,
-              let dst = dstOpt else { return nil }
+        // Reuse cached buffer if size matches, otherwise create new one
+        if cachedSquareSize != size || cachedSquareBuffer == nil {
+            var newBuffer: CVPixelBuffer?
+            guard CVPixelBufferCreate(nil, size, size, kCVPixelFormatType_32BGRA, nil, &newBuffer) == kCVReturnSuccess,
+                  let buf = newBuffer else { return nil }
+            cachedSquareBuffer = buf
+            cachedSquareSize = size
+        }
+
+        guard let dst = cachedSquareBuffer else { return nil }
 
         CVPixelBufferLockBaseAddress(dst, [])
         defer { CVPixelBufferUnlockBaseAddress(dst, []) }
@@ -1969,7 +1998,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let height = CVPixelBufferGetHeight(pixelBuffer)
         // Support any square size (640, 1280, etc.)
         guard width == height, width > 0 else { return nil }
-        guard let array = try? MLMultiArray(shape: [1, 3, NSNumber(value: height), NSNumber(value: width)], dataType: .float32) else { return nil }
+
+        // Reuse cached MLMultiArray if size matches
+        if cachedMLArraySize != width || cachedMLArray == nil {
+            guard let newArray = try? MLMultiArray(shape: [1, 3, NSNumber(value: height), NSNumber(value: width)], dataType: .float32) else { return nil }
+            cachedMLArray = newArray
+            cachedMLArraySize = width
+        }
+        guard let array = cachedMLArray else { return nil }
         
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
