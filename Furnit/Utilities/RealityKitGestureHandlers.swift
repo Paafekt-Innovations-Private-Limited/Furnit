@@ -25,6 +25,7 @@ class RealityKitGestureHandlers {
     private weak var cameraAnchor: AnchorEntity?
     private var initialCameraTransform: Transform = Transform.identity
     private var lastPanTranslation: CGPoint = .zero
+    private var lastPositionPanTranslation: CGPoint = .zero  // For smooth two-finger position movement
     private var initialTouchPoint: CGPoint?
 
     // Accumulated rotation state to prevent flickering and maintain smooth rotation
@@ -350,51 +351,62 @@ class RealityKitGestureHandlers {
     // Handle two-finger pan gesture for position movement (strafe left/right/up/down)
     @objc private func handlePositionPanGesture(_ gesture: UIPanGestureRecognizer) {
         guard let _ = arView, let cameraAnchor = cameraAnchor else { return }
-        
+
         let translation = gesture.translation(in: arView)
-        
+
         switch gesture.state {
         case .began:
             initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = gesture.location(in: arView)
-            
+            lastPositionPanTranslation = translation  // Initialize for delta calculation
+
         case .changed:
-            // Two-finger pan for direct camera position movement (strafe)
-            let deltaX = Float(translation.x) * panSensitivity
-            let deltaY = Float(-translation.y) * panSensitivity // Invert Y for natural up/down
-            
+            // Calculate incremental delta since last update (same approach as single-finger pan)
+            let deltaTranslation = CGPoint(
+                x: translation.x - lastPositionPanTranslation.x,
+                y: translation.y - lastPositionPanTranslation.y
+            )
+
+            // Convert delta to position movement
+            let deltaX = Float(deltaTranslation.x) * panSensitivity
+            let deltaY = Float(-deltaTranslation.y) * panSensitivity // Invert Y for natural up/down
+
             // Get camera's current transform for directional reference
-            let cameraTransform = cameraAnchor.transform
-            
-            // Calculate camera's right and up vectors in world space
+            let currentTransform = cameraAnchor.transform
+
+            // Calculate camera's right vector in world space (horizontal movement only)
             let cameraRight = normalize(SIMD3<Float>(
-                cameraTransform.rotation.act(SIMD3<Float>(1, 0, 0)).x,
+                currentTransform.rotation.act(SIMD3<Float>(1, 0, 0)).x,
                 0, // Keep horizontal movement
-                cameraTransform.rotation.act(SIMD3<Float>(1, 0, 0)).z
+                currentTransform.rotation.act(SIMD3<Float>(1, 0, 0)).z
             ))
-            
+
             let cameraUp = SIMD3<Float>(0, 1, 0) // World up for vertical movement
-            
-            // Calculate camera movement (direct camera control)
+
+            // Calculate incremental camera movement
             let cameraMovement = cameraRight * deltaX + cameraUp * deltaY
-            var newPosition = initialCameraTransform.translation + cameraMovement
-            
+            var newPosition = currentTransform.translation + cameraMovement
+
             // Apply boundary constraints if available
             if let boundaryManager = boundaryManager {
                 newPosition = boundaryManager.constrainCameraPosition(newPosition)
             }
-            
-            // Apply the new camera position
-            var newTransform = initialCameraTransform
+
+            // Apply the new camera position (incremental update)
+            var newTransform = currentTransform
             newTransform.translation = newPosition
             cameraAnchor.transform = newTransform
 
-            // logDebug("📷 Two-finger camera movement: (\(deltaX), \(deltaY))")
+            // Update last translation for next delta calculation
+            lastPositionPanTranslation = translation
+
+            // logDebug("📷 Two-finger camera movement delta: (\(deltaX), \(deltaY))")
 
         case .ended, .cancelled:
             initialCameraTransform = cameraAnchor.transform
             initialTouchPoint = nil
-            
+            lastPositionPanTranslation = .zero
+
         default:
             break
         }
