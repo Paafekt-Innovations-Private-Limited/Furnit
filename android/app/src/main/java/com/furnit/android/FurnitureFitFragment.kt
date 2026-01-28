@@ -28,7 +28,6 @@ import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.services.FurnitureFitManager
-import com.furnit.android.views.JoystickView
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
 import io.github.sceneview.node.ModelNode
@@ -58,6 +57,11 @@ class FurnitureFitFragment : Fragment() {
     private var showRoomBackground = true  // Show room behind segmented furniture
     private var selectedRoomId: String? = null
     private var selectedRoomName: String? = null
+
+    // Touch-anywhere drag for camera control
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private var isDragging = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -143,6 +147,15 @@ class FurnitureFitFragment : Fragment() {
             setOnClickListener { activity?.finish() }
         }
 
+        // Touch layer for drag-anywhere camera control
+        val touchLayer = View(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            setOnTouchListener { _, event ->
+                handleCameraDrag(event)
+                true
+            }
+        }
+
         // Bottom controls container
         val bottomControls = FrameLayout(requireContext()).apply {
             val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
@@ -151,24 +164,18 @@ class FurnitureFitFragment : Fragment() {
             layoutParams = lp
         }
 
-        // Joystick (center) for camera control
-        val joystickContainer = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+        // Hint label (center) - shows drag instruction
+        val hintLabel = TextView(requireContext()).apply {
+            text = "Drag to move camera"
+            setTextColor(0xAAFFFFFF.toInt())
+            textSize = 12f
+            setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
             val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
             lp.gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+            lp.setMargins(0, 0, 0, 8)
             layoutParams = lp
         }
-
-        val joystick = JoystickView(requireContext()).apply {
-            val size = (100 * resources.displayMetrics.density).toInt()
-            layoutParams = LinearLayout.LayoutParams(size, size)
-            onJoystickMove = { x, y ->
-                moveRoomCamera(x, y)
-            }
-        }
-        joystickContainer.addView(joystick)
-        bottomControls.addView(joystickContainer)
+        bottomControls.addView(hintLabel)
 
         // Screenshot button (right)
         val screenshotButton = ImageButton(requireContext()).apply {
@@ -185,6 +192,7 @@ class FurnitureFitFragment : Fragment() {
         root.addView(previewView)
         root.addView(roomSceneView)  // 3D room background between camera and overlay
         root.addView(overlay)
+        root.addView(touchLayer)     // Touch-anywhere drag layer
         root.addView(statusLabel)
         root.addView(progressContainer)
         root.addView(backButton)
@@ -197,24 +205,38 @@ class FurnitureFitFragment : Fragment() {
         return root
     }
 
-    private fun moveRoomCamera(normalizedX: Float, normalizedY: Float) {
-        val moveSpeed = 0.1f
-        val deadZone = 0.1f
+    private fun handleCameraDrag(event: MotionEvent) {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                lastTouchX = event.x
+                lastTouchY = event.y
+                isDragging = true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (isDragging && roomSceneView.visibility == View.VISIBLE) {
+                    val deltaX = event.x - lastTouchX
+                    val deltaY = event.y - lastTouchY
 
-        val magnitude = kotlin.math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY)
-        if (magnitude < deadZone) return
+                    // Convert screen pixels to camera movement
+                    // Negative X because dragging right should move camera left (pan effect)
+                    val sensitivity = 0.01f
+                    val camera = roomSceneView.cameraNode
+                    val position = camera.position
 
-        val camera = roomSceneView.cameraNode
-        val position = camera.position
+                    camera.position = Position(
+                        position.x - deltaX * sensitivity,
+                        position.y,
+                        position.z - deltaY * sensitivity
+                    )
 
-        val deltaX = normalizedX * moveSpeed
-        val deltaZ = normalizedY * moveSpeed
-
-        camera.position = Position(
-            position.x + deltaX,
-            position.y,
-            position.z + deltaZ
-        )
+                    lastTouchX = event.x
+                    lastTouchY = event.y
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                isDragging = false
+            }
+        }
     }
 
     private fun takeScreenshot(rootView: View) {

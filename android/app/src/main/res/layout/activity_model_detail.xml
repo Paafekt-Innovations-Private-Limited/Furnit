@@ -132,7 +132,7 @@
             android:focusable="true"
             android:contentDescription="AI Segment Furniture" />
 
-        <!-- Joystick (center) for camera control -->
+        <!-- Center controls - hint and orientation -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -140,12 +140,19 @@
             android:orientation="vertical"
             android:gravity="center">
 
-            <com.furnit.android.views.JoystickView
-                android:id="@+id/joystickView"
-                android:layout_width="100dp"
-                android:layout_height="100dp" />
+            <!-- Drag hint -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Drag to move camera"
+                android:textSize="12sp"
+                android:textColor="#AAFFFFFF"
+                android:shadowColor="#000000"
+                android:shadowDx="1"
+                android:shadowDy="1"
+                android:shadowRadius="2" />
 
-            <!-- Orientation label below joystick -->
+            <!-- Orientation label -->
             <LinearLayout
                 android:id="@+id/orientationLabel"
                 android:layout_width="wrap_content"

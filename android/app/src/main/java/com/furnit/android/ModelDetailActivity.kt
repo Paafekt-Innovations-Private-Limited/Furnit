@@ -22,9 +22,9 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
+import android.view.MotionEvent
 import com.furnit.android.models.ModelManager
 import com.furnit.android.utils.RoomBoundaryManager
-import com.furnit.android.views.JoystickView
 import io.github.sceneview.SceneView
 import io.github.sceneview.node.CubeNode
 import io.github.sceneview.node.ModelNode
@@ -55,10 +55,14 @@ class ModelDetailActivity : AppCompatActivity() {
     private lateinit var helpButton: ImageButton
     private lateinit var brainButton: ImageButton
     private lateinit var screenshotButton: ImageButton
-    private lateinit var joystickView: JoystickView
     private lateinit var orientationLabel: LinearLayout
     private lateinit var boundaryManager: RoomBoundaryManager
     private var isPreviewMode = false
+
+    // Touch-anywhere drag for camera control
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private var isDragging = false
     private var glbPath: String? = null
     private var currentModelId: String? = null
     private var currentModelNode: ModelNode? = null
@@ -84,7 +88,6 @@ class ModelDetailActivity : AppCompatActivity() {
         helpButton = findViewById(R.id.helpButton)
         brainButton = findViewById(R.id.brainButton)
         screenshotButton = findViewById(R.id.screenshotButton)
-        joystickView = findViewById(R.id.joystickView)
         orientationLabel = findViewById(R.id.orientationLabel)
 
         val backButton: ImageButton = findViewById(R.id.backButton)
@@ -96,10 +99,10 @@ class ModelDetailActivity : AppCompatActivity() {
         // Screenshot button
         screenshotButton.setOnClickListener { takeScreenshot() }
 
-        // Joystick for camera movement
-        joystickView.onJoystickMove = { x, y ->
-            Log.d(TAG, "Joystick move: x=$x, y=$y")
-            moveCamera(x, y)
+        // Touch-anywhere drag for camera control
+        sceneView.setOnTouchListener { _, event ->
+            handleCameraDrag(event)
+            true
         }
 
         // Update orientation label based on device orientation
@@ -346,30 +349,38 @@ class ModelDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun moveCamera(normalizedX: Float, normalizedY: Float) {
-        // Movement speed - larger for bigger room
-        val moveSpeed = 0.2f
-        val deadZone = 0.1f
+    private fun handleCameraDrag(event: MotionEvent) {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                lastTouchX = event.x
+                lastTouchY = event.y
+                isDragging = true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (isDragging) {
+                    val deltaX = event.x - lastTouchX
+                    val deltaY = event.y - lastTouchY
 
-        // Skip small movements
-        val magnitude = kotlin.math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY)
-        if (magnitude < deadZone) return
+                    // Convert screen pixels to camera movement
+                    // Negative because dragging right should move camera left (pan effect)
+                    val sensitivity = 0.02f
+                    val camera = sceneView.cameraNode
+                    val position = camera.position
 
-        // Get camera's current transform
-        val camera = sceneView.cameraNode
-        val position = camera.position
+                    camera.position = io.github.sceneview.math.Position(
+                        position.x - deltaX * sensitivity,
+                        position.y,
+                        position.z - deltaY * sensitivity
+                    )
 
-        // Calculate movement in camera's local space
-        // X axis = left/right, Z axis = forward/backward
-        val deltaX = normalizedX * moveSpeed
-        val deltaZ = normalizedY * moveSpeed
-
-        // Apply movement directly (no constraints for debug viewing from outside)
-        camera.position = io.github.sceneview.math.Position(
-            position.x + deltaX,
-            position.y,
-            position.z + deltaZ
-        )
+                    lastTouchX = event.x
+                    lastTouchY = event.y
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                isDragging = false
+            }
+        }
     }
 
     private fun updateOrientationLabel() {
