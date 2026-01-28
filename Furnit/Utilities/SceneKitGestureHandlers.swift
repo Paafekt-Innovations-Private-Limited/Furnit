@@ -30,7 +30,7 @@ class SceneKitGestureHandlers: NSObject {
     // Sensitivity settings
     private let rotationSensitivity: Float = 0.005
     private let panSensitivity: Float = 0.005
-    private let zoomSensitivity: Float = 1.5  // 3x faster zoom (was 0.5)
+    private let zoomSensitivity: Float = 2.5  // 5x faster zoom (was 0.5)
     private let maxPitch: Float = Float.pi / 4.0  // 45 degrees
 
     // MARK: - Initialization
