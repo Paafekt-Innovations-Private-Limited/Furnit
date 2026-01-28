@@ -98,6 +98,7 @@ class ModelDetailActivity : AppCompatActivity() {
 
         // Joystick for camera movement
         joystickView.onJoystickMove = { x, y ->
+            Log.d(TAG, "Joystick move: x=$x, y=$y")
             moveCamera(x, y)
         }
 
@@ -113,20 +114,38 @@ class ModelDetailActivity : AppCompatActivity() {
         if (directGlbPath != null) {
             // Direct GLB path mode (preview before save)
             glbPath = directGlbPath
-            modelTitle.text = "3D Room View"
+            modelTitle.text = "3D Room Preview"
+            Log.d(TAG, "Preview mode - GLB path: $directGlbPath")
 
             // In preview mode, show save button (down arrow), hide share button
             saveButton.visibility = View.VISIBLE
             saveButton.setOnClickListener { showSaveDialog() }
             shareButton.visibility = View.GONE
 
-            // Show brain button but prompt to save first
+            // Brain button prompts to save first in preview mode
             brainButton.visibility = View.VISIBLE
             brainButton.setOnClickListener {
-                Toast.makeText(this, "Please save the room first", Toast.LENGTH_SHORT).show()
+                Log.d(TAG, "Brain button clicked in preview mode")
+                Toast.makeText(this, "Save room first to use AI detection", Toast.LENGTH_SHORT).show()
             }
 
-            loadModel(directGlbPath)
+            // Screenshot works in preview mode
+            screenshotButton.visibility = View.VISIBLE
+            screenshotButton.setOnClickListener {
+                Log.d(TAG, "Screenshot button clicked in preview mode")
+                Toast.makeText(this, "Taking screenshot...", Toast.LENGTH_SHORT).show()
+                takeScreenshot()
+            }
+
+            // Verify file exists before loading
+            val glbFile = File(directGlbPath)
+            if (glbFile.exists()) {
+                Log.d(TAG, "Preview GLB exists: ${glbFile.length()} bytes")
+                loadModel(directGlbPath)
+            } else {
+                Log.e(TAG, "Preview GLB not found: $directGlbPath")
+                Toast.makeText(this, "Room file not found", Toast.LENGTH_SHORT).show()
+            }
         } else {
             // Model ID mode (existing rooms)
             val modelId = intent.getStringExtra(EXTRA_MODEL_ID) ?: return

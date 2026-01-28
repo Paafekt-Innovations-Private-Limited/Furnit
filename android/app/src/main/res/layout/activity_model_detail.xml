@@ -128,6 +128,8 @@
             android:background="@drawable/circle_button_blue"
             android:scaleType="centerInside"
             android:padding="12dp"
+            android:clickable="true"
+            android:focusable="true"
             android:contentDescription="AI Segment Furniture" />
 
         <!-- Joystick (center) for camera control -->

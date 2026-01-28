@@ -407,10 +407,12 @@ class ContentActivity : AppCompatActivity() {
             }
         }
 
-        // Long press to delete
-        card.setOnLongClickListener { v ->
-            showDeleteDialog(model)
-            true
+        // Long press to delete (only for user-created rooms)
+        if (model.isUserCreated) {
+            card.setOnLongClickListener { v ->
+                showDeleteDialog(model)
+                true
+            }
         }
 
         return card
