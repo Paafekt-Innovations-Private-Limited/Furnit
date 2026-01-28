@@ -47,10 +47,14 @@ class FurnitureFitFragment : Fragment() {
     private lateinit var roomSceneView: SceneView
     private lateinit var overlay: FurnitureFitOverlayView
     private lateinit var statusLabel: TextView
+    private lateinit var progressContainer: LinearLayout
+    private lateinit var progressBar: android.widget.ProgressBar
+    private lateinit var progressLabel: TextView
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
     private lateinit var manager: FurnitureFitManager
     private var isProcessing = false
+    private var hasFirstDetection = false
     private var showRoomBackground = true  // Show room behind segmented furniture
     private var selectedRoomId: String? = null
     private var selectedRoomName: String? = null
@@ -96,6 +100,36 @@ class FurnitureFitFragment : Fragment() {
             setPadding(24, 48, 24, 24)
             textSize = 14f
         }
+
+        // Progress container (like iOS progressContainer)
+        progressContainer = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(0x99000000.toInt())
+            setPadding(32, 16, 32, 16)
+            val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+            lp.gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
+            lp.setMargins(0, 120, 0, 0)
+            layoutParams = lp
+        }
+
+        progressLabel = TextView(requireContext()).apply {
+            text = "Starting camera..."
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setPadding(8, 4, 8, 8)
+        }
+        progressContainer.addView(progressLabel)
+
+        progressBar = android.widget.ProgressBar(requireContext(), null, android.R.attr.progressBarStyleHorizontal).apply {
+            val lp = LinearLayout.LayoutParams(250.dp, LinearLayout.LayoutParams.WRAP_CONTENT)
+            layoutParams = lp
+            max = 100
+            progress = 5
+            progressDrawable.setColorFilter(0xFF4CAF50.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+        }
+        progressContainer.addView(progressBar)
 
         // Back button
         val backButton = ImageButton(requireContext()).apply {
@@ -152,8 +186,12 @@ class FurnitureFitFragment : Fragment() {
         root.addView(roomSceneView)  // 3D room background between camera and overlay
         root.addView(overlay)
         root.addView(statusLabel)
+        root.addView(progressContainer)
         root.addView(backButton)
         root.addView(bottomControls)
+
+        // Initial progress
+        setProgress(5, "Starting camera...")
 
         startCamera()
         return root
@@ -317,9 +355,20 @@ class FurnitureFitFragment : Fragment() {
             return
         }
 
+        // Update progress during processing
+        if (!hasFirstDetection) {
+            setProgress(15, "Preprocessing...")
+        }
+
         manager.segmentWithDetectionsAsync(bitmap) { result ->
             activity?.runOnUiThread {
                 if (result != null && result.mask != null) {
+                    // First detection - hide progress bar
+                    if (!hasFirstDetection) {
+                        hasFirstDetection = true
+                        progressContainer.visibility = View.GONE
+                    }
+
                     // Show what was detected
                     val labels = result.detections.take(3).joinToString(", ") {
                         "${it.label} ${(it.confidence * 100).toInt()}%"
@@ -332,6 +381,9 @@ class FurnitureFitFragment : Fragment() {
                         roomSceneView.visibility = View.VISIBLE
                     }
                 } else {
+                    if (!hasFirstDetection) {
+                        setProgress(40, "Scanning for furniture...")
+                    }
                     statusLabel.text = "Scanning..."
                     overlay.setMaskAndDetections(null, emptyList())
                     roomSceneView.visibility = View.GONE
@@ -342,6 +394,18 @@ class FurnitureFitFragment : Fragment() {
 
         imageProxy.close()
     }
+
+    private fun setProgress(value: Int, text: String) {
+        if (hasFirstDetection) return
+        activity?.runOnUiThread {
+            progressContainer.visibility = View.VISIBLE
+            progressBar.progress = value
+            progressLabel.text = text
+        }
+    }
+
+    private val Int.dp: Int
+        get() = (this * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
         super.onDestroy()
