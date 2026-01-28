@@ -16,10 +16,13 @@ object TestCleanup {
 
     // Test-only directories (safe to delete entirely)
     private val TEST_ONLY_DIRECTORIES = listOf(
-        "test_camera",     // Camera test rooms
-        "test_glb",        // GLB generator test files
-        "test_mask",       // Mask test files
-        "test_room"        // Room processing tests
+        "test_camera",              // Camera test rooms
+        "test_glb",                 // GLB generator test files
+        "test_mask",                // Mask test files
+        "test_room",                // Room processing tests
+        "glb_test",                 // GlbGeneratorTest
+        "glb_doublesided_test",     // GlbDoubleSidedTest
+        "room_preview"              // Preview folder for RoomSaveFlowTest
     )
 
     // Pattern for test rooms INSIDE the rooms directory
@@ -32,7 +35,14 @@ object TestCleanup {
         "TestRoom_*.png",
         "test_*.glb",
         "test_*.png",
-        "test_*.jpg"
+        "test_*.jpg",
+        "TestScreenshot_*.png",       // Screenshot tests
+        "doublesided_test.glb",       // DoubleSided tests
+        "mesh_count_test.glb",
+        "material_names_test.glb",
+        "doublesided_position_test.glb",
+        "generator_string_test.glb",
+        "version_test.glb"
     )
 
     /**
