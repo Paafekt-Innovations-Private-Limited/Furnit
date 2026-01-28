@@ -193,35 +193,51 @@ class FurnitureFitFragment : Fragment() {
         val roomId = selectedRoomId ?: "vintage"
         Log.d("FurnitureFit", "Loading 3D room: $roomId")
 
-        // Map room ID to GLB asset path
-        val assetPath = when (roomId) {
-            "vintage" -> "models/vintage.glb"
-            "modern" -> "models/modern.glb"
-            "minimalist" -> "models/minimalist.glb"
-            else -> "models/$roomId.glb"
-        }
-
         lifecycleScope.launch {
             try {
+                val modelInstance = when {
+                    // Bundled rooms in assets
+                    roomId == "vintage" || roomId == "cozy_room" -> {
+                        val assetPath = "models/$roomId.glb"
+                        Log.d("FurnitureFit", "Loading from assets: $assetPath")
+                        roomSceneView.modelLoader.createModelInstance(assetFileLocation = assetPath)
+                    }
+                    // User-created rooms in filesDir
+                    else -> {
+                        val roomsDir = java.io.File(requireContext().filesDir, "rooms")
+                        val roomFolder = java.io.File(roomsDir, roomId)
+                        val glbFile = java.io.File(roomFolder, "room.glb")
+
+                        if (glbFile.exists()) {
+                            Log.d("FurnitureFit", "Loading from file: ${glbFile.absolutePath}")
+                            val bytes = glbFile.readBytes()
+                            val buffer = java.nio.ByteBuffer.wrap(bytes)
+                            roomSceneView.modelLoader.createModelInstance(buffer)
+                        } else {
+                            // Fallback to vintage if room not found
+                            Log.w("FurnitureFit", "Room not found: $roomId, falling back to vintage")
+                            roomSceneView.modelLoader.createModelInstance(assetFileLocation = "models/vintage.glb")
+                        }
+                    }
+                }
+
                 val modelNode = ModelNode(
-                    modelInstance = roomSceneView.modelLoader.createModelInstance(
-                        assetFileLocation = assetPath
-                    ),
+                    modelInstance = modelInstance,
                     scaleToUnits = null  // Keep original scale
                 )
 
                 modelNode.position = Position(0f, 0f, 0f)
                 roomSceneView.addChildNode(modelNode)
 
-                // Position camera at back wall, eye level, looking into room
+                // Position camera at back wall, eye level, looking at front wall
                 roomSceneView.cameraNode.apply {
-                    position = Position(0f, 1.6f, -4f)
-                    lookAt(Position(0f, 1.6f, 4f))
+                    position = Position(0f, 1.6f, 4f)   // At back of room
+                    lookAt(Position(0f, 1.4f, -4f))     // Looking at front wall
                 }
 
-                Log.d("FurnitureFit", "3D room loaded: $assetPath")
+                Log.d("FurnitureFit", "3D room loaded successfully")
             } catch (e: Exception) {
-                Log.e("FurnitureFit", "Failed to load 3D room: $assetPath", e)
+                Log.e("FurnitureFit", "Failed to load 3D room", e)
             }
         }
     }
