@@ -444,22 +444,19 @@ struct SharpRoomView: View {
                         Spacer()
                             .allowsHitTesting(false)
 
-                        // Joystick (center) - rotated 90° for horizontal viewing
-                        VStack(spacing: 8) {
-                            JoystickControl()
-                            VStack(spacing: 1) {
-                                Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
-                                    .font(.caption2)
-                                Text(NSLocalizedString("orientation.landscape", comment: ""))
-                                    .font(.caption2)
-                                    .fontWeight(.medium)
-                            }
-                            .foregroundColor(.white.opacity(0.8))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.black.opacity(0.4))
-                            .cornerRadius(6)
+                        // Orientation label (center)
+                        VStack(spacing: 1) {
+                            Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
+                                .font(.caption2)
+                            Text(NSLocalizedString("orientation.landscape", comment: ""))
+                                .font(.caption2)
+                                .fontWeight(.medium)
                         }
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.4))
+                        .cornerRadius(6)
                         .rotationEffect(.degrees(90))
 
                         Spacer()
@@ -488,9 +485,9 @@ struct SharpRoomView: View {
             } else {
                 // Portrait layout: standard bottom controls
 
-                // Joystick at bottom center
-                WebGLJoystickOverlay(photoOrientation: photoOrientation)
-                    .zIndex(99999)  // Above FurnitureFit overlay
+                // Touch-anywhere drag overlay for camera control
+                SimpleJoystickOverlay(photoOrientation: photoOrientation)
+                    .zIndex(99997)
 
                 // Buttons at bottom row
                 VStack {
@@ -1681,128 +1678,6 @@ struct AntimatterSplatView: UIViewRepresentable {
                     logDebug("🎥 [WebGL] Camera pose JS -> Swift: eye=(\(String(format: "%.2f", ex)), \(String(format: "%.2f", ey)), \(String(format: "%.2f", ez))) target=(\(String(format: "%.2f", tx)), \(String(format: "%.2f", ty)), \(String(format: "%.2f", tz)))")
                 }
             }
-        }
-    }
-}
-
-// MARK: - WebGL Joystick Control
-
-/// Just the joystick control without positioning (for use in custom layouts)
-struct JoystickControl: View {
-    @State private var offset: CGSize = .zero
-    @State private var isDragging = false
-
-    private let joystickSize: CGFloat = 120
-    private let knobSize: CGFloat = 50
-    private let maxOffset: CGFloat = 35
-
-    var body: some View {
-        ZStack {
-            // Outer ring
-            Circle()
-                .fill(Color.black.opacity(0.3))
-                .frame(width: joystickSize, height: joystickSize)
-
-            // Directional indicators
-            Circle()
-                .stroke(Color.white.opacity(0.3), lineWidth: 2)
-                .frame(width: joystickSize - 10, height: joystickSize - 10)
-
-            // Knob
-            Circle()
-                .fill(isDragging ? Color.blue : Color.white.opacity(0.8))
-                .frame(width: knobSize, height: knobSize)
-                .shadow(color: .black.opacity(0.3), radius: 4)
-                .offset(offset)
-        }
-        .gesture(
-            DragGesture()
-                .onChanged { value in
-                    isDragging = true
-                    let translation = value.translation
-
-                    // Clamp to circular bounds
-                    let distance = sqrt(translation.width * translation.width + translation.height * translation.height)
-                    if distance > maxOffset {
-                        let scale = maxOffset / distance
-                        offset = CGSize(
-                            width: translation.width * scale,
-                            height: translation.height * scale
-                        )
-                    } else {
-                        offset = translation
-                    }
-
-                    // Post notification for WebGL camera movement
-                    NotificationCenter.default.post(
-                        name: NSNotification.Name("WebGLJoystickMove"),
-                        object: nil,
-                        userInfo: ["offset": offset]
-                    )
-                }
-                .onEnded { _ in
-                    isDragging = false
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        offset = .zero
-                    }
-                    // Post zero offset to stop movement
-                    NotificationCenter.default.post(
-                        name: NSNotification.Name("WebGLJoystickMove"),
-                        object: nil,
-                        userInfo: ["offset": CGSize.zero]
-                    )
-                }
-        )
-    }
-}
-
-// MARK: - WebGL Joystick Overlay
-
-/// Joystick overlay for portrait mode - positioned at bottom center
-struct WebGLJoystickOverlay: View {
-    var photoOrientation: PhotoOrientation = .portrait
-
-    var body: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                VStack(spacing: 8) {
-                    JoystickControl()
-                    VStack(spacing: 1) {
-                        Text(orientationSubtitle)
-                            .font(.caption2)
-                        Text(orientationTitle)
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                    }
-                    .foregroundColor(.white.opacity(0.8))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.4))
-                    .cornerRadius(6)
-                }
-                Spacer()
-            }
-            .padding(.bottom, 40)
-        }
-    }
-
-    private var orientationTitle: String {
-        switch photoOrientation {
-        case .portrait, .square:
-            return NSLocalizedString("orientation.portrait", comment: "")
-        case .landscape:
-            return NSLocalizedString("orientation.landscape", comment: "")
-        }
-    }
-
-    private var orientationSubtitle: String {
-        switch photoOrientation {
-        case .portrait, .square:
-            return NSLocalizedString("orientation.heldVertically", comment: "")
-        case .landscape:
-            return NSLocalizedString("orientation.heldHorizontally", comment: "")
         }
     }
 }

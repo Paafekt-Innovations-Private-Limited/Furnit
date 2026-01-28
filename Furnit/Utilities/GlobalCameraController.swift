@@ -115,6 +115,13 @@ class GlobalCameraController {
         let scaledOffset = CGSize(width: deltaX * 0.5, height: deltaY * 0.5)
         joystickOffset = scaledOffset
 
+        // Also post notification for WebGL camera movement
+        NotificationCenter.default.post(
+            name: NSNotification.Name("WebGLJoystickMove"),
+            object: nil,
+            userInfo: ["offset": scaledOffset]
+        )
+
         if abs(deltaX) > 0.1 || abs(deltaY) > 0.1 {
             logDebug("🎮 [GlobalCameraController] Drag delta: \(deltaX), \(deltaY)")
         }
