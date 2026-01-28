@@ -390,7 +390,12 @@ class AuthenticationManager: ObservableObject {
     /// Check if current user has access to share functionality
     /// Only specific phone numbers are allowed to share
     var canShare: Bool {
-        guard let phone = currentUser?.phoneNumber else { return false }
+        guard let phone = currentUser?.phoneNumber else {
+            if AppStateManager.shared.qualitySettings.debugMode {
+                print("🔐 [Share] canShare: false - no currentUser or phoneNumber")
+            }
+            return false
+        }
 
         // Normalize phone number for comparison (remove spaces, dashes)
         let normalizedPhone = phone.filter { $0.isNumber || $0 == "+" }
@@ -401,6 +406,16 @@ class AuthenticationManager: ObservableObject {
             "+18588595200"     // USA
         ]
 
-        return allowedPhones.contains(normalizedPhone)
+        let allowed = allowedPhones.contains(normalizedPhone)
+
+        if AppStateManager.shared.qualitySettings.debugMode {
+            print("🔐 [Share] canShare check:")
+            print("🔐 [Share]   Raw phone: \(phone)")
+            print("🔐 [Share]   Normalized: \(normalizedPhone)")
+            print("🔐 [Share]   Allowed phones: \(allowedPhones)")
+            print("🔐 [Share]   Result: \(allowed ? "✅ ALLOWED" : "❌ DENIED")")
+        }
+
+        return allowed
     }
 }
