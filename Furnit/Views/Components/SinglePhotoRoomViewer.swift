@@ -1873,7 +1873,7 @@ struct SceneKitViewer: View {
             SceneView(
                 scene: scene,
                 pointOfView: cameraNode,
-                options: [.allowsCameraControl, .autoenablesDefaultLighting]
+                options: [.autoenablesDefaultLighting]  // Removed .allowsCameraControl - GlobalCameraController handles gestures
             )
             .onAppear {
                 logDebug("🎬 [Viewer] SceneKit viewer appeared")
