@@ -212,8 +212,10 @@ class GlobalCameraController {
         let moveX = right.x * normalizedX * moveSpeed + forward.x * normalizedY * moveSpeed
         let moveZ = right.z * normalizedX * moveSpeed + forward.z * normalizedY * moveSpeed
 
+        let oldPos = camera.position
         camera.position.x += moveX
         camera.position.z += moveZ
+        logDebug("📍 [SceneKit] Move: (\(oldPos.x), \(oldPos.z)) → (\(camera.position.x), \(camera.position.z))")
     }
 
     private func normalize(_ v: SIMD3<Float>) -> SIMD3<Float> {

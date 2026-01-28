@@ -1875,6 +1875,7 @@ struct SceneKitViewer: View {
                 pointOfView: cameraNode,
                 options: [.autoenablesDefaultLighting]  // Removed .allowsCameraControl - GlobalCameraController handles gestures
             )
+            .allowsHitTesting(false)  // Let TouchDragOverlay receive all touches
             .onAppear {
                 logDebug("🎬 [Viewer] SceneKit viewer appeared")
                 logDebug("   - Scene nodes: \(scene.rootNode.childNodes.count)")
