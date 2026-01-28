@@ -316,4 +316,144 @@ final class FurnitureFitTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Rotation Decision Tests
+
+    func testShouldRotateForPortrait_LandscapeBufferPortraitRoom() {
+        // Landscape buffer with portrait room = should rotate
+        let shouldRotate = FurnitureFitRotation.shouldRotateForPortrait(
+            isLandscapeBuffer: true,
+            isLandscapeRoom: false  // portrait room
+        )
+        XCTAssertTrue(shouldRotate)
+    }
+
+    func testShouldRotateForPortrait_LandscapeBufferLandscapeRoom() {
+        // Landscape buffer with landscape room = should NOT rotate (room is naturally landscape)
+        let shouldRotate = FurnitureFitRotation.shouldRotateForPortrait(
+            isLandscapeBuffer: true,
+            isLandscapeRoom: true  // landscape room
+        )
+        XCTAssertFalse(shouldRotate)
+    }
+
+    func testShouldRotateForPortrait_PortraitBuffer() {
+        // Portrait buffer = should never rotate regardless of room orientation
+        XCTAssertFalse(FurnitureFitRotation.shouldRotateForPortrait(
+            isLandscapeBuffer: false,
+            isLandscapeRoom: false  // portrait room
+        ))
+        XCTAssertFalse(FurnitureFitRotation.shouldRotateForPortrait(
+            isLandscapeBuffer: false,
+            isLandscapeRoom: true  // landscape room
+        ))
+    }
+
+    func testShouldRotateForPortrait_SquareRoom() {
+        // Square room (not landscape) with landscape buffer = should rotate
+        let shouldRotate = FurnitureFitRotation.shouldRotateForPortrait(
+            isLandscapeBuffer: true,
+            isLandscapeRoom: false  // square room treated as not landscape
+        )
+        XCTAssertTrue(shouldRotate)
+    }
+
+    func testIsLandscape() {
+        XCTAssertTrue(FurnitureFitRotation.isLandscape(width: 1920, height: 1080))
+        XCTAssertTrue(FurnitureFitRotation.isLandscape(width: 1280, height: 720))
+        XCTAssertFalse(FurnitureFitRotation.isLandscape(width: 1080, height: 1920))
+        XCTAssertFalse(FurnitureFitRotation.isLandscape(width: 720, height: 1280))
+        XCTAssertFalse(FurnitureFitRotation.isLandscape(width: 1000, height: 1000))  // Square
+    }
+
+    func testRotateClockwise_LandscapeLeft() {
+        // UIDeviceOrientation.landscapeLeft.rawValue == 4
+        XCTAssertTrue(FurnitureFitRotation.rotateClockwise(deviceOrientationRawValue: 4))
+    }
+
+    func testRotateClockwise_LandscapeRight() {
+        // UIDeviceOrientation.landscapeRight.rawValue == 3
+        XCTAssertFalse(FurnitureFitRotation.rotateClockwise(deviceOrientationRawValue: 3))
+    }
+
+    func testRotateClockwise_Portrait() {
+        // UIDeviceOrientation.portrait.rawValue == 1
+        XCTAssertFalse(FurnitureFitRotation.rotateClockwise(deviceOrientationRawValue: 1))
+    }
+
+    // MARK: - BBox Intersection Tests
+
+    func testBBoxIntersects_Overlapping() {
+        let box1 = (x1: Float(0), y1: Float(0), x2: Float(100), y2: Float(100))
+        let box2 = (x1: Float(50), y1: Float(50), x2: Float(150), y2: Float(150))
+        XCTAssertTrue(FurnitureFitBBox.intersects(box1, box2))
+    }
+
+    func testBBoxIntersects_NoOverlap() {
+        let box1 = (x1: Float(0), y1: Float(0), x2: Float(50), y2: Float(50))
+        let box2 = (x1: Float(100), y1: Float(100), x2: Float(150), y2: Float(150))
+        XCTAssertFalse(FurnitureFitBBox.intersects(box1, box2))
+    }
+
+    func testBBoxIntersects_Touching() {
+        // Boxes that share an edge
+        let box1 = (x1: Float(0), y1: Float(0), x2: Float(50), y2: Float(50))
+        let box2 = (x1: Float(50), y1: Float(0), x2: Float(100), y2: Float(50))
+        // Touching at x=50 means x2 == x1, which is NOT < so they do intersect
+        XCTAssertTrue(FurnitureFitBBox.intersects(box1, box2))
+    }
+
+    func testBBoxIntersects_OneInsideOther() {
+        let outer = (x1: Float(0), y1: Float(0), x2: Float(100), y2: Float(100))
+        let inner = (x1: Float(25), y1: Float(25), x2: Float(75), y2: Float(75))
+        XCTAssertTrue(FurnitureFitBBox.intersects(outer, inner))
+        XCTAssertTrue(FurnitureFitBBox.intersects(inner, outer))
+    }
+
+    func testBBoxEncompasses_LargerContaining() {
+        let candidate = (x1: Float(0), y1: Float(0), x2: Float(200), y2: Float(200))
+        let primary = (x1: Float(50), y1: Float(50), x2: Float(100), y2: Float(100))
+        XCTAssertTrue(FurnitureFitBBox.encompasses(candidate: candidate, primary: primary))
+    }
+
+    func testBBoxEncompasses_SmallerCandidate() {
+        let candidate = (x1: Float(50), y1: Float(50), x2: Float(100), y2: Float(100))
+        let primary = (x1: Float(0), y1: Float(0), x2: Float(200), y2: Float(200))
+        XCTAssertFalse(FurnitureFitBBox.encompasses(candidate: candidate, primary: primary))
+    }
+
+    func testBBoxEncompasses_PartialOverlap() {
+        let candidate = (x1: Float(0), y1: Float(0), x2: Float(100), y2: Float(100))
+        let primary = (x1: Float(50), y1: Float(50), x2: Float(150), y2: Float(150))
+        XCTAssertFalse(FurnitureFitBBox.encompasses(candidate: candidate, primary: primary))
+    }
+
+    func testBBoxEncompasses_SlightlyLargerButNotContaining() {
+        // Candidate is larger but doesn't fully contain primary
+        let candidate = (x1: Float(0), y1: Float(0), x2: Float(150), y2: Float(150))
+        let primary = (x1: Float(100), y1: Float(100), x2: Float(200), y2: Float(200))
+        XCTAssertFalse(FurnitureFitBBox.encompasses(candidate: candidate, primary: primary))
+    }
+
+    // MARK: - PhotoOrientation Tests
+
+    func testPhotoOrientationRawValues() {
+        XCTAssertEqual(PhotoOrientation.portrait.rawValue, "portrait")
+        XCTAssertEqual(PhotoOrientation.landscape.rawValue, "landscape")
+        XCTAssertEqual(PhotoOrientation.square.rawValue, "square")
+    }
+
+    func testPhotoOrientationCodable() throws {
+        let orientation = PhotoOrientation.landscape
+        let encoded = try JSONEncoder().encode(orientation)
+        let decoded = try JSONDecoder().decode(PhotoOrientation.self, from: encoded)
+        XCTAssertEqual(decoded, orientation)
+    }
+
+    func testPhotoOrientationFromRawValue() {
+        XCTAssertEqual(PhotoOrientation(rawValue: "portrait"), .portrait)
+        XCTAssertEqual(PhotoOrientation(rawValue: "landscape"), .landscape)
+        XCTAssertEqual(PhotoOrientation(rawValue: "square"), .square)
+        XCTAssertNil(PhotoOrientation(rawValue: "invalid"))
+    }
 }
