@@ -1,0 +1,17 @@
+name: Convert PyTorch to TFLite (DISABLED)
+
+# This workflow has been disabled and renamed to
+# `convert-onnx-to-tflite.yml.disabled` to prevent automatic or manual runs.
+# To re-enable, rename back to `convert-onnx-to-tflite.yml`.
+
+on:
+  # Manual runs are intentionally disabled while we prioritize ONNX Runtime Mobile.
+  # workflow_dispatch: {}
+
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disabled
+        run: |
+          echo "This workflow is disabled. To re-enable, rename the file."
