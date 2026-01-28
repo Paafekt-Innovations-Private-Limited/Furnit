@@ -181,11 +181,47 @@ class FurnitureFitFragment : Fragment() {
 
     private fun takeScreenshot(rootView: View) {
         try {
-            // Create bitmap from the entire view (room + overlay)
-            val bitmap = Bitmap.createBitmap(rootView.width, rootView.height, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            rootView.draw(canvas)
+            // First capture the 3D room using PixelCopy (for OpenGL content)
+            val roomBitmap = Bitmap.createBitmap(roomSceneView.width, roomSceneView.height, Bitmap.Config.ARGB_8888)
 
+            android.view.PixelCopy.request(
+                roomSceneView,
+                roomBitmap,
+                { copyResult ->
+                    if (copyResult == android.view.PixelCopy.SUCCESS) {
+                        // Now composite the overlay on top of the room
+                        val compositeBitmap = Bitmap.createBitmap(rootView.width, rootView.height, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(compositeBitmap)
+
+                        // Draw room background (scaled to fit)
+                        canvas.drawBitmap(roomBitmap, null, android.graphics.RectF(0f, 0f, rootView.width.toFloat(), rootView.height.toFloat()), null)
+
+                        // Draw overlay on top
+                        overlay.draw(canvas)
+
+                        // Save the composite
+                        saveScreenshotToGallery(compositeBitmap)
+                    } else {
+                        // Fallback: just capture the overlay with black background
+                        activity?.runOnUiThread {
+                            val fallbackBitmap = Bitmap.createBitmap(rootView.width, rootView.height, Bitmap.Config.ARGB_8888)
+                            val canvas = Canvas(fallbackBitmap)
+                            canvas.drawColor(Color.BLACK)
+                            overlay.draw(canvas)
+                            saveScreenshotToGallery(fallbackBitmap)
+                        }
+                    }
+                },
+                Handler(Looper.getMainLooper())
+            )
+        } catch (e: Exception) {
+            Log.e("FurnitureFit", "Screenshot failed", e)
+            Toast.makeText(requireContext(), "Screenshot failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun saveScreenshotToGallery(bitmap: Bitmap) {
+        try {
             val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val fileName = "FurnitureFit_$timeStamp.png"
 
@@ -203,7 +239,10 @@ class FurnitureFitFragment : Fragment() {
                 resolver.openOutputStream(uri)?.use { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 }
-                Toast.makeText(requireContext(), "Saved to Screenshots", Toast.LENGTH_SHORT).show()
+
+                activity?.runOnUiThread {
+                    Toast.makeText(requireContext(), "Saved to Screenshots", Toast.LENGTH_SHORT).show()
+                }
 
                 // Share the screenshot
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -213,12 +252,15 @@ class FurnitureFitFragment : Fragment() {
                 }
                 startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
             } else {
-                Toast.makeText(requireContext(), "Failed to save screenshot", Toast.LENGTH_SHORT).show()
+                activity?.runOnUiThread {
+                    Toast.makeText(requireContext(), "Failed to save screenshot", Toast.LENGTH_SHORT).show()
+                }
             }
-
         } catch (e: Exception) {
-            Log.e("FurnitureFit", "Screenshot failed", e)
-            Toast.makeText(requireContext(), "Screenshot failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e("FurnitureFit", "Save screenshot failed", e)
+            activity?.runOnUiThread {
+                Toast.makeText(requireContext(), "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
