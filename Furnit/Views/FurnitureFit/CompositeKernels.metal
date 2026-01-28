@@ -10,7 +10,7 @@ kernel void sp_compositeMask(texture2d<float, access::read>  src   [[texture(0)]
     if (gid.x >= out.get_width() || gid.y >= out.get_height()) return;
     float  m = mask.read(gid).r; // R8Unorm -> normalized float in [0,1]
     // For premultiplied alpha: when mask=0, RGB must also be 0
-    if (m < 0.5f) {
+    if (m <= 0.0f) {
         out.write(float4(0.0, 0.0, 0.0, 0.0), gid);
         return;
     }
