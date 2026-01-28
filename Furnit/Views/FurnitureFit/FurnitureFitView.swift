@@ -276,6 +276,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
     private let frameLock = NSLock() // Protects lastProcessTime and isProcessing for early-exit checks
+    private var sessionGeneration: Int = 0  // Incremented on start to invalidate queued frames
+    private var isStarted = false  // Prevent startIfNeeded() from being called multiple times
 
     // MARK: Orientation
     private var currentDeviceOrientation: UIDeviceOrientation = .portrait
@@ -448,6 +450,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
     // MARK: - Public
     func setModel(_ model: MLModel?) {
+        // Avoid blocking sync call if model hasn't changed
+        if model === mlModel { return }
         detectionQueue.sync { self.mlModel = model }
         // Log model outputs for debugging
         if let model = model {
@@ -459,6 +463,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     func startIfNeeded() {
+        // Guard against being called multiple times (SwiftUI updateUIView calls this repeatedly)
+        guard !isStarted else { return }
+        isStarted = true
+
         hasFirstDetection = false
 
         // CRITICAL: Reset processing state to avoid delay when switching furniture
@@ -466,6 +474,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         frameLock.lock()
         isProcessing = false
         lastProcessTime = Date.distantPast
+        sessionGeneration += 1  // Invalidate any queued frames from previous session
         frameLock.unlock()
 
         setProgress(0.05, text: "Starting camera…")
@@ -551,6 +560,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     func stop() {
+        isStarted = false
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
@@ -615,6 +625,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let now = Date()
         frameLock.lock()
         let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval && !isProcessing
+        let capturedGeneration = sessionGeneration
         if shouldProcess {
             isProcessing = true
             lastProcessTime = now
@@ -626,11 +637,20 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             resetProcessingFlag()
             return
         }
-        detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer) }
+        detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer, generation: capturedGeneration) }
     }
 
     // MARK: - Main Processing Pipeline
-    private func processFrame(_ pixelBuffer: CVPixelBuffer) {
+    private func processFrame(_ pixelBuffer: CVPixelBuffer, generation: Int) {
+        // Skip if this frame is from a stale session (user switched furniture)
+        frameLock.lock()
+        let isStale = generation != sessionGeneration
+        frameLock.unlock()
+        if isStale {
+            resetProcessingFlag()
+            return
+        }
+
         let frameStart = Date()
 
         guard let model = mlModel else {
@@ -1170,15 +1190,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     }
                 }
             }
-            // candAreaF = ones^T * Cbin using cblas_sgemv with transpose
+            // candAreaF = ones^T * Cbin using BLAS wrapper (avoids deprecation warning)
             let ones = [Float](repeating: 1, count: planeSize)
             var candAreaF = [Float](repeating: 0, count: N)
             Cbin.withUnsafeBufferPointer { binPtr in
                 ones.withUnsafeBufferPointer { onesPtr in
                     candAreaF.withUnsafeMutableBufferPointer { outPtr in
-                        cblas_sgemv(CblasRowMajor, CblasTrans, Int32(planeSize), Int32(N), 1.0,
-                                    binPtr.baseAddress!, Int32(N), onesPtr.baseAddress!, 1,
-                                    0.0, outPtr.baseAddress!, 1)
+                        blas_sgemv_rowmajor_trans(m: Int32(planeSize), n: Int32(N), alpha: 1.0,
+                                                  A: binPtr.baseAddress!, lda: Int32(N),
+                                                  x: onesPtr.baseAddress!, incx: 1,
+                                                  beta: 0.0, y: outPtr.baseAddress!, incy: 1)
                     }
                 }
             }
