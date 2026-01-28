@@ -276,8 +276,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private var lastProcessTime = Date.distantPast
     private var isProcessing = false
     private let frameLock = NSLock() // Protects lastProcessTime and isProcessing for early-exit checks
-    private var sessionGeneration: Int = 0  // Incremented on start to invalidate queued frames
-    private var isStarted = false  // Prevent startIfNeeded() from being called multiple times
 
     // MARK: Orientation
     private var currentDeviceOrientation: UIDeviceOrientation = .portrait
@@ -463,20 +461,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     func startIfNeeded() {
-        // Guard against being called multiple times (SwiftUI updateUIView calls this repeatedly)
-        guard !isStarted else { return }
-        isStarted = true
-
         hasFirstDetection = false
-
-        // CRITICAL: Reset processing state to avoid delay when switching furniture
-        // Without this, isProcessing might still be true from previous session
-        frameLock.lock()
-        isProcessing = false
-        lastProcessTime = Date.distantPast
-        sessionGeneration += 1  // Invalidate any queued frames from previous session
-        frameLock.unlock()
-
         setProgress(0.05, text: "Starting camera…")
 
         // Load blacklist once at start (not in setModel to avoid repeated calls from updateUIView)
@@ -547,7 +532,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     }
 
     func stop() {
-        isStarted = false
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
@@ -612,7 +596,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let now = Date()
         frameLock.lock()
         let shouldProcess = now.timeIntervalSince(lastProcessTime) >= processInterval && !isProcessing
-        let capturedGeneration = sessionGeneration
         if shouldProcess {
             isProcessing = true
             lastProcessTime = now
@@ -624,20 +607,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             resetProcessingFlag()
             return
         }
-        detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer, generation: capturedGeneration) }
+        detectionQueue.async { [weak self] in self?.processFrame(pixelBuffer) }
     }
 
     // MARK: - Main Processing Pipeline
-    private func processFrame(_ pixelBuffer: CVPixelBuffer, generation: Int) {
-        // Skip if this frame is from a stale session (user switched furniture)
-        frameLock.lock()
-        let isStale = generation != sessionGeneration
-        frameLock.unlock()
-        if isStale {
-            resetProcessingFlag()
-            return
-        }
-
+    private func processFrame(_ pixelBuffer: CVPixelBuffer) {
         let frameStart = Date()
 
         guard let model = mlModel else {
@@ -957,7 +931,23 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
 
-        let candidates: [UnionDet] = allDets
+        // STAGE 3b: Apply NMS to reduce redundant detections
+        let t3b = Date()
+        let iouThreshold: Float = 0.5
+        let boxes: [CGRect] = allDets.map { d in
+            CGRect(x: CGFloat(d.x - d.w * 0.5),
+                   y: CGFloat(d.y - d.h * 0.5),
+                   width: CGFloat(d.w),
+                   height: CGFloat(d.h))
+        }
+        let scores: [Float] = allDets.map { $0.confidence }
+        let keptIdx = applyNMS(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
+        let candidates: [UnionDet] = keptIdx.map { allDets[$0] }
+        let t3bEnd = Date()
+        if debugMode {
+            let nmsMs = String(format: "%.2f", t3bEnd.timeIntervalSince(t3b) * 1000)
+            logDebug("⏱️ STAGE 3b - NMS: \(nmsMs) ms, \(allDets.count) → \(candidates.count)")
+        }
 
         setProgress(0.60, text: "Parsing prototypes…")
 
@@ -1079,6 +1069,15 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 continue
             }
 
+            // Skip if candidate bbox doesn't intersect with primary bbox at all
+            let intersects = !(dx2 < origPX1 || dx1 > origPX2 || dy2 < origPY1 || dy1 > origPY2)
+            if !intersects {
+                if debugMode {
+                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox doesn't intersect primary")
+                }
+                continue
+            }
+
             prunedCandidates.append((i, d))
         }
 
@@ -1123,7 +1122,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if prunedCandidates.isEmpty {
             if debugMode { logDebug("   No candidates to check after pruning") }
         } else {
-            // Build coefficient matrix B for ALL pruned candidates: B is (32 x N) row-major
+            // 1) Build coefficient matrix B for ALL pruned candidates: B is (32 x N) row-major
             let N = prunedCandidates.count
             var B = [Float](repeating: 0, count: 32 * N)
             for j in 0..<N {
@@ -1131,7 +1130,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 for k in 0..<32 { B[k * N + j] = coeffs[k] }
             }
 
-            // SGEMM: C = planes^T * B where planes is (32 x planeSize), B is (32 x N), C is (planeSize x N)
+            // 2) SGEMM: C = planes^T * B where planes is (32 x planeSize), B is (32 x N), C is (planeSize x N)
             var C = [Float](repeating: 0, count: planeSize * N)
 
             planes.withUnsafeBufferPointer { planesPtr in
@@ -1140,7 +1139,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         let M = BLASInt(planeSize)
                         let Nbl = BLASInt(N)
                         let K = BLASInt(32)
-                        let lda = BLASInt(planeSize)  // leading dim of planes (32 x planeSize)
+                        let lda = BLASInt(planeSize)
                         let ldb = Nbl
                         let ldc = Nbl
                         blas_sgemm_rowmajor_transA(m: M, n: Nbl, k: K, alpha: 1.0, A: planesPtr.baseAddress!, lda: lda, B: bPtr.baseAddress!, ldb: ldb, beta: 0.0, C: cPtr.baseAddress!, ldc: ldc)
@@ -1148,82 +1147,27 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
             }
 
-            // Compute candArea and interWithPrimary - only count overlap within bbox intersection
+            // 3) Threshold C in-place with vDSP_vthr: values <= 0 → 0, positives unchanged
+            C.withUnsafeMutableBufferPointer { cPtr in
+                var thresh: Float = 0.0
+                vDSP_vthr(cPtr.baseAddress!, 1, &thresh, cPtr.baseAddress!, 1, vDSP_Length(planeSize * N))
+            }
+
+            // 4) Fused pass over C to compute candArea + interWithPrimary
             var candArea = [Int](repeating: 0, count: N)
             var interWithPrimary = [Int](repeating: 0, count: N)
 
-            // Scale factor from model coords to proto coords
-            let protoScale = Float(pW) / Float(modelInputSize)
-
-            // Primary bbox in proto coords (clamped to valid range)
-            let pProtoX1 = max(0, Int(floor((primary.x - primary.w * 0.5) * protoScale)))
-            let pProtoY1 = max(0, Int(floor((primary.y - primary.h * 0.5) * protoScale)))
-            let pProtoX2 = min(pW, Int(ceil((primary.x + primary.w * 0.5) * protoScale)))
-            let pProtoY2 = min(pH, Int(ceil((primary.y + primary.h * 0.5) * protoScale)))
-
-            // Compute candArea: threshold C > 0 to binary, then sum columns via SGEMV
-            // C is (planeSize x N) row-major, we want column sums
-            var Cbin = [Float](repeating: 0, count: planeSize * N)
-            C.withUnsafeBufferPointer { cPtr in
-                Cbin.withUnsafeMutableBufferPointer { binPtr in
-                    // vDSP_vclip + vDSP_vthrsc for thresholding > 0 to 1
-                    // Simpler: manual SIMD-friendly loop (compiler will vectorize)
-                    let count = planeSize * N
-                    for i in stride(from: 0, to: count, by: 4) {
-                        let end = min(i + 4, count)
-                        for k in i..<end {
-                            binPtr[k] = cPtr[k] > 0 ? 1 : 0
-                        }
-                    }
-                }
-            }
-            // candAreaF = ones^T * Cbin using BLAS wrapper (avoids deprecation warning)
-            let ones = [Float](repeating: 1, count: planeSize)
-            var candAreaF = [Float](repeating: 0, count: N)
-            Cbin.withUnsafeBufferPointer { binPtr in
-                ones.withUnsafeBufferPointer { onesPtr in
-                    candAreaF.withUnsafeMutableBufferPointer { outPtr in
-                        blas_sgemv_rowmajor_trans(m: Int32(planeSize), n: Int32(N), alpha: 1.0,
-                                                  A: binPtr.baseAddress!, lda: Int32(N),
-                                                  x: onesPtr.baseAddress!, incx: 1,
-                                                  beta: 0.0, y: outPtr.baseAddress!, incy: 1)
-                    }
-                }
-            }
-            for j in 0..<N { candArea[j] = Int(candAreaF[j]) }
-
-            // Compute interWithPrimary: only iterate over bbox intersection region per candidate
             C.withUnsafeBufferPointer { cPtr in
                 primaryLogits.withUnsafeBufferPointer { pPtr in
-                    for j in 0..<N {
-                        let d = prunedCandidates[j].det
-                        // Candidate bbox in proto coords
-                        let cx1 = max(0, Int(floor((d.x - d.w * 0.5) * protoScale)))
-                        let cy1 = max(0, Int(floor((d.y - d.h * 0.5) * protoScale)))
-                        let cx2 = min(pW, Int(ceil((d.x + d.w * 0.5) * protoScale)))
-                        let cy2 = min(pH, Int(ceil((d.y + d.h * 0.5) * protoScale)))
-
-                        // Intersection with primary bbox
-                        let ix1 = max(cx1, pProtoX1)
-                        let iy1 = max(cy1, pProtoY1)
-                        let ix2 = min(cx2, pProtoX2)
-                        let iy2 = min(cy2, pProtoY2)
-
-                        // Skip if no intersection
-                        if ix2 <= ix1 || iy2 <= iy1 { continue }
-
-                        // Count overlap only within intersection region
-                        var overlap = 0
-                        for py in iy1..<iy2 {
-                            let rowStart = py * pW
-                            for px in ix1..<ix2 {
-                                let pixelIdx = rowStart + px
-                                if cPtr[pixelIdx * N + j] > 0 && pPtr[pixelIdx] > 0 {
-                                    overlap += 1
-                                }
+                    for px in 0..<planeSize {
+                        let rowBase = px * N
+                        let pOn = pPtr[px] > 0
+                        for j in 0..<N {
+                            if cPtr[rowBase + j] > 0 {
+                                candArea[j] &+= 1
+                                if pOn { interWithPrimary[j] &+= 1 }
                             }
                         }
-                        interWithPrimary[j] = overlap
                     }
                 }
             }
@@ -1245,21 +1189,29 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
             let bboxDupeThreshold: Float = 0.7  // Bbox IoU gate for deduplication
 
-            // Filter by overlap with primary + dedupe by bbox IoU (cheap!)
+            // Filter by overlap with primary (must overlap within primary's bbox)
             for j in 0..<N {
                 let (origIdx, d) = prunedCandidates[j]
                 let area = candArea[j]
                 if area == 0 { continue }
 
-                // Reject if no mask overlap at all
+                // Reject if no mask overlap within primary's bbox
                 let overlapPixels = interWithPrimary[j]
                 if overlapPixels == 0 {
                     if debugMode {
-                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) no mask overlap")
+                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) no overlap within primary bbox")
                     }
                     continue
                 }
-                let overlap = Float(overlapPixels) / Float(area)
+
+                // Reject if candidate is too large compared to primary
+                let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
+                if tooLarge {
+                    if debugMode {
+                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) TOO LARGE")
+                    }
+                    continue
+                }
 
                 // Check for duplicate using cheap bbox IoU (no Set operations!)
                 var isDuplicate = false
@@ -1277,7 +1229,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 if !isDuplicate {
                     kept2.append(d)
                     if debugMode {
-                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(String(format: "%.1f", overlap * 100))% (\(overlapPixels)px) bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
+                        logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(overlapPixels)px bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
                     }
                 }
             }
@@ -1914,6 +1866,24 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         return (protoPlanes, count, h, w)
     }
 
+    // MARK: - NMS
+    func applyNMS(boxes: [CGRect], scores: [Float], iouThreshold: Float) -> [Int] {
+        var indices = scores.enumerated().sorted(by: { $0.element > $1.element }).map { $0.offset }
+        var keep = [Int]()
+
+        while !indices.isEmpty {
+            let current = indices.removeFirst()
+            keep.append(current)
+
+            indices.removeAll { next in
+                let intersection = boxes[current].intersection(boxes[next])
+                let iou = intersection.area / (boxes[current].area + boxes[next].area - intersection.area)
+                return iou > CGFloat(iouThreshold)
+            }
+        }
+        return keep
+    }
+
     // MARK: - Upscale Mask
     // Uses exact integer values from resizeToSquare to ensure pixel-perfect reverse mapping
     private func upscaleMask(maskSmall: [UInt8], pW: Int, pH: Int, modelInput: Int, origW: Int, origH: Int, padX: Int, padY: Int, contentW: Int, contentH: Int) -> [UInt8] {
@@ -2215,5 +2185,9 @@ extension UIView {
         }
         return nil
     }
+}
+
+extension CGRect {
+    var area: CGFloat { width * height }
 }
 
