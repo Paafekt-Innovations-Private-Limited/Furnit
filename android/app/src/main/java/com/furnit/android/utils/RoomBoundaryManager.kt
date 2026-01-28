@@ -107,13 +107,12 @@ class RoomBoundaryManager {
 
     /**
      * Get optimal camera position to view the room
-     * Strategy: Position camera to see the entire front wall
-     *
-     * For portrait mode (narrow horizontal FOV), camera needs to be further back
-     * to see the full room width.
+     * Strategy: Position camera at the back wall (imaginary back wall),
+     * near the left corner, looking toward the front wall where the photo is.
+     * This matches the iOS RealityKitBoundaryManager positioning.
      *
      * @param isPortrait true if device is in portrait orientation
-     * @param horizontalFovDegrees horizontal field of view in degrees
+     * @param horizontalFovDegrees horizontal field of view in degrees (unused, kept for API compat)
      */
     fun getOptimalCameraPosition(isPortrait: Boolean = true, horizontalFovDegrees: Float = 60f): CameraSetup {
         val bounds = roomBounds ?: run {
@@ -122,49 +121,34 @@ class RoomBoundaryManager {
             roomBounds!!
         }
 
-        // Calculate required distance to see full room width
-        // In portrait mode, horizontal FOV is narrower (~40-50 degrees typically)
-        // We need: distance = (width/2) / tan(fov/2)
-        val effectiveFov = if (isPortrait) {
-            // Portrait: horizontal FOV is narrower, use smaller value
-            PORTRAIT_HORIZONTAL_FOV
-        } else {
-            horizontalFovDegrees
-        }
+        // Camera positioning strategy: Far back, see entire room as small box
 
-        val fovRadians = Math.toRadians(effectiveFov.toDouble() / 2.0)
-        val halfWidth = bounds.width / 2f
-        val requiredDistance = (halfWidth / Math.tan(fovRadians)).toFloat()
+        // Position camera WAY back to see the whole room
+        val camX = bounds.centerX                  // Center X
+        val camY = bounds.centerY + 2.0f           // Slightly elevated
+        val camZ = bounds.backWallZ + 10.0f        // Far behind the room
 
-        // Camera position: Center X, eye level Y, calculated distance from front wall
-        val camX = bounds.centerX
-        val camY = EYE_LEVEL_HEIGHT
-        // Position camera at required distance from front wall, but stay inside room if possible
-        val camZ = bounds.frontWallZ + requiredDistance
-
-        // Look at the center of the front wall (where the photo is)
+        // Look at the center of the room
         val targetX = bounds.centerX
         val targetY = bounds.centerY
-        val targetZ = bounds.frontWallZ
+        val targetZ = bounds.centerZ
 
         val cameraSetup = CameraSetup(
             position = Position(camX, camY, camZ),
             lookAt = Position(targetX, targetY, targetZ)
         )
 
-        Log.d(TAG, "Camera position for ${if (isPortrait) "PORTRAIT" else "LANDSCAPE"}:")
+        Log.d(TAG, "Camera position (back-wall corner) for ${if (isPortrait) "PORTRAIT" else "LANDSCAPE"}:")
         Log.d(TAG, "  Room: ${bounds.width}x${bounds.height}x${bounds.depth}")
-        Log.d(TAG, "  Effective FOV: $effectiveFov degrees")
-        Log.d(TAG, "  Required distance: $requiredDistance")
-        Log.d(TAG, "  Camera position: (${camX}, ${camY}, ${camZ})")
-        Log.d(TAG, "  LookAt: (${targetX}, ${targetY}, ${targetZ})")
+        Log.d(TAG, "  Camera at back-left corner: ($camX, $camY, $camZ)")
+        Log.d(TAG, "  Looking at front wall: ($targetX, $targetY, $targetZ)")
 
         return cameraSetup
     }
 
     /**
      * Get camera position at back-left corner
-     * This gives a perspective view of the room
+     * This gives a perspective view of the room from the imaginary back wall
      */
     fun getCameraAtBackLeftCorner(): CameraSetup {
         val bounds = roomBounds ?: run {
@@ -172,12 +156,12 @@ class RoomBoundaryManager {
             roomBounds!!
         }
 
-        // Back-left corner with padding, at eye level
+        // Back-left corner with padding, eye level above room center
         val camX = bounds.minX + CAMERA_PADDING
-        val camY = EYE_LEVEL_HEIGHT
+        val camY = bounds.centerY + 0.4f  // Slightly above room center
         val camZ = bounds.backWallZ - CAMERA_PADDING
 
-        // Look at front-center
+        // Look at front wall center (where the photo is)
         val targetX = bounds.centerX
         val targetY = bounds.centerY
         val targetZ = bounds.frontWallZ
@@ -190,7 +174,7 @@ class RoomBoundaryManager {
 
     /**
      * Get camera position centered at back wall, looking at front wall
-     * Best for viewing the photo directly
+     * Best for viewing the photo directly from the imaginary back wall
      */
     fun getCameraCenteredView(): CameraSetup {
         val bounds = roomBounds ?: run {
@@ -198,12 +182,12 @@ class RoomBoundaryManager {
             roomBounds!!
         }
 
-        // Centered at back wall, eye level
+        // Centered at back wall, eye level above room center
         val camX = bounds.centerX
-        val camY = EYE_LEVEL_HEIGHT
+        val camY = bounds.centerY + 0.4f  // Slightly above room center
         val camZ = bounds.backWallZ - CAMERA_PADDING  // At back wall, inside room
 
-        // Look at front wall center
+        // Look at front wall center (where the photo is)
         val targetX = bounds.centerX
         val targetY = bounds.centerY
         val targetZ = bounds.frontWallZ
