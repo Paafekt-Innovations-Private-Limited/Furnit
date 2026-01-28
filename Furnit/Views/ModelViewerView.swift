@@ -167,10 +167,7 @@ struct ModelViewerView: View {
                 .zIndex(99998) // SECOND HIGHEST Z-INDEX
                 .allowsHitTesting(true)
                 
-                // ✅ GLOBAL JOYSTICK - uses GlobalCameraController
-                SimpleJoystickOverlay(photoOrientation: model.photoOrientation)
-                    .opacity(isCapturingSnapshot ? 0 : 1)
-                    .zIndex(99997)
+                // Camera controls handled by RealityKitGestureHandlers in RealityKitView
 
                 // FurnitureFit snapshot and share buttons
                 if showingFurnitureFit {
