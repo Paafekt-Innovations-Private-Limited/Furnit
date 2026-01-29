@@ -35,148 +35,88 @@ struct RoomBoundaryDetectionView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                // Interactive adjustment view - image is already fixed
-                GeometryReader { geometry in
-                    ZStack {
-                        // Background image
-                        Image(uiImage: originalImage)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: geometry.size.width)
+            GeometryReader { outerGeometry in
+                let isLandscapeScreen = outerGeometry.size.width > outerGeometry.size.height
 
-                        // Overlay with draggable boundaries
-                        BoundaryLinesCanvas(
-                            imageSize: originalImage.size,
-                            floorY: floorY,
-                            ceilingY: ceilingY,
-                            leftX: leftX,
-                            rightX: rightX,
-                            vanishingX: vanishingX,
-                            vanishingY: vanishingY
-                        )
-                        .frame(width: geometry.size.width)
+                if isLandscapeScreen {
+                    // Landscape layout: image on left, controls on right
+                    HStack(spacing: 0) {
+                        // Image area - takes most of the width
+                        GeometryReader { geometry in
+                            ZStack {
+                                Image(uiImage: originalImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                        // Draggable handles
-                        DraggableHandlesOverlay(
-                            geometry: geometry,
-                            imageSize: originalImage.size,
-                            floorY: $floorY,
-                            ceilingY: $ceilingY,
-                            leftX: $leftX,
-                            rightX: $rightX,
-                            vanishingX: $vanishingX,
-                            vanishingY: $vanishingY,
-                            magentaColor: magentaColor
-                        )
+                                BoundaryLinesCanvas(
+                                    imageSize: originalImage.size,
+                                    floorY: floorY,
+                                    ceilingY: ceilingY,
+                                    leftX: leftX,
+                                    rightX: rightX,
+                                    vanishingX: vanishingX,
+                                    vanishingY: vanishingY
+                                )
+
+                                DraggableHandlesOverlay(
+                                    geometry: geometry,
+                                    imageSize: originalImage.size,
+                                    floorY: $floorY,
+                                    ceilingY: $ceilingY,
+                                    leftX: $leftX,
+                                    rightX: $rightX,
+                                    vanishingX: $vanishingX,
+                                    vanishingY: $vanishingY,
+                                    magentaColor: magentaColor
+                                )
+                            }
+                        }
+                        .frame(width: outerGeometry.size.width * 0.65)
+
+                        // Controls on right side
+                        landscapeControls
+                            .frame(width: outerGeometry.size.width * 0.35)
+                    }
+                } else {
+                    // Portrait layout: image on top, controls below
+                    VStack(spacing: 0) {
+                        GeometryReader { geometry in
+                            ZStack {
+                                Image(uiImage: originalImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: geometry.size.width)
+
+                                BoundaryLinesCanvas(
+                                    imageSize: originalImage.size,
+                                    floorY: floorY,
+                                    ceilingY: ceilingY,
+                                    leftX: leftX,
+                                    rightX: rightX,
+                                    vanishingX: vanishingX,
+                                    vanishingY: vanishingY
+                                )
+                                .frame(width: geometry.size.width)
+
+                                DraggableHandlesOverlay(
+                                    geometry: geometry,
+                                    imageSize: originalImage.size,
+                                    floorY: $floorY,
+                                    ceilingY: $ceilingY,
+                                    leftX: $leftX,
+                                    rightX: $rightX,
+                                    vanishingX: $vanishingX,
+                                    vanishingY: $vanishingY,
+                                    magentaColor: magentaColor
+                                )
+                            }
+                        }
+                    
+                        // Adjustment instructions for portrait
+                        portraitControls
                     }
                 }
-                    
-                    // Adjustment instructions
-                    VStack(spacing: 12) {
-                        // Orientation label
-                        HStack(spacing: 6) {
-                            Image(systemName: isLandscape ? "iphone.landscape" : "iphone")
-                                .font(.caption)
-                            Text(isLandscape
-                                 ? NSLocalizedString("orientation.heldHorizontally", comment: "")
-                                 : NSLocalizedString("orientation.heldVertically", comment: ""))
-                                .font(.caption2)
-                            Text("-")
-                                .font(.caption2)
-                            Text(isLandscape
-                                 ? NSLocalizedString("orientation.landscape", comment: "")
-                                 : NSLocalizedString("orientation.portrait", comment: ""))
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                        }
-                        .foregroundColor(.white.opacity(0.9))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue.opacity(0.8))
-                        .cornerRadius(8)
-                        .padding(.top, 8)
-
-                        Text(L10n.Boundary.instructions)
-                            .font(.headline)
-
-                        HStack(spacing: 16) {
-                            Label(L10n.Boundary.floor, systemImage: "arrow.down")
-                                .foregroundColor(.green)
-                                .font(.caption)
-                            Label(L10n.Boundary.ceiling, systemImage: "arrow.up")
-                                .foregroundColor(.cyan)
-                                .font(.caption)
-                            Label(L10n.Boundary.walls, systemImage: "arrow.left.and.right")
-                                .foregroundColor(.red)
-                                .font(.caption)
-                            Label(L10n.Boundary.vanish, systemImage: "scope")
-                                .foregroundColor(magentaColor)
-                                .font(.caption)
-                        }
-                        .padding(.horizontal)
-
-                        HStack(spacing: 20) {
-                            Button(L10n.Common.reset) {
-                                withAnimation {
-                                    floorY = 0.85
-                                    ceilingY = 0.15
-                                    leftX = 0.12
-                                    rightX = 0.88
-                                    vanishingX = 0.5
-                                    vanishingY = 0.45
-                                }
-                            }
-                            .buttonStyle(.bordered)
-
-                            Button(L10n.Common.done) {
-                                var boundaries = RoomStructure()
-                                boundaries.floorY = floorY
-                                boundaries.ceilingY = ceilingY
-                                boundaries.leftX = leftX
-                                boundaries.rightX = rightX
-                                boundaries.vanishingX = vanishingX
-                                boundaries.vanishingY = vanishingY
-
-                                logDebug("✅ Saved adjusted boundaries:")
-                                logDebug("   Floor: \(floorY), Ceiling: \(ceilingY)")
-                                logDebug("   Left: \(leftX), Right: \(rightX)")
-                                logDebug("   VP: (\(vanishingX), \(vanishingY))")
-
-                                // Process within this view with progress overlay
-                                isProcessingInView = true
-                                Task {
-                                    let startTime = Date()
-                                    let minimumDisplayTime: TimeInterval = 2.0 // Show progress for at least 2 seconds
-
-                                    // Apply dimensions if provided
-                                    if let dims = roomDimensions {
-                                        await MainActor.run {
-                                            reconstructor.estimatedDimensions = dims
-                                        }
-                                    }
-                                    await reconstructor.processPhotoWithBoundaries(originalImage, boundaries: boundaries)
-
-                                    // Ensure progress is shown for minimum time
-                                    let elapsed = Date().timeIntervalSince(startTime)
-                                    if elapsed < minimumDisplayTime {
-                                        try? await Task.sleep(nanoseconds: UInt64((minimumDisplayTime - elapsed) * 1_000_000_000))
-                                    }
-
-                                    await MainActor.run {
-                                        savedBoundaries = boundaries
-                                        isProcessingInView = false
-                                        onProcessingComplete?()
-                                        dismiss()
-                                    }
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(isProcessingInView)
-                        }
-                        .padding(.bottom, 8)
-                    }
-                    .background(.ultraThinMaterial)
             }
             .navigationTitle(L10n.Boundary.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -187,57 +127,227 @@ struct RoomBoundaryDetectionView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(L10n.Common.back) {
-                        // Dismiss without saving changes
                         dismiss()
                     }
                     .disabled(isProcessingInView)
                 }
             }
-            // Progress overlay when processing
             .overlay {
                 if isProcessingInView {
-                    ZStack {
-                        Color.black.opacity(0.7)
-                            .ignoresSafeArea()
-
-                        VStack(spacing: 16) {
-                            ZStack {
-                                Circle()
-                                    .stroke(Color.orange.opacity(0.3), lineWidth: 8)
-                                    .frame(width: 60, height: 60)
-                                Circle()
-                                    .trim(from: 0, to: CGFloat(reconstructor.progress))
-                                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                                    .frame(width: 60, height: 60)
-                                    .rotationEffect(.degrees(-90))
-                                    .animation(.easeInOut(duration: 0.3), value: reconstructor.progress)
-                                Image(systemName: "cube.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.orange)
-                            }
-
-                            Text(reconstructor.statusMessage)
-                                .font(.headline)
-                                .foregroundColor(.white)
-
-                            Text("\(Int(reconstructor.progress * 100))%")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.orange)
-
-                            Text(NSLocalizedString("photoRoom.buildingRoom", comment: "Building your 3D room"))
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
-                        .padding(32)
-                        .background(Color(.systemBackground).opacity(0.95))
-                        .cornerRadius(16)
-                        .shadow(radius: 10)
-                    }
+                    progressOverlay
                 }
             }
         }
         .interactiveDismissDisabled(isProcessingInView)
+    }
+
+    // MARK: - Portrait Controls
+    private var portraitControls: some View {
+        VStack(spacing: 12) {
+            // Orientation label
+            HStack(spacing: 6) {
+                Image(systemName: isLandscape ? "iphone.landscape" : "iphone")
+                    .font(.caption)
+                Text(isLandscape
+                     ? NSLocalizedString("orientation.heldHorizontally", comment: "")
+                     : NSLocalizedString("orientation.heldVertically", comment: ""))
+                    .font(.caption2)
+                Text("-")
+                    .font(.caption2)
+                Text(isLandscape
+                     ? NSLocalizedString("orientation.landscape", comment: "")
+                     : NSLocalizedString("orientation.portrait", comment: ""))
+                    .font(.caption2)
+                    .fontWeight(.medium)
+            }
+            .foregroundColor(.white.opacity(0.9))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.blue.opacity(0.8))
+            .cornerRadius(8)
+            .padding(.top, 8)
+
+            Text(L10n.Boundary.instructions)
+                .font(.headline)
+
+            HStack(spacing: 16) {
+                Label(L10n.Boundary.floor, systemImage: "arrow.down")
+                    .foregroundColor(.green)
+                    .font(.caption)
+                Label(L10n.Boundary.ceiling, systemImage: "arrow.up")
+                    .foregroundColor(.cyan)
+                    .font(.caption)
+                Label(L10n.Boundary.walls, systemImage: "arrow.left.and.right")
+                    .foregroundColor(.red)
+                    .font(.caption)
+                Label(L10n.Boundary.vanish, systemImage: "scope")
+                    .foregroundColor(magentaColor)
+                    .font(.caption)
+            }
+            .padding(.horizontal)
+
+            controlButtons
+                .padding(.bottom, 8)
+        }
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Landscape Controls
+    private var landscapeControls: some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            // Orientation label
+            HStack(spacing: 6) {
+                Image(systemName: "iphone.landscape")
+                    .font(.caption)
+                Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
+                    .font(.caption2)
+                Text("-")
+                    .font(.caption2)
+                Text(NSLocalizedString("orientation.landscape", comment: ""))
+                    .font(.caption2)
+                    .fontWeight(.medium)
+            }
+            .foregroundColor(.white.opacity(0.9))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.blue.opacity(0.8))
+            .cornerRadius(8)
+
+            Text(L10n.Boundary.instructions)
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+
+            VStack(spacing: 8) {
+                HStack(spacing: 12) {
+                    Label(L10n.Boundary.floor, systemImage: "arrow.down")
+                        .foregroundColor(.green)
+                    Label(L10n.Boundary.ceiling, systemImage: "arrow.up")
+                        .foregroundColor(.cyan)
+                }
+                .font(.caption2)
+                HStack(spacing: 12) {
+                    Label(L10n.Boundary.walls, systemImage: "arrow.left.and.right")
+                        .foregroundColor(.red)
+                    Label(L10n.Boundary.vanish, systemImage: "scope")
+                        .foregroundColor(magentaColor)
+                }
+                .font(.caption2)
+            }
+
+            controlButtons
+
+            Spacer()
+        }
+        .padding()
+        .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Control Buttons
+    private var controlButtons: some View {
+        HStack(spacing: 20) {
+            Button(L10n.Common.reset) {
+                withAnimation {
+                    floorY = 0.85
+                    ceilingY = 0.15
+                    leftX = 0.12
+                    rightX = 0.88
+                    vanishingX = 0.5
+                    vanishingY = 0.45
+                }
+            }
+            .buttonStyle(.bordered)
+
+            Button(L10n.Common.done) {
+                processBoundaries()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isProcessingInView)
+        }
+    }
+
+    // MARK: - Progress Overlay
+    private var progressOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.7)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 8)
+                        .frame(width: 60, height: 60)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(reconstructor.progress))
+                        .stroke(Color.orange, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                        .frame(width: 60, height: 60)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.easeInOut(duration: 0.3), value: reconstructor.progress)
+                    Image(systemName: "cube.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.orange)
+                }
+
+                Text(reconstructor.statusMessage)
+                    .font(.headline)
+                    .foregroundColor(.white)
+
+                Text("\(Int(reconstructor.progress * 100))%")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.orange)
+
+                Text(NSLocalizedString("photoRoom.buildingRoom", comment: "Building your 3D room"))
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            .padding(32)
+            .background(Color(.systemBackground).opacity(0.95))
+            .cornerRadius(16)
+            .shadow(radius: 10)
+        }
+    }
+
+    // MARK: - Process Boundaries
+    private func processBoundaries() {
+        var boundaries = RoomStructure()
+        boundaries.floorY = floorY
+        boundaries.ceilingY = ceilingY
+        boundaries.leftX = leftX
+        boundaries.rightX = rightX
+        boundaries.vanishingX = vanishingX
+        boundaries.vanishingY = vanishingY
+
+        logDebug("✅ Saved adjusted boundaries:")
+        logDebug("   Floor: \(floorY), Ceiling: \(ceilingY)")
+        logDebug("   Left: \(leftX), Right: \(rightX)")
+        logDebug("   VP: (\(vanishingX), \(vanishingY))")
+
+        isProcessingInView = true
+        Task {
+            let startTime = Date()
+            let minimumDisplayTime: TimeInterval = 2.0
+
+            if let dims = roomDimensions {
+                await MainActor.run {
+                    reconstructor.estimatedDimensions = dims
+                }
+            }
+            await reconstructor.processPhotoWithBoundaries(originalImage, boundaries: boundaries)
+
+            let elapsed = Date().timeIntervalSince(startTime)
+            if elapsed < minimumDisplayTime {
+                try? await Task.sleep(nanoseconds: UInt64((minimumDisplayTime - elapsed) * 1_000_000_000))
+            }
+
+            await MainActor.run {
+                savedBoundaries = boundaries
+                isProcessingInView = false
+                onProcessingComplete?()
+                dismiss()
+            }
+        }
     }
 
     func drawBoundariesOnImage() async -> UIImage {
