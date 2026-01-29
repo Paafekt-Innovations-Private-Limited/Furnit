@@ -1082,7 +1082,7 @@ struct SinglePhotoRoomView: View {
         .navigationDestination(isPresented: $navigateToViewer) {
             Group {
                 if let scene = reconstructor.generatedRoomScene {
-                    SceneKitViewer(scene: scene)
+                    SceneKitViewer(scene: scene, photoOrientation: selectedOrientation)
                 }
             }
         }
@@ -1845,6 +1845,7 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
 // MARK: - SceneKit Viewer
 struct SceneKitViewer: View {
     let scene: SCNScene
+    let photoOrientation: PhotoOrientation
     @Environment(\.dismiss) private var dismiss
     @State private var showControls = true
     @State private var cameraNode: SCNNode?
@@ -1946,41 +1947,116 @@ struct SceneKitViewer: View {
                 .zIndex(99997)
             }
 
-            // Bottom row buttons (Brain + Screenshot) - below joystick overlay so touches pass through
-            VStack {
-                Spacer()
-                    .allowsHitTesting(false)
-                HStack {
-                    // Brain button (bottom-left)
-                    Button(action: {
-                        showingFurnitureFit.toggle()
-                    }) {
-                        Image(systemName: "brain.head.profile")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white)
-                            .frame(width: 60, height: 60)
-                            .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                    }
-                    .padding(.leading, 20)
+            // Landscape layout: controls on LEFT edge (appears at bottom when phone held horizontally)
+            if photoOrientation == .landscape {
+                HStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        // Brain button (top = left when horizontal)
+                        Button(action: {
+                            showingFurnitureFit.toggle()
+                        }) {
+                            Image(systemName: "brain.head.profile")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+                                .rotationEffect(.degrees(90))
+                        }
+                        .padding(.top, 80)
 
+                        Spacer()
+                            .allowsHitTesting(false)
+
+                        // Orientation label (center)
+                        VStack(spacing: 1) {
+                            Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
+                                .font(.caption2)
+                            Text(NSLocalizedString("orientation.landscape", comment: ""))
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.4))
+                        .cornerRadius(6)
+                        .rotationEffect(.degrees(90))
+
+                        Spacer()
+                            .allowsHitTesting(false)
+
+                        // Screenshot button (bottom = right when horizontal)
+                        Button(action: {
+                            takeScreenshot()
+                        }) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(Color.blue).shadow(radius: 5))
+                                .rotationEffect(.degrees(90))
+                        }
+                        .padding(.bottom, 30)
+                    }
+                    .frame(width: 130)
+                    .padding(.leading, 0)
+                    Spacer()
+                        .allowsHitTesting(false)
+                }
+                .zIndex(99995)
+            } else {
+                // Portrait layout: standard bottom controls
+                VStack {
                     Spacer()
                         .allowsHitTesting(false)
 
-                    // Screenshot button (bottom-right)
-                    Button(action: {
-                        takeScreenshot()
-                    }) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(.white)
-                            .frame(width: 60, height: 60)
-                            .background(Circle().fill(Color.blue).shadow(radius: 5))
+                    // Orientation label (center, above buttons)
+                    VStack(spacing: 1) {
+                        Text(NSLocalizedString("orientation.heldVertically", comment: ""))
+                            .font(.caption2)
+                        Text(NSLocalizedString("orientation.portrait", comment: ""))
+                            .font(.caption2)
+                            .fontWeight(.medium)
                     }
-                    .padding(.trailing, 20)
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.4))
+                    .cornerRadius(6)
+                    .padding(.bottom, 12)
+
+                    HStack {
+                        // Brain button (bottom-left)
+                        Button(action: {
+                            showingFurnitureFit.toggle()
+                        }) {
+                            Image(systemName: "brain.head.profile")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+                        }
+                        .padding(.leading, 20)
+
+                        Spacer()
+                            .allowsHitTesting(false)
+
+                        // Screenshot button (bottom-right)
+                        Button(action: {
+                            takeScreenshot()
+                        }) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(Color.blue).shadow(radius: 5))
+                        }
+                        .padding(.trailing, 20)
+                    }
+                    .padding(.bottom, 30)
                 }
-                .padding(.bottom, 30)
+                .zIndex(99995)
             }
-            .zIndex(99995)  // Below SimpleJoystickOverlay (99996) so touches go to drag overlay first
 
             if showControls {
                 VStack {
@@ -1994,9 +2070,10 @@ struct SceneKitViewer: View {
                     .background(.ultraThinMaterial)
                     .cornerRadius(8)
                     .padding()
-                    .padding(.bottom, 100) // Move above joystick
+                    .padding(.bottom, 100)
+                    .rotationEffect(photoOrientation == .landscape ? .degrees(90) : .degrees(0))
                 }
-                .allowsHitTesting(false)  // Don't block touches
+                .allowsHitTesting(false)
                 .onAppear {
                     logDebug("ℹ️ [Viewer] Controls hint displayed")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
