@@ -10,26 +10,22 @@ enum PhotoOrientation: String, Codable {
     case landscape
     case square
 
-    /// Detect orientation from image using EXIF metadata
-    /// iPhone camera: .up = landscape (sensor native), .left/.right = portrait (rotated)
+    /// Detect orientation from image dimensions
+    /// Width > Height = landscape, Height > Width = portrait
     static func detect(from image: UIImage) -> PhotoOrientation {
-        let exif = image.imageOrientation
+        let width = image.size.width
+        let height = image.size.height
 
-        logDebug("📐 [Orientation] EXIF: \(exif.rawValue)")
+        logDebug("📐 [Orientation] Image size: \(width) x \(height)")
 
-        switch exif {
-        case .up, .upMirrored, .down, .downMirrored:
-            // No rotation = sensor's native landscape orientation
-            logDebug("📐 [Orientation] EXIF .up/.down → landscape")
+        if abs(width - height) < 10 {
+            logDebug("📐 [Orientation] Square image")
+            return .square
+        } else if width > height {
+            logDebug("📐 [Orientation] Width > Height → landscape")
             return .landscape
-
-        case .left, .leftMirrored, .right, .rightMirrored:
-            // 90° rotation = phone held portrait
-            logDebug("📐 [Orientation] EXIF .left/.right → portrait")
-            return .portrait
-
-        @unknown default:
-            logDebug("📐 [Orientation] EXIF unknown → portrait (default)")
+        } else {
+            logDebug("📐 [Orientation] Height > Width → portrait")
             return .portrait
         }
     }

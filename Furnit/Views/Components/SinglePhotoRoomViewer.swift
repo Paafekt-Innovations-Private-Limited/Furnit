@@ -39,15 +39,18 @@ struct RoomBoundaryDetectionView: View {
                 let isLandscapeScreen = outerGeometry.size.width > outerGeometry.size.height
 
                 if isLandscapeScreen {
-                    // Landscape layout: image on left, controls on right
-                    HStack(spacing: 0) {
-                        // Image area - takes most of the width
+                    // Landscape layout: full-screen image with horizontal bottom overlay
+                    ZStack {
+                        // Black background to fill any gaps
+                        Color.black.ignoresSafeArea()
+
+                        // Image area - uses full screen
                         GeometryReader { geometry in
                             ZStack {
                                 Image(uiImage: originalImage)
                                     .resizable()
                                     .scaledToFit()
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .frame(width: geometry.size.width, height: geometry.size.height)
 
                                 BoundaryLinesCanvas(
                                     imageSize: originalImage.size,
@@ -72,12 +75,16 @@ struct RoomBoundaryDetectionView: View {
                                 )
                             }
                         }
-                        .frame(width: outerGeometry.size.width * 0.65)
+                        .ignoresSafeArea()
 
-                        // Controls on right side
-                        landscapeControls
-                            .frame(width: outerGeometry.size.width * 0.35)
+                        // Horizontal bottom overlay bar
+                        VStack {
+                            Spacer()
+                            landscapeBottomBar
+                        }
+                        .ignoresSafeArea(edges: .horizontal)
                     }
+                    .ignoresSafeArea()
                 } else {
                     // Portrait layout: image on top, controls below
                     VStack(spacing: 0) {
@@ -192,56 +199,71 @@ struct RoomBoundaryDetectionView: View {
         .background(.ultraThinMaterial)
     }
 
-    // MARK: - Landscape Controls
-    private var landscapeControls: some View {
-        VStack(spacing: 16) {
-            Spacer()
-
-            // Orientation label
-            HStack(spacing: 6) {
+    // MARK: - Landscape Bottom Bar (horizontal overlay)
+    private var landscapeBottomBar: some View {
+        HStack(spacing: 20) {
+            // Orientation badge
+            HStack(spacing: 4) {
                 Image(systemName: "iphone.landscape")
                     .font(.caption)
-                Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
-                    .font(.caption2)
-                Text("-")
-                    .font(.caption2)
-                Text(NSLocalizedString("orientation.landscape", comment: ""))
-                    .font(.caption2)
+                Text(isLandscape ? "Landscape" : "Portrait")
+                    .font(.caption)
                     .fontWeight(.medium)
             }
-            .foregroundColor(.white.opacity(0.9))
+            .foregroundColor(.white)
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.blue.opacity(0.8))
+            .padding(.vertical, 8)
+            .background(Color.blue.opacity(0.9))
             .cornerRadius(8)
 
-            Text(L10n.Boundary.instructions)
-                .font(.subheadline)
-                .multilineTextAlignment(.center)
-
-            VStack(spacing: 8) {
-                HStack(spacing: 12) {
-                    Label(L10n.Boundary.floor, systemImage: "arrow.down")
-                        .foregroundColor(.green)
-                    Label(L10n.Boundary.ceiling, systemImage: "arrow.up")
-                        .foregroundColor(.cyan)
+            // Color legend - horizontal
+            HStack(spacing: 12) {
+                HStack(spacing: 4) {
+                    Circle().fill(Color.green).frame(width: 10, height: 10)
+                    Text("Floor").font(.caption)
                 }
-                .font(.caption2)
-                HStack(spacing: 12) {
-                    Label(L10n.Boundary.walls, systemImage: "arrow.left.and.right")
-                        .foregroundColor(.red)
-                    Label(L10n.Boundary.vanish, systemImage: "scope")
-                        .foregroundColor(magentaColor)
+                HStack(spacing: 4) {
+                    Circle().fill(Color.cyan).frame(width: 10, height: 10)
+                    Text("Ceiling").font(.caption)
                 }
-                .font(.caption2)
+                HStack(spacing: 4) {
+                    Circle().fill(Color.red).frame(width: 10, height: 10)
+                    Text("Walls").font(.caption)
+                }
+                HStack(spacing: 4) {
+                    Circle().fill(magentaColor).frame(width: 10, height: 10)
+                    Text("Vanish").font(.caption)
+                }
             }
-
-            controlButtons
+            .foregroundColor(.white)
 
             Spacer()
+
+            // Buttons - horizontal
+            HStack(spacing: 12) {
+                Button(L10n.Common.reset) {
+                    withAnimation {
+                        floorY = 0.85
+                        ceilingY = 0.15
+                        leftX = 0.12
+                        rightX = 0.88
+                        vanishingX = 0.5
+                        vanishingY = 0.45
+                    }
+                }
+                .buttonStyle(.bordered)
+                .tint(.white)
+
+                Button(L10n.Common.done) {
+                    processBoundaries()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isProcessingInView)
+            }
         }
-        .padding()
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(Color.black.opacity(0.7))
     }
 
     // MARK: - Control Buttons
@@ -1179,10 +1201,10 @@ struct SinglePhotoRoomView: View {
                     height: Float(roomHeight)
                 ),
                 onProcessingComplete: {
-                    // Navigate to viewer when processing is complete
-                    if reconstructor.generatedRoomScene != nil {
-                        navigateToViewer = true
-                    }
+                    // Navigate to MeshRoomView when processing is complete
+                    // MeshRoomView uses WebGL, doesn't need reconstructor.generatedRoomScene
+                    logDebug("✅ [onProcessingComplete] Processing complete, navigating to viewer")
+                    navigateToViewer = true
                 },
                 photoOrientation: selectedOrientation
             )
@@ -1209,28 +1231,54 @@ struct SinglePhotoRoomView: View {
             }
             // Dimensions are now managed by @AppStorage
         }
-        // ✅ Watch for boundary changes - processing is now done in the sheet
-        // This handler just navigates if the scene is ready (from sheet processing)
+        // ✅ Watch for boundary changes - log when boundaries are updated
         .onChange(of: adjustedBoundaries) { oldValue, newValue in
             logDebug("📋 [View] adjustedBoundaries onChange triggered")
             logDebug("   oldValue: \(oldValue != nil ? "set" : "nil")")
             logDebug("   newValue: \(newValue != nil ? "set" : "nil")")
-            // Processing is now handled in RoomBoundaryDetectionView with progress overlay
-            // Navigation is triggered by onProcessingComplete callback
-            if newValue != nil && reconstructor.generatedRoomScene != nil {
-                logDebug("✅ [View] Scene ready from sheet processing, navigating to viewer")
-                navigateToViewer = true
+            if let bounds = newValue {
+                logDebug("   Boundaries: L=\(bounds.leftX), R=\(bounds.rightX), T=\(bounds.ceilingY), B=\(bounds.floorY)")
             }
+            // Navigation is triggered by onProcessingComplete callback, not here
+            // This just logs the boundary update for debugging
         }
         // Programmatic navigation using the modern API (iOS 16+).  When
         // `navigateToViewer` is set to true, a destination is pushed onto
         // the navigation stack.  We wrap the destination in a `Group` to
         // handle the optional room scene gracefully.
         .navigationDestination(isPresented: $navigateToViewer) {
-            Group {
-                if let scene = reconstructor.generatedRoomScene {
-                    SceneKitViewer(scene: scene, photoOrientation: selectedOrientation)
-                }
+            if let image = selectedImage, let boundaries = adjustedBoundaries {
+                // Pass FULL image with boundaries - MeshRoomView will texture all walls
+                let _ = {
+                    logDebug("🎯 [Navigation] MeshRoomView with boundaries")
+                    logDebug("   Boundaries: L=\(boundaries.leftX), R=\(boundaries.rightX), T=\(boundaries.ceilingY), B=\(boundaries.floorY)")
+                    logDebug("   Image size: \(image.size)")
+                }()
+
+                MeshRoomView(
+                    roomWidth: Float(roomWidth),
+                    roomHeight: Float(roomHeight),
+                    roomDepth: Float(roomDepth),
+                    frontWallImage: image,
+                    photoOrientation: selectedOrientation,
+                    leftX: boundaries.leftX,
+                    rightX: boundaries.rightX,
+                    ceilingY: boundaries.ceilingY,
+                    floorY: boundaries.floorY
+                )
+            } else if let image = selectedImage {
+                // Fallback: use full image with default boundaries
+                let _ = {
+                    logDebug("⚠️ [Navigation] Using default boundaries (adjustedBoundaries is nil)")
+                }()
+                MeshRoomView(
+                    roomWidth: Float(roomWidth),
+                    roomHeight: Float(roomHeight),
+                    roomDepth: Float(roomDepth),
+                    frontWallImage: image,
+                    photoOrientation: selectedOrientation
+                    // Default boundaries: leftX=0.12, rightX=0.88, ceilingY=0.15, floorY=0.85
+                )
             }
         }
         // Navigate to SharpRoomView when PLY is generated (used for both orientations)
@@ -1310,6 +1358,53 @@ struct SinglePhotoRoomView: View {
         }
     }
 
+    /// Crop image to the selected front wall boundaries
+    private func cropImageToFrontWall(image: UIImage, leftX: CGFloat, rightX: CGFloat, ceilingY: CGFloat, floorY: CGFloat) -> UIImage {
+        logDebug("🔲 [cropImageToFrontWall] Starting crop with boundaries: L=\(leftX), R=\(rightX), T=\(ceilingY), B=\(floorY)")
+        logDebug("   Input image: \(image.size), orientation: \(image.imageOrientation.rawValue)")
+
+        // First, normalize orientation so CGImage matches what user saw
+        let normalizedImage = image.imageOrientation == .up ? image : image.fixedOrientation()
+
+        guard let cgImage = normalizedImage.cgImage else {
+            logDebug("⚠️ [cropImageToFrontWall] Failed to get CGImage, returning original")
+            return image
+        }
+
+        let imageWidth = CGFloat(cgImage.width)
+        let imageHeight = CGFloat(cgImage.height)
+        logDebug("   CGImage size: \(Int(imageWidth))x\(Int(imageHeight))")
+
+        // Convert normalized coordinates (0-1) to pixel coordinates
+        let cropX = leftX * imageWidth
+        let cropY = ceilingY * imageHeight
+        let cropWidth = (rightX - leftX) * imageWidth
+        let cropHeight = (floorY - ceilingY) * imageHeight
+
+        // Ensure valid crop rect
+        let cropRect = CGRect(
+            x: max(0, cropX),
+            y: max(0, cropY),
+            width: min(cropWidth, imageWidth - cropX),
+            height: min(cropHeight, imageHeight - cropY)
+        )
+
+        logDebug("   Crop rect: x=\(Int(cropRect.minX)), y=\(Int(cropRect.minY)), w=\(Int(cropRect.width)), h=\(Int(cropRect.height))")
+
+        // Perform the crop
+        guard cropRect.width > 0, cropRect.height > 0,
+              let croppedCGImage = cgImage.cropping(to: cropRect) else {
+            logDebug("⚠️ [cropImageToFrontWall] Invalid crop rect, returning original image")
+            return image
+        }
+
+        // Return cropped image with .up orientation (already normalized)
+        let croppedImage = UIImage(cgImage: croppedCGImage, scale: normalizedImage.scale, orientation: .up)
+        logDebug("✅ [cropImageToFrontWall] Cropped image from \(Int(imageWidth))x\(Int(imageHeight)) to \(Int(cropRect.width))x\(Int(cropRect.height))")
+
+        return croppedImage
+    }
+
     private func startSHARPGeneration(image: UIImage) {
         let orientation = selectedOrientation  // Capture current selection
         logDebug("🤖 [View] Starting on-device SHARP generation with orientation: \(orientation.rawValue)")
@@ -1369,8 +1464,11 @@ struct PhotoPickerView: UIViewControllerRepresentable {
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             logDebug("📱 [PhotoPicker] Image picked from library")
             if let image = info[.originalImage] as? UIImage {
-                logDebug("✅ [PhotoPicker] Got UIImage: \(image.size)")
-                parent.selectedImage = image
+                logDebug("✅ [PhotoPicker] Got UIImage: \(image.size), orientation: \(image.imageOrientation.rawValue)")
+                // Fix orientation before storing - ensures crop coordinates match displayed image
+                let fixedImage = image.fixedOrientation()
+                logDebug("✅ [PhotoPicker] Fixed orientation: \(fixedImage.size), orientation: \(fixedImage.imageOrientation.rawValue)")
+                parent.selectedImage = fixedImage
             } else {
                 logDebug("❌ [PhotoPicker] Failed to get UIImage")
             }
@@ -1597,7 +1695,7 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             if let image = info[.originalImage] as? UIImage {
                 logDebug("📷 [PhotoPicker] Selected image: \(image.size)")
-                parent.selectedImage = image.fixedOrientation()
+                parent.selectedImage = image
             }
             parent.dismiss()
         }
@@ -1993,8 +2091,9 @@ struct CameraViewRepresentable: UIViewControllerRepresentable {
 struct SceneKitViewer: View {
     let scene: SCNScene
     let photoOrientation: PhotoOrientation
+    let roomWidth: Float
+    let roomHeight: Float
     @Environment(\.dismiss) private var dismiss
-    @State private var showControls = true
     @State private var cameraNode: SCNNode?
 
     // Loading state for initial setup
@@ -2010,11 +2109,6 @@ struct SceneKitViewer: View {
     @State private var saveWasSuccessful = false
     @State private var showRoomNameInput = false
     @State private var roomName = ""
-
-    // FurnitureFit and screenshot state
-    @State private var showingFurnitureFit = false
-    @State private var mlModel: MLModel? = nil
-    @State private var showScreenshotFlash = false
 
     var body: some View {
         ZStack {
@@ -2034,8 +2128,6 @@ struct SceneKitViewer: View {
                     await MainActor.run {
                         isSettingUp = false
                     }
-                    // Load ML model in background (not blocking)
-                    loadMLModel()
                 }
             }
             .onDisappear {
@@ -2069,178 +2161,64 @@ struct SceneKitViewer: View {
                 saveRoomProgressOverlay
             }
 
-            // Screenshot flash effect
-            if showScreenshotFlash {
-                Color.white
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-            }
-
             // ✅ UNIFIED GESTURE HANDLER - same gestures as RealityKit rooms
             SceneKitGestureOverlay(cameraNode: cameraNode)
                 .allowsHitTesting(true)
                 .zIndex(99996)
 
-            // FurnitureFit overlay when active
-            if showingFurnitureFit {
-                FurnitureFitUIView(
-                    capturedImage: .constant(nil),
-                    roomImage: nil,
-                    mlModel: mlModel,
-                    processInterval: 0.07,
-                    active: true
-                )
-                .ignoresSafeArea()
-                .zIndex(99997)
-            }
-
-            // Landscape layout: controls on LEFT edge (appears at bottom when phone held horizontally)
-            if photoOrientation == .landscape {
-                HStack(spacing: 0) {
-                    VStack(spacing: 0) {
-                        // Brain button (top = left when horizontal)
-                        Button(action: {
-                            showingFurnitureFit.toggle()
-                        }) {
-                            Image(systemName: "brain.head.profile")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                                .rotationEffect(.degrees(90))
-                        }
-                        .padding(.top, 80)
-
-                        Spacer()
-                            .allowsHitTesting(false)
-
-                        // Orientation label (center)
-                        VStack(spacing: 1) {
-                            Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
-                                .font(.caption2)
-                            Text(NSLocalizedString("orientation.landscape", comment: ""))
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                        }
-                        .foregroundColor(.white.opacity(0.8))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.black.opacity(0.4))
-                        .cornerRadius(6)
-                        .rotationEffect(.degrees(90))
-
-                        Spacer()
-                            .allowsHitTesting(false)
-
-                        // Screenshot button (bottom = right when horizontal)
-                        Button(action: {
-                            takeScreenshot()
-                        }) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(Color.blue).shadow(radius: 5))
-                                .rotationEffect(.degrees(90))
-                        }
-                        .padding(.bottom, 30)
+            // Custom back button (top-left) - matches SharpRoomView style
+            VStack {
+                HStack {
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.6))
+                            .clipShape(Circle())
                     }
-                    .frame(width: 130)
-                    .padding(.leading, 0)
+                    .padding(.leading, 16)
+                    .padding(.top, 8)
                     Spacer()
-                        .allowsHitTesting(false)
                 }
-                .zIndex(99995)
-            } else {
-                // Portrait layout: standard bottom controls
-                VStack {
-                    Spacer()
-                        .allowsHitTesting(false)
-
-                    // Orientation label (center, above buttons)
-                    VStack(spacing: 1) {
-                        Text(NSLocalizedString("orientation.heldVertically", comment: ""))
-                            .font(.caption2)
-                        Text(NSLocalizedString("orientation.portrait", comment: ""))
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                    }
-                    .foregroundColor(.white.opacity(0.8))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.4))
-                    .cornerRadius(6)
-                    .padding(.bottom, 12)
-
-                    HStack {
-                        // Brain button (bottom-left)
-                        Button(action: {
-                            showingFurnitureFit.toggle()
-                        }) {
-                            Image(systemName: "brain.head.profile")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                        }
-                        .padding(.leading, 20)
-
-                        Spacer()
-                            .allowsHitTesting(false)
-
-                        // Screenshot button (bottom-right)
-                        Button(action: {
-                            takeScreenshot()
-                        }) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(Color.blue).shadow(radius: 5))
-                        }
-                        .padding(.trailing, 20)
-                    }
-                    .padding(.bottom, 30)
-                }
-                .zIndex(99995)
+                Spacer()
             }
+            .zIndex(99999)
 
-            if showControls {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Image(systemName: "hand.draw")
-                        Text(L10n.RoomViewer.controls)
-                            .font(.caption)
-                    }
-                    .padding(8)
-                    .background(.ultraThinMaterial)
-                    .cornerRadius(8)
-                    .padding()
-                    .padding(.bottom, 100)
-                    .rotationEffect(photoOrientation == .landscape ? .degrees(90) : .degrees(0))
+            // Orientation label overlay
+            VStack {
+                Spacer()
+                    .allowsHitTesting(false)
+
+                HStack(spacing: 6) {
+                    Image(systemName: photoOrientation == .landscape ? "iphone.landscape" : "iphone")
+                        .font(.caption)
+                    Text(photoOrientation == .landscape
+                         ? NSLocalizedString("orientation.heldHorizontally", comment: "")
+                         : NSLocalizedString("orientation.heldVertically", comment: ""))
+                        .font(.caption2)
+                    Text("-")
+                        .font(.caption2)
+                    Text(photoOrientation == .landscape
+                         ? NSLocalizedString("orientation.landscape", comment: "")
+                         : NSLocalizedString("orientation.portrait", comment: ""))
+                        .font(.caption2)
+                        .fontWeight(.medium)
                 }
-                .allowsHitTesting(false)
-                .onAppear {
-                    logDebug("ℹ️ [Viewer] Controls hint displayed")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        withAnimation { showControls = false }
-                    }
-                }
+                .foregroundColor(.white.opacity(0.9))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.5))
+                .cornerRadius(8)
+                .padding(.bottom, 30)
             }
+            .zIndex(99995)
         }
-        .navigationTitle(L10n.RoomViewer.title)
+        .navigationTitle(String(format: "%.1f × %.1f m", roomWidth, roomHeight))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            // Help button
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showControls.toggle()
-                    logDebug("ℹ️ [Viewer] Controls hint toggled: \(showControls)")
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                }
-            }
 
             // Save Room button
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -2275,8 +2253,20 @@ struct SceneKitViewer: View {
         } message: {
             Text(saveAlertMessage)
         }
+        .onAppear {
+            // Lock orientation based on photo orientation
+            if photoOrientation == .landscape {
+                OrientationLockManager.shared.lockToLandscape()
+            } else {
+                OrientationLockManager.shared.lockToPortrait()
+            }
+            logDebug("📐 [SceneKitViewer] Locking to \(photoOrientation == .landscape ? "landscape" : "portrait")")
+        }
+        .onDisappear {
+            OrientationLockManager.shared.unlock()
+        }
     }
-    
+
     // MARK: - Save Room Progress Overlay
     private var saveRoomProgressOverlay: some View {
         ZStack {
@@ -2509,70 +2499,6 @@ struct SceneKitViewer: View {
 
         // Camera control handled by SceneKitGestureOverlay (unified gesture handler)
         logDebug("   ✅ Camera setup complete - gestures handled by SceneKitGestureOverlay")
-    }
-
-    // MARK: - Screenshot
-    private func takeScreenshot() {
-        logDebug("📸 Taking screenshot...")
-
-        // Capture the window
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let windows = scenes.flatMap { $0.windows }
-        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else {
-            logDebug("❌ No window found")
-            return
-        }
-
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
-        let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
-        let image = renderer.image { _ in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
-
-        logDebug("📸 Screenshot captured, saving to Photos...")
-
-        // Save to photos
-        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-        logDebug("✅ Screenshot saved to Photos")
-
-        // Show flash effect
-        withAnimation(.easeIn(duration: 0.1)) {
-            showScreenshotFlash = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.easeOut(duration: 0.2)) {
-                showScreenshotFlash = false
-            }
-        }
-    }
-
-    // MARK: - ML Model Loading
-    private func loadMLModel() {
-        Task {
-            let candidates = [
-                ("yoloe-11l-seg-pf", "mlmodelc"),
-                ("yoloe-11l-seg-pf", "mlpackage"),
-            ]
-
-            for (name, ext) in candidates {
-                if let modelURL = Bundle.main.url(forResource: name, withExtension: ext) {
-                    do {
-                        let config = MLModelConfiguration()
-                        config.computeUnits = .cpuAndNeuralEngine
-                        let model = try MLModel(contentsOf: modelURL, configuration: config)
-                        await MainActor.run {
-                            self.mlModel = model
-                        }
-                        logDebug("✅ [SceneKitViewer] ML model loaded: \(name).\(ext)")
-                        return
-                    } catch {
-                        logDebug("❌ [SceneKitViewer] Failed to load ML model \(name).\(ext): \(error)")
-                    }
-                }
-            }
-            logDebug("❌ [SceneKitViewer] No ML model found")
-        }
     }
 }
 
