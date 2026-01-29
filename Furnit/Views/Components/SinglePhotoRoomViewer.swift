@@ -11,6 +11,7 @@ struct RoomBoundaryDetectionView: View {
     @ObservedObject var reconstructor: SinglePhotoRoomReconstructor
     var roomDimensions: SinglePhotoRoomReconstructor.RoomDimensions?
     var onProcessingComplete: (() -> Void)?
+    var photoOrientation: PhotoOrientation = .portrait
 
     @Environment(\.dismiss) var dismiss
 
@@ -27,19 +28,26 @@ struct RoomBoundaryDetectionView: View {
 
     // Custom magenta color
     private let magentaColor = Color(red: 1.0, green: 0.0, blue: 1.0)
+
+    private var isLandscape: Bool {
+        photoOrientation == .landscape
+    }
     
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
                 // Interactive adjustment view - image is already fixed
                 GeometryReader { geometry in
+                    // For landscape: rotate 90° and swap dimensions
+                    let contentWidth = isLandscape ? geometry.size.height : geometry.size.width
+                    let contentHeight = isLandscape ? geometry.size.width : geometry.size.height
+
                     ZStack {
                         // Background image
                         Image(uiImage: originalImage)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: geometry.size.width)
-                            .background(Color.red) // ✅ Debug: should not see red if image loads
+                            .frame(width: contentWidth)
 
                         // Overlay with draggable boundaries
                         BoundaryLinesCanvas(
@@ -51,8 +59,8 @@ struct RoomBoundaryDetectionView: View {
                             vanishingX: vanishingX,
                             vanishingY: vanishingY
                         )
-                        .frame(width: geometry.size.width)
-                        
+                        .frame(width: contentWidth)
+
                         // Draggable handles
                         DraggableHandlesOverlay(
                             geometry: geometry,
@@ -63,16 +71,42 @@ struct RoomBoundaryDetectionView: View {
                             rightX: $rightX,
                             vanishingX: $vanishingX,
                             vanishingY: $vanishingY,
-                            magentaColor: magentaColor
+                            magentaColor: magentaColor,
+                            isLandscape: isLandscape
                         )
                     }
+                    .frame(width: contentWidth, height: contentHeight)
+                    .rotationEffect(isLandscape ? .degrees(90) : .degrees(0))
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                 }
                     
                     // Adjustment instructions
                     VStack(spacing: 12) {
+                        // Orientation label
+                        HStack(spacing: 6) {
+                            Image(systemName: isLandscape ? "iphone.landscape" : "iphone")
+                                .font(.caption)
+                            Text(isLandscape
+                                 ? NSLocalizedString("orientation.heldHorizontally", comment: "")
+                                 : NSLocalizedString("orientation.heldVertically", comment: ""))
+                                .font(.caption2)
+                            Text("-")
+                                .font(.caption2)
+                            Text(isLandscape
+                                 ? NSLocalizedString("orientation.landscape", comment: "")
+                                 : NSLocalizedString("orientation.portrait", comment: ""))
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                        }
+                        .foregroundColor(.white.opacity(0.9))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.8))
+                        .cornerRadius(8)
+                        .padding(.top, 8)
+
                         Text(L10n.Boundary.instructions)
                             .font(.headline)
-                            .padding(.top, 8)
 
                         HStack(spacing: 16) {
                             Label(L10n.Boundary.floor, systemImage: "arrow.down")
@@ -519,6 +553,7 @@ struct DraggableHandlesOverlay: View {
     @Binding var vanishingX: CGFloat
     @Binding var vanishingY: CGFloat
     let magentaColor: Color
+    var isLandscape: Bool = false
 
     var body: some View {
         DraggableHandlesOverlayInner(
@@ -1047,7 +1082,8 @@ struct SinglePhotoRoomView: View {
                     if reconstructor.generatedRoomScene != nil {
                         navigateToViewer = true
                     }
-                }
+                },
+                photoOrientation: selectedOrientation
             )
             .onAppear {
                 logDebug("✅ [Sheet] Opening RoomBoundaryDetectionView with image: \(item.image.size)")
