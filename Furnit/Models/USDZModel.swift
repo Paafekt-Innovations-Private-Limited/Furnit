@@ -7,11 +7,12 @@ struct USDZModel: Identifiable, Hashable {
     let fileName: String
     let dataAsset: NSDataAsset?
     let isSavedRoom: Bool  // Track if this is a saved room
-    let fileType: ModelFileType  // File type: .usdz or .ply
+    let fileType: ModelFileType  // File type: .usdz, .ply, or .meshroom
     let fileSize: UInt64?  // File size in bytes
-    let photoOrientation: PhotoOrientation  // Source photo orientation (for PLY rooms)
-    let roomWidth: Float?  // Room width in meters (for PLY rooms)
-    let roomHeight: Float?  // Room height in meters (for PLY rooms)
+    let photoOrientation: PhotoOrientation  // Source photo orientation (for PLY/meshroom)
+    let roomWidth: Float?  // Room width in meters
+    let roomHeight: Float?  // Room height in meters
+    let roomDepth: Float?  // Room depth in meters (for meshroom)
 
     // Standard initializer for USDZ models (backward compatible)
     init(name: String, fileName: String, isSavedRoom: Bool = false) {
@@ -23,12 +24,13 @@ struct USDZModel: Identifiable, Hashable {
         self.photoOrientation = .portrait  // Default for USDZ
         self.roomWidth = nil
         self.roomHeight = nil
+        self.roomDepth = nil
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
     }
 
     // Full initializer with file type and size
-    init(name: String, fileName: String, isSavedRoom: Bool, fileType: ModelFileType, fileSize: UInt64?, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil) {
+    init(name: String, fileName: String, isSavedRoom: Bool, fileType: ModelFileType, fileSize: UInt64?, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil, roomDepth: Float? = nil) {
         self.name = name
         self.fileName = fileName
         self.isSavedRoom = isSavedRoom
@@ -37,8 +39,9 @@ struct USDZModel: Identifiable, Hashable {
         self.photoOrientation = photoOrientation
         self.roomWidth = roomWidth
         self.roomHeight = roomHeight
+        self.roomDepth = roomDepth
         // Only load NSDataAsset for bundle rooms with USDZ type
-        self.dataAsset = (isSavedRoom || fileType == .ply) ? nil : NSDataAsset(name: fileName)
+        self.dataAsset = (isSavedRoom || fileType == .ply || fileType == .meshroom) ? nil : NSDataAsset(name: fileName)
     }
     
     var displayName: String {
@@ -103,7 +106,17 @@ struct USDZModel: Identifiable, Hashable {
             }
             
             // Use appropriate file extension based on file type
-            let fileExtension = fileType == .ply ? "ply" : "usdz"
+            let fileExtension: String
+            switch fileType {
+            case .ply:
+                fileExtension = "ply"
+            case .meshroom:
+                fileExtension = "meshroom"
+            case .glb:
+                fileExtension = "glb"
+            case .usdz:
+                fileExtension = "usdz"
+            }
             let savedURL = savedRoomsDir.appendingPathComponent("\(fileName).\(fileExtension)")
             if debugMode {
                 logDebug("🔍 [USDZModel.temporaryURL] Looking for file at: \(savedURL.path)")
@@ -142,7 +155,8 @@ struct USDZModel: Identifiable, Hashable {
                 if debugMode {
                     logDebug("❌ [USDZModel.temporaryURL] Saved room file NOT FOUND!")
                     logDebug("   - Expected path: \(savedURL.path)")
-                    
+                    logDebug("   - File type: \(fileType.rawValue)")
+
                     // List all files in SavedRooms directory for debugging
                     do {
                         let files = try FileManager.default.contentsOfDirectory(atPath: savedRoomsDir.path)
@@ -152,7 +166,7 @@ struct USDZModel: Identifiable, Hashable {
                         logDebug("   - Could not list SavedRooms directory: \(error)")
                     }
                 }
-                
+
                 return nil
             }
         } else {

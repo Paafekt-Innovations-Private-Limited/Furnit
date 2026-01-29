@@ -368,6 +368,53 @@ struct HomeTab: View {
                             let _ = logDebug("👁️ [HomeTab.modelRow] PLY row appeared for: \(model.displayName)")
                         }
                     }
+                } else if model.fileType == .meshroom {
+                    // Meshroom files - navigate to MeshRoomView (WebGL box room)
+                    NavigationLink {
+                        LazyView {
+                            // Load image from .meshroom file
+                            if let imageData = try? Data(contentsOf: modelURL),
+                               let image = UIImage(data: imageData) {
+                                MeshRoomView(
+                                    roomWidth: model.roomWidth ?? 4.0,
+                                    roomHeight: model.roomHeight ?? 3.0,
+                                    roomDepth: model.roomDepth ?? 4.0,
+                                    frontWallImage: image,
+                                    photoOrientation: model.photoOrientation
+                                )
+                            } else {
+                                // Fallback - show error
+                                Text("Failed to load room image")
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    } label: {
+                        HomeViewModelRow(model: model)
+                    }
+                    .onAppear {
+                        if debugMode {
+                            let _ = logDebug("👁️ [HomeTab.modelRow] Meshroom row appeared for: \(model.displayName)")
+                        }
+                    }
+                } else if model.fileType == .glb {
+                    // GLB files - navigate to GLBRoomView (WebGL GLTF viewer)
+                    NavigationLink {
+                        LazyView {
+                            GLBRoomView(
+                                glbURL: modelURL,
+                                photoOrientation: model.photoOrientation,
+                                roomWidth: model.roomWidth,
+                                roomHeight: model.roomHeight
+                            )
+                        }
+                    } label: {
+                        HomeViewModelRow(model: model)
+                    }
+                    .onAppear {
+                        if debugMode {
+                            let _ = logDebug("👁️ [HomeTab.modelRow] GLB row appeared for: \(model.displayName)")
+                        }
+                    }
                 } else {
                     // USDZ files - navigate to viewer
                     NavigationLink {
@@ -640,6 +687,10 @@ struct HomeViewModelRow: View {
             return .green
         case .ply:
             return .purple
+        case .meshroom:
+            return .orange
+        case .glb:
+            return .blue
         }
     }
 

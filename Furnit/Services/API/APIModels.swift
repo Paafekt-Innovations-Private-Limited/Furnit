@@ -199,6 +199,8 @@ enum GenerationError: LocalizedError {
 enum ModelFileType: String, Codable {
     case usdz
     case ply
+    case meshroom  // Manual setup rooms (image + metadata) - legacy
+    case glb       // GLTF binary format - universal 3D format for WebGL
 
     /// File extension including the dot
     var fileExtension: String {
@@ -212,6 +214,10 @@ enum ModelFileType: String, Codable {
             return "3D Model"
         case .ply:
             return "3D Room"
+        case .meshroom:
+            return "Manual Room"
+        case .glb:
+            return "3D Room"
         }
     }
 
@@ -222,6 +228,10 @@ enum ModelFileType: String, Codable {
             return "cube.fill"
         case .ply:
             return "circle.grid.3x3.fill"
+        case .meshroom:
+            return "square.grid.3x3.fill"
+        case .glb:
+            return "cube.transparent.fill"
         }
     }
 
@@ -232,6 +242,10 @@ enum ModelFileType: String, Codable {
             return "green"
         case .ply:
             return "purple"
+        case .meshroom:
+            return "orange"
+        case .glb:
+            return "blue"
         }
     }
 }

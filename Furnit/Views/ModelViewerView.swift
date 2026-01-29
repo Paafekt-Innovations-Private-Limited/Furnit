@@ -227,6 +227,15 @@ struct ModelViewerView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 shouldResetCamera = true
             }
+            // Lock orientation based on photo orientation
+            if model.photoOrientation == .landscape {
+                OrientationLockManager.shared.lockToLandscape()
+            } else {
+                OrientationLockManager.shared.lockToPortrait()
+            }
+        }
+        .onDisappear {
+            OrientationLockManager.shared.unlock()
         }
     }
 

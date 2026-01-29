@@ -220,7 +220,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let maskImageView: UIImageView = {
         let iv = UIImageView()
-        iv.contentMode = .scaleAspectFit
+        iv.contentMode = .scaleAspectFill  // Match camera preview's resizeAspectFill
         iv.backgroundColor = .clear
         iv.isOpaque = false
         iv.clipsToBounds = true
@@ -603,17 +603,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private func updateVideoRotationForOrientation(_ orientation: UIDeviceOrientation) {
         guard let conn = videoOutput.connection(with: .video) else { return }
 
-        // Respect locked orientation - don't change rotation based on device movement
+        // Keep rotation fixed based on locked orientation to ensure consistent buffer dimensions
+        // This prevents segmentation misalignment when device rotates
         if lockedOrientation == .landscape {
-            // Landscape room: stay at 0° or 180° based on device orientation
-            switch orientation {
-            case .landscapeRight:
-                conn.videoRotationAngle = 180
-            default:
-                conn.videoRotationAngle = 0
-            }
+            // Landscape room: always 0° for consistent 1280x720 landscape buffers
+            conn.videoRotationAngle = 0
         } else {
-            // Portrait room: always 90°
+            // Portrait room: always 90° for consistent 720x1280 portrait buffers
             conn.videoRotationAngle = 90
         }
     }
@@ -1893,14 +1889,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // Present result - handle rotation for display
-        // For landscape rooms: rotate 90° CW so landscape mask displays correctly on portrait screen
+        // For landscape rooms: no rotation needed since UI is also landscape
         // For portrait rooms with landscape buffer: rotate back to portrait
         DispatchQueue.main.async {
             if var cgImg = composedImage {
                 if self.lockedOrientation == .landscape {
-                    // Landscape room: rotate 90° CW for correct display on portrait UI
-                    let rotatedImg = self.rotateCGImage90(cgImg, clockwise: true)
-                    cgImg = rotatedImg ?? cgImg
+                    // Landscape room on landscape UI: no rotation needed
+                    // The mask is already in landscape orientation matching the screen
                 } else if isLandscape {
                     // Portrait room but landscape buffer: rotate back for portrait display
                     let rotatedImg = self.rotateCGImage90(cgImg, clockwise: deviceOrientation == .landscapeLeft)

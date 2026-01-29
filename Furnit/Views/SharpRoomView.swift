@@ -584,23 +584,23 @@ struct SharpRoomView: View {
                     .padding(20)
                     .background(Color.black.opacity(0.95))
                     .cornerRadius(16)
-                    .rotationEffect(photoOrientation == .landscape ? .degrees(90) : .degrees(0))
                 }
                 .zIndex(99999)  // Above everything
             }
 
-            // Landscape layout: controls on LEFT edge (appears at bottom when phone held horizontally)
-            // Rotated 90° CW so icons appear upright when phone is horizontal
+            // Landscape layout: normal bottom bar (device actually in landscape mode)
             if photoOrientation == .landscape {
-                // Far left edge controls for landscape - rotated 90° clockwise
-                HStack(spacing: 0) {
-                    VStack(spacing: 0) {
-                        // Brain button (top = left when horizontal)
+                VStack {
+                    Spacer()
+                        .allowsHitTesting(false)
+
+                    // Horizontal bottom bar
+                    HStack(spacing: 20) {
+                        // Brain button (left)
                         Button(action: {
                             if showingFurnitureFit {
                                 showingFurnitureFit = false
                             } else {
-                                // Release SHARP model to free memory for YOLO segmentation
                                 SHARPService.shared.releaseResources()
                                 showingFurnitureFit = true
                             }
@@ -610,78 +610,68 @@ struct SharpRoomView: View {
                                 .foregroundColor(.white)
                                 .frame(width: 60, height: 60)
                                 .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                                .rotationEffect(.degrees(90))  // Rotate icon for horizontal viewing
                         }
                         .disabled(isLoading)
-                        .padding(.top, 80)
 
-                        Spacer()
-                            .allowsHitTesting(false)
-
-                        // Orientation label (center)
-                        VStack(spacing: 1) {
+                        // Orientation label
+                        HStack(spacing: 6) {
+                            Image(systemName: "iphone.landscape")
+                                .font(.caption)
                             Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
+                                .font(.caption2)
+                            Text("-")
                                 .font(.caption2)
                             Text(NSLocalizedString("orientation.landscape", comment: ""))
                                 .font(.caption2)
                                 .fontWeight(.medium)
                         }
-                        .foregroundColor(.white.opacity(0.8))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.black.opacity(0.4))
-                        .cornerRadius(6)
-                        .rotationEffect(.degrees(90))
+                        .foregroundColor(.white.opacity(0.9))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.5))
+                        .cornerRadius(8)
+
+                        // Furniture calibration (if active)
+                        if showingFurnitureFit, let h = detectedFurnitureHeight {
+                            Button(action: {
+                                showFurnitureDimensionsInput = true
+                            }) {
+                                VStack(spacing: 2) {
+                                    if let calibH = calibratedRoomHeight {
+                                        Text(String(format: "Room: %.2fm", calibH))
+                                            .font(.caption2)
+                                            .foregroundColor(.green)
+                                    }
+                                    Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
+                                        .font(.caption.bold())
+                                        .foregroundColor(realFurnitureHeight != nil ? .green : .white)
+                                    Text("Tap to calibrate")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.gray)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.black.opacity(0.6))
+                                .cornerRadius(6)
+                            }
+                        }
 
                         Spacer()
-                            .allowsHitTesting(false)
 
-                        // Furniture size + Screenshot button (bottom = right when horizontal)
-                        VStack(spacing: 8) {
-                            // Show detected furniture size - tap to input real size for calibration
-                            if showingFurnitureFit, let h = detectedFurnitureHeight {
-                                Button(action: {
-                                    showFurnitureDimensionsInput = true
-                                }) {
-                                    VStack(spacing: 2) {
-                                        if let calibH = calibratedRoomHeight {
-                                            Text(String(format: "Room: %.2fm", calibH))
-                                                .font(.caption2)
-                                                .foregroundColor(.green)
-                                        }
-                                        Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
-                                            .font(.caption.bold())
-                                            .foregroundColor(realFurnitureHeight != nil ? .green : .white)
-                                        Text("Tap to calibrate")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.gray)
-                                    }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.black.opacity(0.6))
-                                    .cornerRadius(6)
-                                }
-                                .rotationEffect(.degrees(90))
-                            }
-
-                            Button(action: {
-                                takeScreenshot()
-                            }) {
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(.white)
-                                    .frame(width: 60, height: 60)
-                                    .background(Circle().fill(Color.blue).shadow(radius: 5))
-                                    .rotationEffect(.degrees(90))  // Rotate icon for horizontal viewing
-                            }
-                            .disabled(isLoading)
+                        // Screenshot button (right)
+                        Button(action: {
+                            takeScreenshot()
+                        }) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(Color.blue).shadow(radius: 5))
                         }
-                        .padding(.bottom, 30)
+                        .disabled(isLoading)
                     }
-                    .frame(width: 130)  // Fixed width column at left edge
-                    .padding(.leading, 0)  // No padding - stick to left edge
-                    Spacer()
-                        .allowsHitTesting(false)
+                    .padding(.horizontal, 30)
+                    .padding(.bottom, 20)
                 }
                 .zIndex(99997)
             } else {
@@ -823,8 +813,12 @@ struct SharpRoomView: View {
         }
         .onAppear {
             loadMLModel()
-            // Lock to portrait orientation for 3D view stability
-            OrientationLockManager.shared.lockToPortrait()
+            // Lock orientation based on photo orientation
+            if photoOrientation == .landscape {
+                OrientationLockManager.shared.lockToLandscape()
+            } else {
+                OrientationLockManager.shared.lockToPortrait()
+            }
             logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
         }
         .onDisappear {
@@ -1471,10 +1465,16 @@ struct AntimatterSplatView: UIViewRepresentable {
                     });
                     scene.add(splatMesh);
 
-                    // Classic PLY is pre-rotated, flip 180° around X + 90° around Z for correct viewing
+                    // Classic PLY is pre-rotated, apply rotation based on photo orientation
                     splatMesh.rotation.x = Math.PI;
-                    splatMesh.rotation.z = Math.PI / 2;
-                    console.log('SplatMesh: rotated 180° X + 90° Z');
+                    if (isPortrait) {
+                        splatMesh.rotation.z = Math.PI / 2;
+                        console.log('SplatMesh (portrait): rotated 180° X + 90° Z');
+                    } else {
+                        // Landscape: no Z rotation needed - classic PLY handles it
+                        splatMesh.rotation.z = 0;
+                        console.log('SplatMesh (landscape): rotated 180° X only');
+                    }
 
                     // Auto-frame using Box3 (no orientation changes)
                     function autoFrameRoom() {
@@ -1497,17 +1497,11 @@ struct AntimatterSplatView: UIViewRepresentable {
                             }
 
                             const center = box.getCenter(new THREE.Vector3());
-                            // After 90° Z rotation, axes mapping depends on photo orientation
-                            // Portrait: width = X (narrower), height = Y (taller)
-                            // Landscape: width = Y, height = X
-                            let roomWidth, roomHeight;
-                            if (isPortrait) {
-                                roomWidth  = size.x;
-                                roomHeight = size.y;
-                            } else {
-                                roomWidth  = size.y;
-                                roomHeight = size.x;
-                            }
+                            // After rotation, axes mapping:
+                            // Portrait (90° Z): width = X (narrower), height = Y (taller)
+                            // Landscape (no Z): width = X (wider), height = Y (shorter)
+                            let roomWidth = size.x;
+                            let roomHeight = size.y;
                             let roomDepth  = size.z;
 
                             console.log('Box3 raw size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), '(isPortrait:', isPortrait, ')');

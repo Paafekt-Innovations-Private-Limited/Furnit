@@ -91,6 +91,10 @@ struct FileInfoSnackbar: View {
             return .green
         case .ply:
             return .purple
+        case .meshroom:
+            return .orange
+        case .glb:
+            return .blue
         }
     }
 

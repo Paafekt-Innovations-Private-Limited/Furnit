@@ -85,7 +85,7 @@ class USDZModelManager: ObservableObject {
         var savedRoomModels: [USDZModel] = []
 
         // Supported file extensions
-        let supportedExtensions = ["usdz", "ply"]
+        let supportedExtensions = ["usdz", "ply", "meshroom", "glb"]
 
         do {
             let files = try FileManager.default.contentsOfDirectory(at: modelsDirectory,
@@ -122,13 +122,35 @@ class USDZModelManager: ObservableObject {
             for (fileURL, _, size) in filesWithDates {
                 let fileName = fileURL.deletingPathExtension().lastPathComponent
                 let ext = fileURL.pathExtension.lowercased()
-                let fileType: ModelFileType = (ext == "ply") ? .ply : .usdz
 
-                // Load metadata for PLY files (orientation and dimensions)
-                let metadata = (fileType == .ply) ? loadPLYMetadata(for: fileName) : (orientation: PhotoOrientation.portrait, width: nil as Float?, height: nil as Float?)
+                // Determine file type
+                let fileType: ModelFileType
+                switch ext {
+                case "ply":
+                    fileType = .ply
+                case "meshroom":
+                    fileType = .meshroom
+                case "glb":
+                    fileType = .glb
+                default:
+                    fileType = .usdz
+                }
+
+                // Load metadata based on file type
+                let metadata: (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?)
+                switch fileType {
+                case .ply:
+                    metadata = loadPLYMetadata(for: fileName)
+                case .meshroom:
+                    metadata = loadMeshRoomMetadata(for: fileName)
+                case .glb:
+                    metadata = loadGLBMetadata(for: fileName)
+                default:
+                    metadata = (orientation: .portrait, width: nil, height: nil, depth: nil)
+                }
 
                 if debugMode {
-                    logDebug("   - \(fileName) (\(fileType.rawValue), orientation: \(metadata.orientation.rawValue), width: \(metadata.width ?? 0), height: \(metadata.height ?? 0))")
+                    logDebug("   - \(fileName) (\(fileType.rawValue), orientation: \(metadata.orientation.rawValue), w: \(metadata.width ?? 0), h: \(metadata.height ?? 0), d: \(metadata.depth ?? 0))")
                 }
 
                 let model = USDZModel(
@@ -139,7 +161,8 @@ class USDZModelManager: ObservableObject {
                     fileSize: size,
                     photoOrientation: metadata.orientation,
                     roomWidth: metadata.width,
-                    roomHeight: metadata.height
+                    roomHeight: metadata.height,
+                    roomDepth: metadata.depth
                 )
                 savedRoomModels.append(model)
             }
@@ -202,7 +225,17 @@ class USDZModelManager: ObservableObject {
         // Only delete file if it's a saved room (not bundle model)
         if model.isSavedRoom {
             // Use appropriate file extension based on file type
-            let fileExtension = model.fileType == .ply ? "ply" : "usdz"
+            let fileExtension: String
+            switch model.fileType {
+            case .ply:
+                fileExtension = "ply"
+            case .meshroom:
+                fileExtension = "meshroom"
+            case .glb:
+                fileExtension = "glb"
+            case .usdz:
+                fileExtension = "usdz"
+            }
             let fileURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension)")
             
             do {
@@ -214,6 +247,17 @@ class USDZModelManager: ObservableObject {
                 } else {
                     if debugMode {
                         logDebug("⚠️ [USDZModelManager] File not found: \(fileURL.path)")
+                    }
+                }
+
+                // Also delete metadata file for PLY, meshroom, and GLB files
+                if model.fileType == .ply || model.fileType == .meshroom || model.fileType == .glb {
+                    let metadataURL = modelsDirectory.appendingPathComponent("\(model.fileName).\(fileExtension).meta")
+                    if FileManager.default.fileExists(atPath: metadataURL.path) {
+                        try FileManager.default.removeItem(at: metadataURL)
+                        if debugMode {
+                            logDebug("✅ [USDZModelManager] Metadata file deleted: \(metadataURL.lastPathComponent)")
+                        }
                     }
                 }
             } catch {
@@ -399,19 +443,162 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Load all metadata from PLY metadata file (orientation, dimensions)
-    private func loadPLYMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?) {
+    private func loadPLYMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?) {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
 
         guard FileManager.default.fileExists(atPath: metadataURL.path),
               let data = try? Data(contentsOf: metadataURL),
               let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return (orientation: .portrait, width: nil, height: nil)  // Default if no metadata
+            return (orientation: .portrait, width: nil, height: nil, depth: nil)  // Default if no metadata
         }
 
         let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
         let width = metadata["roomWidth"].flatMap { Float($0) }
         let height = metadata["roomHeight"].flatMap { Float($0) }
+        let depth = metadata["roomDepth"].flatMap { Float($0) }
 
-        return (orientation: orientation, width: width, height: height)
+        return (orientation: orientation, width: width, height: height, depth: depth)
+    }
+
+    /// Save a mesh room (image + metadata) to SavedRooms directory
+    func saveMeshRoom(image: UIImage, name: String, photoOrientation: PhotoOrientation, roomWidth: Float, roomHeight: Float, roomDepth: Float, completion: @escaping (Bool, String?) -> Void) {
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+
+        if debugMode {
+            logDebug("💾 [USDZModelManager] Starting to save mesh room: \(name)")
+        }
+
+        let fileName = sanitizeFileName(name)
+        let imageURL = modelsDirectory.appendingPathComponent("\(fileName).meshroom")
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).meshroom.meta")
+
+        do {
+            // Remove existing files if they exist
+            if FileManager.default.fileExists(atPath: imageURL.path) {
+                try FileManager.default.removeItem(at: imageURL)
+            }
+            if FileManager.default.fileExists(atPath: metadataURL.path) {
+                try FileManager.default.removeItem(at: metadataURL)
+            }
+
+            // Save image as JPEG
+            guard let imageData = image.jpegData(compressionQuality: 0.85) else {
+                completion(false, "Failed to encode image")
+                return
+            }
+            try imageData.write(to: imageURL)
+
+            // Save metadata
+            let metadata: [String: String] = [
+                "photoOrientation": photoOrientation.rawValue,
+                "roomWidth": String(format: "%.2f", roomWidth),
+                "roomHeight": String(format: "%.2f", roomHeight),
+                "roomDepth": String(format: "%.2f", roomDepth)
+            ]
+            let metadataData = try JSONEncoder().encode(metadata)
+            try metadataData.write(to: metadataURL)
+
+            if debugMode {
+                logDebug("✅ [USDZModelManager] Mesh room saved to: \(imageURL.path)")
+            }
+
+            // Reload models
+            DispatchQueue.main.async {
+                self.loadModels()
+                completion(true, nil)
+            }
+        } catch {
+            if debugMode {
+                logDebug("❌ [USDZModelManager] Failed to save mesh room: \(error)")
+            }
+            completion(false, error.localizedDescription)
+        }
+    }
+
+    /// Load metadata from mesh room metadata file
+    private func loadMeshRoomMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?) {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).meshroom.meta")
+
+        guard FileManager.default.fileExists(atPath: metadataURL.path),
+              let data = try? Data(contentsOf: metadataURL),
+              let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return (orientation: .portrait, width: nil, height: nil, depth: nil)
+        }
+
+        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
+        let width = metadata["roomWidth"].flatMap { Float($0) }
+        let height = metadata["roomHeight"].flatMap { Float($0) }
+        let depth = metadata["roomDepth"].flatMap { Float($0) }
+
+        return (orientation: orientation, width: width, height: height, depth: depth)
+    }
+
+    /// Save a GLB (GLTF binary) room to SavedRooms directory
+    func saveGLBRoom(glbData: Data, name: String, photoOrientation: PhotoOrientation, roomWidth: Float, roomHeight: Float, roomDepth: Float, completion: @escaping (Bool, String?) -> Void) {
+        let debugMode = AppStateManager.shared.qualitySettings.debugMode
+
+        if debugMode {
+            logDebug("💾 [USDZModelManager] Starting to save GLB room: \(name) (\(glbData.count) bytes)")
+        }
+
+        let fileName = sanitizeFileName(name)
+        let glbURL = modelsDirectory.appendingPathComponent("\(fileName).glb")
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).glb.meta")
+
+        do {
+            // Remove existing files if they exist
+            if FileManager.default.fileExists(atPath: glbURL.path) {
+                try FileManager.default.removeItem(at: glbURL)
+            }
+            if FileManager.default.fileExists(atPath: metadataURL.path) {
+                try FileManager.default.removeItem(at: metadataURL)
+            }
+
+            // Save GLB file
+            try glbData.write(to: glbURL)
+
+            // Save metadata
+            let metadata: [String: String] = [
+                "photoOrientation": photoOrientation.rawValue,
+                "roomWidth": String(format: "%.2f", roomWidth),
+                "roomHeight": String(format: "%.2f", roomHeight),
+                "roomDepth": String(format: "%.2f", roomDepth)
+            ]
+            let metadataData = try JSONEncoder().encode(metadata)
+            try metadataData.write(to: metadataURL)
+
+            if debugMode {
+                logDebug("✅ [USDZModelManager] GLB room saved to: \(glbURL.path)")
+            }
+
+            // Reload models
+            DispatchQueue.main.async {
+                self.loadModels()
+                completion(true, nil)
+            }
+        } catch {
+            if debugMode {
+                logDebug("❌ [USDZModelManager] Failed to save GLB room: \(error)")
+            }
+            completion(false, error.localizedDescription)
+        }
+    }
+
+    /// Load metadata from GLB metadata file
+    private func loadGLBMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?, depth: Float?) {
+        let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).glb.meta")
+
+        guard FileManager.default.fileExists(atPath: metadataURL.path),
+              let data = try? Data(contentsOf: metadataURL),
+              let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return (orientation: .portrait, width: nil, height: nil, depth: nil)
+        }
+
+        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
+        let width = metadata["roomWidth"].flatMap { Float($0) }
+        let height = metadata["roomHeight"].flatMap { Float($0) }
+        let depth = metadata["roomDepth"].flatMap { Float($0) }
+
+        return (orientation: orientation, width: width, height: height, depth: depth)
     }
 }
