@@ -169,52 +169,47 @@ struct ModelViewerView: View {
                 
                 // Camera controls handled by RealityKitGestureHandlers in RealityKitView
 
-                // FurnitureFit snapshot and share buttons
-                if showingFurnitureFit {
-                    VStack {
+                // Screenshot button - ALWAYS VISIBLE (bottom-right, matching SharpRoomView)
+                VStack {
+                    Spacer()
+                    HStack {
                         Spacer()
-                        HStack {
-                            Spacer()
-                            // Share button (only for allowed users)
-                            if authManager.canShare {
-                                Button(action: {
-                                    let screen = UIScreen.main.bounds.size
-                                    shareFurnitureFitSnapshot(screen)
-                                }) {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: 28, weight: .regular))
-                                        .foregroundColor(.white)
-                                        .frame(width: 48, height: 48)
-                                        .background(
-                                            Circle()
-                                                .fill(Color.green)
-                                        )
-                                }
-                                .disabled(isCapturingSnapshot)
-                                .padding(.trailing, 12)
-                            }
-                            // Snapshot button
+                        // Share button (only when FurnitureFit active and user can share)
+                        if showingFurnitureFit && authManager.canShare {
                             Button(action: {
                                 let screen = UIScreen.main.bounds.size
-                                saveFurnitureFitSnapshot(screen)
+                                shareFurnitureFitSnapshot(screen)
                             }) {
-                                Image(systemName: "square.and.arrow.down")
+                                Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 28, weight: .regular))
                                     .foregroundColor(.white)
                                     .frame(width: 48, height: 48)
                                     .background(
                                         Circle()
-                                            .fill(Color.blue)
+                                            .fill(Color.green)
                                     )
                             }
                             .disabled(isCapturingSnapshot)
-                            .padding(.trailing, 30)
-                            .padding(.bottom, 40)
+                            .padding(.trailing, 12)
                         }
+                        // Snapshot button - always visible
+                        Button(action: {
+                            let screen = UIScreen.main.bounds.size
+                            saveFurnitureFitSnapshot(screen)
+                        }) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(Color.blue).shadow(radius: 5))
+                        }
+                        .disabled(isCapturingSnapshot)
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
                     }
-                    .opacity(isCapturingSnapshot ? 0 : 1)
-                    .zIndex(99996)
                 }
+                .opacity(isCapturingSnapshot ? 0 : 1)
+                .zIndex(99996)
             }
         }
         .navigationBarHidden(true)
