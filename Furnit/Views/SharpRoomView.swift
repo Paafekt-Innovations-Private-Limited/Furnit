@@ -1465,16 +1465,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                     });
                     scene.add(splatMesh);
 
-                    // Classic PLY is pre-rotated, apply rotation based on photo orientation
+                    // Classic PLY is pre-rotated, flip 180° around X + 90° around Z for correct viewing
                     splatMesh.rotation.x = Math.PI;
-                    if (isPortrait) {
-                        splatMesh.rotation.z = Math.PI / 2;
-                        console.log('SplatMesh (portrait): rotated 180° X + 90° Z');
-                    } else {
-                        // Landscape: no Z rotation needed - classic PLY handles it
-                        splatMesh.rotation.z = 0;
-                        console.log('SplatMesh (landscape): rotated 180° X only');
-                    }
+                    splatMesh.rotation.z = Math.PI / 2;
+                    console.log('SplatMesh: rotated 180° X + 90° Z');
 
                     // Auto-frame using Box3 (no orientation changes)
                     function autoFrameRoom() {
@@ -1497,11 +1491,17 @@ struct AntimatterSplatView: UIViewRepresentable {
                             }
 
                             const center = box.getCenter(new THREE.Vector3());
-                            // After rotation, axes mapping:
-                            // Portrait (90° Z): width = X (narrower), height = Y (taller)
-                            // Landscape (no Z): width = X (wider), height = Y (shorter)
-                            let roomWidth = size.x;
-                            let roomHeight = size.y;
+                            // After 90° Z rotation, axes mapping depends on photo orientation
+                            // Portrait: width = X (narrower), height = Y (taller)
+                            // Landscape: width = Y, height = X
+                            let roomWidth, roomHeight;
+                            if (isPortrait) {
+                                roomWidth  = size.x;
+                                roomHeight = size.y;
+                            } else {
+                                roomWidth  = size.y;
+                                roomHeight = size.x;
+                            }
                             let roomDepth  = size.z;
 
                             console.log('Box3 raw size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), '(isPortrait:', isPortrait, ')');
