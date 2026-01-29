@@ -2,6 +2,64 @@ import SwiftUI
 import SceneKit
 import Accelerate
 import CoreML
+import UIKit
+
+// MARK: - Orientation Locked View Wrapper
+/// Wraps content in a view controller that locks to a specific orientation
+struct OrientationLockedView<Content: View>: UIViewControllerRepresentable {
+    enum Orientation {
+        case portrait
+        case landscape
+    }
+
+    let orientation: Orientation
+    let content: Content
+
+    init(orientation: Orientation, @ViewBuilder content: () -> Content) {
+        self.orientation = orientation
+        self.content = content()
+    }
+
+    func makeUIViewController(context: Context) -> OrientationLockedHostingController<Content> {
+        let controller = OrientationLockedHostingController(rootView: content, lockedOrientation: orientation)
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: OrientationLockedHostingController<Content>, context: Context) {
+        uiViewController.rootView = content
+    }
+}
+
+class OrientationLockedHostingController<Content: View>: UIHostingController<Content> {
+    let lockedOrientation: OrientationLockedView<Content>.Orientation
+
+    init(rootView: Content, lockedOrientation: OrientationLockedView<Content>.Orientation) {
+        self.lockedOrientation = lockedOrientation
+        super.init(rootView: rootView)
+    }
+
+    @MainActor required dynamic init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        switch lockedOrientation {
+        case .portrait:
+            return .portrait
+        case .landscape:
+            return .landscape
+        }
+    }
+
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        switch lockedOrientation {
+        case .portrait:
+            return .portrait
+        case .landscape:
+            return .landscapeRight
+        }
+    }
+}
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
@@ -38,16 +96,12 @@ struct RoomBoundaryDetectionView: View {
             VStack(spacing: 0) {
                 // Interactive adjustment view - image is already fixed
                 GeometryReader { geometry in
-                    // For landscape: rotate 90° and swap dimensions
-                    let contentWidth = isLandscape ? geometry.size.height : geometry.size.width
-                    let contentHeight = isLandscape ? geometry.size.width : geometry.size.height
-
                     ZStack {
                         // Background image
                         Image(uiImage: originalImage)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: contentWidth)
+                            .frame(width: geometry.size.width)
 
                         // Overlay with draggable boundaries
                         BoundaryLinesCanvas(
@@ -59,7 +113,7 @@ struct RoomBoundaryDetectionView: View {
                             vanishingX: vanishingX,
                             vanishingY: vanishingY
                         )
-                        .frame(width: contentWidth)
+                        .frame(width: geometry.size.width)
 
                         // Draggable handles
                         DraggableHandlesOverlay(
@@ -71,13 +125,9 @@ struct RoomBoundaryDetectionView: View {
                             rightX: $rightX,
                             vanishingX: $vanishingX,
                             vanishingY: $vanishingY,
-                            magentaColor: magentaColor,
-                            isLandscape: isLandscape
+                            magentaColor: magentaColor
                         )
                     }
-                    .frame(width: contentWidth, height: contentHeight)
-                    .rotationEffect(isLandscape ? .degrees(90) : .degrees(0))
-                    .frame(width: geometry.size.width, height: geometry.size.height)
                 }
                     
                     // Adjustment instructions
@@ -553,7 +603,6 @@ struct DraggableHandlesOverlay: View {
     @Binding var vanishingX: CGFloat
     @Binding var vanishingY: CGFloat
     let magentaColor: Color
-    var isLandscape: Bool = false
 
     var body: some View {
         DraggableHandlesOverlayInner(
@@ -1067,24 +1116,26 @@ struct SinglePhotoRoomView: View {
             selectedOrientation = detectedOrientation
             logDebug("📐 [View] Auto-detected orientation: \(detectedOrientation.rawValue)")
         }
-        .sheet(item: $fixedImageItem) { item in
-            RoomBoundaryDetectionView(
-                originalImage: item.image,
-                savedBoundaries: $adjustedBoundaries,
-                reconstructor: reconstructor,
-                roomDimensions: SinglePhotoRoomReconstructor.RoomDimensions(
-                    width: Float(roomWidth),
-                    depth: Float(roomDepth),
-                    height: Float(roomHeight)
-                ),
-                onProcessingComplete: {
-                    // Navigate to viewer when processing is complete
-                    if reconstructor.generatedRoomScene != nil {
-                        navigateToViewer = true
-                    }
-                },
-                photoOrientation: selectedOrientation
-            )
+        .fullScreenCover(item: $fixedImageItem) { item in
+            OrientationLockedView(orientation: selectedOrientation == .landscape ? .landscape : .portrait) {
+                RoomBoundaryDetectionView(
+                    originalImage: item.image,
+                    savedBoundaries: $adjustedBoundaries,
+                    reconstructor: reconstructor,
+                    roomDimensions: SinglePhotoRoomReconstructor.RoomDimensions(
+                        width: Float(roomWidth),
+                        depth: Float(roomDepth),
+                        height: Float(roomHeight)
+                    ),
+                    onProcessingComplete: {
+                        // Navigate to viewer when processing is complete
+                        if reconstructor.generatedRoomScene != nil {
+                            navigateToViewer = true
+                        }
+                    },
+                    photoOrientation: selectedOrientation
+                )
+            }
             .onAppear {
                 logDebug("✅ [Sheet] Opening RoomBoundaryDetectionView with image: \(item.image.size)")
             }
