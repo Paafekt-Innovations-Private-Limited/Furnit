@@ -320,13 +320,11 @@ class ContentActivity : AppCompatActivity() {
         }
 
         if (model.isUserCreated) {
-            // Purple grid icon for user-created rooms
-            val gridIcon = TextView(this).apply {
-                text = "\u25A6\u25A6\u25A6\n\u25A6\u25A6\u25A6\n\u25A6\u25A6\u25A6"
-                textSize = 8f
-                setTextColor(accentPurple)
-                gravity = Gravity.CENTER
-                setLineSpacing(0f, 0.8f)
+            // Purple 3x3 grid icon for user-created rooms (matching iOS circle.grid.3x3.fill)
+            val gridIcon = ImageView(this).apply {
+                setImageResource(R.drawable.ic_grid_3x3)
+                val iconSize = dpToPx(28)
+                layoutParams = LinearLayout.LayoutParams(iconSize, iconSize)
             }
             iconContainer.addView(gridIcon)
         } else {
