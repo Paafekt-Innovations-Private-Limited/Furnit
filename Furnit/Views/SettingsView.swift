@@ -11,6 +11,9 @@ struct SettingsView: View {
     @AppStorage("singlePhotoRoom.depth") private var roomDepth: Double = 4.5
     @AppStorage("singlePhotoRoom.height") private var roomHeight: Double = 2.8
 
+    // Room Viewer Settings
+    @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
+
     var body: some View {
         NavigationView {
             Form {
@@ -117,6 +120,26 @@ struct SettingsView: View {
                 } footer: {
                     Text(L10n.Settings.roomDimensionsFooter)
                         .font(.footnote)
+                }
+
+                // Room Viewer Settings Section
+                Section {
+                    Toggle(isOn: $oscillationEnabled) {
+                        HStack {
+                            Image(systemName: "arrow.left.arrow.right")
+                                .foregroundColor(.cyan)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Auto Orbit")
+                                    .font(.headline)
+                                Text("Slowly rotate camera when idle")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.cyan)
+                } header: {
+                    Text("Room Viewer")
                 }
 
                 // Developer Settings Section

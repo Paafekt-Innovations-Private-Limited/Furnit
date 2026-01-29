@@ -663,10 +663,20 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var active: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Room's photo orientation
 
+    // Room dimensions from SHARP (in meters) for furniture sizing
+    var roomWidthMeters: Float = 4.0
+    var roomHeightMeters: Float = 3.0
+
+    // Callback for reporting estimated furniture size (width, height in meters)
+    var onFurnitureSizeEstimated: ((Float, Float) -> Void)?
+
     func makeUIView(context: Context) -> FurnitureFitContainerView {
         let view = FurnitureFitContainerView()
         view.setModel(mlModel)
         view.lockedOrientation = lockedOrientation
+        view.roomWidthMeters = roomWidthMeters
+        view.roomHeightMeters = roomHeightMeters
+        view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         return view
     }
 
@@ -674,6 +684,9 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.setModel(mlModel)
         uiView.processInterval = processInterval
         uiView.lockedOrientation = lockedOrientation
+        uiView.roomWidthMeters = roomWidthMeters
+        uiView.roomHeightMeters = roomHeightMeters
+        uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }

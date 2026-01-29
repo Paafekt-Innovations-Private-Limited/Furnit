@@ -171,12 +171,25 @@ typealias UnionDet = FurnitureFitDetection
 
 // MARK: - Main Container View
 final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate {
-    
+
     // MARK: Config
     var processInterval: TimeInterval = 0.1
     var confidenceThreshold: Float = 0.1
     var useBilinearUpscaling: Bool = false
     var lockedOrientation: PhotoOrientation = .portrait  // Locked orientation (no rotation needed when .landscape)
+
+    // MARK: Room Dimensions (from SHARP output, in meters)
+    var roomWidthMeters: Float = 4.0   // Default fallback
+    var roomHeightMeters: Float = 3.0  // Default fallback
+
+    // Callback for reporting estimated furniture size (width, height in meters)
+    var onFurnitureSizeEstimated: ((Float, Float) -> Void)?
+
+    // Sizing calculator (created when room dimensions are set)
+    private var sizingCalculator: FurnitureSizingCalculator?
+
+    // Last detected primary class (for sizing)
+    private var lastPrimaryClassIdx: Int = -1
 
     // Debug mode - read from settings
     var debugMode: Bool {
@@ -464,6 +477,41 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     override func layoutSubviews() {
         super.layoutSubviews()
         previewLayer.frame = bounds
+        updateSizingCalculator()
+    }
+
+    /// Update sizing calculator with current view dimensions
+    private func updateSizingCalculator() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        sizingCalculator = FurnitureSizingCalculator(
+            roomWidth: roomWidthMeters,
+            roomHeight: roomHeightMeters,
+            viewWidth: bounds.width,
+            viewHeight: bounds.height
+        )
+    }
+
+    /// Apply automatic sizing based on detected furniture class and room dimensions
+    private func applyFurnitureSizing(classIdx: Int, detectedWidth: CGFloat, detectedHeight: CGFloat) {
+        guard let calculator = sizingCalculator else {
+            if debugMode { logDebug("📏 [Sizing] No calculator available") }
+            return
+        }
+
+        let scaleFactor = calculator.calculateScaleFactor(
+            classIdx: classIdx,
+            detectedWidthPixels: detectedWidth,
+            detectedHeightPixels: detectedHeight
+        )
+
+        // Apply scale transform to maskImageView
+        if scaleFactor != 1.0 {
+            currentScale = scaleFactor
+            maskImageView.transform = CGAffineTransform(scaleX: scaleFactor, y: scaleFactor)
+            if debugMode {
+                logDebug("📏 [Sizing] Applied scale \(String(format: "%.2f", scaleFactor)) for class \(classIdx)")
+            }
+        }
     }
     
     override func didMoveToSuperview() {
@@ -555,14 +603,18 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private func updateVideoRotationForOrientation(_ orientation: UIDeviceOrientation) {
         guard let conn = videoOutput.connection(with: .video) else { return }
 
-        // Set video rotation to match device orientation for natural FOV
-        switch orientation {
-        case .landscapeLeft:
-            conn.videoRotationAngle = 0    // Native landscape
-        case .landscapeRight:
-            conn.videoRotationAngle = 180  // Native landscape (flipped)
-        default:
-            conn.videoRotationAngle = 90   // Portrait
+        // Respect locked orientation - don't change rotation based on device movement
+        if lockedOrientation == .landscape {
+            // Landscape room: stay at 0° or 180° based on device orientation
+            switch orientation {
+            case .landscapeRight:
+                conn.videoRotationAngle = 180
+            default:
+                conn.videoRotationAngle = 0
+            }
+        } else {
+            // Portrait room: always 90°
+            conn.videoRotationAngle = 90
         }
     }
 
@@ -599,10 +651,17 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if captureSession.canAddOutput(videoOutput) {
             captureSession.addOutput(videoOutput)
         }
-        // Fixed 90° rotation - camera captures in landscape, we need portrait for model
-        // The preview layer handles display orientation automatically
+        // Set video rotation based on locked orientation
+        // For landscape rooms: use 0° (native landscape frames)
+        // For portrait rooms: use 90° (rotated to portrait frames)
         if let conn = videoOutput.connection(with: .video) {
-            conn.videoRotationAngle = 90
+            if lockedOrientation == .landscape {
+                conn.videoRotationAngle = 0
+                logDebug("📷 [Camera] Landscape room: using 0° rotation (1280x720)")
+            } else {
+                conn.videoRotationAngle = 90
+                logDebug("📷 [Camera] Portrait room: using 90° rotation (720x1280)")
+            }
         }
         captureSession.commitConfiguration()
     }
@@ -1068,6 +1127,31 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         if debugMode {
             logDebug("⏱️ STAGE 4 - Select primary: \(String(format: "%.2f", t4End.timeIntervalSince(t4) * 1000)) ms")
             logDebug("   🎯 PRIMARY[\(primaryIdx)]: \(className(primary.classIdx)) conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
+        }
+
+        // Estimate real-world furniture size using simple pixel ratio
+        // furniture_size = (bbox_pixels / image_pixels) × room_size
+        let imgWidthPx = primary.w / resizeGain
+        let imgHeightPx = primary.h / resizeGain
+
+        let metersPerPixelX = roomWidthMeters / Float(bufW)
+        let metersPerPixelY = roomHeightMeters / Float(bufH)
+
+        var estimatedWidth = imgWidthPx * metersPerPixelX
+        var estimatedHeight = imgHeightPx * metersPerPixelY
+
+        // Ensure height > width for most furniture
+        if estimatedWidth > estimatedHeight {
+            swap(&estimatedWidth, &estimatedHeight)
+        }
+
+        if debugMode {
+            logDebug("📏 [Sizing] Room: \(String(format: "%.2f", roomWidthMeters))×\(String(format: "%.2f", roomHeightMeters))m, Buffer: \(bufW)×\(bufH)px")
+            logDebug("📏 [Sizing] Furniture: \(Int(imgWidthPx))×\(Int(imgHeightPx))px → \(String(format: "%.2f", estimatedWidth))×\(String(format: "%.2f", estimatedHeight))m")
+        }
+
+        DispatchQueue.main.async {
+            self.onFurnitureSizeEstimated?(estimatedWidth, estimatedHeight)
         }
 
         // STAGE 5: Filter candidates by mask overlap with primary
@@ -1808,16 +1892,25 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             composedImage = img
         }
 
-        // Present result - for landscape buffers, rotate back for portrait UI
-        // UNLESS lockedOrientation is .landscape (room is naturally landscape, no rotation needed)
+        // Present result - handle rotation for display
+        // For landscape rooms: rotate 90° CW so landscape mask displays correctly on portrait screen
+        // For portrait rooms with landscape buffer: rotate back to portrait
         DispatchQueue.main.async {
             if var cgImg = composedImage {
-                if isLandscape && self.lockedOrientation != .landscape {
-                    // Rotate back for portrait display: landscapeLeft -> 90° CCW, landscapeRight -> 90° CW
+                if self.lockedOrientation == .landscape {
+                    // Landscape room: rotate 90° CW for correct display on portrait UI
+                    let rotatedImg = self.rotateCGImage90(cgImg, clockwise: true)
+                    cgImg = rotatedImg ?? cgImg
+                } else if isLandscape {
+                    // Portrait room but landscape buffer: rotate back for portrait display
                     let rotatedImg = self.rotateCGImage90(cgImg, clockwise: deviceOrientation == .landscapeLeft)
                     cgImg = rotatedImg ?? cgImg
                 }
                 self.maskImageView.image = UIImage(cgImage: cgImg)
+
+                // Note: Furniture sizing disabled - the mask already matches room proportions
+                // Scaling to "standard" dimensions was making the cutouts wrong-sized
+                // The detected furniture should display at its natural size in the room
             }
         }
         resetProcessingFlag()

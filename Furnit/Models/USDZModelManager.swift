@@ -124,11 +124,11 @@ class USDZModelManager: ObservableObject {
                 let ext = fileURL.pathExtension.lowercased()
                 let fileType: ModelFileType = (ext == "ply") ? .ply : .usdz
 
-                // Load photo orientation from metadata for PLY files
-                let orientation: PhotoOrientation = (fileType == .ply) ? loadPhotoOrientation(for: fileName) : .portrait
+                // Load metadata for PLY files (orientation and dimensions)
+                let metadata = (fileType == .ply) ? loadPLYMetadata(for: fileName) : (orientation: PhotoOrientation.portrait, width: nil as Float?, height: nil as Float?)
 
                 if debugMode {
-                    logDebug("   - \(fileName) (\(fileType.rawValue), orientation: \(orientation.rawValue))")
+                    logDebug("   - \(fileName) (\(fileType.rawValue), orientation: \(metadata.orientation.rawValue), width: \(metadata.width ?? 0), height: \(metadata.height ?? 0))")
                 }
 
                 let model = USDZModel(
@@ -137,7 +137,9 @@ class USDZModelManager: ObservableObject {
                     isSavedRoom: true,
                     fileType: fileType,
                     fileSize: size,
-                    photoOrientation: orientation
+                    photoOrientation: metadata.orientation,
+                    roomWidth: metadata.width,
+                    roomHeight: metadata.height
                 )
                 savedRoomModels.append(model)
             }
@@ -335,11 +337,11 @@ class USDZModelManager: ObservableObject {
     }
 
     /// Save a PLY file to SavedRooms directory
-    func savePLY(from sourceURL: URL, name: String, photoOrientation: PhotoOrientation = .portrait, completion: @escaping (Bool, String?) -> Void) {
+    func savePLY(from sourceURL: URL, name: String, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil, completion: @escaping (Bool, String?) -> Void) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
 
         if debugMode {
-            logDebug("💾 [USDZModelManager] Starting to save PLY: \(name) (orientation: \(photoOrientation.rawValue))")
+            logDebug("💾 [USDZModelManager] Starting to save PLY: \(name) (orientation: \(photoOrientation.rawValue), width: \(roomWidth ?? 0), height: \(roomHeight ?? 0))")
         }
 
         let fileName = sanitizeFileName(name)
@@ -367,8 +369,14 @@ class USDZModelManager: ObservableObject {
             // Copy PLY file
             try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
-            // Save metadata (orientation)
-            let metadata: [String: String] = ["photoOrientation": photoOrientation.rawValue]
+            // Save metadata (orientation and dimensions)
+            var metadata: [String: String] = ["photoOrientation": photoOrientation.rawValue]
+            if let width = roomWidth {
+                metadata["roomWidth"] = String(format: "%.2f", width)
+            }
+            if let height = roomHeight {
+                metadata["roomHeight"] = String(format: "%.2f", height)
+            }
             let metadataData = try JSONEncoder().encode(metadata)
             try metadataData.write(to: metadataURL)
 
@@ -390,18 +398,20 @@ class USDZModelManager: ObservableObject {
         }
     }
 
-    /// Load photo orientation from metadata file
-    private func loadPhotoOrientation(for fileName: String) -> PhotoOrientation {
+    /// Load all metadata from PLY metadata file (orientation, dimensions)
+    private func loadPLYMetadata(for fileName: String) -> (orientation: PhotoOrientation, width: Float?, height: Float?) {
         let metadataURL = modelsDirectory.appendingPathComponent("\(fileName).ply.meta")
 
         guard FileManager.default.fileExists(atPath: metadataURL.path),
               let data = try? Data(contentsOf: metadataURL),
-              let metadata = try? JSONDecoder().decode([String: String].self, from: data),
-              let orientationStr = metadata["photoOrientation"],
-              let orientation = PhotoOrientation(rawValue: orientationStr) else {
-            return .portrait  // Default to portrait if no metadata
+              let metadata = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return (orientation: .portrait, width: nil, height: nil)  // Default if no metadata
         }
 
-        return orientation
+        let orientation = metadata["photoOrientation"].flatMap { PhotoOrientation(rawValue: $0) } ?? .portrait
+        let width = metadata["roomWidth"].flatMap { Float($0) }
+        let height = metadata["roomHeight"].flatMap { Float($0) }
+
+        return (orientation: orientation, width: width, height: height)
     }
 }

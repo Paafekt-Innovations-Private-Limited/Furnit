@@ -114,72 +114,115 @@ class RoomMeasurement {
     /// - Parameters:
     ///   - positions: Array of (x, y, z) positions
     ///   - photoOrientation: Orientation of the source photo (affects height heuristics)
-    /// - Returns: Room measurements based on bounding box
+    /// - Returns: Room measurements based on front wall detection
     static func measureRoom(positions: [(Float, Float, Float)], photoOrientation: PhotoOrientation = .landscape) -> RoomMeasurements? {
         guard positions.count >= minPlanePoints else {
             logDebug("RoomMeasurement: Not enough points (\(positions.count))")
             return nil
         }
 
-        logDebug("RoomMeasurement: Orientation = \(photoOrientation.rawValue)")
+        logDebug("RoomMeasurement: Orientation = \(photoOrientation.rawValue), points = \(positions.count)")
 
         // Convert to SIMD for faster math
         let points = positions.map { SIMD3<Float>($0.0, $0.1, $0.2) }
 
-        // Compute overall bounding box using utility function
+        // Compute overall bounding box
         guard let bounds = SharpRoomBoundsUtils.calculateBoundingBox(points: points) else {
             logDebug("RoomMeasurement: Failed to calculate bounding box")
             return nil
         }
         let minBound = bounds.min
         let maxBound = bounds.max
-
         let boundingBox = maxBound - minBound
-        logDebug("RoomMeasurement: Bounding box: \(boundingBox.x) × \(boundingBox.y) × \(boundingBox.z)")
 
-        // Use bounding box directly for room measurements
-        // X = room width (left-right), Y = room height (floor-ceiling), Z = room depth (front-back)
-        let roomWidth = boundingBox.x
-        let roomDepth = boundingBox.z
+        logDebug("RoomMeasurement: Full bounding box: \(String(format: "%.2f", boundingBox.x)) × \(String(format: "%.2f", boundingBox.y)) × \(String(format: "%.2f", boundingBox.z))")
 
-        // Apply realistic height cap - tweak based on orientation
-        // Portrait photos often capture more vertical content, so be slightly more forgiving
-        let maxRealisticHeight: Float
-        let minRealisticHeight: Float
+        // FRONT WALL DETECTION using Z histogram
+        // Find the dominant Z plane (where most points cluster = likely a wall)
+        let zCoords = points.map { $0.z }
+        let zMin = zCoords.min() ?? 0
+        let zMax = zCoords.max() ?? 1
+        let zRange = zMax - zMin
 
-        switch photoOrientation {
-        case .portrait:
-            maxRealisticHeight = 3.5  // Allow slightly taller for portrait shots
-            minRealisticHeight = 2.2
-        case .landscape, .square:
-            maxRealisticHeight = 3.2
-            minRealisticHeight = 2.2
+        // Create histogram with 20 bins
+        let numBins = 20
+        let binSize = zRange / Float(numBins)
+        var histogram = [Int](repeating: 0, count: numBins)
+
+        for z in zCoords {
+            let binIndex = min(numBins - 1, max(0, Int((z - zMin) / binSize)))
+            histogram[binIndex] += 1
         }
 
-        var roomHeight = boundingBox.y
+        // Find the bin with most points (dominant Z plane)
+        let maxBinIndex = histogram.enumerated().max(by: { $0.element < $1.element })?.offset ?? 0
+        let dominantZ = zMin + (Float(maxBinIndex) + 0.5) * binSize
+
+        logDebug("RoomMeasurement: Z histogram - dominant bin \(maxBinIndex), Z = \(String(format: "%.2f", dominantZ))")
+
+        // Filter points near dominant Z plane (within 1 bin width tolerance)
+        let zTolerance = binSize * 1.5
+        let frontWallPoints = points.filter { abs($0.z - dominantZ) <= zTolerance }
+
+        logDebug("RoomMeasurement: Front wall points: \(frontWallPoints.count) at Z ≈ \(String(format: "%.2f", dominantZ))")
+
+        // Measure X and Y extent of front wall points
+        var roomWidth: Float
+        var roomHeight: Float
+        let roomDepth = boundingBox.z
+
+        if frontWallPoints.count >= 100 {
+            let wallXCoords = frontWallPoints.map { $0.x }
+            let wallYCoords = frontWallPoints.map { $0.y }
+
+            // Use percentile trimming - tighter for Y (height) to cut fog
+            let sortedX = wallXCoords.sorted()
+            let sortedY = wallYCoords.sorted()
+
+            // Width: 5th-95th percentile (walls visible edge to edge)
+            let lowIdxX = Int(Double(sortedX.count) * 0.05)
+            let highIdxX = Int(Double(sortedX.count) * 0.95) - 1
+
+            // Height: 15th-85th percentile (floor/ceiling fog is worse)
+            let lowIdxY = Int(Double(sortedY.count) * 0.15)
+            let highIdxY = Int(Double(sortedY.count) * 0.85) - 1
+
+            roomWidth = sortedX[min(sortedX.count - 1, highIdxX)] - sortedX[max(0, lowIdxX)]
+            roomHeight = sortedY[min(sortedY.count - 1, highIdxY)] - sortedY[max(0, lowIdxY)]
+
+            logDebug("RoomMeasurement: Front wall measured (X:5-95%, Y:15-85%): \(String(format: "%.2f", roomWidth)) × \(String(format: "%.2f", roomHeight))")
+        } else {
+            // Fallback to full bounding box if not enough front wall points
+            logDebug("RoomMeasurement: Not enough front wall points, using bounding box")
+            roomWidth = boundingBox.x
+            roomHeight = boundingBox.y
+        }
+
+        // Apply realistic caps as safety net
+        let maxRealisticWidth: Float = photoOrientation == .portrait ? 6.0 : 8.0
+        let maxRealisticHeight: Float = photoOrientation == .portrait ? 3.5 : 3.2
+        let minRealisticHeight: Float = 2.2
+
+        if roomWidth > maxRealisticWidth {
+            logDebug("RoomMeasurement: Width \(String(format: "%.2f", roomWidth)) > max, capping to \(maxRealisticWidth)")
+            roomWidth = maxRealisticWidth
+        }
 
         if roomHeight > maxRealisticHeight {
-            logDebug("RoomMeasurement: Height \(roomHeight) exceeds max, capping to \(maxRealisticHeight)")
+            logDebug("RoomMeasurement: Height \(String(format: "%.2f", roomHeight)) > max, capping to \(maxRealisticHeight)")
             roomHeight = maxRealisticHeight
         } else if roomHeight < minRealisticHeight {
-            logDebug("RoomMeasurement: Height \(roomHeight) below min, using \(minRealisticHeight)")
+            logDebug("RoomMeasurement: Height \(String(format: "%.2f", roomHeight)) < min, using \(minRealisticHeight)")
             roomHeight = minRealisticHeight
         }
 
-        logDebug("RoomMeasurement: Room dimensions:")
-        logDebug("  Width: \(roomWidth)")
-        logDebug("  Height: \(boundingBox.y) -> \(roomHeight) (adjusted)")
-        logDebug("  Depth: \(roomDepth)")
-        logDebug("  Points: \(positions.count)")
+        logDebug("RoomMeasurement: FINAL dimensions: \(String(format: "%.2f", roomWidth)) × \(String(format: "%.2f", roomHeight)) m")
 
-        // Create actual bounds from min/max
+        // Create actual bounds
         let actualBounds = RoomBounds(
-            minX: minBound.x,
-            maxX: maxBound.x,
-            minY: minBound.y,
-            maxY: maxBound.y,
-            minZ: minBound.z,
-            maxZ: maxBound.z
+            minX: minBound.x, maxX: maxBound.x,
+            minY: minBound.y, maxY: maxBound.y,
+            minZ: minBound.z, maxZ: maxBound.z
         )
 
         return RoomMeasurements(

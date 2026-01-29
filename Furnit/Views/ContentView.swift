@@ -358,7 +358,7 @@ struct HomeTab: View {
                 if model.fileType == .ply {
                     NavigationLink {
                         LazyView {
-                            SharpRoomView(plyURL: modelURL, roomMeasurements: nil, allowSave: false, photoOrientation: model.photoOrientation)
+                            SharpRoomView(plyURL: modelURL, roomMeasurements: nil, allowSave: false, photoOrientation: model.photoOrientation, savedRoomWidth: model.roomWidth, savedRoomHeight: model.roomHeight)
                         }
                     } label: {
                         HomeViewModelRow(model: model)

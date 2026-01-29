@@ -10,6 +10,8 @@ struct USDZModel: Identifiable, Hashable {
     let fileType: ModelFileType  // File type: .usdz or .ply
     let fileSize: UInt64?  // File size in bytes
     let photoOrientation: PhotoOrientation  // Source photo orientation (for PLY rooms)
+    let roomWidth: Float?  // Room width in meters (for PLY rooms)
+    let roomHeight: Float?  // Room height in meters (for PLY rooms)
 
     // Standard initializer for USDZ models (backward compatible)
     init(name: String, fileName: String, isSavedRoom: Bool = false) {
@@ -19,18 +21,22 @@ struct USDZModel: Identifiable, Hashable {
         self.fileType = .usdz
         self.fileSize = nil
         self.photoOrientation = .portrait  // Default for USDZ
+        self.roomWidth = nil
+        self.roomHeight = nil
         // Only load NSDataAsset for bundle rooms
         self.dataAsset = isSavedRoom ? nil : NSDataAsset(name: fileName)
     }
 
     // Full initializer with file type and size
-    init(name: String, fileName: String, isSavedRoom: Bool, fileType: ModelFileType, fileSize: UInt64?, photoOrientation: PhotoOrientation = .portrait) {
+    init(name: String, fileName: String, isSavedRoom: Bool, fileType: ModelFileType, fileSize: UInt64?, photoOrientation: PhotoOrientation = .portrait, roomWidth: Float? = nil, roomHeight: Float? = nil) {
         self.name = name
         self.fileName = fileName
         self.isSavedRoom = isSavedRoom
         self.fileType = fileType
         self.fileSize = fileSize
         self.photoOrientation = photoOrientation
+        self.roomWidth = roomWidth
+        self.roomHeight = roomHeight
         // Only load NSDataAsset for bundle rooms with USDZ type
         self.dataAsset = (isSavedRoom || fileType == .ply) ? nil : NSDataAsset(name: fileName)
     }

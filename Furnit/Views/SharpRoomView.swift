@@ -155,17 +155,21 @@ struct SharpRoomView: View {
     let roomMeasurements: RoomMeasurements?  // Room measurements for display
     let allowSave: Bool  // Show save button (true for new rooms, false for viewing from home)
     let photoOrientation: PhotoOrientation  // Source photo orientation (for UI layout)
+    let savedRoomWidth: Float?  // Room width from saved metadata (for HomeView)
+    let savedRoomHeight: Float?  // Room height from saved metadata (for HomeView)
     @Environment(\.dismiss) private var dismiss
 
     // Parsed bounds from PLY file (used when roomMeasurements is nil)
     private let parsedBounds: RoomBounds?
 
     // Convenience initializer for backwards compatibility
-    init(plyURL: URL, roomMeasurements: RoomMeasurements? = nil, allowSave: Bool = true, photoOrientation: PhotoOrientation = .portrait) {
+    init(plyURL: URL, roomMeasurements: RoomMeasurements? = nil, allowSave: Bool = true, photoOrientation: PhotoOrientation = .portrait, savedRoomWidth: Float? = nil, savedRoomHeight: Float? = nil) {
         self.plyURL = plyURL
         self.roomMeasurements = roomMeasurements
         self.allowSave = allowSave
         self.photoOrientation = photoOrientation
+        self.savedRoomWidth = savedRoomWidth
+        self.savedRoomHeight = savedRoomHeight
 
         // Compute viewer PLY URL (prefer 3DGS for SparkJS, then classic, then base)
         let basePath = plyURL.path
@@ -294,6 +298,22 @@ struct SharpRoomView: View {
     @State private var jsFrontWallWidth: Float?
     @State private var jsFrontWallHeight: Float?
 
+    // Detected furniture size (from FurnitureFit, in meters - before calibration)
+    @State private var detectedFurnitureWidth: Float?
+    @State private var detectedFurnitureHeight: Float?
+
+    // User-input real furniture dimensions for room calibration
+    @State private var showFurnitureDimensionsInput = false
+    @State private var inputFurnitureHeight: String = ""
+    @State private var realFurnitureHeight: Float?  // Confirmed real height in meters
+
+    // Calibrated room dimensions (computed from real furniture size)
+    @State private var calibratedRoomHeight: Float?
+    @State private var calibratedRoomWidth: Float?
+
+    // Room viewer settings
+    @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
+
     // Save room state
     @StateObject private var modelManager = USDZModelManager()
     @State private var isSavingRoom = false
@@ -347,6 +367,7 @@ struct SharpRoomView: View {
                 roomBounds: roomMeasurements?.boundingBox,
                 actualBounds: effectiveBounds,
                 photoOrientation: photoOrientation,
+                oscillationEnabled: oscillationEnabled,
                 onLoaded: {
                     isLoading = false
                 },
@@ -403,7 +424,14 @@ struct SharpRoomView: View {
                     roomImage: nil,
                     mlModel: mlModel,
                     processInterval: 0.07,
-                    active: true
+                    active: true,
+                    lockedOrientation: photoOrientation,
+                    roomWidthMeters: roomMeasurements?.frontWallWidth ?? jsFrontWallWidth ?? 4.0,
+                    roomHeightMeters: roomMeasurements?.frontWallHeight ?? jsFrontWallHeight ?? 3.0,
+                    onFurnitureSizeEstimated: { width, height in
+                        detectedFurnitureWidth = width
+                        detectedFurnitureHeight = height
+                    }
                 )
                 .ignoresSafeArea()
                 .zIndex(100)
@@ -413,6 +441,152 @@ struct SharpRoomView: View {
             // Save progress overlay
             if isSavingRoom {
                 saveRoomProgressOverlay
+            }
+
+            // Calibration input overlay (custom instead of sheet for landscape rotation)
+            if showFurnitureDimensionsInput {
+                ZStack {
+                    // Dimmed background
+                    Color.black.opacity(0.6)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            showFurnitureDimensionsInput = false
+                        }
+
+                    // Input card with custom number pad - rotated for landscape
+                    VStack(spacing: 16) {
+                        Text("Calibrate Room")
+                            .font(.headline)
+                            .foregroundColor(.white)
+
+                        Text("Enter real furniture height (meters)")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+
+                        if let h = detectedFurnitureHeight {
+                            Text(String(format: "Detected: %.2fm", h))
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                        }
+
+                        // Display current input
+                        Text(inputFurnitureHeight.isEmpty ? "0.00" : inputFurnitureHeight)
+                            .font(.system(size: 32, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white)
+                            .frame(width: 120, height: 44)
+                            .background(Color.white.opacity(0.1))
+                            .cornerRadius(8)
+
+                        // Custom number pad
+                        VStack(spacing: 8) {
+                            ForEach(0..<3) { row in
+                                HStack(spacing: 8) {
+                                    ForEach(1...3, id: \.self) { col in
+                                        let digit = row * 3 + col
+                                        Button(action: {
+                                            appendDigit("\(digit)")
+                                        }) {
+                                            Text("\(digit)")
+                                                .font(.title2.bold())
+                                                .foregroundColor(.white)
+                                                .frame(width: 50, height: 44)
+                                                .background(Color.gray.opacity(0.3))
+                                                .cornerRadius(8)
+                                        }
+                                    }
+                                }
+                            }
+                            // Bottom row: "." 0 "⌫"
+                            HStack(spacing: 8) {
+                                Button(action: {
+                                    if !inputFurnitureHeight.contains(".") {
+                                        inputFurnitureHeight += inputFurnitureHeight.isEmpty ? "0." : "."
+                                    }
+                                }) {
+                                    Text(".")
+                                        .font(.title2.bold())
+                                        .foregroundColor(.white)
+                                        .frame(width: 50, height: 44)
+                                        .background(Color.gray.opacity(0.3))
+                                        .cornerRadius(8)
+                                }
+                                Button(action: {
+                                    appendDigit("0")
+                                }) {
+                                    Text("0")
+                                        .font(.title2.bold())
+                                        .foregroundColor(.white)
+                                        .frame(width: 50, height: 44)
+                                        .background(Color.gray.opacity(0.3))
+                                        .cornerRadius(8)
+                                }
+                                Button(action: {
+                                    if !inputFurnitureHeight.isEmpty {
+                                        inputFurnitureHeight.removeLast()
+                                    }
+                                }) {
+                                    Image(systemName: "delete.left")
+                                        .font(.title3)
+                                        .foregroundColor(.white)
+                                        .frame(width: 50, height: 44)
+                                        .background(Color.gray.opacity(0.3))
+                                        .cornerRadius(8)
+                                }
+                            }
+                        }
+
+                        HStack(spacing: 16) {
+                            Button("Cancel") {
+                                inputFurnitureHeight = ""
+                                showFurnitureDimensionsInput = false
+                            }
+                            .font(.body.bold())
+                            .foregroundColor(.red)
+                            .frame(width: 80, height: 40)
+                            .background(Color.red.opacity(0.2))
+                            .cornerRadius(8)
+
+                            Button("Apply") {
+                                if let realHeight = Float(inputFurnitureHeight),
+                                   let detectedHeight = detectedFurnitureHeight,
+                                   detectedHeight > 0 {
+                                    realFurnitureHeight = realHeight
+                                    let scaleFactor = realHeight / detectedHeight
+
+                                    // Scale the room to match real furniture size
+                                    NotificationCenter.default.post(
+                                        name: NSNotification.Name("WebGLScaleRoom"),
+                                        object: nil,
+                                        userInfo: ["factor": Double(scaleFactor)]
+                                    )
+
+                                    // Update calibrated room dimensions
+                                    if let roomH = roomMeasurements?.frontWallHeight ?? jsFrontWallHeight {
+                                        calibratedRoomHeight = roomH * scaleFactor
+                                    }
+                                    if let roomW = roomMeasurements?.frontWallWidth ?? jsFrontWallWidth {
+                                        calibratedRoomWidth = roomW * scaleFactor
+                                    }
+
+                                    logDebug("📐 [Calibration] Real height: \(realHeight)m, Scale factor: \(scaleFactor)")
+                                }
+                                inputFurnitureHeight = ""
+                                showFurnitureDimensionsInput = false
+                            }
+                            .font(.body.bold())
+                            .foregroundColor(.green)
+                            .frame(width: 80, height: 40)
+                            .background(Color.green.opacity(0.2))
+                            .cornerRadius(8)
+                            .disabled(Float(inputFurnitureHeight) == nil || inputFurnitureHeight.isEmpty)
+                        }
+                    }
+                    .padding(20)
+                    .background(Color.black.opacity(0.95))
+                    .cornerRadius(16)
+                    .rotationEffect(photoOrientation == .landscape ? .degrees(90) : .degrees(0))
+                }
+                .zIndex(99999)  // Above everything
             }
 
             // Landscape layout: controls on LEFT edge (appears at bottom when phone held horizontally)
@@ -462,18 +636,46 @@ struct SharpRoomView: View {
                         Spacer()
                             .allowsHitTesting(false)
 
-                        // Screenshot button (bottom = right when horizontal)
-                        Button(action: {
-                            takeScreenshot()
-                        }) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(Color.blue).shadow(radius: 5))
-                                .rotationEffect(.degrees(90))  // Rotate icon for horizontal viewing
+                        // Furniture size + Screenshot button (bottom = right when horizontal)
+                        VStack(spacing: 8) {
+                            // Show detected furniture size - tap to input real size for calibration
+                            if showingFurnitureFit, let h = detectedFurnitureHeight {
+                                Button(action: {
+                                    showFurnitureDimensionsInput = true
+                                }) {
+                                    VStack(spacing: 2) {
+                                        if let calibH = calibratedRoomHeight {
+                                            Text(String(format: "Room: %.2fm", calibH))
+                                                .font(.caption2)
+                                                .foregroundColor(.green)
+                                        }
+                                        Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
+                                            .font(.caption.bold())
+                                            .foregroundColor(realFurnitureHeight != nil ? .green : .white)
+                                        Text("Tap to calibrate")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.gray)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.black.opacity(0.6))
+                                    .cornerRadius(6)
+                                }
+                                .rotationEffect(.degrees(90))
+                            }
+
+                            Button(action: {
+                                takeScreenshot()
+                            }) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.white)
+                                    .frame(width: 60, height: 60)
+                                    .background(Circle().fill(Color.blue).shadow(radius: 5))
+                                    .rotationEffect(.degrees(90))  // Rotate icon for horizontal viewing
+                            }
+                            .disabled(isLoading)
                         }
-                        .disabled(isLoading)
                         .padding(.bottom, 30)
                     }
                     .frame(width: 130)  // Fixed width column at left edge
@@ -492,6 +694,22 @@ struct SharpRoomView: View {
                 VStack {
                     Spacer()
                         .allowsHitTesting(false)
+
+                    // Orientation label (center, above buttons)
+                    VStack(spacing: 1) {
+                        Text(NSLocalizedString("orientation.heldVertically", comment: ""))
+                            .font(.caption2)
+                        Text(NSLocalizedString("orientation.portrait", comment: ""))
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                    }
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.4))
+                    .cornerRadius(6)
+                    .padding(.bottom, 12)
+
                     HStack {
                         // Brain button (bottom-left)
                         Button(action: {
@@ -515,17 +733,45 @@ struct SharpRoomView: View {
                         Spacer()
                             .allowsHitTesting(false)
 
-                        // Screenshot button (bottom-right)
-                        Button(action: {
-                            takeScreenshot()
-                        }) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(Color.blue).shadow(radius: 5))
+                        // Furniture size display + Screenshot button (bottom-right)
+                        VStack(spacing: 8) {
+                            // Show detected furniture size - tap to input real size for calibration
+                            if showingFurnitureFit, let h = detectedFurnitureHeight {
+                                Button(action: {
+                                    showFurnitureDimensionsInput = true
+                                }) {
+                                    VStack(spacing: 2) {
+                                        if let calibH = calibratedRoomHeight {
+                                            // Show calibrated room dimensions
+                                            Text(String(format: "Room: %.2fm", calibH))
+                                                .font(.caption2)
+                                                .foregroundColor(.green)
+                                        }
+                                        Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
+                                            .font(.caption.bold())
+                                            .foregroundColor(realFurnitureHeight != nil ? .green : .white)
+                                        Text("Tap to calibrate")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.gray)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.black.opacity(0.6))
+                                    .cornerRadius(6)
+                                }
+                            }
+
+                            Button(action: {
+                                takeScreenshot()
+                            }) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.white)
+                                    .frame(width: 60, height: 60)
+                                    .background(Circle().fill(Color.blue).shadow(radius: 5))
+                            }
+                            .disabled(isLoading)
                         }
-                        .disabled(isLoading)
                         .padding(.trailing, 16)
                     }
                     .padding(.bottom, 20)
@@ -641,6 +887,19 @@ struct SharpRoomView: View {
         }
     }
 
+    // MARK: - Number Pad Helper
+
+    private func appendDigit(_ digit: String) {
+        // Limit to reasonable length (e.g., "12.34")
+        if inputFurnitureHeight.count >= 5 { return }
+        // Limit decimal places to 2
+        if let dotIndex = inputFurnitureHeight.firstIndex(of: ".") {
+            let decimals = inputFurnitureHeight.distance(from: dotIndex, to: inputFurnitureHeight.endIndex) - 1
+            if decimals >= 2 { return }
+        }
+        inputFurnitureHeight += digit
+    }
+
     // MARK: - Screenshot
 
     private func takeScreenshot() {
@@ -697,10 +956,14 @@ struct SharpRoomView: View {
     // MARK: - Navigation Title with Dimensions
     private var navigationTitleWithDimensions: String {
         // Show front wall dimensions (width × height)
+        // Priority: roomMeasurements -> saved metadata -> JS-measured -> default
+        // Use saved dimensions first since they're available immediately
         let wallWidth = roomMeasurements?.frontWallWidth
+            ?? savedRoomWidth
             ?? jsFrontWallWidth
             ?? 4.0
         let wallHeight = roomMeasurements?.frontWallHeight
+            ?? savedRoomHeight
             ?? jsFrontWallHeight
             ?? 3.0
 
@@ -770,8 +1033,11 @@ struct SharpRoomView: View {
 
             if self.saveProgress >= 0.6 && !saveStarted {
                 saveStarted = true
+                // Get room dimensions (prefer JS-measured, fallback to roomMeasurements)
+                let width = self.jsFrontWallWidth ?? self.roomMeasurements?.frontWallWidth
+                let height = self.jsFrontWallHeight ?? self.roomMeasurements?.frontWallHeight
                 // Save the classic PLY file (pre-transformed for correct viewing)
-                self.modelManager.savePLY(from: self.classicPlyURL, name: savedName, photoOrientation: self.photoOrientation) { success, error in
+                self.modelManager.savePLY(from: self.classicPlyURL, name: savedName, photoOrientation: self.photoOrientation, roomWidth: width, roomHeight: height) { success, error in
                     DispatchQueue.main.async {
                         saveCompleted = true
                         saveSuccess = success
@@ -933,6 +1199,7 @@ struct AntimatterSplatView: UIViewRepresentable {
     let roomBounds: SIMD3<Float>?  // Room dimensions for camera positioning
     let actualBounds: RoomBounds?  // Actual min/max bounds for precise framing
     let photoOrientation: PhotoOrientation  // For orientation-based room rotation
+    let oscillationEnabled: Bool  // Auto-orbit setting from user preferences
     let onLoaded: () -> Void
     var onFrontWallDimensions: ((Double, Double) -> Void)? = nil
 
@@ -952,7 +1219,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         // Register custom URL scheme handler
         let schemeHandler = LocalFileSchemeHandler()
         schemeHandler.plyURL = plyURL
-        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation)
+        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation, oscillation: oscillationEnabled)
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "splat")
 
         // Add message handlers for communication from JS
@@ -986,7 +1253,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         // No updates needed
     }
 
-    private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?, orientation: PhotoOrientation) -> String {
+    private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?, orientation: PhotoOrientation, oscillation: Bool) -> String {
         // Use RoomBoundaryManager to calculate camera position
         let roomBounds = actualBounds ?? RoomBoundaryManager.defaultBounds
         let boundaryManager = RoomBoundaryManager(bounds: roomBounds)
@@ -1051,6 +1318,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const isPortrait = \(orientation == .portrait ? "true" : "false");
                 console.log('[WebGL] isPortrait =', isPortrait);
 
+                // Oscillation setting from Swift
+                const OSCILLATION_ENABLED = \(oscillation ? "true" : "false");
+                console.log('[WebGL] oscillation =', OSCILLATION_ENABLED);
+
                 // Log JS errors
                 window.addEventListener('error', function(e) {
                     console.log('[JS Error] ' + e.message + ' at ' + e.filename + ':' + e.lineno);
@@ -1064,10 +1335,11 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x808080);
 
-                // Camera - start at default, autoFrameRoom will position using Box3
+                // Camera - start facing origin, autoFrameRoom will reposition using Box3
                 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-                camera.position.set(0, 0, 5);
-                camera.up.set(0, 1, 0);  // Normal Y-up
+                camera.position.set(0, 0, 3);  // Closer initial position
+                camera.lookAt(0, 0, 0);        // Explicitly look at origin
+                camera.up.set(0, 1, 0);        // Normal Y-up
 
                 // THREE.js Renderer (for SparkRenderer)
                 const renderer = new THREE.WebGLRenderer({ antialias: false });  // antialias: false per SparkJS docs
@@ -1112,7 +1384,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                 });
 
                 // --- Back-and-forth orbit state ---
-                let autoOrbitEnabled = true;       // master switch for idle orbit
+                let autoOrbitEnabled = OSCILLATION_ENABLED;  // Read from Swift setting
                 let autoOrbitTime = 0;             // time accumulator
                 let autoOrbitBaseAngle = 0;        // center angle around target
                 let autoOrbitRadius = 5;           // distance from target to camera
@@ -1124,6 +1396,13 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Called from Swift AND by OrbitControls
                 window.setUserInteracting = function(flag) {
                     window._userInteracting = !!flag;
+                };
+
+                // Toggle auto-orbit from Swift
+                window.setAutoOrbit = function(enabled) {
+                    autoOrbitEnabled = enabled;
+                    console.log('Auto-orbit:', enabled ? 'enabled' : 'disabled');
+                    needsRender = true;
                 };
 
                 // Let OrbitControls also toggle interaction
@@ -1158,6 +1437,18 @@ struct AntimatterSplatView: UIViewRepresentable {
                     camera.position.copy(initialCameraPosition);
                     controls.target.copy(initialControlsTarget);
                     controls.update();
+                    needsRender = true;
+                };
+
+                // Scale room function - called from Swift when user calibrates with real furniture
+                window.scaleRoom = function(factor) {
+                    if (splatMesh) {
+                        splatMesh.scale.set(factor, factor, factor);
+                        console.log('Room scaled by factor:', factor);
+                        needsRender = true;
+                        // Re-frame after scaling
+                        setTimeout(autoFrameRoom, 100);
+                    }
                 };
 
                 // Function to update initial position (called after auto-frame)
@@ -1206,13 +1497,34 @@ struct AntimatterSplatView: UIViewRepresentable {
                             }
 
                             const center = box.getCenter(new THREE.Vector3());
-                            // After 90° Z rotation, X and Y axes are swapped
-                            // Front wall width = Y axis, height = X axis
-                            let roomWidth  = size.y;
-                            let roomHeight = size.x;
+                            // After 90° Z rotation, axes mapping depends on photo orientation
+                            // Portrait: width = X (narrower), height = Y (taller)
+                            // Landscape: width = Y, height = X
+                            let roomWidth, roomHeight;
+                            if (isPortrait) {
+                                roomWidth  = size.x;
+                                roomHeight = size.y;
+                            } else {
+                                roomWidth  = size.y;
+                                roomHeight = size.x;
+                            }
                             let roomDepth  = size.z;
 
-                            console.log('Box3 size:', roomWidth.toFixed(2), roomHeight.toFixed(2), roomDepth.toFixed(2));
+                            console.log('Box3 raw size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), '(isPortrait:', isPortrait, ')');
+
+                            // Cap to realistic room dimensions (fog makes bounds too large)
+                            const maxRealisticWidth = isPortrait ? 5.0 : 8.0;
+                            const maxRealisticHeight = isPortrait ? 3.5 : 3.2;
+                            if (roomWidth > maxRealisticWidth) {
+                                console.log('Capping width from', roomWidth.toFixed(2), 'to', maxRealisticWidth);
+                                roomWidth = maxRealisticWidth;
+                            }
+                            if (roomHeight > maxRealisticHeight) {
+                                console.log('Capping height from', roomHeight.toFixed(2), 'to', maxRealisticHeight);
+                                roomHeight = maxRealisticHeight;
+                            }
+
+                            console.log('Box3 capped size:', roomWidth.toFixed(2), roomHeight.toFixed(2), roomDepth.toFixed(2));
                             console.log('Box3 center:', center.x.toFixed(2), center.y.toFixed(2), center.z.toFixed(2));
 
                             // 2) Raw bounds from Box3
@@ -1319,6 +1631,28 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 });
                             }
 
+                            // Force render after camera positioning (critical when auto-orbit is off)
+                            needsRender = true;
+
+                            // Also schedule a few more renders to ensure scene is visible
+                            setTimeout(() => { needsRender = true; }, 100);
+                            setTimeout(() => { needsRender = true; }, 300);
+
+                            // Send dimensions again after delays to ensure Swift receives them
+                            // (in case first message was missed during loading)
+                            function sendDimensionsToSwift() {
+                                if (window.webkit?.messageHandlers?.frontWallDimensions) {
+                                    window.webkit.messageHandlers.frontWallDimensions.postMessage({
+                                        width: roomWidth,
+                                        height: roomHeight
+                                    });
+                                    console.log('Sent dimensions to Swift:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2));
+                                }
+                            }
+                            setTimeout(sendDimensionsToSwift, 500);
+                            setTimeout(sendDimensionsToSwift, 1500);
+                            setTimeout(sendDimensionsToSwift, 3000);
+
                             console.log('=== Camera positioned using Box3 bounds ===');
                         } catch (err) {
                             console.error('autoFrameRoom error:', err);
@@ -1326,6 +1660,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }
                     console.log('Scheduling autoFrameRoom in 500ms...');
                     setTimeout(autoFrameRoom, 500);
+
+                    // Force immediate first render to show something while splat loads
+                    needsRender = true;
 
                 } catch (err) {
                     console.error('Failed to load splat:', err);
@@ -1422,13 +1759,15 @@ struct AntimatterSplatView: UIViewRepresentable {
                 };
 
                 // Animation loop with battery optimization
-                // - Only renders when needed (user interacting or auto-orbit active)
+                // - Warm-up period: render continuously for first 5 seconds (SparkJS needs this)
+                // - After warm-up: only renders when needed
                 // - Throttles to 30fps when idle auto-orbit is running
-                // - Stops rendering completely when static
                 let loadNotified = false;
                 let lastRenderTime = 0;
                 const IDLE_FPS = 30;     // Lower FPS for auto-orbit (saves battery)
                 const IDLE_FRAME_TIME = 1000 / IDLE_FPS;
+                const WARMUP_DURATION = 5000;  // 5 seconds warm-up for SparkJS to fully load
+                const animationStartTime = performance.now();
 
                 // Request render on next frame (called when something changes)
                 window.requestRender = function() {
@@ -1441,6 +1780,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                     const dt = clock.getDelta();
                     let shouldRender = needsRender;
                     needsRender = false;
+
+                    // Warm-up period: always render for first 5 seconds
+                    // SparkJS progressively loads splat data and needs continuous rendering
+                    const elapsed = performance.now() - animationStartTime;
+                    const inWarmup = elapsed < WARMUP_DURATION;
+                    if (inWarmup) {
+                        shouldRender = true;
+                    }
 
                     // Back-and-forth orbit when not interacting (uses base angle from autoFrameRoom)
                     if (autoOrbitEnabled && !window._userInteracting && autoOrbitRadius > 0.1) {
@@ -1476,6 +1823,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }
 
                     // Skip render if nothing changed (huge battery savings)
+                    // But always render during warm-up period
                     if (!shouldRender) {
                         return;
                     }
@@ -1560,6 +1908,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                 name: NSNotification.Name("WebGLOrbitGestureState"),
                 object: nil
             )
+
+            // Listen for room scale (calibration from real furniture dimensions)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleScaleRoom(_:)),
+                name: NSNotification.Name("WebGLScaleRoom"),
+                object: nil
+            )
         }
 
         deinit {
@@ -1621,6 +1977,15 @@ struct AntimatterSplatView: UIViewRepresentable {
 
             let js = "if (typeof setUserInteracting === 'function') setUserInteracting(\(interacting ? "true" : "false"));"
             logDebug("🎮 [WebGL] setUserInteracting(\(interacting))")
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        @objc private func handleScaleRoom(_ notification: Notification) {
+            guard let userInfo = notification.userInfo,
+                  let factor = userInfo["factor"] as? Double else { return }
+
+            let js = "if (typeof scaleRoom === 'function') scaleRoom(\(factor));"
+            logDebug("📐 [WebGL] scaleRoom(\(factor))")
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
