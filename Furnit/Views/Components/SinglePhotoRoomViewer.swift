@@ -2,64 +2,6 @@ import SwiftUI
 import SceneKit
 import Accelerate
 import CoreML
-import UIKit
-
-// MARK: - Orientation Locked View Wrapper
-/// Wraps content in a view controller that locks to a specific orientation
-struct OrientationLockedView<Content: View>: UIViewControllerRepresentable {
-    enum Orientation {
-        case portrait
-        case landscape
-    }
-
-    let orientation: Orientation
-    let content: Content
-
-    init(orientation: Orientation, @ViewBuilder content: () -> Content) {
-        self.orientation = orientation
-        self.content = content()
-    }
-
-    func makeUIViewController(context: Context) -> OrientationLockedHostingController<Content> {
-        let controller = OrientationLockedHostingController(rootView: content, lockedOrientation: orientation)
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: OrientationLockedHostingController<Content>, context: Context) {
-        uiViewController.rootView = content
-    }
-}
-
-class OrientationLockedHostingController<Content: View>: UIHostingController<Content> {
-    let lockedOrientation: OrientationLockedView<Content>.Orientation
-
-    init(rootView: Content, lockedOrientation: OrientationLockedView<Content>.Orientation) {
-        self.lockedOrientation = lockedOrientation
-        super.init(rootView: rootView)
-    }
-
-    @MainActor required dynamic init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        switch lockedOrientation {
-        case .portrait:
-            return .portrait
-        case .landscape:
-            return .landscape
-        }
-    }
-
-    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
-        switch lockedOrientation {
-        case .portrait:
-            return .portrait
-        case .landscape:
-            return .landscapeRight
-        }
-    }
-}
 
 // MARK: - Room Boundary Detection View with DRAGGABLE boundaries
 struct RoomBoundaryDetectionView: View {
@@ -1117,27 +1059,35 @@ struct SinglePhotoRoomView: View {
             logDebug("📐 [View] Auto-detected orientation: \(detectedOrientation.rawValue)")
         }
         .fullScreenCover(item: $fixedImageItem) { item in
-            OrientationLockedView(orientation: selectedOrientation == .landscape ? .landscape : .portrait) {
-                RoomBoundaryDetectionView(
-                    originalImage: item.image,
-                    savedBoundaries: $adjustedBoundaries,
-                    reconstructor: reconstructor,
-                    roomDimensions: SinglePhotoRoomReconstructor.RoomDimensions(
-                        width: Float(roomWidth),
-                        depth: Float(roomDepth),
-                        height: Float(roomHeight)
-                    ),
-                    onProcessingComplete: {
-                        // Navigate to viewer when processing is complete
-                        if reconstructor.generatedRoomScene != nil {
-                            navigateToViewer = true
-                        }
-                    },
-                    photoOrientation: selectedOrientation
-                )
-            }
+            RoomBoundaryDetectionView(
+                originalImage: item.image,
+                savedBoundaries: $adjustedBoundaries,
+                reconstructor: reconstructor,
+                roomDimensions: SinglePhotoRoomReconstructor.RoomDimensions(
+                    width: Float(roomWidth),
+                    depth: Float(roomDepth),
+                    height: Float(roomHeight)
+                ),
+                onProcessingComplete: {
+                    // Navigate to viewer when processing is complete
+                    if reconstructor.generatedRoomScene != nil {
+                        navigateToViewer = true
+                    }
+                },
+                photoOrientation: selectedOrientation
+            )
             .onAppear {
                 logDebug("✅ [Sheet] Opening RoomBoundaryDetectionView with image: \(item.image.size)")
+                // Lock orientation based on photo orientation
+                if selectedOrientation == .landscape {
+                    OrientationLockManager.shared.lockToLandscape()
+                } else {
+                    OrientationLockManager.shared.lockToPortrait()
+                }
+            }
+            .onDisappear {
+                // Unlock orientation when leaving
+                OrientationLockManager.shared.unlock()
             }
         }
         .onAppear {
