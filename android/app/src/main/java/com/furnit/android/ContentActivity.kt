@@ -365,8 +365,17 @@ class ContentActivity : AppCompatActivity() {
         // Details row (size and orientation)
         val detailsText = TextView(this)
         val fileSize = getFileSize(model)
-        val orientation = if (model.isUserCreated) "Portrait - held vertically" else "3D Model"
-        detailsText.text = "3D Room  •  $fileSize  •  $orientation"
+        val orientation = if (model.isUserCreated) {
+            val orient = if (model.photoOrientation == "landscape") "Landscape" else "Portrait"
+            "$orient - held ${if (model.photoOrientation == "landscape") "horizontally" else "vertically"}"
+        } else "3D Model"
+        // Show actual dimensions if available
+        val dimensionStr = if (model.roomWidth != null && model.roomHeight != null) {
+            String.format("%.1f × %.1f m", model.roomWidth, model.roomHeight)
+        } else {
+            "3D Room"
+        }
+        detailsText.text = "$dimensionStr  •  $fileSize  •  $orientation"
         detailsText.textSize = 13f
         detailsText.setTextColor(secondaryTextColor)
         detailsText.setPadding(0, dpToPx(2), 0, 0)
@@ -394,10 +403,29 @@ class ContentActivity : AppCompatActivity() {
                     intent.putExtra("MODEL_ID", model.id)
                     startActivity(intent)
                 } else {
-                    Log.d("ContentActivity", "Opening RoomViewerActivity with folder: ${model.assetPath}")
-                    val intent = Intent(this, RoomViewerActivity::class.java)
-                    intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, model.assetPath)
-                    startActivity(intent)
+                    // Check for PLY file (Sharp room)
+                    val roomFolder = File(model.assetPath)
+                    val plyFile = File(roomFolder, "room.ply")
+
+                    if (plyFile.exists()) {
+                        // Open SharpRoomActivity for PLY files with saved dimensions
+                        Log.d("ContentActivity", "Opening SharpRoomActivity with PLY: ${plyFile.absolutePath}, dims: ${model.roomWidth}x${model.roomHeight}x${model.roomDepth}")
+                        val intent = Intent(this, SharpRoomActivity::class.java)
+                        intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
+                        intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder.absolutePath)
+                        intent.putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false) // Already saved
+                        // Pass saved dimensions
+                        model.roomWidth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, it) }
+                        model.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
+                        model.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
+                        intent.putExtra("photo_orientation", model.photoOrientation)
+                        startActivity(intent)
+                    } else {
+                        Log.d("ContentActivity", "Opening RoomViewerActivity with folder: ${model.assetPath}")
+                        val intent = Intent(this, RoomViewerActivity::class.java)
+                        intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, model.assetPath)
+                        startActivity(intent)
+                    }
                 }
             } else {
                 Log.d("ContentActivity", "Opening ModelDetailActivity with id: ${model.id}")

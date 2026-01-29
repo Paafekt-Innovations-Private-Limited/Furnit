@@ -49,6 +49,12 @@ class ModelManager(private val context: Context) {
                 var roomName = "My Room ${folder.name.substringAfter("room_")}"
                 var createdAt = folder.lastModified() // fallback to folder modification time
 
+                // Room dimension variables
+                var roomWidth: Float? = null
+                var roomHeight: Float? = null
+                var roomDepth: Float? = null
+                var photoOrientation = "portrait"
+
                 if (metadataFile.exists()) {
                     try {
                         val lines = metadataFile.readLines()
@@ -56,6 +62,15 @@ class ModelManager(private val context: Context) {
                             ?.substringAfter("name=")?.let { roomName = it }
                         lines.firstOrNull { it.startsWith("created=") }
                             ?.substringAfter("created=")?.toLongOrNull()?.let { createdAt = it }
+                        // Load room dimensions from metadata
+                        lines.firstOrNull { it.startsWith("roomWidth=") }
+                            ?.substringAfter("roomWidth=")?.toFloatOrNull()?.let { roomWidth = it }
+                        lines.firstOrNull { it.startsWith("roomHeight=") }
+                            ?.substringAfter("roomHeight=")?.toFloatOrNull()?.let { roomHeight = it }
+                        lines.firstOrNull { it.startsWith("roomDepth=") }
+                            ?.substringAfter("roomDepth=")?.toFloatOrNull()?.let { roomDepth = it }
+                        lines.firstOrNull { it.startsWith("photoOrientation=") }
+                            ?.substringAfter("photoOrientation=")?.let { photoOrientation = it }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to read metadata for ${folder.name}", e)
                     }
@@ -74,10 +89,14 @@ class ModelManager(private val context: Context) {
                     assetPath = assetPath,
                     isUserCreated = true,
                     thumbnailPath = if (frontWall.exists()) frontWall.absolutePath else null,
-                    createdAt = createdAt
+                    createdAt = createdAt,
+                    roomWidth = roomWidth,
+                    roomHeight = roomHeight,
+                    roomDepth = roomDepth,
+                    photoOrientation = photoOrientation
                 )
                 userRooms.add(model)
-                Log.d(TAG, "Loaded user room: ${model.name} at ${model.assetPath} (GLB: ${glbFile.exists()}, created: $createdAt)")
+                Log.d(TAG, "Loaded user room: ${model.name} at ${model.assetPath} (GLB: ${glbFile.exists()}, created: $createdAt, dims: ${roomWidth}x${roomHeight}x${roomDepth})")
             }
         }
 

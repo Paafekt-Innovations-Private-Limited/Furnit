@@ -115,6 +115,45 @@ class SettingsActivity : AppCompatActivity() {
         qualitySection.addView(rg)
         layout.addView(qualitySection)
 
+        // Room Viewer settings section
+        val viewerSection = createSection("Room Viewer")
+
+        // Auto-orbit toggle (default OFF)
+        val autoOrbitLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 8)
+        }
+
+        val autoOrbitLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val autoOrbitTitle = TextView(this).apply {
+            text = "Auto Orbit"
+            textSize = 16f
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val autoOrbitDesc = TextView(this).apply {
+            text = "Slowly rotate camera when idle"
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        autoOrbitLabel.addView(autoOrbitTitle)
+        autoOrbitLabel.addView(autoOrbitDesc)
+
+        val autoOrbitSwitch = Switch(this).apply {
+            isChecked = prefs.getBoolean("auto_orbit_enabled", false)  // Default OFF
+            setOnCheckedChangeListener { _, isChecked ->
+                prefs.edit().putBoolean("auto_orbit_enabled", isChecked).apply()
+            }
+        }
+
+        autoOrbitLayout.addView(autoOrbitLabel)
+        autoOrbitLayout.addView(autoOrbitSwitch)
+        viewerSection.addView(autoOrbitLayout)
+        layout.addView(viewerSection)
+
         // App info section
         val appSection = createSection("About")
         val versionText = TextView(this).apply {

@@ -54,9 +54,21 @@ class SharpRoomActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: FrameLayout
     private lateinit var joystickView: View
+    private lateinit var titleView: TextView
     private var plyPath: String? = null
     private var roomFolder: String? = null
     private var allowSave: Boolean = true
+
+    // Room dimensions (from intent or JS-measured)
+    private var roomWidth: Float = 4.0f
+    private var roomHeight: Float = 3.0f
+    private var roomDepth: Float = 4.5f
+    private var photoOrientation: String = "portrait"
+    private var hasSavedDimensions: Boolean = false  // True if dimensions were passed from saved room
+
+    // Calibration state
+    private var showCalibrationOverlay = false
+    private var detectedFurnitureHeight: Float? = null
 
     // Gesture tracking
     private var lastTouchX = 0f
@@ -93,7 +105,24 @@ class SharpRoomActivity : AppCompatActivity() {
         roomFolder = intent.getStringExtra(EXTRA_ROOM_FOLDER)
         allowSave = intent.getBooleanExtra(EXTRA_ALLOW_SAVE, true)
 
-        Log.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath")
+        // Load saved dimensions from intent (if available)
+        val savedWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, 0f)
+        val savedHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, 0f)
+        roomDepth = intent.getFloatExtra(EXTRA_ROOM_DEPTH, 4.5f)
+        photoOrientation = intent.getStringExtra("photo_orientation") ?: "portrait"
+
+        // Use saved dimensions if provided, otherwise use defaults
+        if (savedWidth > 0f && savedHeight > 0f) {
+            roomWidth = savedWidth
+            roomHeight = savedHeight
+            hasSavedDimensions = true
+        } else {
+            roomWidth = 4.0f
+            roomHeight = 3.0f
+            hasSavedDimensions = false
+        }
+
+        Log.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions")
 
         if (plyPath == null) {
             Toast.makeText(this, "No PLY file provided", Toast.LENGTH_SHORT).show()
@@ -245,16 +274,16 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             barContainer.addView(backBtn)
 
-            // Title
-            val title = TextView(this@SharpRoomActivity).apply {
-                text = "3D Room View"
+            // Title with dimensions
+            titleView = TextView(this@SharpRoomActivity).apply {
+                text = String.format("%.1f × %.1f m", roomWidth, roomHeight)
                 textSize = 17f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
-            barContainer.addView(title)
+            barContainer.addView(titleView)
 
             // Help button (circle with ?)
             val helpBtn = TextView(this@SharpRoomActivity).apply {
@@ -425,8 +454,9 @@ class SharpRoomActivity : AppCompatActivity() {
                     bottomMargin = dpToPx(160)
                 }
 
+                val isLandscape = photoOrientation == "landscape"
                 val line1 = TextView(this@SharpRoomActivity).apply {
-                    text = "held vertically"
+                    text = if (isLandscape) "held horizontally" else "held vertically"
                     textSize = 12f
                     setTextColor(Color.WHITE)
                     gravity = Gravity.CENTER
@@ -434,7 +464,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 addView(line1)
 
                 val line2 = TextView(this@SharpRoomActivity).apply {
-                    text = "Portrait"
+                    text = if (isLandscape) "Landscape" else "Portrait"
                     textSize = 14f
                     setTypeface(null, Typeface.BOLD)
                     setTextColor(Color.WHITE)
@@ -644,6 +674,10 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun generateWebGLHTML(): String {
+        // Check auto-orbit setting from SharedPreferences
+        val prefs = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
+        val autoOrbitEnabled = prefs.getBoolean("auto_orbit_enabled", false)
+
         // SparkJS implementation matching iOS exactly
         return """
 <!DOCTYPE html>
@@ -731,6 +765,21 @@ class SharpRoomActivity : AppCompatActivity() {
         let initialCameraPosition = camera.position.clone();
         let initialControlsTarget = controls.target.clone();
         let needsRender = true;
+
+        // Auto-orbit settings (matches iOS)
+        const OSCILLATION_ENABLED = $autoOrbitEnabled;
+        let autoOrbitEnabled = OSCILLATION_ENABLED;
+        let autoOrbitTime = 0;
+        let autoOrbitBaseAngle = 0;
+        let autoOrbitRadius = 0;
+
+        // Warm-up rendering (matches iOS - 5 seconds)
+        const WARMUP_DURATION = 5000;
+        const animationStartTime = performance.now();
+
+        // Room dimensions (will be set by autoFrameRoom)
+        let measuredRoomWidth = 4.0;
+        let measuredRoomHeight = 3.0;
 
         controls.addEventListener('change', function() {
             needsRender = true;
@@ -828,8 +877,31 @@ class SharpRoomActivity : AppCompatActivity() {
             initialCameraPosition.copy(camera.position);
             initialControlsTarget.copy(controls.target);
 
+            // Setup auto-orbit parameters (matches iOS)
+            autoOrbitRadius = camera.position.distanceTo(controls.target);
+            autoOrbitBaseAngle = Math.atan2(
+                camera.position.x - controls.target.x,
+                camera.position.z - controls.target.z
+            );
+
+            // Store measured dimensions
+            measuredRoomWidth = roomWidth;
+            measuredRoomHeight = roomHeight;
+
             console.log('[WebGL] Camera positioned at distance:', cameraDistance);
             needsRender = true;
+
+            // Send dimensions to Android (multiple times to ensure delivery)
+            function sendDimensionsToAndroid() {
+                if (window.Android && window.Android.onDimensionsMeasured) {
+                    window.Android.onDimensionsMeasured(measuredRoomWidth, measuredRoomHeight);
+                    console.log('[WebGL] Sent dimensions to Android:', measuredRoomWidth.toFixed(2), 'x', measuredRoomHeight.toFixed(2));
+                }
+            }
+            sendDimensionsToAndroid();
+            setTimeout(sendDimensionsToAndroid, 500);
+            setTimeout(sendDimensionsToAndroid, 1500);
+            setTimeout(sendDimensionsToAndroid, 3000);
 
             if (window.Android) {
                 window.Android.onLoaded();
@@ -875,16 +947,56 @@ class SharpRoomActivity : AppCompatActivity() {
             needsRender = true;
         });
 
-        // Animation loop (matching iOS exactly)
-        function animate() {
+        // Animation loop with warm-up and auto-orbit (matching iOS exactly)
+        const clock = new THREE.Clock();
+        let lastRenderTime = 0;
+        const IDLE_FPS = 30;
+        const IDLE_FRAME_TIME = 1000 / IDLE_FPS;
+
+        function animate(currentTime) {
             requestAnimationFrame(animate);
+
+            const dt = clock.getDelta();
+            let shouldRender = needsRender;
+            needsRender = false;
+
+            // Warm-up period: always render for first 5 seconds
+            const elapsed = performance.now() - animationStartTime;
+            const inWarmup = elapsed < WARMUP_DURATION;
+            if (inWarmup) {
+                shouldRender = true;
+            }
+
+            // Auto-orbit when enabled and not interacting
+            if (autoOrbitEnabled && autoOrbitRadius > 0.1) {
+                autoOrbitTime += dt;
+                const speed = 0.35;
+                const t = controls.target;
+
+                // Circular arc oscillation ±30°
+                const amplitude = Math.PI / 6;
+                const angle = autoOrbitBaseAngle + amplitude * Math.sin(autoOrbitTime * speed);
+
+                camera.position.x = t.x + autoOrbitRadius * Math.sin(angle);
+                camera.position.z = t.z + autoOrbitRadius * Math.cos(angle);
+
+                if (currentTime - lastRenderTime >= IDLE_FRAME_TIME) {
+                    shouldRender = true;
+                }
+            }
+
+            if (!shouldRender && !inWarmup) {
+                return;
+            }
+
+            lastRenderTime = currentTime;
             controls.update();
 
             // Use SparkRenderer's update method for optimized Gaussian rendering
             spark.update({ scene });
             renderer.render(scene, camera);
         }
-        animate();
+        animate(0);
 
         console.log('[WebGL] SparkJS viewer ready');
     </script>
@@ -919,12 +1031,20 @@ class SharpRoomActivity : AppCompatActivity() {
         }
 
         try {
-            // Update metadata with user's name
+            // Update metadata with user's name and dimensions
             val metadataFile = File(folder, "metadata.txt")
-            metadataFile.writeText("name=$name\ncreated=${System.currentTimeMillis()}\ntype=sharp")
+            val metadata = StringBuilder()
+            metadata.append("name=$name\n")
+            metadata.append("created=${System.currentTimeMillis()}\n")
+            metadata.append("type=sharp\n")
+            metadata.append("roomWidth=$roomWidth\n")
+            metadata.append("roomHeight=$roomHeight\n")
+            metadata.append("roomDepth=$roomDepth\n")
+            metadata.append("photoOrientation=$photoOrientation\n")
+            metadataFile.writeText(metadata.toString())
 
             Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Room saved: $name at $folder")
+            Log.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
 
             // Finish and return to home
             setResult(RESULT_OK)
@@ -974,6 +1094,22 @@ class SharpRoomActivity : AppCompatActivity() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
                 Log.d(TAG, "WebGL viewer reported loaded")
+            }
+        }
+
+        @JavascriptInterface
+        fun onDimensionsMeasured(width: Float, height: Float) {
+            runOnUiThread {
+                // Only use JS-measured dimensions if no saved dimensions were provided
+                if (!hasSavedDimensions) {
+                    roomWidth = width
+                    roomHeight = height
+                    // Update title
+                    titleView.text = String.format("%.1f × %.1f m", roomWidth, roomHeight)
+                    Log.d(TAG, "WebGL dimensions measured (using): ${roomWidth}x${roomHeight}")
+                } else {
+                    Log.d(TAG, "WebGL dimensions measured (ignored, using saved): ${width}x${height}")
+                }
             }
         }
 
