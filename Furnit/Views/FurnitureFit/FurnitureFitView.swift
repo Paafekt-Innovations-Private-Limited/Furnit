@@ -586,6 +586,12 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     private func updateProgressOrientationOnMain(_ orientation: UIDeviceOrientation) {
         DispatchQueue.main.async {
             UIView.animate(withDuration: 0.25) {
+                // For landscape rooms, UI is already locked to landscape - don't rotate progress bar
+                if self.lockedOrientation == .landscape {
+                    self.progressContainer.transform = .identity
+                    return
+                }
+                // For portrait rooms, rotate progress bar to match device orientation
                 switch orientation {
                 case .landscapeLeft:
                     self.progressContainer.transform = CGAffineTransform(rotationAngle: .pi / 2)
