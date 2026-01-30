@@ -93,6 +93,17 @@ struct GLBRoomView: View {
         .background(Color.gray)
         .navigationTitle(formatDimensions())
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                // Recenter button
+                Button(action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("RecenterGLBCamera"), object: nil)
+                }) {
+                    Image(systemName: "viewfinder")
+                }
+                .disabled(isLoading)
+            }
+        }
         .onAppear {
             loadMLModel()
             // Lock orientation based on photo orientation
@@ -105,6 +116,7 @@ struct GLBRoomView: View {
         .onDisappear {
             OrientationLockManager.shared.unlock()
         }
+        .defersSystemGestures(on: .all)
     }
 
     private func formatDimensions() -> String {
@@ -295,6 +307,7 @@ struct GLBWebGLView: UIViewRepresentable {
         config.userContentController.add(context.coordinator, name: "glbViewer")
 
         let webView = WKWebView(frame: .zero, configuration: config)
+        context.coordinator.webView = webView
 
         // Completely disable WebView scrolling - let Three.js handle all touch
         webView.scrollView.isScrollEnabled = false
@@ -337,10 +350,28 @@ struct GLBWebGLView: UIViewRepresentable {
     class Coordinator: NSObject, WKScriptMessageHandler {
         let onLoaded: () -> Void
         let onError: (String) -> Void
+        weak var webView: WKWebView?
 
         init(onLoaded: @escaping () -> Void, onError: @escaping (String) -> Void) {
             self.onLoaded = onLoaded
             self.onError = onError
+            super.init()
+
+            // Listen for recenter notification
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(recenterCamera),
+                name: NSNotification.Name("RecenterGLBCamera"),
+                object: nil
+            )
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        @objc private func recenterCamera() {
+            webView?.evaluateJavaScript("if (typeof recenterCamera === 'function') recenterCamera();", completionHandler: nil)
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -426,7 +457,9 @@ struct GLBWebGLView: UIViewRepresentable {
                 // Orbit controls
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.1;
+                controls.dampingFactor = 0.08;
+                controls.rotateSpeed = 1.5;     // Faster rotation
+                controls.zoomSpeed = 2.0;       // Faster zoom
                 controls.enableZoom = true;
                 controls.enablePan = false;
                 controls.minDistance = 0.5;
@@ -439,8 +472,8 @@ struct GLBWebGLView: UIViewRepresentable {
                     offset.copy(camera.position).sub(controls.target);
                     spherical.setFromVector3(offset);
 
-                    spherical.theta -= deltaX * 0.005;
-                    spherical.phi -= deltaY * 0.005;
+                    spherical.theta -= deltaX * 0.012;  // Increased for faster response
+                    spherical.phi -= deltaY * 0.012;
                     spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
 
                     offset.setFromSpherical(spherical);
@@ -508,6 +541,18 @@ struct GLBWebGLView: UIViewRepresentable {
                         camera.position.set(0, eyeHeight, cameraZ);
                         controls.target.set(0, eyeHeight, targetZ);
                         controls.update();
+
+                        // Save initial camera state for recenter
+                        const initialCameraPos = camera.position.clone();
+                        const initialTarget = controls.target.clone();
+
+                        // Recenter function
+                        window.recenterCamera = function() {
+                            camera.position.copy(initialCameraPos);
+                            controls.target.copy(initialTarget);
+                            controls.update();
+                            console.log('[GLBViewer] Camera recentered');
+                        };
 
                         console.log('[GLBViewer] Room size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), 'x', roomDepth.toFixed(2));
                         console.log('[GLBViewer] Camera at (0,', eyeHeight.toFixed(2), ',', cameraZ.toFixed(2), '), looking at (0,', eyeHeight.toFixed(2), ',', targetZ.toFixed(2), ')');

@@ -149,6 +149,14 @@ struct MeshRoomView: View {
                     Image(systemName: "square.and.arrow.down")
                 }
                 .disabled(isLoading || isSavingRoom)
+
+                // Recenter button
+                Button(action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("RecenterMeshCamera"), object: nil)
+                }) {
+                    Image(systemName: "viewfinder")
+                }
+                .disabled(isLoading)
             }
         }
         .onAppear {
@@ -178,6 +186,7 @@ struct MeshRoomView: View {
         } message: {
             Text(saveAlertMessage)
         }
+        .defersSystemGestures(on: .all)
     }
 
     // MARK: - Portrait Controls
@@ -206,7 +215,7 @@ struct MeshRoomView: View {
 
             // Bottom controls: Brain icon (left) and Camera (right)
             HStack {
-                // Brain button (bottom-left) - placeholder for future furniture detection
+                // Brain button (bottom-left)
                 Button(action: {
                     showingFurnitureFit.toggle()
                 }) {
@@ -413,6 +422,7 @@ struct MeshWebGLView: UIViewRepresentable {
         config.userContentController.add(context.coordinator, name: "meshViewer")
 
         let webView = WKWebView(frame: .zero, configuration: config)
+        context.coordinator.webView = webView
 
         // Completely disable WebView scrolling - let Three.js handle all touch
         webView.scrollView.isScrollEnabled = false
@@ -453,10 +463,28 @@ struct MeshWebGLView: UIViewRepresentable {
     class Coordinator: NSObject, WKScriptMessageHandler {
         let onLoaded: () -> Void
         let onGLBExported: (Data) -> Void
+        weak var webView: WKWebView?
 
         init(onLoaded: @escaping () -> Void, onGLBExported: @escaping (Data) -> Void) {
             self.onLoaded = onLoaded
             self.onGLBExported = onGLBExported
+            super.init()
+
+            // Listen for recenter notification
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(recenterCamera),
+                name: NSNotification.Name("RecenterMeshCamera"),
+                object: nil
+            )
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        @objc private func recenterCamera() {
+            webView?.evaluateJavaScript("if (typeof recenterCamera === 'function') recenterCamera();", completionHandler: nil)
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -568,10 +596,10 @@ struct MeshWebGLView: UIViewRepresentable {
                 // Orbit controls - smooth touch interactions
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.12;  // Higher = smoother deceleration
-                controls.rotateSpeed = 0.8;     // Rotation sensitivity
-                controls.zoomSpeed = 1.2;       // Zoom sensitivity
-                controls.panSpeed = 0.8;        // Pan sensitivity
+                controls.dampingFactor = 0.08;  // Smooth deceleration
+                controls.rotateSpeed = 1.5;     // Faster rotation
+                controls.zoomSpeed = 2.0;       // Faster zoom
+                controls.panSpeed = 1.2;        // Faster pan
                 controls.enableZoom = true;
                 controls.enablePan = true;
                 controls.minDistance = 0.3;
@@ -590,6 +618,18 @@ struct MeshWebGLView: UIViewRepresentable {
                 controls.target.set(0, targetY, 0);
                 camera.position.set(0, targetY, roomDepth * 0.35);
                 controls.update();
+
+                // Save initial camera state for recenter
+                const initialCameraPos = camera.position.clone();
+                const initialTarget = controls.target.clone();
+
+                // Recenter function
+                window.recenterCamera = function() {
+                    camera.position.copy(initialCameraPos);
+                    controls.target.copy(initialTarget);
+                    controls.update();
+                    console.log('[MeshViewer] Camera recentered');
+                };
 
                 // Lighting - brighter for textured walls
                 const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);

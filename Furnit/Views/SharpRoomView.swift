@@ -879,6 +879,7 @@ struct SharpRoomView: View {
                 }
             }
         }
+        .defersSystemGestures(on: .all)
     }
 
     // MARK: - Number Pad Helper
@@ -1371,8 +1372,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Orbit controls for touch/mouse
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.05;  // More glide/inertia
-                controls.rotateSpeed = 0.8;     // Slightly slower, weighted feel
+                controls.dampingFactor = 0.08;  // Smooth deceleration
+                controls.rotateSpeed = 1.5;     // Faster rotation
+                controls.zoomSpeed = 2.0;       // Faster zoom
                 controls.screenSpacePanning = false;
                 controls.minDistance = 0.01;
                 controls.maxDistance = 100;
@@ -1725,7 +1727,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     autoOrbitEnabled = false;
 
                     // Rotate around target using spherical coordinates
-                    const rotateSpeed = 0.005;
+                    const rotateSpeed = 0.012;  // Increased for faster response
 
                     // Get current spherical position relative to target
                     const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
