@@ -1465,10 +1465,8 @@ struct PhotoPickerView: UIViewControllerRepresentable {
             logDebug("📱 [PhotoPicker] Image picked from library")
             if let image = info[.originalImage] as? UIImage {
                 logDebug("✅ [PhotoPicker] Got UIImage: \(image.size), orientation: \(image.imageOrientation.rawValue)")
-                // Fix orientation before storing - ensures crop coordinates match displayed image
-                let fixedImage = image.fixedOrientation()
-                logDebug("✅ [PhotoPicker] Fixed orientation: \(fixedImage.size), orientation: \(fixedImage.imageOrientation.rawValue)")
-                parent.selectedImage = fixedImage
+                // Pass original image - EXIF needed for orientation detection
+                parent.selectedImage = image
             } else {
                 logDebug("❌ [PhotoPicker] Failed to get UIImage")
             }

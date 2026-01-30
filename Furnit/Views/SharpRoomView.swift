@@ -1225,6 +1225,16 @@ struct AntimatterSplatView: UIViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
+        webView.scrollView.bouncesZoom = false
+        webView.scrollView.minimumZoomScale = 1.0
+        webView.scrollView.maximumZoomScale = 1.0
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+
+        // Disable all scroll view gesture recognizers to let Three.js handle touches
+        for gestureRecognizer in webView.scrollView.gestureRecognizers ?? [] {
+            gestureRecognizer.isEnabled = false
+        }
+
         webView.isOpaque = false
         webView.backgroundColor = .gray
         webView.isUserInteractionEnabled = true
@@ -1465,10 +1475,15 @@ struct AntimatterSplatView: UIViewRepresentable {
                     });
                     scene.add(splatMesh);
 
-                    // Classic PLY is pre-rotated, flip 180° around X + 90° around Z for correct viewing
+                    // Classic PLY rotation - flip 180° around X
                     splatMesh.rotation.x = Math.PI;
-                    splatMesh.rotation.z = Math.PI / 2;
-                    console.log('SplatMesh: rotated 180° X + 90° Z');
+                    // For portrait photos, also rotate 90° around Z
+                    if (isPortrait) {
+                        splatMesh.rotation.z = Math.PI / 2;
+                        console.log('SplatMesh: rotated 180° X + 90° Z (portrait)');
+                    } else {
+                        console.log('SplatMesh: rotated 180° X only (landscape)');
+                    }
 
                     // Auto-frame using Box3 (no orientation changes)
                     function autoFrameRoom() {
