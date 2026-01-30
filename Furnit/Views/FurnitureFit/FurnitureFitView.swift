@@ -257,7 +257,10 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     
     private var hasFirstDetection = false
     private var currentScale: CGFloat = 1.0
-    
+
+    /// Primary furniture bounding box in view coordinates (for gesture hit testing)
+    private var primaryBboxInView: CGRect = .zero
+
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
     private var metalCommandQueue: MTLCommandQueue?  // FIXED: was computed property creating new queue on every access
@@ -1403,6 +1406,23 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("   PRIMARY bbox: [\(primaryBx1),\(primaryBy1)]→[\(primaryBx2),\(primaryBy2)]")
         }
 
+        // Store primary bbox in normalized coordinates (0-1) for gesture hit testing
+        let normX1 = CGFloat(primaryBx1) / CGFloat(origW)
+        let normY1 = CGFloat(primaryBy1) / CGFloat(origH)
+        let normX2 = CGFloat(primaryBx2) / CGFloat(origW)
+        let normY2 = CGFloat(primaryBy2) / CGFloat(origH)
+        DispatchQueue.main.async {
+            let viewW = self.maskImageView.bounds.width
+            let viewH = self.maskImageView.bounds.height
+            self.primaryBboxInView = CGRect(
+                x: normX1 * viewW,
+                y: normY1 * viewH,
+                width: (normX2 - normX1) * viewW,
+                height: (normY2 - normY1) * viewH
+            )
+            logDebug("👆 [setBbox] viewSize=\(viewW)x\(viewH) bbox=\(self.primaryBboxInView)")
+        }
+
         // Helper: Build full-resolution mask from current kept detections
         func buildFullMask(from detections: [UnionDet]) -> (maskFull: [UInt8], positiveCount: Int) {
             // Compute per-pixel max logits across detections
@@ -2264,6 +2284,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
     // MARK: - Gestures
     @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
         guard maskImageView.image != nil else { return }
+
         switch gesture.state {
         case .changed:
             let newScale = currentScale * gesture.scale
@@ -2279,10 +2300,39 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         default: break
         }
     }
+
+    /// Check if a point in image coordinates is on a non-transparent pixel
+    private func isPointOnMask(point: CGPoint, in image: UIImage) -> Bool {
+        guard let cgImage = image.cgImage else { return false }
+
+        let width = cgImage.width
+        let height = cgImage.height
+
+        // Check bounds
+        let x = Int(point.x)
+        let y = Int(point.y)
+        guard x >= 0 && x < width && y >= 0 && y < height else { return false }
+
+        // Get pixel data
+        guard let dataProvider = cgImage.dataProvider,
+              let data = dataProvider.data,
+              let bytes = CFDataGetBytePtr(data) else { return false }
+
+        let bytesPerPixel = cgImage.bitsPerPixel / 8
+        let bytesPerRow = cgImage.bytesPerRow
+        let pixelOffset = y * bytesPerRow + x * bytesPerPixel
+
+        // Check alpha channel (assuming RGBA or BGRA format)
+        let alphaIndex = bytesPerPixel - 1  // Alpha is typically last byte
+        let alpha = bytes[pixelOffset + alphaIndex]
+
+        // Consider pixel "on mask" if alpha > 50
+        return alpha > 50
+    }
     
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard maskImageView.image != nil else { return }
-        
+
         let translation = gesture.translation(in: self)
         switch gesture.state {
         case .began, .changed:
@@ -2300,10 +2350,59 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
         return false
     }
-    
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // Only recognize gestures if touch is within the primary furniture bounding box
+        guard maskImageView.image != nil else {
+            logDebug("👆 [shouldReceive] No mask image")
+            return false
+        }
+        guard primaryBboxInView.width > 0 && primaryBboxInView.height > 0 else {
+            logDebug("👆 [shouldReceive] No valid bbox")
+            return false
+        }
+
+        let touchPoint = touch.location(in: maskImageView)
+        let contains = primaryBboxInView.contains(touchPoint)
+
+        logDebug("👆 [shouldReceive] touchPoint=\(touchPoint) bbox=\(primaryBboxInView) contains=\(contains)")
+
+        // Check if touch is within the primary bbox
+        return contains
+    }
+
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         // Don't interfere with navigation gestures
         return false
+    }
+
+    // MARK: - Hit Testing
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        // If no mask or no valid bbox, pass through all touches
+        guard maskImageView.image != nil else {
+            logDebug("👆 [hitTest] No mask image, passing through")
+            return nil
+        }
+
+        guard primaryBboxInView.width > 0 && primaryBboxInView.height > 0 else {
+            logDebug("👆 [hitTest] No valid bbox (\(primaryBboxInView)), passing through")
+            return nil
+        }
+
+        // Convert point to maskImageView coordinates
+        let pointInMask = convert(point, to: maskImageView)
+
+        logDebug("👆 [hitTest] point=\(point) pointInMask=\(pointInMask) bbox=\(primaryBboxInView)")
+
+        // Only handle touches inside the primary bbox
+        if primaryBboxInView.contains(pointInMask) {
+            logDebug("👆 [hitTest] INSIDE bbox - handling touch")
+            return super.hitTest(point, with: event)
+        }
+
+        // Pass through touches outside bbox to underlying room view
+        logDebug("👆 [hitTest] OUTSIDE bbox - passing through")
+        return nil
     }
 }
 

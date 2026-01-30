@@ -383,7 +383,7 @@ struct SharpRoomView: View {
             // Gesture overlay for orbit control (captures drags and sends to WebGL)
             OrbitGestureView()
                 .ignoresSafeArea()  // Cover full screen including safe areas
-                .allowsHitTesting(!showingFurnitureFit && !isLoading)
+                .allowsHitTesting(!isLoading)  // Keep enabled even with FurnitureFit - touches outside bbox pass through
                 .zIndex(10)  // Above WebGL view, below other overlays
 
             // Loading overlay
