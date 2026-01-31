@@ -3,6 +3,156 @@ import WebKit
 import UIKit
 import CoreML
 
+// MARK: - Navigation Back Swipe Disabler
+/// Wraps content and disables the navigation back swipe gesture
+struct NavigationBackSwipeDisabler<Content: View>: UIViewControllerRepresentable {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    func makeUIViewController(context: Context) -> UIHostingController<Content> {
+        let hostingController = BackSwipeDisabledHostingController(rootView: content)
+        return hostingController
+    }
+
+    func updateUIViewController(_ uiViewController: UIHostingController<Content>, context: Context) {
+        uiViewController.rootView = content
+    }
+}
+
+class BackSwipeDisabledHostingController<Content: View>: UIHostingController<Content> {
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Re-enable for other views
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+    }
+}
+
+// MARK: - View Modifier to Disable Back Swipe
+struct DisableBackSwipeModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background(BackSwipeDisablerView())
+    }
+}
+
+struct BackSwipeDisablerView: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = BackSwipeBlockerUIView()
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+class BackSwipeBlockerUIView: UIView {
+    private var observer: NSObjectProtocol?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        disableBackSwipe()
+
+        // Also observe when the scene becomes active in case navigation controller wasn't ready
+        observer = NotificationCenter.default.addObserver(
+            forName: UIScene.didActivateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.disableBackSwipe()
+        }
+    }
+
+    override func willMove(toWindow newWindow: UIWindow?) {
+        super.willMove(toWindow: newWindow)
+        if newWindow == nil {
+            // Re-enable when leaving
+            enableBackSwipe()
+            if let observer = observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+    }
+
+    private func disableBackSwipe() {
+        DispatchQueue.main.async { [weak self] in
+            self?.findAndDisableBackSwipe()
+        }
+    }
+
+    private func enableBackSwipe() {
+        var responder: UIResponder? = self
+        while responder != nil {
+            if let nav = responder as? UINavigationController {
+                nav.interactivePopGestureRecognizer?.isEnabled = true
+                return
+            }
+            if let vc = responder as? UIViewController, let nav = vc.navigationController {
+                nav.interactivePopGestureRecognizer?.isEnabled = true
+                return
+            }
+            responder = responder?.next
+        }
+    }
+
+    private func findAndDisableBackSwipe() {
+        // Method 1: Walk responder chain
+        var responder: UIResponder? = self
+        while responder != nil {
+            if let nav = responder as? UINavigationController {
+                nav.interactivePopGestureRecognizer?.isEnabled = false
+                return
+            }
+            if let vc = responder as? UIViewController, let nav = vc.navigationController {
+                nav.interactivePopGestureRecognizer?.isEnabled = false
+                return
+            }
+            responder = responder?.next
+        }
+
+        // Method 2: Search through all window scenes
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        for scene in scenes {
+            for window in scene.windows {
+                if let rootVC = window.rootViewController {
+                    findAndDisableInViewController(rootVC)
+                }
+            }
+        }
+    }
+
+    private func findAndDisableInViewController(_ vc: UIViewController) {
+        if let nav = vc as? UINavigationController {
+            nav.interactivePopGestureRecognizer?.isEnabled = false
+        }
+        if let nav = vc.navigationController {
+            nav.interactivePopGestureRecognizer?.isEnabled = false
+        }
+        for child in vc.children {
+            findAndDisableInViewController(child)
+        }
+        if let presented = vc.presentedViewController {
+            findAndDisableInViewController(presented)
+        }
+    }
+}
+
+extension View {
+    func disableBackSwipe() -> some View {
+        self.modifier(DisableBackSwipeModifier())
+    }
+}
+
 // MARK: - UIView Extension to Find Navigation Controller
 extension UIView {
     func findNavigationController() -> UINavigationController? {
@@ -145,6 +295,7 @@ struct GLBRoomView: View {
             OrientationLockManager.shared.unlock()
         }
         .defersSystemGestures(on: .all)
+        .disableBackSwipe()
     }
 
     private func formatDimensions() -> String {

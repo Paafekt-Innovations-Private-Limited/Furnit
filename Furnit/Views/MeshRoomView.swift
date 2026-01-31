@@ -187,6 +187,7 @@ struct MeshRoomView: View {
             Text(saveAlertMessage)
         }
         .defersSystemGestures(on: .all)
+        .disableBackSwipe()
     }
 
     // MARK: - Portrait Controls
