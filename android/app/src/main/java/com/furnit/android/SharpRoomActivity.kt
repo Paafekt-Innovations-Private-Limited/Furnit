@@ -391,7 +391,12 @@ class SharpRoomActivity : AppCompatActivity() {
                     bottomMargin = dpToPx(20)
                 }
                 setOnClickListener {
-                    Toast.makeText(this@SharpRoomActivity, "AI Furniture Detection coming soon", Toast.LENGTH_SHORT).show()
+                    // Launch FurnitureFitActivity for AI furniture detection
+                    val intent = Intent(this@SharpRoomActivity, FurnitureFitActivity::class.java)
+                    intent.putExtra("ROOM_ID", roomFolder?.let { File(it).name })
+                    intent.putExtra("ROOM_NAME", "Sharp Room")
+                    intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
+                    startActivity(intent)
                 }
             }
             addView(brainBtn)

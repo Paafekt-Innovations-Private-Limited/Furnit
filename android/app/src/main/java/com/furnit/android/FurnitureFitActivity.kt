@@ -1,6 +1,7 @@
 package com.furnit.android
 
 import android.Manifest
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
@@ -23,6 +24,14 @@ class FurnitureFitActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Lock orientation based on room's photo orientation (no auto-rotate)
+        val photoOrientation = intent.getStringExtra("PHOTO_ORIENTATION") ?: "portrait"
+        requestedOrientation = if (photoOrientation == "landscape") {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED) {

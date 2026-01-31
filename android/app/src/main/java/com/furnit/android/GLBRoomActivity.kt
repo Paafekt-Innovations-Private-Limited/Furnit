@@ -288,15 +288,12 @@ class GLBRoomActivity : AppCompatActivity() {
                     bottomMargin = dpToPx(20)
                 }
                 setOnClickListener {
-                    if (isPreviewMode) {
-                        Toast.makeText(this@GLBRoomActivity, "Save room first to use AI detection", Toast.LENGTH_SHORT).show()
-                    } else {
-                        // Launch FurnitureFitActivity like iOS
-                        val intent = Intent(this@GLBRoomActivity, FurnitureFitActivity::class.java)
-                        intent.putExtra("ROOM_ID", roomId)
-                        intent.putExtra("ROOM_NAME", roomName)
-                        startActivity(intent)
-                    }
+                    // Launch FurnitureFitActivity (works in preview mode too)
+                    val intent = Intent(this@GLBRoomActivity, FurnitureFitActivity::class.java)
+                    intent.putExtra("ROOM_ID", roomId)
+                    intent.putExtra("ROOM_NAME", roomName)
+                    intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
+                    startActivity(intent)
                 }
             }
             addView(brainBtn)
