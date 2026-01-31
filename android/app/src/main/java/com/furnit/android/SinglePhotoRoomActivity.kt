@@ -21,6 +21,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.SharpService
 import java.io.File
@@ -49,9 +50,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private lateinit var progressText: TextView
     private lateinit var progressPercent: TextView
     private lateinit var selectedImageView: ImageView
+    private lateinit var orientationIndicator: LinearLayout
+    private lateinit var orientationIcon: TextView
+    private lateinit var orientationText: TextView
     private var selectedBitmap: Bitmap? = null
     private var selectedImageUri: Uri? = null
     private var cameraPhotoUri: Uri? = null
+    private var detectedOrientation: PhotoOrientation = PhotoOrientation.PORTRAIT
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -330,7 +335,33 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             addView(selectedImageView, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 400
-            ).apply { setMargins(0, 0, 0, 24) })
+            ).apply { setMargins(0, 0, 0, 8) })
+
+            // Orientation indicator (matches iOS)
+            orientationIndicator = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(16, 8, 16, 8)
+                setBackgroundColor(Color.parseColor("#F0F0F0"))
+
+                orientationIcon = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "\uD83D\uDCF1" // Phone icon
+                    textSize = 16f
+                    setPadding(0, 0, 8, 0)
+                }
+                addView(orientationIcon)
+
+                orientationText = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "Portrait - held vertically"
+                    textSize = 13f
+                    setTextColor(Color.parseColor("#666666"))
+                }
+                addView(orientationText)
+            }
+            addView(orientationIndicator, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 16) })
 
             // Title
             val title = TextView(this@SinglePhotoRoomActivity).apply {
@@ -511,6 +542,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             if (bitmap != null) {
                 selectedBitmap = bitmap
                 selectedImageView.setImageBitmap(bitmap)
+
+                // Auto-detect orientation from EXIF or dimensions
+                detectedOrientation = PhotoOrientation.detect(this, uri)
+                Log.d("SinglePhotoRoom", "Detected orientation: ${detectedOrientation.value}")
+                updateOrientationIndicator()
+
                 showMethodPicker()
                 Log.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}")
             } else {
@@ -521,6 +558,15 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             Log.e("SinglePhotoRoom", "Error loading image", e)
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun updateOrientationIndicator() {
+        orientationIcon.text = if (detectedOrientation.isLandscape) "\uD83D\uDCF1" else "\uD83D\uDCF1" // Phone icon
+        orientationIcon.rotation = if (detectedOrientation.isLandscape) 90f else 0f
+
+        val orientationLabel = if (detectedOrientation.isLandscape) "Landscape" else "Portrait"
+        val heldLabel = if (detectedOrientation.isLandscape) "held horizontally" else "held vertically"
+        orientationText.text = "$orientationLabel - $heldLabel"
     }
 
     private fun showMethodPicker() {
@@ -561,6 +607,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
                         putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, result.roomDepth)
                         putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, true)
+                        putExtra("photo_orientation", detectedOrientation.value)
                     }
                     startActivity(intent)
                 }
@@ -585,6 +632,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
         val intent = Intent(this, RoomBoundaryActivity::class.java).apply {
             putExtra(RoomBoundaryActivity.EXTRA_IMAGE_URI, uri.toString())
+            putExtra(RoomBoundaryActivity.EXTRA_PHOTO_ORIENTATION, detectedOrientation.value)
         }
         boundaryActivityLauncher.launch(intent)
     }

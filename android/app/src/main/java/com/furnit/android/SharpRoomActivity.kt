@@ -15,6 +15,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import android.webkit.*
 import android.widget.*
@@ -105,6 +106,13 @@ class SharpRoomActivity : AppCompatActivity() {
         val savedHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, 0f)
         roomDepth = intent.getFloatExtra(EXTRA_ROOM_DEPTH, 4.5f)
         photoOrientation = intent.getStringExtra("photo_orientation") ?: "portrait"
+
+        // Lock orientation based on room's photo orientation (no auto-rotate)
+        requestedOrientation = if (photoOrientation == "landscape") {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
 
         // Use saved dimensions if provided, otherwise use defaults
         if (savedWidth > 0f && savedHeight > 0f) {

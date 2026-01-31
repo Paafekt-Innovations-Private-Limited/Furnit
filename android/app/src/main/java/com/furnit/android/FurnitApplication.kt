@@ -2,6 +2,7 @@ package com.furnit.android
 
 import android.app.Application
 import android.util.Log
+import com.furnit.android.utils.DebugLogger
 import com.google.firebase.FirebaseApp
 
 /**
@@ -15,6 +16,9 @@ class FurnitApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Initialize DebugLogger
+        DebugLogger.init(this)
 
         // Initialize Firebase
         try {
