@@ -3,6 +3,23 @@ import WebKit
 import UIKit
 import CoreML
 
+// MARK: - UIView Extension to Find Navigation Controller
+extension UIView {
+    func findNavigationController() -> UINavigationController? {
+        var responder: UIResponder? = self
+        while responder != nil {
+            if let nav = responder as? UINavigationController {
+                return nav
+            }
+            if let vc = responder as? UIViewController, let nav = vc.navigationController {
+                return nav
+            }
+            responder = responder?.next
+        }
+        return nil
+    }
+}
+
 /// WebGL-based GLB/GLTF room viewer - loads and renders GLB 3D models using Three.js
 struct GLBRoomView: View {
     let glbURL: URL
@@ -93,7 +110,18 @@ struct GLBRoomView: View {
         .background(Color.gray)
         .navigationTitle(formatDimensions())
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    dismiss()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
+                }
+            }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 // Recenter button
                 Button(action: {
@@ -327,6 +355,21 @@ struct GLBWebGLView: UIViewRepresentable {
         webView.isUserInteractionEnabled = true
         webView.isMultipleTouchEnabled = true
 
+        // Add edge pan gesture to block system back swipe
+        let edgePan = UIScreenEdgePanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleEdgePan(_:)))
+        edgePan.edges = .left
+        edgePan.cancelsTouchesInView = false
+        edgePan.delaysTouchesBegan = false
+        edgePan.delegate = context.coordinator
+        webView.addGestureRecognizer(edgePan)
+
+        // Find and disable the navigation controller's back gesture
+        DispatchQueue.main.async {
+            if let navController = webView.findNavigationController() {
+                navController.interactivePopGestureRecognizer?.isEnabled = false
+            }
+        }
+
         // Load GLB data and generate HTML
         if let glbData = try? Data(contentsOf: glbURL) {
             let html = generateGLBViewerHTML(glbData: glbData)
@@ -347,7 +390,7 @@ struct GLBWebGLView: UIViewRepresentable {
         Coordinator(onLoaded: onLoaded, onError: onError)
     }
 
-    class Coordinator: NSObject, WKScriptMessageHandler {
+    class Coordinator: NSObject, WKScriptMessageHandler, UIGestureRecognizerDelegate {
         let onLoaded: () -> Void
         let onError: (String) -> Void
         weak var webView: WKWebView?
@@ -372,6 +415,15 @@ struct GLBWebGLView: UIViewRepresentable {
 
         @objc private func recenterCamera() {
             webView?.evaluateJavaScript("if (typeof recenterCamera === 'function') recenterCamera();", completionHandler: nil)
+        }
+
+        @objc func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            // Do nothing - this gesture just blocks the system back swipe
+        }
+
+        // Always recognize our edge gesture, blocking others
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -457,9 +509,9 @@ struct GLBWebGLView: UIViewRepresentable {
                 // Orbit controls
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.08;
-                controls.rotateSpeed = 1.5;     // Faster rotation
-                controls.zoomSpeed = 2.0;       // Faster zoom
+                controls.dampingFactor = 0.05;  // Quick response
+                controls.rotateSpeed = 3.0;     // Fast rotation for touch
+                controls.zoomSpeed = 2.5;       // Fast zoom
                 controls.enableZoom = true;
                 controls.enablePan = false;
                 controls.minDistance = 0.5;

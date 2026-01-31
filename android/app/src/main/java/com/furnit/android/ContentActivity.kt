@@ -396,33 +396,57 @@ class ContentActivity : AppCompatActivity() {
 
             if (model.isUserCreated) {
                 if (model.assetPath.endsWith(".glb")) {
-                    Log.d("ContentActivity", "Opening ModelDetailActivity with GLB: ${model.assetPath}")
-                    val intent = Intent(this, ModelDetailActivity::class.java)
-                    intent.putExtra("MODEL_ID", model.id)
+                    // Open WebGL-based GLBRoomActivity for GLB files (matching iOS)
+                    Log.d("ContentActivity", "Opening GLBRoomActivity with GLB: ${model.assetPath}")
+                    val intent = Intent(this, GLBRoomActivity::class.java)
+                    intent.putExtra(GLBRoomActivity.EXTRA_GLB_PATH, model.assetPath)
+                    intent.putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, model.name)
+                    intent.putExtra(GLBRoomActivity.EXTRA_ROOM_ID, model.id)
+                    intent.putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, false)
+                    model.roomWidth?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, it) }
+                    model.roomHeight?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, it) }
+                    intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, model.photoOrientation ?: "portrait")
                     startActivity(intent)
                 } else {
-                    // Check for PLY file (Sharp room)
+                    // Check for files in room folder
                     val roomFolder = File(model.assetPath)
                     val plyFile = File(roomFolder, "room.ply")
+                    val glbFile = File(roomFolder, "room.glb")
 
-                    if (plyFile.exists()) {
-                        // Open SharpRoomActivity for PLY files with saved dimensions
-                        Log.d("ContentActivity", "Opening SharpRoomActivity with PLY: ${plyFile.absolutePath}, dims: ${model.roomWidth}x${model.roomHeight}x${model.roomDepth}")
-                        val intent = Intent(this, SharpRoomActivity::class.java)
-                        intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
-                        intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder.absolutePath)
-                        intent.putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false) // Already saved
-                        // Pass saved dimensions
-                        model.roomWidth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, it) }
-                        model.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
-                        model.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
-                        intent.putExtra("photo_orientation", model.photoOrientation)
-                        startActivity(intent)
-                    } else {
-                        Log.d("ContentActivity", "Opening RoomViewerActivity with folder: ${model.assetPath}")
-                        val intent = Intent(this, RoomViewerActivity::class.java)
-                        intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, model.assetPath)
-                        startActivity(intent)
+                    when {
+                        plyFile.exists() -> {
+                            // Open SharpRoomActivity for PLY files (Gaussian splat)
+                            Log.d("ContentActivity", "Opening SharpRoomActivity with PLY: ${plyFile.absolutePath}, dims: ${model.roomWidth}x${model.roomHeight}x${model.roomDepth}")
+                            val intent = Intent(this, SharpRoomActivity::class.java)
+                            intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
+                            intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder.absolutePath)
+                            intent.putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false)
+                            model.roomWidth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, it) }
+                            model.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
+                            model.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
+                            intent.putExtra("photo_orientation", model.photoOrientation)
+                            startActivity(intent)
+                        }
+                        glbFile.exists() -> {
+                            // Open WebGL-based GLBRoomActivity for GLB files (matching iOS)
+                            Log.d("ContentActivity", "Opening GLBRoomActivity with GLB: ${glbFile.absolutePath}")
+                            val intent = Intent(this, GLBRoomActivity::class.java)
+                            intent.putExtra(GLBRoomActivity.EXTRA_GLB_PATH, glbFile.absolutePath)
+                            intent.putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, model.name)
+                            intent.putExtra(GLBRoomActivity.EXTRA_ROOM_ID, model.id)
+                            intent.putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, false)
+                            model.roomWidth?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_WIDTH, it) }
+                            model.roomHeight?.let { intent.putExtra(GLBRoomActivity.EXTRA_ROOM_HEIGHT, it) }
+                            intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, model.photoOrientation ?: "portrait")
+                            startActivity(intent)
+                        }
+                        else -> {
+                            // Fallback to 2D room viewer
+                            Log.d("ContentActivity", "Opening RoomViewerActivity with folder: ${model.assetPath}")
+                            val intent = Intent(this, RoomViewerActivity::class.java)
+                            intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, model.assetPath)
+                            startActivity(intent)
+                        }
                     }
                 }
             } else {

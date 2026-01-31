@@ -70,11 +70,6 @@ class SharpRoomActivity : AppCompatActivity() {
     private var showCalibrationOverlay = false
     private var detectedFurnitureHeight: Float? = null
 
-    // Gesture tracking
-    private var lastTouchX = 0f
-    private var lastTouchY = 0f
-    private var isDragging = false
-
     // Joystick state
     private var joystickCenterX = 0f
     private var joystickCenterY = 0f
@@ -199,18 +194,8 @@ class SharpRoomActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT
         ))
 
-        // Gesture overlay for orbit controls
-        val gestureOverlay = View(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            setOnTouchListener { _, event ->
-                handleGesture(event)
-                true
-            }
-        }
-        rootLayout.addView(gestureOverlay, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ))
+        // No gesture overlay - let WebView's OrbitControls handle all gestures
+        // (rotation, zoom, pan) directly like iOS
 
         // Top bar
         val topBar = createTopBar()
@@ -285,6 +270,25 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             barContainer.addView(titleView)
 
+            // Recenter button (circle with viewfinder icon)
+            val recenterBtn = TextView(this@SharpRoomActivity).apply {
+                text = "⌖"  // Viewfinder-like symbol
+                textSize = 20f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                val bg = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#3A3A3C"))
+                }
+                background = bg
+                val size = dpToPx(40)
+                val params = LinearLayout.LayoutParams(size, size)
+                params.setMargins(dpToPx(8), 0, 0, 0)
+                layoutParams = params
+                setOnClickListener { recenterCamera() }
+            }
+            barContainer.addView(recenterBtn)
+
             // Help button (circle with ?)
             val helpBtn = TextView(this@SharpRoomActivity).apply {
                 text = "?"
@@ -307,7 +311,7 @@ class SharpRoomActivity : AppCompatActivity() {
             // Save button (circle with upload icon) - only if allowed
             if (allowSave) {
                 val saveBtn = TextView(this@SharpRoomActivity).apply {
-                    text = "\u21E7" // Upload arrow
+                    text = "↓" // Download/save arrow (matching iOS square.and.arrow.down)
                     textSize = 20f
                     setTextColor(Color.WHITE)
                     gravity = Gravity.CENTER
@@ -327,7 +331,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
             // Share button (circle with share icon)
             val shareBtn = TextView(this@SharpRoomActivity).apply {
-                text = "\u2197" // Arrow pointing upper right (share-like)
+                text = "↑" // Share arrow (matching iOS square.and.arrow.up)
                 textSize = 20f
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
@@ -568,34 +572,6 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleGesture(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                lastTouchX = event.x
-                lastTouchY = event.y
-                isDragging = true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (isDragging) {
-                    val deltaX = event.x - lastTouchX
-                    val deltaY = event.y - lastTouchY
-                    lastTouchX = event.x
-                    lastTouchY = event.y
-
-                    // Send orbit command to WebGL
-                    webView.evaluateJavascript(
-                        "if(typeof orbitCamera==='function')orbitCamera($deltaX, $deltaY);",
-                        null
-                    )
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                isDragging = false
-            }
-        }
-        return true
-    }
-
     private fun handleJoystick(
         event: MotionEvent,
         container: View,
@@ -752,7 +728,7 @@ class SharpRoomActivity : AppCompatActivity() {
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
-        controls.rotateSpeed = 0.8;
+        controls.rotateSpeed = 3.0;  // Fast rotation for touch
         controls.screenSpacePanning = false;
         controls.minDistance = 0.01;
         controls.maxDistance = 100;
@@ -912,7 +888,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
         // Camera controls (called from Android)
         window.orbitCamera = function(deltaX, deltaY) {
-            const rotateSpeed = 0.005;
+            const rotateSpeed = 0.015;  // Fast rotation for touch
             const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
             const spherical = new THREE.Spherical().setFromVector3(offset);
             spherical.theta -= deltaX * rotateSpeed;
@@ -1054,6 +1030,13 @@ class SharpRoomActivity : AppCompatActivity() {
             Log.e(TAG, "Failed to save room", e)
             Toast.makeText(this, "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun recenterCamera() {
+        webView.evaluateJavascript(
+            "if(typeof recenterCamera==='function')recenterCamera();",
+            null
+        )
     }
 
     private fun sharePlyFile() {
