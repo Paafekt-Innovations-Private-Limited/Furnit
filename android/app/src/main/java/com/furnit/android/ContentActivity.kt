@@ -388,7 +388,21 @@ class ContentActivity : AppCompatActivity() {
             Log.d("ContentActivity", "Room clicked: ${model.name}, isUserCreated=${model.isUserCreated}, assetPath=${model.assetPath}")
 
             if (model.isUserCreated) {
-                if (model.assetPath.endsWith(".glb")) {
+                if (model.assetPath.endsWith(".ply")) {
+                    // Open SharpRoomActivity for PLY files (Gaussian splat)
+                    val plyFile = File(model.assetPath)
+                    val roomFolder = plyFile.parentFile
+                    Log.d("ContentActivity", "Opening SharpRoomActivity with PLY: ${plyFile.absolutePath}, dims: ${model.roomWidth}x${model.roomHeight}x${model.roomDepth}")
+                    val intent = Intent(this, SharpRoomActivity::class.java)
+                    intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
+                    intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder?.absolutePath)
+                    intent.putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false)
+                    model.roomWidth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, it) }
+                    model.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
+                    model.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
+                    intent.putExtra("photo_orientation", model.photoOrientation)
+                    startActivity(intent)
+                } else if (model.assetPath.endsWith(".glb")) {
                     // Open WebGL-based GLBRoomActivity for GLB files (matching iOS)
                     Log.d("ContentActivity", "Opening GLBRoomActivity with GLB: ${model.assetPath}")
                     val intent = Intent(this, GLBRoomActivity::class.java)

@@ -10,8 +10,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.content.res.ColorStateList
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
 import com.furnit.android.models.QualitySettings
@@ -144,11 +146,8 @@ class SettingsActivity : AppCompatActivity() {
         autoOrbitLabel.addView(autoOrbitTitle)
         autoOrbitLabel.addView(autoOrbitDesc)
 
-        val autoOrbitSwitch = Switch(this).apply {
-            isChecked = prefs.getBoolean("auto_orbit_enabled", false)  // Default OFF
-            setOnCheckedChangeListener { _, isChecked ->
-                prefs.edit().putBoolean("auto_orbit_enabled", isChecked).apply()
-            }
+        val autoOrbitSwitch = createStyledSwitch(prefs.getBoolean("auto_orbit_enabled", false)) { isChecked ->
+            prefs.edit().putBoolean("auto_orbit_enabled", isChecked).apply()
         }
 
         autoOrbitLayout.addView(autoOrbitLabel)
@@ -206,16 +205,45 @@ class SettingsActivity : AppCompatActivity() {
         // Initialize DebugLogger
         DebugLogger.init(this)
 
-        val debugSwitch = Switch(this).apply {
-            isChecked = DebugLogger.isDebugMode
-            setOnCheckedChangeListener { _, isChecked ->
-                DebugLogger.setDebugMode(isChecked)
-            }
+        val debugSwitch = createStyledSwitch(DebugLogger.isDebugMode) { isChecked ->
+            DebugLogger.setDebugMode(isChecked)
         }
 
         debugLayout.addView(debugLabel)
         debugLayout.addView(debugSwitch)
         developerSection.addView(debugLayout)
+
+        // NCNN Backend toggle (experimental)
+        val ncnnLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 16, 0, 8)
+        }
+
+        val ncnnLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val ncnnTitle = TextView(this).apply {
+            text = "Use NCNN Backend"
+            textSize = 16f
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val ncnnDesc = TextView(this).apply {
+            text = "Faster room generation (requires NCNN model files)"
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        ncnnLabel.addView(ncnnTitle)
+        ncnnLabel.addView(ncnnDesc)
+
+        val ncnnSwitch = createStyledSwitch(prefs.getBoolean("use_ncnn_backend", false)) { isChecked ->
+            prefs.edit().putBoolean("use_ncnn_backend", isChecked).apply()
+        }
+
+        ncnnLayout.addView(ncnnLabel)
+        ncnnLayout.addView(ncnnSwitch)
+        developerSection.addView(ncnnLayout)
 
         // Developer section footer
         val developerFooter = TextView(this).apply {
@@ -344,6 +372,35 @@ class SettingsActivity : AppCompatActivity() {
             startActivity(intent)
         } catch (e: Exception) {
             // Ignore if no browser available
+        }
+    }
+
+    private fun createStyledSwitch(checked: Boolean, onChanged: (Boolean) -> Unit): SwitchCompat {
+        return SwitchCompat(this).apply {
+            isChecked = checked
+            // Track colors: gray when off, green when on
+            trackTintList = ColorStateList(
+                arrayOf(
+                    intArrayOf(-android.R.attr.state_checked),
+                    intArrayOf(android.R.attr.state_checked)
+                ),
+                intArrayOf(
+                    Color.parseColor("#CCCCCC"),  // Off - gray border
+                    Color.parseColor("#81C784")   // On - light green
+                )
+            )
+            // Thumb colors: white when off, green when on
+            thumbTintList = ColorStateList(
+                arrayOf(
+                    intArrayOf(-android.R.attr.state_checked),
+                    intArrayOf(android.R.attr.state_checked)
+                ),
+                intArrayOf(
+                    Color.parseColor("#FFFFFF"),  // Off - white
+                    Color.parseColor("#4CAF50")   // On - green
+                )
+            )
+            setOnCheckedChangeListener { _, isChecked -> onChanged(isChecked) }
         }
     }
 }

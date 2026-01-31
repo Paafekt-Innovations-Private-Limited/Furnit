@@ -73,12 +73,37 @@ class SharpService private constructor(private val context: Context) {
     fun isModelReady(): Boolean = ncnnSharp.isModelReady() || splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()
 
     /**
-     * Initialize model - tries NCNN first, then Split ONNX (memory-efficient), then full ONNX
+     * Initialize model - respects user preference for NCNN vs ONNX
+     * When NCNN is selected in settings, only use NCNN (no fallback)
      */
     suspend fun initialize(): Boolean {
         if (isInitialized) return true
 
-        // Try NCNN first
+        val prefs = context.getSharedPreferences("furnit_prefs", android.content.Context.MODE_PRIVATE)
+        val forceNcnn = prefs.getBoolean("use_ncnn_backend", false)
+
+        if (forceNcnn) {
+            // User explicitly wants NCNN - no fallback to ONNX
+            Log.d(TAG, "NCNN backend selected in settings")
+            if (ncnnSharp.ensureModelReady()) {
+                try {
+                    ncnnSharp.init()
+                    isInitialized = true
+                    useOnnx = false
+                    useSplitOnnx = false
+                    Log.d(TAG, "NCNN initialized successfully")
+                    return true
+                } catch (e: Exception) {
+                    Log.e(TAG, "NCNN init failed: ${e.message}")
+                    return false
+                }
+            } else {
+                Log.e(TAG, "NCNN model files not found. Push model files to device.")
+                return false
+            }
+        }
+
+        // Default: Try NCNN first, then fall back to ONNX
         if (ncnnSharp.ensureModelReady()) {
             try {
                 ncnnSharp.init()
