@@ -92,7 +92,7 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        // Try Split ONNX (memory-efficient 4-part model - FP32 compatible)
+        // Try Split ONNX (memory-efficient 4-part model)
         if (splitOnnxSharp.isModelReady()) {
             Log.d(TAG, "Split ONNX model ready - using memory-efficient 4-part inference")
             isInitialized = true
@@ -137,7 +137,7 @@ class SharpService private constructor(private val context: Context) {
                     callback.onProgress(0.15f, "Loading SHARP model...")
                     val initialized = kotlinx.coroutines.runBlocking { initialize() }
                     if (!initialized) {
-                        callback.onError("SHARP model not available. Push model to device.")
+                        callback.onError("SHARP model not available. Push model files to device.")
                         return@Thread
                     }
                 }

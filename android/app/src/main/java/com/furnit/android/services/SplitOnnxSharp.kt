@@ -164,42 +164,34 @@ class SplitOnnxSharp private constructor(private val context: Context) {
 
             // Run each part sequentially
             for (partIdx in 0 until NUM_PARTS) {
-                val partProgress = 0.1f + (partIdx.toFloat() / NUM_PARTS) * 0.7f
+                // Better progress: each part gets 20% (total 80% for 4 parts)
+                val partBaseProgress = 0.1f + (partIdx * 0.2f)
                 val (modelFile, dataFile) = PART_FILENAMES[partIdx]
-                progressCallback?.invoke(partProgress, "Loading Part ${partIdx + 1}/$NUM_PARTS...")
+                progressCallback?.invoke(partBaseProgress, "Part ${partIdx + 1}/4: Loading model...")
 
                 Log.d(TAG, "=== Part ${partIdx + 1} ===")
                 Log.d(TAG, "Memory before: ${getMemoryInfo()}")
+                Log.d(TAG, "Model file: $modelFile")
 
                 // Force GC before loading
                 System.gc()
                 Thread.sleep(100)
 
                 val modelPath = File(modelsDir, modelFile).absolutePath
-                val outputs = runModelPart(modelPath, currentInputs, partIdx + 1, progressCallback, partProgress)
+                Log.d(TAG, "Loading from: $modelPath")
+                val outputs = runModelPart(modelPath, currentInputs, partIdx + 1, progressCallback, partBaseProgress)
 
                 if (outputs == null) {
                     Log.e(TAG, "Part ${partIdx + 1} failed")
                     return@withContext null
                 }
 
-                // Clean up input tensors (except original image - Part 4 needs it)
-                if (partIdx > 0) {
-                    currentInputs.values.forEach { file ->
-                        if (file.name != "input_image.tensor") {
-                            file.delete()
-                        }
-                    }
-                }
-
-                // Next part's inputs are this part's outputs
-                // IMPORTANT: Keep the original image tensor available for parts that need it
+                // IMPORTANT: Accumulate all outputs across parts - later parts may need
+                // outputs from earlier parts (e.g., Part 3 needs weight tensors from Part 1)
+                // Keep the original image tensor available for parts that need it
                 val imageFile = File(tempDir, "input_image.tensor")
-                currentInputs = if (imageFile.exists()) {
-                    outputs + ("image" to imageFile)
-                } else {
-                    outputs
-                }
+                currentInputs = currentInputs + outputs + ("image" to imageFile)
+                Log.d(TAG, "Accumulated ${currentInputs.size} tensors for next part")
 
                 Log.d(TAG, "Memory after Part ${partIdx + 1}: ${getMemoryInfo()}")
             }
@@ -270,9 +262,11 @@ class SplitOnnxSharp private constructor(private val context: Context) {
                 }
             }
 
+            progressCallback?.invoke(baseProgress + 0.02f, "Part $partNumber/4: Creating session...")
             Log.d(TAG, "Creating session for part $partNumber...")
             session = ortEnv.createSession(modelPath, sessionOptions)
             Log.d(TAG, "Session created for part $partNumber")
+            progressCallback?.invoke(baseProgress + 0.05f, "Part $partNumber/4: Session ready")
 
             // Get input/output names
             val inputNames = session.inputNames.toList()
@@ -280,31 +274,37 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             Log.d(TAG, "Part $partNumber - Inputs: $inputNames, Outputs: $outputNames")
 
             // Load input tensors from files
+            progressCallback?.invoke(baseProgress + 0.07f, "Part $partNumber/4: Loading ${inputNames.size} inputs...")
             val inputTensors = mutableMapOf<String, OnnxTensor>()
-            for (name in inputNames) {
+            for ((idx, name) in inputNames.withIndex()) {
                 val file = inputs[name]
                 if (file == null || !file.exists()) {
-                    Log.e(TAG, "Missing input tensor: $name")
+                    Log.e(TAG, "Missing input tensor: $name (available: ${inputs.keys})")
                     return null
                 }
                 val tensor = loadTensorFromFile(ortEnv, file, name)
                 if (tensor != null) {
                     inputTensors[name] = tensor
                 } else {
-                    Log.e(TAG, "Failed to load tensor: $name")
+                    Log.e(TAG, "Failed to load tensor: $name from ${file.absolutePath}")
                     return null
                 }
+                if (idx % 10 == 0) {
+                    Log.d(TAG, "Loaded ${idx + 1}/${inputNames.size} inputs")
+                }
             }
+            Log.d(TAG, "All ${inputNames.size} inputs loaded for part $partNumber")
 
             // Run inference
-            progressCallback?.invoke(baseProgress + 0.05f, "Running Part $partNumber inference...")
-            Log.d(TAG, "Running Part $partNumber inference...")
+            progressCallback?.invoke(baseProgress + 0.10f, "Part $partNumber/4: Running inference...")
+            Log.d(TAG, "Running Part $partNumber inference with ${inputTensors.size} inputs...")
             val inferStartTime = System.currentTimeMillis()
 
             val outputs = session.run(inputTensors)
 
             val inferTime = System.currentTimeMillis() - inferStartTime
             Log.d(TAG, "Part $partNumber inference completed in ${inferTime}ms")
+            progressCallback?.invoke(baseProgress + 0.15f, "Part $partNumber/4: Inference done (${inferTime/1000}s)")
 
             // Save output tensors to files
             val outputFiles = mutableMapOf<String, File>()
@@ -325,7 +325,8 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             return outputFiles
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error running part $partNumber", e)
+            Log.e(TAG, "Error running part $partNumber: ${e.message}", e)
+            Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
             return null
         } finally {
             session?.close()
