@@ -187,6 +187,7 @@ struct MeshRoomView: View {
             Text(saveAlertMessage)
         }
         .defersSystemGestures(on: .all)
+        .disableBackSwipe()
     }
 
     // MARK: - Portrait Controls
@@ -442,6 +443,21 @@ struct MeshWebGLView: UIViewRepresentable {
         webView.isUserInteractionEnabled = true
         webView.isMultipleTouchEnabled = true
 
+        // Add edge pan gesture to block system back swipe
+        let edgePan = UIScreenEdgePanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleEdgePan(_:)))
+        edgePan.edges = .left
+        edgePan.cancelsTouchesInView = false
+        edgePan.delaysTouchesBegan = false
+        edgePan.delegate = context.coordinator
+        webView.addGestureRecognizer(edgePan)
+
+        // Find and disable the navigation controller's back gesture
+        DispatchQueue.main.async {
+            if let navController = webView.findNavigationController() {
+                navController.interactivePopGestureRecognizer?.isEnabled = false
+            }
+        }
+
         // Store reference
         DispatchQueue.main.async {
             webViewRef = webView
@@ -460,7 +476,7 @@ struct MeshWebGLView: UIViewRepresentable {
         Coordinator(onLoaded: onLoaded, onGLBExported: onGLBExported)
     }
 
-    class Coordinator: NSObject, WKScriptMessageHandler {
+    class Coordinator: NSObject, WKScriptMessageHandler, UIGestureRecognizerDelegate {
         let onLoaded: () -> Void
         let onGLBExported: (Data) -> Void
         weak var webView: WKWebView?
@@ -485,6 +501,15 @@ struct MeshWebGLView: UIViewRepresentable {
 
         @objc private func recenterCamera() {
             webView?.evaluateJavaScript("if (typeof recenterCamera === 'function') recenterCamera();", completionHandler: nil)
+        }
+
+        @objc func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            // Do nothing - this gesture just blocks the system back swipe
+        }
+
+        // Always recognize our edge gesture, blocking others
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -596,10 +621,10 @@ struct MeshWebGLView: UIViewRepresentable {
                 // Orbit controls - smooth touch interactions
                 const controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.08;  // Smooth deceleration
-                controls.rotateSpeed = 1.5;     // Faster rotation
-                controls.zoomSpeed = 2.0;       // Faster zoom
-                controls.panSpeed = 1.2;        // Faster pan
+                controls.dampingFactor = 0.05;  // Quick response
+                controls.rotateSpeed = 3.0;     // Fast rotation for touch
+                controls.zoomSpeed = 2.5;       // Fast zoom
+                controls.panSpeed = 1.5;        // Fast pan
                 controls.enableZoom = true;
                 controls.enablePan = true;
                 controls.minDistance = 0.3;

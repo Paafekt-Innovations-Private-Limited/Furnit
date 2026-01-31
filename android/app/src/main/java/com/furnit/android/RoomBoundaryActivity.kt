@@ -327,11 +327,11 @@ class RoomBoundaryActivity : AppCompatActivity() {
                         if (glbFile != null) {
                             // Check if GLB file was created for 3D preview
                             if (glbFile.name.endsWith(".glb")) {
-                                // Navigate to 3D ModelDetailActivity for preview
-                                val intent = Intent(this@RoomBoundaryActivity, ModelDetailActivity::class.java)
-                                intent.putExtra(ModelDetailActivity.EXTRA_GLB_PATH, glbFile.absolutePath)
-                                intent.putExtra(ModelDetailActivity.EXTRA_ROOM_NAME, "Your Room")
-                                intent.putExtra(ModelDetailActivity.EXTRA_IS_PREVIEW, true)
+                                // Navigate to WebGL-based GLBRoomActivity for preview (matching iOS)
+                                val intent = Intent(this@RoomBoundaryActivity, GLBRoomActivity::class.java)
+                                intent.putExtra(GLBRoomActivity.EXTRA_GLB_PATH, glbFile.absolutePath)
+                                intent.putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, "Your Room")
+                                intent.putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, true)
                                 startActivity(intent)
                             } else {
                                 // Fallback to 2D room viewer
