@@ -109,10 +109,10 @@ class ContentActivity : AppCompatActivity() {
         }
         topBar.addView(spacer)
 
-        // Help icon button
+        // Help icon button - opens FAQ/Help Activity
         val helpIcon = createIconButton("?")
         helpIcon.setOnClickListener {
-            showHelpDialog()
+            startActivity(Intent(this@ContentActivity, HelpActivity::class.java))
         }
         topBar.addView(helpIcon)
 
@@ -227,13 +227,6 @@ class ContentActivity : AppCompatActivity() {
         }
     }
 
-    private fun showHelpDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Help")
-            .setMessage("• Tap the image icon to create a new room from a photo\n\n• Long press on a room to delete it\n\n• Tap a room to view it in 3D")
-            .setPositiveButton("OK", null)
-            .show()
-    }
 
     private fun refreshRoomsList() {
         roomsContainer.removeAllViews()

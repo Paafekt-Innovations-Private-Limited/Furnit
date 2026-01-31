@@ -58,10 +58,9 @@ class FurnitureFitFragment : Fragment() {
     private var selectedRoomId: String? = null
     private var selectedRoomName: String? = null
 
-    // Touch-anywhere drag for camera control
-    private var lastTouchX = 0f
-    private var lastTouchY = 0f
-    private var isDragging = false
+    // For camera drag (when touching outside furniture)
+    private var lastCameraTouchX = 0f
+    private var lastCameraTouchY = 0f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,6 +94,10 @@ class FurnitureFitFragment : Fragment() {
 
         overlay = FurnitureFitOverlayView(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            // Handle camera drag when touching outside furniture
+            onTouchOutsideFurniture = { event ->
+                handleCameraDrag(event)
+            }
         }
 
         statusLabel = TextView(requireContext()).apply {
@@ -147,11 +150,13 @@ class FurnitureFitFragment : Fragment() {
             setOnClickListener { activity?.finish() }
         }
 
-        // Touch layer for drag-anywhere camera control
+        // Touch layer - passes all events to overlay for furniture manipulation
+        // Single finger: drag furniture, Two fingers: pinch to scale furniture
         val touchLayer = View(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             setOnTouchListener { _, event ->
-                handleCameraDrag(event)
+                // Pass all events to overlay for furniture drag and pinch-to-zoom
+                this@FurnitureFitFragment.overlay.handleExternalTouchEvent(event)
                 true
             }
         }
@@ -166,7 +171,7 @@ class FurnitureFitFragment : Fragment() {
 
         // Hint label (center) - shows drag instruction
         val hintLabel = TextView(requireContext()).apply {
-            text = "Drag to move camera"
+            text = "Drag furniture to move • Drag outside to pan room"
             setTextColor(0xAAFFFFFF.toInt())
             textSize = 12f
             setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
@@ -206,35 +211,32 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun handleCameraDrag(event: MotionEvent) {
-        when (event.action) {
+        Log.d("FurnitureFit", "handleCameraDrag called, action=${event.actionMasked}, roomVisible=${roomSceneView.visibility == View.VISIBLE}")
+        if (roomSceneView.visibility != View.VISIBLE) return
+
+        when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                lastTouchX = event.x
-                lastTouchY = event.y
-                isDragging = true
+                lastCameraTouchX = event.x
+                lastCameraTouchY = event.y
+                Log.d("FurnitureFit", "Camera drag DOWN at (${event.x}, ${event.y})")
             }
             MotionEvent.ACTION_MOVE -> {
-                if (isDragging && roomSceneView.visibility == View.VISIBLE) {
-                    val deltaX = event.x - lastTouchX
-                    val deltaY = event.y - lastTouchY
+                val deltaX = event.x - lastCameraTouchX
+                val deltaY = event.y - lastCameraTouchY
 
-                    // Convert screen pixels to camera movement
-                    // Negative X because dragging right should move camera left (pan effect)
-                    val sensitivity = 0.01f
-                    val camera = roomSceneView.cameraNode
-                    val position = camera.position
+                // Convert screen pixels to camera movement
+                val sensitivity = 0.01f
+                val camera = roomSceneView.cameraNode
+                val position = camera.position
 
-                    camera.position = Position(
-                        position.x - deltaX * sensitivity,
-                        position.y,
-                        position.z - deltaY * sensitivity
-                    )
+                val newX = position.x - deltaX * sensitivity
+                val newZ = position.z - deltaY * sensitivity
+                Log.d("FurnitureFit", "Camera drag MOVE: delta=($deltaX, $deltaY), newPos=($newX, ${position.y}, $newZ)")
 
-                    lastTouchX = event.x
-                    lastTouchY = event.y
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                isDragging = false
+                camera.position = Position(newX, position.y, newZ)
+
+                lastCameraTouchX = event.x
+                lastCameraTouchY = event.y
             }
         }
     }
@@ -398,9 +400,10 @@ class FurnitureFitFragment : Fragment() {
                     statusLabel.text = if (labels.isNotEmpty()) labels else "Detected"
                     overlay.setMaskAndDetections(result.mask, result.detections, result.inputSize)
 
-                    // Show 3D room behind segmented furniture
+                    // Show 3D room behind segmented furniture, hide camera preview
                     if (showRoomBackground && result.detections.isNotEmpty()) {
                         roomSceneView.visibility = View.VISIBLE
+                        previewView.visibility = View.GONE  // Hide camera when showing 3D room
                     }
                 } else {
                     if (!hasFirstDetection) {
@@ -409,6 +412,7 @@ class FurnitureFitFragment : Fragment() {
                     statusLabel.text = "Scanning..."
                     overlay.setMaskAndDetections(null, emptyList())
                     roomSceneView.visibility = View.GONE
+                    previewView.visibility = View.VISIBLE  // Show camera when no furniture detected
                 }
             }
             isProcessing = false

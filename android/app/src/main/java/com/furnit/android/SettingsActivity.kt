@@ -2,6 +2,7 @@ package com.furnit.android
 
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -154,6 +155,44 @@ class SettingsActivity : AppCompatActivity() {
         viewerSection.addView(autoOrbitLayout)
         layout.addView(viewerSection)
 
+        // Legal section
+        val legalSection = createSection("Legal")
+
+        val privacyButton = TextView(this).apply {
+            text = "Privacy Policy"
+            textSize = 16f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 8, 0, 8)
+            setOnClickListener {
+                openUrl("https://paafekt.com/privacy")
+            }
+        }
+        legalSection.addView(privacyButton)
+
+        val termsButton = TextView(this).apply {
+            text = "Terms of Service"
+            textSize = 16f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 8, 0, 8)
+            setOnClickListener {
+                openUrl("https://paafekt.com/terms")
+            }
+        }
+        legalSection.addView(termsButton)
+
+        val licenseButton = TextView(this).apply {
+            text = "Licenses"
+            textSize = 16f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 8, 0, 8)
+            setOnClickListener {
+                openUrl("https://paafekt.com/licenses")
+            }
+        }
+        legalSection.addView(licenseButton)
+
+        layout.addView(legalSection)
+
         // App info section
         val appSection = createSection("About")
         val versionText = TextView(this).apply {
@@ -224,5 +263,14 @@ class SettingsActivity : AppCompatActivity() {
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         startActivity(intent)
         finish()
+    }
+
+    private fun openUrl(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            startActivity(intent)
+        } catch (e: Exception) {
+            // Ignore if no browser available
+        }
     }
 }

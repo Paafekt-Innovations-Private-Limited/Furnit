@@ -946,47 +946,52 @@ class FurnitureFitManager(private val context: Context) {
                 }
             }
 
-            // Convert to DetectionResult for overlay
-            val detectionResults = keepDets.map { det ->
-                DetectionResult(
-                    x = det.x,
-                    y = det.y,
-                    w = det.w,
-                    h = det.h,
-                    confidence = det.confidence,
-                    label = getClassName(det.classId)
-                )
+            // Only keep the highest confidence detection (primary furniture)
+            val primaryDet = keepDets.firstOrNull()
+
+            // Convert to DetectionResult for overlay - only the primary one
+            val detectionResults = if (primaryDet != null) {
+                listOf(DetectionResult(
+                    x = primaryDet.x,
+                    y = primaryDet.y,
+                    w = primaryDet.w,
+                    h = primaryDet.h,
+                    confidence = primaryDet.confidence,
+                    label = getClassName(primaryDet.classId)
+                ))
+            } else {
+                emptyList()
             }
 
-            // Generate mask
+            // Generate mask for primary detection only
             var maskResult: Bitmap? = null
-            if (keepDets.isNotEmpty() && proto.isNotEmpty()) {
+            if (primaryDet != null && proto.isNotEmpty()) {
                 val protoScaleX = inputW.toFloat() / protoW.toFloat()
                 val protoScaleY = inputH.toFloat() / protoH.toFloat()
                 val maskProto = FloatArray(protoH * protoW)
 
-                for (detection in keepDets) {
-                    val bboxLeft = ((detection.x - detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
-                    val bboxTop = ((detection.y - detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
-                    val bboxRight = ((detection.x + detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
-                    val bboxBottom = ((detection.y + detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
+                // Only process the primary (highest confidence) detection
+                val detection = primaryDet
+                val bboxLeft = ((detection.x - detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
+                val bboxTop = ((detection.y - detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
+                val bboxRight = ((detection.x + detection.w / 2f) / protoScaleX).toInt().coerceIn(0, protoW - 1)
+                val bboxBottom = ((detection.y + detection.h / 2f) / protoScaleY).toInt().coerceIn(0, protoH - 1)
 
-                    for (py in bboxTop..bboxBottom) {
-                        val rowBase = py * protoW
-                        for (px in bboxLeft..bboxRight) {
-                            var sum = 0f
-                            val p = rowBase + px
-                            val hwProto = protoH * protoW
-                            var c = 0
-                            while (c < numProtos) {
-                                val protoIdx = c * hwProto + p
-                                sum += detection.coeffs[c] * proto[protoIdx]
-                                c++
-                            }
-                            val sigmoidVal = 1f / (1f + exp(-sum))
-                            if (sigmoidVal > maskProto[p]) {
-                                maskProto[p] = sigmoidVal
-                            }
+                for (py in bboxTop..bboxBottom) {
+                    val rowBase = py * protoW
+                    for (px in bboxLeft..bboxRight) {
+                        var sum = 0f
+                        val p = rowBase + px
+                        val hwProto = protoH * protoW
+                        var c = 0
+                        while (c < numProtos) {
+                            val protoIdx = c * hwProto + p
+                            sum += detection.coeffs[c] * proto[protoIdx]
+                            c++
+                        }
+                        val sigmoidVal = 1f / (1f + exp(-sum))
+                        if (sigmoidVal > maskProto[p]) {
+                            maskProto[p] = sigmoidVal
                         }
                     }
                 }
@@ -1033,10 +1038,62 @@ class FurnitureFitManager(private val context: Context) {
         }
     }
 
-    // Stub for NCNN with detections - falls back to mask only for now
+    // NCNN inference with detections - only returns highest confidence detection
     private fun runNcnnInferenceWithDetections(frame: Bitmap, callback: (SegmentationResult?) -> Unit) {
-        runNcnnInference(frame) { mask ->
-            callback(SegmentationResult(mask, emptyList(), 640))
+        try {
+            val ncnn = ncnnYoloe ?: run {
+                Log.e("FurnitureFitManager", "NCNN not initialized")
+                mainHandler.post { callback(null) }
+                return
+            }
+
+            val startTime = System.currentTimeMillis()
+
+            // Get all detections first
+            val detections = ncnn.detect(
+                bitmap = frame,
+                confThreshold = 0.25f,
+                iouThreshold = 0.45f
+            )
+
+            if (detections.isEmpty()) {
+                mainHandler.post { callback(SegmentationResult(null, emptyList(), 640)) }
+                return
+            }
+
+            // Sort by confidence and take only the highest
+            val primaryDet = detections.maxByOrNull { it.confidence }
+
+            if (primaryDet == null) {
+                mainHandler.post { callback(SegmentationResult(null, emptyList(), 640)) }
+                return
+            }
+
+            // Generate mask for only the primary (highest confidence) detection
+            val mask = ncnn.generateMask(
+                bitmap = frame,
+                detections = listOf(primaryDet),  // Only one detection
+                maskThreshold = 0.5f
+            )
+
+            val inferenceTime = System.currentTimeMillis() - startTime
+            Log.d("FurnitureFitManager", "NCNN inference: primary detection ${primaryDet.label} (${String.format("%.2f", primaryDet.confidence)}) in ${inferenceTime}ms")
+
+            // Convert to DetectionResult
+            val detectionResult = DetectionResult(
+                x = primaryDet.x,
+                y = primaryDet.y,
+                w = primaryDet.width,
+                h = primaryDet.height,
+                confidence = primaryDet.confidence,
+                label = primaryDet.label
+            )
+
+            val result = SegmentationResult(mask, listOf(detectionResult), 640)
+            mainHandler.post { callback(result) }
+        } catch (e: Exception) {
+            Log.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)
+            mainHandler.post { callback(null) }
         }
     }
 
