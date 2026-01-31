@@ -173,9 +173,8 @@ class SplitOnnxSharp private constructor(private val context: Context) {
                 Log.d(TAG, "Memory before: ${getMemoryInfo()}")
                 Log.d(TAG, "Model file: $modelFile")
 
-                // Force GC before loading
+                // Request GC (no forced sleep - let system decide)
                 System.gc()
-                Thread.sleep(100)
 
                 val modelPath = File(modelsDir, modelFile).absolutePath
                 Log.d(TAG, "Loading from: $modelPath")
@@ -240,12 +239,12 @@ class SplitOnnxSharp private constructor(private val context: Context) {
                 // Enable graph optimizations (BASIC is a good balance for mobile)
                 setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
 
-                // Conservative threading - balance speed vs memory
-                // 2 intra-op threads for MatMul parallelism (main speedup)
-                // 1 inter-op thread to avoid memory spikes from concurrent ops
-                setIntraOpNumThreads(2)
+                // Use available cores for parallelism (capped at 4 to balance memory)
+                val numCores = Runtime.getRuntime().availableProcessors()
+                val intraThreads = minOf(numCores, 4)
+                setIntraOpNumThreads(intraThreads)
                 setInterOpNumThreads(1)
-                Log.d(TAG, "Using 2 intra-op threads, 1 inter-op thread (memory-safe)")
+                Log.d(TAG, "Using $intraThreads intra-op threads (device has $numCores cores)")
 
                 // Memory pattern helps reuse buffers, arena allocator uses too much memory
                 setMemoryPatternOptimization(true)
@@ -566,17 +565,20 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             var minZ = Float.MAX_VALUE
             var maxZ = -Float.MAX_VALUE
 
-            // Write PLY
+            // Write PLY with batched I/O for performance
             val header = buildPlyHeader(gaussianCount)
-            FileOutputStream(plyFile).use { fos ->
+            FileOutputStream(plyFile).buffered(256 * 1024).use { fos ->
                 fos.write(header.toByteArray(Charsets.UTF_8))
 
-                val vertexBuffer = ByteBuffer.allocate(BYTES_PER_VERTEX)
-                vertexBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                // Batch 500 vertices per write (~124KB batches)
+                val batchSize = 500
+                val batchBuffer = ByteBuffer.allocate(BYTES_PER_VERTEX * batchSize)
+                batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                val scaleBoost = 1.3f
+                val minScale = 0.001f
 
+                var batchCount = 0
                 for (i in 0 until gaussianCount) {
-                    vertexBuffer.clear()
-
                     // Position
                     val posIdx = i * 3
                     val x = posBuffer.get(posIdx)
@@ -590,38 +592,36 @@ class SplitOnnxSharp private constructor(private val context: Context) {
                     if (z < minZ) minZ = z
                     if (z > maxZ) maxZ = z
 
-                    vertexBuffer.putFloat(x)
-                    vertexBuffer.putFloat(y)
-                    vertexBuffer.putFloat(z)
+                    batchBuffer.putFloat(x)
+                    batchBuffer.putFloat(y)
+                    batchBuffer.putFloat(z)
 
                     // Normals
-                    vertexBuffer.putFloat(0f)
-                    vertexBuffer.putFloat(0f)
-                    vertexBuffer.putFloat(0f)
+                    batchBuffer.putFloat(0f)
+                    batchBuffer.putFloat(0f)
+                    batchBuffer.putFloat(0f)
 
                     // Colors -> SH DC
                     val colorIdx = i * 3
                     val r = colorBuffer.get(colorIdx).coerceIn(0f, 1f)
                     val g = colorBuffer.get(colorIdx + 1).coerceIn(0f, 1f)
                     val b = colorBuffer.get(colorIdx + 2).coerceIn(0f, 1f)
-                    vertexBuffer.putFloat((r - 0.5f) / SH_C0)
-                    vertexBuffer.putFloat((g - 0.5f) / SH_C0)
-                    vertexBuffer.putFloat((b - 0.5f) / SH_C0)
+                    batchBuffer.putFloat((r - 0.5f) / SH_C0)
+                    batchBuffer.putFloat((g - 0.5f) / SH_C0)
+                    batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                    // Higher order SH
-                    for (j in 0 until 45) vertexBuffer.putFloat(0f)
+                    // Higher order SH (45 zeros)
+                    for (j in 0 until 45) batchBuffer.putFloat(0f)
 
                     // Opacity -> logit
                     val rawOpacity = opacityBuffer.get(i).coerceIn(1e-4f, 1f - 1e-4f)
-                    vertexBuffer.putFloat(ln(rawOpacity / (1f - rawOpacity)))
+                    batchBuffer.putFloat(ln(rawOpacity / (1f - rawOpacity)))
 
                     // Scale -> log
                     val scaleIdx = i * 3
-                    val scaleBoost = 1.3f
-                    val minScale = 0.001f
-                    vertexBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx) * scaleBoost, minScale)))
-                    vertexBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx + 1) * scaleBoost, minScale)))
-                    vertexBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx + 2) * scaleBoost, minScale)))
+                    batchBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx) * scaleBoost, minScale)))
+                    batchBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx + 1) * scaleBoost, minScale)))
+                    batchBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx + 2) * scaleBoost, minScale)))
 
                     // Rotation -> normalize
                     val rotIdx = i * 4
@@ -631,12 +631,21 @@ class SplitOnnxSharp private constructor(private val context: Context) {
                     val rz = rotBuffer.get(rotIdx + 3)
                     val mag = sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
                     val invMag = if (mag > 1e-8f) 1f / mag else 1f
-                    vertexBuffer.putFloat(rw * invMag)
-                    vertexBuffer.putFloat(rx * invMag)
-                    vertexBuffer.putFloat(ry * invMag)
-                    vertexBuffer.putFloat(rz * invMag)
+                    batchBuffer.putFloat(rw * invMag)
+                    batchBuffer.putFloat(rx * invMag)
+                    batchBuffer.putFloat(ry * invMag)
+                    batchBuffer.putFloat(rz * invMag)
 
-                    fos.write(vertexBuffer.array())
+                    batchCount++
+                    if (batchCount >= batchSize) {
+                        fos.write(batchBuffer.array(), 0, batchBuffer.position())
+                        batchBuffer.clear()
+                        batchCount = 0
+                    }
+                }
+                // Write remaining
+                if (batchCount > 0) {
+                    fos.write(batchBuffer.array(), 0, batchBuffer.position())
                 }
             }
 

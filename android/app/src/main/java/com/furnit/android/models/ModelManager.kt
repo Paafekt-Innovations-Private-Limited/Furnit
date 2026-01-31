@@ -10,6 +10,7 @@ class ModelManager(private val context: Context) {
     companion object {
         private const val TAG = "ModelManager"
         private const val ROOMS_DIR = "rooms"
+        private const val SHARP_ROOMS_DIR = "sharp_rooms"
     }
 
     init {
@@ -28,23 +29,36 @@ class ModelManager(private val context: Context) {
     }
 
     private fun loadUserCreatedRooms() {
-        val roomsDir = File(context.filesDir, ROOMS_DIR)
+        val userRooms = mutableListOf<Model>()
+
+        // Load from regular rooms directory
+        loadRoomsFromDir(File(context.filesDir, ROOMS_DIR), userRooms)
+
+        // Load from sharp_rooms directory (AI-generated rooms)
+        loadRoomsFromDir(File(context.filesDir, SHARP_ROOMS_DIR), userRooms)
+
+        // Sort user rooms by creation date descending (newest first)
+        userRooms.sortByDescending { it.createdAt }
+        models.addAll(userRooms)
+    }
+
+    private fun loadRoomsFromDir(roomsDir: File, userRooms: MutableList<Model>) {
         if (!roomsDir.exists()) {
-            Log.d(TAG, "No rooms directory found")
+            Log.d(TAG, "Directory not found: ${roomsDir.name}")
             return
         }
 
         val roomFolders = roomsDir.listFiles { file -> file.isDirectory } ?: return
-        Log.d(TAG, "Found ${roomFolders.size} user-created rooms")
-
-        val userRooms = mutableListOf<Model>()
+        Log.d(TAG, "Found ${roomFolders.size} rooms in ${roomsDir.name}")
 
         for (folder in roomFolders) {
             val frontWall = File(folder, "front_wall.png")
+            val thumbnail = File(folder, "thumbnail.png")
             val glbFile = File(folder, "room.glb")
+            val plyFile = File(folder, "room.ply")
             val metadataFile = File(folder, "metadata.txt")
 
-            if (frontWall.exists() || glbFile.exists()) {
+            if (frontWall.exists() || glbFile.exists() || plyFile.exists()) {
                 // Read room name and created timestamp from metadata
                 var roomName = "My Room ${folder.name.substringAfter("room_")}"
                 var createdAt = folder.lastModified() // fallback to folder modification time
@@ -76,11 +90,18 @@ class ModelManager(private val context: Context) {
                     }
                 }
 
-                // Use GLB file path if it exists, otherwise use folder path
-                val assetPath = if (glbFile.exists()) {
-                    glbFile.absolutePath
-                } else {
-                    folder.absolutePath
+                // Use GLB/PLY file path if it exists, otherwise use folder path
+                val assetPath = when {
+                    glbFile.exists() -> glbFile.absolutePath
+                    plyFile.exists() -> plyFile.absolutePath
+                    else -> folder.absolutePath
+                }
+
+                // Use thumbnail.png (AI rooms) or front_wall.png (regular rooms)
+                val thumbPath = when {
+                    thumbnail.exists() -> thumbnail.absolutePath
+                    frontWall.exists() -> frontWall.absolutePath
+                    else -> null
                 }
 
                 val model = Model(
@@ -88,7 +109,7 @@ class ModelManager(private val context: Context) {
                     name = roomName,
                     assetPath = assetPath,
                     isUserCreated = true,
-                    thumbnailPath = if (frontWall.exists()) frontWall.absolutePath else null,
+                    thumbnailPath = thumbPath,
                     createdAt = createdAt,
                     roomWidth = roomWidth,
                     roomHeight = roomHeight,
@@ -96,13 +117,9 @@ class ModelManager(private val context: Context) {
                     photoOrientation = photoOrientation
                 )
                 userRooms.add(model)
-                Log.d(TAG, "Loaded user room: ${model.name} at ${model.assetPath} (GLB: ${glbFile.exists()}, created: $createdAt, dims: ${roomWidth}x${roomHeight}x${roomDepth})")
+                Log.d(TAG, "Loaded room: ${model.name} at ${model.assetPath} (created: $createdAt, dims: ${roomWidth}x${roomHeight}x${roomDepth})")
             }
         }
-
-        // Sort user rooms by creation date descending (newest first)
-        userRooms.sortByDescending { it.createdAt }
-        models.addAll(userRooms)
     }
 
     fun listModels(): List<Model> = models.toList()
