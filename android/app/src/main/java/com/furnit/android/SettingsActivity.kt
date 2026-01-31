@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
 import com.furnit.android.models.QualitySettings
+import com.furnit.android.utils.DebugLogger
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
@@ -36,7 +37,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // Back button
         val backBtn = TextView(this).apply {
-            text = "< Back"
+            text = "< ${getString(R.string.common_back)}"
             textSize = 16f
             setTextColor(Color.parseColor("#007AFF"))
             setPadding(0, 0, 0, 24)
@@ -46,7 +47,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // Title
         val title = TextView(this).apply {
-            text = "Settings"
+            text = getString(R.string.settings_title)
             textSize = 24f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#333333"))
@@ -55,11 +56,11 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(title)
 
         // User info section
-        val userSection = createSection("Account")
+        val userSection = createSection(getString(R.string.settings_account))
         val userInfo = TextView(this).apply {
             val userName = authManager.getUserName()
             val userPhone = authManager.getUserPhone()
-            text = if (userName.isNotEmpty()) "$userName\n$userPhone" else userPhone.ifEmpty { "Not signed in" }
+            text = if (userName.isNotEmpty()) "$userName\n$userPhone" else userPhone.ifEmpty { getString(R.string.settings_not_signed_in) }
             textSize = 16f
             setTextColor(Color.parseColor("#333333"))
             setPadding(0, 8, 0, 16)
@@ -68,7 +69,7 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(userSection)
 
         // Quality settings section
-        val qualitySection = createSection("Rendering Quality")
+        val qualitySection = createSection(getString(R.string.settings_rendering_quality))
 
         val rg = RadioGroup(this).apply {
             orientation = RadioGroup.VERTICAL
@@ -78,17 +79,17 @@ class SettingsActivity : AppCompatActivity() {
         val highId = View.generateViewId()
 
         val low = RadioButton(this).apply {
-            text = "Low - Faster performance"
+            text = "${getString(R.string.quality_low)} - ${getString(R.string.quality_low_description)}"
             id = lowId
             setTextColor(Color.parseColor("#333333"))
         }
         val med = RadioButton(this).apply {
-            text = "Medium - Balanced"
+            text = "${getString(R.string.quality_medium)} - ${getString(R.string.quality_medium_description)}"
             id = medId
             setTextColor(Color.parseColor("#333333"))
         }
         val high = RadioButton(this).apply {
-            text = "High - Best quality"
+            text = "${getString(R.string.quality_high)} - ${getString(R.string.quality_high_description)}"
             id = highId
             setTextColor(Color.parseColor("#333333"))
         }
@@ -117,7 +118,7 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(qualitySection)
 
         // Room Viewer settings section
-        val viewerSection = createSection("Room Viewer")
+        val viewerSection = createSection(getString(R.string.settings_room_viewer))
 
         // Auto-orbit toggle (default OFF)
         val autoOrbitLayout = LinearLayout(this).apply {
@@ -131,12 +132,12 @@ class SettingsActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         val autoOrbitTitle = TextView(this).apply {
-            text = "Auto Orbit"
+            text = getString(R.string.settings_auto_orbit)
             textSize = 16f
             setTextColor(Color.parseColor("#333333"))
         }
         val autoOrbitDesc = TextView(this).apply {
-            text = "Slowly rotate camera when idle"
+            text = getString(R.string.settings_auto_orbit_description)
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
         }
@@ -155,11 +156,83 @@ class SettingsActivity : AppCompatActivity() {
         viewerSection.addView(autoOrbitLayout)
         layout.addView(viewerSection)
 
+        // Developer Settings section (matches iOS)
+        val developerSection = createSection(getString(R.string.settings_developer))
+
+        // Debug mode toggle
+        val debugLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 8)
+        }
+
+        val debugLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val debugIcon = TextView(this).apply {
+            text = "\uD83D\uDC1E" // Bug/ladybug emoji
+            textSize = 20f
+            setPadding(0, 0, 12, 0)
+        }
+
+        val debugTextContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        debugTextContainer.addView(debugIcon)
+
+        val debugTextLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val debugTitle = TextView(this).apply {
+            text = getString(R.string.settings_debug_mode)
+            textSize = 16f
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val debugDesc = TextView(this).apply {
+            text = getString(R.string.settings_debug_mode_description)
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        debugTextLayout.addView(debugTitle)
+        debugTextLayout.addView(debugDesc)
+        debugTextContainer.addView(debugTextLayout)
+        debugLabel.addView(debugTextContainer)
+
+        // Initialize DebugLogger
+        DebugLogger.init(this)
+
+        val debugSwitch = Switch(this).apply {
+            isChecked = DebugLogger.isDebugMode
+            setOnCheckedChangeListener { _, isChecked ->
+                DebugLogger.setDebugMode(isChecked)
+            }
+        }
+
+        debugLayout.addView(debugLabel)
+        debugLayout.addView(debugSwitch)
+        developerSection.addView(debugLayout)
+
+        // Developer section footer
+        val developerFooter = TextView(this).apply {
+            text = getString(R.string.settings_developer_footer)
+            textSize = 11f
+            setTextColor(Color.parseColor("#999999"))
+            setPadding(0, 8, 0, 0)
+        }
+        developerSection.addView(developerFooter)
+
+        layout.addView(developerSection)
+
         // Legal section
-        val legalSection = createSection("Legal")
+        val legalSection = createSection(getString(R.string.settings_legal))
 
         val privacyButton = TextView(this).apply {
-            text = "Privacy Policy"
+            text = getString(R.string.settings_privacy_policy)
             textSize = 16f
             setTextColor(Color.parseColor("#007AFF"))
             setPadding(0, 8, 0, 8)
@@ -170,7 +243,7 @@ class SettingsActivity : AppCompatActivity() {
         legalSection.addView(privacyButton)
 
         val termsButton = TextView(this).apply {
-            text = "Terms of Service"
+            text = getString(R.string.settings_terms_of_service)
             textSize = 16f
             setTextColor(Color.parseColor("#007AFF"))
             setPadding(0, 8, 0, 8)
@@ -181,7 +254,7 @@ class SettingsActivity : AppCompatActivity() {
         legalSection.addView(termsButton)
 
         val licenseButton = TextView(this).apply {
-            text = "Licenses"
+            text = getString(R.string.settings_licenses)
             textSize = 16f
             setTextColor(Color.parseColor("#007AFF"))
             setPadding(0, 8, 0, 8)
@@ -194,7 +267,7 @@ class SettingsActivity : AppCompatActivity() {
         layout.addView(legalSection)
 
         // App info section
-        val appSection = createSection("About")
+        val appSection = createSection(getString(R.string.profile_about))
         val versionText = TextView(this).apply {
             text = "Furnit v1.0.0"
             textSize = 14f
@@ -205,7 +278,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // Logout button
         val logoutBtn = Button(this).apply {
-            text = "Sign Out"
+            text = getString(R.string.settings_sign_out)
             textSize = 16f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#F44336"))
@@ -248,13 +321,13 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun showLogoutConfirmation() {
         AlertDialog.Builder(this)
-            .setTitle("Sign Out")
-            .setMessage("Are you sure you want to sign out?")
-            .setPositiveButton("Sign Out") { _, _ ->
+            .setTitle(getString(R.string.settings_sign_out))
+            .setMessage(getString(R.string.settings_sign_out_confirm))
+            .setPositiveButton(getString(R.string.settings_sign_out)) { _, _ ->
                 authManager.logout()
                 navigateToLogin()
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(getString(R.string.common_cancel), null)
             .show()
     }
 

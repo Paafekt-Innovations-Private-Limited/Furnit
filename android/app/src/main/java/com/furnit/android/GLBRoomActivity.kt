@@ -15,6 +15,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import android.webkit.*
 import android.widget.*
@@ -88,7 +89,14 @@ class GLBRoomActivity : AppCompatActivity() {
         roomHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, 3.0f)
         photoOrientation = intent.getStringExtra(EXTRA_PHOTO_ORIENTATION) ?: "portrait"
 
-        Log.d(TAG, "Opening GLBRoomActivity - path: $glbPath, roomId: $roomId, preview: $isPreviewMode")
+        // Lock orientation based on room's photo orientation (no auto-rotate)
+        requestedOrientation = if (photoOrientation == "landscape") {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+
+        Log.d(TAG, "Opening GLBRoomActivity - path: $glbPath, roomId: $roomId, preview: $isPreviewMode, orientation: $photoOrientation")
 
         if (glbPath == null) {
             Toast.makeText(this, "No GLB file provided", Toast.LENGTH_SHORT).show()

@@ -2,6 +2,7 @@ package com.furnit.android
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.graphics.*
 import android.net.Uri
 import android.os.Bundle
@@ -11,6 +12,7 @@ import android.util.Log
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.SinglePhotoRoomReconstructor
 import java.io.File
@@ -34,6 +36,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_IMAGE_URI = "image_uri"
+        const val EXTRA_PHOTO_ORIENTATION = "photo_orientation"
         const val RESULT_BOUNDARIES = "boundaries"
         const val REQUEST_CODE = 1001
     }
@@ -46,6 +49,10 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
     // Boundary values (percentages 0-1)
     private var structure = RoomStructure()
+
+    // Photo orientation (landscape vs portrait)
+    private var photoOrientation: PhotoOrientation = PhotoOrientation.PORTRAIT
+    private val isLandscape: Boolean get() = photoOrientation == PhotoOrientation.LANDSCAPE
 
     // Room reconstructor
     private lateinit var reconstructor: SinglePhotoRoomReconstructor
@@ -61,6 +68,22 @@ class RoomBoundaryActivity : AppCompatActivity() {
             return
         }
 
+        // Get photo orientation and lock screen accordingly
+        val orientationStr = intent.getStringExtra(EXTRA_PHOTO_ORIENTATION) ?: "portrait"
+        photoOrientation = when (orientationStr) {
+            "landscape" -> PhotoOrientation.LANDSCAPE
+            "square" -> PhotoOrientation.SQUARE
+            else -> PhotoOrientation.PORTRAIT
+        }
+        Log.d("RoomBoundary", "Photo orientation: ${photoOrientation.value}")
+
+        // Lock screen orientation to match photo orientation (like iOS)
+        requestedOrientation = if (isLandscape) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+
         val imageUri = Uri.parse(imageUriString)
         loadImage(imageUri)
 
@@ -72,6 +95,12 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
         reconstructor = SinglePhotoRoomReconstructor(this)
         setupUI()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Unlock orientation when leaving
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
 
     private fun loadImage(uri: Uri) {
@@ -90,7 +119,24 @@ class RoomBoundaryActivity : AppCompatActivity() {
             setBackgroundColor(Color.BLACK)
         }
 
-        // Main vertical layout
+        if (isLandscape) {
+            setupLandscapeUI()
+        } else {
+            setupPortraitUI()
+        }
+
+        setContentView(rootLayout)
+
+        // Post to get actual image bounds after layout
+        imageView.post {
+            boundaryView.setImageBounds(getImageBoundsInView())
+        }
+    }
+
+    /**
+     * Portrait layout: vertical with top bar, image area, and bottom controls
+     */
+    private fun setupPortraitUI() {
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
@@ -100,7 +146,101 @@ class RoomBoundaryActivity : AppCompatActivity() {
         }
 
         // Top bar with back button and title
-        val topBar = LinearLayout(this).apply {
+        val topBar = createTopBar()
+        mainLayout.addView(topBar)
+
+        // Image container with boundary overlay
+        val imageContainer = createImageContainer()
+        mainLayout.addView(imageContainer, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0, 1f
+        ))
+
+        // Instructions panel
+        val instructionsPanel = createControlsPanel(isHorizontal = false)
+        mainLayout.addView(instructionsPanel)
+
+        rootLayout.addView(mainLayout)
+    }
+
+    /**
+     * Landscape layout: full-screen image with horizontal bottom overlay bar
+     * Matches iOS RoomBoundaryDetectionView landscape layout
+     */
+    private fun setupLandscapeUI() {
+        // Full-screen image container
+        val imageContainer = createImageContainer()
+        rootLayout.addView(imageContainer, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+
+        // Horizontal bottom overlay bar with controls
+        val bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#CC2A2A2A"))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(24, 12, 24, 12)
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+            )
+        }
+
+        // Back button
+        val backBtn = TextView(this).apply {
+            text = "< Back"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 0, 24, 0)
+            setOnClickListener { finish() }
+        }
+        bottomBar.addView(backBtn)
+
+        // Legend (compact, horizontal)
+        val legendLayout = createLegendLayout()
+        bottomBar.addView(legendLayout, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        // Reset button
+        val resetBtn = Button(this).apply {
+            text = "Reset"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#555555"))
+            setPadding(20, 8, 20, 8)
+            minimumHeight = 0
+            minHeight = 0
+            setOnClickListener {
+                structure.reset()
+                boundaryView.updateStructure(structure)
+            }
+        }
+        bottomBar.addView(resetBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { setMargins(8, 0, 8, 0) })
+
+        // Done button
+        val doneBtn = Button(this).apply {
+            text = "Done"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#4CAF50"))
+            setPadding(28, 8, 28, 8)
+            minimumHeight = 0
+            minHeight = 0
+            setOnClickListener {
+                onDonePressed()
+            }
+        }
+        bottomBar.addView(doneBtn)
+
+        rootLayout.addView(bottomBar)
+    }
+
+    private fun createTopBar(): LinearLayout {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#1A1A1A"))
             setPadding(16, 48, 16, 16)
@@ -123,21 +263,18 @@ class RoomBoundaryActivity : AppCompatActivity() {
             }
             addView(title)
 
-            // Spacer for symmetry
-            val spacer = View(this@RoomBoundaryActivity).apply {
-                layoutParams = LinearLayout.LayoutParams(80, 1)
+            // Orientation indicator
+            val orientationLabel = TextView(this@RoomBoundaryActivity).apply {
+                text = if (isLandscape) "\uD83D\uDCF1↔ Landscape" else "\uD83D\uDCF1↕ Portrait"
+                textSize = 12f
+                setTextColor(Color.GRAY)
             }
-            addView(spacer)
+            addView(orientationLabel)
         }
-        mainLayout.addView(topBar)
+    }
 
-        // Image container with boundary overlay
-        val imageContainer = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0, 1f
-            )
-        }
+    private fun createImageContainer(): FrameLayout {
+        val container = FrameLayout(this)
 
         imageView = ImageView(this).apply {
             setImageBitmap(imageBitmap)
@@ -147,7 +284,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        imageContainer.addView(imageView)
+        container.addView(imageView)
 
         boundaryView = BoundaryOverlayView(this, structure).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -158,12 +295,42 @@ class RoomBoundaryActivity : AppCompatActivity() {
                 structure = newStructure
             }
         }
-        imageContainer.addView(boundaryView)
+        container.addView(boundaryView)
 
-        mainLayout.addView(imageContainer)
+        return container
+    }
 
-        // Instructions panel - compact to leave more room for image
-        val instructionsPanel = LinearLayout(this).apply {
+    private fun createLegendLayout(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+
+            fun addLegendDot(color: Int, label: String) {
+                val dot = View(this@RoomBoundaryActivity).apply {
+                    layoutParams = LinearLayout.LayoutParams(12, 12).apply {
+                        setMargins(6, 0, 2, 0)
+                    }
+                    setBackgroundColor(color)
+                }
+                addView(dot)
+                val text = TextView(this@RoomBoundaryActivity).apply {
+                    this.text = label
+                    textSize = 10f
+                    setTextColor(Color.LTGRAY)
+                }
+                addView(text)
+            }
+
+            addLegendDot(Color.GREEN, "F")
+            addLegendDot(Color.CYAN, "C")
+            addLegendDot(Color.RED, "L")
+            addLegendDot(Color.YELLOW, "R")
+            addLegendDot(Color.MAGENTA, "VP")
+        }
+    }
+
+    private fun createControlsPanel(isHorizontal: Boolean): LinearLayout {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#2A2A2A"))
             setPadding(16, 8, 16, 8)
@@ -174,33 +341,8 @@ class RoomBoundaryActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
 
                 // Legend (compact)
-                val legendLayout = LinearLayout(this@RoomBoundaryActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-
-                    fun addLegendDot(color: Int, label: String) {
-                        val dot = View(this@RoomBoundaryActivity).apply {
-                            layoutParams = LinearLayout.LayoutParams(12, 12).apply {
-                                setMargins(6, 0, 2, 0)
-                            }
-                            setBackgroundColor(color)
-                        }
-                        addView(dot)
-                        val text = TextView(this@RoomBoundaryActivity).apply {
-                            this.text = label
-                            textSize = 10f
-                            setTextColor(Color.LTGRAY)
-                        }
-                        addView(text)
-                    }
-
-                    addLegendDot(Color.GREEN, "F")
-                    addLegendDot(Color.CYAN, "C")
-                    addLegendDot(Color.RED, "L")
-                    addLegendDot(Color.YELLOW, "R")
-                    addLegendDot(Color.MAGENTA, "VP")
-                }
+                val legendLayout = createLegendLayout()
+                legendLayout.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 addView(legendLayout)
 
                 // Buttons
@@ -250,15 +392,6 @@ class RoomBoundaryActivity : AppCompatActivity() {
                 setPadding(0, 4, 0, 0)
             }
             addView(instructionText)
-        }
-        mainLayout.addView(instructionsPanel)
-
-        rootLayout.addView(mainLayout)
-        setContentView(rootLayout)
-
-        // Post to get actual image bounds after layout
-        imageView.post {
-            boundaryView.setImageBounds(getImageBoundsInView())
         }
     }
 
@@ -332,6 +465,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
                                 intent.putExtra(GLBRoomActivity.EXTRA_GLB_PATH, glbFile.absolutePath)
                                 intent.putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, "Your Room")
                                 intent.putExtra(GLBRoomActivity.EXTRA_IS_PREVIEW, true)
+                                intent.putExtra(GLBRoomActivity.EXTRA_PHOTO_ORIENTATION, photoOrientation.value)
                                 startActivity(intent)
                             } else {
                                 // Fallback to 2D room viewer

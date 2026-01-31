@@ -1,0 +1,335 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App General -->
+    <string name="app_name">Paafekt Beta</string>
+    <string name="app_tagline">3D Room Explorer</string>
+    <string name="app_version">Version</string>
+    <string name="app_developer">Paafekt Team</string>
+
+    <!-- Common Actions -->
+    <string name="common_done">Done</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_ok">OK</string>
+    <string name="common_back">Back</string>
+    <string name="common_reset">Reset</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_error">Error</string>
+    <string name="common_save">Save</string>
+    <string name="common_close">Close</string>
+    <string name="common_or">or</string>
+
+    <!-- Login View -->
+    <string name="login_your_name">Your Name</string>
+    <string name="login_enter_name">Enter your name</string>
+    <string name="login_phone_number">Phone Number</string>
+    <string name="login_phone_placeholder">Phone number</string>
+    <string name="login_send_otp">Send OTP</string>
+    <string name="login_sending">Sending…</string>
+    <string name="login_otp_hint">OTP will be sent via SMS</string>
+    <string name="login_validation_error">Please enter valid name and phone number</string>
+    <string name="login_send_failed">Failed to send OTP. Please try again.</string>
+
+    <!-- Country Picker -->
+    <string name="country_select_title">Select Country</string>
+    <string name="country_search_placeholder">Search country or code</string>
+
+    <!-- OTP Verification -->
+    <string name="otp_title">Verify OTP</string>
+    <string name="otp_subtitle">Enter the code sent to</string>
+    <string name="otp_verify">Verify</string>
+    <string name="otp_verifying">Verifying…</string>
+    <string name="otp_resend">Resend OTP</string>
+    <string name="otp_resend_in">Resend in %ds</string>
+    <string name="otp_invalid_error">Invalid OTP. Please try again.</string>
+    <string name="otp_resend_failed">Failed to resend OTP.</string>
+
+    <!-- Home View -->
+    <string name="home_title">3D Room Models</string>
+    <string name="home_no_models">No 3D Models Found</string>
+    <string name="home_no_models_description">Create your first room from a photo!</string>
+    <string name="home_create_room">Create Room from Photo</string>
+    <string name="home_rooms_remaining">%1$d of %2$d rooms remaining</string>
+    <string name="home_delete_hint">Delete old rooms to create new ones</string>
+    <string name="home_swipe_hint">Swipe left to delete</string>
+    <string name="home_long_press_hint">Long press to delete</string>
+    <string name="home_room_model">3D Room Model</string>
+
+    <!-- Room Limit -->
+    <string name="room_limit_title">Room Limit Reached</string>
+    <string name="room_limit_message">You\'ve reached the limit of %d rooms. Delete some rooms to create new ones.</string>
+
+    <!-- Delete Room -->
+    <string name="delete_room_title">Delete Room?</string>
+    <string name="delete_room_message">Are you sure you want to delete \'%s\'? This action cannot be undone.</string>
+
+    <!-- Explore View -->
+    <string name="explore_title">Explore</string>
+    <string name="explore_search">Search rooms…</string>
+    <string name="explore_no_results">No Results</string>
+    <string name="explore_no_results_description">Try a different search term</string>
+    <string name="explore_all">All</string>
+    <string name="explore_living_room">Living Room</string>
+    <string name="explore_bedroom">Bedroom</string>
+    <string name="explore_kitchen">Kitchen</string>
+    <string name="explore_office">Office</string>
+
+    <!-- Favorites View -->
+    <string name="favorites_title">Favorites</string>
+    <string name="favorites_empty">No Favorites</string>
+    <string name="favorites_empty_description">Tap the heart icon on rooms to add them here</string>
+
+    <!-- Profile View -->
+    <string name="profile_title">Profile</string>
+    <string name="profile_edit_profile">Edit Profile</string>
+    <string name="profile_notifications">Notifications</string>
+    <string name="profile_privacy">Privacy</string>
+    <string name="profile_general">General</string>
+    <string name="profile_about">About</string>
+    <string name="profile_help_support">Help &amp; Support</string>
+    <string name="profile_logout">Logout</string>
+    <string name="profile_logout_confirm_title">Logout</string>
+    <string name="profile_logout_confirm_message">Are you sure you want to logout?</string>
+
+    <!-- Settings View -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_select_language">Select Language</string>
+    <string name="settings_quality">3D Asset Quality</string>
+    <string name="settings_quality_footer">Quality affects rendering detail and performance. Higher quality may impact battery life.</string>
+    <string name="settings_app_info">App Information</string>
+    <string name="settings_current_quality">Current Quality</string>
+    <string name="settings_movement_speed">Movement Speed</string>
+    <string name="settings_movement_speed_footer">Controls how fast the camera moves when using the joystick. Choose the speed that feels most comfortable for you.</string>
+    <string name="settings_room_dimensions">Single Photo Room Dimensions</string>
+    <string name="settings_room_dimensions_footer">Adjust the default dimensions for rooms created from single photos. These values will be used as starting points when detecting room boundaries.</string>
+    <string name="settings_width">Width: %.1fm</string>
+    <string name="settings_depth">Depth: %.1fm</string>
+    <string name="settings_height">Height: %.1fm</string>
+    <string name="settings_developer">Developer</string>
+    <string name="settings_developer_footer">Enable debug mode to see detailed detection information and performance metrics. Adjust thresholds to control detection sensitivity and filtering behavior.</string>
+    <string name="settings_debug_mode">Debug Mode</string>
+    <string name="settings_debug_mode_description">Show detection boxes and timing information</string>
+    <string name="settings_current_value">Current value:</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_logged_in_as">Logged in as</string>
+    <string name="settings_legal">Legal</string>
+    <string name="settings_privacy_policy">Privacy Policy</string>
+    <string name="settings_terms_of_service">Terms of Service</string>
+    <string name="settings_support">Support</string>
+    <string name="settings_auto_orbit">Auto Orbit</string>
+    <string name="settings_auto_orbit_description">Slowly rotate camera when idle</string>
+    <string name="settings_licenses">Licenses</string>
+    <string name="settings_room_viewer">Room Viewer</string>
+    <string name="settings_rendering_quality">Rendering Quality</string>
+    <string name="settings_sign_out">Sign Out</string>
+    <string name="settings_sign_out_confirm">Are you sure you want to sign out?</string>
+    <string name="settings_not_signed_in">Not signed in</string>
+
+    <!-- Quality Options -->
+    <string name="quality_low">Low</string>
+    <string name="quality_low_description">Faster performance</string>
+    <string name="quality_standard">Standard</string>
+    <string name="quality_standard_description">Basic quality for faster performance</string>
+    <string name="quality_medium">Medium</string>
+    <string name="quality_medium_description">Balanced</string>
+    <string name="quality_high">High</string>
+    <string name="quality_high_description">Enhanced quality with better details</string>
+    <string name="quality_best">Best</string>
+    <string name="quality_best_description">Premium quality with maximum detail</string>
+    <string name="quality_best_unavailable">For best quality, please visit our partner stores</string>
+
+    <!-- Movement Speed Options -->
+    <string name="speed_slow">Slow</string>
+    <string name="speed_slow_description">Precise control for detailed exploration</string>
+    <string name="speed_normal">Normal</string>
+    <string name="speed_normal_description">Balanced speed for comfortable navigation</string>
+    <string name="speed_fast">Fast</string>
+    <string name="speed_fast_description">Quick movement for faster exploration</string>
+
+    <!-- Help & Support -->
+    <string name="help_title">Help &amp; Support</string>
+    <string name="help_cant_find">Can\'t find what you\'re looking for?</string>
+    <string name="help_contact_description">Contact our support team and we\'ll get back to you as soon as possible.</string>
+    <string name="help_contact_support">Contact Support</string>
+    <string name="help_email_support">Email Support</string>
+    <string name="help_copy_email">Copy Email Address</string>
+    <string name="help_email_copied">Email Copied</string>
+    <string name="help_email_copied_message">support@paafekt.com has been copied to your clipboard.</string>
+
+    <!-- FAQ - Room Creation -->
+    <string name="faq_room_creation">Room Creation</string>
+    <string name="faq_how_to_create">How do I create a 3D room?</string>
+    <string name="faq_how_to_create_answer">Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You\'ll see two options to choose from for creating your 3D room.</string>
+    <string name="faq_how_to_take_photo">How do I take a photo to create a room?</string>
+    <string name="faq_how_to_take_photo_answer">Tap the camera icon on the home screen to take a photo directly. You can choose between Standard (1x) or Wide Angle (0.5x ultra-wide) lens. Hold your device steady and tap the capture button. The photo will then be used to create your 3D room.</string>
+    <string name="faq_two_methods">What are the two room creation options?</string>
+    <string name="faq_two_methods_answer">When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.</string>
+    <string name="faq_what_is_ai_room">What is AI-Powered 3D Room?</string>
+    <string name="faq_what_is_ai_room_answer">This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!</string>
+    <string name="faq_what_is_manual_room">What is Manual Setup?</string>
+    <string name="faq_what_is_manual_room_answer">With Manual Setup, you draw the outline of your room\'s walls on the photo. This gives you more control over exactly how the 3D room looks. It\'s great when you want to fine-tune the room shape yourself.</string>
+    <string name="faq_which_method_better">Which method should I choose?</string>
+    <string name="faq_which_method_better_answer">Try AI-Powered first - it\'s faster and works great for most rooms. If the result doesn\'t look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!</string>
+    <string name="faq_best_photos">What kind of photos work best?</string>
+    <string name="faq_best_photos_answer">For best results, take photos in good lighting with the camera held level. Try to capture the entire room including floors, walls, and ceiling edges. Avoid blurry or dark photos.</string>
+    <string name="faq_generation_failing">Why is my room generation failing?</string>
+    <string name="faq_generation_failing_answer">Room generation may fail if the photo is too dark, blurry, or doesn\'t show enough room features. Try taking a new photo with better lighting and a wider angle.</string>
+    <string name="faq_how_many_rooms">How many rooms can I create?</string>
+    <string name="faq_how_many_rooms_answer">You can create up to 1000 rooms. Delete older rooms to make space for new ones. The room count and total storage used are shown at the top of your home screen.</string>
+    <string name="faq_how_to_save_room">How do I save a room?</string>
+    <string name="faq_how_to_save_room_answer">After generating a 3D room, tap the save icon (download arrow) in the toolbar to save it with a custom name. Rooms that aren\'t saved will be deleted when you tap Back.</string>
+
+    <!-- FAQ - AI Features -->
+    <string name="faq_ai_features">AI Features</string>
+    <string name="faq_what_is_brain_icon">What does the brain icon do?</string>
+    <string name="faq_what_is_brain_icon_answer">The brain icon activates SmartyPants - an AI-powered object detection feature. It uses your camera to identify furniture and objects in real-time, showing labels and bounding boxes around detected items.</string>
+    <string name="faq_how_to_screenshot">How do I take a screenshot?</string>
+    <string name="faq_how_to_screenshot_answer">When SmartyPants is active (brain icon is green), a share icon appears on the bottom-right. Tap it to save a screenshot of the view with AI detections to your Photos library.</string>
+    <string name="faq_what_is_segmentation">What is furniture segmentation?</string>
+    <string name="faq_what_is_segmentation_answer">Furniture segmentation uses AI to identify and separate furniture items in your photos, allowing you to see how each piece would fit in your 3D room.</string>
+    <string name="faq_how_to_segment">How do I segment furniture from a photo?</string>
+    <string name="faq_how_to_segment_answer">When viewing your 3D room, tap on the brain icon to activate SmartyPants. Point your camera at furniture to see real-time detection with labels.</string>
+    <string name="faq_not_detected">Why isn\'t my furniture being detected?</string>
+    <string name="faq_not_detected_answer">Object detection works best with clear, well-lit environments where furniture is clearly visible. Make sure the object isn\'t partially hidden or too far from the camera.</string>
+
+    <!-- FAQ - 3D Room Controls -->
+    <string name="faq_room_controls">3D Room Controls</string>
+    <string name="faq_how_to_view">How do I view my 3D room?</string>
+    <string name="faq_how_to_view_answer">Tap on any room in your home screen to open the 3D viewer. Use touch gestures to rotate and zoom, or use the joystick at the bottom to move around inside the room.</string>
+    <string name="faq_how_to_navigate">How do I navigate inside the room?</string>
+    <string name="faq_how_to_navigate_answer">Use the joystick at the bottom center of the screen to move around. Drag it in any direction to fly through the room. Use the recenter button (viewfinder icon) to reset the camera position.</string>
+    <string name="faq_what_is_memory_display">What does the MB number mean?</string>
+    <string name="faq_what_is_memory_display_answer">The MB (megabytes) shown in rooms indicates the file size. This helps you manage storage. The total storage used by all rooms is shown at the top of the home screen.</string>
+    <string name="faq_how_to_place">How do I place furniture in my room?</string>
+    <string name="faq_how_to_place_answer">After segmenting furniture, tap on the furniture piece to add it to your room. You can then drag to position it, pinch to resize, and rotate to adjust its orientation.</string>
+    <string name="faq_sample_room">Can I use a sample room instead of my own?</string>
+    <string name="faq_sample_room_answer">Yes! The app provides sample rooms (Vintage Living Room, Cozy Living Room) for you to experiment with. Access them from the home screen to try out features without creating your own room first.</string>
+    <string name="faq_accuracy">How accurate is the 3D model?</string>
+    <string name="faq_accuracy_answer">The 3D model provides a visual approximation of your room\'s layout. The dimensions shown are relative units from the AI model, not exact real-world measurements.</string>
+    <string name="faq_adjust_dimensions">Can I adjust room dimensions?</string>
+    <string name="faq_adjust_dimensions_answer">For USDZ rooms, go to Settings and look for Room Dimensions options. For AI-generated (PLY) rooms, the dimensions are determined by the AI model.</string>
+
+    <!-- Room Boundary Detection -->
+    <string name="boundary_title">Room Boundaries</string>
+    <string name="boundary_instructions">Drag the circles to adjust boundaries</string>
+    <string name="boundary_floor">Floor</string>
+    <string name="boundary_ceiling">Ceiling</string>
+    <string name="boundary_walls">Walls</string>
+    <string name="boundary_vanish">Vanish</string>
+    <string name="boundary_adjust">Adjust Boundaries</string>
+    <string name="boundary_drag_handles">Drag handles to adjust boundaries</string>
+
+    <!-- Model Viewer -->
+    <string name="viewer_furniture">Add Furniture</string>
+    <string name="viewer_capture">Capture</string>
+
+    <!-- SmartyPants (Segmentation) -->
+    <string name="smartypants_starting">Starting camera…</string>
+    <string name="smartypants_resizing">Resizing…</string>
+    <string name="smartypants_preprocessing">Preprocessing…</string>
+    <string name="smartypants_running_model">Running model…</string>
+    <string name="smartypants_extracting">Extracting detections…</string>
+    <string name="smartypants_building_mask">Building mask…</string>
+    <string name="smartypants_compositing">Compositing…</string>
+
+    <!-- Single Photo Room -->
+    <string name="photo_room_title">Photo to 3D Room</string>
+    <string name="photo_room_create_title">Create a 3D Room</string>
+    <string name="photo_room_create_subtitle">Select a photo to get started</string>
+    <string name="photo_room_quick_photo">Quick Photo</string>
+    <string name="photo_room_quick_photo_subtitle">Single photo capture</string>
+    <string name="photo_room_how_to_create">How do you want to create your 3D room?</string>
+    <string name="photo_room_tap_option">Tap an option below to continue</string>
+    <string name="photo_room_ai_powered">AI-powered 3D construction</string>
+    <string name="photo_room_ai_room">AI Room</string>
+    <string name="photo_room_manual_setup">Manual Setup</string>
+    <string name="photo_room_manual_setup_desc">Drag to adjust room walls</string>
+    <string name="photo_room_select_photo">Select Photo</string>
+    <string name="photo_room_from_library">From your photo library</string>
+    <string name="photo_room_loading">Loading 3D room…</string>
+    <string name="photo_room_download_success">Successfully downloaded %s. View it in your models list.</string>
+    <string name="photo_room_save_success">Your 3D model has been saved successfully.</string>
+    <string name="photo_room_error">An error occurred while generating your 3D model.</string>
+    <string name="photo_room_building_room">Building your 3D room…</string>
+    <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+    <string name="photo_room_take_photo">Take a Photo</string>
+    <string name="photo_room_use_camera">Use your camera</string>
+    <string name="photo_room_choose_different">Choose Different Photo</string>
+    <string name="photo_room_capture_subtitle">Capture or select a photo of your room</string>
+    <string name="photo_room_creating">Creating your 3D room…</string>
+    <string name="photo_room_preparing">Preparing…</string>
+    <string name="photo_room_ai_generation">AI-powered room generation</string>
+
+    <!-- 3D Room Viewer -->
+    <string name="room_viewer_title">3D Room View</string>
+    <string name="room_viewer_controls">Use joystick to move • Pinch to zoom</string>
+    <string name="room_viewer_save_room">Save Room</string>
+    <string name="room_viewer_room_name">Room Name</string>
+    <string name="room_viewer_enter_name">Enter a name for your room</string>
+    <string name="room_viewer_saving_room">Saving Room</string>
+    <string name="room_viewer_preparing_model">Preparing room model…</string>
+    <string name="room_viewer_exporting">Exporting to USDZ format…</string>
+    <string name="room_viewer_saving_to_library">Saving to library…</string>
+    <string name="room_viewer_almost_done">Almost done…</string>
+    <string name="room_viewer_save_success">Room \'%s\' saved successfully!</string>
+    <string name="room_viewer_save_failed">Failed to save room: %s</string>
+    <string name="room_viewer_room_save_title">Room Save</string>
+    <string name="room_viewer_opening">Opening %s…</string>
+
+    <!-- Crash Report -->
+    <string name="crash_report_submit">Submit Report</string>
+    <string name="crash_report_email_not_configured">Email Not Available</string>
+    <string name="crash_report_email_not_configured_message">Email is not configured on this device. You can copy the error details and send them manually to support@paafekt.com</string>
+    <string name="crash_report_copy_details">Copy Details</string>
+
+    <!-- Accessibility -->
+    <string name="accessibility_settings">Settings</string>
+    <string name="accessibility_help">Help</string>
+    <string name="accessibility_create_room">Create room from photo</string>
+
+    <!-- Orientation Labels -->
+    <string name="orientation_portrait">Portrait</string>
+    <string name="orientation_landscape">Landscape</string>
+    <string name="orientation_held_vertically">held vertically</string>
+    <string name="orientation_held_horizontally">held horizontally</string>
+
+    <!-- Camera Capture -->
+    <string name="camera_title">Camera</string>
+    <string name="camera_take_photo">Take Photo</string>
+    <string name="camera_choose_mode">Choose Camera Mode</string>
+    <string name="camera_choose_mode_hint">Select camera lens for your room</string>
+    <string name="camera_standard">Standard</string>
+    <string name="camera_wide_angle">Wide Angle</string>
+    <string name="camera_standard_desc">Standard 1x lens • Hold in any orientation</string>
+    <string name="camera_wide_angle_desc">Ultra-wide 0.5x lens • Captures more area</string>
+    <string name="camera_wide_angle_info">Uses ultra-wide 0.5x lens for wider field of view</string>
+    <string name="camera_select_wide_angle">Select Wide Photo</string>
+    <string name="camera_capture_wide_angle">Capture Wide Photo</string>
+    <string name="camera_wide_angle_hold_steady">Hold steady • Ultra-wide lens captures more</string>
+    <string name="camera_permission_required">Camera permission is required to take photos</string>
+    <string name="camera_error">Error opening camera</string>
+
+    <!-- General Messages -->
+    <string name="no_email_app">No email app found</string>
+    <string name="email_copied_clipboard">Email copied to clipboard</string>
+    <string name="failed_load_image">Failed to load image</string>
+    <string name="no_image_selected">No image selected</string>
+    <string name="failed_create_room">Failed to create room</string>
+    <string name="deleted_room">Deleted %s</string>
+    <string name="failed_delete">Failed to delete: %s</string>
+    <string name="total">Total</string>
+
+    <!-- App version display -->
+    <string name="app_version_display">Furnit v1.0.0</string>
+
+    <!-- Additional strings from iOS translations -->
+    <string name="faq_what_is_airoom">What is AI-Powered 3D Room?</string>
+    <string name="faq_what_is_airoom_answer">This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!</string>
+    <string name="room_viewer_exporting_usdz">Exporting to USDZ format…</string>
+    <string name="faq_multiple_pieces">Can I add multiple furniture pieces?</string>
+    <string name="faq_multiple_pieces_answer">Yes! You can add multiple furniture pieces to your room. Simply segment each piece and add them one by one.</string>
+    <string name="faq_room_fitment">How do I check if furniture fits?</string>
+    <string name="faq_room_fitment_answer">After adding furniture, you can resize and reposition it in your 3D room to see how it fits with your existing space and other furniture.</string>
+    <string name="crash_report_submit_report">Submit Report</string>
+    <string name="faq_furniture_segmentation">Furniture Segmentation</string>
+</resources>

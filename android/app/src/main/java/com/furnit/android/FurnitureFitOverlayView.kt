@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import com.furnit.android.utils.DebugLogger
 import kotlin.math.max
 import kotlin.math.min
 
@@ -136,11 +137,12 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * Check if the touch point is on the furniture (within detection bounding box)
+     * Check if the touch point is on the furniture (on a non-transparent pixel)
      */
     private fun isTouchOnFurniture(touchX: Float, touchY: Float): Boolean {
-        if (detections.isEmpty() || maskBitmap == null) {
-            Log.d("FurnitureOverlay", "isTouchOnFurniture: no detections or mask, returning false")
+        val bmp = maskBitmap
+        if (bmp == null) {
+            Log.d("FurnitureOverlay", "isTouchOnFurniture: no mask, returning false")
             return false
         }
         if (width == 0 || height == 0) {
@@ -148,31 +150,36 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
             return false
         }
 
-        // Get the primary detection bounding box
-        val det = detections.firstOrNull() ?: return false
+        // Calculate mask transform (same as onDraw for mask)
+        val baseScaleX = width.toFloat() / bmp.width
+        val baseScaleY = height.toFloat() / bmp.height
 
-        // Scale factors from input coords to view coords (same as onDraw for detections)
-        val baseScaleX = width.toFloat() / inputSize
-        val baseScaleY = height.toFloat() / inputSize
-
-        // Calculate offsets (same as onDraw)
-        val scaledViewWidth = width * furnitureScale
+        val scaledWidth = bmp.width * baseScaleX * furnitureScale
+        val scaledHeight = bmp.height * baseScaleY * furnitureScale
+        val centerOffsetX = (width - scaledWidth) / 2
         val floorOffsetY = height * 0.35f
-        val centerOffsetX = (width - scaledViewWidth) / 2 + translateX
-        val centerOffsetY = floorOffsetY + translateY
 
-        // Calculate detection bounds in view coordinates
-        val detLeft = (det.x - det.w / 2) * baseScaleX * furnitureScale + centerOffsetX
-        val detTop = (det.y - det.h / 2) * baseScaleY * furnitureScale + centerOffsetY
-        val detRight = (det.x + det.w / 2) * baseScaleX * furnitureScale + centerOffsetX
-        val detBottom = (det.y + det.h / 2) * baseScaleY * furnitureScale + centerOffsetY
+        val maskLeft = centerOffsetX + translateX
+        val maskTop = floorOffsetY + translateY
 
-        val isInside = touchX >= detLeft && touchX <= detRight &&
-               touchY >= detTop && touchY <= detBottom
+        // Convert touch coordinates to bitmap pixel coordinates
+        val bmpX = ((touchX - maskLeft) / (baseScaleX * furnitureScale)).toInt()
+        val bmpY = ((touchY - maskTop) / (baseScaleY * furnitureScale)).toInt()
 
-        Log.d("FurnitureOverlay", "isTouchOnFurniture: touch=($touchX,$touchY) detBounds=($detLeft,$detTop,$detRight,$detBottom) inside=$isInside")
+        // Check if within bitmap bounds
+        if (bmpX < 0 || bmpX >= bmp.width || bmpY < 0 || bmpY >= bmp.height) {
+            Log.d("FurnitureOverlay", "isTouchOnFurniture: touch outside bitmap bounds, bmpCoord=($bmpX,$bmpY)")
+            return false
+        }
 
-        return isInside
+        // Check if the pixel at this location is non-transparent (alpha > 0)
+        val pixel = bmp.getPixel(bmpX, bmpY)
+        val alpha = Color.alpha(pixel)
+        val isOnFurniture = alpha > 10  // Small threshold for anti-aliased edges
+
+        Log.d("FurnitureOverlay", "isTouchOnFurniture: touch=($touchX,$touchY) bmpCoord=($bmpX,$bmpY) alpha=$alpha isOnFurniture=$isOnFurniture")
+
+        return isOnFurniture
     }
 
     fun setMask(b: Bitmap?) {
@@ -226,8 +233,8 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
             canvas.drawBitmap(bmp, matrix, maskPaint)
         }
 
-        // Draw bounding boxes and labels (scaled with furniture)
-        if (detections.isNotEmpty()) {
+        // Draw bounding boxes and labels only when debug mode is enabled
+        if (detections.isNotEmpty() && DebugLogger.isDebugMode) {
             val baseScaleX = width.toFloat() / inputSize
             val baseScaleY = height.toFloat() / inputSize
 
