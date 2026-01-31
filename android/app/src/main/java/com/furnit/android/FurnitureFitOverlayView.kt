@@ -2,6 +2,7 @@ package com.furnit.android
 
 import android.content.Context
 import android.graphics.*
+import android.util.Log
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -27,9 +28,15 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     private var furnitureScale = 0.6f  // Start smaller to fit in room
     private var translateX = 0f
     private var translateY = 0f
-    private var initialized = false
+
+    // For single-finger drag
     private var lastTouchX = 0f
     private var lastTouchY = 0f
+    private var isDraggingFurniture = false
+    private var touchOnFurniture = false
+
+    // Callback for when touch is outside furniture (for camera control)
+    var onTouchOutsideFurniture: ((MotionEvent) -> Unit)? = null
 
     private val scaleGestureDetector = ScaleGestureDetector(context, ScaleListener())
 
@@ -67,25 +74,105 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        return handleTouchInternal(event)
+    }
+
+    /**
+     * Handle touch events passed from parent view (for pinch-to-zoom and drag)
+     */
+    fun handleExternalTouchEvent(event: MotionEvent): Boolean {
+        return handleTouchInternal(event)
+    }
+
+    private fun handleTouchInternal(event: MotionEvent): Boolean {
+        // Always let scale gesture detector process the event for pinch-to-zoom
         scaleGestureDetector.onTouchEvent(event)
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = event.x
                 lastTouchY = event.y
+                // Check if touch is on the furniture mask
+                touchOnFurniture = isTouchOnFurniture(event.x, event.y)
+                isDraggingFurniture = touchOnFurniture
+                Log.d("FurnitureOverlay", "ACTION_DOWN at (${event.x}, ${event.y}) - onFurniture=$touchOnFurniture, hasMask=${maskBitmap != null}")
+
+                // If touch is outside furniture, notify for camera control
+                if (!touchOnFurniture) {
+                    Log.d("FurnitureOverlay", "Invoking onTouchOutsideFurniture callback")
+                    onTouchOutsideFurniture?.invoke(event)
+                }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (!scaleGestureDetector.isInProgress && event.pointerCount == 1) {
-                    // Single finger drag to move furniture
-                    translateX += event.x - lastTouchX
-                    translateY += event.y - lastTouchY
-                    lastTouchX = event.x
-                    lastTouchY = event.y
-                    invalidate()
+                if (touchOnFurniture) {
+                    // Drag furniture if touch started on it
+                    if (!scaleGestureDetector.isInProgress && event.pointerCount == 1 && isDraggingFurniture) {
+                        val deltaX = event.x - lastTouchX
+                        val deltaY = event.y - lastTouchY
+                        translateX += deltaX
+                        translateY += deltaY
+                        lastTouchX = event.x
+                        lastTouchY = event.y
+                        invalidate()
+                    }
+                } else {
+                    // Touch outside furniture - pass to camera control
+                    onTouchOutsideFurniture?.invoke(event)
                 }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (!touchOnFurniture) {
+                    onTouchOutsideFurniture?.invoke(event)
+                }
+                isDraggingFurniture = false
+                touchOnFurniture = false
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                // Second finger down - stop dragging, let pinch take over
+                isDraggingFurniture = false
             }
         }
         return true
+    }
+
+    /**
+     * Check if the touch point is on the furniture (within detection bounding box)
+     */
+    private fun isTouchOnFurniture(touchX: Float, touchY: Float): Boolean {
+        if (detections.isEmpty() || maskBitmap == null) {
+            Log.d("FurnitureOverlay", "isTouchOnFurniture: no detections or mask, returning false")
+            return false
+        }
+        if (width == 0 || height == 0) {
+            Log.d("FurnitureOverlay", "isTouchOnFurniture: view size is 0")
+            return false
+        }
+
+        // Get the primary detection bounding box
+        val det = detections.firstOrNull() ?: return false
+
+        // Scale factors from input coords to view coords (same as onDraw for detections)
+        val baseScaleX = width.toFloat() / inputSize
+        val baseScaleY = height.toFloat() / inputSize
+
+        // Calculate offsets (same as onDraw)
+        val scaledViewWidth = width * furnitureScale
+        val floorOffsetY = height * 0.35f
+        val centerOffsetX = (width - scaledViewWidth) / 2 + translateX
+        val centerOffsetY = floorOffsetY + translateY
+
+        // Calculate detection bounds in view coordinates
+        val detLeft = (det.x - det.w / 2) * baseScaleX * furnitureScale + centerOffsetX
+        val detTop = (det.y - det.h / 2) * baseScaleY * furnitureScale + centerOffsetY
+        val detRight = (det.x + det.w / 2) * baseScaleX * furnitureScale + centerOffsetX
+        val detBottom = (det.y + det.h / 2) * baseScaleY * furnitureScale + centerOffsetY
+
+        val isInside = touchX >= detLeft && touchX <= detRight &&
+               touchY >= detTop && touchY <= detBottom
+
+        Log.d("FurnitureOverlay", "isTouchOnFurniture: touch=($touchX,$touchY) detBounds=($detLeft,$detTop,$detRight,$detBottom) inside=$isInside")
+
+        return isInside
     }
 
     fun setMask(b: Bitmap?) {

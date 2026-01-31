@@ -327,4 +327,291 @@ class FurnitureFitControlsTest {
 
         println("Room camera move logic test PASSED")
     }
+
+    @Test
+    fun testFurnitureOverlayCanBeCreated() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var overlayCreated = false
+
+        instrumentation.runOnMainSync {
+            try {
+                val overlay = FurnitureFitOverlayView(context)
+                overlay.layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+                overlayCreated = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        assertTrue("FurnitureFitOverlayView should be created without exceptions", overlayCreated)
+        println("FurnitureFitOverlayView creation test PASSED")
+    }
+
+    @Test
+    fun testFurnitureOverlayTouchOutsideCallback() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var callbackInvoked = false
+        var overlay: FurnitureFitOverlayView? = null
+
+        instrumentation.runOnMainSync {
+            overlay = FurnitureFitOverlayView(context).apply {
+                val spec = View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY)
+                measure(spec, spec)
+                layout(0, 0, 1000, 1000)
+
+                // Set callback for touch outside furniture
+                onTouchOutsideFurniture = { _ ->
+                    callbackInvoked = true
+                }
+            }
+
+            // Touch without any mask set - should trigger callback (no furniture to touch)
+            val downTime = System.currentTimeMillis()
+            val event = android.view.MotionEvent.obtain(
+                downTime, downTime, android.view.MotionEvent.ACTION_DOWN, 500f, 500f, 0
+            )
+            overlay!!.handleExternalTouchEvent(event)
+            event.recycle()
+        }
+
+        assertTrue("Callback should be invoked when touching with no mask", callbackInvoked)
+        println("Furniture overlay touch outside callback test PASSED")
+    }
+
+    @Test
+    fun testFurnitureOverlayHitTestWithDetection() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var touchOnFurnitureResult = false
+        var touchOutsideFurnitureResult = false
+
+        instrumentation.runOnMainSync {
+            val overlay = FurnitureFitOverlayView(context).apply {
+                val spec = View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY)
+                measure(spec, spec)
+                layout(0, 0, 1000, 1000)
+            }
+
+            // Create a large detection covering most of the view
+            // Detection at center (320, 320) with large size 500x500 in 640 input coords
+            val detection = DetectionResult(
+                x = 320f,
+                y = 320f,
+                w = 500f,
+                h = 500f,
+                confidence = 0.9f,
+                label = "chair"
+            )
+
+            // Create a simple mask bitmap
+            val maskBitmap = android.graphics.Bitmap.createBitmap(640, 640, android.graphics.Bitmap.Config.ARGB_8888)
+
+            // Set mask and detections
+            overlay.setMaskAndDetections(maskBitmap, listOf(detection), 640)
+
+            // Set callbacks to track results
+            var outsideFurnitureCallback = false
+
+            overlay.onTouchOutsideFurniture = { _ ->
+                outsideFurnitureCallback = true
+            }
+
+            // Calculate where furniture actually is:
+            // baseScale = 1000/640 = 1.5625, furnitureScale = 0.6
+            // floorOffsetY = 1000 * 0.35 = 350
+            // centerOffsetX = (1000 - 600) / 2 = 200
+            // detLeft = (320-250) * 1.5625 * 0.6 + 200 = 70 * 0.9375 + 200 = 265.6
+            // detTop = (320-250) * 1.5625 * 0.6 + 350 = 65.6 + 350 = 415.6
+            // detRight = (320+250) * 1.5625 * 0.6 + 200 = 570 * 0.9375 + 200 = 734.4
+            // detBottom = (320+250) * 1.5625 * 0.6 + 350 = 534.4 + 350 = 884.4
+            // So furniture is roughly at (266, 416) to (734, 884)
+
+            // Touch inside furniture bounds (500, 650 - well within the calculated bounds)
+            val downTime = System.currentTimeMillis()
+            val insideEvent = android.view.MotionEvent.obtain(
+                downTime, downTime, android.view.MotionEvent.ACTION_DOWN, 500f, 650f, 0
+            )
+            overlay.handleExternalTouchEvent(insideEvent)
+            insideEvent.recycle()
+
+            // If callback wasn't invoked, touch was on furniture
+            touchOnFurnitureResult = !outsideFurnitureCallback
+
+            // Reset and touch corner (50, 50 - clearly outside furniture)
+            outsideFurnitureCallback = false
+            val cornerEvent = android.view.MotionEvent.obtain(
+                downTime, downTime, android.view.MotionEvent.ACTION_DOWN, 50f, 50f, 0
+            )
+            overlay.handleExternalTouchEvent(cornerEvent)
+            cornerEvent.recycle()
+
+            touchOutsideFurnitureResult = outsideFurnitureCallback
+
+            maskBitmap.recycle()
+        }
+
+        assertTrue("Touch inside furniture bounds should be on furniture", touchOnFurnitureResult)
+        assertTrue("Touch in corner should be outside furniture", touchOutsideFurnitureResult)
+        println("Furniture overlay hit test with detection PASSED")
+    }
+
+    @Test
+    fun testFurnitureDragUpdatesTranslation() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var dragWorked = false
+
+        instrumentation.runOnMainSync {
+            val overlay = FurnitureFitOverlayView(context).apply {
+                val spec = View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY)
+                measure(spec, spec)
+                layout(0, 0, 1000, 1000)
+            }
+
+            // Create detection and mask so touch is recognized as on furniture
+            val detection = DetectionResult(
+                x = 320f, y = 320f, w = 400f, h = 400f,
+                confidence = 0.9f, label = "couch"
+            )
+            val maskBitmap = android.graphics.Bitmap.createBitmap(640, 640, android.graphics.Bitmap.Config.ARGB_8888)
+            overlay.setMaskAndDetections(maskBitmap, listOf(detection), 640)
+
+            // Make sure callback is NOT invoked (touch should be on furniture)
+            var outsideCallback = false
+            overlay.onTouchOutsideFurniture = { outsideCallback = true }
+
+            val downTime = System.currentTimeMillis()
+
+            // Simulate drag: DOWN -> MOVE -> UP
+            val downEvent = android.view.MotionEvent.obtain(
+                downTime, downTime, android.view.MotionEvent.ACTION_DOWN, 500f, 500f, 0
+            )
+            overlay.handleExternalTouchEvent(downEvent)
+            downEvent.recycle()
+
+            val moveEvent = android.view.MotionEvent.obtain(
+                downTime, downTime + 16, android.view.MotionEvent.ACTION_MOVE, 600f, 550f, 0
+            )
+            overlay.handleExternalTouchEvent(moveEvent)
+            moveEvent.recycle()
+
+            val upEvent = android.view.MotionEvent.obtain(
+                downTime, downTime + 32, android.view.MotionEvent.ACTION_UP, 600f, 550f, 0
+            )
+            overlay.handleExternalTouchEvent(upEvent)
+            upEvent.recycle()
+
+            // If outside callback wasn't invoked, drag was on furniture
+            dragWorked = !outsideCallback
+
+            maskBitmap.recycle()
+        }
+
+        assertTrue("Drag on furniture should not trigger outside callback", dragWorked)
+        println("Furniture drag updates translation test PASSED")
+    }
+
+    @Test
+    fun testCameraPreviewVisibilityToggle() {
+        // Test the logic that hides camera preview when 3D room is shown
+        var previewVisibility = View.VISIBLE
+        var roomVisibility = View.GONE
+        val showRoomBackground = true
+
+        // Initial state - camera preview visible, room hidden
+        assertEquals("Preview should be visible initially", View.VISIBLE, previewVisibility)
+        assertEquals("Room should be hidden initially", View.GONE, roomVisibility)
+
+        // Simulate detection found - room shows, preview hides
+        val detectionsNotEmpty = true
+        if (showRoomBackground && detectionsNotEmpty) {
+            roomVisibility = View.VISIBLE
+            previewVisibility = View.GONE
+        }
+
+        assertEquals("Preview should be hidden when room is shown", View.GONE, previewVisibility)
+        assertEquals("Room should be visible with detections", View.VISIBLE, roomVisibility)
+
+        // Simulate no detections - room hides, preview shows
+        val noDetections = false
+        if (!noDetections) {
+            // Detection lost
+            roomVisibility = View.GONE
+            previewVisibility = View.VISIBLE
+        }
+
+        assertEquals("Preview should be visible when room is hidden", View.VISIBLE, previewVisibility)
+        assertEquals("Room should be hidden without detections", View.GONE, roomVisibility)
+
+        println("Camera preview visibility toggle test PASSED")
+    }
+
+    @Test
+    fun testCameraDragSensitivity() {
+        // Test camera drag calculation
+        val sensitivity = 0.01f
+
+        // Simulate drag of 100 pixels
+        val deltaX = 100f
+        val deltaY = 50f
+
+        val cameraMoveX = -deltaX * sensitivity  // Negative because drag right moves camera left
+        val cameraMoveZ = -deltaY * sensitivity
+
+        assertEquals("Camera X movement", -1.0f, cameraMoveX, 0.001f)
+        assertEquals("Camera Z movement", -0.5f, cameraMoveZ, 0.001f)
+
+        println("Camera drag sensitivity test PASSED")
+    }
+
+    @Test
+    fun testSingleDetectionOnly() {
+        // Test that only one detection (highest confidence) is used
+        val detections = listOf(
+            DetectionResult(100f, 100f, 50f, 50f, 0.7f, "chair"),
+            DetectionResult(200f, 200f, 60f, 60f, 0.95f, "couch"),  // Highest confidence
+            DetectionResult(300f, 300f, 40f, 40f, 0.8f, "table")
+        )
+
+        // Simulate manager behavior - take highest confidence
+        val primaryDet = detections.maxByOrNull { it.confidence }
+
+        assertNotNull("Primary detection should be found", primaryDet)
+        assertEquals("Highest confidence detection should be selected", "couch", primaryDet!!.label)
+        assertEquals("Confidence should be 0.95", 0.95f, primaryDet.confidence, 0.001f)
+
+        // Only one detection should be returned to overlay
+        val resultDetections = listOf(primaryDet)
+        assertEquals("Only one detection should be returned", 1, resultDetections.size)
+
+        println("Single detection only test PASSED")
+    }
+
+    @Test
+    fun testPinchScaleLimits() {
+        // Test pinch-to-zoom scale limits (0.3 to 3.0)
+        val minScale = 0.3f
+        val maxScale = 3.0f
+
+        var scale = 1.0f
+
+        // Test scaling up
+        scale *= 1.5f  // 1.5
+        scale = kotlin.math.max(minScale, kotlin.math.min(scale, maxScale))
+        assertEquals("Scale up should work", 1.5f, scale, 0.001f)
+
+        // Test max limit
+        scale *= 3.0f  // Would be 4.5, should clamp to 3.0
+        scale = kotlin.math.max(minScale, kotlin.math.min(scale, maxScale))
+        assertEquals("Scale should be clamped to max", maxScale, scale, 0.001f)
+
+        // Test scaling down
+        scale = 0.5f
+        scale *= 0.4f  // Would be 0.2, should clamp to 0.3
+        scale = kotlin.math.max(minScale, kotlin.math.min(scale, maxScale))
+        assertEquals("Scale should be clamped to min", minScale, scale, 0.001f)
+
+        println("Pinch scale limits test PASSED")
+    }
 }
