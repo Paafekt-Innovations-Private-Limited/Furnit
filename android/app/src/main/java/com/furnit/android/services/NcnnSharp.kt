@@ -29,9 +29,23 @@ class NcnnSharp(private val context: Context) {
     companion object {
         private const val TAG = "NcnnSharp"
 
-        // Model filenames
+        // Model filenames (full model)
         private const val PARAM_FILENAME = "sharp.ncnn.param"
         private const val BIN_FILENAME = "sharp.ncnn.bin"
+
+        // Component model filenames
+        private val COMPONENT_FILES = listOf(
+            "sharp_single_patch_embed.ncnn.param",
+            "sharp_single_patch_embed.ncnn.bin",
+            "sharp_single_patch_encoder.ncnn.param",
+            "sharp_single_patch_encoder.ncnn.bin",
+            "sharp_image_encoder.ncnn.param",
+            "sharp_image_encoder.ncnn.bin",
+            "gaussian_head.ncnn.param",
+            "gaussian_head.ncnn.bin",
+            "patch_cls_token.bin",
+            "patch_pos_embed.bin"
+        )
 
         // Input size expected by SHARP model
         const val INPUT_SIZE = 1536
@@ -59,16 +73,35 @@ class NcnnSharp(private val context: Context) {
     }
 
     private var nativeHandle: Long = 0
+    private var componentHandle: Long = 0
     private var isInitialized = false
+    private var useComponentMode = false
     private val modelsDir by lazy { java.io.File(context.filesDir, "models") }
 
     /**
-     * Check if model files are available.
+     * Check if full model files are available.
      */
     fun isModelReady(): Boolean {
         val paramFile = java.io.File(modelsDir, PARAM_FILENAME)
         val binFile = java.io.File(modelsDir, BIN_FILENAME)
         return paramFile.exists() && binFile.exists()
+    }
+
+    /**
+     * Check if component model files are available (in internal OR external storage).
+     */
+    fun isComponentModelReady(): Boolean {
+        // Check internal storage first
+        val internalReady = COMPONENT_FILES.all { filename ->
+            java.io.File(modelsDir, filename).exists()
+        }
+        if (internalReady) return true
+
+        // Check external storage (files will be copied on init)
+        val externalModelsDir = context.getExternalFilesDir("models") ?: return false
+        return COMPONENT_FILES.all { filename ->
+            java.io.File(externalModelsDir, filename).exists()
+        }
     }
 
     /**
@@ -113,15 +146,91 @@ class NcnnSharp(private val context: Context) {
      * Initialize NCNN model.
      * Model files must be in filesDir/models/.
      * Throws exception if library not available or model fails to load.
+     *
+     * @param useComponentMode If true, use component-based inference (slower but works).
+     *                         If false, use full model (may crash due to channel mismatch).
      */
     fun init(
         useGpu: Boolean = false,
-        numThreads: Int = 4
+        numThreads: Int = 4,
+        useComponentMode: Boolean = false
     ): Boolean {
         if (!libraryLoaded) {
             throw UnsatisfiedLinkError("SHARP NCNN library not available: $libraryLoadError")
         }
 
+        this.useComponentMode = useComponentMode
+
+        if (useComponentMode) {
+            return initComponents()
+        } else {
+            return initFullModel(useGpu, numThreads)
+        }
+    }
+
+    /**
+     * Initialize component-based model (slower but works correctly).
+     */
+    private fun initComponents(): Boolean {
+        // Always ensure component files are in internal storage
+        val internalReady = COMPONENT_FILES.all { filename ->
+            java.io.File(modelsDir, filename).exists()
+        }
+
+        if (!internalReady) {
+            Log.d(TAG, "Component models not in internal storage. Copying from external...")
+            val externalModelsDir = context.getExternalFilesDir("models")
+            if (externalModelsDir != null) {
+                modelsDir.mkdirs()
+                var allCopied = true
+                for (filename in COMPONENT_FILES) {
+                    val external = java.io.File(externalModelsDir, filename)
+                    val internal = java.io.File(modelsDir, filename)
+                    if (external.exists() && !internal.exists()) {
+                        try {
+                            Log.d(TAG, "Copying $filename (${external.length() / 1024 / 1024} MB)...")
+                            external.copyTo(internal)
+                            Log.d(TAG, "Copied $filename")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to copy $filename: ${e.message}")
+                            allCopied = false
+                        }
+                    } else if (!external.exists()) {
+                        Log.w(TAG, "Missing external file: $filename")
+                        allCopied = false
+                    }
+                }
+                if (!allCopied) {
+                    throw IllegalStateException(
+                        "Component models not available. Push files to: ${externalModelsDir.absolutePath}"
+                    )
+                }
+            } else {
+                throw IllegalStateException("External storage not available")
+            }
+        } else {
+            Log.d(TAG, "Component models already in internal storage")
+        }
+
+        try {
+            Log.i(TAG, "Loading SHARP NCNN components from: $modelsDir")
+            componentHandle = nativeInitComponents(modelsDir.absolutePath)
+            isInitialized = componentHandle != 0L
+            if (!isInitialized) {
+                throw RuntimeException("Failed to load SHARP NCNN components")
+            }
+            Log.i(TAG, "NCNN SHARP components initialized successfully")
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Component init failed: ${e.message}", e)
+            throw e
+        }
+    }
+
+    /**
+     * Initialize full model (fast but may crash due to channel mismatch).
+     */
+    private fun initFullModel(useGpu: Boolean, numThreads: Int): Boolean {
         if (!isModelReady()) {
             throw IllegalStateException("Model not ready. Call ensureModelReady() first.")
         }
@@ -154,7 +263,8 @@ class NcnnSharp(private val context: Context) {
      * Throws exception if model is not initialized.
      */
     fun generateGaussians(bitmap: Bitmap): GaussianResult {
-        if (!isInitialized || nativeHandle == 0L) {
+        val handleReady = if (useComponentMode) componentHandle != 0L else nativeHandle != 0L
+        if (!isInitialized || !handleReady) {
             throw IllegalStateException("SHARP NCNN model not initialized. Call init() first.")
         }
         return generateGaussiansNative(bitmap)
@@ -171,8 +281,12 @@ class NcnnSharp(private val context: Context) {
             bitmap
         }
 
-        Log.d(TAG, "Running NCNN inference...")
-        val rawParams = nativeInfer(nativeHandle, scaledBitmap)
+        Log.d(TAG, "Running NCNN inference (component mode: $useComponentMode)...")
+        val rawParams = if (useComponentMode) {
+            nativeInferComponents(componentHandle, scaledBitmap)
+        } else {
+            nativeInfer(nativeHandle, scaledBitmap)
+        }
 
         if (rawParams == null || rawParams.isEmpty()) {
             throw RuntimeException("SHARP NCNN inference failed - no output")
@@ -222,10 +336,15 @@ class NcnnSharp(private val context: Context) {
             nativeRelease(nativeHandle)
             nativeHandle = 0
         }
+        if (componentHandle != 0L) {
+            nativeReleaseComponents(componentHandle)
+            componentHandle = 0
+        }
         isInitialized = false
+        useComponentMode = false
     }
 
-    // Native methods
+    // Native methods - Full model
     private external fun nativeInit(
         assetManager: AssetManager,
         paramAsset: String,
@@ -244,6 +363,13 @@ class NcnnSharp(private val context: Context) {
     private external fun nativeInfer(handle: Long, bitmap: Bitmap): FloatArray?
 
     private external fun nativeRelease(handle: Long)
+
+    // Native methods - Component mode
+    private external fun nativeInitComponents(modelDir: String): Long
+
+    private external fun nativeInferComponents(handle: Long, bitmap: Bitmap): FloatArray?
+
+    private external fun nativeReleaseComponents(handle: Long)
 
     /**
      * Result of Gaussian generation

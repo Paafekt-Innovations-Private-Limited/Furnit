@@ -27,15 +27,23 @@
 #include <android/bitmap.h>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
+#include <omp.h>
 
 // NCNN headers
 #include "ncnn/net.h"
 #include "ncnn/mat.h"
 #include "ncnn/cpu.h"
 
+// Custom layers for SHARP model
+#include "sharp_custom_layers.h"
+
+// Component-based SHARP implementation
+#include "sharp_ncnn_components.h"
+
 #define LOG_TAG "SharpNCNN"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+// Use ERROR level for all logs to ensure they appear
+#define LOGD(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 // SHARP model configuration
@@ -76,16 +84,30 @@ Java_com_furnit_android_services_NcnnSharp_nativeInit(
 
     LOGI("Loading SHARP NCNN model: %s, %s", paramPathStr, binPathStr);
 
+    // CRITICAL: Create options BEFORE creating Net
+    ncnn::Option opt;
+    opt.use_vulkan_compute = false;
+    opt.num_threads = 1;
+    opt.use_fp16_packed = false;
+    opt.use_fp16_storage = false;
+    opt.use_fp16_arithmetic = false;
+    opt.use_packing_layout = false;
+    opt.lightmode = true;
+    opt.use_local_pool_allocator = false;
+    opt.use_winograd_convolution = false;
+    opt.use_sgemm_convolution = false;
+    opt.use_int8_inference = false;
+    opt.use_bf16_storage = false;
+
     g_net = new ncnn::Net();
 
-    // Configure network options (CPU-only, optimized for mobile)
-    g_net->opt.use_vulkan_compute = false;  // CPU-only build
-    g_net->opt.num_threads = numThreads > 0 ? numThreads : 4;
-    g_net->opt.use_fp16_packed = true;
-    g_net->opt.use_fp16_storage = true;
-    g_net->opt.use_fp16_arithmetic = true;
-    g_net->opt.use_packing_layout = true;
-    g_net->opt.lightmode = true;  // Reduce memory usage
+    // Assign options IMMEDIATELY after creation
+    g_net->opt = opt;
+
+    // Register custom layers for SHARP model
+    sharp_layers::register_custom_layers(*g_net);
+    LOGI("Registered custom SHARP layers");
+    LOGI("NCNN configured: threads=1, all optimizations disabled (safe mode)");
 
     // Load param from assets
     AAsset* paramAsset = AAssetManager_open(mgr, paramPathStr, AASSET_MODE_BUFFER);
@@ -180,6 +202,29 @@ Java_com_furnit_android_services_NcnnSharp_nativeInit(
 }
 
 /**
+ * Get available memory on device (returns MB)
+ */
+static long getAvailableMemoryMB() {
+    FILE* meminfo = fopen("/proc/meminfo", "r");
+    if (!meminfo) return -1;
+
+    char line[256];
+    long availableMB = -1;
+
+    while (fgets(line, sizeof(line), meminfo)) {
+        if (strncmp(line, "MemAvailable:", 13) == 0) {
+            long availableKB;
+            if (sscanf(line + 13, "%ld", &availableKB) == 1) {
+                availableMB = availableKB / 1024;
+            }
+            break;
+        }
+    }
+    fclose(meminfo);
+    return availableMB;
+}
+
+/**
  * Initialize NCNN network from file system paths
  */
 JNIEXPORT jlong JNICALL
@@ -199,20 +244,57 @@ Java_com_furnit_android_services_NcnnSharp_nativeInitFromPath(
     const char* paramPathStr = env->GetStringUTFChars(paramPath, nullptr);
     const char* binPathStr = env->GetStringUTFChars(binPath, nullptr);
 
+    // Check available memory before loading
+    long availMB = getAvailableMemoryMB();
+    LOGI("Available memory: %ld MB", availMB);
+
+    if (availMB > 0 && availMB < 2000) {
+        LOGE("Insufficient memory for SHARP model (need ~2GB, have %ld MB)", availMB);
+        env->ReleaseStringUTFChars(paramPath, paramPathStr);
+        env->ReleaseStringUTFChars(binPath, binPathStr);
+        return 0;
+    }
+
+    LOGI("=== SHARP NCNN INIT START ===");
     LOGI("Loading SHARP NCNN model from files: %s, %s", paramPathStr, binPathStr);
+
+    // Completely disable OpenMP parallelism via environment variable
+    // This must be done before any OpenMP regions are entered
+    setenv("OMP_NUM_THREADS", "1", 1);
+    setenv("OMP_THREAD_LIMIT", "1", 1);
+    omp_set_num_threads(1);
+    omp_set_dynamic(0);  // Disable dynamic adjustment of threads
+    LOGI("OpenMP disabled: OMP_NUM_THREADS=1, dynamic=off");
+
+    // Create options BEFORE creating Net, assign before load_param
+    // DISABLE ALL OPTIMIZATIONS to avoid NEON/SGEMM kernel bugs
+    ncnn::Option opt;
+    opt.use_vulkan_compute = false;
+    opt.num_threads = 1;  // Single thread - avoid OpenMP entirely
+    opt.use_fp16_packed = false;
+    opt.use_fp16_storage = false;  // No FP16
+    opt.use_fp16_arithmetic = false;
+    opt.use_packing_layout = false;  // No packing - scalar only
+    opt.lightmode = true;
+    opt.use_local_pool_allocator = false;
+    opt.use_winograd_convolution = false;  // No winograd
+    opt.use_sgemm_convolution = false;  // No SGEMM - use naive GEMM
+    opt.use_int8_inference = false;
+    opt.use_bf16_storage = false;
+
+    LOGI("NCNN options: SAFE MODE - cpu, 1 thread, ALL optimizations OFF");
 
     g_net = new ncnn::Net();
 
-    // Configure network options (CPU-only, optimized for mobile)
-    g_net->opt.use_vulkan_compute = false;
-    g_net->opt.num_threads = numThreads > 0 ? numThreads : 4;
-    g_net->opt.use_fp16_packed = true;
-    g_net->opt.use_fp16_storage = true;
-    g_net->opt.use_fp16_arithmetic = true;
-    g_net->opt.use_packing_layout = true;
-    g_net->opt.lightmode = true;
+    // Assign options IMMEDIATELY after creation, BEFORE any other operations
+    g_net->opt = opt;
+    LOGI("ncnn::Net created with safe options assigned");
 
-    // Load param file
+    // Register custom layers for SHARP model
+    sharp_layers::register_custom_layers(*g_net);
+    LOGI("Registered custom SHARP layers");
+
+    // Load param file - options are already set
     int ret = g_net->load_param(paramPathStr);
     if (ret != 0) {
         LOGE("Failed to load param file: %s (error: %d)", paramPathStr, ret);
@@ -224,7 +306,12 @@ Java_com_furnit_android_services_NcnnSharp_nativeInitFromPath(
     }
     LOGI("Loaded param file successfully");
 
-    // Load bin file
+    // Check memory after loading param
+    availMB = getAvailableMemoryMB();
+    LOGI("Available memory after param load: %ld MB", availMB);
+
+    // Load bin file (large - 2.4GB)
+    LOGI("Loading model weights (2.4GB)...");
     ret = g_net->load_model(binPathStr);
     if (ret != 0) {
         LOGE("Failed to load model file: %s (error: %d)", binPathStr, ret);
@@ -234,6 +321,10 @@ Java_com_furnit_android_services_NcnnSharp_nativeInitFromPath(
         g_net = nullptr;
         return 0;
     }
+
+    // Check memory after loading model
+    availMB = getAvailableMemoryMB();
+    LOGI("Available memory after model load: %ld MB", availMB);
 
     env->ReleaseStringUTFChars(paramPath, paramPathStr);
     env->ReleaseStringUTFChars(binPath, binPathStr);
@@ -299,12 +390,28 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
     const float norm_vals[3] = {1.0f / 255.0f, 1.0f / 255.0f, 1.0f / 255.0f};
     in.substract_mean_normalize(mean_vals, norm_vals);
 
+    LOGI("Input tensor: dims=%d c=%d h=%d w=%d elempack=%d total=%zu",
+         in.dims, in.c, in.h, in.w, in.elempack, in.total());
+
     // Run inference
     ncnn::Extractor ex = net->create_extractor();
+    ex.set_light_mode(true);  // Reduce memory usage
+
+    LOGI("Setting input tensor to network...");
 
     // Input layer name (from SHARP model conversion)
     // The exact name depends on the pnnx conversion output
-    ex.input("in0", in);
+    int input_ret = ex.input("in0", in);
+    if (input_ret != 0) {
+        LOGE("Failed to set input: %d", input_ret);
+        return nullptr;
+    }
+
+    LOGI("Input set successfully, starting extraction...");
+
+    // Check memory before extraction
+    long memBeforeExtract = getAvailableMemoryMB();
+    LOGI("Available memory before extraction: %ld MB", memBeforeExtract);
 
     // Extract outputs
     // SHARP model outputs 5 tensors (from pnnx conversion):
@@ -317,38 +424,55 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
     ncnn::Mat positionsOut, scalesOut, rotationsOut, colorsOut, opacityOut;
     int ret;
 
-    LOGI("Extracting SHARP outputs...");
+    LOGI("Extracting SHARP outputs (1674 layers, this takes time)...");
 
-    // Extract all outputs using exact names from pnnx conversion
+    // Crash identified in conv_106 (large 16x16 patch embedding convolution)
+    // This appears to be a bug in NCNN's ARM convolution kernel
+    // Running full extraction directly
+    LOGI("Starting out0 extraction (full forward pass through 1674 layers)...");
+
     ret = ex.extract("out0", positionsOut);
+
+    long memAfterOut0 = getAvailableMemoryMB();
+    LOGI("Memory after out0 extraction: %ld MB (used: %ld MB)", memAfterOut0, memBeforeExtract - memAfterOut0);
+
     if (ret != 0) {
         LOGE("Failed to extract out0 (positions): %d", ret);
         return nullptr;
     }
+    LOGI("out0 extracted successfully, shape: dims=%d total=%zu", positionsOut.dims, positionsOut.total());
 
+    LOGI("Extracting out1 (scales)...");
     ret = ex.extract("out1", scalesOut);
     if (ret != 0) {
         LOGE("Failed to extract out1 (scales): %d", ret);
         return nullptr;
     }
+    LOGI("out1 extracted successfully");
 
+    LOGI("Extracting out2 (rotations)...");
     ret = ex.extract("out2", rotationsOut);
     if (ret != 0) {
         LOGE("Failed to extract out2 (rotations): %d", ret);
         return nullptr;
     }
+    LOGI("out2 extracted successfully");
 
+    LOGI("Extracting out3 (colors)...");
     ret = ex.extract("out3", colorsOut);
     if (ret != 0) {
         LOGE("Failed to extract out3 (colors): %d", ret);
         return nullptr;
     }
+    LOGI("out3 extracted successfully");
 
+    LOGI("Extracting out4 (opacity)...");
     ret = ex.extract("out4", opacityOut);
     if (ret != 0) {
         LOGE("Failed to extract out4 (opacity): %d", ret);
         return nullptr;
     }
+    LOGI("out4 extracted successfully");
 
     LOGI("Positions output: dims=%d c=%d h=%d w=%d total=%zu",
          positionsOut.dims, positionsOut.c, positionsOut.h, positionsOut.w, positionsOut.total());
@@ -497,6 +621,176 @@ Java_com_furnit_android_services_NcnnSharp_nativeRelease(
     // Also clean up global pointer if it matches
     if (g_net == net) {
         g_net = nullptr;
+    }
+}
+
+// ============================================================================
+// Component-Based SHARP Implementation
+// ============================================================================
+
+// Global component-based model
+static sharp_components::SharpComponents* g_components = nullptr;
+
+/**
+ * Initialize component-based SHARP model
+ * This loads multiple NCNN models for patch-by-patch processing
+ */
+JNIEXPORT jlong JNICALL
+Java_com_furnit_android_services_NcnnSharp_nativeInitComponents(
+    JNIEnv* env,
+    jobject thiz,
+    jstring modelDir
+) {
+    const char* modelDirStr = env->GetStringUTFChars(modelDir, nullptr);
+
+    LOGI("=== SHARP NCNN COMPONENTS INIT ===");
+    LOGI("Model directory: %s", modelDirStr);
+
+    if (g_components != nullptr) {
+        delete g_components;
+        g_components = nullptr;
+    }
+
+    g_components = new sharp_components::SharpComponents();
+
+    if (!g_components->load(modelDirStr)) {
+        LOGE("Failed to load SHARP components");
+        delete g_components;
+        g_components = nullptr;
+        env->ReleaseStringUTFChars(modelDir, modelDirStr);
+        return 0;
+    }
+
+    env->ReleaseStringUTFChars(modelDir, modelDirStr);
+
+    LOGI("SHARP components initialized successfully");
+    return reinterpret_cast<jlong>(g_components);
+}
+
+/**
+ * Run component-based SHARP inference
+ * This processes patches one at a time to avoid NCNN batch issues
+ */
+JNIEXPORT jfloatArray JNICALL
+Java_com_furnit_android_services_NcnnSharp_nativeInferComponents(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle,
+    jobject bitmap
+) {
+    sharp_components::SharpComponents* components =
+        reinterpret_cast<sharp_components::SharpComponents*>(handle);
+
+    if (components == nullptr) {
+        LOGE("Invalid components handle");
+        return nullptr;
+    }
+
+    // Get bitmap info
+    AndroidBitmapInfo bitmapInfo;
+    if (AndroidBitmap_getInfo(env, bitmap, &bitmapInfo) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        LOGE("Failed to get bitmap info");
+        return nullptr;
+    }
+
+    void* pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        LOGE("Failed to lock bitmap pixels");
+        return nullptr;
+    }
+
+    LOGI("Input bitmap: %dx%d", bitmapInfo.width, bitmapInfo.height);
+
+    // Convert to NCNN Mat and resize
+    ncnn::Mat input = ncnn::Mat::from_pixels_resize(
+        static_cast<const unsigned char*>(pixels),
+        ncnn::Mat::PIXEL_RGBA2RGB,
+        bitmapInfo.width, bitmapInfo.height,
+        INPUT_SIZE, INPUT_SIZE
+    );
+
+    AndroidBitmap_unlockPixels(env, bitmap);
+
+    // Normalize to [0, 1]
+    const float mean_vals[3] = {0.0f, 0.0f, 0.0f};
+    const float norm_vals[3] = {1.0f / 255.0f, 1.0f / 255.0f, 1.0f / 255.0f};
+    input.substract_mean_normalize(mean_vals, norm_vals);
+
+    LOGI("Running component-based inference...");
+
+    // Run inference
+    std::vector<float> positions, scales, rotations, colors, opacities;
+    int numGaussians = components->infer(input, positions, scales, rotations, colors, opacities);
+
+    if (numGaussians <= 0) {
+        LOGE("Component-based inference failed");
+        return nullptr;
+    }
+
+    LOGI("Generated %d Gaussians", numGaussians);
+
+    // Interleave into output format
+    int totalSize = numGaussians * PARAMS_PER_GAUSSIAN;
+    std::vector<float> result(totalSize);
+
+    for (int i = 0; i < numGaussians; i++) {
+        int offset = i * PARAMS_PER_GAUSSIAN;
+
+        // Positions
+        result[offset + 0] = positions[i * 3 + 0];
+        result[offset + 1] = positions[i * 3 + 1];
+        result[offset + 2] = positions[i * 3 + 2];
+
+        // Scales
+        result[offset + 3] = scales[i * 3 + 0];
+        result[offset + 4] = scales[i * 3 + 1];
+        result[offset + 5] = scales[i * 3 + 2];
+
+        // Rotations
+        result[offset + 6] = rotations[i * 4 + 0];
+        result[offset + 7] = rotations[i * 4 + 1];
+        result[offset + 8] = rotations[i * 4 + 2];
+        result[offset + 9] = rotations[i * 4 + 3];
+
+        // Opacity
+        result[offset + 10] = opacities[i];
+
+        // Colors
+        result[offset + 11] = colors[i * 3 + 0];
+        result[offset + 12] = colors[i * 3 + 1];
+        result[offset + 13] = colors[i * 3 + 2];
+    }
+
+    jfloatArray jResult = env->NewFloatArray(totalSize);
+    if (jResult == nullptr) {
+        LOGE("Failed to allocate result array");
+        return nullptr;
+    }
+
+    env->SetFloatArrayRegion(jResult, 0, totalSize, result.data());
+
+    return jResult;
+}
+
+/**
+ * Release component-based model
+ */
+JNIEXPORT void JNICALL
+Java_com_furnit_android_services_NcnnSharp_nativeReleaseComponents(
+    JNIEnv* env,
+    jobject thiz,
+    jlong handle
+) {
+    sharp_components::SharpComponents* components =
+        reinterpret_cast<sharp_components::SharpComponents*>(handle);
+
+    if (components != nullptr) {
+        delete components;
+        LOGI("SHARP components released");
+    }
+
+    if (g_components == components) {
+        g_components = nullptr;
     }
 }
 

@@ -666,6 +666,7 @@ class SharpRoomActivity : AppCompatActivity() {
         // Check auto-orbit setting from SharedPreferences
         val prefs = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
         val autoOrbitEnabled = prefs.getBoolean("auto_orbit_enabled", false)
+        val isLandscape = photoOrientation == "landscape"
 
         // SparkJS implementation matching iOS exactly
         return """
@@ -788,10 +789,18 @@ class SharpRoomActivity : AppCompatActivity() {
             });
             scene.add(splatMesh);
 
-            // Classic PLY rotation matching iOS: 180° X + 90° Z
+            // PLY rotation - adjust based on photo orientation
+            const isLandscape = $isLandscape;
             splatMesh.rotation.x = Math.PI;
-            splatMesh.rotation.z = Math.PI / 2;
-            console.log('[WebGL] SplatMesh: rotated 180° X + 90° Z');
+            if (isLandscape) {
+                // Landscape: no Z rotation needed
+                splatMesh.rotation.z = 0;
+                console.log('[WebGL] SplatMesh: rotated 180° X (landscape mode)');
+            } else {
+                // Portrait: 90° Z rotation
+                splatMesh.rotation.z = Math.PI / 2;
+                console.log('[WebGL] SplatMesh: rotated 180° X + 90° Z (portrait mode)');
+            }
 
             // Start auto-framing after delay for async load
             setTimeout(autoFrameRoom, 500);
@@ -837,10 +846,19 @@ class SharpRoomActivity : AppCompatActivity() {
             }
 
             const center = box.getCenter(new THREE.Vector3());
-            // After 90° Z rotation, X and Y axes are swapped
-            let roomWidth = size.y;
-            let roomHeight = size.x;
-            let roomDepth = size.z;
+            // Dimension mapping depends on orientation
+            let roomWidth, roomHeight, roomDepth;
+            if (isLandscape) {
+                // Landscape: no Z rotation, axes are normal
+                roomWidth = size.x;
+                roomHeight = size.y;
+                roomDepth = size.z;
+            } else {
+                // Portrait: after 90° Z rotation, X and Y axes are swapped
+                roomWidth = size.y;
+                roomHeight = size.x;
+                roomDepth = size.z;
+            }
 
             console.log('[WebGL] Box3 size:', roomWidth.toFixed(2), roomHeight.toFixed(2), roomDepth.toFixed(2));
             console.log('[WebGL] Box3 center:', center.x.toFixed(2), center.y.toFixed(2), center.z.toFixed(2));

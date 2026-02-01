@@ -5,11 +5,11 @@ project("yoloe_ncnn")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Enable RTTI for custom NCNN layers
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -frtti -fexceptions")
+# Disable RTTI to match NCNN build (NCNN built with -fno-rtti)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fexceptions")
 
-# NCNN library path (CPU-only version)
-set(NCNN_DIR ${CMAKE_SOURCE_DIR}/ncnn-android-vulkan/${ANDROID_ABI})
+# NCNN library path (with Vulkan support) - using latest release 20260113
+set(NCNN_DIR ${CMAKE_SOURCE_DIR}/ncnn-20260113-android-vulkan/${ANDROID_ABI})
 
 # Include NCNN headers
 include_directories(${NCNN_DIR}/include/ncnn)
@@ -18,6 +18,25 @@ include_directories(${NCNN_DIR}/include)
 # Import NCNN as static library
 add_library(ncnn STATIC IMPORTED)
 set_target_properties(ncnn PROPERTIES IMPORTED_LOCATION ${NCNN_DIR}/lib/libncnn.a)
+
+# Import glslang libraries (required for NCNN Vulkan build, even if not using Vulkan)
+add_library(glslang STATIC IMPORTED)
+set_target_properties(glslang PROPERTIES IMPORTED_LOCATION ${NCNN_DIR}/lib/libglslang.a)
+
+add_library(SPIRV STATIC IMPORTED)
+set_target_properties(SPIRV PROPERTIES IMPORTED_LOCATION ${NCNN_DIR}/lib/libSPIRV.a)
+
+add_library(glslang-default-resource-limits STATIC IMPORTED)
+set_target_properties(glslang-default-resource-limits PROPERTIES IMPORTED_LOCATION ${NCNN_DIR}/lib/libglslang-default-resource-limits.a)
+
+add_library(GenericCodeGen STATIC IMPORTED)
+set_target_properties(GenericCodeGen PROPERTIES IMPORTED_LOCATION ${NCNN_DIR}/lib/libGenericCodeGen.a)
+
+add_library(MachineIndependent STATIC IMPORTED)
+set_target_properties(MachineIndependent PROPERTIES IMPORTED_LOCATION ${NCNN_DIR}/lib/libMachineIndependent.a)
+
+add_library(OSDependent STATIC IMPORTED)
+set_target_properties(OSDependent PROPERTIES IMPORTED_LOCATION ${NCNN_DIR}/lib/libOSDependent.a)
 
 # Find required Android libraries
 find_library(log-lib log)
@@ -43,6 +62,12 @@ add_library(
 target_link_libraries(
     yoloe_ncnn
     ncnn
+    glslang
+    SPIRV
+    glslang-default-resource-limits
+    GenericCodeGen
+    MachineIndependent
+    OSDependent
     OpenMP::OpenMP_CXX
     ${log-lib}
     ${android-lib}
@@ -67,6 +92,12 @@ add_library(
 target_link_libraries(
     sharp_ncnn
     ncnn
+    glslang
+    SPIRV
+    glslang-default-resource-limits
+    GenericCodeGen
+    MachineIndependent
+    OSDependent
     OpenMP::OpenMP_CXX
     ${log-lib}
     ${android-lib}

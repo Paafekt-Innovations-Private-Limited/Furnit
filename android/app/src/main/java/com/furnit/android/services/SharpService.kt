@@ -27,7 +27,8 @@ class SharpService private constructor(private val context: Context) {
     companion object {
         private const val TAG = "SharpService"
         private const val SH_C0 = 0.28209479177387814f
-        private const val BYTES_PER_VERTEX = 62 * 4  // 62 floats per vertex
+        // Reduced SH: 3 (pos) + 3 (normal) + 3 (f_dc) + 0 (f_rest) + 1 (opacity) + 3 (scale) + 4 (rot) = 17 floats
+        private const val BYTES_PER_VERTEX = 17 * 4  // 17 floats per vertex (no f_rest for compatibility)
 
         @Volatile
         private var instance: SharpService? = null
@@ -68,9 +69,9 @@ class SharpService private constructor(private val context: Context) {
     }
 
     /**
-     * Check if SHARP model is available (NCNN, Split ONNX, or regular ONNX)
+     * Check if SHARP model is available (NCNN component, NCNN full, Split ONNX, or regular ONNX)
      */
-    fun isModelReady(): Boolean = ncnnSharp.isModelReady() || splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()
+    fun isModelReady(): Boolean = ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady() || splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()
 
     /**
      * Initialize model - respects user preference for NCNN vs ONNX
@@ -85,13 +86,26 @@ class SharpService private constructor(private val context: Context) {
         if (forceNcnn) {
             // User explicitly wants NCNN - no fallback to ONNX
             Log.d(TAG, "NCNN backend selected in settings")
-            if (ncnnSharp.ensureModelReady()) {
+            // Try component mode first (works correctly), then full model
+            if (ncnnSharp.isComponentModelReady()) {
                 try {
-                    ncnnSharp.init()
+                    ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = true)
                     isInitialized = true
                     useOnnx = false
                     useSplitOnnx = false
-                    Log.d(TAG, "NCNN initialized successfully")
+                    Log.d(TAG, "NCNN component mode initialized successfully")
+                    return true
+                } catch (e: Exception) {
+                    Log.e(TAG, "NCNN component init failed: ${e.message}")
+                }
+            }
+            if (ncnnSharp.ensureModelReady()) {
+                try {
+                    ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = false)
+                    isInitialized = true
+                    useOnnx = false
+                    useSplitOnnx = false
+                    Log.d(TAG, "NCNN full model initialized successfully")
                     return true
                 } catch (e: Exception) {
                     Log.e(TAG, "NCNN init failed: ${e.message}")
@@ -103,14 +117,27 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        // Default: Try NCNN first, then fall back to ONNX
-        if (ncnnSharp.ensureModelReady()) {
+        // Default: Try NCNN component mode first, then full model, then ONNX
+        if (ncnnSharp.isComponentModelReady()) {
             try {
-                ncnnSharp.init()
+                ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = true)
                 isInitialized = true
                 useOnnx = false
                 useSplitOnnx = false
-                Log.d(TAG, "NCNN initialized successfully")
+                Log.d(TAG, "NCNN component mode initialized successfully")
+                return true
+            } catch (e: Exception) {
+                Log.w(TAG, "NCNN component init failed: ${e.message}, trying full model...")
+            }
+        }
+
+        if (ncnnSharp.ensureModelReady()) {
+            try {
+                ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = false)
+                isInitialized = true
+                useOnnx = false
+                useSplitOnnx = false
+                Log.d(TAG, "NCNN full model initialized successfully")
                 return true
             } catch (e: Exception) {
                 Log.w(TAG, "NCNN init failed: ${e.message}, trying Split ONNX...")
@@ -290,7 +317,7 @@ class SharpService private constructor(private val context: Context) {
         val gaussianCount = result.gaussianCount
         val params = result.params
 
-        // Build PLY header
+        // Build PLY header (simplified format without f_rest for better viewer compatibility)
         val header = buildString {
             append("ply\n")
             append("format binary_little_endian 1.0\n")
@@ -302,7 +329,7 @@ class SharpService private constructor(private val context: Context) {
             append("property float ny\n")
             append("property float nz\n")
             for (i in 0 until 3) append("property float f_dc_$i\n")
-            for (i in 0 until 45) append("property float f_rest_$i\n")
+            // Skip f_rest for simpler format (many viewers don't need higher-order SH)
             append("property float opacity\n")
             append("property float scale_0\n")
             append("property float scale_1\n")
@@ -345,8 +372,7 @@ class SharpService private constructor(private val context: Context) {
                 vertexBuffer.putFloat((g - 0.5f) / SH_C0)
                 vertexBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                // Higher order SH (45 zeros)
-                for (j in 0 until 45) vertexBuffer.putFloat(0f)
+                // Skip f_rest (higher order SH) for simpler format
 
                 // Opacity -> logit transform
                 val rawOpacity = params[offset + 10].coerceIn(1e-4f, 1f - 1e-4f)
