@@ -12,7 +12,6 @@ import android.os.Environment
 import android.util.Base64
 import android.util.Log
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.content.pm.ActivityInfo
@@ -32,7 +31,6 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.abs
 
 /**
  * SharpRoomActivity - WebGL-based 3D Gaussian Splat viewer
@@ -54,7 +52,6 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: FrameLayout
-    private lateinit var joystickView: View
     private lateinit var titleView: TextView
     private var plyPath: String? = null
     private var roomFolder: String? = null
@@ -70,13 +67,6 @@ class SharpRoomActivity : AppCompatActivity() {
     // Calibration state
     private var showCalibrationOverlay = false
     private var detectedFurnitureHeight: Float? = null
-
-    // Joystick state
-    private var joystickCenterX = 0f
-    private var joystickCenterY = 0f
-    private var joystickKnobX = 0f
-    private var joystickKnobY = 0f
-    private val joystickMaxOffset = 70f
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,7 +115,7 @@ class SharpRoomActivity : AppCompatActivity() {
             hasSavedDimensions = false
         }
 
-        Log.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions")
+        Log.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation")
 
         if (plyPath == null) {
             Toast.makeText(this, "No PLY file provided", Toast.LENGTH_SHORT).show()
@@ -366,7 +356,7 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun showHelpDialog() {
         AlertDialog.Builder(this)
             .setTitle("3D Room Controls")
-            .setMessage("• Drag on screen to rotate view\n\n• Use joystick to walk around\n\n• Tap save icon to save your room")
+            .setMessage("• Drag to rotate view\n• Pinch to zoom\n• Two-finger drag to pan\n• Tap recenter button to reset view")
             .setPositiveButton("OK", null)
             .show()
     }
@@ -401,95 +391,7 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             addView(brainBtn)
 
-            // Center: Joystick container
-            val joystickContainer = FrameLayout(this@SharpRoomActivity).apply {
-                val size = dpToPx(120)
-                layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                    bottomMargin = dpToPx(20)
-                }
-
-                // Outer ring
-                val outerRing = View(this@SharpRoomActivity).apply {
-                    val bg = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor("#40FFFFFF"))
-                        setStroke(dpToPx(2), Color.parseColor("#60FFFFFF"))
-                    }
-                    background = bg
-                }
-                addView(outerRing, FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                ))
-
-                // Joystick knob
-                val knobSize = dpToPx(50)
-                val knob = View(this@SharpRoomActivity).apply {
-                    val bg = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor("#CCFFFFFF"))
-                    }
-                    background = bg
-                }
-                val knobParams = FrameLayout.LayoutParams(knobSize, knobSize).apply {
-                    gravity = Gravity.CENTER
-                }
-                addView(knob, knobParams)
-
-                joystickView = knob
-
-                // Touch handling
-                setOnTouchListener { _, event ->
-                    handleJoystick(event, this, knob, size.toFloat(), knobSize.toFloat())
-                    true
-                }
-
-                post {
-                    joystickCenterX = width / 2f
-                    joystickCenterY = height / 2f
-                }
-            }
-            addView(joystickContainer)
-
-            // Center label (above joystick): Orientation info
-            val orientationLabel = LinearLayout(this@SharpRoomActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                val bg = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dpToPx(8).toFloat()
-                    setColor(Color.parseColor("#80000000"))
-                }
-                background = bg
-                setPadding(dpToPx(12), dpToPx(4), dpToPx(12), dpToPx(4))
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
-                    bottomMargin = dpToPx(160)
-                }
-
-                val isLandscape = photoOrientation == "landscape"
-                val line1 = TextView(this@SharpRoomActivity).apply {
-                    text = if (isLandscape) "held horizontally" else "held vertically"
-                    textSize = 12f
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                }
-                addView(line1)
-
-                val line2 = TextView(this@SharpRoomActivity).apply {
-                    text = if (isLandscape) "Landscape" else "Portrait"
-                    textSize = 14f
-                    setTypeface(null, Typeface.BOLD)
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                }
-                addView(line2)
-            }
-            addView(orientationLabel)
+            // No joystick - use OrbitControls touch gestures for navigation (matching iOS)
 
             // Right: Camera/Screenshot button
             val cameraBtn = TextView(this@SharpRoomActivity).apply {
@@ -585,60 +487,6 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleJoystick(
-        event: MotionEvent,
-        container: View,
-        knob: View,
-        containerSize: Float,
-        knobSize: Float
-    ): Boolean {
-        val centerX = containerSize / 2f
-        val centerY = containerSize / 2f
-
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                var dx = event.x - centerX
-                var dy = event.y - centerY
-
-                // Clamp to max offset
-                val distance = kotlin.math.sqrt(dx * dx + dy * dy)
-                if (distance > joystickMaxOffset) {
-                    val scale = joystickMaxOffset / distance
-                    dx *= scale
-                    dy *= scale
-                }
-
-                // Move knob
-                knob.translationX = dx
-                knob.translationY = dy
-
-                // Send movement to WebGL (normalize to -1 to 1)
-                val normalizedX = dx / joystickMaxOffset
-                val normalizedY = -dy / joystickMaxOffset  // Invert Y
-
-                webView.evaluateJavascript(
-                    "if(typeof moveCamera==='function')moveCamera($normalizedX, $normalizedY);",
-                    null
-                )
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                // Return knob to center
-                knob.animate()
-                    .translationX(0f)
-                    .translationY(0f)
-                    .setDuration(150)
-                    .start()
-
-                // Stop movement
-                webView.evaluateJavascript(
-                    "if(typeof moveCamera==='function')moveCamera(0, 0);",
-                    null
-                )
-            }
-        }
-        return true
-    }
-
     private fun loadWebGLViewer() {
         val plyFile = File(plyPath!!)
         if (!plyFile.exists()) {
@@ -666,6 +514,8 @@ class SharpRoomActivity : AppCompatActivity() {
         // Check auto-orbit setting from SharedPreferences
         val prefs = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
         val autoOrbitEnabled = prefs.getBoolean("auto_orbit_enabled", false)
+        // Use isPortrait like iOS for consistency
+        val isPortrait = photoOrientation != "landscape"
 
         // SparkJS implementation matching iOS exactly
         return """
@@ -788,10 +638,10 @@ class SharpRoomActivity : AppCompatActivity() {
             });
             scene.add(splatMesh);
 
-            // Classic PLY rotation matching iOS: 180° X + 90° Z
-            splatMesh.rotation.x = Math.PI;
-            splatMesh.rotation.z = Math.PI / 2;
-            console.log('[WebGL] SplatMesh: rotated 180° X + 90° Z');
+            // Debug: No rotation - see raw PLY orientation first
+            const isPortrait = $isPortrait;
+            console.log('[WebGL] isPortrait =', isPortrait);
+            console.log('[WebGL] SplatMesh: NO ROTATION applied - showing raw PLY');
 
             // Start auto-framing after delay for async load
             setTimeout(autoFrameRoom, 500);
@@ -837,12 +687,35 @@ class SharpRoomActivity : AppCompatActivity() {
             }
 
             const center = box.getCenter(new THREE.Vector3());
-            // After 90° Z rotation, X and Y axes are swapped
-            let roomWidth = size.y;
-            let roomHeight = size.x;
-            let roomDepth = size.z;
+            // Dimension mapping matching iOS exactly
+            // After 90° Z rotation, axes mapping depends on photo orientation
+            // Portrait: width = X (narrower), height = Y (taller)
+            // Landscape: width = Y, height = X
+            let roomWidth, roomHeight, roomDepth;
+            if (isPortrait) {
+                roomWidth = size.x;
+                roomHeight = size.y;
+            } else {
+                roomWidth = size.y;
+                roomHeight = size.x;
+            }
+            roomDepth = size.z;
 
-            console.log('[WebGL] Box3 size:', roomWidth.toFixed(2), roomHeight.toFixed(2), roomDepth.toFixed(2));
+            console.log('[WebGL] Box3 raw size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), '(isPortrait:', isPortrait, ')');
+
+            // Cap to realistic room dimensions (fog makes bounds too large) - matching iOS
+            const maxRealisticWidth = isPortrait ? 5.0 : 8.0;
+            const maxRealisticHeight = isPortrait ? 3.5 : 3.2;
+            if (roomWidth > maxRealisticWidth) {
+                console.log('[WebGL] Capping width from', roomWidth.toFixed(2), 'to', maxRealisticWidth);
+                roomWidth = maxRealisticWidth;
+            }
+            if (roomHeight > maxRealisticHeight) {
+                console.log('[WebGL] Capping height from', roomHeight.toFixed(2), 'to', maxRealisticHeight);
+                roomHeight = maxRealisticHeight;
+            }
+
+            console.log('[WebGL] Box3 capped size:', roomWidth.toFixed(2), roomHeight.toFixed(2), roomDepth.toFixed(2));
             console.log('[WebGL] Box3 center:', center.x.toFixed(2), center.y.toFixed(2), center.z.toFixed(2));
 
             // Shrink bounds to ignore foggy outer 15% (matching iOS)
@@ -857,9 +730,13 @@ class SharpRoomActivity : AppCompatActivity() {
 
             const roomRadius = Math.max(roomWidth, roomHeight, roomDepth) * 0.5;
 
-            // Position camera at back wall center looking at room center
-            const cameraDistance = roomRadius * 1.5;
-            camera.position.set(innerCenterX, innerCenterY, innerCenterZ + cameraDistance);
+            // Position camera at front of room looking into room center
+            // Camera on negative Z side looking toward positive Z (into room)
+            const fov = camera.fov * (Math.PI / 180);
+            const maxDim = Math.max(roomWidth, roomHeight, roomDepth);
+            const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 1.5;
+            camera.position.set(innerCenterX, innerCenterY, innerCenterZ - cameraDistance);
+            console.log('[WebGL] Camera at negative Z, distance:', cameraDistance.toFixed(2));
             controls.target.set(innerCenterX, innerCenterY, innerCenterZ);
             controls.update();
 

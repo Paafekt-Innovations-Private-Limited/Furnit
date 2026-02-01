@@ -179,6 +179,8 @@ android/app/src/main/cpp/ncnn-android-vulkan/
 android/predictor.*
 android/onnx__*
 android/_predictor_*
+android/onnx_temp/
+android/pnnx_pt.log
 
 # Large model files (NCNN, PyTorch, ONNX Runtime)
 android/*.bin
@@ -201,3 +203,22 @@ android/app/src/main/assets/room.jpeg
 
 # ML Experiments folder (scripts, outputs, models for development)
 ml_experiments/
+
+# NCNN model files (stored on Google Drive)
+android/sharp_ncnn_models/
+
+# Temporary export/conversion scripts
+android/export_*.py
+android/fix_*.py
+android/reconvert_*.py
+
+# ONNX model files (large)
+android/*.onnx
+
+# Bug reports
+android/bugreport-*.zip
+
+# NCNN SDK downloads and backups
+android/app/src/main/cpp/ncnn-*-android-vulkan.zip
+android/app/src/main/cpp/ncnn-*-android-vulkan/
+android/app/src/main/cpp/ncnn-android-vulkan-old/

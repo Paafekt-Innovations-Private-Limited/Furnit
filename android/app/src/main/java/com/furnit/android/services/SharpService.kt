@@ -68,9 +68,9 @@ class SharpService private constructor(private val context: Context) {
     }
 
     /**
-     * Check if SHARP model is available (NCNN, Split ONNX, or regular ONNX)
+     * Check if SHARP model is available (NCNN component, NCNN full, Split ONNX, or regular ONNX)
      */
-    fun isModelReady(): Boolean = ncnnSharp.isModelReady() || splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()
+    fun isModelReady(): Boolean = ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady() || splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()
 
     /**
      * Initialize model - respects user preference for NCNN vs ONNX
@@ -85,13 +85,26 @@ class SharpService private constructor(private val context: Context) {
         if (forceNcnn) {
             // User explicitly wants NCNN - no fallback to ONNX
             Log.d(TAG, "NCNN backend selected in settings")
-            if (ncnnSharp.ensureModelReady()) {
+            // Try component mode first (works correctly), then full model
+            if (ncnnSharp.isComponentModelReady()) {
                 try {
-                    ncnnSharp.init()
+                    ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = true)
                     isInitialized = true
                     useOnnx = false
                     useSplitOnnx = false
-                    Log.d(TAG, "NCNN initialized successfully")
+                    Log.d(TAG, "NCNN component mode initialized successfully")
+                    return true
+                } catch (e: Exception) {
+                    Log.e(TAG, "NCNN component init failed: ${e.message}")
+                }
+            }
+            if (ncnnSharp.ensureModelReady()) {
+                try {
+                    ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = false)
+                    isInitialized = true
+                    useOnnx = false
+                    useSplitOnnx = false
+                    Log.d(TAG, "NCNN full model initialized successfully")
                     return true
                 } catch (e: Exception) {
                     Log.e(TAG, "NCNN init failed: ${e.message}")
@@ -103,21 +116,10 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        // Default: Try NCNN first, then fall back to ONNX
-        if (ncnnSharp.ensureModelReady()) {
-            try {
-                ncnnSharp.init()
-                isInitialized = true
-                useOnnx = false
-                useSplitOnnx = false
-                Log.d(TAG, "NCNN initialized successfully")
-                return true
-            } catch (e: Exception) {
-                Log.w(TAG, "NCNN init failed: ${e.message}, trying Split ONNX...")
-            }
-        }
+        // NCNN switch is OFF - use ONNX (skip NCNN entirely)
+        Log.d(TAG, "ONNX backend selected in settings")
 
-        // Try Split ONNX (memory-efficient 4-part model)
+        // Try Split ONNX first (memory-efficient 4-part model)
         if (splitOnnxSharp.isModelReady()) {
             Log.d(TAG, "Split ONNX model ready - using memory-efficient 4-part inference")
             isInitialized = true
