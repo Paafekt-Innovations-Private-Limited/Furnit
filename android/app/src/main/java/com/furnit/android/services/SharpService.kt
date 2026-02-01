@@ -27,8 +27,7 @@ class SharpService private constructor(private val context: Context) {
     companion object {
         private const val TAG = "SharpService"
         private const val SH_C0 = 0.28209479177387814f
-        // Reduced SH: 3 (pos) + 3 (normal) + 3 (f_dc) + 0 (f_rest) + 1 (opacity) + 3 (scale) + 4 (rot) = 17 floats
-        private const val BYTES_PER_VERTEX = 17 * 4  // 17 floats per vertex (no f_rest for compatibility)
+        private const val BYTES_PER_VERTEX = 62 * 4  // 62 floats per vertex
 
         @Volatile
         private var instance: SharpService? = null
@@ -117,34 +116,10 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        // Default: Try NCNN component mode first, then full model, then ONNX
-        if (ncnnSharp.isComponentModelReady()) {
-            try {
-                ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = true)
-                isInitialized = true
-                useOnnx = false
-                useSplitOnnx = false
-                Log.d(TAG, "NCNN component mode initialized successfully")
-                return true
-            } catch (e: Exception) {
-                Log.w(TAG, "NCNN component init failed: ${e.message}, trying full model...")
-            }
-        }
+        // NCNN switch is OFF - use ONNX (skip NCNN entirely)
+        Log.d(TAG, "ONNX backend selected in settings")
 
-        if (ncnnSharp.ensureModelReady()) {
-            try {
-                ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = false)
-                isInitialized = true
-                useOnnx = false
-                useSplitOnnx = false
-                Log.d(TAG, "NCNN full model initialized successfully")
-                return true
-            } catch (e: Exception) {
-                Log.w(TAG, "NCNN init failed: ${e.message}, trying Split ONNX...")
-            }
-        }
-
-        // Try Split ONNX (memory-efficient 4-part model)
+        // Try Split ONNX first (memory-efficient 4-part model)
         if (splitOnnxSharp.isModelReady()) {
             Log.d(TAG, "Split ONNX model ready - using memory-efficient 4-part inference")
             isInitialized = true
@@ -317,7 +292,7 @@ class SharpService private constructor(private val context: Context) {
         val gaussianCount = result.gaussianCount
         val params = result.params
 
-        // Build PLY header (simplified format without f_rest for better viewer compatibility)
+        // Build PLY header
         val header = buildString {
             append("ply\n")
             append("format binary_little_endian 1.0\n")
@@ -329,7 +304,7 @@ class SharpService private constructor(private val context: Context) {
             append("property float ny\n")
             append("property float nz\n")
             for (i in 0 until 3) append("property float f_dc_$i\n")
-            // Skip f_rest for simpler format (many viewers don't need higher-order SH)
+            for (i in 0 until 45) append("property float f_rest_$i\n")
             append("property float opacity\n")
             append("property float scale_0\n")
             append("property float scale_1\n")
@@ -372,7 +347,8 @@ class SharpService private constructor(private val context: Context) {
                 vertexBuffer.putFloat((g - 0.5f) / SH_C0)
                 vertexBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                // Skip f_rest (higher order SH) for simpler format
+                // Higher order SH (45 zeros)
+                for (j in 0 until 45) vertexBuffer.putFloat(0f)
 
                 // Opacity -> logit transform
                 val rawOpacity = params[offset + 10].coerceIn(1e-4f, 1f - 1e-4f)
