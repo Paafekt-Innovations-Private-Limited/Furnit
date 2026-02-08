@@ -222,3 +222,9 @@ android/bugreport-*.zip
 android/app/src/main/cpp/ncnn-*-android-vulkan.zip
 android/app/src/main/cpp/ncnn-*-android-vulkan/
 android/app/src/main/cpp/ncnn-android-vulkan-old/
+
+# Ignore NCNN Sharp model backup files (not needed in version control)
+android/sharp_ncnn_models_backup/
+*.bin
+*.param
+

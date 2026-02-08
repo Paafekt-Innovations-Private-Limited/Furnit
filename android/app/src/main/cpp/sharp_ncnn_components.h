@@ -20,6 +20,7 @@
 #include <android/log.h>
 #include "ncnn/net.h"
 #include "ncnn/mat.h"
+#include "sharp_custom_layers.h"
 
 #ifndef SHARP_LOG_TAG
 #define SHARP_LOG_TAG "SharpNCNN"
@@ -373,7 +374,18 @@ private:
 
         net.opt.num_threads = 1;
         net.opt.use_vulkan_compute = false;
-        net.opt.lightmode = true;  // Enable light mode for memory savings
+        net.opt.lightmode = true;
+        net.opt.use_fp16_packed = false;
+        net.opt.use_fp16_storage = false;
+        net.opt.use_fp16_arithmetic = false;
+        net.opt.use_packing_layout = false;
+        net.opt.use_winograd_convolution = false;
+        net.opt.use_sgemm_convolution = false;
+        net.opt.use_int8_inference = false;
+        net.opt.use_bf16_storage = false;
+
+        // Register custom layers (SDPA, etc.) before loading param
+        sharp_layers::register_custom_layers(net);
 
         int ret = net.load_param(paramPath.c_str());
         if (ret != 0) {

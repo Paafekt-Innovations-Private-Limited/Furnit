@@ -50,6 +50,29 @@ class OnnxSharp private constructor(private val context: Context) {
         private const val INPUT_SIZE = 1536
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
+        private const val LOGIT_LUT_SIZE = 1024
+
+        // Pre-computed logit LUT: maps [0, 1] opacity to ln(p/(1-p))
+        private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
+            val p = (i.toFloat() / (LOGIT_LUT_SIZE - 1)).coerceIn(1e-4f, 1f - 1e-4f)
+            ln(p / (1f - p))
+        }
+
+        // Pre-computed natural log LUT for scale values: avoids ln() per vertex
+        private const val LN_LUT_SIZE = 2048
+        private const val LN_LUT_MIN = 0.001f
+        private const val LN_LUT_MAX = 5.0f
+        private val LN_LUT_SCALE = (LN_LUT_SIZE - 1).toFloat() / (LN_LUT_MAX - LN_LUT_MIN)
+        private val LN_LUT = FloatArray(LN_LUT_SIZE) { i ->
+            val x = LN_LUT_MIN + (LN_LUT_MAX - LN_LUT_MIN) * i / (LN_LUT_SIZE - 1)
+            ln(x)
+        }
+
+        private fun lnLut(x: Float): Float {
+            if (x <= LN_LUT_MIN) return LN_LUT[0]
+            if (x >= LN_LUT_MAX) return LN_LUT[LN_LUT_SIZE - 1]
+            return LN_LUT[((x - LN_LUT_MIN) * LN_LUT_SCALE).toInt()]
+        }
 
         @Volatile
         private var instance: OnnxSharp? = null
@@ -451,84 +474,117 @@ class OnnxSharp private constructor(private val context: Context) {
 
             // Write PLY using streaming - one gaussian at a time
             FileOutputStream(plyFile).use { fos ->
-                fos.write(header.toByteArray(Charsets.UTF_8))
+                val channel = fos.channel
 
-                // Single vertex buffer, reused for each gaussian
-                val vertexBuffer = ByteBuffer.allocate(BYTES_PER_VERTEX)
-                vertexBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                // Write header
+                val headerBytes = header.toByteArray(Charsets.UTF_8)
+                val headerBuffer = ByteBuffer.allocateDirect(headerBytes.size)
+                headerBuffer.put(headerBytes)
+                headerBuffer.flip()
+                channel.write(headerBuffer)
 
-                // Process each gaussian directly from tensor buffers
-                for (i in 0 until gaussianCount) {
-                    vertexBuffer.clear()
+                // DirectByteBuffer for zero-copy writes (batch 512 vertices ~127KB)
+                val batchSize = 512
+                val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
+                batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                val scaleBoost = 1.3f
+                val minScale = 0.001f
+                val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
 
-                    // Read position (stride-aware, like iOS posBase + j * posStrides[2])
-                    val posIdx = i * 3
-                    val x = posBuffer.get(posIdx)
-                    val y = -posBuffer.get(posIdx + 1)  // Flip Y
-                    val z = -posBuffer.get(posIdx + 2)  // Flip Z
+                // Pre-allocate local arrays for vectorized bulk reads
+                val localPositions = FloatArray(batchSize * 3)
+                val localScales = FloatArray(batchSize * 3)
+                val localRotations = FloatArray(batchSize * 4)
+                val localColors = FloatArray(batchSize * 3)
+                val localOpacity = FloatArray(batchSize)
 
-                    // Track bounds
-                    if (x < minX) minX = x
-                    if (x > maxX) maxX = x
-                    if (y < minY) minY = y
-                    if (y > maxY) maxY = y
-                    if (z < minZ) minZ = z
-                    if (z > maxZ) maxZ = z
+                val progressEvery = max(1, gaussianCount / 10)
+                var processed = 0
 
-                    // Write position
-                    vertexBuffer.putFloat(x)
-                    vertexBuffer.putFloat(y)
-                    vertexBuffer.putFloat(z)
+                while (processed < gaussianCount) {
+                    val currentBatch = minOf(batchSize, gaussianCount - processed)
 
-                    // Normals (unused)
-                    vertexBuffer.putFloat(0f)
-                    vertexBuffer.putFloat(0f)
-                    vertexBuffer.putFloat(0f)
+                    // Vectorized bulk reads
+                    posBuffer.position(processed * 3)
+                    posBuffer.get(localPositions, 0, currentBatch * 3)
+                    scaleBuffer.position(processed * 3)
+                    scaleBuffer.get(localScales, 0, currentBatch * 3)
+                    rotBuffer.position(processed * 4)
+                    rotBuffer.get(localRotations, 0, currentBatch * 4)
+                    colorBuffer.position(processed * 3)
+                    colorBuffer.get(localColors, 0, currentBatch * 3)
+                    opacityBuffer.position(processed)
+                    opacityBuffer.get(localOpacity, 0, currentBatch)
 
-                    // Read colors and convert to SH DC
-                    val colorIdx = i * 3
-                    val r = colorBuffer.get(colorIdx).coerceIn(0f, 1f)
-                    val g = colorBuffer.get(colorIdx + 1).coerceIn(0f, 1f)
-                    val b = colorBuffer.get(colorIdx + 2).coerceIn(0f, 1f)
-                    vertexBuffer.putFloat((r - 0.5f) / SH_C0)
-                    vertexBuffer.putFloat((g - 0.5f) / SH_C0)
-                    vertexBuffer.putFloat((b - 0.5f) / SH_C0)
+                    for (j in 0 until currentBatch) {
+                        val idx3 = j * 3
+                        val x = localPositions[idx3]
+                        val y = -localPositions[idx3 + 1]
+                        val z = -localPositions[idx3 + 2]
 
-                    // Higher order SH (45 zeros)
-                    for (j in 0 until 45) vertexBuffer.putFloat(0f)
+                        if (x < minX) minX = x
+                        if (x > maxX) maxX = x
+                        if (y < minY) minY = y
+                        if (y > maxY) maxY = y
+                        if (z < minZ) minZ = z
+                        if (z > maxZ) maxZ = z
 
-                    // Read opacity and convert to logit
-                    val rawOpacity = opacityBuffer.get(i).coerceIn(1e-4f, 1f - 1e-4f)
-                    vertexBuffer.putFloat(ln(rawOpacity / (1f - rawOpacity)))
+                        batchBuffer.putFloat(x)
+                        batchBuffer.putFloat(y)
+                        batchBuffer.putFloat(z)
 
-                    // Read scale (SHARP outputs raw scale, apply log transform)
-                    val scaleIdx = i * 3
-                    val scaleBoost = 1.3f
-                    val minScale = 0.001f
-                    vertexBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx) * scaleBoost, minScale)))
-                    vertexBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx + 1) * scaleBoost, minScale)))
-                    vertexBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx + 2) * scaleBoost, minScale)))
+                        // Normals (unused)
+                        batchBuffer.putFloat(0f)
+                        batchBuffer.putFloat(0f)
+                        batchBuffer.putFloat(0f)
 
-                    // Read rotation quaternion and normalize
-                    val rotIdx = i * 4
-                    val rw = rotBuffer.get(rotIdx)
-                    val rx = rotBuffer.get(rotIdx + 1)
-                    val ry = rotBuffer.get(rotIdx + 2)
-                    val rz = rotBuffer.get(rotIdx + 3)
-                    val mag = sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
-                    val invMag = if (mag > 1e-8f) 1f / mag else 1f
-                    vertexBuffer.putFloat(rw * invMag)
-                    vertexBuffer.putFloat(rx * invMag)
-                    vertexBuffer.putFloat(ry * invMag)
-                    vertexBuffer.putFloat(rz * invMag)
+                        // Colors -> SH DC
+                        val r = localColors[idx3].coerceIn(0f, 1f)
+                        val g = localColors[idx3 + 1].coerceIn(0f, 1f)
+                        val b = localColors[idx3 + 2].coerceIn(0f, 1f)
+                        batchBuffer.putFloat((r - 0.5f) / SH_C0)
+                        batchBuffer.putFloat((g - 0.5f) / SH_C0)
+                        batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                    // Write vertex to file
-                    fos.write(vertexBuffer.array())
+                        // Higher order SH (45 zeros)
+                        repeat(45) { batchBuffer.putFloat(0f) }
 
-                    // Progress updates every 10%
-                    if (i % (gaussianCount / 10) == 0) {
-                        val progress = 0.6f + (i.toFloat() / gaussianCount) * 0.3f
-                        progressCallback?.invoke(progress, "Writing PLY ($i/$gaussianCount)...")
+                        // Opacity -> logit via LUT
+                        val rawOpacity = localOpacity[j].coerceIn(0f, 1f)
+                        val lutIndex = (rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)
+                        batchBuffer.putFloat(LOGIT_LUT[lutIndex])
+
+                        // Scale -> log via LN LUT
+                        batchBuffer.putFloat(lnLut(max(localScales[idx3] * scaleBoost, minScale)))
+                        batchBuffer.putFloat(lnLut(max(localScales[idx3 + 1] * scaleBoost, minScale)))
+                        batchBuffer.putFloat(lnLut(max(localScales[idx3 + 2] * scaleBoost, minScale)))
+
+                        // Rotation -> normalize
+                        val idx4 = j * 4
+                        val rw = localRotations[idx4]
+                        val rx = localRotations[idx4 + 1]
+                        val ry = localRotations[idx4 + 2]
+                        val rz = localRotations[idx4 + 3]
+                        val mag = sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
+                        val invMag = if (mag > 1e-8f) 1f / mag else 1f
+                        batchBuffer.putFloat(rw * invMag)
+                        batchBuffer.putFloat(rx * invMag)
+                        batchBuffer.putFloat(ry * invMag)
+                        batchBuffer.putFloat(rz * invMag)
+                    }
+
+                    // Flush batch to disk
+                    batchBuffer.flip()
+                    batchBuffer.limit(currentBatch * BYTES_PER_VERTEX)
+                    while (batchBuffer.hasRemaining()) {
+                        channel.write(batchBuffer)
+                    }
+                    batchBuffer.clear()
+
+                    processed += currentBatch
+                    if (processed % progressEvery == 0 || processed == gaussianCount) {
+                        val progress = 0.6f + (processed.toFloat() / gaussianCount) * 0.3f
+                        progressCallback?.invoke(progress, "Writing PLY ($processed/$gaussianCount)...")
                     }
                 }
             }

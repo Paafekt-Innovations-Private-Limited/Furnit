@@ -92,11 +92,16 @@ dependencies {
     // ARCore
     implementation 'com.google.ar:core:1.37.0'
 
-    // TensorFlow Lite placeholder (for on-device ML)
-    implementation 'org.tensorflow:tensorflow-lite:2.12.0'
+    // TensorFlow Lite / LiteRT for on-device ML
+    implementation 'org.tensorflow:tensorflow-lite:2.17.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.17.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu-api:2.17.0'
     // ONNX Runtime Mobile for running exported ONNX models directly on Android
     // Version 1.18.0+ supports IR version 10 (required by newer ONNX exports)
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.18.0'
+
+    // ExecuTorch for on-device inference (MobileNetV3 classification + SHARP room gen)
+    implementation 'org.pytorch:executorch-android:1.0.1'
 
     // SceneView for 3D model rendering (GLB/GLTF)
     implementation 'io.github.sceneview:sceneview:2.0.3'

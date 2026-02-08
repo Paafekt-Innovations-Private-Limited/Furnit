@@ -407,7 +407,16 @@ private:
 };
 
 /**
- * pnnx.Expression - Outputs a constant value
+ * pnnx.Expression - Evaluates expressions from PNNX conversion.
+ *
+ * PNNX expand_expression converts most expressions to native BinaryOp/UnaryOp,
+ * but constant expressions (zero inputs) can't be expanded and remain as
+ * pnnx.Expression custom layers. The expression string is stored in the .pnnx.param
+ * but is NOT carried over to .ncnn.param, so zero-input constants fall back to 1e-6
+ * (the epsilon used for clamp_min in SHARP's logit computation).
+ *
+ * For multi-input expressions that weren't expanded (e.g. add(@0,@1)), we parse
+ * and evaluate the expression at runtime.
  */
 class PnnxExpression : public ncnn::Layer {
 public:
@@ -417,20 +426,270 @@ public:
     }
 
     virtual int load_param(const ncnn::ParamDict& pd) {
+        // PNNX may store the expression as param key 6 (string)
+        ncnn::Mat expr_mat = pd.get(6, ncnn::Mat());
+        if (!expr_mat.empty()) {
+            // Expression stored as string bytes in a Mat
+            expr_ = std::string((const char*)expr_mat.data, expr_mat.w);
+            LOGD("PnnxExpression: loaded expr='%s'", expr_.c_str());
+        }
+
+        // Try reading a constant float value from param key 0
+        constant_value_ = pd.get(0, 1e-6f);
+
         return 0;
     }
 
     virtual int forward(const std::vector<ncnn::Mat>& bottom_blobs,
                        std::vector<ncnn::Mat>& top_blobs,
                        const ncnn::Option& opt) const {
-        LOGD("PnnxExpression forward");
-        top_blobs[0].create(1, 4u, opt.blob_allocator);
-        if (top_blobs[0].empty()) {
-            LOGE("PnnxExpression: Failed to allocate output");
-            return -100;
+
+        // If we have an expression string, evaluate it
+        if (!expr_.empty()) {
+            return eval_expr(bottom_blobs, top_blobs, opt);
         }
-        ((float*)top_blobs[0].data)[0] = 1e-6f;
+
+        // Zero-input constant: used as epsilon in clamp_min for logit stability
+        if (bottom_blobs.empty()) {
+            top_blobs[0].create(1, 4u, opt.blob_allocator);
+            if (top_blobs[0].empty()) return -100;
+            ((float*)top_blobs[0].data)[0] = constant_value_;
+            return 0;
+        }
+
+        // Fallback: pass-through first input
+        if (bottom_blobs.size() == 1) {
+            top_blobs[0] = bottom_blobs[0].clone();
+            return top_blobs[0].empty() ? -100 : 0;
+        }
+
+        // Fallback: element-wise add for 2+ inputs
+        return eval_binary_add(bottom_blobs, top_blobs, opt);
+    }
+
+private:
+    std::string expr_;
+    float constant_value_ = 1e-6f;
+
+    int eval_binary_add(const std::vector<ncnn::Mat>& bottom_blobs,
+                        std::vector<ncnn::Mat>& top_blobs,
+                        const ncnn::Option& opt) const {
+        const ncnn::Mat& a = bottom_blobs[0];
+        top_blobs[0].create_like(a, opt.blob_allocator);
+        if (top_blobs[0].empty()) return -100;
+
+        size_t total = a.total();
+        const float* src_a = (const float*)a.data;
+        float* dst = (float*)top_blobs[0].data;
+        memcpy(dst, src_a, total * sizeof(float));
+
+        for (size_t b = 1; b < bottom_blobs.size(); b++) {
+            const float* src_b = (const float*)bottom_blobs[b].data;
+            for (size_t i = 0; i < total; i++) {
+                dst[i] += src_b[i];
+            }
+        }
         return 0;
+    }
+
+    // Simple recursive expression evaluator for PNNX expression strings
+    // Supports: add(@0,@1), mul(@0,@1), sub(@0,@1), div(@0,@1),
+    //           add(@0,add(@1,@2)), numeric literals, neg(@0), etc.
+    int eval_expr(const std::vector<ncnn::Mat>& bottom_blobs,
+                  std::vector<ncnn::Mat>& top_blobs,
+                  const ncnn::Option& opt) const {
+
+        LOGD("PnnxExpression: evaluating '%s' with %zu inputs", expr_.c_str(), bottom_blobs.size());
+
+        // Tokenize
+        std::vector<std::string> tokens;
+        tokenize(expr_, tokens);
+
+        if (tokens.empty()) {
+            LOGE("PnnxExpression: empty token list");
+            return -1;
+        }
+
+        // Evaluate using a recursive descent on token stream
+        size_t pos = 0;
+        ncnn::Mat result;
+        int ret = eval_tokens(tokens, pos, bottom_blobs, result, opt);
+        if (ret != 0) return ret;
+
+        top_blobs[0] = result;
+        return 0;
+    }
+
+    static void tokenize(const std::string& expr, std::vector<std::string>& tokens) {
+        std::string token;
+        for (size_t i = 0; i < expr.size(); i++) {
+            char c = expr[i];
+            if (c == '(' || c == ')' || c == ',') {
+                if (!token.empty()) {
+                    tokens.push_back(token);
+                    token.clear();
+                }
+                if (c != ',') {
+                    tokens.push_back(std::string(1, c));
+                }
+            } else if (c != ' ') {
+                token += c;
+            }
+        }
+        if (!token.empty()) {
+            tokens.push_back(token);
+        }
+    }
+
+    static bool is_literal(const std::string& s) {
+        if (s.empty()) return false;
+        char* end = nullptr;
+        strtof(s.c_str(), &end);
+        return end != s.c_str() && *end == '\0';
+    }
+
+    int eval_tokens(const std::vector<std::string>& tokens, size_t& pos,
+                    const std::vector<ncnn::Mat>& inputs,
+                    ncnn::Mat& result, const ncnn::Option& opt) const {
+        if (pos >= tokens.size()) return -1;
+
+        const std::string& tok = tokens[pos];
+
+        // Argument reference: @0, @1, ...
+        if (tok.size() >= 2 && tok[0] == '@') {
+            int idx = std::atoi(tok.c_str() + 1);
+            if (idx < 0 || idx >= (int)inputs.size()) {
+                LOGE("PnnxExpression: invalid input ref @%d (have %zu)", idx, inputs.size());
+                return -1;
+            }
+            result = inputs[idx];
+            pos++;
+            return 0;
+        }
+
+        // Numeric literal
+        if (is_literal(tok)) {
+            float val = strtof(tok.c_str(), nullptr);
+            result.create(1, 4u, opt.blob_allocator);
+            if (result.empty()) return -100;
+            ((float*)result.data)[0] = val;
+            pos++;
+            return 0;
+        }
+
+        // Function call: op(args...)
+        std::string op = tok;
+        pos++;
+
+        if (pos >= tokens.size() || tokens[pos] != "(") {
+            LOGE("PnnxExpression: expected '(' after '%s'", op.c_str());
+            return -1;
+        }
+        pos++; // skip '('
+
+        // Collect arguments
+        std::vector<ncnn::Mat> args;
+        while (pos < tokens.size() && tokens[pos] != ")") {
+            ncnn::Mat arg;
+            int ret = eval_tokens(tokens, pos, inputs, arg, opt);
+            if (ret != 0) return ret;
+            args.push_back(arg);
+        }
+
+        if (pos < tokens.size()) pos++; // skip ')'
+
+        return apply_op(op, args, result, opt);
+    }
+
+    int apply_op(const std::string& op, const std::vector<ncnn::Mat>& args,
+                 ncnn::Mat& result, const ncnn::Option& opt) const {
+
+        if (args.empty()) {
+            LOGE("PnnxExpression: op '%s' has no args", op.c_str());
+            return -1;
+        }
+
+        // Unary ops
+        if (args.size() == 1) {
+            const ncnn::Mat& a = args[0];
+            size_t total = a.total();
+            result.create_like(a, opt.blob_allocator);
+            if (result.empty()) return -100;
+            const float* sa = (const float*)a.data;
+            float* dst = (float*)result.data;
+
+            if (op == "neg") {
+                for (size_t i = 0; i < total; i++) dst[i] = -sa[i];
+            } else if (op == "abs") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::abs(sa[i]);
+            } else if (op == "sqrt") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::sqrt(sa[i]);
+            } else if (op == "exp") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::exp(sa[i]);
+            } else if (op == "log") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::log(sa[i]);
+            } else if (op == "sin") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::sin(sa[i]);
+            } else if (op == "cos") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::cos(sa[i]);
+            } else if (op == "floor") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::floor(sa[i]);
+            } else if (op == "ceil") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::ceil(sa[i]);
+            } else if (op == "sigmoid") {
+                for (size_t i = 0; i < total; i++) dst[i] = 1.0f / (1.0f + std::exp(-sa[i]));
+            } else if (op == "tanh") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::tanh(sa[i]);
+            } else if (op == "relu") {
+                for (size_t i = 0; i < total; i++) dst[i] = std::max(0.0f, sa[i]);
+            } else {
+                LOGE("PnnxExpression: unknown unary op '%s'", op.c_str());
+                return -1;
+            }
+            return 0;
+        }
+
+        // Binary ops
+        if (args.size() == 2) {
+            const ncnn::Mat& a = args[0];
+            const ncnn::Mat& b = args[1];
+
+            bool a_scalar = (a.total() == 1);
+            bool b_scalar = (b.total() == 1);
+            const ncnn::Mat& ref = a_scalar ? b : a;
+
+            result.create_like(ref, opt.blob_allocator);
+            if (result.empty()) return -100;
+
+            size_t total = ref.total();
+            float* dst = (float*)result.data;
+
+            float sa_val = a_scalar ? ((const float*)a.data)[0] : 0.0f;
+            float sb_val = b_scalar ? ((const float*)b.data)[0] : 0.0f;
+            const float* sa = (const float*)a.data;
+            const float* sb = (const float*)b.data;
+
+            for (size_t i = 0; i < total; i++) {
+                float va = a_scalar ? sa_val : sa[i];
+                float vb = b_scalar ? sb_val : sb[i];
+
+                if (op == "add") dst[i] = va + vb;
+                else if (op == "sub") dst[i] = va - vb;
+                else if (op == "mul") dst[i] = va * vb;
+                else if (op == "div") dst[i] = va / (vb + 1e-10f);
+                else if (op == "pow") dst[i] = std::pow(va, vb);
+                else if (op == "min") dst[i] = std::min(va, vb);
+                else if (op == "max") dst[i] = std::max(va, vb);
+                else {
+                    LOGE("PnnxExpression: unknown binary op '%s'", op.c_str());
+                    return -1;
+                }
+            }
+            return 0;
+        }
+
+        LOGE("PnnxExpression: op '%s' has unsupported arg count %zu", op.c_str(), args.size());
+        return -1;
     }
 };
 
