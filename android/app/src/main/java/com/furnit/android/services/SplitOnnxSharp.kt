@@ -3,6 +3,7 @@ package com.furnit.android.services
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import ai.onnxruntime.providers.NNAPIFlags
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
@@ -49,6 +50,29 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         private const val INPUT_SIZE = 1536
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
+        private const val LOGIT_LUT_SIZE = 1024
+
+        // Pre-computed logit LUT: maps [0, 1] opacity to ln(p/(1-p))
+        private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
+            val p = (i.toFloat() / (LOGIT_LUT_SIZE - 1)).coerceIn(1e-4f, 1f - 1e-4f)
+            ln(p / (1f - p))
+        }
+
+        // Pre-computed natural log LUT for scale values: avoids ln() per vertex
+        private const val LN_LUT_SIZE = 2048
+        private const val LN_LUT_MIN = 0.001f
+        private const val LN_LUT_MAX = 5.0f
+        private val LN_LUT_SCALE = (LN_LUT_SIZE - 1).toFloat() / (LN_LUT_MAX - LN_LUT_MIN)
+        private val LN_LUT = FloatArray(LN_LUT_SIZE) { i ->
+            val x = LN_LUT_MIN + (LN_LUT_MAX - LN_LUT_MIN) * i / (LN_LUT_SIZE - 1)
+            ln(x)
+        }
+
+        private fun lnLut(x: Float): Float {
+            if (x <= LN_LUT_MIN) return LN_LUT[0]
+            if (x >= LN_LUT_MAX) return LN_LUT[LN_LUT_SIZE - 1]
+            return LN_LUT[((x - LN_LUT_MIN) * LN_LUT_SCALE).toInt()]
+        }
 
         @Volatile
         private var instance: SplitOnnxSharp? = null
@@ -234,42 +258,23 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         var session: OrtSession? = null
 
         try {
-
-            val sessionOptions = OrtSession.SessionOptions().apply {
-                // Enable graph optimizations (BASIC is a good balance for mobile)
-                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
-
-                // Use available cores for parallelism (capped at 4 to balance memory)
-                val numCores = Runtime.getRuntime().availableProcessors()
-                val intraThreads = minOf(numCores, 4)
-                setIntraOpNumThreads(intraThreads)
-                setInterOpNumThreads(1)
-                Log.d(TAG, "Using $intraThreads intra-op threads (device has $numCores cores)")
-
-                // Memory pattern helps reuse buffers, arena allocator uses too much memory
-                setMemoryPatternOptimization(true)
-                setCPUArenaAllocator(false)  // Arena pre-allocates too much memory
-                setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-
-                try {
-                    // Keep mmap for the big split weights
-                    addConfigEntry("session.use_mmap", "1")
-                    // Keep prepacking enabled for GEMM performance
-                    addConfigEntry("session.enable_mem_reuse", "1")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not set session config: ${e.message}")
-                }
+            // Try NNAPI first, fall back to CPU if it fails
+            val createdSession = try {
+                createSessionWithNnapi(modelPath, partNumber)
+            } catch (e: Exception) {
+                Log.w(TAG, "NNAPI failed for part $partNumber, falling back to CPU: ${e.message}")
+                progressCallback?.invoke(baseProgress + 0.01f, "Part $partNumber/4: Using CPU fallback...")
+                createSessionCpuOnly(modelPath, partNumber)
             }
+            session = createdSession
 
-            progressCallback?.invoke(baseProgress + 0.02f, "Part $partNumber/4: Creating session...")
-            Log.d(TAG, "Creating session for part $partNumber...")
-            session = ortEnv.createSession(modelPath, sessionOptions)
+            progressCallback?.invoke(baseProgress + 0.02f, "Part $partNumber/4: Session ready...")
             Log.d(TAG, "Session created for part $partNumber")
             progressCallback?.invoke(baseProgress + 0.05f, "Part $partNumber/4: Session ready")
 
             // Get input/output names
-            val inputNames = session.inputNames.toList()
-            val outputNames = session.outputNames.toList()
+            val inputNames = createdSession.inputNames.toList()
+            val outputNames = createdSession.outputNames.toList()
             Log.d(TAG, "Part $partNumber - Inputs: $inputNames, Outputs: $outputNames")
 
             // Load input tensors from files
@@ -299,7 +304,7 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             Log.d(TAG, "Running Part $partNumber inference with ${inputTensors.size} inputs...")
             val inferStartTime = System.currentTimeMillis()
 
-            val outputs = session.run(inputTensors)
+            val outputs = createdSession.run(inputTensors)
 
             val inferTime = System.currentTimeMillis() - inferStartTime
             Log.d(TAG, "Part $partNumber inference completed in ${inferTime}ms")
@@ -334,6 +339,68 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             // Force GC after closing session
             System.gc()
         }
+    }
+
+    /**
+     * Create session with NNAPI acceleration (may throw if device doesn't support model ops).
+     */
+    private fun createSessionWithNnapi(modelPath: String, partNumber: Int): OrtSession {
+        val sessionOptions = OrtSession.SessionOptions().apply {
+            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
+
+            val numCores = Runtime.getRuntime().availableProcessors()
+            val intraThreads = minOf(numCores, 4)
+            setIntraOpNumThreads(intraThreads)
+            setInterOpNumThreads(1)
+            Log.d(TAG, "NNAPI: Using $intraThreads intra-op threads (device has $numCores cores)")
+
+            setMemoryPatternOptimization(true)
+            setCPUArenaAllocator(false)
+            setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
+
+            try {
+                addConfigEntry("session.use_mmap", "1")
+                addConfigEntry("session.enable_mem_reuse", "1")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not set session config: ${e.message}")
+            }
+
+            // NNAPI: let unsupported ops fall back to CPU (no CPU_DISABLED)
+            addNnapi(EnumSet.of(NNAPIFlags.USE_FP16))
+            Log.d(TAG, "NNAPI EP registered (FP16, CPU fallback allowed) for part $partNumber")
+        }
+
+        Log.d(TAG, "Creating NNAPI session for part $partNumber...")
+        return ortEnv.createSession(modelPath, sessionOptions)
+    }
+
+    /**
+     * Create session with CPU-only execution (fallback when NNAPI fails).
+     */
+    private fun createSessionCpuOnly(modelPath: String, partNumber: Int): OrtSession {
+        val sessionOptions = OrtSession.SessionOptions().apply {
+            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
+
+            val numCores = Runtime.getRuntime().availableProcessors()
+            val intraThreads = minOf(numCores, 4)
+            setIntraOpNumThreads(intraThreads)
+            setInterOpNumThreads(1)
+            Log.d(TAG, "CPU: Using $intraThreads intra-op threads")
+
+            setMemoryPatternOptimization(true)
+            setCPUArenaAllocator(false)  // Arena pre-allocates too much for 2.4GB model
+            setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
+
+            try {
+                addConfigEntry("session.use_mmap", "1")
+                addConfigEntry("session.enable_mem_reuse", "1")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not set session config: ${e.message}")
+            }
+        }
+
+        Log.d(TAG, "Creating CPU-only session for part $partNumber...")
+        return ortEnv.createSession(modelPath, sessionOptions)
     }
 
     /**
@@ -382,24 +449,23 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            // Write float data in chunks to avoid large heap allocation
+            // Write float data in chunks using DirectByteBuffer for zero-copy to disk
             val totalFloats = buffer.remaining()
             val chunkSize = 1024 * 1024  // 1M floats = 4MB per chunk
-            val chunkBuffer = ByteBuffer.allocate(chunkSize * 4)
+            val chunkBuffer = ByteBuffer.allocateDirect(chunkSize * 4)
             chunkBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val tempArray = FloatArray(chunkSize)
 
             var written = 0
             while (written < totalFloats) {
                 val floatsToWrite = minOf(chunkSize, totalFloats - written)
+
+                // Bulk read into local array, then bulk write to direct buffer
+                buffer.get(tempArray, 0, floatsToWrite)
                 chunkBuffer.clear()
-                chunkBuffer.limit(floatsToWrite * 4)
-
-                val floatView = chunkBuffer.asFloatBuffer()
-                for (i in 0 until floatsToWrite) {
-                    floatView.put(buffer.get())
-                }
-
+                chunkBuffer.asFloatBuffer().put(tempArray, 0, floatsToWrite)
                 chunkBuffer.position(0)
+                chunkBuffer.limit(floatsToWrite * 4)
                 channel.write(chunkBuffer)
                 written += floatsToWrite
             }
@@ -426,24 +492,23 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            // Write float data in chunks to avoid large heap allocation
+            // Write float data in chunks using DirectByteBuffer for zero-copy to disk
             val totalFloats = floatBuffer.remaining()
             val chunkSize = 1024 * 1024  // 1M floats = 4MB per chunk
-            val chunkBuffer = ByteBuffer.allocate(chunkSize * 4)
+            val chunkBuffer = ByteBuffer.allocateDirect(chunkSize * 4)
             chunkBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val tempArray = FloatArray(chunkSize)
 
             var written = 0
             while (written < totalFloats) {
                 val floatsToWrite = minOf(chunkSize, totalFloats - written)
+
+                // Bulk read into local array, then bulk write to direct buffer
+                floatBuffer.get(tempArray, 0, floatsToWrite)
                 chunkBuffer.clear()
-                chunkBuffer.limit(floatsToWrite * 4)
-
-                val floatView = chunkBuffer.asFloatBuffer()
-                for (i in 0 until floatsToWrite) {
-                    floatView.put(floatBuffer.get())
-                }
-
+                chunkBuffer.asFloatBuffer().put(tempArray, 0, floatsToWrite)
                 chunkBuffer.position(0)
+                chunkBuffer.limit(floatsToWrite * 4)
                 channel.write(chunkBuffer)
                 written += floatsToWrite
             }
@@ -565,87 +630,115 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             var minZ = Float.MAX_VALUE
             var maxZ = -Float.MAX_VALUE
 
-            // Write PLY with batched I/O for performance
+            // Write PLY with DirectByteBuffer + FileChannel for zero-copy writes
             val header = buildPlyHeader(gaussianCount)
-            FileOutputStream(plyFile).buffered(256 * 1024).use { fos ->
-                fos.write(header.toByteArray(Charsets.UTF_8))
+            FileOutputStream(plyFile).use { fos ->
+                val channel = fos.channel
 
-                // Batch 500 vertices per write (~124KB batches)
-                val batchSize = 500
-                val batchBuffer = ByteBuffer.allocate(BYTES_PER_VERTEX * batchSize)
+                // Write header
+                val headerBytes = header.toByteArray(Charsets.UTF_8)
+                val headerBuffer = ByteBuffer.allocateDirect(headerBytes.size)
+                headerBuffer.put(headerBytes)
+                headerBuffer.flip()
+                channel.write(headerBuffer)
+
+                // DirectByteBuffer for zero-copy writes (batch 512 vertices ~127KB)
+                val batchSize = 512
+                val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
                 batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
                 val scaleBoost = 1.3f
                 val minScale = 0.001f
+                val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
 
-                var batchCount = 0
-                for (i in 0 until gaussianCount) {
-                    // Position
-                    val posIdx = i * 3
-                    val x = posBuffer.get(posIdx)
-                    val y = -posBuffer.get(posIdx + 1)
-                    val z = -posBuffer.get(posIdx + 2)
+                // Pre-allocate local arrays for vectorized bulk reads
+                val localPositions = FloatArray(batchSize * 3)
+                val localScales = FloatArray(batchSize * 3)
+                val localRotations = FloatArray(batchSize * 4)
+                val localColors = FloatArray(batchSize * 3)
+                val localOpacity = FloatArray(batchSize)
 
-                    if (x < minX) minX = x
-                    if (x > maxX) maxX = x
-                    if (y < minY) minY = y
-                    if (y > maxY) maxY = y
-                    if (z < minZ) minZ = z
-                    if (z > maxZ) maxZ = z
+                var processed = 0
+                while (processed < gaussianCount) {
+                    val currentBatch = minOf(batchSize, gaussianCount - processed)
 
-                    batchBuffer.putFloat(x)
-                    batchBuffer.putFloat(y)
-                    batchBuffer.putFloat(z)
+                    // Vectorized bulk reads: one buffer call per attribute
+                    posBuffer.position(processed * 3)
+                    posBuffer.get(localPositions, 0, currentBatch * 3)
+                    scaleBuffer.position(processed * 3)
+                    scaleBuffer.get(localScales, 0, currentBatch * 3)
+                    rotBuffer.position(processed * 4)
+                    rotBuffer.get(localRotations, 0, currentBatch * 4)
+                    colorBuffer.position(processed * 3)
+                    colorBuffer.get(localColors, 0, currentBatch * 3)
+                    opacityBuffer.position(processed)
+                    opacityBuffer.get(localOpacity, 0, currentBatch)
 
-                    // Normals
-                    batchBuffer.putFloat(0f)
-                    batchBuffer.putFloat(0f)
-                    batchBuffer.putFloat(0f)
+                    // Process from local arrays (no per-element buffer/JNI overhead)
+                    for (j in 0 until currentBatch) {
+                        val idx3 = j * 3
+                        val x = localPositions[idx3]
+                        val y = -localPositions[idx3 + 1]
+                        val z = -localPositions[idx3 + 2]
 
-                    // Colors -> SH DC
-                    val colorIdx = i * 3
-                    val r = colorBuffer.get(colorIdx).coerceIn(0f, 1f)
-                    val g = colorBuffer.get(colorIdx + 1).coerceIn(0f, 1f)
-                    val b = colorBuffer.get(colorIdx + 2).coerceIn(0f, 1f)
-                    batchBuffer.putFloat((r - 0.5f) / SH_C0)
-                    batchBuffer.putFloat((g - 0.5f) / SH_C0)
-                    batchBuffer.putFloat((b - 0.5f) / SH_C0)
+                        if (x < minX) minX = x
+                        if (x > maxX) maxX = x
+                        if (y < minY) minY = y
+                        if (y > maxY) maxY = y
+                        if (z < minZ) minZ = z
+                        if (z > maxZ) maxZ = z
 
-                    // Higher order SH (45 zeros)
-                    for (j in 0 until 45) batchBuffer.putFloat(0f)
+                        batchBuffer.putFloat(x)
+                        batchBuffer.putFloat(y)
+                        batchBuffer.putFloat(z)
 
-                    // Opacity -> logit
-                    val rawOpacity = opacityBuffer.get(i).coerceIn(1e-4f, 1f - 1e-4f)
-                    batchBuffer.putFloat(ln(rawOpacity / (1f - rawOpacity)))
+                        // Normals
+                        batchBuffer.putFloat(0f)
+                        batchBuffer.putFloat(0f)
+                        batchBuffer.putFloat(0f)
 
-                    // Scale -> log
-                    val scaleIdx = i * 3
-                    batchBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx) * scaleBoost, minScale)))
-                    batchBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx + 1) * scaleBoost, minScale)))
-                    batchBuffer.putFloat(ln(max(scaleBuffer.get(scaleIdx + 2) * scaleBoost, minScale)))
+                        // Colors -> SH DC
+                        val r = localColors[idx3].coerceIn(0f, 1f)
+                        val g = localColors[idx3 + 1].coerceIn(0f, 1f)
+                        val b = localColors[idx3 + 2].coerceIn(0f, 1f)
+                        batchBuffer.putFloat((r - 0.5f) / SH_C0)
+                        batchBuffer.putFloat((g - 0.5f) / SH_C0)
+                        batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                    // Rotation -> normalize
-                    val rotIdx = i * 4
-                    val rw = rotBuffer.get(rotIdx)
-                    val rx = rotBuffer.get(rotIdx + 1)
-                    val ry = rotBuffer.get(rotIdx + 2)
-                    val rz = rotBuffer.get(rotIdx + 3)
-                    val mag = sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
-                    val invMag = if (mag > 1e-8f) 1f / mag else 1f
-                    batchBuffer.putFloat(rw * invMag)
-                    batchBuffer.putFloat(rx * invMag)
-                    batchBuffer.putFloat(ry * invMag)
-                    batchBuffer.putFloat(rz * invMag)
+                        // Higher order SH (45 zeros)
+                        repeat(45) { batchBuffer.putFloat(0f) }
 
-                    batchCount++
-                    if (batchCount >= batchSize) {
-                        fos.write(batchBuffer.array(), 0, batchBuffer.position())
-                        batchBuffer.clear()
-                        batchCount = 0
+                        // Opacity -> logit via LUT
+                        val rawOpacity = localOpacity[j].coerceIn(0f, 1f)
+                        val lutIndex = (rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)
+                        batchBuffer.putFloat(LOGIT_LUT[lutIndex])
+
+                        // Scale -> log via LN LUT (avoids ln() per vertex)
+                        batchBuffer.putFloat(lnLut(max(localScales[idx3] * scaleBoost, minScale)))
+                        batchBuffer.putFloat(lnLut(max(localScales[idx3 + 1] * scaleBoost, minScale)))
+                        batchBuffer.putFloat(lnLut(max(localScales[idx3 + 2] * scaleBoost, minScale)))
+
+                        // Rotation -> normalize
+                        val idx4 = j * 4
+                        val rw = localRotations[idx4]
+                        val rx = localRotations[idx4 + 1]
+                        val ry = localRotations[idx4 + 2]
+                        val rz = localRotations[idx4 + 3]
+                        val mag = sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
+                        val invMag = if (mag > 1e-8f) 1f / mag else 1f
+                        batchBuffer.putFloat(rw * invMag)
+                        batchBuffer.putFloat(rx * invMag)
+                        batchBuffer.putFloat(ry * invMag)
+                        batchBuffer.putFloat(rz * invMag)
                     }
-                }
-                // Write remaining
-                if (batchCount > 0) {
-                    fos.write(batchBuffer.array(), 0, batchBuffer.position())
+
+                    // Flush batch to disk via zero-copy channel write
+                    batchBuffer.flip()
+                    batchBuffer.limit(currentBatch * BYTES_PER_VERTEX)
+                    while (batchBuffer.hasRemaining()) {
+                        channel.write(batchBuffer)
+                    }
+                    batchBuffer.clear()
+                    processed += currentBatch
                 }
             }
 

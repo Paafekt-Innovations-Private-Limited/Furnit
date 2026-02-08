@@ -1230,6 +1230,10 @@ struct SinglePhotoRoomView: View {
                 navigateToSplatViewer = false
             }
             // Dimensions are now managed by @AppStorage
+
+            // Pre-load SHARP model so "Setting things up..." progress bar shows.
+            // Needed after releaseResources() clears the model on previous use.
+            sharpService.ensureModelLoaded()
         }
         // ✅ Watch for boundary changes - log when boundaries are updated
         .onChange(of: adjustedBoundaries) { oldValue, newValue in

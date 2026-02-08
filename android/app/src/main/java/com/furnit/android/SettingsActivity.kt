@@ -213,37 +213,105 @@ class SettingsActivity : AppCompatActivity() {
         debugLayout.addView(debugSwitch)
         developerSection.addView(debugLayout)
 
-        // NCNN Backend toggle (experimental)
-        val ncnnLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        // Inference Backend selection (3-way radio group)
+        val backendTitle = TextView(this).apply {
+            text = "Inference Backend"
+            textSize = 16f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#333333"))
             setPadding(0, 16, 0, 8)
         }
+        developerSection.addView(backendTitle)
 
-        val ncnnLabel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        // Migrate old boolean pref to new string pref
+        val currentBackend = migrateBackendPref()
+
+        val backendRadioGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
         }
-        val ncnnTitle = TextView(this).apply {
-            text = "Use NCNN Backend"
-            textSize = 16f
+
+        val onnxRadioId = View.generateViewId()
+        val ncnnRadioId = View.generateViewId()
+        val executorchRadioId = View.generateViewId()
+        val litertRadioId = View.generateViewId()
+
+        val onnxRadio = RadioButton(this).apply {
+            id = onnxRadioId
+            text = "ONNX (default)"
             setTextColor(Color.parseColor("#333333"))
         }
-        val ncnnDesc = TextView(this).apply {
+        val onnxRadioDesc = TextView(this).apply {
+            text = "Standard inference with ONNX Runtime"
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+        }
+
+        val ncnnRadio = RadioButton(this).apply {
+            id = ncnnRadioId
+            text = "NCNN"
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val ncnnRadioDesc = TextView(this).apply {
             text = "Faster room generation (requires NCNN model files)"
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
-        }
-        ncnnLabel.addView(ncnnTitle)
-        ncnnLabel.addView(ncnnDesc)
-
-        val ncnnSwitch = createStyledSwitch(prefs.getBoolean("use_ncnn_backend", false)) { isChecked ->
-            prefs.edit().putBoolean("use_ncnn_backend", isChecked).apply()
+            setPadding(48, 0, 0, 8)
         }
 
-        ncnnLayout.addView(ncnnLabel)
-        ncnnLayout.addView(ncnnSwitch)
-        developerSection.addView(ncnnLayout)
+        val executorchRadio = RadioButton(this).apply {
+            id = executorchRadioId
+            text = "ExecuTorch"
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val executorchRadioDesc = TextView(this).apply {
+            text = "PyTorch on-device inference (camera classification)"
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+        }
+
+        val litertRadio = RadioButton(this).apply {
+            id = litertRadioId
+            text = "LiteRT"
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val litertRadioDesc = TextView(this).apply {
+            text = "TFLite FP16 + GPU delegate (best quality, GPU-accelerated)"
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+        }
+
+        backendRadioGroup.addView(onnxRadio)
+        backendRadioGroup.addView(onnxRadioDesc)
+        backendRadioGroup.addView(ncnnRadio)
+        backendRadioGroup.addView(ncnnRadioDesc)
+        backendRadioGroup.addView(executorchRadio)
+        backendRadioGroup.addView(executorchRadioDesc)
+        backendRadioGroup.addView(litertRadio)
+        backendRadioGroup.addView(litertRadioDesc)
+
+        when (currentBackend) {
+            "onnx" -> backendRadioGroup.check(onnxRadioId)
+            "ncnn" -> backendRadioGroup.check(ncnnRadioId)
+            "executorch" -> backendRadioGroup.check(executorchRadioId)
+            "litert" -> backendRadioGroup.check(litertRadioId)
+            else -> backendRadioGroup.check(onnxRadioId)
+        }
+
+        backendRadioGroup.setOnCheckedChangeListener { _, checkedId ->
+            val backend = when (checkedId) {
+                onnxRadioId -> "onnx"
+                ncnnRadioId -> "ncnn"
+                executorchRadioId -> "executorch"
+                litertRadioId -> "litert"
+                else -> "onnx"
+            }
+            prefs.edit().putString("inference_backend", backend).apply()
+        }
+
+        developerSection.addView(backendRadioGroup)
 
         // Developer section footer
         val developerFooter = TextView(this).apply {
@@ -373,6 +441,21 @@ class SettingsActivity : AppCompatActivity() {
         } catch (e: Exception) {
             // Ignore if no browser available
         }
+    }
+
+    private fun migrateBackendPref(): String {
+        // If new pref exists, use it
+        val existingBackend = prefs.getString("inference_backend", null)
+        if (existingBackend != null) return existingBackend
+
+        // Migrate old boolean pref
+        val useNcnn = prefs.getBoolean("use_ncnn_backend", false)
+        val backend = if (useNcnn) "ncnn" else "onnx"
+        prefs.edit()
+            .putString("inference_backend", backend)
+            .remove("use_ncnn_backend")
+            .apply()
+        return backend
     }
 
     private fun createStyledSwitch(checked: Boolean, onChanged: (Boolean) -> Unit): SwitchCompat {

@@ -45,13 +45,17 @@ class SharpService private constructor(private val context: Context) {
         }
     }
 
-    // Try NCNN first, fallback to Split ONNX (memory-efficient), then regular ONNX
+    // Backend instances (lazy init)
     private val ncnnSharp by lazy { NcnnSharp(context) }
     private val splitOnnxSharp by lazy { SplitOnnxSharp.getInstance(context) }
     private val onnxSharp by lazy { OnnxSharp.getInstance(context) }
+    private val executorchSharp by lazy { ExecutorchSharp.getInstance(context) }
+    private val litertSharp by lazy { LiteRTSharp.getInstance(context) }
     private var isInitialized = false
     private var useOnnx = false
     private var useSplitOnnx = false
+    private var useExecutorch = false
+    private var useLiteRT = false
 
     data class GenerationResult(
         val plyFile: File,
@@ -68,9 +72,9 @@ class SharpService private constructor(private val context: Context) {
     }
 
     /**
-     * Check if SHARP model is available (NCNN component, NCNN full, Split ONNX, or regular ONNX)
+     * Check if SHARP model is available (ExecuTorch, NCNN component, NCNN full, Split ONNX, or regular ONNX)
      */
-    fun isModelReady(): Boolean = ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady() || splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()
+    fun isModelReady(): Boolean = litertSharp.isModelReady() || executorchSharp.isModelReady() || ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady() || splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()
 
     /**
      * Initialize model - respects user preference for NCNN vs ONNX
@@ -80,9 +84,23 @@ class SharpService private constructor(private val context: Context) {
         if (isInitialized) return true
 
         val prefs = context.getSharedPreferences("furnit_prefs", android.content.Context.MODE_PRIVATE)
-        val forceNcnn = prefs.getBoolean("use_ncnn_backend", false)
 
-        if (forceNcnn) {
+        // Read new 3-way pref with backward compat migration
+        val inferenceBackend: String
+        val existingBackend = prefs.getString("inference_backend", null)
+        if (existingBackend != null) {
+            inferenceBackend = existingBackend
+        } else {
+            // Migrate old boolean pref
+            val useNcnn = prefs.getBoolean("use_ncnn_backend", false)
+            inferenceBackend = if (useNcnn) "ncnn" else "onnx"
+            prefs.edit()
+                .putString("inference_backend", inferenceBackend)
+                .remove("use_ncnn_backend")
+                .apply()
+        }
+
+        if (inferenceBackend == "ncnn") {
             // User explicitly wants NCNN - no fallback to ONNX
             Log.d(TAG, "NCNN backend selected in settings")
             // Try component mode first (works correctly), then full model
@@ -116,8 +134,52 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        // NCNN switch is OFF - use ONNX (skip NCNN entirely)
-        Log.d(TAG, "ONNX backend selected in settings")
+        if (inferenceBackend == "litert") {
+            // User explicitly wants LiteRT (TFLite FP16 + GPU)
+            Log.d(TAG, "LiteRT backend selected in settings")
+            if (litertSharp.isModelReady()) {
+                if (litertSharp.initialize()) {
+                    isInitialized = true
+                    useOnnx = false
+                    useSplitOnnx = false
+                    useExecutorch = false
+                    useLiteRT = true
+                    Log.d(TAG, "LiteRT SHARP initialized successfully")
+                    return true
+                } else {
+                    Log.e(TAG, "LiteRT SHARP init failed")
+                    return false
+                }
+            } else {
+                Log.e(TAG, "LiteRT SHARP model not found. Push .tflite files to device.")
+                return false
+            }
+        }
+
+        if (inferenceBackend == "executorch") {
+            // User explicitly wants ExecuTorch
+            Log.d(TAG, "ExecuTorch backend selected in settings")
+            if (executorchSharp.isModelReady()) {
+                if (executorchSharp.initialize()) {
+                    isInitialized = true
+                    useOnnx = false
+                    useSplitOnnx = false
+                    useExecutorch = true
+                    useLiteRT = false
+                    Log.d(TAG, "ExecuTorch SHARP initialized successfully")
+                    return true
+                } else {
+                    Log.e(TAG, "ExecuTorch SHARP init failed")
+                    return false
+                }
+            } else {
+                Log.e(TAG, "ExecuTorch SHARP model not found. Push sharp.pte to device.")
+                return false
+            }
+        }
+
+        // ONNX selected - use ONNX for room generation
+        Log.d(TAG, "Backend: $inferenceBackend - using ONNX for room generation")
 
         // Try Split ONNX first (memory-efficient 4-part model)
         if (splitOnnxSharp.isModelReady()) {
@@ -169,7 +231,61 @@ class SharpService private constructor(private val context: Context) {
                     }
                 }
 
-                if (useSplitOnnx) {
+                if (useLiteRT) {
+                    // Use LiteRT backend (TFLite FP16 + GPU)
+                    callback.onProgress(0.2f, "Running SHARP (LiteRT GPU)...")
+                    val result = kotlinx.coroutines.runBlocking {
+                        litertSharp.inferStreaming(image) { progress, message ->
+                            callback.onProgress(progress, message)
+                        }
+                    }
+
+                    if (result == null) {
+                        callback.onError("SHARP LiteRT inference failed")
+                        return@Thread
+                    }
+
+                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (LiteRT)")
+                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_litert")
+
+                    callback.onProgress(1.0f, "Done!")
+                    callback.onComplete(GenerationResult(
+                        plyFile = result.plyFile,
+                        classicPlyFile = result.classicPlyFile,
+                        roomWidth = result.roomWidth,
+                        roomHeight = result.roomHeight,
+                        roomDepth = result.roomDepth
+                    ))
+                } else if (useExecutorch) {
+                    // Use ExecuTorch backend
+                    callback.onProgress(0.2f, "Running SHARP (ExecuTorch)...")
+                    val result = kotlinx.coroutines.runBlocking {
+                        executorchSharp.inferStreaming(image) { progress, message ->
+                            callback.onProgress(progress, message)
+                        }
+                    }
+
+                    if (result == null) {
+                        callback.onError("SHARP ExecuTorch inference failed")
+                        return@Thread
+                    }
+
+                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch)")
+                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch")
+
+                    callback.onProgress(1.0f, "Done!")
+                    callback.onComplete(GenerationResult(
+                        plyFile = result.plyFile,
+                        classicPlyFile = result.classicPlyFile,
+                        roomWidth = result.roomWidth,
+                        roomHeight = result.roomHeight,
+                        roomDepth = result.roomDepth
+                    ))
+                } else if (useSplitOnnx) {
                     // Use Split ONNX backend (memory-efficient 4-part model)
                     callback.onProgress(0.2f, "Running SHARP (Split ONNX - memory efficient)...")
                     val result = kotlinx.coroutines.runBlocking {
@@ -384,10 +500,11 @@ class SharpService private constructor(private val context: Context) {
      * Release resources
      */
     fun release() {
-        if (useOnnx) {
-            onnxSharp.release()
-        } else {
-            ncnnSharp.release()
+        when {
+            useLiteRT -> litertSharp.release()
+            useExecutorch -> executorchSharp.release()
+            useOnnx -> onnxSharp.release()
+            else -> ncnnSharp.release()
         }
         isInitialized = false
     }

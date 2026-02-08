@@ -229,6 +229,18 @@ class SHARPService: ObservableObject {
     /// Whether model is currently loading
     @Published var isLoadingModel: Bool = false
 
+    /// Ensure model is loaded — call from view's onAppear to re-trigger loading
+    /// after releaseResources() has cleared the model.
+    func ensureModelLoaded() {
+        guard model == nil && !isLoadingModel else { return }
+        Task {
+            await checkResourceAvailability()
+            if resourcesAvailable {
+                await loadModel()
+            }
+        }
+    }
+
     /// Load the SHARP CoreML model
     private func loadModel() async {
         logDebug("SHARP: Loading CoreML model...")
