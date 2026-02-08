@@ -206,6 +206,7 @@ ml_experiments/
 
 # NCNN model files (stored on Google Drive)
 android/sharp_ncnn_models/
+android/sharp_ncnn_models_backup/
 
 # Temporary export/conversion scripts
 android/export_*.py
