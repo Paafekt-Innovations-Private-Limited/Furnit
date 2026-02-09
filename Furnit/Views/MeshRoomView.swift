@@ -34,7 +34,7 @@ struct MeshRoomView: View {
 
     // Brain mode (furniture detection)
     @State private var showingFurnitureFit = false
-    @State private var mlModel: MLModel? = nil
+    @ObservedObject private var yoloeService = YOLOEModelService.shared
 
     // WebView reference for GLTF export
     @State private var webView: WKWebView?
@@ -118,7 +118,7 @@ struct MeshRoomView: View {
                 FurnitureFitUIView(
                     capturedImage: .constant(nil),
                     roomImage: nil,
-                    mlModel: mlModel,
+                    mlModel: yoloeService.model,
                     processInterval: 0.07,
                     active: true,
                     lockedOrientation: photoOrientation,
@@ -160,7 +160,7 @@ struct MeshRoomView: View {
             }
         }
         .onAppear {
-            loadMLModel()
+            yoloeService.ensureModelLoaded()
             // Lock orientation based on photo orientation
             if photoOrientation == .landscape {
                 OrientationLockManager.shared.lockToLandscape()
@@ -371,30 +371,7 @@ struct MeshRoomView: View {
         logDebug("✅ [MeshRoomView] Screenshot saved to Photos")
     }
 
-    // MARK: - Load ML Model for FurnitureFit
-    private func loadMLModel() {
-        guard mlModel == nil else { return }
-
-        let candidateNames = [
-            ("yoloe-11l-seg-pf", "mlmodelc"),
-            ("yoloe-11l-seg-pf", "mlpackage"),
-        ]
-
-        for (name, ext) in candidateNames {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                do {
-                    let config = MLModelConfiguration()
-                    config.computeUnits = .cpuOnly
-                    let model = try MLModel(contentsOf: url, configuration: config)
-                    self.mlModel = model
-                    logDebug("✅ [MeshRoomView] Loaded MLModel '\(name).\(ext)'")
-                    break
-                } catch {
-                    logDebug("❌ [MeshRoomView] Failed to load \(name).\(ext): \(error)")
-                }
-            }
-        }
-    }
+    // MARK: - YOLOE model loaded via YOLOEModelService (ODR)
 }
 
 // MARK: - WebGL Mesh View (UIViewRepresentable)

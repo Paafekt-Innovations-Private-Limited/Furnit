@@ -52,6 +52,7 @@ class SharpService private constructor(private val context: Context) {
     private val executorchSharp by lazy { ExecutorchSharp.getInstance(context) }
     private val litertSharp by lazy { LiteRTSharp.getInstance(context) }
     private var isInitialized = false
+    private var currentBackendId: String? = null  // Track which backend was initialized
     private var useOnnx = false
     private var useSplitOnnx = false
     private var useExecutorch = false
@@ -87,8 +88,6 @@ class SharpService private constructor(private val context: Context) {
      * When NCNN is selected in settings, only use NCNN (no fallback)
      */
     suspend fun initialize(): Boolean {
-        if (isInitialized) return true
-
         val prefs = context.getSharedPreferences("furnit_prefs", android.content.Context.MODE_PRIVATE)
 
         // Read new 3-way pref with backward compat migration
@@ -110,6 +109,13 @@ class SharpService private constructor(private val context: Context) {
         if (inferenceBackend != requestedBackend) {
             Log.w(TAG, "Backend '$requestedBackend' disabled; falling back to '$inferenceBackend'")
             prefs.edit().putString("inference_backend", inferenceBackend).apply()
+        }
+
+        // Re-initialize if the user switched backends in Settings
+        if (isInitialized && currentBackendId == inferenceBackend) return true
+        if (isInitialized && currentBackendId != inferenceBackend) {
+            Log.d(TAG, "Backend changed from '$currentBackendId' to '$inferenceBackend' — re-initializing")
+            release()
         }
 
         // Reset runtime flags before selecting a backend.
@@ -155,16 +161,16 @@ class SharpService private constructor(private val context: Context) {
                 if (litertSharp.initialize()) {
                     isInitialized = true
                     useLiteRT = true
+                    currentBackendId = "litert"
                     Log.d(TAG, "LiteRT SHARP initialized successfully")
                     return true
                 } else {
-                    Log.e(TAG, "LiteRT SHARP init failed")
-                    return false
+                    Log.w(TAG, "LiteRT SHARP init failed — falling back to ONNX")
                 }
             } else {
-                Log.e(TAG, "LiteRT SHARP model not found. Push .tflite files to device.")
-                return false
+                Log.w(TAG, "LiteRT model files not found — falling back to ONNX")
             }
+            // Fall through to ONNX below instead of returning false
         }
 
         if (inferenceBackend == "executorch") {
@@ -186,7 +192,7 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        // ONNX selected - use ONNX for room generation
+        // ONNX selected (or fallback from LiteRT) - use ONNX for room generation
         Log.d(TAG, "Backend: $inferenceBackend - using ONNX for room generation")
 
         // Try Split ONNX first (memory-efficient 4-part model)
@@ -194,6 +200,7 @@ class SharpService private constructor(private val context: Context) {
             Log.d(TAG, "Split ONNX model ready - using memory-efficient 4-part inference")
             isInitialized = true
             useSplitOnnx = true
+            currentBackendId = inferenceBackend
             return true
         } else {
             Log.w(TAG, "Split ONNX not ready, missing: ${splitOnnxSharp.getMissingFiles()}")
@@ -205,6 +212,7 @@ class SharpService private constructor(private val context: Context) {
                 if (onnxSharp.initialize()) {
                     isInitialized = true
                     useOnnx = true
+                    currentBackendId = inferenceBackend
                     Log.d(TAG, "ONNX with mmap initialized successfully")
                     return true
                 }
@@ -227,14 +235,12 @@ class SharpService private constructor(private val context: Context) {
             try {
                 callback.onProgress(0.1f, "Preparing...")
 
-                // Initialize if needed
-                if (!isInitialized) {
-                    callback.onProgress(0.15f, "Loading SHARP model...")
-                    val initialized = kotlinx.coroutines.runBlocking { initialize() }
-                    if (!initialized) {
-                        callback.onError("SHARP model not available. Push model files to device.")
-                        return@Thread
-                    }
+                // Initialize (or re-initialize if backend preference changed)
+                callback.onProgress(0.15f, "Loading SHARP model...")
+                val initialized = kotlinx.coroutines.runBlocking { initialize() }
+                if (!initialized) {
+                    callback.onError("SHARP model not available. Push model files to device.")
+                    return@Thread
                 }
 
                 if (useLiteRT) {
@@ -513,5 +519,6 @@ class SharpService private constructor(private val context: Context) {
             else -> ncnnSharp.release()
         }
         isInitialized = false
+        currentBackendId = null
     }
 }

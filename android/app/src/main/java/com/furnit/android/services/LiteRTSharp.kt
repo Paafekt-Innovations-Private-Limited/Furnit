@@ -6,6 +6,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.gpu.CompatibilityList
 import org.tensorflow.lite.gpu.GpuDelegate
 import java.io.File
 import java.io.FileOutputStream
@@ -199,28 +200,50 @@ class LiteRTSharp private constructor(private val context: Context) {
     /**
      * Create a TFLite Interpreter. For large models (>500MB), use CPU-only with
      * XNNPACK to avoid OOM from GPU delegate copying weights to GPU memory.
+     *
+     * GPU delegate is only attempted if CompatibilityList reports support AND the
+     * model is under 500MB. If interpreter creation with GPU fails (native crash /
+     * unsupported ops), we transparently retry CPU-only.
      */
     private fun createInterpreter(modelFile: File): Interpreter {
         val modelSizeMB = modelFile.length() / 1024 / 1024
-        val options = Interpreter.Options()
-        options.setNumThreads(Runtime.getRuntime().availableProcessors())
+        val numThreads = Runtime.getRuntime().availableProcessors()
 
+        // Try GPU delegate for small-enough models on supported devices
         if (modelSizeMB < 500) {
+            var gpuDelegate: GpuDelegate? = null
             try {
-                val gpuOptions = GpuDelegate.Options()
-                gpuOptions.setPrecisionLossAllowed(true)
-                val gpuDelegate = GpuDelegate(gpuOptions)
-                options.addDelegate(gpuDelegate)
-                Log.d(TAG, "GPU delegate enabled for ${modelFile.name}")
+                val compatList = CompatibilityList()
+                if (compatList.isDelegateSupportedOnThisDevice) {
+                    val gpuOptions = compatList.bestOptionsForThisDevice
+                    gpuDelegate = GpuDelegate(gpuOptions)
+                    val gpuInterpreterOptions = Interpreter.Options().apply {
+                        setNumThreads(numThreads)
+                        addDelegate(gpuDelegate)
+                    }
+                    val interpreter = Interpreter(modelFile, gpuInterpreterOptions)
+                    Log.d(TAG, "GPU delegate enabled for ${modelFile.name}")
+                    return interpreter
+                } else {
+                    Log.w(TAG, "GPU delegate not supported on this device — using CPU")
+                }
             } catch (e: Exception) {
-                Log.w(TAG, "GPU delegate failed, using CPU: ${e.message}")
+                Log.w(TAG, "GPU delegate failed for ${modelFile.name}, falling back to CPU: ${e.message}")
+                try { gpuDelegate?.close() } catch (_: Exception) {}
+            } catch (e: Error) {
+                // Catches UnsatisfiedLinkError, native crashes surfaced as java.lang.Error
+                Log.w(TAG, "GPU delegate native error for ${modelFile.name}, falling back to CPU: ${e.message}")
+                try { gpuDelegate?.close() } catch (_: Exception) {}
             }
-        } else {
-            options.setAllowFp16PrecisionForFp32(true)
-            Log.d(TAG, "CPU-only mode for large model (${modelSizeMB}MB)")
         }
 
-        return Interpreter(modelFile, options)
+        // CPU-only fallback (or forced for large models)
+        val cpuOptions = Interpreter.Options().apply {
+            setNumThreads(numThreads)
+            setAllowFp16PrecisionForFp32(true)
+        }
+        Log.d(TAG, "CPU mode for ${modelFile.name} (${modelSizeMB}MB)")
+        return Interpreter(modelFile, cpuOptions)
     }
 
     private fun getMemoryInfo(): String {
@@ -246,10 +269,19 @@ class LiteRTSharp private constructor(private val context: Context) {
             return@withContext null
         }
 
-        if (useSplitMode) {
-            inferSplitMode(bitmap, progressCallback)
-        } else {
-            inferSingleMode(bitmap, progressCallback)
+        try {
+            if (useSplitMode) {
+                inferSplitMode(bitmap, progressCallback)
+            } else {
+                inferSingleMode(bitmap, progressCallback)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "LiteRT inference failed: ${e.message}", e)
+            return@withContext null
+        } catch (e: OutOfMemoryError) {
+            Log.e(TAG, "LiteRT OOM during inference: ${e.message}")
+            System.gc()
+            return@withContext null
         }
     }
 

@@ -183,7 +183,7 @@ struct GLBRoomView: View {
     @State private var isLoading = true
     @State private var error: String? = nil
     @State private var showingFurnitureFit = false
-    @State private var mlModel: MLModel? = nil
+    @ObservedObject private var yoloeService = YOLOEModelService.shared
 
     var body: some View {
         ZStack {
@@ -238,7 +238,7 @@ struct GLBRoomView: View {
                 FurnitureFitUIView(
                     capturedImage: .constant(nil),
                     roomImage: nil,
-                    mlModel: mlModel,
+                    mlModel: yoloeService.model,
                     processInterval: 0.07,
                     active: true,
                     lockedOrientation: photoOrientation,
@@ -283,7 +283,7 @@ struct GLBRoomView: View {
             }
         }
         .onAppear {
-            loadMLModel()
+            yoloeService.ensureModelLoaded()
             // Lock orientation based on photo orientation
             if photoOrientation == .landscape {
                 OrientationLockManager.shared.lockToLandscape()
@@ -305,30 +305,7 @@ struct GLBRoomView: View {
         return "3D Room"
     }
 
-    // MARK: - Load ML Model for FurnitureFit
-    private func loadMLModel() {
-        guard mlModel == nil else { return }
-
-        let candidateNames = [
-            ("yoloe-11l-seg-pf", "mlmodelc"),
-            ("yoloe-11l-seg-pf", "mlpackage"),
-        ]
-
-        for (name, ext) in candidateNames {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                do {
-                    let config = MLModelConfiguration()
-                    config.computeUnits = .cpuOnly
-                    let model = try MLModel(contentsOf: url, configuration: config)
-                    self.mlModel = model
-                    logDebug("✅ [GLBRoomView] Loaded MLModel '\(name).\(ext)'")
-                    break
-                } catch {
-                    logDebug("❌ [GLBRoomView] Failed to load \(name).\(ext): \(error)")
-                }
-            }
-        }
-    }
+    // MARK: - YOLOE model loaded via YOLOEModelService (ODR)
 
     // MARK: - Portrait Controls
     private var portraitControls: some View {

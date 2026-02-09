@@ -14,7 +14,7 @@ object BackendConfig {
      */
     const val ENABLE_NCNN: Boolean = false
     const val ENABLE_EXECUTORCH: Boolean = false
-    const val ENABLE_LITERT: Boolean = false
+    const val ENABLE_LITERT: Boolean = true
 
     fun isEnabled(backendId: String): Boolean {
         return when (backendId) {
