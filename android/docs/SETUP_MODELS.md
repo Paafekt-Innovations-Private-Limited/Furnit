@@ -25,7 +25,15 @@ This guide explains how to set up the AI room generation models after checking o
 
 **Total: ~2.5GB**
 
-### Optional: NCNN Models (Faster, if available)
+### YOLOE Segmentation Model (No ADB push needed)
+
+The YOLOE segmentation ONNX is packaged in the app’s `assets/` and is copied to cache on first use. Your friend does **not** need to `adb push` any YOLOE files.
+
+### Optional: Other Backends (Currently Disabled)
+
+The repo contains wrappers for NCNN, ExecuTorch, and LiteRT, but the app is configured to run **ONNX-only** by default. That means you do **not** need to push any NCNN/ExecuTorch/LiteRT model files unless you explicitly enable those backends in code.
+
+#### Optional: NCNN Models
 
 | File | Description |
 |------|-------------|
@@ -39,6 +47,12 @@ This guide explains how to set up the AI room generation models after checking o
 ```bash
 cd android
 ./gradlew installDebug
+```
+
+Note: This repo is configured to build **ONNX-only by default**. To also build the native NCNN libraries, run:
+```bash
+cd android
+./gradlew installDebug -Pfurnit.enableNative=true
 ```
 
 ### Step 2: Get Model Files
@@ -73,6 +87,12 @@ adb push sharp_part4.onnx.data /storage/emulated/0/Android/data/com.furnit.andro
 Or push all at once from a folder:
 ```bash
 adb push /path/to/models/* /storage/emulated/0/Android/data/com.furnit.android/files/models/
+```
+
+Or use the helper script (pushes only SHARP ONNX files):
+```bash
+cd android
+./push_sharp_onnx_models.sh /path/to/models
 ```
 
 ### Step 4: Verify Installation
@@ -119,7 +139,7 @@ In the app: **Settings > Developer**
 
 | Setting | Description |
 |---------|-------------|
-| Use NCNN Backend | Force NCNN only (fails if NCNN models missing) |
+| Inference Backend | ONNX is supported; others are disabled by default |
 | Debug Mode | Show additional logs |
 
 ## File Locations on Device

@@ -74,7 +74,13 @@ class SharpService private constructor(private val context: Context) {
     /**
      * Check if SHARP model is available (ExecuTorch, NCNN component, NCNN full, Split ONNX, or regular ONNX)
      */
-    fun isModelReady(): Boolean = litertSharp.isModelReady() || executorchSharp.isModelReady() || ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady() || splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()
+    fun isModelReady(): Boolean {
+        if (splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()) return true
+        if (BackendConfig.ENABLE_NCNN && (ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady())) return true
+        if (BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady()) return true
+        if (BackendConfig.ENABLE_LITERT && litertSharp.isModelReady()) return true
+        return false
+    }
 
     /**
      * Initialize model - respects user preference for NCNN vs ONNX
@@ -86,19 +92,31 @@ class SharpService private constructor(private val context: Context) {
         val prefs = context.getSharedPreferences("furnit_prefs", android.content.Context.MODE_PRIVATE)
 
         // Read new 3-way pref with backward compat migration
-        val inferenceBackend: String
+        val requestedBackend: String
         val existingBackend = prefs.getString("inference_backend", null)
         if (existingBackend != null) {
-            inferenceBackend = existingBackend
+            requestedBackend = existingBackend
         } else {
             // Migrate old boolean pref
             val useNcnn = prefs.getBoolean("use_ncnn_backend", false)
-            inferenceBackend = if (useNcnn) "ncnn" else "onnx"
+            requestedBackend = if (useNcnn) "ncnn" else "onnx"
             prefs.edit()
-                .putString("inference_backend", inferenceBackend)
+                .putString("inference_backend", requestedBackend)
                 .remove("use_ncnn_backend")
                 .apply()
         }
+
+        val inferenceBackend = BackendConfig.normalize(requestedBackend)
+        if (inferenceBackend != requestedBackend) {
+            Log.w(TAG, "Backend '$requestedBackend' disabled; falling back to '$inferenceBackend'")
+            prefs.edit().putString("inference_backend", inferenceBackend).apply()
+        }
+
+        // Reset runtime flags before selecting a backend.
+        useOnnx = false
+        useSplitOnnx = false
+        useExecutorch = false
+        useLiteRT = false
 
         if (inferenceBackend == "ncnn") {
             // User explicitly wants NCNN - no fallback to ONNX
@@ -108,8 +126,6 @@ class SharpService private constructor(private val context: Context) {
                 try {
                     ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = true)
                     isInitialized = true
-                    useOnnx = false
-                    useSplitOnnx = false
                     Log.d(TAG, "NCNN component mode initialized successfully")
                     return true
                 } catch (e: Exception) {
@@ -120,8 +136,6 @@ class SharpService private constructor(private val context: Context) {
                 try {
                     ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = false)
                     isInitialized = true
-                    useOnnx = false
-                    useSplitOnnx = false
                     Log.d(TAG, "NCNN full model initialized successfully")
                     return true
                 } catch (e: Exception) {
@@ -140,9 +154,6 @@ class SharpService private constructor(private val context: Context) {
             if (litertSharp.isModelReady()) {
                 if (litertSharp.initialize()) {
                     isInitialized = true
-                    useOnnx = false
-                    useSplitOnnx = false
-                    useExecutorch = false
                     useLiteRT = true
                     Log.d(TAG, "LiteRT SHARP initialized successfully")
                     return true
@@ -162,10 +173,7 @@ class SharpService private constructor(private val context: Context) {
             if (executorchSharp.isModelReady()) {
                 if (executorchSharp.initialize()) {
                     isInitialized = true
-                    useOnnx = false
-                    useSplitOnnx = false
                     useExecutorch = true
-                    useLiteRT = false
                     Log.d(TAG, "ExecuTorch SHARP initialized successfully")
                     return true
                 } else {
@@ -185,7 +193,6 @@ class SharpService private constructor(private val context: Context) {
         if (splitOnnxSharp.isModelReady()) {
             Log.d(TAG, "Split ONNX model ready - using memory-efficient 4-part inference")
             isInitialized = true
-            useOnnx = false
             useSplitOnnx = true
             return true
         } else {
@@ -198,7 +205,6 @@ class SharpService private constructor(private val context: Context) {
                 if (onnxSharp.initialize()) {
                     isInitialized = true
                     useOnnx = true
-                    useSplitOnnx = false
                     Log.d(TAG, "ONNX with mmap initialized successfully")
                     return true
                 }

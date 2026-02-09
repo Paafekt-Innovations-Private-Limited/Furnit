@@ -157,7 +157,9 @@ adb push sharp.ncnn.bin /storage/emulated/0/Android/data/com.furnit.android/file
 
 ### Enable NCNN Backend
 
-In the app: **Settings > Developer > Use NCNN Backend** = ON
+In the app: **Settings > Developer > Inference Backend** = **NCNN**
+
+Note: NCNN is disabled by default in code (`BackendConfig.ENABLE_NCNN = false`).
 
 ## Performance Characteristics
 

@@ -3,7 +3,6 @@ package com.furnit.android.services
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
-import ai.onnxruntime.providers.NNAPIFlags
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
@@ -258,23 +257,38 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         var session: OrtSession? = null
 
         try {
-            // Try NNAPI first, fall back to CPU if it fails
-            val createdSession = try {
-                createSessionWithNnapi(modelPath, partNumber)
-            } catch (e: Exception) {
-                Log.w(TAG, "NNAPI failed for part $partNumber, falling back to CPU: ${e.message}")
-                progressCallback?.invoke(baseProgress + 0.01f, "Part $partNumber/4: Using CPU fallback...")
-                createSessionCpuOnly(modelPath, partNumber)
-            }
-            session = createdSession
+            // IMPORTANT: NNAPI can hang for very large models on some devices during session creation.
+            // Prefer CPU-only for reliability (especially for first-run / friend setup).
+            val sessionOptions = OrtSession.SessionOptions().apply {
+                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
 
-            progressCallback?.invoke(baseProgress + 0.02f, "Part $partNumber/4: Session ready...")
+                val numCores = Runtime.getRuntime().availableProcessors()
+                val intraThreads = minOf(numCores, 4)
+                setIntraOpNumThreads(intraThreads)
+                setInterOpNumThreads(1)
+                Log.d(TAG, "CPU: Using $intraThreads intra-op threads (device has $numCores cores)")
+
+                setMemoryPatternOptimization(true)
+                setCPUArenaAllocator(false)
+                setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
+
+                try {
+                    addConfigEntry("session.use_mmap", "1")
+                    addConfigEntry("session.enable_mem_reuse", "1")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set session config: ${e.message}")
+                }
+            }
+
+            progressCallback?.invoke(baseProgress + 0.02f, "Part $partNumber/4: Creating session...")
+            Log.d(TAG, "Creating CPU-only session for part $partNumber...")
+            session = ortEnv.createSession(modelPath, sessionOptions)
             Log.d(TAG, "Session created for part $partNumber")
             progressCallback?.invoke(baseProgress + 0.05f, "Part $partNumber/4: Session ready")
 
             // Get input/output names
-            val inputNames = createdSession.inputNames.toList()
-            val outputNames = createdSession.outputNames.toList()
+            val inputNames = session.inputNames.toList()
+            val outputNames = session.outputNames.toList()
             Log.d(TAG, "Part $partNumber - Inputs: $inputNames, Outputs: $outputNames")
 
             // Load input tensors from files
@@ -304,7 +318,7 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             Log.d(TAG, "Running Part $partNumber inference with ${inputTensors.size} inputs...")
             val inferStartTime = System.currentTimeMillis()
 
-            val outputs = createdSession.run(inputTensors)
+            val outputs = session.run(inputTensors)
 
             val inferTime = System.currentTimeMillis() - inferStartTime
             Log.d(TAG, "Part $partNumber inference completed in ${inferTime}ms")
@@ -339,68 +353,6 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             // Force GC after closing session
             System.gc()
         }
-    }
-
-    /**
-     * Create session with NNAPI acceleration (may throw if device doesn't support model ops).
-     */
-    private fun createSessionWithNnapi(modelPath: String, partNumber: Int): OrtSession {
-        val sessionOptions = OrtSession.SessionOptions().apply {
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
-
-            val numCores = Runtime.getRuntime().availableProcessors()
-            val intraThreads = minOf(numCores, 4)
-            setIntraOpNumThreads(intraThreads)
-            setInterOpNumThreads(1)
-            Log.d(TAG, "NNAPI: Using $intraThreads intra-op threads (device has $numCores cores)")
-
-            setMemoryPatternOptimization(true)
-            setCPUArenaAllocator(false)
-            setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-
-            try {
-                addConfigEntry("session.use_mmap", "1")
-                addConfigEntry("session.enable_mem_reuse", "1")
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not set session config: ${e.message}")
-            }
-
-            // NNAPI: let unsupported ops fall back to CPU (no CPU_DISABLED)
-            addNnapi(EnumSet.of(NNAPIFlags.USE_FP16))
-            Log.d(TAG, "NNAPI EP registered (FP16, CPU fallback allowed) for part $partNumber")
-        }
-
-        Log.d(TAG, "Creating NNAPI session for part $partNumber...")
-        return ortEnv.createSession(modelPath, sessionOptions)
-    }
-
-    /**
-     * Create session with CPU-only execution (fallback when NNAPI fails).
-     */
-    private fun createSessionCpuOnly(modelPath: String, partNumber: Int): OrtSession {
-        val sessionOptions = OrtSession.SessionOptions().apply {
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
-
-            val numCores = Runtime.getRuntime().availableProcessors()
-            val intraThreads = minOf(numCores, 4)
-            setIntraOpNumThreads(intraThreads)
-            setInterOpNumThreads(1)
-            Log.d(TAG, "CPU: Using $intraThreads intra-op threads")
-
-            setMemoryPatternOptimization(true)
-            setCPUArenaAllocator(false)  // Arena pre-allocates too much for 2.4GB model
-            setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-
-            try {
-                addConfigEntry("session.use_mmap", "1")
-                addConfigEntry("session.enable_mem_reuse", "1")
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not set session config: ${e.message}")
-            }
-        }
-
-        Log.d(TAG, "Creating CPU-only session for part $partNumber...")
-        return ortEnv.createSession(modelPath, sessionOptions)
     }
 
     /**

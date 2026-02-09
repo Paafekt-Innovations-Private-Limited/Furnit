@@ -17,6 +17,7 @@ import androidx.appcompat.widget.SwitchCompat
 import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
 import com.furnit.android.models.QualitySettings
+import com.furnit.android.services.BackendConfig
 import com.furnit.android.utils.DebugLogger
 
 class SettingsActivity : AppCompatActivity() {
@@ -249,38 +250,59 @@ class SettingsActivity : AppCompatActivity() {
 
         val ncnnRadio = RadioButton(this).apply {
             id = ncnnRadioId
-            text = "NCNN"
+            text = if (BackendConfig.ENABLE_NCNN) "NCNN" else "NCNN (disabled)"
             setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_NCNN
+            alpha = if (BackendConfig.ENABLE_NCNN) 1.0f else 0.5f
         }
         val ncnnRadioDesc = TextView(this).apply {
-            text = "Faster room generation (requires NCNN model files)"
+            text = if (BackendConfig.ENABLE_NCNN) {
+                "Faster room generation (requires NCNN model files)"
+            } else {
+                "Disabled in this build (wrappers kept, ONNX only)"
+            }
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
             setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_NCNN) 1.0f else 0.5f
         }
 
         val executorchRadio = RadioButton(this).apply {
             id = executorchRadioId
-            text = "ExecuTorch"
+            text = if (BackendConfig.ENABLE_EXECUTORCH) "ExecuTorch" else "ExecuTorch (disabled)"
             setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_EXECUTORCH
+            alpha = if (BackendConfig.ENABLE_EXECUTORCH) 1.0f else 0.5f
         }
         val executorchRadioDesc = TextView(this).apply {
-            text = "PyTorch on-device inference (camera classification)"
+            text = if (BackendConfig.ENABLE_EXECUTORCH) {
+                "PyTorch on-device inference (camera classification)"
+            } else {
+                "Disabled in this build (wrappers kept, ONNX only)"
+            }
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
             setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_EXECUTORCH) 1.0f else 0.5f
         }
 
         val litertRadio = RadioButton(this).apply {
             id = litertRadioId
-            text = "LiteRT"
+            text = if (BackendConfig.ENABLE_LITERT) "LiteRT" else "LiteRT (disabled)"
             setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_LITERT
+            alpha = if (BackendConfig.ENABLE_LITERT) 1.0f else 0.5f
         }
         val litertRadioDesc = TextView(this).apply {
-            text = "TFLite FP16 + GPU delegate (best quality, GPU-accelerated)"
+            text = if (BackendConfig.ENABLE_LITERT) {
+                "TFLite FP16 + GPU delegate (best quality, GPU-accelerated)"
+            } else {
+                "Disabled in this build (wrappers kept, ONNX only)"
+            }
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
             setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_LITERT) 1.0f else 0.5f
         }
 
         backendRadioGroup.addView(onnxRadio)
@@ -446,11 +468,17 @@ class SettingsActivity : AppCompatActivity() {
     private fun migrateBackendPref(): String {
         // If new pref exists, use it
         val existingBackend = prefs.getString("inference_backend", null)
-        if (existingBackend != null) return existingBackend
+        if (existingBackend != null) {
+            val normalized = BackendConfig.normalize(existingBackend)
+            if (normalized != existingBackend) {
+                prefs.edit().putString("inference_backend", normalized).apply()
+            }
+            return normalized
+        }
 
         // Migrate old boolean pref
         val useNcnn = prefs.getBoolean("use_ncnn_backend", false)
-        val backend = if (useNcnn) "ncnn" else "onnx"
+        val backend = BackendConfig.normalize(if (useNcnn) "ncnn" else "onnx")
         prefs.edit()
             .putString("inference_backend", backend)
             .remove("use_ncnn_backend")

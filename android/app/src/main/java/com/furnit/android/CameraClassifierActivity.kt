@@ -23,6 +23,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import com.furnit.android.services.BackendConfig
 import com.furnit.android.services.ExecutorchClassifier
 import com.furnit.android.services.FrameAnalyzer
 import java.util.concurrent.ExecutorService
@@ -60,6 +61,12 @@ class CameraClassifierActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (!BackendConfig.ENABLE_EXECUTORCH) {
+            Toast.makeText(this, "ExecuTorch is disabled in this build (ONNX-only).", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
         classifier = ExecutorchClassifier(this)

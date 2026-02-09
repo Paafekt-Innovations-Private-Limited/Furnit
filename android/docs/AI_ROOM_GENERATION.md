@@ -40,7 +40,9 @@ The Furnit Android app generates 3D Gaussian Splat rooms from a single 2D image 
 
 ## Model Backends
 
-### 1. NCNN Backend (Recommended - Fastest)
+Only **ONNX Runtime** is required to work and to be deployed to devices. The repo contains wrappers for NCNN, ExecuTorch, and LiteRT, but those are **disabled by default** to avoid build/runtime churn. If you enable them, you are responsible for providing their model files and validating them on-device.
+
+### 1. NCNN Backend (Optional - Disabled by default)
 
 **Files Required:**
 - `sharp.ncnn.param` - Model graph definition
@@ -62,7 +64,7 @@ adb push sharp.ncnn.param /storage/emulated/0/Android/data/com.furnit.android/fi
 adb push sharp.ncnn.bin /storage/emulated/0/Android/data/com.furnit.android/files/models/
 ```
 
-### 2. Split ONNX Backend (Memory Efficient)
+### 2. Split ONNX Backend (Memory Efficient, Recommended)
 
 **Files Required (4 parts, ~2.5GB total):**
 | File | Size | Description |
@@ -111,27 +113,23 @@ adb push sharp_part4.onnx.data /storage/emulated/0/Android/data/com.furnit.andro
 ```kotlin
 // In SharpService.kt
 
-if (Settings: "Use NCNN Backend" is ON) {
-    // Use NCNN only, no fallback
-    if (NCNN models exist) → Use NCNN
-    else → Fail with error
-} else {
-    // Default: Try in order with fallback
-    if (NCNN models exist) → Use NCNN
-    else if (Split ONNX models exist) → Use Split ONNX
-    else if (Regular ONNX exists) → Use Regular ONNX
-    else → Fail
-}
+// "inference_backend" preference is normalized to a supported backend.
+// With default config, non-ONNX backends are forced to ONNX.
+//
+// When ONNX is selected:
+//   if (Split ONNX models exist) → Use Split ONNX
+//   else if (Regular ONNX exists) → Use Regular ONNX
+//   else → Fail
 ```
 
 ## Settings
 
-**Location:** Settings → Developer → "Use NCNN Backend"
+**Location:** Settings → Developer → "Inference Backend"
 
 | Setting | Behavior |
 |---------|----------|
-| OFF (default) | Auto-select best available backend with fallback |
-| ON | Force NCNN only, fail if not available |
+| ONNX (default) | Uses Split ONNX if present, else Regular ONNX |
+| NCNN / ExecuTorch / LiteRT | Present in repo but disabled by default |
 
 ## Output Format
 

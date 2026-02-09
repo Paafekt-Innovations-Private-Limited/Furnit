@@ -95,12 +95,12 @@ class SHARPService: ObservableObject {
             logDebug("SHARP: Metal not available, using CPU fallback")
         }
 
-        // Check ODR availability and preload if available
+        // Always preload model — loadModel() handles ODR download internally
         Task {
-            await checkResourceAvailability()
-            if resourcesAvailable {
-                await loadModel()
-            }
+            // #region agent log
+            AppLogger.error("[SHARP-DBG] init: isRunningFromXcode=\(isRunningFromXcode), calling loadModel directly [HypB-FIX]")
+            // #endregion
+            await loadModel()
         }
     }
 
@@ -118,6 +118,9 @@ class SHARPService: ObservableObject {
 
     /// Check if SHARP model resources are available locally
     func checkResourceAvailability() async {
+        // #region agent log
+        AppLogger.error("[SHARP-DBG] checkResourceAvailability: entry, isRunningFromXcode=\(isRunningFromXcode) [HypC]")
+        // #endregion
         // When running from Xcode, model is bundled - skip ODR
         if isRunningFromXcode {
             logDebug("SHARP: Running from Xcode - model bundled locally, skipping ODR")
@@ -129,6 +132,9 @@ class SHARPService: ObservableObject {
 
         // Check if resources are already downloaded
         let available = Bundle.main.preservationPriority(forTag: Self.sharpModelTag) > 0
+        // #region agent log
+        AppLogger.error("[SHARP-DBG] checkResourceAvailability: preservationPriority>0=\(available) [HypC]")
+        // #endregion
         logDebug("SHARP: ODR availability check - preservationPriority > 0: \(available)")
 
         // Also check by attempting conditional begin access
@@ -137,6 +143,9 @@ class SHARPService: ObservableObject {
 
         let conditionallyAvailable = await request.conditionallyBeginAccessingResources()
         resourcesAvailable = conditionallyAvailable
+        // #region agent log
+        AppLogger.error("[SHARP-DBG] checkResourceAvailability: conditionallyAvailable=\(conditionallyAvailable), resourcesAvailable=\(resourcesAvailable) [HypC]")
+        // #endregion
         logDebug("SHARP: ODR conditionallyBeginAccessingResources: \(conditionallyAvailable)")
 
         if conditionallyAvailable {
@@ -232,17 +241,35 @@ class SHARPService: ObservableObject {
     /// Ensure model is loaded — call from view's onAppear to re-trigger loading
     /// after releaseResources() has cleared the model.
     func ensureModelLoaded() {
-        guard model == nil && !isLoadingModel else { return }
+        // #region agent log
+        AppLogger.error("[SHARP-DBG] ensureModelLoaded: entry, model==nil:\(model == nil), isLoadingModel:\(isLoadingModel) [HypA-FIX]")
+        // #endregion
+        guard model == nil && !isLoadingModel else {
+            // #region agent log
+            AppLogger.error("[SHARP-DBG] ensureModelLoaded: GUARD — model already loaded or loading in progress [HypA-FIX]")
+            // #endregion
+            return
+        }
         Task {
-            await checkResourceAvailability()
-            if resourcesAvailable {
-                await loadModel()
-            }
+            // #region agent log
+            AppLogger.error("[SHARP-DBG] ensureModelLoaded: calling loadModel directly (no resourcesAvailable gate) [HypA-FIX]")
+            // #endregion
+            await loadModel()
         }
     }
 
     /// Load the SHARP CoreML model
     private func loadModel() async {
+        // Prevent double-loading if another Task already started
+        guard !isLoadingModel && model == nil else {
+            // #region agent log
+            AppLogger.error("[SHARP-DBG] loadModel: SKIPPED — already loading or model exists (isLoadingModel=\(isLoadingModel), model!=nil:\(model != nil))")
+            // #endregion
+            return
+        }
+        // #region agent log
+        AppLogger.error("[SHARP-DBG] loadModel: ENTRY — isLoadingModel will be set to true [HypE]")
+        // #endregion
         logDebug("SHARP: Loading CoreML model...")
 
         isLoadingModel = true
@@ -263,22 +290,23 @@ class SHARPService: ObservableObject {
             return
         }
 
-        // Ensure ODR resources are available
-        if !resourcesAvailable {
-            logDebug("SHARP: Resources not available, downloading...")
+        // Best-effort ODR download — model may already be compiled into the bundle
+        if !resourcesAvailable && !isRunningFromXcode {
+            // #region agent log
+            AppLogger.error("[SHARP-DBG] loadModel: ODR resources not available, attempting download (best-effort) [HypA-FIX]")
+            // #endregion
             do {
                 let downloaded = try await downloadResourcesIfNeeded()
-                if !downloaded {
-                    logDebug("SHARP: Failed to download resources")
-                    isLoadingModel = false
-                    statusMessage = "Download required"
-                    return
+                if downloaded {
+                    logDebug("SHARP: ODR download succeeded")
+                } else {
+                    logDebug("SHARP: ODR download returned false — will try bundle load anyway")
                 }
             } catch {
-                logDebug("SHARP: ODR download error: \(error)")
-                isLoadingModel = false
-                statusMessage = "Download failed"
-                return
+                // #region agent log
+                AppLogger.error("[SHARP-DBG] loadModel: ODR download failed: \(error) — proceeding to try bundle load [HypA-FIX]")
+                // #endregion
+                logDebug("SHARP: ODR download failed (\(error)) — model may be in app bundle, proceeding...")
             }
         }
 
@@ -300,10 +328,16 @@ class SHARPService: ObservableObject {
             statusMessage = "Ready!"
 
         } catch {
+            // #region agent log
+            AppLogger.error("[SHARP-DBG] loadModel: FAILED with error: \(error) [HypE]")
+            // #endregion
             logDebug("SHARP: Failed to load model: \(error)")
             statusMessage = "Couldn't get ready"
         }
 
+        // #region agent log
+        AppLogger.error("[SHARP-DBG] loadModel: EXIT — isLoadingModel will be set to false, model loaded: \(model != nil) [HypE]")
+        // #endregion
         isLoadingModel = false
     }
 
