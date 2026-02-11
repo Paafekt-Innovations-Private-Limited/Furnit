@@ -33,6 +33,27 @@ The YOLOE segmentation ONNX is packaged in the app’s `assets/` and is copied t
 
 The repo contains wrappers for NCNN, ExecuTorch, and LiteRT, but the app is configured to run **ONNX-only** by default. That means you do **not** need to push any NCNN/ExecuTorch/LiteRT model files unless you explicitly enable those backends in code.
 
+#### Optional: LiteRT (TFLite) Models
+
+LiteRT requires `.tflite` model files on the device. There are two options:
+
+1. **Split LiteRT (recommended; more memory-stable)**:
+   - `sharp_part1_fp16.tflite`
+   - `sharp_part2_fp16.tflite`
+   - `sharp_part3_fp16.tflite`
+   - `sharp_part4_fp16.tflite`
+
+2. **Single LiteRT (NOT recommended; often killed by Android LMK)**:
+   - `vit_gaussian_fp16.tflite` (can be ~1.2GB+)
+
+The repo includes export scripts (requires the SHARP `.pt` checkpoint and SHARP source repo):
+
+```bash
+cd android
+python export_sharp_litert_split.py --weights /path/to/sharp_checkpoint.pt
+./push_sharp_litert_models.sh sharp_litert_models
+```
+
 #### Optional: NCNN Models
 
 | File | Description |

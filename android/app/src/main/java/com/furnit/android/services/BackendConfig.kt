@@ -15,6 +15,19 @@ object BackendConfig {
     const val ENABLE_NCNN: Boolean = false
     const val ENABLE_EXECUTORCH: Boolean = false
     const val ENABLE_LITERT: Boolean = true
+    /**
+     * GPU delegate can hard-crash (SIGSEGV) on some devices/drivers during interpreter
+     * creation. Keep OFF by default; enable only after device validation.
+     */
+    const val ENABLE_LITERT_GPU: Boolean = false
+    /**
+     * NNAPI acceleration (Pixel TPU / vendor NN).
+     * Disabled: SHARP FP16 models use ops not supported by NNAPI on current devices
+     * (ANEURALNETWORKS_BAD_DATA). Enable only after validating on target hardware.
+     * When disabled, TFLite uses XNNPACK (ARM NEON SIMD) — the Android equivalent
+     * of iOS Accelerate/BLAS for CPU inference.
+     */
+    const val ENABLE_LITERT_NNAPI: Boolean = false
 
     fun isEnabled(backendId: String): Boolean {
         return when (backendId) {

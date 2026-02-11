@@ -155,7 +155,7 @@ class SharpService private constructor(private val context: Context) {
         }
 
         if (inferenceBackend == "litert") {
-            // User explicitly wants LiteRT (TFLite FP16 + GPU)
+            // User explicitly wants LiteRT (TFLite FP16). No fallback to ONNX.
             Log.d(TAG, "LiteRT backend selected in settings")
             if (litertSharp.isModelReady()) {
                 if (litertSharp.initialize()) {
@@ -165,12 +165,13 @@ class SharpService private constructor(private val context: Context) {
                     Log.d(TAG, "LiteRT SHARP initialized successfully")
                     return true
                 } else {
-                    Log.w(TAG, "LiteRT SHARP init failed — falling back to ONNX")
+                    Log.e(TAG, "LiteRT SHARP init failed")
+                    return false
                 }
             } else {
-                Log.w(TAG, "LiteRT model files not found — falling back to ONNX")
+                Log.e(TAG, "LiteRT model files not found. Push .tflite files to device.")
+                return false
             }
-            // Fall through to ONNX below instead of returning false
         }
 
         if (inferenceBackend == "executorch") {
@@ -245,10 +246,13 @@ class SharpService private constructor(private val context: Context) {
 
                 if (useLiteRT) {
                     // Use LiteRT backend (TFLite FP16 + GPU)
-                    callback.onProgress(0.2f, "Running SHARP (LiteRT GPU)...")
+                    callback.onProgress(0.2f, "Running SHARP (LiteRT)...")
                     val result = kotlinx.coroutines.runBlocking {
                         litertSharp.inferStreaming(image) { progress, message ->
-                            callback.onProgress(progress, message)
+                            // LiteRTSharp reports progress in 0..1 for its internal pipeline.
+                            // Map to 0.20..0.99 to keep overall progress monotonic.
+                            val mapped = (0.2f + 0.79f * progress).coerceIn(0.2f, 0.99f)
+                            callback.onProgress(mapped, message)
                         }
                     }
 
