@@ -1,0 +1,15 @@
+{
+  "source_file": "zcl_zsample_bapi_salesorder_createfromdat2_wrapper.clas.abap",
+  "source_dir": "sample_pkg_migrated",
+  "mappings": [
+    {
+      "line": 23,
+      "old_abap": "CALL\\s+FUNCTION\\s+",
+      "new_abap": "FM call",
+      "java_anchor": "service.call",
+      "snippet": "CALL FUNCTION iv_fm_name",
+      "fm_name": "iv_fm_name",
+      "crv_status": "missing"
+    }
+  ]
+}
