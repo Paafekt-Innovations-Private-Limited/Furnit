@@ -10,6 +10,11 @@ object BackendConfig {
     const val ENABLE_NCNN: Boolean = true
     const val ENABLE_EXECUTORCH: Boolean = true
     const val ENABLE_LITERT: Boolean = true
+    const val ENABLE_PYTHON: Boolean = true
+    const val ENABLE_TORCH_MOBILE: Boolean = true
+    const val ENABLE_NATIVE_PT: Boolean = true
+    const val ENABLE_LITERT_GPU: Boolean = false
+    const val ENABLE_LITERT_NNAPI: Boolean = false
 
     fun isEnabled(backendId: String): Boolean {
         return when (backendId) {
@@ -17,6 +22,9 @@ object BackendConfig {
             "ncnn" -> ENABLE_NCNN
             "executorch" -> ENABLE_EXECUTORCH
             "litert" -> ENABLE_LITERT
+            "python" -> ENABLE_PYTHON
+            "torch_mobile" -> ENABLE_TORCH_MOBILE
+            "native_pt" -> ENABLE_NATIVE_PT
             else -> false
         }
     }
