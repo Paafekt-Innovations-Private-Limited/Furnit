@@ -1,0 +1,220 @@
+package com.furnit.android.services
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.util.Log
+import com.chaquo.python.Python
+import com.chaquo.python.android.AndroidPlatform
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
+
+/**
+ * SHARP inference via embedded Python (Chaquopy).
+ *
+ * Runs the EXACT same PyTorch code that works on Mac in 19s.
+ * No model conversion, no format mismatch, no separate encoder/decoder.
+ *
+ * Pre-warm Python + model during app startup to hide load latency.
+ */
+class PythonSharp private constructor(private val context: Context) {
+
+    companion object {
+        private const val TAG = "PythonSharp"
+        private const val MODEL_FILENAME = "sharp_2572gikvuh.pt"
+
+        @Volatile
+        private var instance: PythonSharp? = null
+
+        fun getInstance(context: Context): PythonSharp {
+            return instance ?: synchronized(this) {
+                instance ?: PythonSharp(context.applicationContext).also {
+                    instance = it
+                }
+            }
+        }
+    }
+
+    private var isWarmedUp = false
+    private val modelsDir: File by lazy {
+        context.getExternalFilesDir("models") ?: File(context.filesDir, "models")
+    }
+
+    data class StreamingResult(
+        val plyFile: File,
+        val classicPlyFile: File,
+        val gaussianCount: Int,
+        val roomWidth: Float,
+        val roomHeight: Float,
+        val roomDepth: Float
+    )
+
+    /**
+     * Check if Python model is available on device.
+     */
+    fun isModelReady(): Boolean {
+        return findModelFile() != null
+    }
+
+    private fun findModelFile(): File? {
+        val modelFile = File(modelsDir, MODEL_FILENAME)
+        if (modelFile.exists() && modelFile.length() > 0) return modelFile
+
+        // Check alternative locations
+        val altDirs = arrayOf(
+            "/data/local/tmp/furnit/",
+            "/storage/emulated/0/Android/data/com.furnit.android/files/models/"
+        )
+        for (dir in altDirs) {
+            val altFile = File(dir, MODEL_FILENAME)
+            if (altFile.exists() && altFile.length() > 0) return altFile
+        }
+        return null
+    }
+
+    /**
+     * Initialize Python interpreter and pre-load model.
+     * Call this early (e.g. in Application.onCreate or Activity.onCreate).
+     */
+    fun warmup() {
+        if (isWarmedUp) return
+
+        try {
+            // Start Python if not already started
+            if (!Python.isStarted()) {
+                Python.start(AndroidPlatform(context))
+            }
+
+            val modelFile = findModelFile()
+            if (modelFile != null) {
+                val py = Python.getInstance()
+                val module = py.getModule("sharp_inference")
+                val result = module.callAttr("warmup", modelFile.absolutePath).toString()
+                Log.d(TAG, "Python warmup: $result")
+                isWarmedUp = true
+            } else {
+                Log.w(TAG, "Model not found for warmup: $MODEL_FILENAME")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Python warmup failed: ${e.message}", e)
+        }
+    }
+
+    fun initialize(): Boolean {
+        val modelFile = findModelFile()
+        if (modelFile == null) {
+            Log.e(TAG, "Python SHARP model not found: $MODEL_FILENAME")
+            return false
+        }
+        Log.d(TAG, "Python SHARP model found: ${modelFile.absolutePath} (${modelFile.length() / 1024 / 1024}MB)")
+        return true
+    }
+
+    /**
+     * Run SHARP inference using embedded Python.
+     */
+    suspend fun inferStreaming(
+        bitmap: Bitmap,
+        progressCallback: ((Float, String) -> Unit)? = null
+    ): StreamingResult? = withContext(Dispatchers.IO) {
+        try {
+            val startTime = System.currentTimeMillis()
+
+            // Ensure Python is started
+            if (!Python.isStarted()) {
+                Python.start(AndroidPlatform(context))
+            }
+
+            // Save bitmap to temp file for Python to read
+            progressCallback?.invoke(0.05f, "Preparing image...")
+            val tempImageFile = File(context.cacheDir, "sharp_input.jpg")
+            FileOutputStream(tempImageFile).use { fos ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, fos)
+            }
+            Log.d(TAG, "Input image saved: ${tempImageFile.length() / 1024}KB")
+
+            // Prepare output directory
+            val roomsDir = File(context.filesDir, "sharp_rooms")
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val roomFolder = File(roomsDir, "room_$timestamp")
+            roomFolder.mkdirs()
+
+            // Find model
+            val modelFile = findModelFile()
+            if (modelFile == null) {
+                Log.e(TAG, "Model not found")
+                return@withContext null
+            }
+
+            // Run Python inference
+            progressCallback?.invoke(0.10f, "Running PyTorch inference...")
+            Log.d(TAG, "Starting Python SHARP inference...")
+
+            val py = Python.getInstance()
+            val sharpModule = py.getModule("sharp_inference")
+            val resultJson = sharpModule.callAttr(
+                "run_inference",
+                tempImageFile.absolutePath,
+                modelFile.absolutePath,
+                roomFolder.absolutePath
+            ).toString()
+
+            val result = JSONObject(resultJson)
+
+            if (result.has("error")) {
+                Log.e(TAG, "Python inference error: ${result.getString("error")}")
+                progressCallback?.invoke(0f, "Error: ${result.getString("error")}")
+                return@withContext null
+            }
+
+            val gaussianCount = result.getInt("gaussian_count")
+            val roomWidth = result.getDouble("room_width").toFloat()
+            val roomHeight = result.getDouble("room_height").toFloat()
+            val roomDepth = result.getDouble("room_depth").toFloat()
+            val plyPath = result.getString("ply_path")
+            val classicPlyPath = result.getString("classic_ply_path")
+
+            // Log timings
+            val timings = result.getJSONObject("timings")
+            val totalTime = timings.getDouble("total")
+            val inferTime = timings.getDouble("inference")
+            Log.d(TAG, "Python SHARP completed: $gaussianCount Gaussians")
+            Log.d(TAG, "  Timings: load=${timings.getDouble("model_load")}s, " +
+                    "preprocess=${timings.getDouble("preprocess")}s, " +
+                    "inference=${inferTime}s, " +
+                    "ply=${timings.getDouble("ply_write")}s, " +
+                    "total=${totalTime}s")
+
+            val elapsed = System.currentTimeMillis() - startTime
+            Log.d(TAG, "Total wall time: ${elapsed}ms")
+
+            // Clean up temp file
+            tempImageFile.delete()
+
+            progressCallback?.invoke(1.0f, "Done!")
+
+            return@withContext StreamingResult(
+                plyFile = File(plyPath),
+                classicPlyFile = File(classicPlyPath),
+                gaussianCount = gaussianCount,
+                roomWidth = roomWidth,
+                roomHeight = roomHeight,
+                roomDepth = roomDepth
+            )
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Python SHARP inference failed", e)
+            progressCallback?.invoke(0f, "Error: ${e.message}")
+            return@withContext null
+        }
+    }
+
+    fun release() {
+        // Python interpreter persists for app lifetime -- no cleanup needed
+        Log.d(TAG, "PythonSharp released")
+    }
+}

@@ -17,9 +17,15 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <chrono>
+#include <future>
+#include <thread>
+#include <atomic>
+#include <cstdlib>
 #include <android/log.h>
 #include "ncnn/net.h"
 #include "ncnn/mat.h"
+#include "ncnn/cpu.h"
 #include "sharp_custom_layers.h"
 
 #ifndef SHARP_LOG_TAG
@@ -62,8 +68,13 @@ public:
     SharpComponents() = default;
     ~SharpComponents() { release(); }
 
-    bool load(const std::string& modelDir) {
+    bool load(const std::string& modelDir, bool useVulkanCompute, int requestedThreads) {
         LOGI("Loading SHARP components from: %s", modelDir.c_str());
+        useVulkanCompute_ = useVulkanCompute;
+        modelThreads_ = resolveThreadCount(requestedThreads);
+        patchWorkerCount_ = resolvePatchWorkerCount(modelThreads_);
+        LOGI("Component runtime config: threads=%d, patchWorkers=%d, vulkan=%s",
+             modelThreads_, patchWorkerCount_, useVulkanCompute_ ? "on" : "off");
 
         if (!loadEmbeddings(modelDir)) {
             LOGE("Failed to load embeddings");
@@ -106,8 +117,8 @@ public:
               std::vector<float>& rotations,
               std::vector<float>& colors,
               std::vector<float>& opacities) {
-
-        LOGI("Starting SHARP component-based inference (memory-optimized)");
+        LOGI("Infer runtime config: vulkan=%s threads=%d patchWorkers=%d",
+             useVulkanCompute_ ? "on" : "off", modelThreads_, patchWorkerCount_);
 
         // Process patches one at a time to minimize peak memory
         // Store only the spatial features we need, not full ViT outputs
@@ -126,113 +137,78 @@ public:
         ncnn::Mat image025;
         ncnn::resize_bilinear(image, image025, PATCH_SIZE, PATCH_SIZE);
 
-        // Process 1.0x scale patches (5x5 grid)
-        LOGI("Processing 1.0x scale patches...");
+        // Process 1.0x scale patches (5x5 grid) with bounded parallelism
+        spatialFeatures1x.resize(PATCHES_1X);
         int stride1x = (IMAGE_SIZE - PATCH_SIZE) / 4;  // 288
-        for (int i = 0; i < 5; i++) {
-            for (int j = 0; j < 5; j++) {
-                int patchIdx = i * 5 + j;
-                int y = i * stride1x;
-                int x = j * stride1x;
-
-                // Extract patch
-                ncnn::Mat patch = cropPatch(image, x, y, PATCH_SIZE, PATCH_SIZE);
-
-                // Process through embed + encoder
-                ncnn::Mat features;
-                if (!processPatch(patch, features)) {
-                    LOGE("Failed to process 1.0x patch %d", patchIdx);
-                    return -1;
-                }
-
-                // Convert to spatial format immediately and store
-                spatialFeatures1x.push_back(reshapeViTOutput(features));
-
-                // patch and features go out of scope here, memory freed
-
-                if (patchIdx % 10 == 0) {
-                    LOGD("Processed patch %d/%d", patchIdx + 1, TOTAL_PATCHES);
-                }
-            }
+        if (!processPatchGrid(image, 5, 5, stride1x, 0, PATCHES_1X, spatialFeatures1x)) {
+            LOGE("Failed to process 1.0x patch grid");
+            return -1;
         }
-        LOGI("1.0x patches complete");
 
-        // Process 0.5x scale patches (3x3 grid)
-        LOGI("Processing 0.5x scale patches...");
+        // Process 0.5x scale patches (3x3 grid) with bounded parallelism
+        spatialFeatures05x.resize(PATCHES_05X);
         int stride05 = (IMAGE_SIZE / 2 - PATCH_SIZE) / 2;  // 192
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                int patchIdx = PATCHES_1X + i * 3 + j;
-                int y = i * stride05;
-                int x = j * stride05;
-
-                ncnn::Mat patch = cropPatch(image05, x, y, PATCH_SIZE, PATCH_SIZE);
-
-                ncnn::Mat features;
-                if (!processPatch(patch, features)) {
-                    LOGE("Failed to process 0.5x patch");
-                    return -1;
-                }
-
-                spatialFeatures05x.push_back(reshapeViTOutput(features));
-
-                if (patchIdx % 10 == 0) {
-                    LOGD("Processed patch %d/%d", patchIdx + 1, TOTAL_PATCHES);
-                }
-            }
+        if (!processPatchGrid(image05, 3, 3, stride05, PATCHES_1X, TOTAL_PATCHES, spatialFeatures05x)) {
+            LOGE("Failed to process 0.5x patch grid");
+            return -1;
         }
         // Free 0.5x image
         image05.release();
-        LOGI("0.5x patches complete");
 
         // Process 0.25x scale patch
-        LOGI("Processing 0.25x scale patch...");
         {
+            auto tStart = std::chrono::steady_clock::now();
+            PatchStageTiming timing;
             ncnn::Mat features;
-            if (!processPatch(image025, features)) {
+            if (!processPatch(image025, features, timing)) {
                 LOGE("Failed to process 0.25x patch");
                 return -1;
             }
+            auto reshapeStart = std::chrono::steady_clock::now();
             spatialFeatures025x = reshapeViTOutput(features);
+            auto reshapeEnd = std::chrono::steady_clock::now();
+            timing.reshapeMs = std::chrono::duration_cast<std::chrono::milliseconds>(reshapeEnd - reshapeStart).count();
+            timing.totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(reshapeEnd - tStart).count();
+            LOGI("Patch 35/35 total=%ldms crop=%ld embed=%ld clspos=%ld enc=%ld reshape=%ld",
+                 timing.totalMs, timing.cropMs, timing.embedMs, timing.clsPosMs, timing.encoderMs, timing.reshapeMs);
         }
-        LOGD("Processed patch %d/%d", TOTAL_PATCHES, TOTAL_PATCHES);
-        LOGI("All patches processed");
 
         // Run image encoder on 0.25x image
-        LOGI("Running image encoder...");
+        auto imageEncoderStart = std::chrono::steady_clock::now();
         ncnn::Mat imageFeatures;
         if (!processImageEncoder(image025, imageFeatures)) {
             LOGE("Failed to run image encoder");
             return -1;
         }
+        auto imageEncoderEnd = std::chrono::steady_clock::now();
+        LOGI("ImageEncoder: %lldms",
+             (long long)std::chrono::duration_cast<std::chrono::milliseconds>(imageEncoderEnd - imageEncoderStart).count());
         image025.release();
-        LOGI("Image encoder complete");
 
         // Merge patches into spatial feature maps with reduced memory
-        LOGI("Merging features (memory-optimized)...");
 
         // Merge 1.0x scale: 5x5 grid -> [96, 96, 1024]
+        auto merge1xStart = std::chrono::steady_clock::now();
         ncnn::Mat merged1x = mergePatchGrid(spatialFeatures1x, 5, 3);
-        LOGD("Merged 1.0x: %dx%dx%d", merged1x.c, merged1x.h, merged1x.w);
-
+        auto merge1xEnd = std::chrono::steady_clock::now();
+        LOGI("Merge1x: %lldms",
+             (long long)std::chrono::duration_cast<std::chrono::milliseconds>(merge1xEnd - merge1xStart).count());
         // Free 1x spatial features immediately
         spatialFeatures1x.clear();
         spatialFeatures1x.shrink_to_fit();
 
         // Merge 0.5x scale: 3x3 grid -> [48, 48, 1024]
+        auto merge05xStart = std::chrono::steady_clock::now();
         ncnn::Mat merged05x = mergePatchGrid(spatialFeatures05x, 3, 6);
-        LOGD("Merged 0.5x: %dx%dx%d", merged05x.c, merged05x.h, merged05x.w);
-
+        auto merge05xEnd = std::chrono::steady_clock::now();
+        LOGI("Merge05x: %lldms",
+             (long long)std::chrono::duration_cast<std::chrono::milliseconds>(merge05xEnd - merge05xStart).count());
         // Free 0.5x spatial features
         spatialFeatures05x.clear();
         spatialFeatures05x.shrink_to_fit();
 
-        LOGD("Merged 0.25x: %dx%dx%d", spatialFeatures025x.c, spatialFeatures025x.h, spatialFeatures025x.w);
-
         // Free image features (not needed for simplified approach)
         imageFeatures.release();
-
-        LOGI("Feature maps merged");
 
         // Free unused features
         merged05x.release();
@@ -240,8 +216,6 @@ public:
 
         // Use GaussianHead if available (lightweight 3.5MB model)
         if (hasGaussianHead_) {
-            LOGI("Running GaussianHead (lightweight head)...");
-
             ncnn::Mat headOutput;
             {
                 ncnn::Extractor ex = gaussianHeadNet_.create_extractor();
@@ -252,8 +226,6 @@ public:
                 if (ret != 0) {
                     LOGE("GaussianHead failed with code %d, falling back to placeholder", ret);
                     hasGaussianHead_ = false;  // Don't try again
-                } else {
-                    LOGI("GaussianHead output: %dx%dx%d", headOutput.c, headOutput.h, headOutput.w);
                 }
             }
 
@@ -275,8 +247,6 @@ public:
             int outH = headOutput.h;
             int outW = headOutput.w;
             int numGaussians = outH * outW;
-
-            LOGI("Generating %d Gaussians from GaussianHead...", numGaussians);
 
             positions.resize(numGaussians * 3);
             scales.resize(numGaussians * 3);
@@ -323,28 +293,24 @@ public:
                         rotations[idx * 4 + 3] = 0.0f;
                     }
 
-                    // Color: trained model outputs final RGB values directly (L1 loss)
-                    // Clamp to [0, 1] range
-                    colors[idx * 3 + 0] = std::max(0.0f, std::min(1.0f, headOutput.channel(11)[idx]));
+                    // Color: model outputs BGR; swap to RGB to match ONNX
+                    colors[idx * 3 + 0] = std::max(0.0f, std::min(1.0f, headOutput.channel(13)[idx]));
                     colors[idx * 3 + 1] = std::max(0.0f, std::min(1.0f, headOutput.channel(12)[idx]));
-                    colors[idx * 3 + 2] = std::max(0.0f, std::min(1.0f, headOutput.channel(13)[idx]));
+                    colors[idx * 3 + 2] = std::max(0.0f, std::min(1.0f, headOutput.channel(11)[idx]));
                 }
             }
 
             headOutput.release();
-            LOGI("Generated %d Gaussians from GaussianHead", numGaussians);
             return numGaussians;
         }
 
         // Fallback: generate placeholder Gaussians from merged features
-        LOGI("Generating placeholder Gaussians from features...");
         int numGaussians = generateGaussiansFromFeatures(
             merged1x, ncnn::Mat(), ncnn::Mat(),
             positions, scales, rotations, colors, opacities);
 
         merged1x.release();
 
-        LOGI("Generated %d placeholder Gaussians", numGaussians);
         return numGaussians;
     }
 
@@ -359,6 +325,106 @@ public:
     }
 
 private:
+    struct PatchStageTiming {
+        long cropMs = 0;
+        long embedMs = 0;
+        long clsPosMs = 0;
+        long encoderMs = 0;
+        long reshapeMs = 0;
+        long totalMs = 0;
+    };
+
+    int resolveThreadCount(int requestedThreads) const {
+        const char* overrideThreads = std::getenv("SHARP_NCNN_THREADS");
+        if (overrideThreads != nullptr) {
+            int forcedThreads = std::atoi(overrideThreads);
+            if (forcedThreads > 0) {
+                return std::max(1, std::min(8, forcedThreads));
+            }
+        }
+        if (requestedThreads > 0) {
+            return std::max(1, std::min(8, requestedThreads));
+        }
+        int bigCoreCount = ncnn::get_big_cpu_count();
+        if (bigCoreCount <= 0) {
+            bigCoreCount = ncnn::get_cpu_count();
+        }
+        return std::max(1, std::min(4, bigCoreCount));
+    }
+
+    int resolvePatchWorkerCount(int modelThreads) const {
+        const char* overrideWorkers = std::getenv("SHARP_NCNN_PATCH_WORKERS");
+        if (overrideWorkers != nullptr) {
+            int forcedWorkers = std::atoi(overrideWorkers);
+            if (forcedWorkers > 0) {
+                return std::max(1, std::min(4, forcedWorkers));
+            }
+        }
+        return std::max(1, std::min(2, modelThreads));
+    }
+
+    bool processPatchGrid(
+            const ncnn::Mat& sourceImage,
+            int rows,
+            int columns,
+            int stride,
+            int globalPatchOffset,
+            int totalPatchCount,
+            std::vector<ncnn::Mat>& outputSpatialFeatures) {
+        const int patchCount = rows * columns;
+        std::atomic<int> nextPatchIndex(0);
+        std::atomic<bool> encounteredFailure(false);
+        const int workerCount = std::max(1, std::min(patchWorkerCount_, patchCount));
+        std::vector<std::future<void>> workers;
+        workers.reserve(workerCount);
+
+        for (int workerIndex = 0; workerIndex < workerCount; workerIndex++) {
+            workers.push_back(std::async(std::launch::async, [&, workerIndex]() {
+                while (!encounteredFailure.load(std::memory_order_relaxed)) {
+                    int localPatchIndex = nextPatchIndex.fetch_add(1);
+                    if (localPatchIndex >= patchCount) {
+                        return;
+                    }
+
+                    int row = localPatchIndex / columns;
+                    int col = localPatchIndex % columns;
+                    int patchX = col * stride;
+                    int patchY = row * stride;
+
+                    auto patchStart = std::chrono::steady_clock::now();
+                    auto cropStart = patchStart;
+                    ncnn::Mat patch = cropPatch(sourceImage, patchX, patchY, PATCH_SIZE, PATCH_SIZE);
+                    auto cropEnd = std::chrono::steady_clock::now();
+
+                    PatchStageTiming timing;
+                    timing.cropMs = std::chrono::duration_cast<std::chrono::milliseconds>(cropEnd - cropStart).count();
+
+                    ncnn::Mat encodedPatch;
+                    if (!processPatch(patch, encodedPatch, timing)) {
+                        encounteredFailure.store(true, std::memory_order_relaxed);
+                        return;
+                    }
+
+                    auto reshapeStart = std::chrono::steady_clock::now();
+                    outputSpatialFeatures[localPatchIndex] = reshapeViTOutput(encodedPatch);
+                    auto patchEnd = std::chrono::steady_clock::now();
+                    timing.reshapeMs = std::chrono::duration_cast<std::chrono::milliseconds>(patchEnd - reshapeStart).count();
+                    timing.totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(patchEnd - patchStart).count();
+
+                    int globalPatchIndex = globalPatchOffset + localPatchIndex + 1;
+                    LOGI("Patch %d/%d total=%ldms crop=%ld embed=%ld clspos=%ld enc=%ld reshape=%ld",
+                         globalPatchIndex, totalPatchCount, timing.totalMs, timing.cropMs, timing.embedMs,
+                         timing.clsPosMs, timing.encoderMs, timing.reshapeMs);
+                }
+            }));
+        }
+
+        for (std::future<void>& worker : workers) {
+            worker.get();
+        }
+        return !encounteredFailure.load(std::memory_order_relaxed);
+    }
+
     ncnn::Net patchEmbedNet_;
     ncnn::Net patchEncoderNet_;
     ncnn::Net imageEncoderNet_;
@@ -367,25 +433,28 @@ private:
     float* clsToken_ = nullptr;
     float* posEmbed_ = nullptr;
     bool hasGaussianHead_ = false;
+    bool useVulkanCompute_ = false;
+    int modelThreads_ = 1;
+    int patchWorkerCount_ = 1;
 
     bool loadModel(ncnn::Net& net, const std::string& dir, const std::string& name) {
         std::string paramPath = dir + "/" + name + ".ncnn.param";
         std::string binPath = dir + "/" + name + ".ncnn.bin";
 
-        net.opt.num_threads = 1;
-        net.opt.use_vulkan_compute = false;
+        net.opt.num_threads = modelThreads_;
+        net.opt.use_vulkan_compute = useVulkanCompute_;
         net.opt.lightmode = true;
         net.opt.use_fp16_packed = false;
         net.opt.use_fp16_storage = false;
         net.opt.use_fp16_arithmetic = false;
         net.opt.use_packing_layout = false;
-        net.opt.use_winograd_convolution = false;
-        net.opt.use_sgemm_convolution = false;
+        net.opt.use_winograd_convolution = true;
+        net.opt.use_sgemm_convolution = true;
         net.opt.use_int8_inference = false;
         net.opt.use_bf16_storage = false;
 
-        // Register custom layers (SDPA, etc.) before loading param
-        sharp_layers::register_custom_layers(net);
+        // Keep built-in SDPA (do not override) for better NCNN backend usage.
+        sharp_layers::register_custom_layers_without_sdpa(net);
 
         int ret = net.load_param(paramPath.c_str());
         if (ret != 0) {
@@ -446,19 +515,24 @@ private:
         return dst;
     }
 
-    bool processPatch(const ncnn::Mat& patch, ncnn::Mat& output) {
+    bool processPatch(const ncnn::Mat& patch, ncnn::Mat& output, PatchStageTiming& timing) {
         // Step 1: Run patch embed -> [576, 1024]
         ncnn::Mat embedded;
         {
+            auto embedStart = std::chrono::steady_clock::now();
             ncnn::Extractor ex = patchEmbedNet_.create_extractor();
             ex.set_light_mode(true);
             ex.input("in0", patch);
             if (ex.extract("out0", embedded) != 0) {
+                LOGE("patch_embed failed");
                 return false;
             }
+            auto embedEnd = std::chrono::steady_clock::now();
+            timing.embedMs = std::chrono::duration_cast<std::chrono::milliseconds>(embedEnd - embedStart).count();
         }
 
         // Step 2: Add CLS token -> [577, 1024]
+        auto clsPosStart = std::chrono::steady_clock::now();
         ncnn::Mat withCls(PATCH_EMBED_DIM, VIT_TOKENS);
 
         float* dstCls = withCls.row(0);
@@ -481,15 +555,21 @@ private:
                 row[j] += posRow[j];
             }
         }
+        auto clsPosEnd = std::chrono::steady_clock::now();
+        timing.clsPosMs = std::chrono::duration_cast<std::chrono::milliseconds>(clsPosEnd - clsPosStart).count();
 
         // Step 4: Run patch encoder -> [577, 1024]
         {
+            auto encoderStart = std::chrono::steady_clock::now();
             ncnn::Extractor ex = patchEncoderNet_.create_extractor();
             ex.set_light_mode(true);
             ex.input("in0", withCls);
             if (ex.extract("out0", output) != 0) {
+                LOGE("patch_encoder failed");
                 return false;
             }
+            auto encoderEnd = std::chrono::steady_clock::now();
+            timing.encoderMs = std::chrono::duration_cast<std::chrono::milliseconds>(encoderEnd - encoderStart).count();
         }
 
         return true;
@@ -669,7 +749,6 @@ private:
 
         upsampled.release();
 
-        LOGI("Generated %d Gaussians from merged features (memory-optimized)", numGaussians);
         return numGaussians;
     }
 };

@@ -209,8 +209,7 @@ ml_experiments/
 android/sharp_ncnn_models/
 android/sharp_ncnn_models_backup/
 
-# Temporary export/conversion scripts
-android/export_*.py
+# Temporary fix/conversion scripts (export scripts are kept for reproducibility)
 android/fix_*.py
 android/reconvert_*.py
 
@@ -229,3 +228,15 @@ android/app/src/main/cpp/ncnn-android-vulkan-old/
 android/sharp_ncnn_models_backup/
 *.bin
 *.param
+
+# ML model binaries (too large for git)
+android/executorch_models/
+android/sharp_litert_models/
+android/sharp_onnx_models/
+*.pte
+*.pt
+*.ptl
+*.onnx
+*.tflite
+android/__pycache__/
+test_images/

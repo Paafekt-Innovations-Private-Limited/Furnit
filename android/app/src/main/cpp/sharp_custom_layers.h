@@ -15,6 +15,7 @@
 
 #include "ncnn/layer.h"
 #include "ncnn/net.h"
+#include "blas_utils.h"
 #include <cmath>
 #include <vector>
 #include <algorithm>
@@ -128,11 +129,11 @@ private:
     int scale;
 
     // Compute optimal tile size based on sequence length to avoid OOM
-    // Max memory per tile: ~64MB to stay safe on mobile devices
+    // Max memory per tile: ~32MB to reduce heap pressure on mobile devices
     static int compute_tile_size(int seq_len) {
         // Memory per tile = tile_size * seq_len * sizeof(float)
-        // Target max ~64MB per tile
-        const size_t MAX_TILE_BYTES = 64 * 1024 * 1024;
+        // Target max ~32MB per tile
+        const size_t MAX_TILE_BYTES = 32 * 1024 * 1024;
         int max_tile = MAX_TILE_BYTES / (seq_len * sizeof(float));
         // Clamp between 32 and 512
         max_tile = std::max(32, std::min(512, max_tile));
@@ -174,6 +175,13 @@ private:
             const float* k_head = k.channel(h);
             const float* v_head = v.channel(h);
             float* out_head = top_blobs[0].channel(h);
+            std::vector<float> v_transposed(head_dim * seq_len);
+            for (int j = 0; j < seq_len; j++) {
+                const float* v_row = v_head + j * head_dim;
+                for (int d = 0; d < head_dim; d++) {
+                    v_transposed[d * seq_len + j] = v_row[d];
+                }
+            }
 
             // Use tiled computation to limit memory usage
             // Each tile processes TILE_SIZE rows at a time
@@ -184,17 +192,29 @@ private:
                 // Allocate scores for this tile only (tile_rows x seq_len)
                 std::vector<float> scores(tile_rows * seq_len);
 
-                // Compute Q[tile] @ K^T
-                for (int ti = 0; ti < tile_rows; ti++) {
-                    int i = tile_start + ti;
+                // Compute Q[tile] @ K^T - 4-row block NEON for better cache/throughput
+                int ti = 0;
+                for (; ti + 4 <= tile_rows; ti += 4) {
+                    const float* q0 = q_head + (tile_start + ti) * head_dim;
+                    const float* q1 = q_head + (tile_start + ti + 1) * head_dim;
+                    const float* q2 = q_head + (tile_start + ti + 2) * head_dim;
+                    const float* q3 = q_head + (tile_start + ti + 3) * head_dim;
                     for (int j = 0; j < seq_len; j++) {
-                        float sum = 0.0f;
-                        const float* qi = q_head + i * head_dim;
                         const float* kj = k_head + j * head_dim;
-                        for (int d = 0; d < head_dim; d++) {
-                            sum += qi[d] * kj[d];
-                        }
-                        scores[ti * seq_len + j] = sum * scale_factor;
+                        float out4[4];
+                        blas::dot4_neon(q0, q1, q2, q3, kj, head_dim, scale_factor, out4);
+                        scores[ti * seq_len + j] = out4[0];
+                        scores[(ti + 1) * seq_len + j] = out4[1];
+                        scores[(ti + 2) * seq_len + j] = out4[2];
+                        scores[(ti + 3) * seq_len + j] = out4[3];
+                    }
+                }
+                for (; ti < tile_rows; ti++) {
+                    int i = tile_start + ti;
+                    const float* qi = q_head + i * head_dim;
+                    for (int j = 0; j < seq_len; j++) {
+                        const float* kj = k_head + j * head_dim;
+                        scores[ti * seq_len + j] = blas::dot_neon(qi, kj, head_dim) * scale_factor;
                     }
                 }
 
@@ -216,16 +236,14 @@ private:
                     }
                 }
 
-                // Compute scores @ V for this tile
+                // Compute scores @ V for this tile via transposed V for contiguous NEON dot.
                 for (int ti = 0; ti < tile_rows; ti++) {
                     int i = tile_start + ti;
                     float* out_row = out_head + i * head_dim;
+                    const float* score_row = &scores[ti * seq_len];
                     for (int d = 0; d < head_dim; d++) {
-                        float sum = 0.0f;
-                        for (int j = 0; j < seq_len; j++) {
-                            sum += scores[ti * seq_len + j] * v_head[j * head_dim + d];
-                        }
-                        out_row[d] = sum;
+                        const float* v_col = &v_transposed[d * seq_len];
+                        out_row[d] = blas::dot_neon(score_row, v_col, seq_len);
                     }
                 }
             }
@@ -264,6 +282,13 @@ private:
         const float* k_data = (const float*)k.data;
         const float* v_data = (const float*)v.data;
         float* out_data = (float*)top_blobs[0].data;
+        std::vector<float> v_transposed(head_dim * seq_len);
+        for (int j = 0; j < seq_len; j++) {
+            const float* v_row = v_data + j * head_dim;
+            for (int d = 0; d < head_dim; d++) {
+                v_transposed[d * seq_len + j] = v_row[d];
+            }
+        }
 
         // Tiled processing
         for (int tile_start = 0; tile_start < seq_len; tile_start += TILE_SIZE) {
@@ -272,18 +297,14 @@ private:
 
             std::vector<float> scores(tile_rows * seq_len);
 
-            // Compute Q[tile] @ K^T
+            // Compute Q[tile] @ K^T - 4-row block NEON
             #pragma omp parallel for num_threads(num_threads)
             for (int ti = 0; ti < tile_rows; ti++) {
                 int i = tile_start + ti;
+                const float* qi = q_data + i * head_dim;
                 for (int j = 0; j < seq_len; j++) {
-                    float sum = 0.0f;
-                    const float* qi = q_data + i * head_dim;
                     const float* kj = k_data + j * head_dim;
-                    for (int d = 0; d < head_dim; d++) {
-                        sum += qi[d] * kj[d];
-                    }
-                    scores[ti * seq_len + j] = sum * scale_factor;
+                    scores[ti * seq_len + j] = blas::dot_neon(qi, kj, head_dim) * scale_factor;
                 }
             }
 
@@ -311,12 +332,10 @@ private:
             for (int ti = 0; ti < tile_rows; ti++) {
                 int i = tile_start + ti;
                 float* out_row = out_data + i * head_dim;
+                const float* score_row = &scores[ti * seq_len];
                 for (int d = 0; d < head_dim; d++) {
-                    float sum = 0.0f;
-                    for (int j = 0; j < seq_len; j++) {
-                        sum += scores[ti * seq_len + j] * v_data[j * head_dim + d];
-                    }
-                    out_row[d] = sum;
+                    const float* v_col = &v_transposed[d * seq_len];
+                    out_row[d] = blas::dot_neon(score_row, v_col, seq_len);
                 }
             }
         }
@@ -351,6 +370,13 @@ private:
         const float* k_data = (const float*)k.data;
         const float* v_data = (const float*)v.data;
         float* out_data = (float*)top_blobs[0].data;
+        std::vector<float> v_transposed(head_dim * seq_len);
+        for (int j = 0; j < seq_len; j++) {
+            const float* v_row = v_data + j * head_dim;
+            for (int d = 0; d < head_dim; d++) {
+                v_transposed[d * seq_len + j] = v_row[d];
+            }
+        }
 
         // Tiled processing for memory efficiency
         for (int tile_start = 0; tile_start < seq_len; tile_start += TILE_SIZE) {
@@ -359,14 +385,13 @@ private:
 
             std::vector<float> scores(tile_rows * seq_len);
 
-            // Q[tile] @ K^T
+            // Q[tile] @ K^T (NEON dot product)
             for (int ti = 0; ti < tile_rows; ti++) {
                 int i = tile_start + ti;
+                const float* qi = q_data + i * head_dim;
                 for (int j = 0; j < seq_len; j++) {
-                    float sum = 0.0f;
-                    for (int d = 0; d < head_dim; d++) {
-                        sum += q_data[i * head_dim + d] * k_data[j * head_dim + d];
-                    }
+                    const float* kj = k_data + j * head_dim;
+                    float sum = blas::dot_neon(qi, kj, head_dim);
                     scores[ti * seq_len + j] = sum * scale_factor;
                 }
             }
@@ -392,12 +417,10 @@ private:
             // scores @ V
             for (int ti = 0; ti < tile_rows; ti++) {
                 int i = tile_start + ti;
+                const float* score_row = &scores[ti * seq_len];
                 for (int d = 0; d < head_dim; d++) {
-                    float sum = 0.0f;
-                    for (int j = 0; j < seq_len; j++) {
-                        sum += scores[ti * seq_len + j] * v_data[j * head_dim + d];
-                    }
-                    out_data[i * head_dim + d] = sum;
+                    const float* v_col = &v_transposed[d * seq_len];
+                    out_data[i * head_dim + d] = blas::dot_neon(score_row, v_col, seq_len);
                 }
             }
         }
@@ -884,12 +907,10 @@ private:
 };
 
 /**
- * SafeConv - A wrapper around NCNN's Convolution that forces safe options.
+ * SafeConv - Scalar convolution for conv_106.
  *
- * This bypasses ARM NEON optimized kernels that have buffer overread bugs
- * by forcing: no packing, no winograd, no sgemm, single thread.
- *
- * Used specifically for conv_106 which crashes with the optimized kernels.
+ * NCNN's Convolution hangs at conv_106 (16x16 patch embed). This scalar impl
+ * completes reliably. Slow but works.
  */
 class SafeConv : public ncnn::Layer {
 public:
@@ -897,11 +918,9 @@ public:
         one_blob_only = true;
         support_inplace = false;
         support_packing = false;
-        support_fp16_storage = false;
     }
 
     virtual int load_param(const ncnn::ParamDict& pd) {
-        // Standard Convolution params (from ncnn operation param table)
         num_output = pd.get(0, 0);
         kernel_w = pd.get(1, 0);
         kernel_h = pd.get(11, kernel_w);
@@ -919,165 +938,80 @@ public:
         group = pd.get(7, 1);
         activation_type = pd.get(9, 0);
         activation_params = pd.get(10, ncnn::Mat());
-
-        LOGD("SafeConv load_param: num_output=%d kernel=%dx%d stride=%dx%d weight_size=%d",
-             num_output, kernel_w, kernel_h, stride_w, stride_h, weight_data_size);
-
         return 0;
     }
 
     virtual int load_model(const ncnn::ModelBin& mb) {
         weight_data = mb.load(weight_data_size, 0);
-        if (weight_data.empty()) {
-            LOGE("SafeConv: Failed to load weight data");
-            return -100;
-        }
-
+        if (weight_data.empty()) return -100;
         if (bias_term) {
             bias_data = mb.load(num_output, 1);
-            if (bias_data.empty()) {
-                LOGE("SafeConv: Failed to load bias data");
-                return -100;
-            }
+            if (bias_data.empty()) return -100;
         }
-
-        LOGD("SafeConv load_model: weight_data total=%zu, bias_term=%d",
-             weight_data.total(), bias_term);
-
         return 0;
     }
 
     virtual int forward(const ncnn::Mat& bottom_blob, ncnn::Mat& top_blob,
                        const ncnn::Option& opt) const {
-
-        LOGD("SafeConv::forward called: input w=%d h=%d c=%d elempack=%d -> num_output=%d",
-             bottom_blob.w, bottom_blob.h, bottom_blob.c, bottom_blob.elempack, num_output);
-
-        // Handle packed input - convert to elempack=1 for safe scalar processing
-        ncnn::Mat bottom_blob_unpacked = bottom_blob;
+        ncnn::Mat in = bottom_blob;
         if (bottom_blob.elempack != 1) {
-            LOGD("SafeConv: Unpacking input from elempack=%d", bottom_blob.elempack);
-            ncnn::convert_packing(bottom_blob, bottom_blob_unpacked, 1, opt);
+            ncnn::convert_packing(bottom_blob, in, 1, opt);
         }
-
-        int w = bottom_blob_unpacked.w;
-        int h = bottom_blob_unpacked.h;
-        int channels = bottom_blob_unpacked.c;
-
-        // Calculate output dimensions
+        int w = in.w, h = in.h, channels = in.c;
         int outw = (w + pad_left + pad_right - kernel_w) / stride_w + 1;
         int outh = (h + pad_top + pad_bottom - kernel_h) / stride_h + 1;
-
-        // Allocate output
         top_blob.create(outw, outh, num_output, 4u, opt.blob_allocator);
-        if (top_blob.empty()) {
-            LOGE("SafeConv: Failed to allocate output tensor");
-            return -100;
-        }
+        if (top_blob.empty()) return -100;
 
-        LOGD("SafeConv: output w=%d h=%d c=%d", outw, outh, num_output);
-
-        // Naive convolution implementation - no SIMD, no parallelism
-        // This is slow but guaranteed to be safe
         const int kernel_size = kernel_w * kernel_h;
-
-        // Calculate expected input channels from weight size
-        // weight_data_size = num_output * (input_channels/group) * kernel_w * kernel_h
-        const int expected_input_channels = weight_data_size / (num_output * kernel_size);
-        int input_channels_per_group = channels / group;
-
-        // WORKAROUND: Model conversion issue - weight size suggests fewer input channels
-        // than the actual input has. Use the weight-implied channel count.
-        if (expected_input_channels != input_channels_per_group) {
-            LOGD("SafeConv: Channel mismatch! Input has %d channels but weights expect %d",
-                 input_channels_per_group, expected_input_channels);
-            LOGD("SafeConv: Using first %d channels only (model conversion issue)",
-                 expected_input_channels);
-            input_channels_per_group = expected_input_channels;
-        }
-
-        const int output_channels_per_group = num_output / group;
-
-        LOGD("SafeConv: Starting conv loop: %d groups, %d out_ch/grp, %d in_ch/grp, kernel=%dx%d",
-             group, output_channels_per_group, input_channels_per_group, kernel_h, kernel_w);
+        int input_channels_per_group = weight_data_size / (num_output * kernel_size);
+        int output_channels_per_group = num_output / group;
 
         for (int g = 0; g < group; g++) {
             for (int oc = 0; oc < output_channels_per_group; oc++) {
                 int out_c = g * output_channels_per_group + oc;
                 float* outptr = top_blob.channel(out_c);
-
                 const float* weight_ptr = (const float*)weight_data.data +
                     out_c * input_channels_per_group * kernel_size;
 
                 for (int oh = 0; oh < outh; oh++) {
                     for (int ow = 0; ow < outw; ow++) {
                         float sum = 0.f;
-
                         for (int ic = 0; ic < input_channels_per_group; ic++) {
                             int in_c = g * input_channels_per_group + ic;
-                            const float* inptr = bottom_blob_unpacked.channel(in_c);
+                            const float* inptr = in.channel(in_c);
                             const float* kptr = weight_ptr + ic * kernel_size;
-
                             for (int kh = 0; kh < kernel_h; kh++) {
                                 for (int kw = 0; kw < kernel_w; kw++) {
                                     int ih = oh * stride_h - pad_top + kh * dilation_h;
                                     int iw = ow * stride_w - pad_left + kw * dilation_w;
-
-                                    float val = 0.f;
-                                    if (ih >= 0 && ih < h && iw >= 0 && iw < w) {
-                                        val = inptr[ih * w + iw];
-                                    } else {
-                                        val = pad_value;
-                                    }
-
+                                    float val = (ih >= 0 && ih < h && iw >= 0 && iw < w)
+                                        ? inptr[ih * w + iw] : pad_value;
                                     sum += val * kptr[kh * kernel_w + kw];
                                 }
                             }
                         }
-
-                        // Add bias
-                        if (bias_term) {
-                            sum += ((const float*)bias_data.data)[out_c];
-                        }
-
-                        // Activation
-                        if (activation_type == 1) {
-                            sum = std::max(sum, 0.f);  // ReLU
-                        } else if (activation_type == 2) {
+                        if (bias_term) sum += ((const float*)bias_data.data)[out_c];
+                        if (activation_type == 1) sum = std::max(sum, 0.f);
+                        else if (activation_type == 2) {
                             float slope = activation_params.empty() ? 0.1f :
-                                         ((const float*)activation_params.data)[0];
-                            sum = sum > 0.f ? sum : sum * slope;  // LeakyReLU
+                                ((const float*)activation_params.data)[0];
+                            sum = sum > 0.f ? sum : sum * slope;
                         }
-
                         outptr[oh * outw + ow] = sum;
                     }
                 }
-
-                // Log progress every 100 channels
-                if (oc % 100 == 0) {
-                    LOGD("SafeConv: Progress %d/%d channels", oc, output_channels_per_group);
-                }
             }
         }
-
-        LOGD("SafeConv::forward completed successfully");
         return 0;
     }
 
 private:
-    int num_output;
-    int kernel_w, kernel_h;
-    int dilation_w, dilation_h;
-    int stride_w, stride_h;
-    int pad_left, pad_right, pad_top, pad_bottom;
+    int num_output, kernel_w, kernel_h, dilation_w, dilation_h;
+    int stride_w, stride_h, pad_left, pad_right, pad_top, pad_bottom;
     float pad_value;
-    int bias_term;
-    int weight_data_size;
-    int group;
-    int activation_type;
-    ncnn::Mat activation_params;
-    ncnn::Mat weight_data;
-    ncnn::Mat bias_data;
+    int bias_term, weight_data_size, group, activation_type;
+    ncnn::Mat activation_params, weight_data, bias_data;
 };
 
 // Layer creator functions
@@ -1097,6 +1031,19 @@ static void custom_layer_destroyer(ncnn::Layer* layer, void*) { delete layer; }
  */
 inline void register_custom_layers(ncnn::Net& net) {
     net.register_custom_layer("SDPA", SDPA_layer_creator, custom_layer_destroyer);
+    net.register_custom_layer("pnnx.Expression", PnnxExpression_layer_creator, custom_layer_destroyer);
+    net.register_custom_layer("aten::clamp_min", AtenClampMin_layer_creator, custom_layer_destroyer);
+    net.register_custom_layer("torch.le", TorchLe_layer_creator, custom_layer_destroyer);
+    net.register_custom_layer("torch.bitwise_not", TorchBitwiseNot_layer_creator, custom_layer_destroyer);
+    net.register_custom_layer("torch.where", TorchWhere_layer_creator, custom_layer_destroyer);
+    net.register_custom_layer("SafeConv", SafeConv_layer_creator, custom_layer_destroyer);
+}
+
+/**
+ * Register custom layers while keeping NCNN built-in SDPA.
+ * Useful for component models where built-in SDPA may run faster.
+ */
+inline void register_custom_layers_without_sdpa(ncnn::Net& net) {
     net.register_custom_layer("pnnx.Expression", PnnxExpression_layer_creator, custom_layer_destroyer);
     net.register_custom_layer("aten::clamp_min", AtenClampMin_layer_creator, custom_layer_destroyer);
     net.register_custom_layer("torch.le", TorchLe_layer_creator, custom_layer_destroyer);

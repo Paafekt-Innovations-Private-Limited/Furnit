@@ -1,0 +1,112 @@
+{
+  "direct": [
+    {
+      "purpose": "commit work",
+      "twin_type": "DIRECT",
+      "modern_api": "COMMIT WORK",
+      "api_type": "statement",
+      "legacy_fm": "BAPI_TRANSACTION_COMMIT"
+    },
+    {
+      "purpose": "rollback work",
+      "twin_type": "DIRECT",
+      "modern_api": "ROLLBACK WORK",
+      "api_type": "statement",
+      "legacy_fm": "BAPI_TRANSACTION_ROLLBACK"
+    }
+  ],
+  "wrapper": [
+    {
+      "purpose": "post FI journal entry",
+      "twin_type": "WRAPPER",
+      "modern_api": "I_JournalEntryTP",
+      "api_type": "RAP BO",
+      "legacy_fm": "BAPI_ACC_DOCUMENT_POST"
+    },
+    {
+      "purpose": "check FI journal entry",
+      "twin_type": "WRAPPER",
+      "modern_api": "I_JournalEntryTP",
+      "api_type": "RAP BO",
+      "legacy_fm": "BAPI_ACC_DOCUMENT_CHECK"
+    },
+    {
+      "purpose": "reverse FI postings",
+      "twin_type": "WRAPPER",
+      "modern_api": "I_JournalEntryTP",
+      "api_type": "RAP BO",
+      "legacy_fm": "BAPI_ACC_ACT_POSTINGS_REVERSE"
+    },
+    {
+      "purpose": "create sales order",
+      "twin_type": "WRAPPER",
+      "modern_api": "I_SalesOrderTP",
+      "api_type": "RAP BO",
+      "legacy_fm": "BAPI_SALESORDER_CREATEFROMDAT2"
+    },
+    {
+      "purpose": "create purchase order",
+      "twin_type": "WRAPPER",
+      "modern_api": "I_PurchaseOrderTP_2",
+      "api_type": "RAP BO",
+      "legacy_fm": "BAPI_PO_CREATE1"
+    },
+    {
+      "purpose": "create material document",
+      "twin_type": "WRAPPER",
+      "modern_api": "I_MaterialDocumentTP",
+      "api_type": "RAP BO",
+      "legacy_fm": "BAPI_GOODSMVT_CREATE"
+    },
+    {
+      "purpose": "company code data",
+      "twin_type": "WRAPPER",
+      "modern_api": "I_CompanyCode",
+      "api_type": "CDS view",
+      "legacy_fm": "FI_COMPANY_CODE_DATA"
+    },
+    {
+      "purpose": "alpha conversion input",
+      "twin_type": "WRAPPER",
+      "modern_api": "CONVERSION_EXIT_ALPHA_INPUT",
+      "api_type": "FM (wrap)",
+      "legacy_fm": "CONVERSION_EXIT_ALPHA_INPUT"
+    },
+    {
+      "purpose": "read text",
+      "twin_type": "WRAPPER",
+      "modern_api": "I_*Text RAP",
+      "api_type": "RAP BO",
+      "legacy_fm": "READ_TEXT"
+    },
+    {
+      "purpose": "save text",
+      "twin_type": "WRAPPER",
+      "modern_api": "I_*Text RAP",
+      "api_type": "RAP BO",
+      "legacy_fm": "SAVE_TEXT"
+    }
+  ],
+  "refactor": [],
+  "review": [],
+  "summary": {
+    "direct_count": 2,
+    "wrapper_count": 10,
+    "refactor_count": 0,
+    "review_count": 0
+  },
+  "sap_twin_db_keys": [
+    "BAPI_ACC_DOCUMENT_POST",
+    "BAPI_ACC_DOCUMENT_CHECK",
+    "BAPI_ACC_ACT_POSTINGS_REVERSE",
+    "BAPI_SALESORDER_CREATEFROMDAT2",
+    "BAPI_PO_CREATE1",
+    "BAPI_GOODSMVT_CREATE",
+    "FI_COMPANY_CODE_DATA",
+    "BAPI_TRANSACTION_COMMIT",
+    "BAPI_TRANSACTION_ROLLBACK",
+    "CONVERSION_EXIT_ALPHA_INPUT",
+    "READ_TEXT",
+    "SAVE_TEXT"
+  ]
+}

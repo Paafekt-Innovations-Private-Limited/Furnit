@@ -70,6 +70,44 @@ inline float dot32_neon(const float* a, const float* b) {
 }
 
 /**
+ * Compute 4 dot products at once: out[k] = dot(q[k], k) for k=0..3.
+ * Uses shared k loads for better cache efficiency. ~2x faster than 4x dot_neon.
+ */
+inline void dot4_neon(const float* q0, const float* q1, const float* q2, const float* q3,
+                      const float* k, int n, float scale, float* out) {
+    float32x4_t acc0 = vdupq_n_f32(0.f), acc1 = vdupq_n_f32(0.f);
+    float32x4_t acc2 = vdupq_n_f32(0.f), acc3 = vdupq_n_f32(0.f);
+    int i = 0;
+    for (; i + 4 <= n; i += 4) {
+        float32x4_t kv = vld1q_f32(k + i);
+        acc0 = vmlaq_f32(acc0, vld1q_f32(q0 + i), kv);
+        acc1 = vmlaq_f32(acc1, vld1q_f32(q1 + i), kv);
+        acc2 = vmlaq_f32(acc2, vld1q_f32(q2 + i), kv);
+        acc3 = vmlaq_f32(acc3, vld1q_f32(q3 + i), kv);
+    }
+    float32x2_t s0 = vadd_f32(vget_low_f32(acc0), vget_high_f32(acc0));
+    s0 = vpadd_f32(s0, s0);
+    float32x2_t s1 = vadd_f32(vget_low_f32(acc1), vget_high_f32(acc1));
+    s1 = vpadd_f32(s1, s1);
+    float32x2_t s2 = vadd_f32(vget_low_f32(acc2), vget_high_f32(acc2));
+    s2 = vpadd_f32(s2, s2);
+    float32x2_t s3 = vadd_f32(vget_low_f32(acc3), vget_high_f32(acc3));
+    s3 = vpadd_f32(s3, s3);
+    float v0 = vget_lane_f32(s0, 0), v1 = vget_lane_f32(s1, 0);
+    float v2 = vget_lane_f32(s2, 0), v3 = vget_lane_f32(s3, 0);
+    for (; i < n; i++) {
+        v0 += q0[i] * k[i];
+        v1 += q1[i] * k[i];
+        v2 += q2[i] * k[i];
+        v3 += q3[i] * k[i];
+    }
+    out[0] = v0 * scale;
+    out[1] = v1 * scale;
+    out[2] = v2 * scale;
+    out[3] = v3 * scale;
+}
+
+/**
  * General dot product with NEON (any length, padded to 4)
  */
 inline float dot_neon(const float* a, const float* b, int n) {

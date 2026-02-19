@@ -7,7 +7,7 @@ import AVFoundation
 import UIKit
 
 struct ModelViewerView: View {
-    @State private var mlModel: MLModel? = nil  // yoloe-11l 1280 model
+    @ObservedObject private var yoloeService = YOLOEModelService.shared
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass
     @EnvironmentObject var authManager: AuthenticationManager
@@ -69,7 +69,7 @@ struct ModelViewerView: View {
                         FurnitureFitUIView(
                             capturedImage: $capturedImage,
                             roomImage: roomSnapshot,
-                            mlModel: mlModel,
+                            mlModel: yoloeService.model,
                             processInterval: 0.07,
                             active: true,
                             lockedOrientation: model.photoOrientation
@@ -222,7 +222,7 @@ struct ModelViewerView: View {
         .onChange(of: showingFurnitureFit) { _, _ in manageARSessionForOverlays() }
         .onAppear {
             isARActive = true
-            loadModelOnce()
+            yoloeService.ensureModelLoaded()
             // ✅ Reset camera to optimal position every time view appears
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 shouldResetCamera = true
@@ -600,60 +600,7 @@ struct ModelViewerView: View {
         return image
     }
     
-    private func loadModelOnce() {
-        guard mlModel == nil else {
-            logDebug("✅ ML Models already loaded")
-            return
-        }
-
-        // Single-stage using 11l 1280 model
-        let modelCandidates = [
-            ("yoloe-11l-seg-pf", "mlmodelc"),
-            ("yoloe-11l-seg-pf", "mlpackage"),
-        ]
-
-        logDebug("🔍 Loading 11l 1280 model (single-stage)")
-
-        let config = MLModelConfiguration()
-        // Use CPU-only to avoid ANE "No memory object bound to port" crashes
-        config.computeUnits = .cpuOnly
-
-        for (name, ext) in modelCandidates {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                do {
-                    let model = try MLModel(contentsOf: url, configuration: config)
-                    self.mlModel = model
-                    logDebug("✅ Loaded 11l 1280 model '\(name).\(ext)'")
-                    logModelInputInfo(model, name: name)
-                    break
-                } catch {
-                    logDebug("❌ Failed to load model \(name).\(ext):", error)
-                }
-            }
-        }
-
-        if mlModel == nil {
-            logDebug("❌ No model loaded")
-            if let bundleContents = try? FileManager.default.contentsOfDirectory(atPath: Bundle.main.bundlePath) {
-                logDebug("📁 Bundle contents (mlmodel/mlpackage only):")
-                bundleContents.filter { $0.contains("mlmodel") || $0.contains("mlpackage") }.forEach { file in
-                    logDebug("   - \(file)")
-                }
-            }
-        }
-    }
-
-    private func logModelInputInfo(_ model: MLModel, name: String) {
-        let inputs = model.modelDescription.inputDescriptionsByName
-        if let img = inputs["image"] {
-            if let mac = img.multiArrayConstraint {
-                let shp = mac.shape.map { $0.intValue }
-                logDebug("📥 '\(name)' MultiArray constraint: shape=\(shp) dataType=\(mac.dataType)")
-            } else if let ic = img.imageConstraint {
-                logDebug("📥 '\(name)' Image constraint: \(ic.pixelsWide)x\(ic.pixelsHigh)")
-            }
-        }
-    }
+    // MARK: - YOLOE model loaded via YOLOEModelService (ODR)
 
 }
 

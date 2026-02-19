@@ -1,0 +1,224 @@
+import Foundation
+import CoreML
+
+/// Centralized YOLOE model manager with On-Demand Resources (ODR) support.
+///
+/// The YOLOE model (~60 MB compiled) is used for furniture detection across all room
+/// views (SharpRoomView, MeshRoomView, GLBRoomView, ModelViewerView). Delivering it
+/// via ODR keeps it out of the initial app download and lets the OS purge it when
+/// disk space is tight.
+///
+/// Usage:
+///   let service = YOLOEModelService.shared
+///   await service.ensureModelLoaded()       // triggers ODR download if needed
+///   if let model = service.model { … }
+@MainActor
+class YOLOEModelService: ObservableObject {
+
+    // MARK: - Singleton
+
+    static let shared = YOLOEModelService()
+
+    // MARK: - On-Demand Resources
+
+    /// Tag assigned to yoloe-11l-seg-pf.mlpackage in Xcode's ODR settings
+    private static let yoloeModelTag = "YOLOEModel"
+
+    /// Keeps the ODR request alive so the OS doesn't purge the downloaded resource
+    private var resourceRequest: NSBundleResourceRequest?
+
+    /// KVO observation for download progress
+    private var progressObservation: NSKeyValueObservation?
+
+    // MARK: - Published State
+
+    /// The loaded CoreML model — nil until download + load completes
+    @Published var model: MLModel?
+
+    /// True while the model is being downloaded or loaded
+    @Published var isLoadingModel: Bool = false
+
+    /// True while an ODR download is in progress
+    @Published var isDownloadingResources: Bool = false
+
+    /// Download progress (0.0 – 1.0)
+    @Published var downloadProgress: Double = 0.0
+
+    /// Human-readable status for UI consumption
+    @Published var statusMessage: String = ""
+
+    /// Whether the ODR resource is available locally
+    @Published var resourcesAvailable: Bool = false
+
+    // MARK: - Init
+
+    private init() {
+        // Don't eagerly load — the model is only needed when a room view appears
+    }
+
+    // MARK: - Development vs Release
+
+    private var isRunningFromXcode: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    // MARK: - Public API
+
+    /// Ensure the model is loaded; safe to call repeatedly (no-op when already loaded).
+    /// Call from each room view's `.onAppear`.
+    func ensureModelLoaded() {
+        guard model == nil && !isLoadingModel else { return }
+        Task {
+            await loadModel()
+        }
+    }
+
+    /// Release model and ODR resources — call when the app goes to background
+    /// or memory pressure occurs.
+    func releaseResources() {
+        resourceRequest?.endAccessingResources()
+        resourceRequest = nil
+        resourcesAvailable = false
+        model = nil
+        logDebug("YOLOE: Released ODR resources")
+    }
+
+    // MARK: - ODR
+
+    /// Check whether the YOLOE resource tag is already on-device
+    func checkResourceAvailability() async {
+        if isRunningFromXcode {
+            logDebug("YOLOE: Running from Xcode — model bundled locally, skipping ODR")
+            resourcesAvailable = true
+            return
+        }
+
+        let tags: Set<String> = [Self.yoloeModelTag]
+        let request = NSBundleResourceRequest(tags: tags)
+        request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
+
+        let conditionallyAvailable = await request.conditionallyBeginAccessingResources()
+        resourcesAvailable = conditionallyAvailable
+        logDebug("YOLOE: ODR conditionallyBeginAccessingResources: \(conditionallyAvailable)")
+
+        if conditionallyAvailable {
+            self.resourceRequest = request
+        }
+    }
+
+    /// Download the YOLOE model via ODR if not yet available.
+    /// - Returns: `true` when the resource is available after this call.
+    func downloadResourcesIfNeeded() async throws -> Bool {
+        if isRunningFromXcode {
+            logDebug("YOLOE: Running from Xcode — model bundled, no download needed")
+            resourcesAvailable = true
+            return true
+        }
+
+        if resourcesAvailable { return true }
+
+        if isDownloadingResources {
+            // Wait for an existing download to finish
+            while isDownloadingResources {
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+            return resourcesAvailable
+        }
+
+        logDebug("YOLOE: Starting ODR download…")
+        isDownloadingResources = true
+        downloadProgress = 0.0
+        statusMessage = "Downloading detection model…"
+
+        let tags: Set<String> = [Self.yoloeModelTag]
+        let request = NSBundleResourceRequest(tags: tags)
+        request.loadingPriority = NSBundleResourceRequestLoadingPriorityUrgent
+
+        progressObservation = request.progress.observe(\.fractionCompleted, options: [.new]) { [weak self] progress, _ in
+            Task { @MainActor in
+                self?.downloadProgress = progress.fractionCompleted
+                let percent = Int(progress.fractionCompleted * 100)
+                self?.statusMessage = "Downloading detection model… \(percent)%"
+            }
+        }
+
+        do {
+            try await request.beginAccessingResources()
+            logDebug("YOLOE: ODR download complete")
+
+            resourcesAvailable = true
+            isDownloadingResources = false
+            downloadProgress = 1.0
+            statusMessage = "Download complete"
+            self.resourceRequest = request
+            progressObservation = nil
+            return true
+        } catch {
+            logDebug("YOLOE: ODR download failed: \(error)")
+            isDownloadingResources = false
+            downloadProgress = 0.0
+            statusMessage = "Download failed"
+            progressObservation = nil
+            throw error
+        }
+    }
+
+    // MARK: - Model Loading
+
+    /// Internal load routine — handles ODR download then CoreML compilation.
+    private func loadModel() async {
+        guard !isLoadingModel && model == nil else { return }
+        logDebug("YOLOE: Loading CoreML model…")
+
+        isLoadingModel = true
+        statusMessage = "Preparing detection model…"
+
+        // Best-effort ODR download (same pattern as SHARPService)
+        if !resourcesAvailable && !isRunningFromXcode {
+            do {
+                let downloaded = try await downloadResourcesIfNeeded()
+                if downloaded {
+                    logDebug("YOLOE: ODR download succeeded")
+                } else {
+                    logDebug("YOLOE: ODR download returned false — will try bundle load anyway")
+                }
+            } catch {
+                logDebug("YOLOE: ODR download failed (\(error)) — model may be in app bundle, proceeding…")
+            }
+        }
+
+        statusMessage = "Loading detection model…"
+
+        // Try loading from bundle (works in both Debug and ODR-downloaded Release)
+        let candidateNames = [
+            ("yoloe-11l-seg-pf", "mlmodelc"),
+            ("yoloe-11l-seg-pf", "mlpackage"),
+        ]
+
+        let config = MLModelConfiguration()
+        config.computeUnits = .cpuOnly
+
+        for (name, ext) in candidateNames {
+            if let url = Bundle.main.url(forResource: name, withExtension: ext) {
+                do {
+                    let loadedModel = try MLModel(contentsOf: url, configuration: config)
+                    self.model = loadedModel
+                    logDebug("YOLOE: Loaded '\(name).\(ext)' successfully")
+                    statusMessage = "Ready"
+                    isLoadingModel = false
+                    return
+                } catch {
+                    logDebug("YOLOE: Failed to load \(name).\(ext): \(error)")
+                }
+            }
+        }
+
+        logDebug("YOLOE: No model variant could be loaded")
+        statusMessage = "Detection model unavailable"
+        isLoadingModel = false
+    }
+}

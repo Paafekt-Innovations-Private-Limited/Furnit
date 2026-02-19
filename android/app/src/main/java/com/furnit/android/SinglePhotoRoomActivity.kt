@@ -20,10 +20,13 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.core.content.FileProvider
 import com.furnit.android.models.PhotoOrientation
 import com.furnit.android.models.RoomStructure
 import com.furnit.android.services.SharpService
+import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
 import java.text.SimpleDateFormat
@@ -57,6 +60,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var selectedImageUri: Uri? = null
     private var cameraPhotoUri: Uri? = null
     private var detectedOrientation: PhotoOrientation = PhotoOrientation.PORTRAIT
+
+    /** AI generation started on photo select; cancel and release when user picks Manual/Back/Change. */
+    private var aiGenerationHandle: SharpService.GenerationHandle? = null
+    private var aiGenerationResult: SharpService.GenerationResult? = null
+    private var aiGenerationRunning = false
+    /** Set when user taps AI Room while generation is running - callback will show overlay and open on complete. */
+    private var aiRoomOverlayRequested = false
 
     private val imagePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -125,6 +135,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         rootLayout.addView(progressOverlay)
 
         setContentView(rootLayout)
+
+        // Preload ExecuTorch Part1 when backend is ExecuTorch (hides "stuck at 5%" stall at Generate)
+        lifecycleScope.launch {
+            SharpService.getInstance(this@SinglePhotoRoomActivity).preloadSharpModels()
+        }
     }
 
     private fun createInitialView(): LinearLayout {
@@ -382,13 +397,14 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             }
             addView(subtitle)
 
-            // AI Room option (Sharp)
+            // AI Room option (Sharp) - subtitle shows live progress when generation runs in background
             val aiOption = createOptionCard(
                 icon = "\uD83E\uDE84", // Magic wand
                 title = "AI Room",
                 subtitle = "AI-powered 3D generation",
                 bgColor = "#F3E5F5",
-                borderColor = "#9C27B0"
+                borderColor = "#9C27B0",
+                onSubtitleCreated = { view -> aiOptionSubtitleView = view }
             ) {
                 onAIRoomSelected()
             }
@@ -427,6 +443,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         subtitle: String,
         bgColor: String,
         borderColor: String,
+        onSubtitleCreated: ((TextView) -> Unit)? = null,
         onClick: () -> Unit
     ): LinearLayout {
         return LinearLayout(this).apply {
@@ -468,6 +485,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     setTextColor(Color.parseColor("#666666"))
                 }
                 addView(subtitleView)
+                onSubtitleCreated?.invoke(subtitleView)
             }
             addView(textContainer)
 
@@ -548,8 +566,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 Log.d("SinglePhotoRoom", "Detected orientation: ${detectedOrientation.value}")
                 updateOrientationIndicator()
 
+                // Start AI generation in background immediately (ONNX or Native Pt)
+                startAIGenerationInBackground(bitmap)
+
                 showMethodPicker()
-                Log.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}")
+                Log.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, AI started in background")
             } else {
                 Log.e("SinglePhotoRoom", "Failed to decode image")
                 Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
@@ -574,56 +595,126 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         methodPickerView.visibility = View.VISIBLE
     }
 
-    private fun onAIRoomSelected() {
-        Log.d("SinglePhotoRoom", "AI Room (Sharp) selected")
-        val bitmap = selectedBitmap
-        if (bitmap == null) {
-            Toast.makeText(this, "No image selected", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Show progress overlay
-        showProgressOverlay()
-
-        // Start Sharp generation (singleton - model stays loaded)
+    /** Start AI generation in background when photo is selected. Cancel on Manual/Back/Change. */
+    private fun startAIGenerationInBackground(bitmap: Bitmap) {
+        cancelAndReleaseAI()
+        aiGenerationResult = null
+        aiGenerationRunning = true
         val sharpService = SharpService.getInstance(this)
-        sharpService.generateGaussians(bitmap, object : SharpService.ProgressCallback {
+        aiGenerationHandle = sharpService.startGenerationInBackground(bitmap, object : SharpService.ProgressCallback {
             override fun onProgress(progress: Float, message: String) {
                 runOnUiThread {
-                    updateProgressOverlay(progress, message)
+                    logProgress0("SinglePhotoRoomActivity.kt:onProgress", "callback", mapOf(
+                        "progress" to progress, "message" to message, "aiGenerationRunning" to aiGenerationRunning,
+                        "aiRoomOverlayRequested" to aiRoomOverlayRequested
+                    ))
+                    if (aiGenerationRunning) {
+                        updateAIOptionProgress(progress, message)
+                        if (aiRoomOverlayRequested) updateProgressOverlay(progress, message)
+                    }
                 }
             }
-
             override fun onComplete(result: SharpService.GenerationResult) {
                 runOnUiThread {
+                    aiGenerationRunning = false
+                    aiGenerationResult = result
+                    aiGenerationHandle = null
+                    updateAIOptionProgress(1f, "Ready")
                     hideProgressOverlay()
-                    Log.d("SinglePhotoRoom", "AI Room generated: ${result.plyFile.absolutePath}")
-
-                    // Open SharpRoomActivity with the generated PLY
-                    val intent = Intent(this@SinglePhotoRoomActivity, SharpRoomActivity::class.java).apply {
-                        putExtra(SharpRoomActivity.EXTRA_PLY_PATH, result.classicPlyFile.absolutePath)
-                        putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, result.plyFile.parentFile?.absolutePath)
-                        putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
-                        putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
-                        putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, result.roomDepth)
-                        putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, true)
-                        putExtra("photo_orientation", detectedOrientation.value)
+                    if (aiRoomOverlayRequested) {
+                        aiRoomOverlayRequested = false
+                        openSharpRoomWithResult(result)
                     }
-                    startActivity(intent)
+                    Log.d("SinglePhotoRoom", "AI generation completed in background")
                 }
             }
-
             override fun onError(message: String) {
                 runOnUiThread {
+                    aiGenerationRunning = false
+                    aiGenerationResult = null
+                    aiGenerationHandle = null
+                    aiRoomOverlayRequested = false
+                    updateAIOptionProgress(0f, "Failed")
                     hideProgressOverlay()
                     Toast.makeText(this@SinglePhotoRoomActivity, message, Toast.LENGTH_LONG).show()
+                    Log.e("SinglePhotoRoom", "AI generation failed: $message")
                 }
             }
         })
     }
 
+    /** Cancel AI generation and release model memory. Call when user chooses Manual/Back/Change. */
+    private fun cancelAndReleaseAI() {
+        aiGenerationHandle?.cancel()
+        aiGenerationHandle = null
+        aiGenerationRunning = false
+        aiGenerationResult = null
+        SharpService.getInstance(this).release()
+        Log.d("SinglePhotoRoom", "AI cancelled and memory released")
+    }
+
+    private var aiOptionSubtitleView: TextView? = null
+
+    /** Last progress from generation callback — used when showing overlay for already-running gen. */
+    private var lastAIGenerationProgress: Float = 0f
+    private var lastAIGenerationMessage: String = "Preparing..."
+
+    private fun updateAIOptionProgress(progress: Float, message: String) {
+        lastAIGenerationProgress = progress
+        lastAIGenerationMessage = message
+        aiOptionSubtitleView?.text = if (progress >= 1f) "Ready - tap to view" else if (progress > 0f) "$message (${(progress * 100).toInt()}%)" else "AI-powered 3D generation"
+    }
+
+    private fun onAIRoomSelected() {
+        Log.d("SinglePhotoRoom", "AI Room selected")
+        if (selectedBitmap == null) {
+            Toast.makeText(this, "No image selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Use result from background generation if already done
+        val result = aiGenerationResult
+        if (result != null) {
+            Log.d("SinglePhotoRoom", "Using cached AI result")
+            openSharpRoomWithResult(result)
+            return
+        }
+
+        // Generation still running: show overlay with current progress (don't reset to 0%)
+        if (aiGenerationRunning) {
+            logProgress0("SinglePhotoRoomActivity.kt:onAIRoomSelected", "gen running, show overlay", mapOf(
+                "lastProgress" to lastAIGenerationProgress, "lastMessage" to lastAIGenerationMessage
+            ))
+            aiRoomOverlayRequested = true
+            showProgressOverlay(preserveProgress = true)
+            return
+        }
+
+        // Not running and no result (failed or cancelled): start fresh
+        logProgress0("SinglePhotoRoomActivity.kt:onAIRoomSelected", "start fresh", mapOf())
+        lastAIGenerationProgress = 0f
+        lastAIGenerationMessage = "Preparing..."
+        showProgressOverlay(preserveProgress = false)
+        startAIGenerationInBackground(selectedBitmap!!)
+        aiRoomOverlayRequested = true
+    }
+
+    private fun openSharpRoomWithResult(result: SharpService.GenerationResult) {
+        val intent = Intent(this, SharpRoomActivity::class.java).apply {
+            putExtra(SharpRoomActivity.EXTRA_PLY_PATH, result.classicPlyFile.absolutePath)
+            putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, result.plyFile.parentFile?.absolutePath)
+            putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
+            putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
+            putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, result.roomDepth)
+            putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, true)
+            putExtra("photo_orientation", detectedOrientation.value)
+        }
+        startActivity(intent)
+    }
+
     private fun onManualSetupSelected() {
         Log.d("SinglePhotoRoom", "Manual Setup selected")
+        cancelAndReleaseAI()
         val uri = selectedImageUri
         if (uri == null) {
             Toast.makeText(this, "No image selected", Toast.LENGTH_SHORT).show()
@@ -638,6 +729,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun showInitialView() {
+        cancelAndReleaseAI()
         methodPickerView.visibility = View.GONE
         initialView.visibility = View.VISIBLE
         selectedBitmap = null
@@ -737,11 +829,42 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         }
     }
 
-    private fun showProgressOverlay() {
+    // #region agent log
+    private fun logProgress0(location: String, message: String, data: Map<String, Any?>) {
+        val payload = JSONObject().apply {
+            put("location", location)
+            put("message", message)
+            put("timestamp", System.currentTimeMillis())
+            data.forEach { (k, v) -> if (v != null) put(k, v) }
+        }
+        Log.d("Progress0", payload.toString())
+        try {
+            val dir = getExternalFilesDir(null) ?: filesDir
+            File(dir, "debug_progress.ndjson").appendText(payload.toString() + "\n")
+        } catch (_: Throwable) {}
+    }
+    // #endregion
+
+    private fun showProgressOverlay(preserveProgress: Boolean = false) {
+        val displayProgress: Float
+        val displayMessage: String
+        if (preserveProgress && lastAIGenerationProgress > 0f) {
+            displayProgress = lastAIGenerationProgress
+            displayMessage = lastAIGenerationMessage
+            logProgress0("SinglePhotoRoomActivity.kt:showProgressOverlay", "preserveProgress=true", mapOf(
+                "preserveProgress" to true, "lastProgress" to lastAIGenerationProgress, "lastMessage" to lastAIGenerationMessage
+            ))
+        } else {
+            displayProgress = 0f
+            displayMessage = "Preparing..."
+            logProgress0("SinglePhotoRoomActivity.kt:showProgressOverlay", "reset to 0%", mapOf(
+                "preserveProgress" to preserveProgress, "reason" to if (preserveProgress) "lastProgress was 0" else "fresh start"
+            ))
+        }
         progressOverlay.visibility = View.VISIBLE
-        progressBar.progress = 0
-        progressPercent.text = "0%"
-        progressText.text = "Preparing..."
+        progressBar.progress = (displayProgress * 100).toInt()
+        progressPercent.text = "${(displayProgress * 100).toInt()}%"
+        progressText.text = displayMessage
     }
 
     private fun hideProgressOverlay() {
@@ -750,6 +873,9 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     private fun updateProgressOverlay(progress: Float, message: String) {
         val percent = (progress * 100).toInt()
+        logProgress0("SinglePhotoRoomActivity.kt:updateProgressOverlay", "updating UI", mapOf(
+            "progress" to progress, "percent" to percent, "message" to message
+        ))
         progressBar.progress = percent
         progressPercent.text = "$percent%"
         progressText.text = message
