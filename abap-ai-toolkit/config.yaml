@@ -1,11 +1,14 @@
 # ABAP AI Toolkit Configuration
-# Configuration
+#
+# Replace package names below with your SAP Z-package names.
+# These are used by sap_package_downloader.py for direct SAP extraction.
+# For ZIP-based input (recommended), just use: python run_pipeline.py your_package.zip
 
 sap:
-  webgui_url: "${SAP_WEBGUI_URL}"
+  webgui_url: "${SAP_WEBGUI_URL}"  # Set in .env or environment
   packages:
-    - /ZSAMPLE/MAIN
-    - /ZSAMPLE/SHARED
+    - /YOUR_PKG/MAIN       # Replace with your SAP package name
+    - /YOUR_PKG/SHARED      # Optional: additional packages
 
 extraction:
   include_subpackages: true

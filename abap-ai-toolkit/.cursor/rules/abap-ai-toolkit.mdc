@@ -98,25 +98,28 @@ alwaysApply: false
 | fiori_odata | 1 | RAP service binding for Fiori |
 | rap_service | 1 | Service definition, binding |
 
-## Pipeline Scripts (9 Stages)
-1. `python 1_extract/sap_package_downloader.py /ZSAMPLE/MAIN` - Extract from SAP
-2. `python 2_map_skills/scan_sample_pkg.py` - Syntax scan + FM classify
-3. `python 2_map_skills/migrate_sample_pkg.py` - Pass 1: 14 regex transforms
-4. `python 2_map_skills/deep_migrate_sample_pkg.py` - Pass 2: complex patterns
+## Pipeline (Single Command)
+```bash
+python run_pipeline.py /path/to/your_package.zip
+```
+Or individual stages:
+1. `python run_pipeline.py package.zip` - Full pipeline (extract + scan + migrate + twins + RAG)
+2. `python 2_map_skills/scan_package.py` - Syntax scan + FM classify
+3. `python 2_map_skills/migrate_package.py` - Pass 1: 14 regex transforms
+4. `python 2_map_skills/deep_migrate_package.py` - Pass 2: complex patterns
 5. `python 2_map_skills/java_abap_mapper.py` - Unified skill mapping engine
-6. `python 2_map_skills/twin_discovery_sample_pkg.py` - Semantic twin discovery
+6. `python 2_map_skills/twin_discovery_package.py` - Semantic twin discovery
 7. `python 2_map_skills/threeway_mapper.py` - 3-way mapping + CRV
-8. `python 3_rag/index_zsample_all.py` - Index all knowledge to ChromaDB
+8. `python 3_rag/index_all.py` - Index all knowledge to ChromaDB
 9. `python 3_rag/rag_query_api.py "query"` - Query RAG
 
 ## Key Directories
-- `data/sample_pkg_original/` - 174 original ECC ABAP files
-- `data/sample_pkg_migrated/` - 175 migrated files + wrappers
-- `data/sample_pkg_generated/` - 206 generated Clean Core files
-- `data/threeway_mappings/` - 406 JSON 3-way mapping files
+- `data/sample_pkg_original/` - Original ECC ABAP files (extracted from ZIP)
+- `data/sample_pkg_migrated/` - Migrated files + generated wrappers
+- `data/threeway_mappings/` - JSON 3-way mapping files (Java-ABAP-CRV)
 - `data/twin_discovery/` - Twin catalogs + CRV data
 - `data/vector_db/` - ChromaDB (rebuild with rag_rebuild.py)
-- `data/rag_export.json` - Full RAG export (2,802 KB, tracked in git)
+- `data/rag_export.json` - Full RAG export (tracked in git)
 
 ## CLI Commands
 ```bash
