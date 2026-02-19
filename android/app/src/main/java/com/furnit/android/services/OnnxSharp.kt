@@ -344,8 +344,8 @@ class OnnxSharp private constructor(private val context: Context) {
         try {
             val startTime = System.currentTimeMillis()
 
-            // Preprocess image to [1, 3, 1536, 1536]
-            val scaledBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
+            // Preprocess image to [1, 3, 1536, 1536] (shared with Native Pt)
+            val scaledBitmap = SharpImagePreprocessor.resizeForSharp(bitmap)
             val inputTensor = preprocessImage(env, scaledBitmap)
             scaledBitmap.recycle()
 
@@ -415,8 +415,8 @@ class OnnxSharp private constructor(private val context: Context) {
 
             progressCallback?.invoke(0.1f, "Preprocessing image...")
 
-            // Preprocess image to [1, 3, 1536, 1536]
-            val scaledBitmap = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
+            // Preprocess image to [1, 3, 1536, 1536] (shared with Native Pt)
+            val scaledBitmap = SharpImagePreprocessor.resizeForSharp(bitmap)
             val inputTensor = preprocessImage(env, scaledBitmap)
             scaledBitmap.recycle()
 

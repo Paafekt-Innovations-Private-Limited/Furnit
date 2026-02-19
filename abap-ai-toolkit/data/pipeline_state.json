@@ -1,0 +1,31 @@
+{
+  "pipeline_summary": {
+    "stage_1_extract": "not_started",
+    "stage_2a_scan": "not_started",
+    "stage_2b_migrate_pass1": "not_started",
+    "stage_2c_migrate_pass2": "not_started",
+    "stage_2d_skill_mapping": "completed",
+    "stage_2e_twin_discovery": "not_started",
+    "stage_2f_threeway_mapping": "not_started",
+    "stage_3_rag_indexing": "not_started",
+    "stage_4_code_generation": "not_started"
+  },
+  "stats": {
+    "files_extracted": 0,
+    "files_migrated": 0,
+    "syntax_patterns_found": 0,
+    "fm_calls_classified": 0,
+    "skill_mappings": 7,
+    "twins_discovered": 0,
+    "threeway_mappings": 0,
+    "rag_chunks": 0,
+    "files_generated": 0,
+    "wrapper_classes": 0,
+    "files_curated": 0
+  },
+  "last_updated": "2026-02-15T03:19:04.387148",
+  "last_curation": {
+    "files_curated": 0,
+    "files_deduplicated": 0
+  }
+}

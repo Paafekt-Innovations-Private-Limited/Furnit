@@ -1,0 +1,41 @@
+{
+  "source_file": "sample.clas.abap",
+  "source_dir": "sample_pkg_original",
+  "mappings": [
+    {
+      "line": 19,
+      "old_abap": "MOVE\\s+.+?\\s+TO\\s+",
+      "new_abap": "assign",
+      "java_anchor": "=",
+      "snippet": "MOVE 'hello' TO lv_a."
+    },
+    {
+      "line": 20,
+      "old_abap": "ADD\\s+.+?\\s+TO\\s+",
+      "new_abap": "arithmetic",
+      "java_anchor": "+=",
+      "snippet": "ADD 1 TO mv_value."
+    },
+    {
+      "line": 21,
+      "old_abap": "CONCATENATE\\s+",
+      "new_abap": "string template",
+      "java_anchor": "+",
+      "snippet": "CONCATENATE lv_a lv_b INTO mv_value."
+    },
+    {
+      "line": 22,
+      "old_abap": "CHECK\\s+",
+      "new_abap": "IF/RETURN",
+      "java_anchor": "if (!x) return",
+      "snippet": "CHECK lv_a IS NOT INITIAL."
+    },
+    {
+      "line": 23,
+      "old_abap": "CALL\\s+METHOD\\s+\\w+->",
+      "new_abap": "functional call",
+      "java_anchor": "->",
+      "snippet": "CALL METHOD me->process."
+    }
+  ]
+}

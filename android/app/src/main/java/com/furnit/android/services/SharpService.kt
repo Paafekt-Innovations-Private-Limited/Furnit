@@ -3,6 +3,8 @@ package com.furnit.android.services
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -10,6 +12,7 @@ import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.sqrt
@@ -28,6 +31,27 @@ class SharpService private constructor(private val context: Context) {
         private const val TAG = "SharpService"
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4  // 62 floats per vertex
+        private const val LOGIT_LUT_SIZE = 1024
+        private const val LN_LUT_SIZE = 2048
+        private const val LN_LUT_MIN = 0.001f
+        private const val LN_LUT_MAX = 5.0f
+
+        // Pre-computed logit LUT (matches ONNX): maps [0,1] opacity to ln(p/(1-p))
+        private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
+            val p = (i.toFloat() / (LOGIT_LUT_SIZE - 1)).coerceIn(1e-4f, 1f - 1e-4f)
+            ln(p / (1f - p))
+        }
+        private val LN_LUT_SCALE = (LN_LUT_SIZE - 1).toFloat() / (LN_LUT_MAX - LN_LUT_MIN)
+        private val LN_LUT = FloatArray(LN_LUT_SIZE) { i ->
+            val x = LN_LUT_MIN + (LN_LUT_MAX - LN_LUT_MIN) * i / (LN_LUT_SIZE - 1)
+            ln(x)
+        }
+        private fun lnLut(x: Float): Float {
+            if (x <= LN_LUT_MIN) return LN_LUT[0]
+            if (x >= LN_LUT_MAX) return LN_LUT[LN_LUT_SIZE - 1]
+            return LN_LUT[((x - LN_LUT_MIN) * LN_LUT_SCALE).toInt()]
+        }
+        private val ZERO_SH_BLOCK = ByteArray(45 * 4)
 
         @Volatile
         private var instance: SharpService? = null
@@ -51,12 +75,17 @@ class SharpService private constructor(private val context: Context) {
     private val onnxSharp by lazy { OnnxSharp.getInstance(context) }
     private val executorchSharp by lazy { ExecutorchSharp.getInstance(context) }
     private val litertSharp by lazy { LiteRTSharp.getInstance(context) }
+    // private val pythonSharp by lazy { PythonSharp.getInstance(context) }  // Needs Chaquopy
+    private val torchMobileSharp by lazy { TorchMobileSharp.getInstance(context) }
+    private val nativePtSharp by lazy { NativePtSharp.getInstance(context) }
     private var isInitialized = false
     private var currentBackendId: String? = null  // Track which backend was initialized
     private var useOnnx = false
     private var useSplitOnnx = false
     private var useExecutorch = false
+    private var usePython = false
     private var useLiteRT = false
+    private var useNativePt = false
 
     data class GenerationResult(
         val plyFile: File,
@@ -72,6 +101,32 @@ class SharpService private constructor(private val context: Context) {
         fun onError(message: String)
     }
 
+    /** Handle to cancel a background generation and release resources when user chooses non-AI path. */
+    interface GenerationHandle {
+        fun cancel()
+    }
+
+    /**
+     * Preload ExecuTorch Part1 encoder when user opens the SHARP screen.
+     * Runs warmup forward to hide "stuck at 5%" stall at Generate time.
+     */
+    suspend fun preloadSharpModels() = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+        val backend = prefs.getString("inference_backend", "onnx") ?: "onnx"
+        val effective = BackendConfig.normalize(backend)
+        if (effective == "executorch" && BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady()) {
+            Log.d(TAG, "Preloading ExecuTorch Part1...")
+            executorchSharp.preloadAndWarmup()
+            Log.d(TAG, "ExecuTorch preload done")
+        }
+        if (effective == "onnx" && splitOnnxSharp.isModelReady()) {
+            Log.d(TAG, "Preloading ONNX Part1...")
+            splitOnnxSharp.preloadAndWarmup()
+            Log.d(TAG, "ONNX preload done")
+        }
+        // Native .pt: skip preload — full 2.5GB model OOMs; split mode loads Part1..4 on-demand during inference.
+    }
+
     /**
      * Check if SHARP model is available (ExecuTorch, NCNN component, NCNN full, Split ONNX, or regular ONNX)
      */
@@ -80,6 +135,7 @@ class SharpService private constructor(private val context: Context) {
         if (BackendConfig.ENABLE_NCNN && (ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady())) return true
         if (BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady()) return true
         if (BackendConfig.ENABLE_LITERT && litertSharp.isModelReady()) return true
+        if (BackendConfig.ENABLE_NATIVE_PT && nativePtSharp.isModelReady()) return true
         return false
     }
 
@@ -105,16 +161,16 @@ class SharpService private constructor(private val context: Context) {
                 .apply()
         }
 
-        val inferenceBackend = BackendConfig.normalize(requestedBackend)
-        if (inferenceBackend != requestedBackend) {
-            Log.w(TAG, "Backend '$requestedBackend' disabled; falling back to '$inferenceBackend'")
-            prefs.edit().putString("inference_backend", inferenceBackend).apply()
+        var effectiveBackend = BackendConfig.normalize(requestedBackend)
+        if (effectiveBackend != requestedBackend) {
+            Log.w(TAG, "Backend '$requestedBackend' disabled; falling back to '$effectiveBackend'")
+            prefs.edit().putString("inference_backend", effectiveBackend).apply()
         }
 
         // Re-initialize if the user switched backends in Settings
-        if (isInitialized && currentBackendId == inferenceBackend) return true
-        if (isInitialized && currentBackendId != inferenceBackend) {
-            Log.d(TAG, "Backend changed from '$currentBackendId' to '$inferenceBackend' — re-initializing")
+        if (isInitialized && currentBackendId == effectiveBackend) return true
+        if (isInitialized && currentBackendId != effectiveBackend) {
+            Log.d(TAG, "Backend changed from '$currentBackendId' to '$effectiveBackend' — re-initializing")
             release()
         }
 
@@ -123,14 +179,51 @@ class SharpService private constructor(private val context: Context) {
         useSplitOnnx = false
         useExecutorch = false
         useLiteRT = false
+        usePython = false
+        useNativePt = false
 
-        if (inferenceBackend == "ncnn") {
-            // User explicitly wants NCNN - no fallback to ONNX
+        if (effectiveBackend == "native_pt") {
+            Log.d(TAG, "Native .pt backend selected (no fallback)")
+            if (nativePtSharp.isModelReady()) {
+                if (nativePtSharp.initialize()) {
+                    isInitialized = true
+                    useNativePt = true
+                    currentBackendId = "native_pt"
+                    Log.d(TAG, "Native .pt SHARP initialized successfully")
+                    return true
+                }
+            }
+            Log.e(TAG, "Native .pt engine not available. Push sharp_scripted.ptl to device. No fallback.")
+            return false
+        }
+
+        if (effectiveBackend == "python") {
+            Log.w(TAG, "Python backend not available (needs Chaquopy + ARM PyTorch). Falling back to ONNX.")
+            effectiveBackend = "onnx"
+        }
+
+        if (effectiveBackend == "torch_mobile") {
+            Log.d(TAG, "PyTorch Mobile backend selected -- pre-loading model")
+            if (torchMobileSharp.isModelReady()) {
+                // Initialize pre-loads the model into memory NOW
+                // so it's ready when user taps Generate
+                if (torchMobileSharp.initialize()) {
+                    isInitialized = true
+                    currentBackendId = "torch_mobile"
+                    Log.d(TAG, "PyTorch Mobile initialized + pre-loaded successfully")
+                    return true
+                }
+            }
+            Log.w(TAG, "PyTorch Mobile model not found. Falling back to ONNX.")
+            effectiveBackend = "onnx"
+        }
+
+        if (effectiveBackend == "ncnn") {
             Log.d(TAG, "NCNN backend selected in settings")
-            // Try component mode first (works correctly), then full model
+            // Component mode only - full model hangs at conv_106
             if (ncnnSharp.isComponentModelReady()) {
                 try {
-                    ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = true)
+                    ncnnSharp.init(useGpu = true, numThreads = 4, useComponentMode = true)
                     isInitialized = true
                     Log.d(TAG, "NCNN component mode initialized successfully")
                     return true
@@ -138,23 +231,12 @@ class SharpService private constructor(private val context: Context) {
                     Log.e(TAG, "NCNN component init failed: ${e.message}")
                 }
             }
-            if (ncnnSharp.ensureModelReady()) {
-                try {
-                    ncnnSharp.init(useGpu = false, numThreads = 4, useComponentMode = false)
-                    isInitialized = true
-                    Log.d(TAG, "NCNN full model initialized successfully")
-                    return true
-                } catch (e: Exception) {
-                    Log.e(TAG, "NCNN init failed: ${e.message}")
-                    return false
-                }
-            } else {
-                Log.e(TAG, "NCNN model files not found. Push model files to device.")
-                return false
-            }
+            // No component files: fall back to ONNX instead of full model (avoids hang)
+            Log.w(TAG, "NCNN component files not found. Falling back to ONNX.")
+            effectiveBackend = "onnx"
         }
 
-        if (inferenceBackend == "litert") {
+        if (effectiveBackend == "litert") {
             // User explicitly wants LiteRT (TFLite FP16). No fallback to ONNX.
             Log.d(TAG, "LiteRT backend selected in settings")
             if (litertSharp.isModelReady()) {
@@ -174,7 +256,7 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        if (inferenceBackend == "executorch") {
+        if (effectiveBackend == "executorch") {
             // User explicitly wants ExecuTorch
             Log.d(TAG, "ExecuTorch backend selected in settings")
             if (executorchSharp.isModelReady()) {
@@ -193,15 +275,16 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        // ONNX selected (or fallback from LiteRT) - use ONNX for room generation
-        Log.d(TAG, "Backend: $inferenceBackend - using ONNX for room generation")
+        // ONNX selected (or fallback from NCNN) - use ONNX for room generation
+        Log.d(TAG, "Backend: $effectiveBackend - using ONNX for room generation")
+        Log.d(TAG, "ONNX init: splitOnnxSharp.isModelReady=${splitOnnxSharp.isModelReady()} onnxSharp.isModelReady=${onnxSharp.isModelReady()}")
 
         // Try Split ONNX first (memory-efficient 4-part model)
         if (splitOnnxSharp.isModelReady()) {
             Log.d(TAG, "Split ONNX model ready - using memory-efficient 4-part inference")
             isInitialized = true
             useSplitOnnx = true
-            currentBackendId = inferenceBackend
+            currentBackendId = effectiveBackend
             return true
         } else {
             Log.w(TAG, "Split ONNX not ready, missing: ${splitOnnxSharp.getMissingFiles()}")
@@ -213,7 +296,7 @@ class SharpService private constructor(private val context: Context) {
                 if (onnxSharp.initialize()) {
                     isInitialized = true
                     useOnnx = true
-                    currentBackendId = inferenceBackend
+                    currentBackendId = effectiveBackend
                     Log.d(TAG, "ONNX with mmap initialized successfully")
                     return true
                 }
@@ -226,14 +309,41 @@ class SharpService private constructor(private val context: Context) {
         return false
     }
 
+    private val generationCancelled = AtomicBoolean(false)
+
     /**
-     * Generate 3D Gaussian splats from an image
+     * Start generation in background. Returns a handle to cancel. When user chooses Manual/Back,
+     * call handle.cancel() then release() to free memory.
+     */
+    fun startGenerationInBackground(image: Bitmap, callback: ProgressCallback): GenerationHandle {
+        generationCancelled.set(false)
+        val handle = object : GenerationHandle {
+            override fun cancel() {
+                generationCancelled.set(true)
+                Log.d(TAG, "Generation cancelled by user")
+            }
+        }
+        Thread {
+            generateGaussiansInternal(image, callback) { generationCancelled.get() }
+        }.start()
+        return handle
+    }
+
+    /**
+     * Generate 3D Gaussian splats from an image (blocks until complete).
+     * For background start with cancellation, use startGenerationInBackground.
      */
     fun generateGaussians(image: Bitmap, callback: ProgressCallback) {
+        generationCancelled.set(false)
+        Thread {
+            generateGaussiansInternal(image, callback) { false }
+        }.start()
+    }
+
+    private fun generateGaussiansInternal(image: Bitmap, callback: ProgressCallback, isCancelled: () -> Boolean) {
         Log.d(TAG, "Starting generation: ${image.width}x${image.height}")
 
-        Thread {
-            try {
+        try {
                 callback.onProgress(0.1f, "Preparing...")
 
                 // Initialize (or re-initialize if backend preference changed)
@@ -241,10 +351,33 @@ class SharpService private constructor(private val context: Context) {
                 val initialized = kotlinx.coroutines.runBlocking { initialize() }
                 if (!initialized) {
                     callback.onError("SHARP model not available. Push model files to device.")
-                    return@Thread
+                    return
                 }
+                if (isCancelled()) return
 
-                if (useLiteRT) {
+                if (currentBackendId == "torch_mobile") {
+                    callback.onProgress(0.2f, "Running SHARP (PyTorch Mobile)...")
+                    val result = kotlinx.coroutines.runBlocking {
+                        torchMobileSharp.inferStreaming(image) { progress, message ->
+                            val mapped = (0.2f + 0.79f * progress).coerceIn(0.2f, 0.99f)
+                            callback.onProgress(mapped, message)
+                        }
+                    }
+                    if (result == null) {
+                        callback.onError("PyTorch Mobile inference failed")
+                        return
+                    }
+                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (PyTorch Mobile)")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_torch_mobile")
+                    callback.onProgress(1.0f, "Done!")
+                    callback.onComplete(GenerationResult(
+                        plyFile = result.plyFile,
+                        classicPlyFile = result.classicPlyFile,
+                        roomWidth = result.roomWidth,
+                        roomHeight = result.roomHeight,
+                        roomDepth = result.roomDepth
+                    ))
+                } else if (useLiteRT) {
                     // Use LiteRT backend (TFLite FP16 + GPU)
                     callback.onProgress(0.2f, "Running SHARP (LiteRT)...")
                     val result = kotlinx.coroutines.runBlocking {
@@ -258,7 +391,7 @@ class SharpService private constructor(private val context: Context) {
 
                     if (result == null) {
                         callback.onError("SHARP LiteRT inference failed")
-                        return@Thread
+                        return
                     }
 
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (LiteRT)")
@@ -266,6 +399,29 @@ class SharpService private constructor(private val context: Context) {
 
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_litert")
 
+                    callback.onProgress(1.0f, "Done!")
+                    callback.onComplete(GenerationResult(
+                        plyFile = result.plyFile,
+                        classicPlyFile = result.classicPlyFile,
+                        roomWidth = result.roomWidth,
+                        roomHeight = result.roomHeight,
+                        roomDepth = result.roomDepth
+                    ))
+                } else if (useNativePt) {
+                    callback.onProgress(0.2f, "Running SHARP (Native .pt - LibTorch)...")
+                    val result = kotlinx.coroutines.runBlocking {
+                        nativePtSharp.inferStreaming(image, { progress, message ->
+                            val mapped = (0.2f + 0.79f * progress).coerceIn(0.2f, 0.99f)
+                            callback.onProgress(mapped, message)
+                        }, isCancelled)
+                    }
+                    if (result == null) {
+                        if (isCancelled()) return
+                        callback.onError("Native .pt inference failed")
+                        return
+                    }
+                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (Native .pt)")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_native_pt")
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
                         plyFile = result.plyFile,
@@ -285,7 +441,7 @@ class SharpService private constructor(private val context: Context) {
 
                     if (result == null) {
                         callback.onError("SHARP ExecuTorch inference failed")
-                        return@Thread
+                        return
                     }
 
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch)")
@@ -303,19 +459,22 @@ class SharpService private constructor(private val context: Context) {
                     ))
                 } else if (useSplitOnnx) {
                     // Use Split ONNX backend (memory-efficient 4-part model)
+                    Log.d(TAG, "generateGaussians: invoking Split ONNX inferStreaming")
                     callback.onProgress(0.2f, "Running SHARP (Split ONNX - memory efficient)...")
                     val result = kotlinx.coroutines.runBlocking {
-                        splitOnnxSharp.inferStreaming(image) { progress, message ->
+                        splitOnnxSharp.inferStreaming(image, { progress, message ->
                             callback.onProgress(progress, message)
-                        }
+                        }, isCancelled)
                     }
 
                     if (result == null) {
+                        if (isCancelled()) return
+                        Log.e(TAG, "generateGaussians: Split ONNX inferStreaming returned null")
                         callback.onError("SHARP Split ONNX inference failed")
-                        return@Thread
+                        return
                     }
 
-                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (Split ONNX)")
+                    Log.d(TAG, "generateGaussians: Split ONNX SUCCESS ${result.gaussianCount} Gaussians room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
                     Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
                     // Save thumbnail and metadata
@@ -340,7 +499,7 @@ class SharpService private constructor(private val context: Context) {
 
                     if (result == null) {
                         callback.onError("SHARP ONNX inference failed")
-                        return@Thread
+                        return
                     }
 
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ONNX)")
@@ -396,11 +555,14 @@ class SharpService private constructor(private val context: Context) {
                     ))
                 }
 
-            } catch (e: Exception) {
-                Log.e(TAG, "Generation failed", e)
-                callback.onError("Failed: ${e.message}")
+        } catch (e: Exception) {
+            if (isCancelled()) {
+                Log.d(TAG, "Generation stopped (cancelled)")
+                return
             }
-        }.start()
+            Log.e(TAG, "Generation failed", e)
+            callback.onError("Failed: ${e.message}")
+        }
     }
 
     private fun saveMetadata(roomFolder: File, image: Bitmap, modelType: String) {
@@ -415,16 +577,17 @@ class SharpService private constructor(private val context: Context) {
         val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
         val roomName = "AI Room ${dateFormat.format(Date())}"
         metadataFile.writeText("name=$roomName\ncreated=${System.currentTimeMillis()}\ntype=$modelType")
+        Log.d(TAG, "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath}")
     }
 
     /**
      * Write Gaussian parameters to PLY file in standard 3DGS format.
+     * Uses ONNX-style optimizations: LOGIT_LUT, LN_LUT, zeroSHBlock, batch writes.
      */
     private fun writePlyFile(file: File, result: NcnnSharp.GaussianResult) {
         val gaussianCount = result.gaussianCount
         val params = result.params
 
-        // Build PLY header
         val header = buildString {
             append("ply\n")
             append("format binary_little_endian 1.0\n")
@@ -450,62 +613,69 @@ class SharpService private constructor(private val context: Context) {
 
         FileOutputStream(file).use { fos ->
             fos.write(header.toByteArray(Charsets.UTF_8))
+            val channel = fos.channel
 
-            val vertexBuffer = ByteBuffer.allocate(BYTES_PER_VERTEX)
-            vertexBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchSize = 512
+            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
+            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val scaleBoost = 1.3f
+            val minScale = 0.001f
+            val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
 
-            for (i in 0 until gaussianCount) {
-                vertexBuffer.clear()
-                val offset = i * NcnnSharp.PARAMS_PER_GAUSSIAN
+            var processed = 0
+            while (processed < gaussianCount) {
+                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                for (j in 0 until currentBatch) {
+                    val i = processed + j
+                    val offset = i * NcnnSharp.PARAMS_PER_GAUSSIAN
 
-                // Position (flip Y and Z for coordinate system)
-                val x = params[offset + 0]
-                val y = -params[offset + 1]
-                val z = -params[offset + 2]
-                vertexBuffer.putFloat(x)
-                vertexBuffer.putFloat(y)
-                vertexBuffer.putFloat(z)
+                    val x = params[offset + 0]
+                    val y = -params[offset + 1]
+                    val z = -params[offset + 2]
+                    batchBuffer.putFloat(x)
+                    batchBuffer.putFloat(y)
+                    batchBuffer.putFloat(z)
 
-                // Normals (unused)
-                vertexBuffer.putFloat(0f)
-                vertexBuffer.putFloat(0f)
-                vertexBuffer.putFloat(0f)
+                    batchBuffer.putFloat(0f)
+                    batchBuffer.putFloat(0f)
+                    batchBuffer.putFloat(0f)
 
-                // Colors -> SH DC coefficients
-                val r = params[offset + 11].coerceIn(0f, 1f)
-                val g = params[offset + 12].coerceIn(0f, 1f)
-                val b = params[offset + 13].coerceIn(0f, 1f)
-                vertexBuffer.putFloat((r - 0.5f) / SH_C0)
-                vertexBuffer.putFloat((g - 0.5f) / SH_C0)
-                vertexBuffer.putFloat((b - 0.5f) / SH_C0)
+                    // Colors (NCNN native now outputs RGB after BGR swap)
+                    val r = params[offset + 11].coerceIn(0f, 1f)
+                    val g = params[offset + 12].coerceIn(0f, 1f)
+                    val b = params[offset + 13].coerceIn(0f, 1f)
+                    batchBuffer.putFloat((r - 0.5f) / SH_C0)
+                    batchBuffer.putFloat((g - 0.5f) / SH_C0)
+                    batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                // Higher order SH (45 zeros)
-                for (j in 0 until 45) vertexBuffer.putFloat(0f)
+                    batchBuffer.put(ZERO_SH_BLOCK)
 
-                // Opacity -> logit transform
-                val rawOpacity = params[offset + 10].coerceIn(1e-4f, 1f - 1e-4f)
-                vertexBuffer.putFloat(ln(rawOpacity / (1f - rawOpacity)))
+                    val rawOpacity = params[offset + 10].coerceIn(0f, 1f)
+                    val lutIndex = (rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)
+                    batchBuffer.putFloat(LOGIT_LUT[lutIndex])
 
-                // Scale -> log transform
-                val scaleBoost = 1.3f
-                val minScale = 0.001f
-                vertexBuffer.putFloat(ln(max(params[offset + 3] * scaleBoost, minScale)))
-                vertexBuffer.putFloat(ln(max(params[offset + 4] * scaleBoost, minScale)))
-                vertexBuffer.putFloat(ln(max(params[offset + 5] * scaleBoost, minScale)))
+                    batchBuffer.putFloat(lnLut(max(params[offset + 3] * scaleBoost, minScale)))
+                    batchBuffer.putFloat(lnLut(max(params[offset + 4] * scaleBoost, minScale)))
+                    batchBuffer.putFloat(lnLut(max(params[offset + 5] * scaleBoost, minScale)))
 
-                // Rotation quaternion (normalize)
-                val rw = params[offset + 6]
-                val rx = params[offset + 7]
-                val ry = params[offset + 8]
-                val rz = params[offset + 9]
-                val mag = sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
-                val invMag = if (mag > 1e-8f) 1f / mag else 1f
-                vertexBuffer.putFloat(rw * invMag)
-                vertexBuffer.putFloat(rx * invMag)
-                vertexBuffer.putFloat(ry * invMag)
-                vertexBuffer.putFloat(rz * invMag)
-
-                fos.write(vertexBuffer.array())
+                    val rw = params[offset + 6]
+                    val rx = params[offset + 7]
+                    val ry = params[offset + 8]
+                    val rz = params[offset + 9]
+                    val mag = sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
+                    val invMag = if (mag > 1e-8f) 1f / mag else 1f
+                    batchBuffer.putFloat(rw * invMag)
+                    batchBuffer.putFloat(rx * invMag)
+                    batchBuffer.putFloat(ry * invMag)
+                    batchBuffer.putFloat(rz * invMag)
+                }
+                batchBuffer.flip()
+                batchBuffer.limit(currentBatch * BYTES_PER_VERTEX)
+                while (batchBuffer.hasRemaining()) {
+                    channel.write(batchBuffer)
+                }
+                batchBuffer.clear()
+                processed += currentBatch
             }
         }
 
@@ -517,9 +687,11 @@ class SharpService private constructor(private val context: Context) {
      */
     fun release() {
         when {
+            useNativePt -> nativePtSharp.release()
             useLiteRT -> litertSharp.release()
             useExecutorch -> executorchSharp.release()
             useOnnx -> onnxSharp.release()
+            useSplitOnnx -> { /* split uses onnx session, no separate release */ }
             else -> ncnnSharp.release()
         }
         isInitialized = false

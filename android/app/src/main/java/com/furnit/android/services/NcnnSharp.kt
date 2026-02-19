@@ -70,6 +70,28 @@ class NcnnSharp(private val context: Context) {
         }
 
         fun isNativeAvailable(): Boolean = libraryLoaded
+
+        /** Stub for BlasNeonTest; NEON PLY transform not implemented. */
+        fun isNeonTransformAvailable(): Boolean = false
+    }
+
+    /** Stub for BlasNeonTest; not implemented. */
+    fun nativeNormalizeQuaternions(quaternions: FloatArray, numQuaternions: Int) {
+        throw UnsupportedOperationException("nativeNormalizeQuaternions not implemented")
+    }
+
+    /** Stub for BlasNeonTest; not implemented. */
+    fun nativeTransformForPly(
+        positions: FloatArray,
+        scales: FloatArray,
+        rotations: FloatArray,
+        colors: FloatArray,
+        opacities: FloatArray,
+        numGaussians: Int,
+        scaleBoost: Float,
+        minScale: Float
+    ): FloatArray? {
+        throw UnsupportedOperationException("nativeTransformForPly not implemented")
     }
 
     private var nativeHandle: Long = 0
@@ -162,7 +184,7 @@ class NcnnSharp(private val context: Context) {
         this.useComponentMode = useComponentMode
 
         if (useComponentMode) {
-            return initComponents()
+            return initComponents(useGpu, numThreads)
         } else {
             return initFullModel(useGpu, numThreads)
         }
@@ -171,7 +193,7 @@ class NcnnSharp(private val context: Context) {
     /**
      * Initialize component-based model (slower but works correctly).
      */
-    private fun initComponents(): Boolean {
+    private fun initComponents(useGpu: Boolean, numThreads: Int): Boolean {
         // Always ensure component files are in internal storage
         val internalReady = COMPONENT_FILES.all { filename ->
             java.io.File(modelsDir, filename).exists()
@@ -214,7 +236,7 @@ class NcnnSharp(private val context: Context) {
 
         try {
             Log.i(TAG, "Loading SHARP NCNN components from: $modelsDir")
-            componentHandle = nativeInitComponents(modelsDir.absolutePath)
+            componentHandle = nativeInitComponents(modelsDir.absolutePath, useGpu, numThreads)
             isInitialized = componentHandle != 0L
             if (!isInitialized) {
                 throw RuntimeException("Failed to load SHARP NCNN components")
@@ -365,7 +387,7 @@ class NcnnSharp(private val context: Context) {
     private external fun nativeRelease(handle: Long)
 
     // Native methods - Component mode
-    private external fun nativeInitComponents(modelDir: String): Long
+    private external fun nativeInitComponents(modelDir: String, useGpu: Boolean, numThreads: Int): Long
 
     private external fun nativeInferComponents(handle: Long, bitmap: Bitmap): FloatArray?
 

@@ -9,12 +9,18 @@ package com.furnit.android.services
 object BackendConfig {
     /**
      * Only ONNX Runtime is required to work and be deployed to devices.
-     * Keep other backends disabled by default to avoid runtime failures and
-     * to avoid requiring their model files during setup.
+     * NCNN enabled: user can choose NCNN in Settings (requires sharp.ncnn.param/bin).
      */
-    const val ENABLE_NCNN: Boolean = false
-    const val ENABLE_EXECUTORCH: Boolean = false
+    const val ENABLE_NCNN: Boolean = true
+    const val ENABLE_EXECUTORCH: Boolean = true
     const val ENABLE_LITERT: Boolean = true
+    const val ENABLE_PYTHON: Boolean = false  // Needs Chaquopy + ARM PyTorch wheels
+    const val ENABLE_TORCH_MOBILE: Boolean = true
+    /**
+     * Native .pt engine: TorchScript + custom C++ + ARM Compute Library.
+     * Max control, FP32 fidelity, mmap weights. Not yet implemented — falls back to ONNX.
+     */
+    const val ENABLE_NATIVE_PT: Boolean = true
     /**
      * GPU delegate can hard-crash (SIGSEGV) on some devices/drivers during interpreter
      * creation. Keep OFF by default; enable only after device validation.
@@ -35,6 +41,9 @@ object BackendConfig {
             "ncnn" -> ENABLE_NCNN
             "executorch" -> ENABLE_EXECUTORCH
             "litert" -> ENABLE_LITERT
+            "python" -> ENABLE_PYTHON
+            "torch_mobile" -> ENABLE_TORCH_MOBILE
+            "native_pt" -> ENABLE_NATIVE_PT
             else -> false
         }
     }

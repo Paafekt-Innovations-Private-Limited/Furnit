@@ -2,6 +2,7 @@ plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
     id 'com.google.gms.google-services'
+    // id 'com.chaquo.python'  // Python backend (needs ARM torch wheels)
 }
 
 // ONNX-only by default: skip native (NCNN) builds unless explicitly enabled.
@@ -20,6 +21,13 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Chaquopy Python (commented out -- PyTorch lacks ARM Android wheels)
+        // python {
+        //     buildPython "/opt/miniconda3/bin/python3"
+        //     version "3.13"
+        //     pip { install "numpy"; install "Pillow" }
+        // }
 
         if (enableNative) {
             // NCNN native library support
@@ -75,6 +83,12 @@ android {
             }
         }
     }
+
+    // Resolve duplicate native libs between ExecuTorch and PyTorch Mobile
+    packagingOptions {
+        pickFirst '**/libfbjni.so'
+        pickFirst '**/libc++_shared.so'
+    }
 }
 
 dependencies {
@@ -110,7 +124,12 @@ dependencies {
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.18.0'
 
     // ExecuTorch for on-device inference (MobileNetV3 classification + SHARP room gen)
-    implementation 'org.pytorch:executorch-android:1.0.1'
+    implementation 'org.pytorch:executorch-android:1.1.0'
+
+    // PyTorch Mobile Lite - loads .ptl files directly (no model conversion)
+    implementation('org.pytorch:pytorch_android_lite:2.1.0') {
+        exclude group: 'com.facebook.fbjni', module: 'fbjni-java-only'
+    }
 
     // SceneView for 3D model rendering (GLB/GLTF)
     implementation 'io.github.sceneview:sceneview:2.0.3'

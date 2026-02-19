@@ -314,11 +314,80 @@ class SettingsActivity : AppCompatActivity() {
         backendRadioGroup.addView(litertRadio)
         backendRadioGroup.addView(litertRadioDesc)
 
+        val pythonRadioId = View.generateViewId()
+        val pythonRadio = RadioButton(this).apply {
+            id = pythonRadioId
+            text = if (BackendConfig.ENABLE_PYTHON) "Python (PyTorch)" else "Python (disabled)"
+            setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_PYTHON
+            alpha = if (BackendConfig.ENABLE_PYTHON) 1.0f else 0.5f
+        }
+        val pythonRadioDesc = TextView(this).apply {
+            text = if (BackendConfig.ENABLE_PYTHON) {
+                "Native PyTorch via Chaquopy — same code as Mac/PC, no conversion"
+            } else {
+                "Disabled in this build"
+            }
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_PYTHON) 1.0f else 0.5f
+        }
+        backendRadioGroup.addView(pythonRadio)
+        backendRadioGroup.addView(pythonRadioDesc)
+
+        val torchMobileRadioId = View.generateViewId()
+        val torchMobileRadio = RadioButton(this).apply {
+            id = torchMobileRadioId
+            text = if (BackendConfig.ENABLE_TORCH_MOBILE) "PyTorch Mobile" else "PyTorch Mobile (disabled)"
+            setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_TORCH_MOBILE
+            alpha = if (BackendConfig.ENABLE_TORCH_MOBILE) 1.0f else 0.5f
+        }
+        val torchMobileRadioDesc = TextView(this).apply {
+            text = if (BackendConfig.ENABLE_TORCH_MOBILE) {
+                "Direct .ptl model — same weights as Python, no conversion"
+            } else {
+                "Disabled in this build"
+            }
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_TORCH_MOBILE) 1.0f else 0.5f
+        }
+        backendRadioGroup.addView(torchMobileRadio)
+        backendRadioGroup.addView(torchMobileRadioDesc)
+
+        val nativePtRadioId = View.generateViewId()
+        val nativePtRadio = RadioButton(this).apply {
+            id = nativePtRadioId
+            text = if (BackendConfig.ENABLE_NATIVE_PT) "Native .pt" else "Native .pt (disabled)"
+            setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_NATIVE_PT
+            alpha = if (BackendConfig.ENABLE_NATIVE_PT) 1.0f else 0.5f
+        }
+        val nativePtRadioDesc = TextView(this).apply {
+            text = if (BackendConfig.ENABLE_NATIVE_PT) {
+                "TorchScript + LibTorch native — FP32, internal storage, no fallback"
+            } else {
+                "Disabled in this build"
+            }
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_NATIVE_PT) 1.0f else 0.5f
+        }
+        backendRadioGroup.addView(nativePtRadio)
+        backendRadioGroup.addView(nativePtRadioDesc)
+
         when (currentBackend) {
             "onnx" -> backendRadioGroup.check(onnxRadioId)
             "ncnn" -> backendRadioGroup.check(ncnnRadioId)
             "executorch" -> backendRadioGroup.check(executorchRadioId)
             "litert" -> backendRadioGroup.check(litertRadioId)
+            "python" -> backendRadioGroup.check(pythonRadioId)
+            "torch_mobile" -> backendRadioGroup.check(torchMobileRadioId)
+            "native_pt" -> backendRadioGroup.check(nativePtRadioId)
             else -> backendRadioGroup.check(onnxRadioId)
         }
 
@@ -328,6 +397,9 @@ class SettingsActivity : AppCompatActivity() {
                 ncnnRadioId -> "ncnn"
                 executorchRadioId -> "executorch"
                 litertRadioId -> "litert"
+                pythonRadioId -> "python"
+                torchMobileRadioId -> "torch_mobile"
+                nativePtRadioId -> "native_pt"
                 else -> "onnx"
             }
             prefs.edit().putString("inference_backend", backend).apply()

@@ -54,6 +54,71 @@ python export_sharp_litert_split.py --weights /path/to/sharp_checkpoint.pt
 ./push_sharp_litert_models.sh sharp_litert_models
 ```
 
+#### Optional: ExecuTorch Models (XNNPACK or Vulkan backend)
+
+**Memory-optimized single .pte (recommended to avoid Part 4 OOM / LMK):**
+
+A single full model with **greedy memory planning** + FP16 + XNNPACK reuses buffers across the graph, keeping peak activation memory much lower than the 4-part split (which cannot reuse across parts). Export and push:
+
+```bash
+cd android
+python export_sharp_executorch_all.py --variant memory_optimized
+# Then push sharp_full_memory_optimized.pte to device (see push script below)
+```
+
+The app prefers `sharp_full_memory_optimized.pte` when present. See `android/docs/MEMORY_OPTIMIZATION.md` for the full prioritized plan (chunked attention, INT8, etc.).
+
+**Split models (alternative):** Backend is chosen at export time. Portable (CPU fallback) models cause 10+ minute inference.
+
+| File | Size | Description |
+|------|------|-------------|
+| `sharp_split_part1.pte` | ~582MB | Patch Encoder A (blocks 0-11) |
+| `sharp_split_part2.pte` | ~577MB | Patch Encoder B (blocks 12-23) |
+| `sharp_split_part3.pte` | ~582MB | Image Encoder A |
+| `sharp_split_part4.pte` | ~755MB | Image Encoder B + Decoder + Gaussians |
+
+**Total: ~2.5GB**
+
+Export options for split (pick one):
+```bash
+# XNNPACK (CPU optimized, 1-2 min inference) — recommended
+python export_sharp_executorch_split4.py --weights /path/to/sharp.pt --backend xnnpack --output-dir executorch_models
+
+# Vulkan GPU (20-60 sec inference) — fastest, requires Vulkan support
+python export_sharp_executorch_split4.py --weights /path/to/sharp.pt --backend vulkan --output-dir executorch_models
+
+# DO NOT use portable unless debugging — 10+ min inference (CPU scalar fallback)
+python export_sharp_executorch_split4.py --weights /path/to/sharp.pt --backend portable --output-dir executorch_models
+```
+
+```bash
+./push_sharp_executorch_models.sh executorch_models
+```
+
+The script pushes models to:
+1. `/sdcard/Android/data/com.furnit.android/files/models/` (external app storage)
+2. `/data/local/tmp/furnit/` (fallback search dir, so split mode is found even if external path differs)
+
+Verify export: `ls -lh executorch_models/` — expect part1–3 ~500–600MB each, part4 ~700–800MB.
+
+#### Optional: Native .pt (TorchScript / LibTorch) split models
+
+The full 2.5GB `.ptl` model crashes on load (OOM). **Split mode is preferred** — each part ~500–800MB, loaded one at a time during inference.
+
+| File | Size | Description |
+|------|------|-------------|
+| `sharp_scripted_part1.ptl` | ~500–600MB | Patch Encoder A |
+| `sharp_scripted_part2.ptl` | ~500–600MB | Patch Encoder B |
+| `sharp_scripted_part3.ptl` | ~500–600MB | Image Encoder A |
+| `sharp_scripted_part4.ptl` | ~700–800MB | Image Encoder B + Decoder + Gaussians |
+
+Export and push:
+```bash
+cd android
+python export_sharp_torchscript_split.py
+./push_sharp_torchscript_split.sh
+```
+
 #### Optional: NCNN Models
 
 | File | Description |
@@ -153,6 +218,31 @@ Run the app at least once to create the app data folder, then try again.
 - Split ONNX is slower than NCNN
 - First run may be slower due to model loading
 - Close other apps to free memory
+
+### Native .pt split: debugging stalls / LMK
+
+If Part 1 completes but Part 2/3/4 stall or the app is killed:
+
+1. **Monitor logs** (run in separate terminal during generation):
+   ```bash
+   cd android
+   ./monitor_native_pt_inference.sh 2>&1 | tee inference.log
+   ```
+   Or: `adb logcat | grep -E "NativePtSharp|Part [0-9]"`
+
+2. **Check memory** while inference runs:
+   ```bash
+   adb shell dumpsys meminfo com.furnit.android
+   ```
+   Or every 5s: `watch -n5 'adb shell dumpsys meminfo com.furnit.android | head -35'`
+
+3. **Reduce LMK pressure**: Close other apps, avoid switching away during generation.
+
+4. **Logs to look for**:
+   - `Part 2: before load` / `load done` — if missing, Part 2 load is hanging
+   - `Part 2: first forward` — first forward can take 10–60s (backend init)
+   - `Part 2: patch 0/35` … `patch 34/35` — per-patch progress
+   - `JVM: X/Y MB, SysAvail: Z MB` — low SysAvail (<200MB) increases LMK risk
 
 ## Settings
 

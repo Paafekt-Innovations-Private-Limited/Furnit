@@ -415,11 +415,10 @@ class LiteRTSharp private constructor(private val context: Context) {
         val srcFloats = FloatArray(3 * srcSize * srcSize)
         src.asFloatBuffer().get(srcFloats)
 
-        val dstFloats = FloatArray(3 * dstSize * dstSize)
         val scale = srcSize.toFloat() / dstSize
         val srcSizeM2 = srcSize - 2
 
-        // Pre-compute interpolation indices and weights (avoid recalculating per channel)
+        // Pre-compute x indices/weights once (reused per row)
         val xIndices = IntArray(dstSize)
         val xWeights = FloatArray(dstSize)
         for (dx in 0 until dstSize) {
@@ -427,36 +426,32 @@ class LiteRTSharp private constructor(private val context: Context) {
             xIndices[dx] = sx.toInt().coerceIn(0, srcSizeM2)
             xWeights[dx] = sx - xIndices[dx]
         }
-        val yIndices = IntArray(dstSize)
-        val yWeights = FloatArray(dstSize)
-        for (dy in 0 until dstSize) {
-            val sy = dy * scale
-            yIndices[dy] = sy.toInt().coerceIn(0, srcSizeM2)
-            yWeights[dy] = sy - yIndices[dy]
-        }
+
+        // Write directly to output buffer; row buffer avoids full dstFloats allocation (~7MB)
+        val buf = ByteBuffer.allocateDirect(3 * dstSize * dstSize * 4).apply { order(ByteOrder.nativeOrder()) }
+        val dstFb = buf.asFloatBuffer()
+        val rowBuf = FloatArray(dstSize)
 
         for (c in 0..2) {
             val srcChanOff = c * srcSize * srcSize
             val dstChanOff = c * dstSize * dstSize
             for (dy in 0 until dstSize) {
-                val sy0 = yIndices[dy]
-                val fy = yWeights[dy]
+                val sy0 = (dy * scale).toInt().coerceIn(0, srcSizeM2)
+                val fy = dy * scale - sy0
                 val oneMinusFy = 1f - fy
                 val srcRow0 = srcChanOff + sy0 * srcSize
                 val srcRow1 = srcRow0 + srcSize
-                val dstRowOff = dstChanOff + dy * dstSize
                 for (dx in 0 until dstSize) {
                     val sx0 = xIndices[dx]
                     val fx = xWeights[dx]
-                    dstFloats[dstRowOff + dx] =
+                    rowBuf[dx] =
                         oneMinusFy * (srcFloats[srcRow0 + sx0] + fx * (srcFloats[srcRow0 + sx0 + 1] - srcFloats[srcRow0 + sx0])) +
                         fy * (srcFloats[srcRow1 + sx0] + fx * (srcFloats[srcRow1 + sx0 + 1] - srcFloats[srcRow1 + sx0]))
                 }
+                dstFb.position(dstChanOff + dy * dstSize)
+                dstFb.put(rowBuf)
             }
         }
-
-        val buf = ByteBuffer.allocateDirect(dstFloats.size * 4).apply { order(ByteOrder.nativeOrder()) }
-        buf.asFloatBuffer().put(dstFloats)
         buf.rewind()
         return buf
     }
@@ -1415,9 +1410,10 @@ class LiteRTSharp private constructor(private val context: Context) {
                     batchBuffer.putFloat(0f)
                     batchBuffer.putFloat(0f)
 
-                    val colorR = gaussianParams[offset + 11].coerceIn(0f, 1f)
+                    // BGR->RGB swap (TFLite outputs BGR; ONNX outputs RGB - match ONNX)
+                    val colorR = gaussianParams[offset + 13].coerceIn(0f, 1f)
                     val colorG = gaussianParams[offset + 12].coerceIn(0f, 1f)
-                    val colorB = gaussianParams[offset + 13].coerceIn(0f, 1f)
+                    val colorB = gaussianParams[offset + 11].coerceIn(0f, 1f)
                     batchBuffer.putFloat((colorR - 0.5f) / SH_C0)
                     batchBuffer.putFloat((colorG - 0.5f) / SH_C0)
                     batchBuffer.putFloat((colorB - 0.5f) / SH_C0)
@@ -1571,10 +1567,10 @@ class LiteRTSharp private constructor(private val context: Context) {
                     batchBuffer.putFloat(0f)
                     batchBuffer.putFloat(0f)
 
-                    // Color (offset 11-13) → SH DC coefficients
-                    val colorR = localPacked[baseIdx + 11].coerceIn(0f, 1f)
+                    // Color (offset 11-13) → SH DC; BGR->RGB swap (match ONNX)
+                    val colorR = localPacked[baseIdx + 13].coerceIn(0f, 1f)
                     val colorG = localPacked[baseIdx + 12].coerceIn(0f, 1f)
-                    val colorB = localPacked[baseIdx + 13].coerceIn(0f, 1f)
+                    val colorB = localPacked[baseIdx + 11].coerceIn(0f, 1f)
                     batchBuffer.putFloat((colorR - 0.5f) / SH_C0)
                     batchBuffer.putFloat((colorG - 0.5f) / SH_C0)
                     batchBuffer.putFloat((colorB - 0.5f) / SH_C0)

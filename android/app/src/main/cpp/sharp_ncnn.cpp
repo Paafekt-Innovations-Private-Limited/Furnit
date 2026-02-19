@@ -20,6 +20,7 @@
  */
 
 #include <jni.h>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <cmath>
@@ -52,6 +53,30 @@ static const int PARAMS_PER_GAUSSIAN = 14;  // pos(3) + scale(3) + rot(4) + opac
 
 // Global NCNN network
 static ncnn::Net* g_net = nullptr;
+// Global component-based model
+static sharp_components::SharpComponents* g_components = nullptr;
+static bool g_vulkan_instance_created = false;
+
+static bool ensureVulkanInstance() {
+#if NCNN_VULKAN
+    if (!g_vulkan_instance_created) {
+        ncnn::create_gpu_instance();
+        g_vulkan_instance_created = true;
+    }
+    return ncnn::get_gpu_count() > 0;
+#else
+    return false;
+#endif
+}
+
+static void maybeDestroyVulkanInstance() {
+#if NCNN_VULKAN
+    if (g_vulkan_instance_created) {
+        ncnn::destroy_gpu_instance();
+        g_vulkan_instance_created = false;
+    }
+#endif
+}
 
 extern "C" {
 
@@ -84,10 +109,13 @@ Java_com_furnit_android_services_NcnnSharp_nativeInit(
 
     LOGI("Loading SHARP NCNN model: %s, %s", paramPathStr, binPathStr);
 
-    // CRITICAL: Create options BEFORE creating Net
+    int threads = (numThreads > 0 && numThreads <= 8) ? numThreads : 4;
+    bool wantGpu = useGpu == JNI_TRUE;
+    bool hasVulkanGpu = wantGpu && ensureVulkanInstance();
+
     ncnn::Option opt;
-    opt.use_vulkan_compute = false;
-    opt.num_threads = 1;
+    opt.use_vulkan_compute = hasVulkanGpu;
+    opt.num_threads = threads;
     opt.use_fp16_packed = false;
     opt.use_fp16_storage = false;
     opt.use_fp16_arithmetic = false;
@@ -95,19 +123,17 @@ Java_com_furnit_android_services_NcnnSharp_nativeInit(
     opt.lightmode = true;
     opt.use_local_pool_allocator = false;
     opt.use_winograd_convolution = false;
-    opt.use_sgemm_convolution = false;
+    opt.use_sgemm_convolution = true;
     opt.use_int8_inference = false;
     opt.use_bf16_storage = false;
 
     g_net = new ncnn::Net();
 
-    // Assign options IMMEDIATELY after creation
     g_net->opt = opt;
 
-    // Register custom layers for SHARP model
     sharp_layers::register_custom_layers(*g_net);
     LOGI("Registered custom SHARP layers");
-    LOGI("NCNN configured: threads=1, all optimizations disabled (safe mode)");
+    LOGI("NCNN configured: threads=%d, SGEMM on, vulkan=%s", threads, hasVulkanGpu ? "on" : "off");
 
     // Load param from assets
     AAsset* paramAsset = AAssetManager_open(mgr, paramPathStr, AASSET_MODE_BUFFER);
@@ -258,31 +284,31 @@ Java_com_furnit_android_services_NcnnSharp_nativeInitFromPath(
     LOGI("=== SHARP NCNN INIT START ===");
     LOGI("Loading SHARP NCNN model from files: %s, %s", paramPathStr, binPathStr);
 
-    // Completely disable OpenMP parallelism via environment variable
-    // This must be done before any OpenMP regions are entered
-    setenv("OMP_NUM_THREADS", "1", 1);
-    setenv("OMP_THREAD_LIMIT", "1", 1);
-    omp_set_num_threads(1);
-    omp_set_dynamic(0);  // Disable dynamic adjustment of threads
-    LOGI("OpenMP disabled: OMP_NUM_THREADS=1, dynamic=off");
+    int threads = (numThreads > 0 && numThreads <= 8) ? numThreads : 4;
+    char ompThreads[16];
+    snprintf(ompThreads, sizeof(ompThreads), "%d", threads);
+    setenv("OMP_NUM_THREADS", ompThreads, 1);
+    omp_set_num_threads(threads);
+    omp_set_dynamic(0);
 
-    // Create options BEFORE creating Net, assign before load_param
-    // DISABLE ALL OPTIMIZATIONS to avoid NEON/SGEMM kernel bugs
+    bool wantGpu = useGpu == JNI_TRUE;
+    bool hasVulkanGpu = wantGpu && ensureVulkanInstance();
+
     ncnn::Option opt;
-    opt.use_vulkan_compute = false;
-    opt.num_threads = 1;  // Single thread - avoid OpenMP entirely
+    opt.use_vulkan_compute = hasVulkanGpu;
+    opt.num_threads = threads;
     opt.use_fp16_packed = false;
-    opt.use_fp16_storage = false;  // No FP16
+    opt.use_fp16_storage = false;
     opt.use_fp16_arithmetic = false;
-    opt.use_packing_layout = false;  // No packing - scalar only
+    opt.use_packing_layout = false;
     opt.lightmode = true;
     opt.use_local_pool_allocator = false;
-    opt.use_winograd_convolution = false;  // No winograd
-    opt.use_sgemm_convolution = false;  // No SGEMM - use naive GEMM
+    opt.use_winograd_convolution = false;  // conv_106 crash
+    opt.use_sgemm_convolution = true;      // GEMM for conv - major speedup
     opt.use_int8_inference = false;
     opt.use_bf16_storage = false;
 
-    LOGI("NCNN options: SAFE MODE - cpu, 1 thread, ALL optimizations OFF");
+    LOGI("NCNN options: %s, %d threads, SGEMM on", hasVulkanGpu ? "vulkan" : "cpu", threads);
 
     g_net = new ncnn::Net();
 
@@ -390,14 +416,9 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
     const float norm_vals[3] = {1.0f / 255.0f, 1.0f / 255.0f, 1.0f / 255.0f};
     in.substract_mean_normalize(mean_vals, norm_vals);
 
-    LOGI("Input tensor: dims=%d c=%d h=%d w=%d elempack=%d total=%zu",
-         in.dims, in.c, in.h, in.w, in.elempack, in.total());
-
     // Run inference
     ncnn::Extractor ex = net->create_extractor();
     ex.set_light_mode(true);  // Reduce memory usage
-
-    LOGI("Setting input tensor to network...");
 
     // Input layer name (from SHARP model conversion)
     // The exact name depends on the pnnx conversion output
@@ -406,12 +427,6 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
         LOGE("Failed to set input: %d", input_ret);
         return nullptr;
     }
-
-    LOGI("Input set successfully, starting extraction...");
-
-    // Check memory before extraction
-    long memBeforeExtract = getAvailableMemoryMB();
-    LOGI("Available memory before extraction: %ld MB", memBeforeExtract);
 
     // Extract outputs
     // SHARP model outputs 5 tensors (from pnnx conversion):
@@ -424,66 +439,32 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
     ncnn::Mat positionsOut, scalesOut, rotationsOut, colorsOut, opacityOut;
     int ret;
 
-    LOGI("Extracting SHARP outputs (1674 layers, this takes time)...");
-
-    // Crash identified in conv_106 (large 16x16 patch embedding convolution)
-    // This appears to be a bug in NCNN's ARM convolution kernel
-    // Running full extraction directly
-    LOGI("Starting out0 extraction (full forward pass through 1674 layers)...");
-
     ret = ex.extract("out0", positionsOut);
-
-    long memAfterOut0 = getAvailableMemoryMB();
-    LOGI("Memory after out0 extraction: %ld MB (used: %ld MB)", memAfterOut0, memBeforeExtract - memAfterOut0);
 
     if (ret != 0) {
         LOGE("Failed to extract out0 (positions): %d", ret);
         return nullptr;
     }
-    LOGI("out0 extracted successfully, shape: dims=%d total=%zu", positionsOut.dims, positionsOut.total());
-
-    LOGI("Extracting out1 (scales)...");
     ret = ex.extract("out1", scalesOut);
     if (ret != 0) {
         LOGE("Failed to extract out1 (scales): %d", ret);
         return nullptr;
     }
-    LOGI("out1 extracted successfully");
-
-    LOGI("Extracting out2 (rotations)...");
     ret = ex.extract("out2", rotationsOut);
     if (ret != 0) {
         LOGE("Failed to extract out2 (rotations): %d", ret);
         return nullptr;
     }
-    LOGI("out2 extracted successfully");
-
-    LOGI("Extracting out3 (colors)...");
     ret = ex.extract("out3", colorsOut);
     if (ret != 0) {
         LOGE("Failed to extract out3 (colors): %d", ret);
         return nullptr;
     }
-    LOGI("out3 extracted successfully");
-
-    LOGI("Extracting out4 (opacity)...");
     ret = ex.extract("out4", opacityOut);
     if (ret != 0) {
         LOGE("Failed to extract out4 (opacity): %d", ret);
         return nullptr;
     }
-    LOGI("out4 extracted successfully");
-
-    LOGI("Positions output: dims=%d c=%d h=%d w=%d total=%zu",
-         positionsOut.dims, positionsOut.c, positionsOut.h, positionsOut.w, positionsOut.total());
-    LOGI("Scales output: dims=%d c=%d h=%d w=%d total=%zu",
-         scalesOut.dims, scalesOut.c, scalesOut.h, scalesOut.w, scalesOut.total());
-    LOGI("Rotations output: dims=%d c=%d h=%d w=%d total=%zu",
-         rotationsOut.dims, rotationsOut.c, rotationsOut.h, rotationsOut.w, rotationsOut.total());
-    LOGI("Colors output: dims=%d c=%d h=%d w=%d total=%zu",
-         colorsOut.dims, colorsOut.c, colorsOut.h, colorsOut.w, colorsOut.total());
-    LOGI("Opacity output: dims=%d c=%d h=%d w=%d total=%zu",
-         opacityOut.dims, opacityOut.c, opacityOut.h, opacityOut.w, opacityOut.total());
 
     // Determine number of Gaussians from positions output
     // pnnx output format: (h=N, w=3) for positions, meaning N gaussians with 3 components each
@@ -499,12 +480,8 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
         // Transposed shape (h=3, w=N)
         numGaussians = positionsOut.w;
     } else {
-        // Fallback: use total elements / 3
         numGaussians = positionsOut.total() / 3;
-        LOGI("Using fallback gaussian count calculation");
     }
-
-    LOGI("Processing %d Gaussians", numGaussians);
 
     if (numGaussians <= 0) {
         LOGE("Invalid Gaussian count: %d", numGaussians);
@@ -530,10 +507,6 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
     bool scaleRowMajor = (scalesOut.dims == 2 && scalesOut.w == 3);
     bool rotRowMajor = (rotationsOut.dims == 2 && rotationsOut.w == 4);
     bool colorRowMajor = (colorsOut.dims == 2 && colorsOut.w == 3);
-
-    LOGI("Data layout - pos:%s scale:%s rot:%s color:%s",
-         posRowMajor ? "row" : "col", scaleRowMajor ? "row" : "col",
-         rotRowMajor ? "row" : "col", colorRowMajor ? "row" : "col");
 
     for (int i = 0; i < numGaussians; i++) {
         int offset = i * PARAMS_PER_GAUSSIAN;
@@ -578,19 +551,17 @@ Java_com_furnit_android_services_NcnnSharp_nativeInfer(
         // Opacity (1 value) - always linear
         result[offset + 10] = opacityData[i];
 
-        // Colors (3 values)
+        // Colors (3 values): PNNX/NCNN outputs BGR; swap to RGB to match ONNX
         if (colorRowMajor) {
-            result[offset + 11] = colorData[i * 3 + 0];
+            result[offset + 11] = colorData[i * 3 + 2];
             result[offset + 12] = colorData[i * 3 + 1];
-            result[offset + 13] = colorData[i * 3 + 2];
+            result[offset + 13] = colorData[i * 3 + 0];
         } else {
-            result[offset + 11] = colorData[0 * numGaussians + i];
+            result[offset + 11] = colorData[2 * numGaussians + i];
             result[offset + 12] = colorData[1 * numGaussians + i];
-            result[offset + 13] = colorData[2 * numGaussians + i];
+            result[offset + 13] = colorData[0 * numGaussians + i];
         }
     }
-
-    LOGI("Generated %d Gaussians (%d floats)", numGaussians, totalSize);
 
     // Return as Java float array
     jfloatArray jResult = env->NewFloatArray(totalSize);
@@ -622,14 +593,14 @@ Java_com_furnit_android_services_NcnnSharp_nativeRelease(
     if (g_net == net) {
         g_net = nullptr;
     }
+    if (g_net == nullptr && g_components == nullptr) {
+        maybeDestroyVulkanInstance();
+    }
 }
 
 // ============================================================================
 // Component-Based SHARP Implementation
 // ============================================================================
-
-// Global component-based model
-static sharp_components::SharpComponents* g_components = nullptr;
 
 /**
  * Initialize component-based SHARP model
@@ -639,7 +610,9 @@ JNIEXPORT jlong JNICALL
 Java_com_furnit_android_services_NcnnSharp_nativeInitComponents(
     JNIEnv* env,
     jobject thiz,
-    jstring modelDir
+    jstring modelDir,
+    jboolean useGpu,
+    jint numThreads
 ) {
     const char* modelDirStr = env->GetStringUTFChars(modelDir, nullptr);
 
@@ -651,9 +624,15 @@ Java_com_furnit_android_services_NcnnSharp_nativeInitComponents(
         g_components = nullptr;
     }
 
+    bool wantGpu = useGpu == JNI_TRUE;
+    bool hasVulkanGpu = wantGpu && ensureVulkanInstance();
+    int threads = (numThreads > 0 && numThreads <= 8) ? numThreads : 0;
+    const char* overrideThreads = std::getenv("SHARP_NCNN_THREADS");
+    const char* overrideWorkers = std::getenv("SHARP_NCNN_PATCH_WORKERS");
+
     g_components = new sharp_components::SharpComponents();
 
-    if (!g_components->load(modelDirStr)) {
+    if (!g_components->load(modelDirStr, hasVulkanGpu, threads)) {
         LOGE("Failed to load SHARP components");
         delete g_components;
         g_components = nullptr;
@@ -663,7 +642,10 @@ Java_com_furnit_android_services_NcnnSharp_nativeInitComponents(
 
     env->ReleaseStringUTFChars(modelDir, modelDirStr);
 
-    LOGI("SHARP components initialized successfully");
+    LOGI("SHARP components initialized successfully (vulkan=%s, requestedThreads=%d, envThreads=%s, envWorkers=%s)",
+         hasVulkanGpu ? "on" : "off", threads,
+         overrideThreads ? overrideThreads : "unset",
+         overrideWorkers ? overrideWorkers : "unset");
     return reinterpret_cast<jlong>(g_components);
 }
 
@@ -791,6 +773,9 @@ Java_com_furnit_android_services_NcnnSharp_nativeReleaseComponents(
 
     if (g_components == components) {
         g_components = nullptr;
+    }
+    if (g_net == nullptr && g_components == nullptr) {
+        maybeDestroyVulkanInstance();
     }
 }
 

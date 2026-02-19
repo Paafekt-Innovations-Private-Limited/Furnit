@@ -1,0 +1,15 @@
+{
+  "file": "sample_pkg_migrated/sample.clas.abap",
+  "mappings": [
+    {
+      "file": "sample.clas.abap",
+      "line": 22,
+      "old_abap": "IF cond.",
+      "new_abap": "IF cond.",
+      "java_anchor": "if (cond)",
+      "category": "control",
+      "transformable": false,
+      "snippet": "IF lv_a IS NOT INITIAL."
+    }
+  ]
+}

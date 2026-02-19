@@ -1,0 +1,51 @@
+# ABAP AI Toolkit Configuration
+# Configuration
+
+sap:
+  webgui_url: "${SAP_WEBGUI_URL}"
+  packages:
+    - /ZSAMPLE/MAIN
+    - /ZSAMPLE/SHARED
+
+extraction:
+  include_subpackages: true
+  export_dir: data
+  abap_extensions:
+    - .clas.abap
+    - .intf.abap
+    - .fugr.abap
+    - .prog.abap
+    - .incl.abap
+    - .tabl.abap
+    - .dtel.abap
+    - .doma.abap
+    - .msag.abap
+    - .ttyp.abap
+    - .shlp.abap
+    - .enqu.abap
+    - .func.abap
+  exclude_patterns:
+    - "*_test*"
+    - "*_demo*"
+
+rag:
+  vector_db_path: data/vector_db
+  embedding_model: all-MiniLM-L6-v2
+  chunk_size: 2000
+  top_k: 10
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  max_tokens: 4096
+  temperature: 0.1
+
+twin_discovery:
+  sap_modules:
+    - FI
+    - CO
+    - GL
+    - AP
+    - AR
+    - AA
+  api_hub_url: https://api.sap.com

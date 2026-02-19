@@ -1,0 +1,89 @@
+{
+  "source": "discover_clean_core",
+  "api_hub_url": "https://api.sap.com",
+  "total_apis": 6,
+  "by_module": {
+    "FI": [
+      {
+        "name": "I_JournalEntryTP",
+        "type": "RAP_BO",
+        "module": "FI",
+        "released": true
+      },
+      {
+        "name": "I_GLAccountLineItem",
+        "type": "CDS_VIEW",
+        "module": "FI",
+        "released": true
+      },
+      {
+        "name": "I_AccountingDocument",
+        "type": "CDS_VIEW",
+        "module": "FI",
+        "released": true
+      }
+    ],
+    "AP": [
+      {
+        "name": "I_Supplier",
+        "type": "CDS_VIEW",
+        "module": "AP",
+        "released": true
+      }
+    ],
+    "AA": [
+      {
+        "name": "I_Asset",
+        "type": "CDS_VIEW",
+        "module": "AA",
+        "released": true
+      }
+    ],
+    "CO": [
+      {
+        "name": "I_CostCenter",
+        "type": "CDS_VIEW",
+        "module": "CO",
+        "released": true
+      }
+    ]
+  },
+  "entries": [
+    {
+      "name": "I_JournalEntryTP",
+      "type": "RAP_BO",
+      "module": "FI",
+      "released": true
+    },
+    {
+      "name": "I_GLAccountLineItem",
+      "type": "CDS_VIEW",
+      "module": "FI",
+      "released": true
+    },
+    {
+      "name": "I_AccountingDocument",
+      "type": "CDS_VIEW",
+      "module": "FI",
+      "released": true
+    },
+    {
+      "name": "I_Supplier",
+      "type": "CDS_VIEW",
+      "module": "AP",
+      "released": true
+    },
+    {
+      "name": "I_Asset",
+      "type": "CDS_VIEW",
+      "module": "AA",
+      "released": true
+    },
+    {
+      "name": "I_CostCenter",
+      "type": "CDS_VIEW",
+      "module": "CO",
+      "released": true
+    }
+  ]
+}

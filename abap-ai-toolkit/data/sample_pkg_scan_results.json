@@ -1,0 +1,58 @@
+{
+  "source_dir": "/Users/al/Documents/tries01/Furnit/abap-ai-toolkit/data/sample_pkg_original",
+  "files_scanned": 1,
+  "total_patterns": 5,
+  "patterns_by_type": {
+    "MOVE": 1,
+    "ADD": 1,
+    "CONCATENATE": 1,
+    "CALL METHOD": 1,
+    "CHECK": 1
+  },
+  "fm_calls": [],
+  "fm_count": 0,
+  "per_file": {
+    "sample.clas.abap": {
+      "patterns_found": {
+        "MOVE": 1,
+        "ADD": 1,
+        "CONCATENATE": 1,
+        "CALL METHOD": 1,
+        "CHECK": 1
+      },
+      "fm_calls": []
+    }
+  },
+  "line_details": [
+    {
+      "file": "sample.clas.abap",
+      "line": 19,
+      "pattern": "MOVE",
+      "snippet": "MOVE 'hello' TO lv_a."
+    },
+    {
+      "file": "sample.clas.abap",
+      "line": 20,
+      "pattern": "ADD",
+      "snippet": "ADD 1 TO mv_value."
+    },
+    {
+      "file": "sample.clas.abap",
+      "line": 21,
+      "pattern": "CONCATENATE",
+      "snippet": "CONCATENATE lv_a lv_b INTO mv_value."
+    },
+    {
+      "file": "sample.clas.abap",
+      "line": 23,
+      "pattern": "CALL METHOD",
+      "snippet": "CALL METHOD me->process."
+    },
+    {
+      "file": "sample.clas.abap",
+      "line": 22,
+      "pattern": "CHECK",
+      "snippet": "CHECK lv_a IS NOT INITIAL."
+    }
+  ]
+}
