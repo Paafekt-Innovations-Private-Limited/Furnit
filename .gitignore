@@ -138,6 +138,9 @@ ehthumbs.db
 
 # Project specific
 # Add any project-specific patterns below
+beeware/
+.archive_screenshots/
+.cursor/
 
 # ML Models (if they're large and shouldn't be tracked)
 # *.mlmodel

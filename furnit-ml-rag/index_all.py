@@ -16,6 +16,7 @@ Layers:
   - sgemm: SGEMM (single-precision GEMM), BLAS, NCNN convolution, ARM ACL
   - vedic_maths: Vedic mathematics sutras, mental math, multiplication shortcuts
   - ml_fundamentals: Google ML Crash Course - neural networks, activation, backpropagation
+  - beeware_android: BeeWare, Briefcase, Toga, Chaquopy on Android; Python UI; hand-off to native for Sharp
 """
 
 import json
@@ -70,6 +71,63 @@ Custom shaders go in src/layer/shader/.
 For partial delegation: ops not supported by Vulkan fall back to CPU automatically.
 Vulkan delegate handles standard transformer ops (Linear, LayerNorm, Softmax, SDPA) natively on GPU.
 This is different from NCNN where custom SDPA layers fall back to CPU."""
+    },
+    {
+        "id": "et_vulkan_approach_copy",
+        "layer": "executorch",
+        "content": """ExecuTorch Vulkan approach to COPY (from GitHub examples/vulkan/export.py). Use for ANY model (vision, SHARP, new classes). NOT Llama-specific.
+
+Export (Python):
+1. program = torch.export.export(model, example_inputs, strict=...)
+2. compile_options = {}  # optional: force_fp16=True, skip_memory_planning=True, require_dynamic_shapes=True
+3. edge_program = to_edge_transform_and_lower(program, partitioner=[VulkanPartitioner(compile_options)])
+4. exec_prog = edge_program.to_executorch()
+5. save_pte_program(exec_prog, output_name, output_dir) -> .pte file
+
+Android runtime:
+- Module.load(path) loads .pte (backend inside the file is fixed at export time)
+- forward: EValue.from(tensor) -> module.forward(inputs) -> outputs[0].toTensor().getDataAsFloatArray()
+- Same for SHARP, new classes, or any vision model. No LLM/tokenizer.
+
+Key: Backend is chosen at EXPORT via VulkanPartitioner(compile_options). Options: skip_memory_planning=False (AOT memory planning), force_fp16=True (lower memory/latency). Mirror this exact flow for new models."""
+    },
+    {
+        "id": "et_new_classes_executorch_vulkan",
+        "layer": "executorch",
+        "content": """New classes backend in Furnit = ExecuTorch implementation with Vulkan. Same approach as main ExecuTorch option (SHARP split .pte, Vulkan delegate). NOT Llama, NOT an LLM.
+
+Implementation: Use et_vulkan_approach_copy. Export model (e.g. classifier or SHARP variant with extended classes) with VulkanPartitioner(compile_options). Push .pte to device. SharpService when inference_backend==new_classes uses executorchSharp (same ExecuTorch Vulkan runtime). If no .pte present, fallback to ONNX for that session.
+
+Do not reference or use Llama/LLM for New classes. The only thing to copy from GitHub is the Vulkan EXPORT and RUNTIME pattern (examples/vulkan/export.py), not the Llama model or tokenizer."""
+    },
+    {
+        "id": "executorch_vulkan_sharp_combination",
+        "layer": "executorch",
+        "content": """ExecuTorch + Vulkan + SHARP combination (final alignment).
+
+SHARP outputs 3D Gaussians (sharp_philosophy, sharp_gaussian_maths). The same pipeline runs on Android via ExecuTorch with Vulkan: export SHARP (split or full) with VulkanPartitioner(compile_options) → .pte; on device Module.load(.pte) then forward(image) → same Gaussian tensor [N,14]. So: one model (SHARP), one output format (Gaussians), one runtime (ExecuTorch) and one GPU path (Vulkan). Philosophy (single image → learned 3D) and maths (Gaussian params) are unchanged; only the execution backend (Vulkan) and the framework (ExecuTorch) change. Query sharp_philosophy + sharp_gaussian_maths + vulkan_latest_android_ml + et_vulkan_approach_copy for the full stack."""
+    },
+    {
+        "id": "aot_executorch_vulkan",
+        "layer": "executorch",
+        "content": """AOT (Ahead-of-Time) in ExecuTorch and Vulkan.
+
+AOT = decisions made at export/compile time, not at runtime. For ExecuTorch on Android this means: (1) memory layout and buffer reuse are fixed in the .pte; (2) no dynamic allocation for intermediate tensors on device; (3) lower peak RAM and predictable first-inference cost.
+
+Vulkan AOT memory planning: VulkanPartitioner(compile_options) with skip_memory_planning=False. The Vulkan backend's preprocess runs greedy-style memory planning at export: reuse buffers across ops, share token/activation buffers between subgraphs (e.g. Part1+Part2 combined). Result: fewer VkBuffer allocations on device, less GPU memory. Use force_fp16=True in compile_options for lower bandwidth and memory.
+
+Greedy memory planning (CPU/portable path): For large graphs (e.g. SHARP Part 4) use MemoryPlanningPass(memory_planning_algo=greedy, alloc_graph_input=False, alloc_graph_output=False) in ExecutorchBackendConfig when calling edge.to_executorch(). I/O buffers are caller-managed; intermediates are planned and reused. Reduces peak RAM during inference.
+
+Export flow: to_edge_transform_and_lower(..., partitioner=[VulkanPartitioner({"skip_memory_planning": False, "force_fp16": True})]) then to_executorch(). Optional: combine Part1+Part2 into one .pte so AOT can share the token buffer between Part1 and Part2. See export_sharp_executorch_split4.py and et_vulkan_approach_copy."""
+    },
+    {
+        "id": "executorch_30sec_room_space_philosophy",
+        "layer": "executorch",
+        "content": """ExecuTorch Vulkan: create room in ~30 sec. Philosophy: time dimension may not be fully under our control; space dimension is at our disposal.
+
+Space we control: patch grid (5×5 + 3×3 + 1 = 35 patches), resolution, merge layout. We choose how much of the image to encode (grid density). Vedic maths: Urdhva-tiryagbhyam (vertically and crosswise) — grid rows × cols; Nikhilam for stride/complement. Mental compute: patch index from (i,j) like digit recurrence. Use vedic_mental_compute for algorithm crossover.
+
+To hit ~30 sec: (1) Export with ExecuTorch Vulkan only — VulkanPartitioner(skip_memory_planning=False, force_fp16=True), optional combined Part1+Part2 for AOT buffer sharing (aot_executorch_vulkan). (2) Push Vulkan .pte to device; runtime Module.load uses backend baked in at export. (3) No Llama, no other backends for this path — ExecuTorch option only. (4) Future: reduce patch grid (e.g. 3×3 at 1x) when decoder supports variable merge size to trade space for time further. RAG chunks: et_vulkan_approach_copy, aot_executorch_vulkan, executorch_vulkan_sharp_combination, vulkan_latest_android_ml."""
     },
     {
         "id": "et_quantization",
@@ -284,6 +342,14 @@ The serial processing is why NCNN takes 23 minutes (77s/patch x 35 patches).
 ONNX and TFLite don't have this problem because they support batch dimensions."""
     },
 
+    # ---- VULKAN (LATEST) ----
+    {
+        "id": "vulkan_latest_android_ml",
+        "layer": "android_gpu",
+        "content": """Vulkan for ML on Android (latest and greatest).
+
+Vulkan 1.1+ (1.2 optional): cross-platform GPU API; on Android it drives Mali, Adreno, etc. For ML inference: compute shaders (GLSL compiled to SPIR-V) do matrix ops, activations, attention on GPU. No OpenGL render pipeline—pure compute. Key: VkBuffer for GPU memory, VkDescriptorSet for bindings, dispatch (workgroups) for parallelism. ExecuTorch Vulkan backend uses this: partitioner assigns ops to Vulkan; AOT memory planning (skip_memory_planning=False) reuses buffers; force_fp16 reduces bandwidth. Best practice: export with VulkanPartitioner(compile_options), push .pte, Module.load on device—backend baked in at export. Vulkan 1.1 is the target for broad Android support; 1.2 adds optional features."""
+    },
     # ---- ANDROID GPU ----
     {
         "id": "gpu_mali_g715",
@@ -393,6 +459,22 @@ Risk: some ops may lose precision. Test output quality after conversion."""
     },
 
     # ---- SHARP MODEL ----
+    {
+        "id": "sharp_philosophy",
+        "layer": "sharp_model",
+        "content": """SHARP (Apple-style) philosophy: single image to 3D.
+
+One RGB image in → 3D scene out, represented as many 3D Gaussians (not a mesh or depth map). The network does not measure or know depth explicitly: a ViT encoder turns the image into features, and a decoder trained on multi-view or 3D data predicts 3D Gaussian parameters from those features. Depth and shape are learned priors—the model has seen many images with 3D supervision and infers plausible 3D from one view. So the pipeline is: 2D appearance (encoder) → learned 3D structure (decoder) → Gaussian representation that can be rendered from new viewpoints."""
+    },
+    {
+        "id": "sharp_gaussian_maths",
+        "layer": "sharp_model",
+        "content": """Gaussian representation and bell-curve maths for 3D splatting.
+
+Gaussian bell curve: f(x) = exp(-(x-μ)²/(2σ²)); peak at μ, width σ; symmetric falloff (bright center, smooth fade). In 3D splatting the blob's brightness follows this falloff.
+
+One 3D Gaussian = position (x,y,z), scale (sx,sy,sz), rotation (quaternion qw,qx,qy,qz), opacity, color (r,g,b). SHARP output per Gaussian: 14 floats (e.g. pos 3, opacity 1, scales 3, quats 4, colors 3). Scene = N such Gaussians (e.g. ~1.2M); each covers a small region. Rendering = splat each Gaussian onto the screen with bell-curve falloff; alpha-blend. So 'Gaussian representation' = the 3D world as a cloud of soft 3D blobs defined by these parameters."""
+    },
     {
         "id": "sharp_pipeline",
         "layer": "sharp_model",
@@ -1214,6 +1296,49 @@ Organize knowledge base this way. Code generation becomes powerful for custom in
 Python (export only) -> TorchScript model -> Native C++ engine -> ARM Compute Library kernels -> Android kernel optimized scheduling -> Direct mmap weights
 
 Full FP32. Maximum performance. No framework overhead. Production pathway used by Apple, Meta, ARM."""
+    },
+    # ---- BEEWARE ANDROID ----
+    {
+        "id": "beeware_overview",
+        "layer": "beeware_android",
+        "content": """BeeWare on Android: Python UI apps on device via Briefcase + Toga + Chaquopy.
+
+Briefcase builds the Android app; Toga provides cross-platform widgets (Button, Label, ImageView, etc.); Chaquopy embeds Python and runs the Toga app inside the Android Activity. The Furnit BeeWare app (com.furnit.beeware.furnit_beeware) mirrors the native Furnit flow: Home, Create Room (single photo), AI Room, Manual Setup, Sharp Room viewer, but ML inference (Sharp) does not run in Python on device—Chaquopy has no torch/executorch Android wheels. Use hand-off to native Furnit app (com.furnit.android) for AI Room, or implement hybrid (native SharpInferenceActivity + startActivityForResult)."""
+    },
+    {
+        "id": "beeware_briefcase_android",
+        "layer": "beeware_android",
+        "content": """Briefcase Android configuration (pyproject.toml).
+
+[tool.briefcase.app.<app>.android]
+requires = ["toga-android"]   # pip packages installed by Chaquopy at build time
+permission."android.permission.CAMERA" = true
+permission."android.permission.READ_MEDIA_IMAGES" = true
+build_gradle_extra_content = "..."  # appended to app/build.gradle
+android_manifest_application_extra_content = "..."  # inject <provider>, etc.
+
+Do not add torch or executorch to requires on Android—Chaquopy has no matching wheels; build fails with "No matching distribution found for torch>=2.0.0". BeeWare Android app stays with toga-android only for a working build."""
+    },
+    {
+        "id": "beeware_toga_android_api",
+        "layer": "beeware_android",
+        "content": """Toga Android (toga-android) API for Furnit BeeWare.
+
+Use app._impl.start_activity(intent) for activity results; intent_result is deprecated. Result from start_activity is the Intent (e.g. from gallery picker); use result.getData() for content URI. app._impl.native is the Android Activity (MainActivity). For startActivity(intent) (e.g. launching native Furnit app), call from the main/UI thread—if the handler runs in an async coroutine, consider runOnUiThread(Runnable) or ensure the event loop runs on the main thread. toga.Image: use src= for image data (data= is deprecated). Dialogs: await app.main_window.dialog(toga.InfoDialog(title, message)) (Toga 0.4+ async)."""
+    },
+    {
+        "id": "beeware_chaquopy_limits",
+        "layer": "beeware_android",
+        "content": """Chaquopy on Android: Python packages and limits.
+
+Chaquopy installs pip requirements from requirements.txt (generated from Briefcase android requires). Only packages with Android-compatible wheels (e.g. on chaquo.com/pypi-13.1 or PyPI with android tags) can be installed. torch and executorch do not have Android wheels in Chaquopy's index—adding them to requires causes "No matching distribution found for torch>=2.0.0". So Sharp ML cannot run inside the BeeWare Python process on device. Options: (1) hand off to native Furnit app for AI Room, (2) hybrid: BeeWare starts native SharpInferenceActivity with image URI/path and gets PLY path via onActivityResult."""
+    },
+    {
+        "id": "beeware_android_rag_usage",
+        "layer": "beeware_android",
+        "content": """When to use beeware_android RAG layer.
+
+Query this layer when working on: BeeWare app (beeware/), Briefcase Android build, Toga Android widgets, Chaquopy pip/requirements, photo picker (gallery intent, start_activity), AI Room flow (ExecuTorch unavailable, launch native app), MainActivity/onActivityResult, runOnUiThread, FileProvider for content URIs, or any Python-on-Android behavior in the Furnit project. Combine with executorch or sharp_model when discussing running Sharp in native app vs BeeWare."""
     },
 ]
 

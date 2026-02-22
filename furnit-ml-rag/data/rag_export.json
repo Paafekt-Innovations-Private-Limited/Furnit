@@ -11,6 +11,31 @@
       "content": "ExecuTorch Vulkan delegate exports:\nfrom executorch.backends.vulkan.partitioner import VulkanPartitioner\nmodel = to_edge_transform_and_lower(exported, partitioner=[VulkanPartitioner()])\nVulkan uses GLSL compute shaders compiled to SPIR-V.\nCustom shaders go in src/layer/shader/.\nFor partial delegation: ops not supported by Vulkan fall back to CPU automatically.\nVulkan delegate handles standard transformer ops (Linear, LayerNorm, Softmax, SDPA) natively on GPU.\nThis is different from NCNN where custom SDPA layers fall back to CPU."
     },
     {
+      "id": "et_vulkan_approach_copy",
+      "layer": "executorch",
+      "content": "ExecuTorch Vulkan approach to COPY (from GitHub examples/vulkan/export.py). Use for ANY model (vision, SHARP, new classes). NOT Llama-specific.\n\nExport (Python):\n1. program = torch.export.export(model, example_inputs, strict=...)\n2. compile_options = {}  # optional: force_fp16=True, skip_memory_planning=True, require_dynamic_shapes=True\n3. edge_program = to_edge_transform_and_lower(program, partitioner=[VulkanPartitioner(compile_options)])\n4. exec_prog = edge_program.to_executorch()\n5. save_pte_program(exec_prog, output_name, output_dir) -> .pte file\n\nAndroid runtime:\n- Module.load(path) loads .pte (backend inside the file is fixed at export time)\n- forward: EValue.from(tensor) -> module.forward(inputs) -> outputs[0].toTensor().getDataAsFloatArray()\n- Same for SHARP, new classes, or any vision model. No LLM/tokenizer.\n\nKey: Backend is chosen at EXPORT via VulkanPartitioner(compile_options). Options: skip_memory_planning=False (AOT memory planning), force_fp16=True (lower memory/latency). Mirror this exact flow for new models."
+    },
+    {
+      "id": "et_new_classes_executorch_vulkan",
+      "layer": "executorch",
+      "content": "New classes backend in Furnit = ExecuTorch implementation with Vulkan. Same approach as main ExecuTorch option (SHARP split .pte, Vulkan delegate). NOT Llama, NOT an LLM.\n\nImplementation: Use et_vulkan_approach_copy. Export model (e.g. classifier or SHARP variant with extended classes) with VulkanPartitioner(compile_options). Push .pte to device. SharpService when inference_backend==new_classes uses executorchSharp (same ExecuTorch Vulkan runtime). If no .pte present, fallback to ONNX for that session.\n\nDo not reference or use Llama/LLM for New classes. The only thing to copy from GitHub is the Vulkan EXPORT and RUNTIME pattern (examples/vulkan/export.py), not the Llama model or tokenizer."
+    },
+    {
+      "id": "executorch_vulkan_sharp_combination",
+      "layer": "executorch",
+      "content": "ExecuTorch + Vulkan + SHARP combination (final alignment).\n\nSHARP outputs 3D Gaussians (sharp_philosophy, sharp_gaussian_maths). The same pipeline runs on Android via ExecuTorch with Vulkan: export SHARP (split or full) with VulkanPartitioner(compile_options) \u2192 .pte; on device Module.load(.pte) then forward(image) \u2192 same Gaussian tensor [N,14]. So: one model (SHARP), one output format (Gaussians), one runtime (ExecuTorch) and one GPU path (Vulkan). Philosophy (single image \u2192 learned 3D) and maths (Gaussian params) are unchanged; only the execution backend (Vulkan) and the framework (ExecuTorch) change. Query sharp_philosophy + sharp_gaussian_maths + vulkan_latest_android_ml + et_vulkan_approach_copy for the full stack."
+    },
+    {
+      "id": "aot_executorch_vulkan",
+      "layer": "executorch",
+      "content": "AOT (Ahead-of-Time) in ExecuTorch and Vulkan.\n\nAOT = decisions made at export/compile time, not at runtime. For ExecuTorch on Android this means: (1) memory layout and buffer reuse are fixed in the .pte; (2) no dynamic allocation for intermediate tensors on device; (3) lower peak RAM and predictable first-inference cost.\n\nVulkan AOT memory planning: VulkanPartitioner(compile_options) with skip_memory_planning=False. The Vulkan backend's preprocess runs greedy-style memory planning at export: reuse buffers across ops, share token/activation buffers between subgraphs (e.g. Part1+Part2 combined). Result: fewer VkBuffer allocations on device, less GPU memory. Use force_fp16=True in compile_options for lower bandwidth and memory.\n\nGreedy memory planning (CPU/portable path): For large graphs (e.g. SHARP Part 4) use MemoryPlanningPass(memory_planning_algo=greedy, alloc_graph_input=False, alloc_graph_output=False) in ExecutorchBackendConfig when calling edge.to_executorch(). I/O buffers are caller-managed; intermediates are planned and reused. Reduces peak RAM during inference.\n\nExport flow: to_edge_transform_and_lower(..., partitioner=[VulkanPartitioner({\"skip_memory_planning\": False, \"force_fp16\": True})]) then to_executorch(). Optional: combine Part1+Part2 into one .pte so AOT can share the token buffer between Part1 and Part2. See export_sharp_executorch_split4.py and et_vulkan_approach_copy."
+    },
+    {
+      "id": "executorch_30sec_room_space_philosophy",
+      "layer": "executorch",
+      "content": "ExecuTorch Vulkan: create room in ~30 sec. Philosophy: time dimension may not be fully under our control; space dimension is at our disposal.\n\nSpace we control: patch grid (5\u00d75 + 3\u00d73 + 1 = 35 patches), resolution, merge layout. We choose how much of the image to encode (grid density). Vedic maths: Urdhva-tiryagbhyam (vertically and crosswise) \u2014 grid rows \u00d7 cols; Nikhilam for stride/complement. Mental compute: patch index from (i,j) like digit recurrence. Use vedic_mental_compute for algorithm crossover.\n\nTo hit ~30 sec: (1) Export with ExecuTorch Vulkan only \u2014 VulkanPartitioner(skip_memory_planning=False, force_fp16=True), optional combined Part1+Part2 for AOT buffer sharing (aot_executorch_vulkan). (2) Push Vulkan .pte to device; runtime Module.load uses backend baked in at export. (3) No Llama, no other backends for this path \u2014 ExecuTorch option only. (4) Future: reduce patch grid (e.g. 3\u00d73 at 1x) when decoder supports variable merge size to trade space for time further. RAG chunks: et_vulkan_approach_copy, aot_executorch_vulkan, executorch_vulkan_sharp_combination, vulkan_latest_android_ml."
+    },
+    {
       "id": "et_quantization",
       "layer": "executorch",
       "content": "ExecuTorch Vulkan quantization support:\n- 8-bit weights + 8-bit dynamically quantized activations (W8A8)\n- 4-bit weights + 8-bit activations (W4A8) - for LLMs\n- Mixed quantization: quantized weights with FP32/FP16 activations\nINT8 quantized linear layers run on Vulkan GPU directly.\nLlama 3.2 1B with 4-bit quantization on Samsung S24+: >350 tokens/sec prefill.\nFor vision models: INT8 is typical. Reduces model by 4x vs FP32, ~2x vs FP16.\nExport: use PyTorch quantization APIs before ExecuTorch export."
@@ -31,49 +56,9 @@
       "content": "ExecuTorch SHARP Part 4 crash diagnosis:\n\nIf Part 4 loads but app restarts during forward (no 'Part 4 done' log), it's likely LMK (low memory killer) or native crash (SIGSEGV/SIGABRT).\n\nDIAGNOSE:\n  adb logcat -b crash -d | tail -200\n  adb logcat -d | grep -iE \"FATAL EXCEPTION|SIGSEGV|SIGABRT|lowmemorykiller|lmkd|Killed process|OutOfMemoryError\"\n\nLMK/OOM: look for lmkd, lowmemorykiller, 'Killed process com.furnit.android'\nNative: look for signal + tombstone pointer in crash buffer\n\nPart 4 input sizes (~155-170MB total):\n  image: 1x3x1536x1536 ~28MB\n  imageTokens: 1x577x1024 ~2.3MB\n  latent0/latent1/x0Feat: each 1x1024x96x96 ~38MB (3x ~114MB)\n  x1Feat: 1x1024x48x48 ~9MB, x2Feat: 1x1024x24x24 ~2.3MB\nPlus Part4 module (~755MB) + decoder intermediates.\n\nMitigation: System.gc() + Thread.sleep(50) before Part4 forward to reduce memory spikes.\nRAG = Retrieval-Augmented Generation (context injection for AI assistants)."
     },
     {
-      "id": "et_sharp_chunked_part4b_input_order",
+      "id": "et_sharp_part4_memory_solutions",
       "layer": "executorch",
-      "content": "ExecuTorch SHARP chunked Part 4b input order (critical): ImageEncoderPartBFromTokens.forward(tokens_after_blocks, image, latent0, latent1, x0_feat, x1_feat, x2_feat). Runtime must pass 7 inputs in this exact order: 1=tokens [1,577,1024], 2=image [1,3,1536,1536], 3=latent0, 4=latent1, 5=x0_feat, 6=x1_feat, 7=x2_feat. Wrong order causes ExecutorchRuntimeException Error 0x10 Operation not supported."
-    },
-    {
-      "id": "et_sharp_packed_output_layout",
-      "layer": "executorch",
-      "content": "ExecuTorch SHARP packed output layout [1, N, 14] from torch.cat([positions, opacities, scales, quaternions, colors], dim=-1): offset 0-2 = positions (x,y,z), offset 3 = opacity, offset 4-6 = scales (sx,sy,sz), offset 7-10 = quaternions (qw,qx,qy,qz), offset 11-13 = colors (r,g,b). NOTE: Legacy component mode (parseGaussianHead) uses a DIFFERENT layout: pos(0-2), scale(3-5), rot(6-9), opacity(10), color(11-13). Using the wrong offsets causes zigzag/distortion in the rendered room (wrong scale, rotation, opacity for every Gaussian)."
-    },
-    {
-      "id": "et_sharp_chunked_part4_overview",
-      "layer": "executorch",
-      "content": "ExecuTorch SHARP chunked Part 4 (implemented Feb 2026):\nSplits Part 4 into 3 sub-models to avoid OOM during decoder forward:\n- sharp_split_part4a_chunk_512.pte (~577MB): ViT blocks 12-23 on 512 tokens\n- sharp_split_part4a_chunk_65.pte (~577MB): ViT blocks 12-23 on 65 tokens\n- sharp_split_part4b.pte (~178MB): reshape + fuse + decoder + head -> Gaussians\nExport: python export_sharp_executorch_split4.py --chunked-part4\nRuntime: ExecutorchSharp.isChunkedPart4Available() checks all 3 files. If present, runs chunked path; else falls back to single Part 4.\nChunked attention is per-slice (no cross-chunk attention), so output may differ slightly from full Part 4.\nSingle Part 4 (~755MB) OOMed during forward on 4GB RAM devices. Chunked path avoids this."
-    },
-    {
-      "id": "et_sharp_chunked_part4_runtime",
-      "layer": "executorch",
-      "content": "ExecuTorch SHARP chunked Part 4 runtime flow (ExecutorchSharp.kt):\n1. Load image_tokens from disk [1, 577, 1024]\n2. Copy tokens[0:512] -> chunk512Input, load part4a_chunk_512.pte, forward, get out512. Destroy + GC.\n3. Copy tokens[512:577] -> chunk65Input, load part4a_chunk_65.pte, forward, get out65. Destroy + GC.\n4. Concat out512 + out65 -> tokensAfterBlocks [1, 577, 1024]\n5. Load part4b.pte. Build 7 inputs: (tokensAfterBlocks, image, latent0, latent1, x0, x1, x2). Forward.\n6. CRITICAL: Do NOT destroy part4b until after PLY is written (zero-copy output buffer from native memory).\nPart4b signature order: (tokens_after_blocks, image, latent0, latent1, x0_feat, x1_feat, x2_feat).\nConstants: CHUNK_LEN_FIRST=512, CHUNK_LEN_LAST=65, IMAGE_TOKENS_SEQ_LEN=577, FEATURE_DIM=1024."
-    },
-    {
-      "id": "et_sharp_measured_perf_feb2026",
-      "layer": "executorch",
-      "content": "ExecuTorch SHARP measured performance (Samsung device, 4GB RAM, Feb 20 2026):\nTotal: ~278,903ms (~4 min 39 sec), 1,179,648 Gaussians.\nBreakdown:\n- Part 1+2 (35 patches, XNNPACK): 156,748ms (~2 min 37 sec) = 57% of total\n- Part 3 (image encoder): 3,855ms (~4 sec) = 1%\n- Part 4a chunks (ViT 512+65): ~5 sec = 2%\n- Part 4b (decoder forward): 103,985ms (~1 min 44 sec) = 37%\n- PLY write (1.17M Gaussians, 292MB): ~13 sec = 5%\nMemory: JVM peaked at 203/512MB, SysAvail dropped to 0MB during 4b forward but recovered.\nPart 4b alone is ~178MB .pte vs 755MB single Part 4. Chunked path avoids LMK kill.\nComparison: ONNX Split ~5 min (CPU all cores). ExecuTorch split chunked ~4.7 min (XNNPACK)."
-    },
-    {
-      "id": "et_sharp_bugs_fixed_feb2026",
-      "layer": "executorch",
-      "content": "ExecuTorch SHARP bugs fixed (Feb 2026 session):\n1. Part 4 OOM: Single Part 4 forward killed by LMK. Fix: chunked Part 4 (4a_512 + 4a_65 + 4b).\n2. Error 0x10 'Operation not supported': Part 4b inputs passed in wrong order (image first, tokens second). Fix: pass tokens_after_blocks first, then image (matching Python export signature).\n3. SIGSEGV in PLY write: module4b.destroy() called before reading output buffer. Zero-copy FloatBuffer pointed to freed native memory. Fix: defer destroy until after writeStreamingPlyPackedFromBuffer returns (set part4ModuleToDestroy = module4b).\n4. Zigzag/distorted output: writeStreamingPlyPackedFromBuffer read packed [N,14] with wrong offsets. Python exports [pos(3), opacity(1), scales(3), quats(4), colors(3)] but code read [pos(3), scales(3), quats(4), opacity(1), colors(3)]. Fix: corrected offsets to match torch.cat order."
-    },
-    {
-      "id": "et_sharp_export_chunked_commands",
-      "layer": "executorch",
-      "content": "ExecuTorch SHARP chunked Part 4 export commands:\ncd android\npython export_sharp_executorch_split4.py --chunked-part4 --output-dir executorch_models\n\nOutputs (in addition to standard part1-4):\n- sharp_split_part4a_chunk_512.pte (~577MB)\n- sharp_split_part4a_chunk_65.pte (~577MB)\n- sharp_split_part4b.pte (~178MB)\n\nPush to device:\nadb push executorch_models/sharp_split_part4a_chunk_512.pte /sdcard/Android/data/com.furnit.android/files/models/\nadb push executorch_models/sharp_split_part4a_chunk_65.pte /sdcard/Android/data/com.furnit.android/files/models/\nadb push executorch_models/sharp_split_part4b.pte /sdcard/Android/data/com.furnit.android/files/models/\n\nVerify in logcat: 'Part 4: chunked available=true' and 'Part 4: chunked path (4a_512 + 4a_65 + 4b)'."
-    },
-    {
-      "id": "et_sharp_split_onnx_style_flow",
-      "layer": "executorch",
-      "content": "ExecuTorch SHARP ONNX-style split flow (inferSplitMode in ExecutorchSharp.kt):\nAll intermediates saved to disk between parts to minimize peak memory:\n1. Load Part 1+2. Run 35 patches (25@1x + 9@0.5x + 1@0.25x). Merge features. Save latent0, latent1, x0Feat, x1Feat, x2, input_image to temp dir. Destroy Part 1+2, GC.\n2. Load Part 3. Load input_image from disk. Forward. Save image_tokens. Destroy Part 3, GC.\n3. If chunked Part 4 available: run 4a_512, 4a_65 (token chunks), concat, then 4b (decoder). Else: single Part 4 forward with all 7 inputs.\n4. Write PLY from packed output [1, N, 14]. Destroy module. Clean temp dir.\nTemp dir: context.cacheDir/executorch_sharp_temp. Uses saveFloatArrayToFile/loadFloatArrayFromFile (same format as SplitOnnxSharp)."
-    },
-    {
-      "id": "et_sharp_zero_copy_output_pitfall",
-      "layer": "executorch",
-      "content": "ExecuTorch zero-copy output buffer pitfall:\ngetTensorDataAsFloatBuffer() uses reflection to call getRawDataBuffer() on the output tensor. This returns a FloatBuffer backed by native memory owned by the Module. If Module.destroy() is called, the native memory is freed and the FloatBuffer becomes a dangling pointer. Reading from it causes SIGSEGV.\nRule: NEVER destroy the module until after you are done reading from the output buffer.\nIn inferSplitMode: set part4ModuleToDestroy = module (chunked or single), then destroy AFTER writeStreamingPlyPackedFromBuffer returns.\nFallback: if getRawDataBuffer fails, getTensorDataAsFloatBuffer wraps getDataAsFloatArray() which copies to JVM heap (safe but allocates ~60MB for 1.1M Gaussians)."
+      "content": "ExecuTorch SHARP Part 4 memory solutions (non-Vulkan):\n\nRoot cause: Part 4 decoder activation memory ~4GB peak. LMK kills when swap exhausted.\n\nSolution 2 (implemented): gc + runFinalization + 150ms sleep before Part 4. Abort if availMem < 1GB.\nSolution 3: Native allocator - ExecuTorch already native; JVM float[] from Tensor.fromBlob. No easy fix.\nSolution 4: Increase zram swap to 8GB (root): swapoff zram0; echo 8192M > disksize; mkswap; swapon. Script: android/scripts/increase_swap_root.sh\nSolution 5: Stream Part 4 - split decoder into part4a/b/c.pte, run sequentially. Requires re-export.\n\nBest fix: Export Part 4 with Vulkan. GPU absorbs activation memory."
     },
     {
       "id": "ort_overview",
@@ -121,6 +106,11 @@
       "content": "NCNN batch dimension problem:\nNCNN does not support true batch dimensions.\nPNNX converts torch.cat(patches, dim=0) as CHANNEL concatenation, not batch stacking.\nResult: full model expects [3, 384, 384] per patch but receives [105, 384, 384] (35*3 channels).\nconv_106 (16x16 patch embed) crashes or hangs on this mismatch.\nThis forced the component-mode workaround: process 35 patches one at a time.\nThe serial processing is why NCNN takes 23 minutes (77s/patch x 35 patches).\nONNX and TFLite don't have this problem because they support batch dimensions."
     },
     {
+      "id": "vulkan_latest_android_ml",
+      "layer": "android_gpu",
+      "content": "Vulkan for ML on Android (latest and greatest).\n\nVulkan 1.1+ (1.2 optional): cross-platform GPU API; on Android it drives Mali, Adreno, etc. For ML inference: compute shaders (GLSL compiled to SPIR-V) do matrix ops, activations, attention on GPU. No OpenGL render pipeline\u2014pure compute. Key: VkBuffer for GPU memory, VkDescriptorSet for bindings, dispatch (workgroups) for parallelism. ExecuTorch Vulkan backend uses this: partitioner assigns ops to Vulkan; AOT memory planning (skip_memory_planning=False) reuses buffers; force_fp16 reduces bandwidth. Best practice: export with VulkanPartitioner(compile_options), push .pte, Module.load on device\u2014backend baked in at export. Vulkan 1.1 is the target for broad Android support; 1.2 adds optional features."
+    },
+    {
       "id": "gpu_mali_g715",
       "layer": "android_gpu",
       "content": "Mali-G715 GPU (user's device):\n4th-gen Valhall architecture, premium mobile GPU.\nFeatures: fp16 packed/storage/unpacked/arithmetic all supported.\nSubgroup size: 16. Matrix multiply instructions: yes (2x ML improvement).\nVulkan 1.1 supported. Compute shaders supported.\nNCNN detected: [0 Mali-G715] queueC=0[2] queueT=0[2]\nThis GPU is capable of running transformer attention via Vulkan compute shaders.\nThe issue is not hardware - it's that no framework is using it for the heavy ops."
@@ -159,6 +149,16 @@
       "id": "quant_fp16_onnx",
       "layer": "quantization",
       "content": "FP16 for ONNX Runtime:\nCurrent ONNX model is FP32 (2.4GB total, 600MB per split part).\nFP16 would halve model size and memory bandwidth.\nExport: use onnxruntime.transformers.float16 converter or PyTorch export with half().\nONNX Runtime supports FP16 on CPU (with automatic upcasting where needed).\nCombined with NNAPI EP, FP16 ONNX could be significantly faster.\nRisk: some ops may lose precision. Test output quality after conversion."
+    },
+    {
+      "id": "sharp_philosophy",
+      "layer": "sharp_model",
+      "content": "SHARP (Apple-style) philosophy: single image to 3D.\n\nOne RGB image in \u2192 3D scene out, represented as many 3D Gaussians (not a mesh or depth map). The network does not measure or know depth explicitly: a ViT encoder turns the image into features, and a decoder trained on multi-view or 3D data predicts 3D Gaussian parameters from those features. Depth and shape are learned priors\u2014the model has seen many images with 3D supervision and infers plausible 3D from one view. So the pipeline is: 2D appearance (encoder) \u2192 learned 3D structure (decoder) \u2192 Gaussian representation that can be rendered from new viewpoints."
+    },
+    {
+      "id": "sharp_gaussian_maths",
+      "layer": "sharp_model",
+      "content": "Gaussian representation and bell-curve maths for 3D splatting.\n\nGaussian bell curve: f(x) = exp(-(x-\u03bc)\u00b2/(2\u03c3\u00b2)); peak at \u03bc, width \u03c3; symmetric falloff (bright center, smooth fade). In 3D splatting the blob's brightness follows this falloff.\n\nOne 3D Gaussian = position (x,y,z), scale (sx,sy,sz), rotation (quaternion qw,qx,qy,qz), opacity, color (r,g,b). SHARP output per Gaussian: 14 floats (e.g. pos 3, opacity 1, scales 3, quats 4, colors 3). Scene = N such Gaussians (e.g. ~1.2M); each covers a small region. Rendering = splat each Gaussian onto the screen with bell-curve falloff; alpha-blend. So 'Gaussian representation' = the 3D world as a cloud of soft 3D blobs defined by these parameters."
     },
     {
       "id": "sharp_pipeline",
@@ -479,6 +479,31 @@
       "id": "sharp_ultimate_arch",
       "layer": "pytorch_native",
       "content": "Ultimate SHARP inference engine architecture (no ExecuTorch):\n\nPython (export only) -> TorchScript model -> Native C++ engine -> ARM Compute Library kernels -> Android kernel optimized scheduling -> Direct mmap weights\n\nFull FP32. Maximum performance. No framework overhead. Production pathway used by Apple, Meta, ARM."
+    },
+    {
+      "id": "beeware_overview",
+      "layer": "beeware_android",
+      "content": "BeeWare on Android: Python UI apps on device via Briefcase + Toga + Chaquopy.\n\nBriefcase builds the Android app; Toga provides cross-platform widgets (Button, Label, ImageView, etc.); Chaquopy embeds Python and runs the Toga app inside the Android Activity. The Furnit BeeWare app (com.furnit.beeware.furnit_beeware) mirrors the native Furnit flow: Home, Create Room (single photo), AI Room, Manual Setup, Sharp Room viewer, but ML inference (Sharp) does not run in Python on device\u2014Chaquopy has no torch/executorch Android wheels. Use hand-off to native Furnit app (com.furnit.android) for AI Room, or implement hybrid (native SharpInferenceActivity + startActivityForResult)."
+    },
+    {
+      "id": "beeware_briefcase_android",
+      "layer": "beeware_android",
+      "content": "Briefcase Android configuration (pyproject.toml).\n\n[tool.briefcase.app.<app>.android]\nrequires = [\"toga-android\"]   # pip packages installed by Chaquopy at build time\npermission.\"android.permission.CAMERA\" = true\npermission.\"android.permission.READ_MEDIA_IMAGES\" = true\nbuild_gradle_extra_content = \"...\"  # appended to app/build.gradle\nandroid_manifest_application_extra_content = \"...\"  # inject <provider>, etc.\n\nDo not add torch or executorch to requires on Android\u2014Chaquopy has no matching wheels; build fails with \"No matching distribution found for torch>=2.0.0\". BeeWare Android app stays with toga-android only for a working build."
+    },
+    {
+      "id": "beeware_toga_android_api",
+      "layer": "beeware_android",
+      "content": "Toga Android (toga-android) API for Furnit BeeWare.\n\nUse app._impl.start_activity(intent) for activity results; intent_result is deprecated. Result from start_activity is the Intent (e.g. from gallery picker); use result.getData() for content URI. app._impl.native is the Android Activity (MainActivity). For startActivity(intent) (e.g. launching native Furnit app), call from the main/UI thread\u2014if the handler runs in an async coroutine, consider runOnUiThread(Runnable) or ensure the event loop runs on the main thread. toga.Image: use src= for image data (data= is deprecated). Dialogs: await app.main_window.dialog(toga.InfoDialog(title, message)) (Toga 0.4+ async)."
+    },
+    {
+      "id": "beeware_chaquopy_limits",
+      "layer": "beeware_android",
+      "content": "Chaquopy on Android: Python packages and limits.\n\nChaquopy installs pip requirements from requirements.txt (generated from Briefcase android requires). Only packages with Android-compatible wheels (e.g. on chaquo.com/pypi-13.1 or PyPI with android tags) can be installed. torch and executorch do not have Android wheels in Chaquopy's index\u2014adding them to requires causes \"No matching distribution found for torch>=2.0.0\". So Sharp ML cannot run inside the BeeWare Python process on device. Options: (1) hand off to native Furnit app for AI Room, (2) hybrid: BeeWare starts native SharpInferenceActivity with image URI/path and gets PLY path via onActivityResult."
+    },
+    {
+      "id": "beeware_android_rag_usage",
+      "layer": "beeware_android",
+      "content": "When to use beeware_android RAG layer.\n\nQuery this layer when working on: BeeWare app (beeware/), Briefcase Android build, Toga Android widgets, Chaquopy pip/requirements, photo picker (gallery intent, start_activity), AI Room flow (ExecuTorch unavailable, launch native app), MainActivity/onActivityResult, runOnUiThread, FileProvider for content URIs, or any Python-on-Android behavior in the Furnit project. Combine with executorch or sharp_model when discussing running Sharp in native app vs BeeWare."
     }
   ]
 }
