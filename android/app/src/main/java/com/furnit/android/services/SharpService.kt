@@ -86,6 +86,8 @@ class SharpService private constructor(private val context: Context) {
     private var usePython = false
     private var useLiteRT = false
     private var useNativePt = false
+    /** When initialize() returns false, holds a user-facing message (e.g. which files to push). */
+    private var lastInitFailureMessage: String? = null
 
     data class GenerationResult(
         val plyFile: File,
@@ -114,17 +116,20 @@ class SharpService private constructor(private val context: Context) {
         val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
         val backend = prefs.getString("inference_backend", "onnx") ?: "onnx"
         val effective = BackendConfig.normalize(backend)
-        if (effective == "executorch" && BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady()) {
-            Log.d(TAG, "Preloading ExecuTorch Part1...")
-            executorchSharp.preloadAndWarmup()
-            Log.d(TAG, "ExecuTorch preload done")
+        when {
+            effective == "executorch" && BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady() -> {
+                Log.d(TAG, "Preloading ExecuTorch Part1...")
+                executorchSharp.preloadAndWarmup()
+                Log.d(TAG, "ExecuTorch preload done")
+            }
+            effective == "onnx" && splitOnnxSharp.isModelReady() -> {
+                Log.d(TAG, "Preloading Split ONNX sessions (all 4 parts)...")
+                splitOnnxSharp.preloadSessions()
+                Log.d(TAG, "Split ONNX preload done")
+            }
+            else -> { /* ncnn, litert, native_pt, etc.: no preload */ }
         }
-        if (effective == "onnx" && splitOnnxSharp.isModelReady()) {
-            Log.d(TAG, "Preloading ONNX Part1...")
-            splitOnnxSharp.preloadAndWarmup()
-            Log.d(TAG, "ONNX preload done")
-        }
-        // Native .pt: skip preload — full 2.5GB model OOMs; split mode loads Part1..4 on-demand during inference.
+        // Native .pt: skip preload — full 2.5GB model OOMs; split mode loads Part1..4 on-demand if not preloaded.
     }
 
     /**
@@ -144,6 +149,7 @@ class SharpService private constructor(private val context: Context) {
      * When NCNN is selected in settings, only use NCNN (no fallback)
      */
     suspend fun initialize(): Boolean {
+        lastInitFailureMessage = null
         val prefs = context.getSharedPreferences("furnit_prefs", android.content.Context.MODE_PRIVATE)
 
         // Read new 3-way pref with backward compat migration
@@ -287,7 +293,11 @@ class SharpService private constructor(private val context: Context) {
             currentBackendId = effectiveBackend
             return true
         } else {
-            Log.w(TAG, "Split ONNX not ready, missing: ${splitOnnxSharp.getMissingFiles()}")
+            val missing = splitOnnxSharp.getMissingFiles()
+            val path = splitOnnxSharp.getModelsDirPath()
+            Log.w(TAG, "Split ONNX not ready, missing: $missing")
+            Log.w(TAG, "Push split ONNX to device: $path")
+            Log.w(TAG, "Example: adb push sharp_part1.onnx $path/ && adb push sharp_part1.onnx.data $path/  (repeat for part2, part3, part4)")
         }
 
         // Fall back to regular ONNX with mmap (may cause OOM on some devices)
@@ -306,6 +316,12 @@ class SharpService private constructor(private val context: Context) {
         }
 
         Log.e(TAG, "No model backend available")
+        val path = splitOnnxSharp.getModelsDirPath()
+        val missing = splitOnnxSharp.getMissingFiles()
+        lastInitFailureMessage = "SHARP model not found. Push split ONNX files to device:\n" +
+            "  $path\n" +
+            "  Files: ${missing.joinToString(", ")}\n" +
+            "  Example: adb push sharp_part1.onnx $path/"
         return false
     }
 
@@ -350,7 +366,7 @@ class SharpService private constructor(private val context: Context) {
                 callback.onProgress(0.15f, "Loading SHARP model...")
                 val initialized = kotlinx.coroutines.runBlocking { initialize() }
                 if (!initialized) {
-                    callback.onError("SHARP model not available. Push model files to device.")
+                    callback.onError(lastInitFailureMessage ?: "SHARP model not available. Push model files to device.")
                     return
                 }
                 if (isCancelled()) return
@@ -691,7 +707,7 @@ class SharpService private constructor(private val context: Context) {
             useLiteRT -> litertSharp.release()
             useExecutorch -> executorchSharp.release()
             useOnnx -> onnxSharp.release()
-            useSplitOnnx -> { /* split uses onnx session, no separate release */ }
+            useSplitOnnx -> { /* Do not close preloaded sessions: inference may still be running (cancelAndReleaseAI/release). Closing would cause use-after-close crash. */ }
             else -> ncnnSharp.release()
         }
         isInitialized = false

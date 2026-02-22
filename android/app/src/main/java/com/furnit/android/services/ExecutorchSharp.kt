@@ -633,6 +633,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
         progressCallback: ((Float, String) -> Unit)?
     ): StreamingResult? {
 
+        /** When [blendCount] is non-null, accumulate into [output] and increment [blendCount] per spatial pixel (ONNX-style blend in overlap). Otherwise overwrite. */
         fun mergeOnePatchInto(
             output: FloatArray,
             outSize: Int,
@@ -640,7 +641,8 @@ class ExecutorchSharp private constructor(private val context: Context) {
             gridI: Int,
             gridJ: Int,
             gridSize: Int,
-            padding: Int
+            padding: Int,
+            blendCount: IntArray? = null
         ) {
             val patchH = SPATIAL_SIZE
             val patchW = SPATIAL_SIZE
@@ -669,14 +671,34 @@ class ExecutorchSharp private constructor(private val context: Context) {
 
             val patchHW = patchH * patchW
             val outHW = outSize * outSize
+            val accumulating = blendCount != null
+
             for (c in 0 until C) {
                 val srcBase = c * patchHW
                 val dstBase = c * outHW
                 for (dy in 0 until copyH) {
-                    val srcOff = srcBase + (srcY0 + dy) * patchW + srcX0
-                    val dstOff = dstBase + (outY + dy) * outSize + outX
-                    System.arraycopy(patch, srcOff, output, dstOff, copyW)
+                    val outRow = outY + dy
+                    for (dx in 0 until copyW) {
+                        val srcIdx = srcBase + (srcY0 + dy) * patchW + (srcX0 + dx)
+                        val dstIdx = dstBase + outRow * outSize + (outX + dx)
+                        if (accumulating) {
+                            output[dstIdx] += patch[srcIdx]
+                            if (c == 0) blendCount!![outRow * outSize + (outX + dx)]++
+                        } else {
+                            output[dstIdx] = patch[srcIdx]
+                        }
+                    }
                 }
+            }
+        }
+
+        /** Normalize merged feature maps by per-spatial contribution count (blend match to ONNX). */
+        fun normalizeMergedByCount(output: FloatArray, outSize: Int, count: IntArray) {
+            val outHW = outSize * outSize
+            for (idx in 0 until outHW) {
+                val n = maxOf(1, count[idx])
+                val invN = 1f / n
+                for (c in 0 until FEATURE_DIM) output[c * outHW + idx] *= invN
             }
         }
 
@@ -728,6 +750,8 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val x0Feat  = FloatArray(FEATURE_DIM * mergedSize1x * mergedSize1x) // Part2 features 1x
             val x1Feat  = FloatArray(FEATURE_DIM * mergedSize05x * mergedSize05x) // Part2 features 0.5x
             var x2Feat: FloatArray? = null // Part2 features 0.25x
+            val count1x = IntArray(mergedSize1x * mergedSize1x)   // blend count for ONNX-style merge
+            val count05x = IntArray(mergedSize05x * mergedSize05x)
 
             // -------------------------
             // Part 1 + Part 2: Load both, stream per-patch (no allTokens ~78MB)
@@ -778,12 +802,12 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     val block5 = out1[1].toTensor().getDataAsFloatArray()
 
                     reshapeTokensToSpatialInto(block5, tempSpatial)
-                    mergeOnePatchInto(output = latent0, outSize = mergedSize1x, patch = tempSpatial, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X)
+                    mergeOnePatchInto(output = latent0, outSize = mergedSize1x, patch = tempSpatial, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X, blendCount = count1x)
                     reshapeTokensToSpatialInto(tokens, tempSpatial)
-                    mergeOnePatchInto(output = latent1, outSize = mergedSize1x, patch = tempSpatial, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X)
+                    mergeOnePatchInto(output = latent1, outSize = mergedSize1x, patch = tempSpatial, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X, blendCount = count1x)
 
                     val feat = module2.forward(EValue.from(Tensor.fromBlob(tokens, longArrayOf(1, 577, 1024))))[0].toTensor().getDataAsFloatArray()
-                    mergeOnePatchInto(output = x0Feat, outSize = mergedSize1x, patch = feat, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X)
+                    mergeOnePatchInto(output = x0Feat, outSize = mergedSize1x, patch = feat, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X, blendCount = count1x)
 
                     patchCount++
                     if (patchCount % 5 == 0) {
@@ -791,6 +815,9 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     }
                 }
             }
+            normalizeMergedByCount(latent0, mergedSize1x, count1x)
+            normalizeMergedByCount(latent1, mergedSize1x, count1x)
+            normalizeMergedByCount(x0Feat, mergedSize1x, count1x)
 
             // 0.5x patches (3x3): Part1->tokens, Part2(tokens)->feat, merge x1Feat
             for (i in 0 until GRID_05X) {
@@ -801,10 +828,11 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     val inputTensor = Tensor.fromBlob(patchData, longArrayOf(1, 3, PATCH_SIZE.toLong(), PATCH_SIZE.toLong()))
                     val tokens = module1.forward(EValue.from(inputTensor))[0].toTensor().getDataAsFloatArray()
                     val feat = module2.forward(EValue.from(Tensor.fromBlob(tokens, longArrayOf(1, 577, 1024))))[0].toTensor().getDataAsFloatArray()
-                    mergeOnePatchInto(output = x1Feat, outSize = mergedSize05x, patch = feat, gridI = j, gridJ = i, gridSize = GRID_05X, padding = PADDING_05X)
+                    mergeOnePatchInto(output = x1Feat, outSize = mergedSize05x, patch = feat, gridI = j, gridJ = i, gridSize = GRID_05X, padding = PADDING_05X, blendCount = count05x)
                     patchCount++
                 }
             }
+            normalizeMergedByCount(x1Feat, mergedSize05x, count05x)
             halfBitmap.recycle()
 
             // 0.25x patch: Part1->tokens, Part2(tokens)->feat, x2Feat=feat

@@ -276,7 +276,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         val executorchRadioDesc = TextView(this).apply {
             text = if (BackendConfig.ENABLE_EXECUTORCH) {
-                "PyTorch on-device inference (camera classification)"
+                "PyTorch on-device inference (ExecuTorch)"
             } else {
                 "Disabled in this build (wrappers kept, ONNX only)"
             }

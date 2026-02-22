@@ -27,10 +27,10 @@ import kotlin.math.sqrt
  * The FP32 model is split into 4 parts (~600MB each) that are loaded and executed
  * sequentially. Intermediate tensors are saved to disk between parts.
  *
- * This approach enables running a 2.5GB model on devices with 4-6GB RAM by:
- * 1. Loading only one part at a time (~600MB)
- * 2. Saving intermediate tensors to disk (memory-mapped for efficiency)
- * 3. Unloading each part before loading the next
+ * Memory strategy:
+ * - Part 1 is preloaded at startup (largest model, hides session-creation latency)
+ * - Parts 2-4 are loaded on demand and closed after each run
+ * - Intermediate tensors are memory-mapped from disk to avoid JVM heap pressure
  */
 class SplitOnnxSharp private constructor(private val context: Context) {
 
@@ -39,6 +39,17 @@ class SplitOnnxSharp private constructor(private val context: Context) {
 
         // Model part configuration
         private const val NUM_PARTS = 4
+        private const val USE_INT8_PART4 = false
+        private const val PART4_INT8_FILENAME = "sharp_part4_int8.onnx"
+        private const val USE_CHUNKED_PART1 = true
+        private const val PART1A_FILENAME = "sharp_part1a.onnx"
+        private const val PART1B_FILENAME = "sharp_part1b.onnx"
+        private const val USE_CHUNKED_PART4 = true
+        private const val PART4A_FILENAME = "sharp_part4a.onnx"
+        private const val PART4A_DATA_FILENAME = "sharp_part4a.onnx.data"
+        private const val PART4B_FILENAME = "sharp_part4b.onnx"
+        private const val PART4B_DATA_FILENAME = "sharp_part4b.onnx.data"
+        private const val NORM_OUTPUT_TENSOR = "/predictor/monodepth_model/encoder/image_encoder/norm/LayerNormalization_output_0"
         private val PART_FILENAMES = arrayOf(
             "sharp_part1.onnx" to "sharp_part1.onnx.data",
             "sharp_part2.onnx" to "sharp_part2.onnx.data",
@@ -46,6 +57,7 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             "sharp_part4.onnx" to "sharp_part4.onnx.data"
         )
 
+        // Must match model export: Part 1 expects [1,3,1536,1536]. Do not change without re-exporting ONNX parts.
         private const val INPUT_SIZE = 1536
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
@@ -101,6 +113,10 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         OrtEnvironment.getEnvironment()
     }
 
+    // Only Part 1 is preloaded (946MB). Loading all 4 (~2.6GB) exhausts native memory before Part 1 can allocate activations.
+    @Volatile
+    private var preloadedPart1Session: OrtSession? = null
+
     // Reusable 4MB DirectByteBuffer + 1M FloatArray for tensor saves.
     // Avoids allocating transient DirectByteBuffers on each of the many save calls.
     // DirectByteBuffers freed by GC finalizers can linger and cause native memory pressure.
@@ -137,59 +153,79 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             val dataFile = File(modelsDir, data)
             val modelExists = modelFile.exists()
             val dataExists = dataFile.exists()
-            Log.d(TAG, "isModelReady: $model exists=$modelExists size=${if (modelExists) modelFile.length() else 0} $data exists=$dataExists size=${if (dataExists) dataFile.length() else 0}")
-            modelExists && dataExists
+            // Part 1 may be exported without external .data (weights in .onnx); parts 2–4 need both
+            val partReady = modelExists && dataExists
+            Log.d(TAG, "isModelReady: $model exists=$modelExists size=${if (modelExists) modelFile.length() else 0} $data exists=$dataExists size=${if (dataExists) dataFile.length() else 0} => $partReady")
+            partReady
         }
         Log.d(TAG, "isModelReady: result=$ready")
         return ready
     }
 
+    /** Session options: ALL_OPT + arena. All cores for Parts 1-3; Part 4 capped at 2 threads (peak GEMM memory). */
+    private fun buildSessionOptions(partNumber: Int = 0): OrtSession.SessionOptions = OrtSession.SessionOptions().apply {
+        val intraThreads = if (partNumber == 4) 2 else Runtime.getRuntime().availableProcessors()
+        setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        setIntraOpNumThreads(intraThreads)
+        setInterOpNumThreads(1)
+        setCPUArenaAllocator(partNumber != 4)
+        setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
+        setMemoryPatternOptimization(true)
+        try {
+            addConfigEntry("session.use_mmap", "1")
+            addConfigEntry("session.enable_mem_reuse", "1")
+            addConfigEntry("session.intra_op.allow_spinning", "1")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set session config: ${e.message}")
+        }
+        Log.d(TAG, "buildSessionOptions(part=$partNumber): threads=$intraThreads arena=${partNumber != 4}")
+    }
+
     /**
-     * Preload Part 1 and run a dummy forward to warm up the runtime.
-     * Call when user opens the SHARP screen to reduce first-generation latency.
+     * Pre-create Part 1 (or Part 1a if chunked) session at startup.
+     * Parts 2-4 are loaded on demand during inference and closed after use.
      */
-    suspend fun preloadAndWarmup(progress: ((String) -> Unit)? = null) = withContext(Dispatchers.IO) {
-        Log.d(TAG, "preloadAndWarmup ENTER")
+    suspend fun preloadSessions(progress: ((String) -> Unit)? = null) = withContext(Dispatchers.IO) {
         if (!isModelReady()) {
-            Log.w(TAG, "preloadAndWarmup: model not ready, skipping")
+            Log.w(TAG, "preloadSessions: model not ready, skipping")
             return@withContext
         }
-
-        val (modelFile, _) = PART_FILENAMES[0]
-        val modelPath = File(modelsDir, modelFile).absolutePath
-        Log.d(TAG, "preloadAndWarmup: loading Part1 from $modelPath")
-        progress?.invoke("Loading Part 1...")
-        val t0 = System.currentTimeMillis()
-
-        var session: OrtSession? = null
-        var dummyTensor: OnnxTensor? = null
-        try {
-            val sessionOptions = OrtSession.SessionOptions().apply {
-                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.EXTENDED_OPT)
-                setIntraOpNumThreads(Runtime.getRuntime().availableProcessors())
-                setInterOpNumThreads(1)
-                setCPUArenaAllocator(false)
-                setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-            }
-            session = ortEnv.createSession(modelPath, sessionOptions)
-            Log.d(TAG, "PRELOAD Part1 load ${System.currentTimeMillis() - t0}ms. Memory: ${getMemoryInfo()}")
-
-            progress?.invoke("Warming up...")
-            val dummyData = FloatArray(3 * INPUT_SIZE * INPUT_SIZE)
-            val dummyBuffer = FloatBuffer.wrap(dummyData)
-            dummyTensor = OnnxTensor.createTensor(ortEnv, dummyBuffer, longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong()))
-            val t1 = System.currentTimeMillis()
-            session.run(mapOf("image" to dummyTensor))
-            Log.d(TAG, "PRELOAD Part1 warmup ${System.currentTimeMillis() - t1}ms")
-        } catch (e: Exception) {
-            Log.w(TAG, "ONNX preload warmup failed: ${e.message}")
-        } finally {
-            dummyTensor?.close()
-            session?.close()
-            System.gc()
-            Log.d(TAG, "preloadAndWarmup DONE total=${System.currentTimeMillis() - t0}ms")
-            progress?.invoke("Preload done")
+        if (preloadedPart1Session != null) {
+            Log.d(TAG, "preloadSessions: Part 1 already loaded, skipping")
+            return@withContext
         }
+        val t0 = System.currentTimeMillis()
+        val useChunked = USE_CHUNKED_PART1 && File(modelsDir, PART1A_FILENAME).exists()
+        val modelFile = if (useChunked) PART1A_FILENAME else PART_FILENAMES[0].first
+        val label = if (useChunked) "Part 1a" else "Part 1"
+        try {
+            progress?.invoke("Loading $label...")
+            val modelPath = File(modelsDir, modelFile).absolutePath
+            Log.d(TAG, "preloadSessions: $label from $modelPath")
+            preloadedPart1Session = ortEnv.createSession(modelPath, buildSessionOptions(partNumber = 1))
+            Log.d(TAG, "preloadSessions: $label loaded in ${System.currentTimeMillis() - t0}ms. Memory: ${getMemoryInfo()}")
+            progress?.invoke("$label ready")
+        } catch (e: Exception) {
+            Log.e(TAG, "preloadSessions failed: ${e.message}", e)
+            try { preloadedPart1Session?.close() } catch (_: Exception) {}
+            preloadedPart1Session = null
+        }
+    }
+
+    /** Release preloaded Part 1 session. */
+    fun releaseSessions() {
+        try {
+            preloadedPart1Session?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "releaseSessions: Part 1 close failed: ${e.message}")
+        }
+        preloadedPart1Session = null
+        Log.d(TAG, "releaseSessions: Part 1 session closed")
+    }
+
+    /** Preload Part 1 session (replaces old single-part warmup). */
+    suspend fun preloadAndWarmup(progress: ((String) -> Unit)? = null) = withContext(Dispatchers.IO) {
+        preloadSessions(progress)
     }
 
     /**
@@ -203,6 +239,9 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         }
         return missing
     }
+
+    /** Path on device where split ONNX files must be pushed (for error messages and logs). */
+    fun getModelsDirPath(): String = modelsDir.absolutePath
 
     /**
      * Get memory info for logging.
@@ -248,7 +287,7 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             // only if needed; the optimized models are cached in a separate dir).
             tempDir.listFiles()?.forEach { it.delete() }
 
-            // Preprocess input image (shared with Native Pt)
+            // Preprocess input image to INPUT_SIZE (1536) to match model input shape.
             progressCallback?.invoke(0.1f, "Preprocessing image...")
             val preprocessStart = System.currentTimeMillis()
             val scaledBitmap = SharpImagePreprocessor.resizeForSharp(bitmap)
@@ -259,54 +298,102 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             // Save input tensor to file for Part 1
             val inputTensorFile = File(tempDir, "input_image.tensor")
             saveFloatBufferToFile(inputBuffer, inputTensorFile, longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong()))
-            Log.d(TAG, "Saved input_image.tensor shape=[1,3,$INPUT_SIZE,$INPUT_SIZE] file=${inputTensorFile.absolutePath} size=${inputTensorFile.length()}")
-            val inputSample = FloatArray(6)
-            inputBuffer.rewind()
-            inputBuffer.get(inputSample)
-            inputBuffer.rewind()
-            Log.d(TAG, "Input buffer first6 floats: ${inputSample.toList()}")
+            Log.d(TAG, "Saved input_image.tensor size=${inputTensorFile.length()}")
 
             var currentInputs: Map<String, File> = mapOf("image" to inputTensorFile)
             val partTimes = LongArray(NUM_PARTS)
+            val imageFile = File(tempDir, "input_image.tensor")
 
-            // Run each part sequentially
-            for (partIdx in 0 until NUM_PARTS) {
+            val chunkedPart1Available = USE_CHUNKED_PART1 &&
+                File(modelsDir, PART1A_FILENAME).exists() &&
+                File(modelsDir, PART1B_FILENAME).exists()
+
+            val chunkedPart4Available = USE_CHUNKED_PART4 &&
+                File(modelsDir, PART4A_FILENAME).exists() &&
+                File(modelsDir, PART4B_FILENAME).exists()
+
+            if (chunkedPart1Available) {
+                Log.d(TAG, "Chunked Part 1 models found (1a=${File(modelsDir, PART1A_FILENAME).length()/1_000_000}MB, " +
+                    "1b=${File(modelsDir, PART1B_FILENAME).length()/1_000_000}MB)")
+            }
+            if (chunkedPart4Available) {
+                Log.d(TAG, "Chunked Part 4 models found (4a=${File(modelsDir, PART4A_FILENAME).length()/1_000_000}MB, " +
+                    "4b=${File(modelsDir, PART4B_FILENAME).length()/1_000_000}MB)")
+            }
+
+            // Part 1: either chunked (1a + 1b) or single model
+            if (chunkedPart1Available) {
+                val part1StartTime = System.currentTimeMillis()
+                val part1Outputs = runChunkedPart1(currentInputs, progressCallback, isCancelled)
+                if (part1Outputs == null) {
+                    Log.e(TAG, "Chunked Part 1 FAILED")
+                    return@withContext null
+                }
+                currentInputs = currentInputs + part1Outputs + ("image" to imageFile)
+                partTimes[0] = System.currentTimeMillis() - part1StartTime
+                Log.d(TAG, "Part 1 (chunked) done: ${partTimes[0]}ms, tensors: ${currentInputs.size}, ${getMemoryInfo()}")
+            }
+
+            // Parts loop: skip Part 1 if chunked, skip Part 4 if chunked
+            val startPartIdx = if (chunkedPart1Available) 1 else 0
+            val endPartIdx = if (chunkedPart4Available) 3 else NUM_PARTS
+
+            for (partIdx in startPartIdx until endPartIdx) {
                 if (isCancelled()) {
                     Log.d(TAG, "inferStreaming CANCELLED before part ${partIdx + 1}")
                     return@withContext null
                 }
                 val partStartTime = System.currentTimeMillis()
-                // Better progress: each part gets 20% (total 80% for 4 parts)
                 val partBaseProgress = 0.1f + (partIdx * 0.2f)
-                val (modelFile, _) = PART_FILENAMES[partIdx]
-                progressCallback?.invoke(partBaseProgress, "Part ${partIdx + 1}/4: Loading model...")
+                val (defaultModelFile, _) = PART_FILENAMES[partIdx]
+                val partNumber = partIdx + 1
+                val modelFile = if (partNumber == 4 && USE_INT8_PART4) {
+                    val int8File = File(modelsDir, PART4_INT8_FILENAME)
+                    if (int8File.exists()) {
+                        Log.d(TAG, "Part 4 using INT8 quantized model (${int8File.length() / 1_000_000}MB)")
+                        PART4_INT8_FILENAME
+                    } else {
+                        Log.d(TAG, "Part 4 INT8 model not found, falling back to FP32")
+                        defaultModelFile
+                    }
+                } else {
+                    defaultModelFile
+                }
+                progressCallback?.invoke(partBaseProgress, "Part $partNumber/4: Loading model...")
 
-                Log.d(TAG, "=== Part ${partIdx + 1} ===")
-                Log.d(TAG, "Memory before: ${getMemoryInfo()}")
-                Log.d(TAG, "Model file: $modelFile")
-
-                // Request GC to reclaim previous session's memory
-                System.gc()
+                Log.d(TAG, "=== Part $partNumber === Memory: ${getMemoryInfo()}")
 
                 val modelPath = File(modelsDir, modelFile).absolutePath
-                Log.d(TAG, "Part ${partIdx + 1}: currentInputs keys=${currentInputs.keys} files=${currentInputs.map { "${it.key}=${it.value.name}(${it.value.length()})" }}")
-                val outputs = runModelPart(modelPath, currentInputs, partIdx + 1, progressCallback, partBaseProgress)
+                val outputs = runModelPart(modelPath, currentInputs, partNumber, progressCallback, partBaseProgress)
 
                 if (outputs == null) {
-                    Log.e(TAG, "Part ${partIdx + 1} FAILED - runModelPart returned null")
+                    Log.e(TAG, "Part $partNumber FAILED - runModelPart returned null")
                     return@withContext null
                 }
-                Log.d(TAG, "Part ${partIdx + 1}: outputs keys=${outputs.keys} files=${outputs.map { "${it.key}=${it.value.name}(${it.value.length()})" }}")
 
-                // IMPORTANT: Accumulate all outputs across parts - later parts may need
-                // outputs from earlier parts (e.g., Part 3 needs weight tensors from Part 1)
-                val imageFile = File(tempDir, "input_image.tensor")
+                if (partNumber == 1) {
+                    preloadedPart1Session?.close()
+                    preloadedPart1Session = null
+                    Log.d(TAG, "Closed Part 1 preloaded session to free memory for Parts 2-4")
+                }
+
                 currentInputs = currentInputs + outputs + ("image" to imageFile)
-                Log.d(TAG, "Part ${partIdx + 1}: merged currentInputs keys=${currentInputs.keys}")
 
                 partTimes[partIdx] = System.currentTimeMillis() - partStartTime
-                Log.d(TAG, "Part ${partIdx + 1} total: ${partTimes[partIdx]}ms (tensors: ${currentInputs.size})")
-                Log.d(TAG, "Memory after Part ${partIdx + 1}: ${getMemoryInfo()}")
+                Log.d(TAG, "Part $partNumber done: ${partTimes[partIdx]}ms, tensors: ${currentInputs.size}, ${getMemoryInfo()}")
+            }
+
+            // Part 4: either chunked (4a ViT + 4b decoder) or already run in loop above
+            if (chunkedPart4Available) {
+                val part4StartTime = System.currentTimeMillis()
+                val part4Outputs = runChunkedPart4(currentInputs, progressCallback, isCancelled)
+                if (part4Outputs == null) {
+                    Log.e(TAG, "Chunked Part 4 FAILED")
+                    return@withContext null
+                }
+                currentInputs = currentInputs + part4Outputs + ("image" to imageFile)
+                partTimes[3] = System.currentTimeMillis() - part4StartTime
+                Log.d(TAG, "Part 4 (chunked) done: ${partTimes[3]}ms, tensors: ${currentInputs.size}, ${getMemoryInfo()}")
             }
 
             if (isCancelled()) {
@@ -329,14 +416,15 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             val elapsed = System.currentTimeMillis() - startTime
             Log.d(TAG, "Split inference completed in ${elapsed}ms")
             Log.d(TAG, "After PLY write. Memory: ${getMemoryInfo()}")
-            Log.d(TAG, "  Breakdown: P1=${partTimes[0]}ms P2=${partTimes[1]}ms P3=${partTimes[2]}ms P4=${partTimes[3]}ms PLY=${plyTime}ms")
+            val part1Label = if (chunkedPart1Available) "P1(chunked)" else "P1"
+            val part4Label = if (chunkedPart4Available) "P4(chunked)" else "P4"
+            Log.d(TAG, "  Breakdown: $part1Label=${partTimes[0]}ms P2=${partTimes[1]}ms P3=${partTimes[2]}ms $part4Label=${partTimes[3]}ms PLY=${plyTime}ms")
             progressCallback?.invoke(1.0f, "Done!")
 
             return@withContext result
 
         } catch (e: OutOfMemoryError) {
             Log.e(TAG, "OUT OF MEMORY during split inference after ${System.currentTimeMillis() - startTime}ms", e)
-            System.gc()
             progressCallback?.invoke(0f, "Out of memory")
             return@withContext null
         } catch (e: Exception) {
@@ -357,56 +445,25 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         baseProgress: Float
     ): Map<String, File>? {
         Log.d(TAG, "runModelPart ENTER part=$partNumber modelPath=$modelPath inputKeys=${inputs.keys}")
-        var session: OrtSession? = null
-
-        try {
+        var session: OrtSession? = if (partNumber == 1) preloadedPart1Session else null
+        val usePreloaded = session != null
+        if (!usePreloaded) {
             val sessionCreateStart = System.currentTimeMillis()
-
-            // Session options tuned for split models with external data files.
-            // IMPORTANT: ALL_OPT is NOT safe here — it tries to internalize external tensor
-            // references which breaks split models. EXTENDED_OPT does operator fusion and
-            // constant folding but avoids the aggressive transformations.
-            // Similarly, optimized_model_filepath cannot be used with external data files
-            // because the cached model loses the external data references.
-            val sessionOptions = OrtSession.SessionOptions().apply {
-                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.EXTENDED_OPT)
-
-                val numCores = Runtime.getRuntime().availableProcessors()
-                // MAX mode: always use all available CPU cores for ONNX inference.
-                // This maximizes parallelism for large GEMM/attention ops at the cost of
-                // higher power draw and potential thermal throttling on long runs.
-                val intraThreads = numCores
-                setIntraOpNumThreads(intraThreads)
-                setInterOpNumThreads(1)
-                Log.d(TAG, "CPU: MAX mode - using $intraThreads intra-op threads for part $partNumber (device has $numCores cores)")
-
-                setMemoryPatternOptimization(true)
-                // Arena allocator OFF for split models — Part 4 (60 inputs, ~600MB model)
-                // uses too much peak memory with arena pooling on memory-constrained devices.
-                setCPUArenaAllocator(false)
-                setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-
-                try {
-                    addConfigEntry("session.use_mmap", "1")
-                    addConfigEntry("session.enable_mem_reuse", "1")
-                    // Worker threads busy-wait instead of sleeping between ops.
-                    // Reduces latency for sequential CPU ops in transformer layers.
-                    addConfigEntry("session.intra_op.allow_spinning", "1")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not set session config: ${e.message}")
-                }
-            }
-
             progressCallback?.invoke(baseProgress + 0.02f, "Part $partNumber/4: Creating session...")
-            Log.d(TAG, "Creating optimized CPU session for part $partNumber...")
-            session = ortEnv.createSession(modelPath, sessionOptions)
+            Log.d(TAG, "Creating session for part $partNumber...")
+            session = ortEnv.createSession(modelPath, buildSessionOptions(partNumber))
             val sessionCreateTime = System.currentTimeMillis() - sessionCreateStart
             Log.d(TAG, "Session created for part $partNumber in ${sessionCreateTime}ms")
             progressCallback?.invoke(baseProgress + 0.05f, "Part $partNumber/4: Session ready (${sessionCreateTime/1000}s)")
+        } else {
+            Log.d(TAG, "Using preloaded session for part $partNumber")
+            progressCallback?.invoke(baseProgress + 0.05f, "Part $partNumber/4: Session ready")
+        }
 
-            // Get input/output names
-            val inputNames = session.inputNames.toList()
-            val outputNames = session.outputNames.toList()
+        try {
+            val activeSession = session!!
+            val inputNames = activeSession.inputNames.toList()
+            val outputNames = activeSession.outputNames.toList()
             Log.d(TAG, "Part $partNumber - Inputs: $inputNames, Outputs: $outputNames")
 
             // Load input tensors from files
@@ -440,8 +497,22 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             Log.d(TAG, "Running Part $partNumber inference with ${inputTensors.size} inputs...")
             val inferStartTime = System.currentTimeMillis()
 
+            if (partNumber == 4) {
+                System.gc()
+                System.runFinalization()
+                Thread.sleep(150)
+                Log.d(TAG, "Part 4 pre-forward memory: ${getMemoryInfo()}")
+                val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val memoryInfo = android.app.ActivityManager.MemoryInfo()
+                activityManager.getMemoryInfo(memoryInfo)
+                if (memoryInfo.availMem < 1024L * 1024 * 1024) {
+                    Log.e(TAG, "ABORTING Part 4: only ${memoryInfo.availMem / 1024 / 1024}MB available, need ~1GB+")
+                    return null
+                }
+            }
+
             Log.d(TAG, "runModelPart part=$partNumber: calling session.run with ${inputTensors.size} inputs")
-            val outputs = session.run(inputTensors)
+            val outputs = activeSession.run(inputTensors)
             Log.d(TAG, "runModelPart part=$partNumber: session.run returned outputs: $outputNames")
 
             val inferTime = System.currentTimeMillis() - inferStartTime
@@ -471,9 +542,6 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             inputTensors.clear()
             outputs.close()
 
-            // Aggressive cleanup (Native Pt style) to reduce OOM risk
-            System.gc()
-
             Log.d(TAG, "runModelPart part=$partNumber DONE outputFiles=${outputFiles.keys}")
             return outputFiles
 
@@ -482,13 +550,103 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
             return null
         } finally {
-            session?.close()
-            session = null
-            // Note: ortEnv is reused across parts, don't close it
-
-            // Force GC after closing session (Native Pt style)
-            System.gc()
+            if (!usePreloaded) {
+                session?.close()
+            }
         }
+    }
+
+    /**
+     * Run Part 1 as two sub-chunks: Part 1a (preprocess + blocks 0-11) then Part 1b (blocks 12-18).
+     * Destroys Part 1a session before loading Part 1b to reduce peak memory from 946MB to max(611, 336) MB.
+     */
+    private fun runChunkedPart1(
+        inputs: Map<String, File>,
+        progressCallback: ((Float, String) -> Unit)?,
+        isCancelled: () -> Boolean
+    ): Map<String, File>? {
+        Log.d(TAG, "=== Part 1 (chunked: 1a blocks 0-11 + 1b blocks 12-18) === Memory: ${getMemoryInfo()}")
+
+        // --- Part 1a: Preprocess + blocks 0-11 (uses preloaded session) ---
+        progressCallback?.invoke(0.10f, "Part 1a/1b: Blocks 0-11...")
+        Log.d(TAG, "=== Part 1a (preprocess + blocks 0-11) === Memory: ${getMemoryInfo()}")
+
+        val part1aModelPath = File(modelsDir, PART1A_FILENAME).absolutePath
+        val part1aOutputs = runModelPart(part1aModelPath, inputs, 1, progressCallback, 0.10f)
+
+        preloadedPart1Session?.close()
+        preloadedPart1Session = null
+        Log.d(TAG, "Closed Part 1a preloaded session")
+
+        if (part1aOutputs == null) {
+            Log.e(TAG, "Part 1a FAILED")
+            return null
+        }
+        Log.d(TAG, "Part 1a done. Outputs: ${part1aOutputs.size} tensors. Memory: ${getMemoryInfo()}")
+
+        if (isCancelled()) {
+            Log.d(TAG, "inferStreaming CANCELLED between Part 1a and 1b")
+            return null
+        }
+
+        // --- Part 1b: Blocks 12-18 ---
+        progressCallback?.invoke(0.20f, "Part 1b/1b: Blocks 12-18...")
+        Log.d(TAG, "=== Part 1b (blocks 12-18) === Memory: ${getMemoryInfo()}")
+
+        val part1bInputs = inputs + part1aOutputs
+        val part1bModelPath = File(modelsDir, PART1B_FILENAME).absolutePath
+        val part1bOutputs = runModelPart(part1bModelPath, part1bInputs, 1, progressCallback, 0.20f)
+        if (part1bOutputs == null) {
+            Log.e(TAG, "Part 1b FAILED")
+            return null
+        }
+        Log.d(TAG, "Part 1b done. Outputs: ${part1bOutputs.size} tensors. Memory: ${getMemoryInfo()}")
+
+        return part1aOutputs + part1bOutputs
+    }
+
+    /**
+     * Run Part 4 as two sub-chunks: Part 4a (ViT blocks) then Part 4b (decoder).
+     * Destroys Part 4a session before loading Part 4b to reduce peak memory.
+     */
+    private fun runChunkedPart4(
+        inputs: Map<String, File>,
+        progressCallback: ((Float, String) -> Unit)?,
+        isCancelled: () -> Boolean
+    ): Map<String, File>? {
+        Log.d(TAG, "=== Part 4 (chunked: 4a ViT + 4b decoder) === Memory: ${getMemoryInfo()}")
+
+        // --- Part 4a: ViT blocks ---
+        progressCallback?.invoke(0.70f, "Part 4a/4b: ViT blocks...")
+        Log.d(TAG, "=== Part 4a (ViT) === Memory: ${getMemoryInfo()}")
+
+        val part4aModelPath = File(modelsDir, PART4A_FILENAME).absolutePath
+        val part4aOutputs = runModelPart(part4aModelPath, inputs, 4, progressCallback, 0.70f)
+        if (part4aOutputs == null) {
+            Log.e(TAG, "Part 4a FAILED")
+            return null
+        }
+        Log.d(TAG, "Part 4a done. Norm output: ${part4aOutputs.keys}. Memory: ${getMemoryInfo()}")
+
+        if (isCancelled()) {
+            Log.d(TAG, "inferStreaming CANCELLED between Part 4a and 4b")
+            return null
+        }
+
+        // --- Part 4b: Decoder ---
+        progressCallback?.invoke(0.80f, "Part 4b/4b: Decoder...")
+        Log.d(TAG, "=== Part 4b (decoder) === Memory: ${getMemoryInfo()}")
+
+        val part4bInputs = inputs + part4aOutputs
+        val part4bModelPath = File(modelsDir, PART4B_FILENAME).absolutePath
+        val part4bOutputs = runModelPart(part4bModelPath, part4bInputs, 4, progressCallback, 0.80f)
+        if (part4bOutputs == null) {
+            Log.e(TAG, "Part 4b FAILED")
+            return null
+        }
+        Log.d(TAG, "Part 4b done. Gaussian outputs: ${part4bOutputs.keys}. Memory: ${getMemoryInfo()}")
+
+        return part4bOutputs
     }
 
     /**
@@ -647,52 +805,44 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         progressCallback: ((Float, String) -> Unit)?
     ): StreamingResult? {
         Log.d(TAG, "processGaussianOutput ENTER outputKeys=${outputs.keys}")
+
+        val positionsFile = outputs.entries.find { it.key.contains("positions") }?.value
+        val scalesFile = outputs.entries.find { it.key.contains("scales") }?.value
+        val rotationsFile = outputs.entries.find { it.key.contains("rotations") }?.value
+        val colorsFile = outputs.entries.find { it.key.contains("colors") }?.value
+        val opacityFile = outputs.entries.find { it.key.contains("opacity") }?.value
+
+        if (positionsFile == null || scalesFile == null || rotationsFile == null ||
+            colorsFile == null || opacityFile == null) {
+            Log.e(TAG, "processGaussianOutput: MISSING output tensors. Available: ${outputs.keys}")
+            return null
+        }
+
+        val channels = mutableListOf<FileChannel>()
         try {
-            // Find the output files (named with part4_ prefix)
-            val positionsFile = outputs.entries.find { it.key.contains("positions") }?.value
-            val scalesFile = outputs.entries.find { it.key.contains("scales") }?.value
-            val rotationsFile = outputs.entries.find { it.key.contains("rotations") }?.value
-            val colorsFile = outputs.entries.find { it.key.contains("colors") }?.value
-            val opacityFile = outputs.entries.find { it.key.contains("opacity") }?.value
+            val posChannel = RandomAccessFile(positionsFile, "r").channel.also { channels.add(it) }
+            val scaleChannel = RandomAccessFile(scalesFile, "r").channel.also { channels.add(it) }
+            val rotChannel = RandomAccessFile(rotationsFile, "r").channel.also { channels.add(it) }
+            val colorChannel = RandomAccessFile(colorsFile, "r").channel.also { channels.add(it) }
+            val opacityChannel = RandomAccessFile(opacityFile, "r").channel.also { channels.add(it) }
 
-            Log.d(TAG, "processGaussianOutput: positions=$positionsFile scales=$scalesFile rotations=$rotationsFile colors=$colorsFile opacity=$opacityFile")
-
-            if (positionsFile == null || scalesFile == null || rotationsFile == null ||
-                colorsFile == null || opacityFile == null) {
-                Log.e(TAG, "processGaussianOutput: MISSING output tensors. Available: ${outputs.keys}")
-                return null
-            }
-
-            // Memory-map the output files
-            val posChannel = RandomAccessFile(positionsFile, "r").channel
-            val scaleChannel = RandomAccessFile(scalesFile, "r").channel
-            val rotChannel = RandomAccessFile(rotationsFile, "r").channel
-            val colorChannel = RandomAccessFile(colorsFile, "r").channel
-            val opacityChannel = RandomAccessFile(opacityFile, "r").channel
-
-            // Read position shape to get Gaussian count
-            val shapeBuffer = ByteBuffer.allocate(4 + 3 * 8)
-            shapeBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val shapeBuffer = ByteBuffer.allocate(4 + 3 * 8).order(ByteOrder.LITTLE_ENDIAN)
             posChannel.read(shapeBuffer)
             shapeBuffer.flip()
             val numDims = shapeBuffer.int
             val shape = LongArray(numDims) { shapeBuffer.long }
             val gaussianCount = shape[1].toInt()
 
-            Log.d(TAG, "processGaussianOutput: positions shape=$shape gaussianCount=$gaussianCount")
-            Log.d(TAG, "Processing $gaussianCount Gaussians...")
+            Log.d(TAG, "processGaussianOutput: $gaussianCount Gaussians")
             progressCallback?.invoke(0.9f, "Writing PLY ($gaussianCount Gaussians)...")
 
-            // Map data buffers (skip header)
             val headerSize = 4L + numDims * 8L
             val posBuffer = posChannel.map(FileChannel.MapMode.READ_ONLY, headerSize, gaussianCount * 3L * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
             val scaleBuffer = scaleChannel.map(FileChannel.MapMode.READ_ONLY, headerSize, gaussianCount * 3L * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
             val rotBuffer = rotChannel.map(FileChannel.MapMode.READ_ONLY, headerSize, gaussianCount * 4L * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
             val colorBuffer = colorChannel.map(FileChannel.MapMode.READ_ONLY, headerSize, gaussianCount * 3L * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
 
-            // Opacity might be [1, N] or [1, N, 1]
-            val opacityShapeBuffer = ByteBuffer.allocate(4 + 3 * 8)
-            opacityShapeBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val opacityShapeBuffer = ByteBuffer.allocate(4 + 3 * 8).order(ByteOrder.LITTLE_ENDIAN)
             opacityChannel.position(0)
             opacityChannel.read(opacityShapeBuffer)
             opacityShapeBuffer.flip()
@@ -700,15 +850,8 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             val opacityHeaderSize = 4L + opacityNumDims * 8L
             val opacityBuffer = opacityChannel.map(FileChannel.MapMode.READ_ONLY, opacityHeaderSize, gaussianCount * 4L).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
 
-            Log.d(TAG, "processGaussianOutput: mapped buffers posLimit=${posBuffer.limit()} scaleLimit=${scaleBuffer.limit()} rotLimit=${rotBuffer.limit()} colorLimit=${colorBuffer.limit()} opacityLimit=${opacityBuffer.limit()}")
-            val posSample = FloatArray(3)
-            posBuffer.duplicate().apply { position(0); get(posSample) }
-            Log.d(TAG, "processGaussianOutput: sample pos[0..2]=${posSample.toList()}")
-
-            // Create output directory
             val roomsDir = File(context.filesDir, "sharp_rooms")
             roomsDir.mkdirs()
-
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val roomFolder = File(roomsDir, "room_$timestamp")
             roomFolder.mkdirs()
@@ -716,35 +859,26 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             val plyFile = File(roomFolder, "room.ply")
             val classicPlyFile = File(roomFolder, "room_classic.ply")
 
-            // Bounds tracking
-            var minX = Float.MAX_VALUE
-            var maxX = -Float.MAX_VALUE
-            var minY = Float.MAX_VALUE
-            var maxY = -Float.MAX_VALUE
-            var minZ = Float.MAX_VALUE
-            var maxZ = -Float.MAX_VALUE
+            var minX = Float.MAX_VALUE; var maxX = -Float.MAX_VALUE
+            var minY = Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+            var minZ = Float.MAX_VALUE; var maxZ = -Float.MAX_VALUE
 
-            // Write PLY with DirectByteBuffer + FileChannel for zero-copy writes
             val header = buildPlyHeader(gaussianCount)
             FileOutputStream(plyFile).use { fos ->
-                val channel = fos.channel
+                val outChannel = fos.channel
 
-                // Write header
                 val headerBytes = header.toByteArray(Charsets.UTF_8)
                 val headerBuffer = ByteBuffer.allocateDirect(headerBytes.size)
                 headerBuffer.put(headerBytes)
                 headerBuffer.flip()
-                channel.write(headerBuffer)
+                outChannel.write(headerBuffer)
 
-                // DirectByteBuffer for zero-copy writes (batch 512 vertices ~127KB)
                 val batchSize = 512
-                val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-                batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize).order(ByteOrder.LITTLE_ENDIAN)
                 val scaleBoost = 1.3f
                 val minScale = 0.001f
                 val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
 
-                // Pre-allocate local arrays for vectorized bulk reads
                 val localPositions = FloatArray(batchSize * 3)
                 val localScales = FloatArray(batchSize * 3)
                 val localRotations = FloatArray(batchSize * 4)
@@ -755,7 +889,6 @@ class SplitOnnxSharp private constructor(private val context: Context) {
                 while (processed < gaussianCount) {
                     val currentBatch = minOf(batchSize, gaussianCount - processed)
 
-                    // Vectorized bulk reads: one buffer call per attribute
                     posBuffer.position(processed * 3)
                     posBuffer.get(localPositions, 0, currentBatch * 3)
                     scaleBuffer.position(processed * 3)
@@ -767,51 +900,36 @@ class SplitOnnxSharp private constructor(private val context: Context) {
                     opacityBuffer.position(processed)
                     opacityBuffer.get(localOpacity, 0, currentBatch)
 
-                    // Process from local arrays (no per-element buffer/JNI overhead)
                     for (j in 0 until currentBatch) {
                         val idx3 = j * 3
                         val x = localPositions[idx3]
                         val y = -localPositions[idx3 + 1]
                         val z = -localPositions[idx3 + 2]
 
-                        if (x < minX) minX = x
-                        if (x > maxX) maxX = x
-                        if (y < minY) minY = y
-                        if (y > maxY) maxY = y
-                        if (z < minZ) minZ = z
-                        if (z > maxZ) maxZ = z
+                        if (x < minX) minX = x; if (x > maxX) maxX = x
+                        if (y < minY) minY = y; if (y > maxY) maxY = y
+                        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
 
                         batchBuffer.putFloat(x)
                         batchBuffer.putFloat(y)
                         batchBuffer.putFloat(z)
+                        batchBuffer.putFloat(0f); batchBuffer.putFloat(0f); batchBuffer.putFloat(0f)
 
-                        // Normals
-                        batchBuffer.putFloat(0f)
-                        batchBuffer.putFloat(0f)
-                        batchBuffer.putFloat(0f)
-
-                        // Colors -> SH DC
                         val r = localColors[idx3].coerceIn(0f, 1f)
                         val g = localColors[idx3 + 1].coerceIn(0f, 1f)
                         val b = localColors[idx3 + 2].coerceIn(0f, 1f)
                         batchBuffer.putFloat((r - 0.5f) / SH_C0)
                         batchBuffer.putFloat((g - 0.5f) / SH_C0)
                         batchBuffer.putFloat((b - 0.5f) / SH_C0)
-
-                        // Higher order SH (45 zeros) — bulk put instead of 45 individual putFloat(0f)
                         batchBuffer.put(zeroSHBlock)
 
-                        // Opacity -> logit via LUT
                         val rawOpacity = localOpacity[j].coerceIn(0f, 1f)
-                        val lutIndex = (rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)
-                        batchBuffer.putFloat(LOGIT_LUT[lutIndex])
+                        batchBuffer.putFloat(LOGIT_LUT[(rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)])
 
-                        // Scale -> log via LN LUT (avoids ln() per vertex)
                         batchBuffer.putFloat(lnLut(max(localScales[idx3] * scaleBoost, minScale)))
                         batchBuffer.putFloat(lnLut(max(localScales[idx3 + 1] * scaleBoost, minScale)))
                         batchBuffer.putFloat(lnLut(max(localScales[idx3 + 2] * scaleBoost, minScale)))
 
-                        // Rotation -> normalize
                         val idx4 = j * 4
                         val rw = localRotations[idx4]
                         val rx = localRotations[idx4 + 1]
@@ -825,29 +943,23 @@ class SplitOnnxSharp private constructor(private val context: Context) {
                         batchBuffer.putFloat(rz * invMag)
                     }
 
-                    // Flush batch to disk via zero-copy channel write
                     batchBuffer.flip()
                     batchBuffer.limit(currentBatch * BYTES_PER_VERTEX)
-                    while (batchBuffer.hasRemaining()) {
-                        channel.write(batchBuffer)
-                    }
+                    while (batchBuffer.hasRemaining()) outChannel.write(batchBuffer)
                     batchBuffer.clear()
                     processed += currentBatch
                 }
             }
 
-            // Copy to classic PLY
-            plyFile.copyTo(classicPlyFile, overwrite = true)
+            // Hard-link instead of 100+MB file copy; fall back to copy if link fails
+            try {
+                android.system.Os.link(plyFile.absolutePath, classicPlyFile.absolutePath)
+            } catch (_: Exception) {
+                plyFile.copyTo(classicPlyFile, overwrite = true)
+            }
 
-            // Close channels
-            posChannel.close()
-            scaleChannel.close()
-            rotChannel.close()
-            colorChannel.close()
-            opacityChannel.close()
-
-            Log.d(TAG, "processGaussianOutput SUCCESS: PLY written $gaussianCount Gaussians to ${plyFile.absolutePath} size=${plyFile.length()}")
-            Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m min=($minX,$minY,$minZ) max=($maxX,$maxY,$maxZ)")
+            Log.d(TAG, "processGaussianOutput SUCCESS: $gaussianCount Gaussians, PLY=${plyFile.length() / 1024}KB")
+            Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
 
             return StreamingResult(
                 plyFile = plyFile,
@@ -861,6 +973,8 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "processGaussianOutput FAILED", e)
             return null
+        } finally {
+            channels.forEach { try { it.close() } catch (_: Exception) {} }
         }
     }
 
