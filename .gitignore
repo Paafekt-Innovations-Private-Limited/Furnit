@@ -234,6 +234,8 @@ android/sharp_ncnn_models_backup/
 
 # ML model binaries (too large for git)
 android/executorch_models/
+android/executorch_fp16_models/
+android/executorch_models_vulkan/
 android/sharp_litert_models/
 android/sharp_onnx_models/
 *.pte
@@ -242,4 +244,16 @@ android/sharp_onnx_models/
 *.onnx
 *.tflite
 android/__pycache__/
+**/__pycache__/
+*.pyc
+
+# ONNX external weight files
+*.onnx.data
+
+# Third-party source trees (clone separately)
+android/third_party/executorch/
+
+# Personal / non-project files
+KishoreS_CV_Updated.html
+
 test_images/
