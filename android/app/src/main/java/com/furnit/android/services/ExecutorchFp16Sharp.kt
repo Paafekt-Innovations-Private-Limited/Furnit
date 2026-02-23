@@ -45,6 +45,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
         private const val PARAMS_PER_GAUSSIAN = 14
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
+        private const val PLY_BATCH_SIZE = 512
 
         private const val GRID_1X = 5
         private const val GRID_05X = 3
@@ -102,6 +103,13 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
 
     @Volatile
     private var isInitialized = false
+
+    private val zeroSHBuffer: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyBatch: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
 
     private val internalModelsDir: File by lazy {
         File(context.filesDir, "models").also { it.mkdirs() }
@@ -466,48 +474,50 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
         progressCallback: ((Float, String) -> Unit)?
     ): StreamingResult? {
 
-        fun mergeOnePatchInto(
-            output: FloatArray, outSize: Int, patch: FloatArray,
+        // Exact port of Python merge() from spn_encoder.py:
+        // Crop overlapping borders, then concatenate. No blending/averaging.
+        fun mergePatchCropInto(
+            output: FloatArray, outW: Int, patch: FloatArray,
             gridI: Int, gridJ: Int, gridSize: Int, padding: Int,
-            blendCount: IntArray? = null
+            outOffsetY: IntArray, outOffsetX: IntArray
         ) {
-            val patchH = SPATIAL_SIZE; val patchW = SPATIAL_SIZE; val C = FEATURE_DIM
-            val srcY0 = if (gridJ == 0) 0 else padding
-            val srcY1 = if (gridJ == gridSize - 1) patchH else (patchH - padding)
-            val copyH = srcY1 - srcY0
-            val srcX0 = if (gridI == 0) 0 else padding
-            val srcX1 = if (gridI == gridSize - 1) patchW else (patchW - padding)
-            val copyW = srcX1 - srcX0
-            val firstContrib = patchW - padding
-            val innerContrib = patchW - 2 * padding
-            val outX = if (gridI == 0) 0 else firstContrib + (gridI - 1) * innerContrib
-            val outY = if (gridJ == 0) 0 else firstContrib + (gridJ - 1) * innerContrib
-            val patchHW = patchH * patchW; val outHW = outSize * outSize
-            val accumulating = blendCount != null
+            val pH = SPATIAL_SIZE; val pW = SPATIAL_SIZE; val C = FEATURE_DIM
+            val pHW = pH * pW
+            val cropTop = if (gridJ != 0) padding else 0
+            val cropBot = if (gridJ != gridSize - 1) padding else 0
+            val cropLeft = if (gridI != 0) padding else 0
+            val cropRight = if (gridI != gridSize - 1) padding else 0
+            val croppedH = pH - cropTop - cropBot
+            val croppedW = pW - cropLeft - cropRight
+            val dstY = outOffsetY[0]
+            val dstX = outOffsetX[gridI]
+            val outHW = outW * outW
             for (c in 0 until C) {
-                val srcBase = c * patchHW; val dstBase = c * outHW
-                for (dy in 0 until copyH) {
-                    val outRow = outY + dy
-                    for (dx in 0 until copyW) {
-                        val srcIdx = srcBase + (srcY0 + dy) * patchW + (srcX0 + dx)
-                        val dstIdx = dstBase + outRow * outSize + (outX + dx)
-                        if (accumulating) {
-                            output[dstIdx] += patch[srcIdx]
-                            if (c == 0) blendCount!![outRow * outSize + (outX + dx)]++
-                        } else {
-                            output[dstIdx] = patch[srcIdx]
-                        }
+                val srcBase = c * pHW
+                val dstBase = c * outHW
+                for (dy in 0 until croppedH) {
+                    for (dx in 0 until croppedW) {
+                        val srcIdx = srcBase + (cropTop + dy) * pW + (cropLeft + dx)
+                        val dstIdx = dstBase + (dstY + dy) * outW + (dstX + dx)
+                        output[dstIdx] = patch[srcIdx]
                     }
                 }
             }
+            if (gridI == gridSize - 1) {
+                outOffsetY[0] += croppedH
+            }
         }
 
-        fun normalizeMergedByCount(output: FloatArray, outSize: Int, count: IntArray) {
-            val outHW = outSize * outSize
-            for (idx in 0 until outHW) {
-                val invN = 1f / maxOf(1, count[idx])
-                for (c in 0 until FEATURE_DIM) output[c * outHW + idx] *= invN
+        fun buildColumnOffsets(gridSize: Int, padding: Int): IntArray {
+            val offsets = IntArray(gridSize)
+            var x = 0
+            for (col in 0 until gridSize) {
+                offsets[col] = x
+                val cropLeft = if (col != 0) padding else 0
+                val cropRight = if (col != gridSize - 1) padding else 0
+                x += SPATIAL_SIZE - cropLeft - cropRight
             }
+            return offsets
         }
 
         val tempSpatial = FloatArray(FEATURE_DIM * SPATIAL_SIZE * SPATIAL_SIZE)
@@ -550,8 +560,12 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 val x0Feat = FloatArray(FEATURE_DIM * mergedSize1x * mergedSize1x)
                 val x1Feat = FloatArray(FEATURE_DIM * mergedSize05x * mergedSize05x)
                 var x2Feat: FloatArray? = null
-                val count1x = IntArray(mergedSize1x * mergedSize1x)
-                val count05x = IntArray(mergedSize05x * mergedSize05x)
+                val colOffsets1x = buildColumnOffsets(GRID_1X, PADDING_1X)
+                val colOffsets05x = buildColumnOffsets(GRID_05X, PADDING_05X)
+                val rowOffset1xL0 = intArrayOf(0)
+                val rowOffset1xL1 = intArrayOf(0)
+                val rowOffset1xX0 = intArrayOf(0)
+                val rowOffset05x = intArrayOf(0)
 
                 progressCallback?.invoke(0.05f, "Loading FP16 encoder A + B...")
                 val part1File = findFile(SPLIT_PART1) ?: return null
@@ -577,13 +591,13 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                         val block5 = getOutputAsFloatArray(out1[1].toTensor())
 
                         reshapeTokensToSpatialInto(block5, tempSpatial)
-                        mergeOnePatchInto(latent0, mergedSize1x, tempSpatial, j, i, GRID_1X, PADDING_1X, count1x)
+                        mergePatchCropInto(latent0, mergedSize1x, tempSpatial, j, i, GRID_1X, PADDING_1X, rowOffset1xL0, colOffsets1x)
                         reshapeTokensToSpatialInto(tokens, tempSpatial)
-                        mergeOnePatchInto(latent1, mergedSize1x, tempSpatial, j, i, GRID_1X, PADDING_1X, count1x)
+                        mergePatchCropInto(latent1, mergedSize1x, tempSpatial, j, i, GRID_1X, PADDING_1X, rowOffset1xL1, colOffsets1x)
 
                         val tokensTensor = createHalfTensor(tokens, longArrayOf(1, 577, 1024))
                         val feat = getOutputAsFloatArray(module2.forward(EValue.from(tokensTensor))[0].toTensor())
-                        mergeOnePatchInto(x0Feat, mergedSize1x, feat, j, i, GRID_1X, PADDING_1X, count1x)
+                        mergePatchCropInto(x0Feat, mergedSize1x, feat, j, i, GRID_1X, PADDING_1X, rowOffset1xX0, colOffsets1x)
 
                         patchCount++
                         if (patchCount % 5 == 0) {
@@ -591,10 +605,6 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                         }
                     }
                 }
-                normalizeMergedByCount(latent0, mergedSize1x, count1x)
-                normalizeMergedByCount(latent1, mergedSize1x, count1x)
-                normalizeMergedByCount(x0Feat, mergedSize1x, count1x)
-
                 // 0.5x patches (3x3)
                 for (i in 0 until GRID_05X) {
                     for (j in 0 until GRID_05X) {
@@ -606,11 +616,10 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                         val tokens = getOutputAsFloatArray(module1.forward(EValue.from(inputTensor))[0].toTensor())
                         val tokensTensor = createHalfTensor(tokens, longArrayOf(1, 577, 1024))
                         val feat = getOutputAsFloatArray(module2.forward(EValue.from(tokensTensor))[0].toTensor())
-                        mergeOnePatchInto(x1Feat, mergedSize05x, feat, j, i, GRID_05X, PADDING_05X, count05x)
+                        mergePatchCropInto(x1Feat, mergedSize05x, feat, j, i, GRID_05X, PADDING_05X, rowOffset05x, colOffsets05x)
                         patchCount++
                     }
                 }
-                normalizeMergedByCount(x1Feat, mergedSize05x, count05x)
                 halfBitmap.recycle()
 
                 // 0.25x patch
@@ -824,6 +833,9 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
 
         val header = buildPlyHeader(gaussianCount)
 
+        Log.d(TAG, "PLY writer: reusable buffers (plyBatch=${BYTES_PER_VERTEX * PLY_BATCH_SIZE / 1024}KB, zeroSH=180B direct)")
+        val batchLoopStart: Long
+        var totalWriteNs = 0L
         FileOutputStream(plyFile).use { fos ->
             val channel = fos.channel
             val headerBytes = header.toByteArray(Charsets.UTF_8)
@@ -831,16 +843,16 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
             headerBuffer.put(headerBytes); headerBuffer.flip()
             channel.write(headerBuffer)
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch
+            batchBuffer.clear()
             val scaleBoost = 1.3f; val minScale = 0.001f
             val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
             val progressEvery = max(1, gaussianCount / 10)
+            batchLoopStart = System.currentTimeMillis()
             var processed = 0
 
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
                 for (j in 0 until currentBatch) {
                     val offset = (processed + j) * PARAMS_PER_GAUSSIAN
                     val x = params.get(offset + 0)
@@ -857,7 +869,8 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                     batchBuffer.putFloat((r - 0.5f) / SH_C0)
                     batchBuffer.putFloat((g - 0.5f) / SH_C0)
                     batchBuffer.putFloat((b - 0.5f) / SH_C0)
-                    repeat(45) { batchBuffer.putFloat(0f) }
+                    zeroSHBuffer.clear()
+                    batchBuffer.put(zeroSHBuffer)
                     val rawOpacity = params.get(offset + 3).coerceIn(0f, 1f)
                     val lutIndex = (rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)
                     batchBuffer.putFloat(LOGIT_LUT[lutIndex])
@@ -873,7 +886,9 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 }
                 batchBuffer.flip()
                 batchBuffer.limit(currentBatch * BYTES_PER_VERTEX)
+                val writeStart = System.nanoTime()
                 while (batchBuffer.hasRemaining()) channel.write(batchBuffer)
+                totalWriteNs += System.nanoTime() - writeStart
                 batchBuffer.clear()
                 processed += currentBatch
                 if (processed % progressEvery == 0 || processed == gaussianCount) {
@@ -881,6 +896,12 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 }
             }
         }
+        val batchLoopTime = System.currentTimeMillis() - batchLoopStart
+        val totalWriteMs = totalWriteNs / 1_000_000
+        val plyBytes = gaussianCount.toLong() * BYTES_PER_VERTEX
+        val throughputMBps = if (batchLoopTime > 0) plyBytes * 1000.0 / batchLoopTime / 1024 / 1024 else 0.0
+        Log.d(TAG, "PLY batch loop: ${batchLoopTime}ms total (I/O write=${totalWriteMs}ms, compute=${batchLoopTime - totalWriteMs}ms)")
+        Log.d(TAG, "PLY throughput: ${plyBytes / 1024 / 1024}MB @ ${String.format("%.1f", throughputMBps)}MB/s, batches=${(gaussianCount + PLY_BATCH_SIZE - 1) / PLY_BATCH_SIZE}")
 
         plyFile.copyTo(classicPlyFile, overwrite = true)
         Log.d(TAG, "PLY written: ${plyFile.absolutePath} (${plyFile.length()} bytes)")

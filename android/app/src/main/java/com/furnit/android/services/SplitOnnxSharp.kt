@@ -17,6 +17,8 @@ import java.nio.FloatBuffer
 import java.nio.channels.FileChannel
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.sqrt
@@ -46,8 +48,10 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         private const val PART4A_FILENAME = "sharp_part4a.onnx"
         private const val PART4B_FILENAME = "sharp_part4b.onnx"
         private const val PART4B_INT8_FILENAME = "sharp_part4b_int8.onnx"
+        private const val PART4B_FP16_FILENAME = "sharp_part4b_fp16.onnx"
         private const val NORM_OUTPUT_TENSOR = "/predictor/monodepth_model/encoder/image_encoder/norm/LayerNormalization_output_0"
         private const val PREF_INT8_DECODER = "use_int8_decoder"
+        private const val ENABLE_PROFILING = true
         private val PART_FILENAMES = arrayOf(
             "sharp_part1.onnx" to "sharp_part1.onnx.data",
             "sharp_part2.onnx" to "sharp_part2.onnx.data",
@@ -58,7 +62,9 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         // Must match model export: Part 1 expects [1,3,1536,1536]. Do not change without re-exporting ONNX parts.
         private const val INPUT_SIZE = 1536
         private const val SH_C0 = 0.28209479177387814f
-        private const val BYTES_PER_VERTEX = 62 * 4
+        private const val FLOATS_PER_VERTEX = 62
+        private const val BYTES_PER_VERTEX = FLOATS_PER_VERTEX * 4
+        private const val PLY_BATCH_SIZE = 512
         private const val LOGIT_LUT_SIZE = 1024
 
         // Pre-computed logit LUT: maps [0, 1] opacity to ln(p/(1-p))
@@ -128,8 +134,29 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         ByteBuffer.allocate(72).apply { order(ByteOrder.LITTLE_ENDIAN) }
     }
 
-    // Pre-allocated zero SH block (180 bytes) for PLY writer — replaces 45 putFloat(0f) calls
-    private val zeroSHBlock = ByteArray(45 * 4)
+    // ---- Vectorized double-buffered PLY writer ----
+    // Two DirectByteBuffers alternate: one is written to disk while the other is filled with
+    // the next batch (overlaps compute with I/O). A single-thread executor handles async writes.
+    private val plyBatchA: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyBatchB: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyWriteExecutor by lazy { Executors.newSingleThreadExecutor() }
+
+    // Vectorized vertex assembly: all 62 floats per vertex are pre-computed into this heap
+    // array, then bulk-copied to the DirectByteBuffer in one put(float[], off, len) call.
+    // This replaces 62 individual putFloat() calls per vertex (~73M total for 1.18M Gaussians)
+    // with one bulk copy per 512-vertex batch (~2304 total).
+    private val plyVertexFloats = FloatArray(PLY_BATCH_SIZE * FLOATS_PER_VERTEX)
+
+    // Source data scratch arrays (filled from mmap FloatBuffers)
+    private val plyPositions = FloatArray(PLY_BATCH_SIZE * 3)
+    private val plyScales = FloatArray(PLY_BATCH_SIZE * 3)
+    private val plyRotations = FloatArray(PLY_BATCH_SIZE * 4)
+    private val plyColors = FloatArray(PLY_BATCH_SIZE * 3)
+    private val plyOpacity = FloatArray(PLY_BATCH_SIZE)
 
     data class StreamingResult(
         val plyFile: File,
@@ -160,7 +187,7 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         return ready
     }
 
-    /** Session options: ALL_OPT + arena. All cores for Parts 1-3; Part 4 capped at 2 threads (peak GEMM memory). */
+    /** Session options: ALL_OPT + arena. All cores for Parts 1-3; Part 4a capped at 2 threads. */
     private fun buildSessionOptions(partNumber: Int = 0): OrtSession.SessionOptions = OrtSession.SessionOptions().apply {
         val intraThreads = if (partNumber == 4) 2 else Runtime.getRuntime().availableProcessors()
         setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
@@ -177,6 +204,126 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             Log.w(TAG, "Could not set session config: ${e.message}")
         }
         Log.d(TAG, "buildSessionOptions(part=$partNumber): threads=$intraThreads arena=${partNumber != 4}")
+    }
+
+    /**
+     * Part 4b decoder session: conservative memory settings because the decoder's
+     * runtime ACTIVATIONS (~4GB for cross-attention, MSDeformAttn, FFN) dwarf the
+     * model file size. Arena OFF + 2 threads cap peak GEMM memory. Profiling ON
+     * to identify which ops hit the memory wall.
+     */
+    private fun buildPart4bSessionOptions(modelLabel: String): OrtSession.SessionOptions = OrtSession.SessionOptions().apply {
+        val intraThreads = 2
+        setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        setIntraOpNumThreads(intraThreads)
+        setInterOpNumThreads(1)
+        setCPUArenaAllocator(false)
+        setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
+        setMemoryPatternOptimization(false)
+        try {
+            addConfigEntry("session.use_mmap", "1")
+            addConfigEntry("session.enable_mem_reuse", "1")
+            addConfigEntry("session.intra_op.allow_spinning", "0")
+            addConfigEntry("session.disable_prepacking", "1")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set Part4b session config: ${e.message}")
+        }
+        if (ENABLE_PROFILING) {
+            try {
+                val profilePrefix = File(tempDir, "ort_profile_part4b").absolutePath
+                enableProfiling(profilePrefix)
+                Log.d(TAG, "Part4b ORT profiling enabled -> $profilePrefix")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not enable ORT profiling: ${e.message}")
+            }
+        }
+        Log.d(TAG, "buildPart4bSessionOptions($modelLabel): threads=$intraThreads arena=false memPattern=false profiling=$ENABLE_PROFILING")
+    }
+
+    /**
+     * Parse ORT profiling JSON and log the top-N slowest ops.
+     * ORT profile format: array of {cat, name, dur, args{op_name, provider, ...}}.
+     */
+    private fun parseAndLogProfile(profilePath: String, topN: Int = 15) {
+        try {
+            val profileFile = File(profilePath)
+            if (!profileFile.exists()) {
+                Log.w(TAG, "PROFILE: file not found: $profilePath")
+                return
+            }
+            val json = profileFile.readText()
+            Log.d(TAG, "PROFILE: parsing ${profileFile.length() / 1024}KB from ${profileFile.name}")
+
+            val opTimings = mutableMapOf<String, Long>()
+            val opCounts = mutableMapOf<String, Int>()
+            var totalDur = 0L
+
+            // Simple regex parse for {..."dur":N..."args":{"op_name":"X"...}} entries
+            val entryPattern = Regex(""""dur"\s*:\s*(\d+)""")
+            val opNamePattern = Regex(""""op_name"\s*:\s*"([^"]+)"""")
+            val catPattern = Regex(""""cat"\s*:\s*"([^"]+)"""")
+
+            // Split by },{  to get individual entries
+            json.split("},").forEach { entry ->
+                val catMatch = catPattern.find(entry)
+                val cat = catMatch?.groupValues?.get(1) ?: ""
+                if (cat != "Node") return@forEach
+
+                val durMatch = entryPattern.find(entry)
+                val opMatch = opNamePattern.find(entry)
+                if (durMatch != null && opMatch != null) {
+                    val durUs = durMatch.groupValues[1].toLongOrNull() ?: 0
+                    val opName = opMatch.groupValues[1]
+                    opTimings[opName] = (opTimings[opName] ?: 0) + durUs
+                    opCounts[opName] = (opCounts[opName] ?: 0) + 1
+                    totalDur += durUs
+                }
+            }
+
+            if (opTimings.isEmpty()) {
+                Log.d(TAG, "PROFILE: no Node entries found (may need different format parsing)")
+                return
+            }
+
+            val totalMs = totalDur / 1000
+            Log.d(TAG, "PROFILE: Part4b decoder — ${opTimings.size} op types, ${totalMs}ms total kernel time")
+            Log.d(TAG, "PROFILE: ┌─────────────────────────────────────────────────────────────")
+            Log.d(TAG, "PROFILE: │ Top $topN slowest operator types (by cumulative time):")
+
+            opTimings.entries
+                .sortedByDescending { it.value }
+                .take(topN)
+                .forEachIndexed { idx, (opName, durUs) ->
+                    val durMs = durUs / 1000
+                    val pct = if (totalDur > 0) durUs * 100.0 / totalDur else 0.0
+                    val count = opCounts[opName] ?: 0
+                    val avgMs = if (count > 0) durMs / count else 0
+                    Log.d(TAG, "PROFILE: │ ${idx + 1}. $opName: ${durMs}ms (${String.format("%.1f", pct)}%) x$count avg=${avgMs}ms")
+                }
+
+            Log.d(TAG, "PROFILE: └─────────────────────────────────────────────────────────────")
+
+            // Categorize by operation type for memory-wall analysis
+            val matmulTime = opTimings.filterKeys { it.contains("MatMul") || it.contains("Gemm") || it.contains("FusedMatMul") }.values.sum()
+            val convTime = opTimings.filterKeys { it.contains("Conv") }.values.sum()
+            val normTime = opTimings.filterKeys { it.contains("Norm") || it.contains("InstanceNorm") || it.contains("BatchNorm") }.values.sum()
+            val attentionTime = opTimings.filterKeys { it.contains("Attention") || it.contains("Softmax") }.values.sum()
+            val activationTime = opTimings.filterKeys { it.contains("Relu") || it.contains("Gelu") || it.contains("Sigmoid") }.values.sum()
+            val resizeTime = opTimings.filterKeys { it.contains("Resize") || it.contains("Upsample") }.values.sum()
+
+            Log.d(TAG, "PROFILE: Memory-wall breakdown:")
+            Log.d(TAG, "PROFILE:   MatMul/GEMM: ${matmulTime / 1000}ms (${String.format("%.1f", if (totalDur > 0) matmulTime * 100.0 / totalDur else 0.0)}%) ← bandwidth-bound")
+            Log.d(TAG, "PROFILE:   Conv: ${convTime / 1000}ms (${String.format("%.1f", if (totalDur > 0) convTime * 100.0 / totalDur else 0.0)}%)")
+            Log.d(TAG, "PROFILE:   Norm (LN/BN): ${normTime / 1000}ms (${String.format("%.1f", if (totalDur > 0) normTime * 100.0 / totalDur else 0.0)}%)")
+            Log.d(TAG, "PROFILE:   Attention/Softmax: ${attentionTime / 1000}ms (${String.format("%.1f", if (totalDur > 0) attentionTime * 100.0 / totalDur else 0.0)}%)")
+            Log.d(TAG, "PROFILE:   Activation: ${activationTime / 1000}ms (${String.format("%.1f", if (totalDur > 0) activationTime * 100.0 / totalDur else 0.0)}%)")
+            Log.d(TAG, "PROFILE:   Resize/Upsample: ${resizeTime / 1000}ms (${String.format("%.1f", if (totalDur > 0) resizeTime * 100.0 / totalDur else 0.0)}%)")
+
+            profileFile.delete()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "PROFILE: parse failed: ${e.message}", e)
+        }
     }
 
     /**
@@ -544,6 +691,93 @@ class SplitOnnxSharp private constructor(private val context: Context) {
     }
 
     /**
+     * Run Part 4b decoder with enhanced session options (arena ON, 4 threads) + ORT profiling.
+     * After inference, parses the profile to identify the top-N slowest operators.
+     */
+    private fun runModelPartProfiled(
+        modelPath: String,
+        inputs: Map<String, File>,
+        modelLabel: String,
+        progressCallback: ((Float, String) -> Unit)?,
+        baseProgress: Float
+    ): Map<String, File>? {
+        Log.d(TAG, "runModelPartProfiled ENTER model=$modelLabel")
+        val sessionOpts = buildPart4bSessionOptions(modelLabel)
+        var session: OrtSession? = null
+        try {
+            val sessionCreateStart = System.currentTimeMillis()
+            progressCallback?.invoke(baseProgress + 0.02f, "Part 4b: Creating session ($modelLabel)...")
+            session = ortEnv.createSession(modelPath, sessionOpts)
+            val sessionCreateTime = System.currentTimeMillis() - sessionCreateStart
+            Log.d(TAG, "Part 4b session created in ${sessionCreateTime}ms (arena=false, threads=2, memPattern=false, profiling=$ENABLE_PROFILING)")
+
+            val inputNames = session.inputNames.toList()
+            val outputNames = session.outputNames.toList()
+            Log.d(TAG, "Part 4b - Inputs: ${inputNames.size}, Outputs: $outputNames")
+            Log.d(TAG, "Part 4b fused graph: ${inputNames.size} inputs -> ${outputNames.size} outputs (ALL_OPT fuses Conv+BN, MatMul+Add, etc.)")
+
+            val inputTensors = mutableMapOf<String, OnnxTensor>()
+            for (name in inputNames) {
+                val file = inputs[name]
+                if (file == null || !file.exists()) {
+                    Log.e(TAG, "Part 4b: MISSING input '$name'")
+                    return null
+                }
+                val tensor = loadTensorFromFile(ortEnv, file, name) ?: return null
+                inputTensors[name] = tensor
+            }
+            Log.d(TAG, "Part 4b: all ${inputNames.size} inputs loaded")
+
+            System.gc()
+            System.runFinalization()
+            Thread.sleep(150)
+            Log.d(TAG, "Part 4b pre-forward memory: ${getMemoryInfo()}")
+
+            progressCallback?.invoke(baseProgress + 0.10f, "Part 4b: Running decoder inference...")
+            val inferStart = System.currentTimeMillis()
+            val outputs = session.run(inputTensors)
+            val inferTime = System.currentTimeMillis() - inferStart
+            Log.d(TAG, "Part 4b inference: ${inferTime}ms")
+
+            // Collect profiling data before closing session
+            if (ENABLE_PROFILING) {
+                try {
+                    val profilePath = session.endProfiling()
+                    Log.d(TAG, "Part 4b ORT profile saved: $profilePath")
+                    parseAndLogProfile(profilePath)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Part 4b profiling collection failed: ${e.message}")
+                }
+            }
+
+            progressCallback?.invoke(baseProgress + 0.15f, "Part 4b: Saving outputs...")
+            val outputFiles = mutableMapOf<String, File>()
+            for (outputName in outputNames) {
+                val tensor = outputs[outputName].get() as? OnnxTensor
+                if (tensor != null) {
+                    val file = File(tempDir, "part4_${outputName.replace("/", "_")}.tensor")
+                    saveTensorToFile(tensor, file)
+                    outputFiles[outputName] = file
+                    Log.d(TAG, "Part 4b output: $outputName shape=${tensor.info.shape.contentToString()} -> ${file.name}")
+                }
+            }
+
+            inputTensors.values.forEach { it.close() }
+            inputTensors.clear()
+            outputs.close()
+
+            Log.d(TAG, "runModelPartProfiled DONE outputFiles=${outputFiles.keys}")
+            return outputFiles
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Part 4b profiled EXCEPTION: ${e.message}", e)
+            return null
+        } finally {
+            session?.close()
+        }
+    }
+
+    /**
      * Run Part 1 as two sub-chunks: Part 1a (preprocess + blocks 0-11) then Part 1b (blocks 12-18).
      * Destroys Part 1a session before loading Part 1b to reduce peak memory from 946MB to max(611, 336) MB.
      */
@@ -620,24 +854,34 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             return null
         }
 
-        // --- Part 4b: Decoder (INT8 if enabled in settings) ---
+        // --- Part 4b: Decoder (auto-select best precision: INT8 > FP16 > FP32) ---
         val prefs = context.getSharedPreferences("com.furnit.android_preferences", Context.MODE_PRIVATE)
         val useInt8Decoder = prefs.getBoolean(PREF_INT8_DECODER, false)
         val int8File = File(modelsDir, PART4B_INT8_FILENAME)
-        val part4bFile = if (useInt8Decoder && int8File.exists()) {
+        val fp16File = File(modelsDir, PART4B_FP16_FILENAME)
+        val part4bFile: String
+        val precisionLabel: String
+
+        if (useInt8Decoder && int8File.exists()) {
+            part4bFile = PART4B_INT8_FILENAME
+            precisionLabel = "INT8"
             Log.d(TAG, "Part 4b using INT8 decoder (${int8File.length() / 1_000_000}MB)")
-            PART4B_INT8_FILENAME
+        } else if (fp16File.exists()) {
+            part4bFile = PART4B_FP16_FILENAME
+            precisionLabel = "FP16"
+            Log.d(TAG, "Part 4b using FP16 decoder (${fp16File.length() / 1_000_000}MB) — 50% less bandwidth")
         } else {
+            part4bFile = PART4B_FILENAME
+            precisionLabel = "FP32"
             if (useInt8Decoder) Log.d(TAG, "INT8 decoder enabled but file not found, using FP32")
-            PART4B_FILENAME
         }
 
-        progressCallback?.invoke(0.80f, "Part 4b/4b: Decoder${if (part4bFile == PART4B_INT8_FILENAME) " (INT8)" else ""}...")
-        Log.d(TAG, "=== Part 4b (decoder, model=$part4bFile) === Memory: ${getMemoryInfo()}")
+        progressCallback?.invoke(0.80f, "Part 4b/4b: Decoder ($precisionLabel)...")
+        Log.d(TAG, "=== Part 4b (decoder, model=$part4bFile, precision=$precisionLabel) === Memory: ${getMemoryInfo()}")
 
         val part4bInputs = inputs + part4aOutputs
         val part4bModelPath = File(modelsDir, part4bFile).absolutePath
-        val part4bOutputs = runModelPart(part4bModelPath, part4bInputs, 4, progressCallback, 0.80f)
+        val part4bOutputs = runModelPartProfiled(part4bModelPath, part4bInputs, part4bFile, progressCallback, 0.80f)
         if (part4bOutputs == null) {
             Log.e(TAG, "Part 4b FAILED")
             return null
@@ -831,9 +1075,11 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             val shape = LongArray(numDims) { shapeBuffer.long }
             val gaussianCount = shape[1].toInt()
 
-            Log.d(TAG, "processGaussianOutput: $gaussianCount Gaussians")
+            Log.d(TAG, "processGaussianOutput: $gaussianCount Gaussians (${gaussianCount * BYTES_PER_VERTEX / 1024 / 1024}MB PLY)")
+            Log.d(TAG, "PLY writer: reusable buffers (plyBatch=${BYTES_PER_VERTEX * PLY_BATCH_SIZE / 1024}KB, zeroSH=180B direct)")
             progressCallback?.invoke(0.9f, "Writing PLY ($gaussianCount Gaussians)...")
 
+            val mmapStart = System.currentTimeMillis()
             val headerSize = 4L + numDims * 8L
             val posBuffer = posChannel.map(FileChannel.MapMode.READ_ONLY, headerSize, gaussianCount * 3L * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
             val scaleBuffer = scaleChannel.map(FileChannel.MapMode.READ_ONLY, headerSize, gaussianCount * 3L * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
@@ -847,6 +1093,8 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             val opacityNumDims = opacityShapeBuffer.int
             val opacityHeaderSize = 4L + opacityNumDims * 8L
             val opacityBuffer = opacityChannel.map(FileChannel.MapMode.READ_ONLY, opacityHeaderSize, gaussianCount * 4L).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+            val mmapTime = System.currentTimeMillis() - mmapStart
+            Log.d(TAG, "PLY mmap: ${mmapTime}ms (5 tensor files memory-mapped)")
 
             val roomsDir = File(context.filesDir, "sharp_rooms")
             roomsDir.mkdirs()
@@ -862,6 +1110,9 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             var minZ = Float.MAX_VALUE; var maxZ = -Float.MAX_VALUE
 
             val header = buildPlyHeader(gaussianCount)
+            val batchLoopStart: Long
+            var totalWriteNs = 0L
+            var totalComputeNs = 0L
             FileOutputStream(plyFile).use { fos ->
                 val outChannel = fos.channel
 
@@ -871,83 +1122,131 @@ class SplitOnnxSharp private constructor(private val context: Context) {
                 headerBuffer.flip()
                 outChannel.write(headerBuffer)
 
-                val batchSize = 512
-                val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize).order(ByteOrder.LITTLE_ENDIAN)
                 val scaleBoost = 1.3f
                 val minScale = 0.001f
                 val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
+                val invSHC0 = 1f / SH_C0
 
-                val localPositions = FloatArray(batchSize * 3)
-                val localScales = FloatArray(batchSize * 3)
-                val localRotations = FloatArray(batchSize * 4)
-                val localColors = FloatArray(batchSize * 3)
-                val localOpacity = FloatArray(batchSize)
+                // Double-buffer: fill one while the other writes to disk
+                var fillBuffer = plyBatchA
+                var writeBuffer = plyBatchB
+                var pendingWrite: Future<*>? = null
 
+                batchLoopStart = System.currentTimeMillis()
                 var processed = 0
                 while (processed < gaussianCount) {
-                    val currentBatch = minOf(batchSize, gaussianCount - processed)
+                    val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
 
+                    // Bulk-read source data from mmap (one JNI call per array)
                     posBuffer.position(processed * 3)
-                    posBuffer.get(localPositions, 0, currentBatch * 3)
+                    posBuffer.get(plyPositions, 0, currentBatch * 3)
                     scaleBuffer.position(processed * 3)
-                    scaleBuffer.get(localScales, 0, currentBatch * 3)
+                    scaleBuffer.get(plyScales, 0, currentBatch * 3)
                     rotBuffer.position(processed * 4)
-                    rotBuffer.get(localRotations, 0, currentBatch * 4)
+                    rotBuffer.get(plyRotations, 0, currentBatch * 4)
                     colorBuffer.position(processed * 3)
-                    colorBuffer.get(localColors, 0, currentBatch * 3)
+                    colorBuffer.get(plyColors, 0, currentBatch * 3)
                     opacityBuffer.position(processed)
-                    opacityBuffer.get(localOpacity, 0, currentBatch)
+                    opacityBuffer.get(plyOpacity, 0, currentBatch)
 
+                    // Vectorized vertex assembly: pre-compute all 62 floats per vertex
+                    // into a contiguous heap array (pure Java, no JNI per float).
+                    val computeStart = System.nanoTime()
+                    val vf = plyVertexFloats
                     for (j in 0 until currentBatch) {
                         val idx3 = j * 3
-                        val x = localPositions[idx3]
-                        val y = -localPositions[idx3 + 1]
-                        val z = -localPositions[idx3 + 2]
+                        val vOff = j * FLOATS_PER_VERTEX
+
+                        val x = plyPositions[idx3]
+                        val y = -plyPositions[idx3 + 1]
+                        val z = -plyPositions[idx3 + 2]
 
                         if (x < minX) minX = x; if (x > maxX) maxX = x
                         if (y < minY) minY = y; if (y > maxY) maxY = y
                         if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
 
-                        batchBuffer.putFloat(x)
-                        batchBuffer.putFloat(y)
-                        batchBuffer.putFloat(z)
-                        batchBuffer.putFloat(0f); batchBuffer.putFloat(0f); batchBuffer.putFloat(0f)
+                        // Position + normals (6 floats)
+                        vf[vOff] = x; vf[vOff + 1] = y; vf[vOff + 2] = z
+                        vf[vOff + 3] = 0f; vf[vOff + 4] = 0f; vf[vOff + 5] = 0f
 
-                        val r = localColors[idx3].coerceIn(0f, 1f)
-                        val g = localColors[idx3 + 1].coerceIn(0f, 1f)
-                        val b = localColors[idx3 + 2].coerceIn(0f, 1f)
-                        batchBuffer.putFloat((r - 0.5f) / SH_C0)
-                        batchBuffer.putFloat((g - 0.5f) / SH_C0)
-                        batchBuffer.putFloat((b - 0.5f) / SH_C0)
-                        batchBuffer.put(zeroSHBlock)
+                        // DC color (3 floats)
+                        val r = plyColors[idx3].coerceIn(0f, 1f)
+                        val g = plyColors[idx3 + 1].coerceIn(0f, 1f)
+                        val b = plyColors[idx3 + 2].coerceIn(0f, 1f)
+                        vf[vOff + 6] = (r - 0.5f) * invSHC0
+                        vf[vOff + 7] = (g - 0.5f) * invSHC0
+                        vf[vOff + 8] = (b - 0.5f) * invSHC0
 
-                        val rawOpacity = localOpacity[j].coerceIn(0f, 1f)
-                        batchBuffer.putFloat(LOGIT_LUT[(rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)])
+                        // SH rest (45 floats) — already zero from previous clear or Java init
+                        // vf[vOff+9..vOff+53] = 0f (skipped: Java arrays are zero-init,
+                        // and we clear the range below only if the array is reused)
 
-                        batchBuffer.putFloat(lnLut(max(localScales[idx3] * scaleBoost, minScale)))
-                        batchBuffer.putFloat(lnLut(max(localScales[idx3 + 1] * scaleBoost, minScale)))
-                        batchBuffer.putFloat(lnLut(max(localScales[idx3 + 2] * scaleBoost, minScale)))
+                        // Opacity logit (1 float)
+                        val rawOpacity = plyOpacity[j].coerceIn(0f, 1f)
+                        vf[vOff + 54] = LOGIT_LUT[(rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)]
 
+                        // Log-scale (3 floats)
+                        vf[vOff + 55] = lnLut(max(plyScales[idx3] * scaleBoost, minScale))
+                        vf[vOff + 56] = lnLut(max(plyScales[idx3 + 1] * scaleBoost, minScale))
+                        vf[vOff + 57] = lnLut(max(plyScales[idx3 + 2] * scaleBoost, minScale))
+
+                        // Normalized quaternion (4 floats)
                         val idx4 = j * 4
-                        val rw = localRotations[idx4]
-                        val rx = localRotations[idx4 + 1]
-                        val ry = localRotations[idx4 + 2]
-                        val rz = localRotations[idx4 + 3]
+                        val rw = plyRotations[idx4]
+                        val rx = plyRotations[idx4 + 1]
+                        val ry = plyRotations[idx4 + 2]
+                        val rz = plyRotations[idx4 + 3]
                         val mag = sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
                         val invMag = if (mag > 1e-8f) 1f / mag else 1f
-                        batchBuffer.putFloat(rw * invMag)
-                        batchBuffer.putFloat(rx * invMag)
-                        batchBuffer.putFloat(ry * invMag)
-                        batchBuffer.putFloat(rz * invMag)
+                        vf[vOff + 58] = rw * invMag
+                        vf[vOff + 59] = rx * invMag
+                        vf[vOff + 60] = ry * invMag
+                        vf[vOff + 61] = rz * invMag
+                    }
+                    totalComputeNs += System.nanoTime() - computeStart
+
+                    // Zero the SH range for next batch (vf[9..53] per vertex)
+                    for (j in 0 until currentBatch) {
+                        java.util.Arrays.fill(vf, j * FLOATS_PER_VERTEX + 9, j * FLOATS_PER_VERTEX + 54, 0f)
                     }
 
-                    batchBuffer.flip()
-                    batchBuffer.limit(currentBatch * BYTES_PER_VERTEX)
-                    while (batchBuffer.hasRemaining()) outChannel.write(batchBuffer)
-                    batchBuffer.clear()
+                    // Wait for any pending async write to complete before reusing fillBuffer
+                    pendingWrite?.get()
+
+                    // Bulk copy: one put(float[]) replaces 62*512 individual putFloat() calls
+                    fillBuffer.clear()
+                    fillBuffer.asFloatBuffer().put(vf, 0, currentBatch * FLOATS_PER_VERTEX)
+                    fillBuffer.position(0)
+                    fillBuffer.limit(currentBatch * BYTES_PER_VERTEX)
+
+                    // Async write: submit I/O to background thread, overlap with next batch compute
+                    val bufToWrite = fillBuffer
+                    val writeStart = System.nanoTime()
+                    pendingWrite = plyWriteExecutor.submit {
+                        while (bufToWrite.hasRemaining()) outChannel.write(bufToWrite)
+                    }
+
+                    // Swap buffers for next iteration
+                    val tmp = fillBuffer
+                    fillBuffer = writeBuffer
+                    writeBuffer = tmp
+
+                    totalWriteNs += System.nanoTime() - writeStart
                     processed += currentBatch
                 }
+                // Wait for final write to complete
+                pendingWrite?.get()
             }
+            val batchLoopTime = System.currentTimeMillis() - batchLoopStart
+            val totalComputeMs = totalComputeNs / 1_000_000
+            val plyBytes = gaussianCount.toLong() * BYTES_PER_VERTEX
+            val totalBatches = (gaussianCount + PLY_BATCH_SIZE - 1) / PLY_BATCH_SIZE
+            val throughputMBps = if (batchLoopTime > 0) plyBytes * 1000.0 / batchLoopTime / 1024 / 1024 else 0.0
+            Log.d(TAG, "PLY vectorized+double-buffered: ${batchLoopTime}ms total")
+            Log.d(TAG, "PLY   compute (vectorized): ${totalComputeMs}ms | I/O (async): overlapped")
+            Log.d(TAG, "PLY   throughput: ${plyBytes / 1024 / 1024}MB @ ${String.format("%.1f", throughputMBps)}MB/s, batches=$totalBatches")
+            Log.d(TAG, "PLY   method: bulk put(float[${PLY_BATCH_SIZE * FLOATS_PER_VERTEX}]) per batch, double-buffer swap")
+            Log.d(TAG, "PLY memory after write: ${getMemoryInfo()}")
 
             // Hard-link instead of 100+MB file copy; fall back to copy if link fails
             try {

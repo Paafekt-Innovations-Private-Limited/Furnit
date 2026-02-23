@@ -61,6 +61,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
         private const val PARAMS_PER_GAUSSIAN = 14
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
+        private const val PLY_BATCH_SIZE = 512
 
         private const val LOGIT_LUT_SIZE = 1024
         private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
@@ -148,6 +149,13 @@ class ExecutorchSharp private constructor(private val context: Context) {
     /** ONNX-style: temp dir for intermediate tensors between parts (one part at a time, unload between). */
     private val executorchTempDir: File by lazy {
         File(context.cacheDir, "executorch_sharp_temp").also { it.mkdirs() }
+    }
+
+    private val zeroSHBuffer: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyBatch: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
     }
 
     /** Save FloatArray + shape to file (same format as SplitOnnxSharp: 4 bytes ndim, 8*ndim shape, then floats). */
@@ -1376,9 +1384,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch; batchBuffer.clear()
             val scaleBoost = 1.3f
             val minScale = 0.001f
             val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
@@ -1387,7 +1393,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             var processed = 0
 
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
 
                 for (j in 0 until currentBatch) {
                     val offset = (processed + j) * PARAMS_PER_GAUSSIAN
@@ -1414,7 +1420,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     batchBuffer.putFloat((g - 0.5f) / SH_C0)
                     batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                    repeat(45) { batchBuffer.putFloat(0f) }
+                    zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                     val rawOpacity = params.get(offset + 3).coerceIn(0f, 1f)
                     val lutIndex = (rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)
@@ -1501,9 +1507,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch; batchBuffer.clear()
             val scaleBoost = 1.3f
             val minScale = 0.001f
             val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
@@ -1512,7 +1516,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             var processed = 0
 
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
 
                 for (j in 0 until currentBatch) {
                     val offset = (processed + j) * PARAMS_PER_GAUSSIAN
@@ -1543,7 +1547,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
                     // Higher order SH (45 zeros)
-                    repeat(45) { batchBuffer.putFloat(0f) }
+                    zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                     // Opacity (at offset 10) -> logit via LUT
                     val rawOpacity = params[offset + 10].coerceIn(0f, 1f)

@@ -1363,6 +1363,261 @@ Python (export only) -> TorchScript model -> Native C++ engine -> ARM Compute Li
 
 Full FP32. Maximum performance. No framework overhead. Production pathway used by Apple, Meta, ARM."""
     },
+    # ---- PLY WRITER OPTIMIZATIONS (Feb 2026) ----
+    {
+        "id": "ply_buffer_recycling",
+        "layer": "performance",
+        "content": """PLY writer buffer recycling optimization (all 8 backends).
+
+Problem: Each inference call allocated ByteBuffer.allocateDirect(~127KB) for the PLY batch buffer plus 5 FloatArrays.
+DirectByteBuffer cleanup depends on GC finalizers, which are non-deterministic on Android. Under memory pressure
+(Part 4 just finished), these lingering buffers cause native memory fragmentation.
+
+Solution: Promote batch buffer and scratch arrays to class-level reusable fields:
+  private val plyBatch: ByteBuffer by lazy { ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) } }
+  private val plyPositions = FloatArray(PLY_BATCH_SIZE * 3)
+  private val plyScales = FloatArray(PLY_BATCH_SIZE * 3)
+  private val plyRotations = FloatArray(PLY_BATCH_SIZE * 4)
+  private val plyColors = FloatArray(PLY_BATCH_SIZE * 3)
+  private val plyOpacity = FloatArray(PLY_BATCH_SIZE)
+
+In processGaussianOutput: val batchBuffer = plyBatch; batchBuffer.clear() at start, batchBuffer.clear() after each batch write.
+Applied to: SplitOnnxSharp, SplitOnnxFp16Sharp, OnnxInt8Sharp, ExecutorchFp16Sharp, ExecutorchSharp, LiteRTSharp, OnnxSharp, SharpService."""
+    },
+    {
+        "id": "ply_zero_sh_buffer",
+        "layer": "performance",
+        "content": """PLY writer zero SH block optimization (Direct-to-Direct bulk copy).
+
+Problem: Each Gaussian vertex writes 45 zero SH coefficients (180 bytes). Old approaches:
+  - repeat(45) { batchBuffer.putFloat(0f) } → 45 individual JNI calls per vertex × ~1.18M vertices
+  - batchBuffer.put(ByteArray(180)) → heap array → JNI → native copy per vertex (JNI crossing)
+
+Solution: Pre-allocate a Direct ByteBuffer for the zero SH block:
+  private val zeroSHBuffer: ByteBuffer by lazy { ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) } }
+
+In the inner loop: zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
+Direct→Direct ByteBuffer.put() uses native memcpy (Unsafe.copyMemory), no JNI heap crossing.
+For 1.18M Gaussians: eliminates ~1.18M JNI crossings × 180 bytes = ~212MB of JNI traffic."""
+    },
+    {
+        "id": "ply_batch_io_strategy",
+        "layer": "performance",
+        "content": """PLY batch I/O strategy: 512 vertices per write syscall.
+
+Each vertex = 62 floats = 248 bytes (BYTES_PER_VERTEX). Writing 1.18M vertices one at a time = 1.18M syscalls.
+Batch: accumulate 512 vertices into a 127KB DirectByteBuffer, then one outChannel.write() syscall.
+Result: ~2304 syscalls instead of 1.18M. System calls are high-latency "warehouse trips" in the memory hierarchy.
+
+PLY_BATCH_SIZE = 512 chosen to fit L1 cache (~128KB) while amortizing syscall overhead.
+Format: binary_little_endian PLY with 62 properties per vertex (xyz, normals, f_dc 3, f_rest 45, opacity, scale 3, rot 4).
+
+Logging to measure: PLY batch loop Xms total (I/O write=Yms, compute=Zms), PLY throughput XMB @ Y.YMB/s.
+Look for these in logcat with tags SplitOnnxSharp, ExecutorchFp16Sharp."""
+    },
+    {
+        "id": "ply_lut_optimization",
+        "layer": "performance",
+        "content": """PLY writer LUT optimizations: LOGIT_LUT and LN_LUT.
+
+LOGIT_LUT (1024 entries): maps opacity [0,1] to logit ln(p/(1-p)). Avoids ln() and division per vertex.
+  val LOGIT_LUT = FloatArray(1024) { i -> val p = ...; ln(p / (1f - p)) }
+  Usage: LOGIT_LUT[(rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)]
+
+LN_LUT (2048 entries): maps scale values [0.001, 5.0] to ln(x). Avoids ln() per vertex per axis (3 axes).
+  fun lnLut(x: Float): Float { return LN_LUT[((x - LN_LUT_MIN) * LN_LUT_SCALE).toInt()] }
+
+For 1.18M Gaussians: eliminates ~4.72M ln() calls (1 opacity + 3 scales per vertex).
+Math operations are fast individually but become a bottleneck at 10^6 repetitions."""
+    },
+    {
+        "id": "ply_mmap_tensor_loading",
+        "layer": "performance",
+        "content": """PLY writer tensor loading via memory-mapped files (SplitOnnxSharp).
+
+Gaussian output tensors (positions, scales, rotations, colors, opacity) are saved to disk between model parts.
+Loading for PLY: FileChannel.map(READ_ONLY, offset, size) → FloatBuffer.
+This keeps JVM heap lean (~0 bytes for tensor data). OS handles paging from disk cache.
+
+File format: [4 bytes: numDims][numDims * 8 bytes: shape][float data].
+Memory map starts at dataOffset = 4 + numDims * 8.
+
+For 1.18M Gaussians: positions = 1.18M * 3 * 4 = ~14MB, scales = ~14MB, rotations = ~19MB, colors = ~14MB, opacity = ~4.7MB.
+Total mmap: ~66MB. PLY mmap setup takes ~1-5ms (just page table entries, no data copy)."""
+    },
+
+    # ---- CONV+BN OPERATION FUSION (Feb 2026) ----
+    {
+        "id": "conv_bn_fusion",
+        "layer": "quantization",
+        "content": """Conv+BN operation fusion in SHARP export scripts.
+
+Problem: SHARP decoder (FPN/UNet) has Conv2d + BatchNorm2d pairs. BN computes y = (x - mean) / sqrt(var + eps) * weight + bias.
+This creates intermediate tensors (normalized activations) that consume memory during forward pass.
+
+Solution: fuse_conv_bn(model) recursively walks the model tree, finds Conv2d+BatchNorm2d pairs among direct children
+of each module, and fuses them via torch.ao.quantization.fuse_modules(module, pairs, inplace=True).
+Fused Conv absorbs BN parameters: W_fused = W_conv * (bn_weight / sqrt(bn_var + eps)), b_fused = (b_conv - bn_mean) * bn_weight / sqrt(bn_var + eps) + bn_bias.
+
+Applied to: export_sharp_executorch_split4.py, export_sharp_executorch_fp16.py, export_sharp_onnx_single.py, export_sharp_litert_split.py.
+Called after predictor.eval() and before creating part wrappers.
+
+Benefits: ~15-20% reduction in peak decoder activation memory, smaller exported models, fewer ops for runtime to schedule.
+ViT encoder blocks (LayerNorm, not BatchNorm) are unaffected — fusion targets the decoder Conv+BN pairs only."""
+    },
+
+    # ---- MULTI-BACKEND ARCHITECTURE (Feb 2026) ----
+    {
+        "id": "multi_backend_architecture",
+        "layer": "sharp_model",
+        "content": """SHARP multi-backend architecture on Android (Feb 2026).
+
+8 selectable backends in Settings, each a separate implementation class:
+| Backend | Class | Model files | Status |
+|---------|-------|-------------|--------|
+| ONNX (default) | SplitOnnxSharp | sharp_part{1-4}.onnx + .data | Working, ~5 min |
+| ONNX FP16 | SplitOnnxFp16Sharp | sharp_part{1-4}_fp16.onnx | Experimental (CPU FP16 kernel gaps) |
+| ONNX INT8 | OnnxInt8Sharp | sharp_single_int8.onnx (715MB) | Single model, crashes at Part 4 activation memory |
+| ExecuTorch FP32 | ExecutorchSharp | sharp_split_part{1-4}.pte | Working with XNNPACK |
+| ExecuTorch FP16 | ExecutorchFp16Sharp | sharp_split_part{1-3}_fp16.pte + chunked Part 4 | Working, ~3.4 min |
+| LiteRT | LiteRTSharp | sharp_part{1-4}_fp16.tflite + chunked 4a/4b | Part 4 crashes (decoder OOM) |
+| NativePt | NativePtSharp | sharp_scripted_part{1-4}.ptl | TorchScript Lite |
+| NCNN | NcnnSharp | component .ncnn.bin/.param files | ~23 min, serial patches |
+
+SharpService.kt orchestrates: reads backend from SharedPreferences, initializes the selected class, dispatches inference.
+BackendConfig.kt: feature flags (ENABLE_ONNX_FP16, ENABLE_EXECUTORCH_FP16, etc.).
+SettingsActivity.kt: radio buttons for each backend in Developer section."""
+    },
+    {
+        "id": "executorch_fp16_backend",
+        "layer": "executorch",
+        "content": """ExecuTorch FP16 backend implementation (ExecutorchFp16Sharp.kt).
+
+Mixed-precision split: Parts 1-3 exported as FP16 (~290MB each), Part 4 as FP32 (~755MB).
+Part 4 must be FP32 because F.interpolate (bilinear) in the decoder upcasts FP16→FP32 on CPU,
+causing RuntimeError: 'Input type (float) and bias type (c10::Half) should be the same'.
+
+FP16 tensor handling:
+  halfFloatToShort(f: Float): Short — converts FP32 to IEEE 754 FP16 representation
+  halfShortToFloat(s: Short): Float — converts FP16 back to FP32
+  createHalfTensor(data: FloatArray, shape: LongArray): Tensor — creates FP16 tensor from FP32 data
+  getOutputAsFloatArray(tensor: Tensor): FloatArray — reads FP16 or FP32 output
+
+Chunked Part 4 for memory: part4a_chunk_512_fp16.pte (FP16), part4a_chunk_65_fp16.pte (FP16), part4b_fp16.pte (FP32 decoder).
+Sequentially loaded and destroyed to reduce peak memory from ~755MB to max(~290MB, ~178MB).
+
+Measured performance: Total 205,876ms (~3.4 min). P1+P2=97,975ms, P3=2,791ms, P4(chunked)=93,774ms.
+System memory after Part 4b: 0MB available (tight but no crash thanks to chunking)."""
+    },
+    {
+        "id": "chunked_part4_strategy",
+        "layer": "performance",
+        "content": """Chunked Part 4 strategy for memory-constrained decoder inference.
+
+Problem: Part 4 (decoder + Gaussians) is the largest part (~755-828MB model + ~4GB peak activations).
+Causes LMK (Low Memory Killer) on Android across ALL backends (ONNX, LiteRT, ExecuTorch).
+
+Solution: Split Part 4 into 3 sub-chunks loaded and destroyed sequentially:
+  Part 4a chunk 512: ViT blocks 12-23 on first 512 tokens → ~577-613MB
+  Part 4a chunk 65: ViT blocks 12-23 on remaining 65 tokens → same size
+  Part 4b: Decoder + Gaussian output from concatenated normalized tokens → ~178-186MB
+
+Export: Each chunk is a separate .pte/.onnx/.tflite file.
+Runtime: Load chunk → forward → save output to disk → destroy module → System.gc() → load next chunk.
+Peak memory reduced from ~4GB to max(single_chunk_activations), typically ~1-2GB.
+
+Implemented in: SplitOnnxSharp (ONNX FP32), ExecutorchFp16Sharp (ExecuTorch FP16), LiteRTSharp (LiteRT).
+Detection: isChunkedPart4Available() checks if part4a/part4b files exist. Falls back to single Part 4 if not.
+Also chunked Part 1 in SplitOnnxSharp: Part 1a (blocks 0-11) + Part 1b (blocks 12-18) for same reason."""
+    },
+    {
+        "id": "memory_wall_android_ml",
+        "layer": "performance",
+        "content": """Memory wall problem for large vision models on Android.
+
+The 'memory wall' = memory bandwidth and capacity limit inference speed more than compute.
+SHARP model: 702M params (2.6GB FP32), decoder activations peak ~4GB, on a device with ~4-6GB available RAM.
+
+Strategies implemented in Furnit to address memory wall:
+1. FileChannel.map(READ_ONLY): OS-level data movement, keeps JVM heap lean. ONNX Runtime accesses weights via mmap.
+2. Split models: 4 parts loaded/unloaded sequentially. Peak = max(single_part) not sum(all_parts).
+3. Chunked decoder: Part 4 split into 3 sub-chunks to cap peak activation memory.
+4. Reusable DirectByteBuffers: plyBatch, reusableSaveChunk — avoids GC-dependent buffer cleanup.
+5. Conservative thread counts: Part 4 uses 2 threads (not all cores) to reduce per-thread GEMM memory.
+6. Arena allocator OFF for Part 4: prevents pre-allocation of large memory pools.
+7. System.gc() + Thread.sleep(150) before Part 4: nudges finalizer to release dead DirectByteBuffers.
+8. FP16 models: halve weight size and memory bandwidth (Parts 1-3 in ExecuTorch FP16).
+9. INT8 quantization: quarter weight size for ONNX INT8 backend.
+10. Conv+BN fusion: eliminates BN intermediate tensors, ~15-20% decoder memory reduction."""
+    },
+    {
+        "id": "onnx_session_options_tuning",
+        "layer": "onnx_runtime",
+        "content": """ONNX Runtime session options tuning for SHARP split model (Feb 2026).
+
+Per-part tuning in SplitOnnxSharp.buildSessionOptions(partNumber):
+| Part | OptLevel | Threads | Arena | MemPattern | Notes |
+|------|----------|---------|-------|------------|-------|
+| 1-3 | ALL_OPT | all cores | ON | true | Max throughput for encoder |
+| 4 | ALL_OPT | 2 | OFF | true | Cap GEMM memory in decoder |
+
+Key config entries (via addConfigEntry):
+  session.use_mmap = 1          → weights stay on disk, paged by OS
+  session.enable_mem_reuse = 1  → reuse activation buffers across ops
+  session.intra_op.allow_spinning = 1 → reduce thread wake-up latency
+
+ONNX FP16 (SplitOnnxFp16Sharp): EXTENDED_OPT instead of ALL_OPT to avoid com.microsoft.Gelu fusion
+that has no FP16 CPU kernel. node_block_list in convert_onnx_fp16.py keeps LayerNorm in FP32.
+
+ONNX INT8 (OnnxInt8Sharp single model): NO_OPT, 2 threads, no arena, disable prepacking — conservative
+because single 715MB INT8 model has massive FP32 activations (INT8 weights, FP32 compute)."""
+    },
+    {
+        "id": "ply_writer_logging",
+        "layer": "android_lessons",
+        "content": """PLY writer diagnostic logging (added Feb 2026).
+
+SplitOnnxSharp logcat output during PLY write:
+  PLY writer: reusable buffers (plyBatch=124KB, zeroSH=180B direct)  ← confirms buffer reuse
+  PLY mmap: Xms (5 tensor files memory-mapped)                       ← mmap setup cost
+  PLY batch loop: Xms total (I/O write=Yms, compute=Zms)            ← compute vs I/O breakdown
+  PLY throughput: 279MB @ XX.XMB/s, batches=2304                     ← throughput measurement
+  PLY memory after write: JVM: XXX/512MB, System: XXXXmb available   ← memory impact
+  Breakdown: P1=... P2=... P3=... P4=... PLY=Xms                    ← overall timing
+
+ExecutorchFp16Sharp has same PLY logging (tags: ExecutorchFp16Sharp).
+
+Key metrics to compare before/after optimization:
+  - compute time (batch loop minus I/O) → measures buffer recycling + SH block improvement
+  - throughput MB/s → overall write efficiency
+  - memory after write → confirms no lingering DirectByteBuffer pressure
+
+Filter: adb logcat -s SplitOnnxSharp:D | grep PLY"""
+    },
+    {
+        "id": "measured_backend_timings_feb2026",
+        "layer": "performance",
+        "content": """Measured SHARP backend timings (Feb 2026, Samsung device):
+
+ONNX FP32 Split (SplitOnnxSharp, chunked Part 1 + Part 4):
+  Part 1a: ~25s, Part 1b: ~15s, Part 2: ~9s, Part 3: ~1s, Part 4a: ~50s, Part 4b: ~35s
+  Total: ~2.5-5 min depending on device state
+
+ONNX INT8 Split (OnnxInt8Sharp, 4 parts):
+  Part 1: 30,339ms, Part 2: 8,965ms, Part 3: 1,390ms, Part 4: crashed (activation OOM)
+
+ONNX INT8 Single Model: Session created in 2190ms, crashed during session.run() (peak activation memory)
+
+ExecuTorch FP16 (ExecutorchFp16Sharp, chunked Part 4):
+  Part 1+2: 97,975ms (~1.6 min), Part 3: 2,791ms, Part 4 (chunked): 93,774ms (~1.6 min)
+  Total: 205,876ms (~3.4 min). Gaussians: 1,179,648. Room: 5.1m × 4.9m × 1.1m.
+
+LiteRT FP16: Parts 1-3 work, Part 4 crashes (decoder activation OOM even with chunked 4a/4b).
+ONNX FP16: Fails at Part 1 session creation (com.microsoft.Gelu FP16 kernel not found on CPU EP).
+
+Best reliable backend: ONNX FP32 Split (always completes). Best experimental: ExecuTorch FP16 (~3.4 min)."""
+    },
+
     # ---- BEEWARE ANDROID ----
     {
         "id": "beeware_overview",

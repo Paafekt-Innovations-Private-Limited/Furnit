@@ -59,6 +59,7 @@ class LiteRTSharp private constructor(private val context: Context) {
         private const val PARAMS_PER_GAUSSIAN = 14
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
+        private const val PLY_BATCH_SIZE = 512
 
         // 4-part split model filenames
         private const val NUM_SPLIT_PARTS = 4
@@ -169,6 +170,12 @@ class LiteRTSharp private constructor(private val context: Context) {
     // which may not run promptly, causing native memory pressure and LMK kills.
     private val reusableSaveChunk: ByteBuffer by lazy {
         ByteBuffer.allocateDirect(4 * 1024 * 1024).apply { order(ByteOrder.nativeOrder()) }
+    }
+    private val zeroSHBuffer: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyBatch: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
     }
 
     data class StreamingResult(
@@ -1542,9 +1549,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch; batchBuffer.clear()
             val scaleBoost = 1.3f
             val minScale = 0.001f
             val logitLutScale = (LOGIT_LUT_SIZE - 1).toFloat()
@@ -1553,7 +1558,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             var processed = 0
 
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
 
                 for (j in 0 until currentBatch) {
                     val offset = (processed + j) * PARAMS_PER_GAUSSIAN
@@ -1582,8 +1587,7 @@ class LiteRTSharp private constructor(private val context: Context) {
                     batchBuffer.putFloat((colorG - 0.5f) / SH_C0)
                     batchBuffer.putFloat((colorB - 0.5f) / SH_C0)
 
-                    // Bulk zero SH block instead of 45 individual putFloat(0f)
-                    batchBuffer.put(ZERO_SH_BLOCK)
+                    zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                     // Sigmoid via LUT (no Math.exp)
                     val rawOpacityLogit = gaussianParams[offset + 3]
@@ -1688,9 +1692,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch; batchBuffer.clear()
             val scaleBoost = 1.3f
             val minScale = 0.001f
             val logitLutScale = (LOGIT_LUT_SIZE - 1).toFloat()
@@ -1698,13 +1700,13 @@ class LiteRTSharp private constructor(private val context: Context) {
             // Pre-allocated local array for vectorized bulk reads — one JNI call per batch
             // instead of batchSize × 14 individual JNI calls. This is the key BLAS-like
             // optimization from the ONNX PLY writer.
-            val localPacked = FloatArray(batchSize * PARAMS_PER_GAUSSIAN)
+            val localPacked = FloatArray(PLY_BATCH_SIZE * PARAMS_PER_GAUSSIAN)
 
             val progressEvery = max(1, gaussianCount / 10)
             var processed = 0
 
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
                 val floatsToRead = currentBatch * PARAMS_PER_GAUSSIAN
 
                 // BLAS-like bulk read: one JNI call reads up to 7168 floats (512×14)
@@ -1739,8 +1741,8 @@ class LiteRTSharp private constructor(private val context: Context) {
                     batchBuffer.putFloat((colorG - 0.5f) / SH_C0)
                     batchBuffer.putFloat((colorB - 0.5f) / SH_C0)
 
-                    // Higher order SH (45 zeros) — bulk put instead of 45 individual putFloat(0f)
-                    batchBuffer.put(ZERO_SH_BLOCK)
+                    // Higher order SH (45 zeros)
+                    zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                     // Opacity: sigmoid via LUT (avoids Math.exp per Gaussian)
                     val rawOpacityLogit = localPacked[baseIdx + 3]

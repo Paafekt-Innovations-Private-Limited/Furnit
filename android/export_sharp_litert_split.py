@@ -62,6 +62,30 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+def fuse_conv_bn(model):
+    """Recursively fuse Conv2d+BatchNorm2d pairs in eval mode."""
+    for name, module in model.named_children():
+        fuse_conv_bn(module)
+        children = list(module.named_children())
+        pairs = []
+        i = 0
+        while i < len(children) - 1:
+            cname, cmod = children[i]
+            nname, nmod = children[i + 1]
+            if isinstance(cmod, nn.Conv2d) and isinstance(nmod, nn.BatchNorm2d):
+                pairs.append([cname, nname])
+                i += 2
+            else:
+                i += 1
+        if pairs:
+            try:
+                torch.ao.quantization.fuse_modules(module, pairs, inplace=True)
+            except Exception as e:
+                print(f"  [warn] Could not fuse {pairs} in {name}: {e}")
+    return model
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Export SHARP as 4 split LiteRT TFLite parts.")
     parser.add_argument(
@@ -496,6 +520,9 @@ def main():
     predictor.load_state_dict(state_dict)
     predictor.eval()
     del state_dict
+
+    print("  Fusing Conv+BN layers...")
+    fuse_conv_bn(predictor)
 
     param_count = sum(p.numel() for p in predictor.parameters())
     print(f"  Loaded: {param_count / 1e6:.0f}M parameters")

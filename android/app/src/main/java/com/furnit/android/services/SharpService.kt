@@ -31,6 +31,7 @@ class SharpService private constructor(private val context: Context) {
         private const val TAG = "SharpService"
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4  // 62 floats per vertex
+        private const val PLY_BATCH_SIZE = 512
         private const val LOGIT_LUT_SIZE = 1024
         private const val LN_LUT_SIZE = 2048
         private const val LN_LUT_MIN = 0.001f
@@ -81,6 +82,13 @@ class SharpService private constructor(private val context: Context) {
     private val onnxInt8Sharp by lazy { OnnxInt8Sharp.getInstance(context) }
     private val splitOnnxFp16Sharp by lazy { SplitOnnxFp16Sharp.getInstance(context) }
     private val executorchFp16Sharp by lazy { ExecutorchFp16Sharp.getInstance(context) }
+    private val executorchInt8Sharp by lazy { ExecutorchInt8Sharp.getInstance(context) }
+    private val zeroSHBuffer: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyBatch: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
     private var isInitialized = false
     private var currentBackendId: String? = null
     private var useOnnx = false
@@ -89,6 +97,7 @@ class SharpService private constructor(private val context: Context) {
     private var useOnnxFp16 = false
     private var useExecutorch = false
     private var useExecutorchFp16 = false
+    private var useExecutorchInt8 = false
     private var usePython = false
     private var useLiteRT = false
     private var useNativePt = false
@@ -133,6 +142,11 @@ class SharpService private constructor(private val context: Context) {
                 executorchFp16Sharp.preloadAndWarmup()
                 Log.d(TAG, "ExecuTorch FP16 preload done")
             }
+            effective == "executorch_int8" && BackendConfig.ENABLE_EXECUTORCH_INT8 && executorchInt8Sharp.isModelReady() -> {
+                Log.d(TAG, "Preloading ExecuTorch INT8 model...")
+                executorchInt8Sharp.preloadAndWarmup()
+                Log.d(TAG, "ExecuTorch INT8 preload done")
+            }
             effective == "onnx" && splitOnnxSharp.isModelReady() -> {
                 Log.d(TAG, "Preloading Split ONNX sessions (all 4 parts)...")
                 splitOnnxSharp.preloadSessions()
@@ -163,6 +177,7 @@ class SharpService private constructor(private val context: Context) {
         if (BackendConfig.ENABLE_NCNN && (ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady())) return true
         if (BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady()) return true
         if (BackendConfig.ENABLE_EXECUTORCH_FP16 && executorchFp16Sharp.isModelReady()) return true
+        if (BackendConfig.ENABLE_EXECUTORCH_INT8 && executorchInt8Sharp.isModelReady()) return true
         if (BackendConfig.ENABLE_LITERT && litertSharp.isModelReady()) return true
         if (BackendConfig.ENABLE_NATIVE_PT && nativePtSharp.isModelReady()) return true
         return false
@@ -211,6 +226,7 @@ class SharpService private constructor(private val context: Context) {
         useOnnxFp16 = false
         useExecutorch = false
         useExecutorchFp16 = false
+        useExecutorchInt8 = false
         useLiteRT = false
         usePython = false
         useNativePt = false
@@ -324,6 +340,28 @@ class SharpService private constructor(private val context: Context) {
                 val missing = executorchFp16Sharp.getMissingFiles()
                 Log.e(TAG, "ExecuTorch FP16 models not found, missing: $missing")
                 lastInitFailureMessage = "FP16 .pte models not found. Push sharp_split_part*_fp16.pte to ${executorchFp16Sharp.getModelsDirPath()}"
+                return false
+            }
+        }
+
+        // ExecuTorch INT8 backend (single model, no split)
+        if (effectiveBackend == "executorch_int8") {
+            Log.d(TAG, "ExecuTorch INT8 backend selected in settings")
+            if (executorchInt8Sharp.isModelReady()) {
+                if (executorchInt8Sharp.initialize()) {
+                    isInitialized = true
+                    useExecutorchInt8 = true
+                    currentBackendId = "executorch_int8"
+                    Log.d(TAG, "ExecuTorch INT8 SHARP initialized successfully")
+                    return true
+                } else {
+                    Log.e(TAG, "ExecuTorch INT8 SHARP init failed")
+                    return false
+                }
+            } else {
+                val missing = executorchInt8Sharp.getMissingFiles()
+                Log.e(TAG, "ExecuTorch INT8 model not found, missing: $missing")
+                lastInitFailureMessage = "INT8 .pte model not found. Push sharp_int8.pte to ${executorchInt8Sharp.getModelsDirPath()}"
                 return false
             }
         }
@@ -583,6 +621,33 @@ class SharpService private constructor(private val context: Context) {
                         roomHeight = result.roomHeight,
                         roomDepth = result.roomDepth
                     ))
+                } else if (useExecutorchInt8) {
+                    Log.d(TAG, "generateGaussians: invoking ExecuTorch INT8 inferStreaming")
+                    callback.onProgress(0.2f, "Running SHARP (ExecuTorch INT8)...")
+                    val result = kotlinx.coroutines.runBlocking {
+                        executorchInt8Sharp.inferStreaming(image) { progress, message ->
+                            callback.onProgress(progress, message)
+                        }
+                    }
+
+                    if (result == null) {
+                        callback.onError("SHARP ExecuTorch INT8 inference failed")
+                        return
+                    }
+
+                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
+                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch_int8")
+
+                    callback.onProgress(1.0f, "Done!")
+                    callback.onComplete(GenerationResult(
+                        plyFile = result.plyFile,
+                        classicPlyFile = result.classicPlyFile,
+                        roomWidth = result.roomWidth,
+                        roomHeight = result.roomHeight,
+                        roomDepth = result.roomDepth
+                    ))
                 } else if (useOnnxInt8) {
                     Log.d(TAG, "generateGaussians: invoking ONNX INT8 inferStreaming")
                     callback.onProgress(0.2f, "Running SHARP (ONNX INT8)...")
@@ -796,16 +861,14 @@ class SharpService private constructor(private val context: Context) {
             fos.write(header.toByteArray(Charsets.UTF_8))
             val channel = fos.channel
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch; batchBuffer.clear()
             val scaleBoost = 1.3f
             val minScale = 0.001f
             val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
 
             var processed = 0
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
                 for (j in 0 until currentBatch) {
                     val i = processed + j
                     val offset = i * NcnnSharp.PARAMS_PER_GAUSSIAN
@@ -829,7 +892,7 @@ class SharpService private constructor(private val context: Context) {
                     batchBuffer.putFloat((g - 0.5f) / SH_C0)
                     batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                    batchBuffer.put(ZERO_SH_BLOCK)
+                    zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                     val rawOpacity = params[offset + 10].coerceIn(0f, 1f)
                     val lutIndex = (rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)
@@ -872,6 +935,7 @@ class SharpService private constructor(private val context: Context) {
             useLiteRT -> litertSharp.release()
             useExecutorch -> executorchSharp.release()
             useExecutorchFp16 -> executorchFp16Sharp.release()
+            useExecutorchInt8 -> executorchInt8Sharp.release()
             useOnnx -> onnxSharp.release()
             useSplitOnnx -> { /* Do not close preloaded sessions while inference may be running */ }
             useOnnxFp16 -> { /* FP16 sessions created/closed per-part during inference */ }

@@ -237,6 +237,7 @@ class SettingsActivity : AppCompatActivity() {
         val ncnnRadioId = View.generateViewId()
         val executorchRadioId = View.generateViewId()
         val executorchFp16RadioId = View.generateViewId()
+        val executorchInt8RadioId = View.generateViewId()
         val litertRadioId = View.generateViewId()
 
         val onnxRadio = RadioButton(this).apply {
@@ -346,6 +347,25 @@ class SettingsActivity : AppCompatActivity() {
             alpha = if (BackendConfig.ENABLE_EXECUTORCH_FP16) 1.0f else 0.5f
         }
 
+        val executorchInt8Radio = RadioButton(this).apply {
+            id = executorchInt8RadioId
+            text = if (BackendConfig.ENABLE_EXECUTORCH_INT8) "ExecuTorch INT8" else "ExecuTorch INT8 (disabled)"
+            setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_EXECUTORCH_INT8
+            alpha = if (BackendConfig.ENABLE_EXECUTORCH_INT8) 1.0f else 0.5f
+        }
+        val executorchInt8RadioDesc = TextView(this).apply {
+            text = if (BackendConfig.ENABLE_EXECUTORCH_INT8) {
+                "INT8 quantized, single model (~600MB, XNNPACK)"
+            } else {
+                "Disabled in this build"
+            }
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_EXECUTORCH_INT8) 1.0f else 0.5f
+        }
+
         val litertRadio = RadioButton(this).apply {
             id = litertRadioId
             text = if (BackendConfig.ENABLE_LITERT) "LiteRT" else "LiteRT (disabled)"
@@ -377,6 +397,8 @@ class SettingsActivity : AppCompatActivity() {
         backendRadioGroup.addView(executorchRadioDesc)
         backendRadioGroup.addView(executorchFp16Radio)
         backendRadioGroup.addView(executorchFp16RadioDesc)
+        backendRadioGroup.addView(executorchInt8Radio)
+        backendRadioGroup.addView(executorchInt8RadioDesc)
         backendRadioGroup.addView(litertRadio)
         backendRadioGroup.addView(litertRadioDesc)
 
@@ -453,6 +475,7 @@ class SettingsActivity : AppCompatActivity() {
             "ncnn" -> backendRadioGroup.check(ncnnRadioId)
             "executorch" -> backendRadioGroup.check(executorchRadioId)
             "executorch_fp16" -> backendRadioGroup.check(executorchFp16RadioId)
+            "executorch_int8" -> backendRadioGroup.check(executorchInt8RadioId)
             "litert" -> backendRadioGroup.check(litertRadioId)
             "python" -> backendRadioGroup.check(pythonRadioId)
             "torch_mobile" -> backendRadioGroup.check(torchMobileRadioId)
@@ -468,6 +491,7 @@ class SettingsActivity : AppCompatActivity() {
                 ncnnRadioId -> "ncnn"
                 executorchRadioId -> "executorch"
                 executorchFp16RadioId -> "executorch_fp16"
+                executorchInt8RadioId -> "executorch_int8"
                 litertRadioId -> "litert"
                 pythonRadioId -> "python"
                 torchMobileRadioId -> "torch_mobile"

@@ -38,6 +38,7 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
         private const val INPUT_SIZE = 1536
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
+        private const val PLY_BATCH_SIZE = 512
         private const val LOGIT_LUT_SIZE = 1024
 
         private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
@@ -79,6 +80,18 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
     private val modelsDir: File by lazy {
         context.getExternalFilesDir("models") ?: File(context.filesDir, "models")
     }
+
+    private val zeroSHBuffer: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyBatch: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyPositions = FloatArray(PLY_BATCH_SIZE * 3)
+    private val plyScales = FloatArray(PLY_BATCH_SIZE * 3)
+    private val plyRotations = FloatArray(PLY_BATCH_SIZE * 4)
+    private val plyColors = FloatArray(PLY_BATCH_SIZE * 3)
+    private val plyOpacity = FloatArray(PLY_BATCH_SIZE)
 
     data class StreamingResult(
         val plyFile: File,
@@ -262,42 +275,34 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
                 headerBuffer.flip()
                 channel.write(headerBuffer)
 
-                val batchSize = 512
-                val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-                batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                val batchBuffer = plyBatch
+                batchBuffer.clear()
                 val scaleBoost = 1.3f
                 val minScale = 0.001f
                 val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
-                val zeroSHBlock = ByteArray(45 * 4)
-
-                val localPositions = FloatArray(batchSize * 3)
-                val localScales = FloatArray(batchSize * 3)
-                val localRotations = FloatArray(batchSize * 4)
-                val localColors = FloatArray(batchSize * 3)
-                val localOpacity = FloatArray(batchSize)
 
                 val progressEvery = max(1, gaussianCount / 10)
                 var processed = 0
 
                 while (processed < gaussianCount) {
-                    val currentBatch = minOf(batchSize, gaussianCount - processed)
+                    val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
 
                     posBuffer.position(processed * 3)
-                    posBuffer.get(localPositions, 0, currentBatch * 3)
+                    posBuffer.get(plyPositions, 0, currentBatch * 3)
                     scaleBuffer.position(processed * 3)
-                    scaleBuffer.get(localScales, 0, currentBatch * 3)
+                    scaleBuffer.get(plyScales, 0, currentBatch * 3)
                     rotBuffer.position(processed * 4)
-                    rotBuffer.get(localRotations, 0, currentBatch * 4)
+                    rotBuffer.get(plyRotations, 0, currentBatch * 4)
                     colorBuffer.position(processed * 3)
-                    colorBuffer.get(localColors, 0, currentBatch * 3)
+                    colorBuffer.get(plyColors, 0, currentBatch * 3)
                     opacityBuffer.position(processed)
-                    opacityBuffer.get(localOpacity, 0, currentBatch)
+                    opacityBuffer.get(plyOpacity, 0, currentBatch)
 
                     for (j in 0 until currentBatch) {
                         val idx3 = j * 3
-                        val x = localPositions[idx3]
-                        val y = -localPositions[idx3 + 1]
-                        val z = -localPositions[idx3 + 2]
+                        val x = plyPositions[idx3]
+                        val y = -plyPositions[idx3 + 1]
+                        val z = -plyPositions[idx3 + 2]
 
                         if (x < minX) minX = x; if (x > maxX) maxX = x
                         if (y < minY) minY = y; if (y > maxY) maxY = y
@@ -309,27 +314,28 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
 
                         batchBuffer.putFloat(0f); batchBuffer.putFloat(0f); batchBuffer.putFloat(0f)
 
-                        val r = localColors[idx3].coerceIn(0f, 1f)
-                        val g = localColors[idx3 + 1].coerceIn(0f, 1f)
-                        val b = localColors[idx3 + 2].coerceIn(0f, 1f)
+                        val r = plyColors[idx3].coerceIn(0f, 1f)
+                        val g = plyColors[idx3 + 1].coerceIn(0f, 1f)
+                        val b = plyColors[idx3 + 2].coerceIn(0f, 1f)
                         batchBuffer.putFloat((r - 0.5f) / SH_C0)
                         batchBuffer.putFloat((g - 0.5f) / SH_C0)
                         batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                        batchBuffer.put(zeroSHBlock)
+                        zeroSHBuffer.clear()
+                        batchBuffer.put(zeroSHBuffer)
 
-                        val rawOpacity = localOpacity[j].coerceIn(0f, 1f)
+                        val rawOpacity = plyOpacity[j].coerceIn(0f, 1f)
                         batchBuffer.putFloat(LOGIT_LUT[(rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)])
 
-                        batchBuffer.putFloat(lnLut(max(localScales[idx3] * scaleBoost, minScale)))
-                        batchBuffer.putFloat(lnLut(max(localScales[idx3 + 1] * scaleBoost, minScale)))
-                        batchBuffer.putFloat(lnLut(max(localScales[idx3 + 2] * scaleBoost, minScale)))
+                        batchBuffer.putFloat(lnLut(max(plyScales[idx3] * scaleBoost, minScale)))
+                        batchBuffer.putFloat(lnLut(max(plyScales[idx3 + 1] * scaleBoost, minScale)))
+                        batchBuffer.putFloat(lnLut(max(plyScales[idx3 + 2] * scaleBoost, minScale)))
 
                         val idx4 = j * 4
-                        val rw = localRotations[idx4]
-                        val rx = localRotations[idx4 + 1]
-                        val ry = localRotations[idx4 + 2]
-                        val rz = localRotations[idx4 + 3]
+                        val rw = plyRotations[idx4]
+                        val rx = plyRotations[idx4 + 1]
+                        val ry = plyRotations[idx4 + 2]
+                        val rz = plyRotations[idx4 + 3]
                         val mag = sqrt(rw * rw + rx * rx + ry * ry + rz * rz)
                         val invMag = if (mag > 1e-8f) 1f / mag else 1f
                         batchBuffer.putFloat(rw * invMag)

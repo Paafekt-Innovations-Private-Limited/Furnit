@@ -25,6 +25,33 @@ import torch
 import torch.nn as nn
 
 
+def fuse_conv_bn(model):
+    """Recursively fuse Conv2d+BatchNorm2d pairs in eval mode.
+
+    Folding BN into Conv eliminates intermediate normalization tensors from the
+    graph, reducing peak activation memory and producing smaller ONNX models.
+    """
+    for name, module in model.named_children():
+        fuse_conv_bn(module)
+        children = list(module.named_children())
+        pairs = []
+        i = 0
+        while i < len(children) - 1:
+            cname, cmod = children[i]
+            nname, nmod = children[i + 1]
+            if isinstance(cmod, nn.Conv2d) and isinstance(nmod, nn.BatchNorm2d):
+                pairs.append([cname, nname])
+                i += 2
+            else:
+                i += 1
+        if pairs:
+            try:
+                torch.ao.quantization.fuse_modules(module, pairs, inplace=True)
+            except Exception as e:
+                print(f"  [warn] Could not fuse {pairs} in {name}: {e}")
+    return model
+
+
 DEFAULT_SHARP_SRC = Path("/tmp/ml-sharp/src")
 DEFAULT_WEIGHTS = Path("/Users/al/.cache/torch/hub/checkpoints/sharp_2572gikvuh.pt")
 OUTPUT_DIR = Path(__file__).resolve().parent  # android/
@@ -151,6 +178,9 @@ def main():
         predictor = create_predictor(PredictorParams())
         predictor.load_state_dict(state_dict)
         predictor.eval()
+
+        print("Fusing Conv+BN layers...")
+        fuse_conv_bn(predictor)
 
         model = SharpForONNX(predictor)
         model.eval()
