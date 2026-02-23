@@ -78,11 +78,17 @@ class SharpService private constructor(private val context: Context) {
     // private val pythonSharp by lazy { PythonSharp.getInstance(context) }  // Needs Chaquopy
     private val torchMobileSharp by lazy { TorchMobileSharp.getInstance(context) }
     private val nativePtSharp by lazy { NativePtSharp.getInstance(context) }
+    private val onnxInt8Sharp by lazy { OnnxInt8Sharp.getInstance(context) }
+    private val splitOnnxFp16Sharp by lazy { SplitOnnxFp16Sharp.getInstance(context) }
+    private val executorchFp16Sharp by lazy { ExecutorchFp16Sharp.getInstance(context) }
     private var isInitialized = false
-    private var currentBackendId: String? = null  // Track which backend was initialized
+    private var currentBackendId: String? = null
     private var useOnnx = false
     private var useSplitOnnx = false
+    private var useOnnxInt8 = false
+    private var useOnnxFp16 = false
     private var useExecutorch = false
+    private var useExecutorchFp16 = false
     private var usePython = false
     private var useLiteRT = false
     private var useNativePt = false
@@ -122,10 +128,25 @@ class SharpService private constructor(private val context: Context) {
                 executorchSharp.preloadAndWarmup()
                 Log.d(TAG, "ExecuTorch preload done")
             }
+            effective == "executorch_fp16" && BackendConfig.ENABLE_EXECUTORCH_FP16 && executorchFp16Sharp.isModelReady() -> {
+                Log.d(TAG, "Preloading ExecuTorch FP16 Part1...")
+                executorchFp16Sharp.preloadAndWarmup()
+                Log.d(TAG, "ExecuTorch FP16 preload done")
+            }
             effective == "onnx" && splitOnnxSharp.isModelReady() -> {
                 Log.d(TAG, "Preloading Split ONNX sessions (all 4 parts)...")
                 splitOnnxSharp.preloadSessions()
                 Log.d(TAG, "Split ONNX preload done")
+            }
+            effective == "onnx_fp16" && BackendConfig.ENABLE_ONNX_FP16 && splitOnnxFp16Sharp.isModelReady() -> {
+                Log.d(TAG, "Preloading ONNX FP16 Part 1...")
+                splitOnnxFp16Sharp.preloadSessions()
+                Log.d(TAG, "ONNX FP16 preload done")
+            }
+            effective == "onnx_int8" && BackendConfig.ENABLE_ONNX_INT8 -> {
+                Log.d(TAG, "Preloading ONNX INT8 single model session...")
+                onnxInt8Sharp.initialize()
+                Log.d(TAG, "ONNX INT8 preload done")
             }
             else -> { /* ncnn, litert, native_pt, etc.: no preload */ }
         }
@@ -137,8 +158,11 @@ class SharpService private constructor(private val context: Context) {
      */
     fun isModelReady(): Boolean {
         if (splitOnnxSharp.isModelReady() || onnxSharp.isModelReady()) return true
+        if (BackendConfig.ENABLE_ONNX_INT8 && onnxInt8Sharp.isModelReady()) return true
+        if (BackendConfig.ENABLE_ONNX_FP16 && splitOnnxFp16Sharp.isModelReady()) return true
         if (BackendConfig.ENABLE_NCNN && (ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady())) return true
         if (BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady()) return true
+        if (BackendConfig.ENABLE_EXECUTORCH_FP16 && executorchFp16Sharp.isModelReady()) return true
         if (BackendConfig.ENABLE_LITERT && litertSharp.isModelReady()) return true
         if (BackendConfig.ENABLE_NATIVE_PT && nativePtSharp.isModelReady()) return true
         return false
@@ -183,7 +207,10 @@ class SharpService private constructor(private val context: Context) {
         // Reset runtime flags before selecting a backend.
         useOnnx = false
         useSplitOnnx = false
+        useOnnxInt8 = false
+        useOnnxFp16 = false
         useExecutorch = false
+        useExecutorchFp16 = false
         useLiteRT = false
         usePython = false
         useNativePt = false
@@ -263,7 +290,6 @@ class SharpService private constructor(private val context: Context) {
         }
 
         if (effectiveBackend == "executorch") {
-            // User explicitly wants ExecuTorch
             Log.d(TAG, "ExecuTorch backend selected in settings")
             if (executorchSharp.isModelReady()) {
                 if (executorchSharp.initialize()) {
@@ -281,7 +307,65 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        // ONNX selected (or fallback from NCNN) - use ONNX for room generation
+        if (effectiveBackend == "executorch_fp16") {
+            Log.d(TAG, "ExecuTorch FP16 backend selected in settings")
+            if (executorchFp16Sharp.isModelReady()) {
+                if (executorchFp16Sharp.initialize()) {
+                    isInitialized = true
+                    useExecutorchFp16 = true
+                    currentBackendId = "executorch_fp16"
+                    Log.d(TAG, "ExecuTorch FP16 SHARP initialized successfully")
+                    return true
+                } else {
+                    Log.e(TAG, "ExecuTorch FP16 SHARP init failed")
+                    return false
+                }
+            } else {
+                val missing = executorchFp16Sharp.getMissingFiles()
+                Log.e(TAG, "ExecuTorch FP16 models not found, missing: $missing")
+                lastInitFailureMessage = "FP16 .pte models not found. Push sharp_split_part*_fp16.pte to ${executorchFp16Sharp.getModelsDirPath()}"
+                return false
+            }
+        }
+
+        // ONNX INT8 backend (single model)
+        if (effectiveBackend == "onnx_int8") {
+            if (onnxInt8Sharp.isModelReady()) {
+                if (onnxInt8Sharp.initialize()) {
+                    Log.d(TAG, "ONNX INT8 single model initialized successfully")
+                    isInitialized = true
+                    useOnnxInt8 = true
+                    currentBackendId = "onnx_int8"
+                    return true
+                } else {
+                    Log.e(TAG, "ONNX INT8 session init failed")
+                    lastInitFailureMessage = "INT8 model init failed (OOM?). Check logcat for details."
+                    return false
+                }
+            } else {
+                Log.e(TAG, "ONNX INT8 not ready. Push sharp_single_int8.onnx + .data to ${onnxInt8Sharp.getModelsDirPath()}")
+                lastInitFailureMessage = "INT8 model not found. Push sharp_single_int8.onnx and sharp_single_int8.onnx.data to ${onnxInt8Sharp.getModelsDirPath()}"
+                return false
+            }
+        }
+
+        // ONNX FP16 split backend
+        if (effectiveBackend == "onnx_fp16") {
+            if (splitOnnxFp16Sharp.isModelReady()) {
+                Log.d(TAG, "ONNX FP16 split model ready — using 4-part FP16 inference")
+                isInitialized = true
+                useOnnxFp16 = true
+                currentBackendId = "onnx_fp16"
+                return true
+            } else {
+                val missing = splitOnnxFp16Sharp.getMissingFiles()
+                Log.e(TAG, "ONNX FP16 not ready, missing: $missing")
+                lastInitFailureMessage = "FP16 models not found. Push sharp_part*_fp16.onnx to ${splitOnnxFp16Sharp.getModelsDirPath()}"
+                return false
+            }
+        }
+
+        // ONNX FP32 selected (or fallback from NCNN)
         Log.d(TAG, "Backend: $effectiveBackend - using ONNX for room generation")
         Log.d(TAG, "ONNX init: splitOnnxSharp.isModelReady=${splitOnnxSharp.isModelReady()} onnxSharp.isModelReady=${onnxSharp.isModelReady()}")
 
@@ -447,7 +531,6 @@ class SharpService private constructor(private val context: Context) {
                         roomDepth = result.roomDepth
                     ))
                 } else if (useExecutorch) {
-                    // Use ExecuTorch backend
                     callback.onProgress(0.2f, "Running SHARP (ExecuTorch)...")
                     val result = kotlinx.coroutines.runBlocking {
                         executorchSharp.inferStreaming(image) { progress, message ->
@@ -465,6 +548,88 @@ class SharpService private constructor(private val context: Context) {
 
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch")
 
+                    callback.onProgress(1.0f, "Done!")
+                    callback.onComplete(GenerationResult(
+                        plyFile = result.plyFile,
+                        classicPlyFile = result.classicPlyFile,
+                        roomWidth = result.roomWidth,
+                        roomHeight = result.roomHeight,
+                        roomDepth = result.roomDepth
+                    ))
+                } else if (useExecutorchFp16) {
+                    Log.d(TAG, "generateGaussians: invoking ExecuTorch FP16 inferStreaming")
+                    callback.onProgress(0.2f, "Running SHARP (ExecuTorch FP16)...")
+                    val result = kotlinx.coroutines.runBlocking {
+                        executorchFp16Sharp.inferStreaming(image) { progress, message ->
+                            callback.onProgress(progress, message)
+                        }
+                    }
+
+                    if (result == null) {
+                        callback.onError("SHARP ExecuTorch FP16 inference failed")
+                        return
+                    }
+
+                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch FP16)")
+                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch_fp16")
+
+                    callback.onProgress(1.0f, "Done!")
+                    callback.onComplete(GenerationResult(
+                        plyFile = result.plyFile,
+                        classicPlyFile = result.classicPlyFile,
+                        roomWidth = result.roomWidth,
+                        roomHeight = result.roomHeight,
+                        roomDepth = result.roomDepth
+                    ))
+                } else if (useOnnxInt8) {
+                    Log.d(TAG, "generateGaussians: invoking ONNX INT8 inferStreaming")
+                    callback.onProgress(0.2f, "Running SHARP (ONNX INT8)...")
+                    val result = kotlinx.coroutines.runBlocking {
+                        onnxInt8Sharp.inferStreaming(image, { progress, message ->
+                            callback.onProgress(progress, message)
+                        }, isCancelled)
+                    }
+
+                    if (result == null) {
+                        if (isCancelled()) return
+                        Log.e(TAG, "generateGaussians: ONNX INT8 inferStreaming returned null")
+                        callback.onError("SHARP ONNX INT8 inference failed")
+                        return
+                    }
+
+                    Log.d(TAG, "generateGaussians: ONNX INT8 SUCCESS ${result.gaussianCount} Gaussians room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
+                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx_int8")
+
+                    callback.onProgress(1.0f, "Done!")
+                    callback.onComplete(GenerationResult(
+                        plyFile = result.plyFile,
+                        classicPlyFile = result.classicPlyFile,
+                        roomWidth = result.roomWidth,
+                        roomHeight = result.roomHeight,
+                        roomDepth = result.roomDepth
+                    ))
+                } else if (useOnnxFp16) {
+                    Log.d(TAG, "generateGaussians: invoking ONNX FP16 inferStreaming")
+                    callback.onProgress(0.2f, "Running SHARP (ONNX FP16)...")
+                    val result = kotlinx.coroutines.runBlocking {
+                        splitOnnxFp16Sharp.inferStreaming(image, { progress, message ->
+                            callback.onProgress(progress, message)
+                        }, isCancelled)
+                    }
+
+                    if (result == null) {
+                        if (isCancelled()) return
+                        Log.e(TAG, "generateGaussians: ONNX FP16 inferStreaming returned null")
+                        callback.onError("SHARP ONNX FP16 inference failed")
+                        return
+                    }
+
+                    Log.d(TAG, "generateGaussians: ONNX FP16 SUCCESS ${result.gaussianCount} Gaussians")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx_fp16")
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
                         plyFile = result.plyFile,
@@ -706,8 +871,11 @@ class SharpService private constructor(private val context: Context) {
             useNativePt -> nativePtSharp.release()
             useLiteRT -> litertSharp.release()
             useExecutorch -> executorchSharp.release()
+            useExecutorchFp16 -> executorchFp16Sharp.release()
             useOnnx -> onnxSharp.release()
-            useSplitOnnx -> { /* Do not close preloaded sessions: inference may still be running (cancelAndReleaseAI/release). Closing would cause use-after-close crash. */ }
+            useSplitOnnx -> { /* Do not close preloaded sessions while inference may be running */ }
+            useOnnxFp16 -> { /* FP16 sessions created/closed per-part during inference */ }
+            useOnnxInt8 -> onnxInt8Sharp.release()
             else -> ncnnSharp.release()
         }
         isInitialized = false

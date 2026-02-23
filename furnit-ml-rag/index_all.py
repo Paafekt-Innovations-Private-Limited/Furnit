@@ -43,6 +43,72 @@ def get_collection():
         metadata={"hnsw:space": "cosine"}
     )
 
+def get_log_collection():
+    """Separate collection for Android log chunks (not wiped by main index)."""
+    client = chromadb.PersistentClient(path=DB_PATH)
+    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name="all-MiniLM-L6-v2"
+    )
+    return client.get_or_create_collection(
+        name="furnit_android_logs",
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"}
+    )
+
+def index_android_logs(log_file_path=None, from_adb=False):
+    """Read Android logs from file or adb logcat -d, chunk, and index into furnit_android_logs."""
+    import subprocess
+    if from_adb:
+        try:
+            out = subprocess.run(
+                ["adb", "logcat", "-d", "-v", "time"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            log_text = out.stdout or ""
+            if out.stderr:
+                log_text += "\n" + out.stderr
+        except FileNotFoundError:
+            print("adb not found in PATH; skipping log index")
+            return 0
+        except subprocess.TimeoutExpired:
+            print("adb logcat timed out; skipping")
+            return 0
+    elif log_file_path:
+        path = Path(log_file_path)
+        if not path.exists():
+            print(f"Log file not found: {path}")
+            return 0
+        log_text = path.read_text(encoding="utf-8", errors="replace")
+    else:
+        return 0
+
+    lines = [ln.strip() for ln in log_text.splitlines() if ln.strip()]
+    chunk_size = 80
+    chunks = []
+    for i in range(0, len(lines), chunk_size):
+        block = "\n".join(lines[i : i + chunk_size])
+        chunks.append(block)
+
+    if not chunks:
+        print("No log content to index")
+        return 0
+
+    collection = get_log_collection()
+    try:
+        existing = collection.count()
+        if existing > 0:
+            collection.delete(ids=[c for c in collection.get()["ids"]])
+    except Exception:
+        pass
+
+    ids = [f"android_log_{i}" for i in range(len(chunks))]
+    metadatas = [{"layer": "android_logs"} for _ in chunks]
+    collection.add(ids=ids, documents=chunks, metadatas=metadatas)
+    print(f"Indexed {len(chunks)} Android log chunks")
+    return len(chunks)
+
 # ============================================================================
 # KNOWLEDGE CHUNKS
 # ============================================================================
@@ -1390,4 +1456,19 @@ def main():
     print(f"\nExported to {EXPORT_PATH}")
 
 if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description="Index Furnit ML RAG")
+    ap.add_argument("--index-logs", action="store_true", help="Also index Android logs into android_logs collection")
+    ap.add_argument("--from-file", type=str, metavar="PATH", help="Index logs from this file (use with --index-logs)")
+    ap.add_argument("--from-adb", action="store_true", help="Index logs from adb logcat -d (use with --index-logs)")
+    args = ap.parse_args()
+
     main()
+
+    if args.index_logs:
+        if args.from_adb:
+            index_android_logs(from_adb=True)
+        elif args.from_file:
+            index_android_logs(log_file_path=args.from_file)
+        else:
+            print("Use --from-file PATH or --from-adb with --index-logs")

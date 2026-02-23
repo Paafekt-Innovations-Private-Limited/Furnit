@@ -34,7 +34,25 @@ def get_collection():
         metadata={"hnsw:space": "cosine"}
     )
 
-def query(text, top_k=5):
+def get_log_collection():
+    client = chromadb.PersistentClient(path=DB_PATH)
+    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name="all-MiniLM-L6-v2"
+    )
+    return client.get_or_create_collection(
+        name="furnit_android_logs",
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"}
+    )
+
+def query(text, top_k=5, include_logs=False, log_file_path=None, from_adb=False):
+    if include_logs and (log_file_path or from_adb):
+        from index_all import index_android_logs
+        if from_adb:
+            index_android_logs(from_adb=True)
+        else:
+            index_android_logs(log_file_path=log_file_path)
+
     collection = get_collection()
     results = collection.query(query_texts=[text], n_results=top_k)
 
@@ -51,6 +69,27 @@ def query(text, top_k=5):
         print(f"--- Result {i+1} [{meta['layer']}] (relevance: {relevance:.2f}) ---")
         print(doc.strip())
         print()
+
+    if include_logs:
+        try:
+            log_coll = get_log_collection()
+            n_logs = log_coll.count()
+            if n_logs == 0:
+                print("--- Android logs: no log chunks indexed. Use --log-file PATH or --adb-logcat first run. ---\n")
+            else:
+                log_results = log_coll.query(query_texts=[text], n_results=min(3, n_logs))
+                print("--- Android logs (relevant snippets) ---")
+                for i, (doc, meta, dist) in enumerate(zip(
+                    log_results["documents"][0],
+                    log_results["metadatas"][0],
+                    log_results["distances"][0]
+                )):
+                    relevance = max(0, 1 - dist)
+                    print(f"[{meta['layer']}] (relevance: {relevance:.2f})")
+                    print(doc.strip())
+                    print()
+        except Exception as e:
+            print(f"--- Android logs: {e} ---\n")
 
 def export():
     collection = get_collection()
@@ -90,14 +129,18 @@ def main():
     parser.add_argument("--export", action="store_true", help="Export DB to JSON")
     parser.add_argument("--rebuild", action="store_true", help="Rebuild DB from JSON")
     parser.add_argument("-k", type=int, default=5, help="Top K results")
+    parser.add_argument("--log-file", type=str, metavar="PATH", help="Index Android logs from file, then include in query")
+    parser.add_argument("--adb-logcat", action="store_true", help="Index Android logs from adb logcat -d, then include in query")
     args = parser.parse_args()
+
+    include_logs = bool(args.log_file or args.adb_logcat)
 
     if args.export:
         export()
     elif args.rebuild:
         rebuild()
     elif args.query_text:
-        query(args.query_text, top_k=args.k)
+        query(args.query_text, top_k=args.k, include_logs=include_logs, log_file_path=args.log_file, from_adb=args.adb_logcat)
     else:
         parser.print_help()
 

@@ -112,16 +112,6 @@ class ContentActivity : AppCompatActivity() {
         }
         topBar.addView(spacer)
 
-        // Camera classifier icon button
-        val cameraClassifierIcon = createIconButton("\uD83D\uDCF7") // Camera emoji
-        cameraClassifierIcon.setOnClickListener {
-            startActivity(Intent(this@ContentActivity, CameraClassifierActivity::class.java))
-        }
-        val cameraParams = LinearLayout.LayoutParams(dpToPx(44), dpToPx(44))
-        cameraParams.setMargins(dpToPx(8), 0, 0, 0)
-        cameraClassifierIcon.layoutParams = cameraParams
-        topBar.addView(cameraClassifierIcon)
-
         // Help icon button - opens FAQ/Help Activity
         val helpIcon = createIconButton("?")
         helpIcon.setOnClickListener {
