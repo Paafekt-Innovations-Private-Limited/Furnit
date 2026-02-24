@@ -38,6 +38,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         private const val SPATIAL_SIZE = 24
         private const val PARAMS_PER_GAUSSIAN = 14
         private const val SH_C0 = 0.28209479177387814f
+        // Match SHARP save_ply: model outputs linear RGB; PLY stores f_dc in sRGB (convert before SH).
+        private const val LINEAR_TO_SRGB_THRESHOLD = 0.0031308f
         private const val FLOATS_PER_VERTEX = 62
         private const val BYTES_PER_VERTEX = FLOATS_PER_VERTEX * 4
         private const val PLY_BATCH_SIZE = 512
@@ -300,6 +302,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         var x = 0; for (i in 0 until gS) { this[i] = x; x += 24 - (if (i != 0) pad else 0) - (if (i != gS - 1) pad else 0) }
     }
 
+    /** Linear RGB [0,1] -> sRGB [0,1]. Matches SHARP save_ply (Metal spec 7.7.7) so PLY f_dc matches viewer expectation. */
+    private fun linearToSrgb(linear: Float): Float {
+        val v = linear.coerceIn(0f, 1f)
+        return if (v <= LINEAR_TO_SRGB_THRESHOLD) v * 12.92f
+        else (1.055f * v.toDouble().pow(1.0 / 2.4).toFloat() - 0.055f).coerceIn(0f, 1f)
+    }
+
     private fun writePly(params: FloatArray, progressCallback: ((Float, String) -> Unit)?): StreamingResult {
         val count = params.size / PARAMS_PER_GAUSSIAN
         val roomFolder = File(File(context.filesDir, "sharp_rooms"), "room_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}").apply { mkdirs() }
@@ -323,7 +332,10 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
                 plyBatch.clear()
                 plyBatch.putFloat(x).putFloat(y).putFloat(z).putFloat(0f).putFloat(0f).putFloat(0f)
-                plyBatch.putFloat((params[off + 11] - 0.5f) / SH_C0).putFloat((params[off + 12] - 0.5f) / SH_C0).putFloat((params[off + 13] - 0.5f) / SH_C0)
+                val r = linearToSrgb(params[off + 11])
+                val g = linearToSrgb(params[off + 12])
+                val b = linearToSrgb(params[off + 13])
+                plyBatch.putFloat((r - 0.5f) / SH_C0).putFloat((g - 0.5f) / SH_C0).putFloat((b - 0.5f) / SH_C0)
                 zeroSHBuffer.rewind(); plyBatch.put(zeroSHBuffer)
                 plyBatch.putFloat(LOGIT_LUT[(params[off + 3] * 1023).toInt().coerceIn(0, 1023)])
                 plyBatch.putFloat(lnLut(max(params[off + 4] * 1.3f, 0.001f))).putFloat(lnLut(max(params[off + 5] * 1.3f, 0.001f))).putFloat(lnLut(max(params[off + 6] * 1.3f, 0.001f)))

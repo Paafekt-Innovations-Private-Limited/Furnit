@@ -32,8 +32,11 @@ logger = logging.getLogger(__name__)
 
 DEPLOYMENT_URL = "https://docs.ultralytics.com/guides/model-deployment-practices/#model-deployment-options"
 
-# Default: current problem (Part4b latency). Ask for concrete Python and Android changes.
+# Default: current problem. Switch to BLUISH_QUESTION for color fix.
 CURRENT_PROBLEM_QUESTION = """We run a ViT-based 3D reconstruction model (SHARP) on Android with ExecuTorch INT8. Part4b (image encoder B + decoder + Gaussian head) takes ~80 seconds per inference; Part1+2 ~31s, Part3 ~1.4s, Part4a chunks ~3.3s. We need to reduce Part4b latency without Vulkan. Please give concrete changes: (1) Python: export or model changes for SDPA/fused attention, memory planning, or quantization when exporting to ExecuTorch .pte. (2) Android/Kotlin: runtime or build changes to use optimized attention or XNNPACK settings when loading and running the Part4b module. Include code snippets or step-by-step edits for both Python and Android. Focus on ExecuTorch and ViT decoder on mobile CPU, not YOLO."""
+
+# Room rendering looks bluish: likely color order or SH DC interpretation.
+BLUISH_QUESTION = """We have a 3D Gaussian splatting model (SHARP, ViT-based) running on Android with ExecuTorch. The model outputs Gaussian parameters including spherical harmonic DC coefficients for color (f_dc_0, f_dc_1, f_dc_2). We write PLY with (params - 0.5) / SH_C0 for these three. Input preprocessing uses RGB order (R=argb>>16, G=argb>>8, B=argb). The rendered room looks globally bluish. Could this be: (1) BGR vs RGB in input or in the model's output channel order? (2) Wrong interpretation of SH DC (sign, scale, or channel order in the 14-param Gaussian layout)? (3) Color space (sRGB vs linear) mismatch between training and our PLY? Please suggest a concrete fix (e.g. swap channels, or correct formula for f_dc) for deployment. We are not using YOLO; this is Gaussian splatting / 3D reconstruction."""
 DEFAULT_QUESTION = CURRENT_PROBLEM_QUESTION
 
 # Other canned questions (use -q with paste or a file).
@@ -279,6 +282,11 @@ def main() -> int:
         help="Custom question (default: current problem = Part4b latency, no Vulkan yet)",
     )
     parser.add_argument(
+        "--bluish",
+        action="store_true",
+        help="Use canned question for bluish room (SH DC / BGR vs RGB / color space)",
+    )
+    parser.add_argument(
         "--headless",
         action="store_true",
         help="Run browser headless",
@@ -295,9 +303,10 @@ def main() -> int:
         help="Do not save response to ultralytics_response.txt",
     )
     args = parser.parse_args()
+    question = BLUISH_QUESTION if args.bluish else args.question
     save_path = None if args.no_save else RESPONSE_FILE
     response = ask_ultralytics_ai(
-        question=args.question,
+        question=question,
         headless=args.headless,
         timeout_ms=args.timeout,
         save_response_path=save_path,
