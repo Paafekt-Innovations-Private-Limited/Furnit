@@ -657,12 +657,13 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     /** Last progress from generation callback — used when showing overlay for already-running gen. */
     private var lastAIGenerationProgress: Float = 0f
-    private var lastAIGenerationMessage: String = "Preparing..."
+    private var lastAIGenerationMessage: String = "Getting started…"
 
     private fun updateAIOptionProgress(progress: Float, message: String) {
         lastAIGenerationProgress = progress
-        lastAIGenerationMessage = message
-        aiOptionSubtitleView?.text = if (progress >= 1f) "Ready - tap to view" else if (progress > 0f) "$message (${(progress * 100).toInt()}%)" else "AI-powered 3D generation"
+        val friendly = toFriendlyMessage(progress, message)
+        lastAIGenerationMessage = friendly
+        aiOptionSubtitleView?.text = if (progress >= 1f) "Ready — tap to view" else if (progress > 0f) "$friendly (${(progress * 100).toInt()}%)" else "Create a 3D room from your photo"
     }
 
     private fun onAIRoomSelected() {
@@ -693,7 +694,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         // Not running and no result (failed or cancelled): start fresh
         logProgress0("SinglePhotoRoomActivity.kt:onAIRoomSelected", "start fresh", mapOf())
         lastAIGenerationProgress = 0f
-        lastAIGenerationMessage = "Preparing..."
+        lastAIGenerationMessage = "Getting started…"
         showProgressOverlay(preserveProgress = false)
         startAIGenerationInBackground(selectedBitmap!!)
         aiRoomOverlayRequested = true
@@ -734,6 +735,33 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         initialView.visibility = View.VISIBLE
         selectedBitmap = null
         selectedImageUri = null
+    }
+
+    /**
+     * Turns backend progress messages into short, friendly text for the user.
+     * No technical terms — keeps people engaged during the ~2 minute wait.
+     */
+    private fun toFriendlyMessage(progress: Float, message: String): String {
+        val m = message.lowercase()
+        return when {
+            progress >= 1f -> "Your room is ready!"
+            m.contains("preprocess") || m.contains("1536") -> "Getting your photo ready…"
+            m.contains("loading") && (m.contains("encoder") || m.contains("model")) -> "Warming up…"
+            m.contains("part 1") || m.contains("part 2") || m.contains("patch") -> {
+                val step = Regex("""(\d+)\s*/\s*35""").find(message)?.groupValues?.get(1)
+                if (step != null) "Building your room… step $step of 35" else "Building your room…"
+            }
+            m.contains("part 3") || m.contains("image encoder") -> "Understanding the full picture…"
+            m.contains("part 4a") || m.contains("tokens") -> "Adding depth and shape…"
+            m.contains("part 4b") || m.contains("decoder") -> "Adding the finishing touches…"
+            m.contains("writing") || m.contains("ply") || m.contains("gaussian") -> "Saving your 3D room…"
+            m.contains("done") -> "Your room is ready!"
+            m.contains("error") || m.contains("failed") -> message
+            progress < 0.15f -> "Getting started…"
+            progress < 0.45f -> "Working on it…"
+            progress < 0.75f -> "Almost there…"
+            else -> "Finishing up…"
+        }
     }
 
     private fun createProgressOverlay(): FrameLayout {
@@ -781,7 +809,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
                 // Progress text
                 progressText = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = "Creating your 3D room..."
+                    text = "Creating your 3D room…"
                     textSize = 18f
                     setTypeface(null, Typeface.BOLD)
                     setTextColor(Color.parseColor("#333333"))
@@ -811,11 +839,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 }
                 addView(progressPercent)
 
-                // Subtitle
+                // Subtitle — engaging, sets expectation for ~2 min
                 val subtitle = TextView(this@SinglePhotoRoomActivity).apply {
-                    text = "AI-powered room generation"
-                    textSize = 12f
-                    setTextColor(Color.parseColor("#999999"))
+                    text = "This usually takes about 2 minutes. Hang tight — we're building something nice for you."
+                    textSize = 13f
+                    setTextColor(Color.parseColor("#666666"))
                     gravity = Gravity.CENTER
                     setPadding(0, 16, 0, 0)
                 }
@@ -856,7 +884,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             ))
         } else {
             displayProgress = 0f
-            displayMessage = "Preparing..."
+            displayMessage = "Getting started…"
             logProgress0("SinglePhotoRoomActivity.kt:showProgressOverlay", "reset to 0%", mapOf(
                 "preserveProgress" to preserveProgress, "reason" to if (preserveProgress) "lastProgress was 0" else "fresh start"
             ))
@@ -873,11 +901,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
     private fun updateProgressOverlay(progress: Float, message: String) {
         val percent = (progress * 100).toInt()
+        val friendly = toFriendlyMessage(progress, message)
         logProgress0("SinglePhotoRoomActivity.kt:updateProgressOverlay", "updating UI", mapOf(
             "progress" to progress, "percent" to percent, "message" to message
         ))
         progressBar.progress = percent
         progressPercent.text = "$percent%"
-        progressText.text = message
+        progressText.text = friendly
     }
 }

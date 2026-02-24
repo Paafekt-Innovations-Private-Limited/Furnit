@@ -395,10 +395,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     mergePatchCropInto(x0Feat, mergedSize1x, feat, j, i, GRID_1X, PADDING_1X, rowOffset1xX0, colOffsets1x)
 
                     patchCount++
-                    if (patchCount % 5 == 0) {
-                        progressCallback?.invoke(0.05f + (patchCount.toFloat() / TOTAL_PATCHES) * 0.40f,
-                            "INT8 Part 1+2: Patch $patchCount/$TOTAL_PATCHES...")
-                    }
+                    progressCallback?.invoke(0.05f + (patchCount.toFloat() / TOTAL_PATCHES) * 0.40f,
+                        "INT8 Part 1+2: Patch $patchCount/$TOTAL_PATCHES...")
                 }
             }
             // 0.5x scale patches (3x3 = 9)
@@ -414,6 +412,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     val feat = module2.forward(EValue.from(tokensTensor))[0].toTensor().dataAsFloatArray
                     mergePatchCropInto(x1Feat, mergedSize05x, feat, j, i, GRID_05X, PADDING_05X, rowOffset05x, colOffsets05x)
                     patchCount++
+                    progressCallback?.invoke(0.05f + (patchCount.toFloat() / TOTAL_PATCHES) * 0.40f,
+                        "INT8 Part 1+2: Patch $patchCount/$TOTAL_PATCHES...")
                 }
             }
             halfBitmap.recycle()
@@ -425,6 +425,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val qTokens = module1.forward(EValue.from(qInput))[0].toTensor().dataAsFloatArray
             val qTokensTensor = Tensor.fromBlob(qTokens, longArrayOf(1, 577, 1024))
             x2Feat = module2.forward(EValue.from(qTokensTensor))[0].toTensor().dataAsFloatArray
+            patchCount++
+            progressCallback?.invoke(0.05f + (patchCount.toFloat() / TOTAL_PATCHES) * 0.40f,
+                "INT8 Part 1+2: Patch $patchCount/$TOTAL_PATCHES...")
 
             module1.destroy(); module2.destroy()
             System.gc()

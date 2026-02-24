@@ -730,11 +730,11 @@ class SharpRoomActivity : AppCompatActivity() {
 
             const roomRadius = Math.max(roomWidth, roomHeight, roomDepth) * 0.5;
 
-            // Position camera at front of room looking into room center
-            // Camera on negative Z side looking toward positive Z (into room)
+            // Position camera closer to room (was 1.5x fit = too far, room looked small/warped when zoomed out)
+            // Closer default (0.7x) puts camera nearer back wall so room fills view and edge artifacts less visible
             const fov = camera.fov * (Math.PI / 180);
             const maxDim = Math.max(roomWidth, roomHeight, roomDepth);
-            const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 1.5;
+            const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 0.7;
             camera.position.set(innerCenterX, innerCenterY, innerCenterZ - cameraDistance);
             console.log('[WebGL] Camera at negative Z, distance:', cameraDistance.toFixed(2));
             controls.target.set(innerCenterX, innerCenterY, innerCenterZ);
