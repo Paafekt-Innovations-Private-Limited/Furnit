@@ -332,9 +332,10 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
                 plyBatch.clear()
                 plyBatch.putFloat(x).putFloat(y).putFloat(z).putFloat(0f).putFloat(0f).putFloat(0f)
-                val r = linearToSrgb(params[off + 11])
+                // Model outputs color as BGR at 11,12,13; PLY f_dc is RGB — swap so brown isn’t blue
+                val b = linearToSrgb(params[off + 11])
                 val g = linearToSrgb(params[off + 12])
-                val b = linearToSrgb(params[off + 13])
+                val r = linearToSrgb(params[off + 13])
                 plyBatch.putFloat((r - 0.5f) / SH_C0).putFloat((g - 0.5f) / SH_C0).putFloat((b - 0.5f) / SH_C0)
                 zeroSHBuffer.rewind(); plyBatch.put(zeroSHBuffer)
                 plyBatch.putFloat(LOGIT_LUT[(params[off + 3] * 1023).toInt().coerceIn(0, 1023)])
