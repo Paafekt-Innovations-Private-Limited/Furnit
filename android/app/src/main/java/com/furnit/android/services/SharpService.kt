@@ -142,10 +142,8 @@ class SharpService private constructor(private val context: Context) {
                 executorchFp16Sharp.preloadAndWarmup()
                 Log.d(TAG, "ExecuTorch FP16 preload done")
             }
-            effective == "executorch_int8" && BackendConfig.ENABLE_EXECUTORCH_INT8 && executorchInt8Sharp.isModelReady() -> {
-                Log.d(TAG, "Preloading ExecuTorch INT8 model...")
-                executorchInt8Sharp.preloadAndWarmup()
-                Log.d(TAG, "ExecuTorch INT8 preload done")
+            effective == "executorch_int8" && BackendConfig.ENABLE_EXECUTORCH_INT8 -> {
+                Log.d(TAG, "ExecuTorch INT8 backend selected – no explicit preload step")
             }
             effective == "onnx" && splitOnnxSharp.isModelReady() -> {
                 Log.d(TAG, "Preloading Split ONNX sessions (all 4 parts)...")
@@ -177,7 +175,7 @@ class SharpService private constructor(private val context: Context) {
         if (BackendConfig.ENABLE_NCNN && (ncnnSharp.isComponentModelReady() || ncnnSharp.isModelReady())) return true
         if (BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady()) return true
         if (BackendConfig.ENABLE_EXECUTORCH_FP16 && executorchFp16Sharp.isModelReady()) return true
-        if (BackendConfig.ENABLE_EXECUTORCH_INT8 && executorchInt8Sharp.isModelReady()) return true
+        if (BackendConfig.ENABLE_EXECUTORCH_INT8) return true
         if (BackendConfig.ENABLE_LITERT && litertSharp.isModelReady()) return true
         if (BackendConfig.ENABLE_NATIVE_PT && nativePtSharp.isModelReady()) return true
         return false
@@ -344,24 +342,17 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        // ExecuTorch INT8 backend (single model, no split)
+        // ExecuTorch INT8 backend
         if (effectiveBackend == "executorch_int8") {
             Log.d(TAG, "ExecuTorch INT8 backend selected in settings")
-            if (executorchInt8Sharp.isModelReady()) {
-                if (executorchInt8Sharp.initialize()) {
-                    isInitialized = true
-                    useExecutorchInt8 = true
-                    currentBackendId = "executorch_int8"
-                    Log.d(TAG, "ExecuTorch INT8 SHARP initialized successfully")
-                    return true
-                } else {
-                    Log.e(TAG, "ExecuTorch INT8 SHARP init failed")
-                    return false
-                }
+            if (executorchInt8Sharp.initialize()) {
+                isInitialized = true
+                useExecutorchInt8 = true
+                currentBackendId = "executorch_int8"
+                Log.d(TAG, "ExecuTorch INT8 SHARP initialized successfully")
+                return true
             } else {
-                val missing = executorchInt8Sharp.getMissingFiles()
-                Log.e(TAG, "ExecuTorch INT8 model not found, missing: $missing")
-                lastInitFailureMessage = "INT8 .pte model not found. Push sharp_int8.pte to ${executorchInt8Sharp.getModelsDirPath()}"
+                Log.e(TAG, "ExecuTorch INT8 SHARP init failed")
                 return false
             }
         }
@@ -936,7 +927,7 @@ class SharpService private constructor(private val context: Context) {
             useLiteRT -> litertSharp.release()
             useExecutorch -> executorchSharp.release()
             useExecutorchFp16 -> executorchFp16Sharp.release()
-            useExecutorchInt8 -> executorchInt8Sharp.release()
+            useExecutorchInt8 -> { /* ExecuTorch INT8 drop-in holds no long-lived native session to release */ }
             useOnnx -> onnxSharp.release()
             useSplitOnnx -> { /* Do not close preloaded sessions while inference may be running */ }
             useOnnxFp16 -> { /* FP16 sessions created/closed per-part during inference */ }

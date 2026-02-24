@@ -33,6 +33,8 @@ Typical end-to-end time for one room generation (single photo → 3D Gaussian ro
 
 Logs: `adb logcat -s ExecutorchInt8Sharp:D SharpService:D -v time` (ExecuTorch INT8), `ExecutorchFp16Sharp:D SharpService:D` (ExecuTorch FP16), `ExecutorchSharp:D SharpService:D` (ExecuTorch FP32), `SplitOnnxSharp:D SharpService:D` (Split ONNX FP32), `NativePtSharp:D SharpService:D` (Native .pt), `LiteRTSharp:D SharpService:D` (LiteRT), `SharpNCNN:V NcnnSharp:D SharpService:D -v time` (NCNN), `SplitOnnxFp16Sharp:D SharpService:D` (Split ONNX FP16), `OnnxInt8Sharp:D SharpService:D` (ONNX INT8 single), `TorchMobileSharp:D SharpService:D` (PyTorch Mobile).
 
+For details on the ExecuTorch INT8 backend, model files, and **testing steps** (export, push, build, install, run), see [android/docs/EXECUTORCH_INT8_SHARP.md](android/docs/EXECUTORCH_INT8_SHARP.md).
+
 ### Settings: PyTorch Mobile vs Native .pt
 
 In **Settings → Developer → Inference backend**, the last two options are:

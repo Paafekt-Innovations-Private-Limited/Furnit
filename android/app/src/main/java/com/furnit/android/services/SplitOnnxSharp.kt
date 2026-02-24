@@ -2,7 +2,9 @@ package com.furnit.android.services
 
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtException
 import ai.onnxruntime.OrtSession
+import ai.onnxruntime.providers.NNAPIFlags
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
@@ -17,6 +19,7 @@ import java.nio.FloatBuffer
 import java.nio.channels.FileChannel
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.EnumSet
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import kotlin.math.ln
@@ -132,6 +135,16 @@ class SplitOnnxSharp private constructor(private val context: Context) {
     // Reusable header buffer for tensor load (shape metadata: 4 + max 8*8 = 68 bytes)
     private val reusableHeaderBuffer: ByteBuffer by lazy {
         ByteBuffer.allocate(72).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+
+    // Reusable direct buffers for image preprocessing (1536x1536): avoid heap IntArray/FloatArray and GC.
+    private val imagePixelByteBuffer: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(INPUT_SIZE * INPUT_SIZE * 4).apply { order(ByteOrder.nativeOrder()) }
+    }
+    private val imageFloatBuffer: FloatBuffer by lazy {
+        ByteBuffer.allocateDirect(3 * INPUT_SIZE * INPUT_SIZE * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
     }
 
     // ---- Vectorized double-buffered PLY writer ----
@@ -347,7 +360,15 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             progress?.invoke("Loading $label...")
             val modelPath = File(modelsDir, modelFile).absolutePath
             Log.d(TAG, "preloadSessions: $label from $modelPath")
-            preloadedPart1Session = ortEnv.createSession(modelPath, buildSessionOptions(partNumber = 1))
+            val opts1 = buildSessionOptions(partNumber = 1)
+            try {
+                opts1.addNnapi(EnumSet.of(NNAPIFlags.USE_FP16, NNAPIFlags.CPU_DISABLED))
+                preloadedPart1Session = ortEnv.createSession(modelPath, opts1)
+                Log.d(TAG, "preloadSessions: $label using NNAPI")
+            } catch (e: OrtException) {
+                Log.w(TAG, "preloadSessions: $label NNAPI failed (${e.message}), using CPU")
+                preloadedPart1Session = ortEnv.createSession(modelPath, buildSessionOptions(partNumber = 1))
+            }
             Log.d(TAG, "preloadSessions: $label loaded in ${System.currentTimeMillis() - t0}ms. Memory: ${getMemoryInfo()}")
             progress?.invoke("$label ready")
         } catch (e: Exception) {
@@ -585,7 +606,15 @@ class SplitOnnxSharp private constructor(private val context: Context) {
             val sessionCreateStart = System.currentTimeMillis()
             progressCallback?.invoke(baseProgress + 0.02f, "Part $partNumber/4: Creating session...")
             Log.d(TAG, "Creating session for part $partNumber...")
-            session = ortEnv.createSession(modelPath, buildSessionOptions(partNumber))
+            val optsPart = buildSessionOptions(partNumber)
+            try {
+                optsPart.addNnapi(EnumSet.of(NNAPIFlags.USE_FP16, NNAPIFlags.CPU_DISABLED))
+                session = ortEnv.createSession(modelPath, optsPart)
+                Log.d(TAG, "Part $partNumber session using NNAPI")
+            } catch (e: OrtException) {
+                Log.w(TAG, "Part $partNumber NNAPI failed (${e.message}), using CPU")
+                session = ortEnv.createSession(modelPath, buildSessionOptions(partNumber))
+            }
             val sessionCreateTime = System.currentTimeMillis() - sessionCreateStart
             Log.d(TAG, "Session created for part $partNumber in ${sessionCreateTime}ms")
             progressCallback?.invoke(baseProgress + 0.05f, "Part $partNumber/4: Session ready (${sessionCreateTime/1000}s)")
@@ -707,12 +736,23 @@ class SplitOnnxSharp private constructor(private val context: Context) {
         try {
             val sessionCreateStart = System.currentTimeMillis()
             progressCallback?.invoke(baseProgress + 0.02f, "Part 4b: Creating session ($modelLabel)...")
-            session = ortEnv.createSession(modelPath, sessionOpts)
+            try {
+                sessionOpts.addNnapi(EnumSet.of(NNAPIFlags.USE_FP16, NNAPIFlags.CPU_DISABLED))
+                session = ortEnv.createSession(modelPath, sessionOpts)
+                Log.d(TAG, "Part 4b session using NNAPI")
+            } catch (e: OrtException) {
+                Log.w(TAG, "Part 4b NNAPI failed (${e.message}), using CPU")
+                session = ortEnv.createSession(modelPath, buildPart4bSessionOptions(modelLabel))
+            }
             val sessionCreateTime = System.currentTimeMillis() - sessionCreateStart
             Log.d(TAG, "Part 4b session created in ${sessionCreateTime}ms (arena=false, threads=2, memPattern=false, profiling=$ENABLE_PROFILING)")
 
-            val inputNames = session.inputNames.toList()
-            val outputNames = session.outputNames.toList()
+            val activeSession = session ?: run {
+                Log.e(TAG, "Part 4b: session is null after create")
+                return null
+            }
+            val inputNames = activeSession.inputNames.toList()
+            val outputNames = activeSession.outputNames.toList()
             Log.d(TAG, "Part 4b - Inputs: ${inputNames.size}, Outputs: $outputNames")
             Log.d(TAG, "Part 4b fused graph: ${inputNames.size} inputs -> ${outputNames.size} outputs (ALL_OPT fuses Conv+BN, MatMul+Add, etc.)")
 
@@ -735,14 +775,14 @@ class SplitOnnxSharp private constructor(private val context: Context) {
 
             progressCallback?.invoke(baseProgress + 0.10f, "Part 4b: Running decoder inference...")
             val inferStart = System.currentTimeMillis()
-            val outputs = session.run(inputTensors)
+            val outputs = activeSession.run(inputTensors)
             val inferTime = System.currentTimeMillis() - inferStart
             Log.d(TAG, "Part 4b inference: ${inferTime}ms")
 
             // Collect profiling data before closing session
             if (ENABLE_PROFILING) {
                 try {
-                    val profilePath = session.endProfiling()
+                    val profilePath = activeSession.endProfiling()
                     Log.d(TAG, "Part 4b ORT profile saved: $profilePath")
                     parseAndLogProfile(profilePath)
                 } catch (e: Exception) {
@@ -895,32 +935,32 @@ class SplitOnnxSharp private constructor(private val context: Context) {
      * Preprocess image to float buffer.
      *
      * Optimized: single pass over pixels extracts R, G, B simultaneously into CHW layout.
-     * Old approach: 3 separate passes = 3 × 2.36M iterations = 7.08M total.
-     * New approach: 1 pass = 2.36M iterations + 1 bulk FloatBuffer.put() memcpy.
-     * Then bulk-copy into FloatBuffer — like iOS Accelerate vImage batch conversion.
+     * Fast path: copyPixelsToBuffer into direct ByteBuffer, then single-pass ARGB -> CHW
+     * into reusable direct FloatBuffer. No heap IntArray/FloatArray, fewer allocations.
      */
     private fun preprocessImageToBuffer(bitmap: Bitmap): FloatBuffer {
         val width = bitmap.width
         val height = bitmap.height
         val pixelCount = width * height
         Log.d(TAG, "preprocessImageToBuffer: bitmap ${width}x${height} pixelCount=$pixelCount")
-        val pixels = IntArray(pixelCount)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        // Single-pass: extract R, G, B channels simultaneously into CHW layout
-        val channelFloats = FloatArray(3 * pixelCount)
+        imagePixelByteBuffer.clear()
+        bitmap.copyPixelsToBuffer(imagePixelByteBuffer)
+        imagePixelByteBuffer.rewind()
+        imageFloatBuffer.clear()
+        val rOffset = 0
+        val gOffset = pixelCount
+        val bOffset = pixelCount * 2
         val inv255 = 1f / 255f
         for (i in 0 until pixelCount) {
-            val pixel = pixels[i]
-            channelFloats[i] = ((pixel shr 16) and 0xFF) * inv255                  // R
-            channelFloats[pixelCount + i] = ((pixel shr 8) and 0xFF) * inv255      // G
-            channelFloats[2 * pixelCount + i] = (pixel and 0xFF) * inv255           // B
+            val argb = imagePixelByteBuffer.getInt()
+            imageFloatBuffer.put(rOffset + i, ((argb shr 16) and 0xFF) * inv255)
+            imageFloatBuffer.put(gOffset + i, ((argb shr 8) and 0xFF) * inv255)
+            imageFloatBuffer.put(bOffset + i, (argb and 0xFF) * inv255)
         }
-
-        // Bulk write — single memcpy instead of 7M individual put() calls
-        val floatBuffer = FloatBuffer.wrap(channelFloats)
-        Log.d(TAG, "preprocessImageToBuffer: output size=${channelFloats.size} first6=${channelFloats.take(6)}")
-        return floatBuffer
+        imageFloatBuffer.rewind()
+        imageFloatBuffer.limit(3 * pixelCount)
+        Log.d(TAG, "preprocessImageToBuffer: output size=${3 * pixelCount} (direct buffer)")
+        return imageFloatBuffer
     }
 
     /**
