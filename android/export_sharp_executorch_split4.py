@@ -4,6 +4,10 @@ Export SHARP as 4 split ExecuTorch .pte parts (mirroring LiteRT split).
 
 Backend: XNNPACK ONLY (CPU optimized, stable on Android). No Vulkan or hybrid.
 
+Ultralytics recommendations for Part4b latency: (1) Use torch.nn.functional.scaled_dot_product_attention
+(SDPA) in the model so ExecuTorch can lower to XNNPACK/Core ML kernels; (2) AOT memory planning (we use
+MemoryPlanningPass below); (3) XNNPACK quantizer for INT8 (see export_sharp_executorch_int8_split4.py).
+
 Same 4-part architecture as export_sharp_litert_split.py:
   Part 1: Single-Patch Encoder A (blocks 0-11)  ~582MB FP32
   Part 2: Single-Patch Encoder B (blocks 12-23)  ~577MB FP32

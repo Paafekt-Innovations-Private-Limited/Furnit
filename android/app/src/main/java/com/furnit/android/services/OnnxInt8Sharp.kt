@@ -3,6 +3,7 @@ package com.furnit.android.services
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import ai.onnxruntime.providers.NNAPIFlags
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
@@ -146,23 +147,32 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             ortEnvironment = OrtEnvironment.getEnvironment()
 
             val sessionOptions = OrtSession.SessionOptions().apply {
-                // Conservative settings for single full-model session:
-                // activations are FP32 regardless of INT8 weights, peak memory is several GB
-                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.NO_OPT)
-                setIntraOpNumThreads(2)
+                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                setIntraOpNumThreads(4)
                 setInterOpNumThreads(1)
-                setCPUArenaAllocator(false)
+                setCPUArenaAllocator(true)
                 setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-                setMemoryPatternOptimization(false)
+                setMemoryPatternOptimization(true)
                 try {
                     addConfigEntry("session.use_mmap", "1")
-                    addConfigEntry("session.disable_prepacking", "1")
                     addConfigEntry("session.use_env_allocators", "1")
                     addConfigEntry("session.inter_op.allow_spinning", "0")
                     addConfigEntry("session.enable_mem_reuse", "1")
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not set session config: ${e.message}")
                 }
+            }
+
+            var nnapiEnabled = false
+            try {
+                sessionOptions.addNnapi(EnumSet.of(
+                    NNAPIFlags.USE_FP16,
+                    NNAPIFlags.CPU_DISABLED
+                ))
+                nnapiEnabled = true
+                Log.d(TAG, "NNAPI execution provider added (USE_FP16, CPU_DISABLED)")
+            } catch (e: Exception) {
+                Log.w(TAG, "NNAPI not available, using CPU only: ${e.message}")
             }
 
             System.gc()
@@ -172,7 +182,7 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             ortSession = ortEnvironment?.createSession(modelPath, sessionOptions)
             val loadTime = System.currentTimeMillis() - loadStart
 
-            Log.d(TAG, "INT8 ONNX session created in ${loadTime}ms. Memory after load: ${getMemoryInfo()}")
+            Log.d(TAG, "INT8 ONNX session created in ${loadTime}ms (optLevel=ALL, arena=true, memPattern=true, threads=4, nnapi=$nnapiEnabled). Memory after load: ${getMemoryInfo()}")
             return@withContext true
 
         } catch (e: OutOfMemoryError) {
@@ -208,7 +218,10 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             progressCallback?.invoke(0.1f, "Preprocessing image (INT8)...")
 
             val scaledBitmap = SharpImagePreprocessor.resizeForSharp(bitmap)
-            val inputTensor = preprocessImage(env, scaledBitmap)
+            val preprocessStart = System.currentTimeMillis()
+            val inputTensor = preprocessImageFast(env, scaledBitmap)
+            val preprocessTime = System.currentTimeMillis() - preprocessStart
+            Log.d(TAG, "Preprocessing: ${preprocessTime}ms (${scaledBitmap.width}x${scaledBitmap.height})")
             scaledBitmap.recycle()
 
             if (isCancelled()) {
@@ -385,17 +398,27 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
         }
     }
 
-    private fun preprocessImage(env: OrtEnvironment, bitmap: Bitmap): OnnxTensor {
+    private fun preprocessImageFast(env: OrtEnvironment, bitmap: Bitmap): OnnxTensor {
         val width = bitmap.width
         val height = bitmap.height
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val pixelCount = width * height
 
-        val floatBuffer = FloatBuffer.allocate(3 * width * height)
-        for (pixel in pixels) { floatBuffer.put(((pixel shr 16) and 0xFF) / 255f) }
-        for (pixel in pixels) { floatBuffer.put(((pixel shr 8) and 0xFF) / 255f) }
-        for (pixel in pixels) { floatBuffer.put((pixel and 0xFF) / 255f) }
+        val pixelByteBuffer = ByteBuffer.allocateDirect(pixelCount * 4)
+        pixelByteBuffer.order(ByteOrder.nativeOrder())
+        bitmap.copyPixelsToBuffer(pixelByteBuffer)
+        pixelByteBuffer.rewind()
 
+        val floatBuffer = ByteBuffer.allocateDirect(3 * pixelCount * 4)
+            .order(ByteOrder.nativeOrder()).asFloatBuffer()
+        val rOffset = 0
+        val gOffset = pixelCount
+        val bOffset = pixelCount * 2
+        for (i in 0 until pixelCount) {
+            val argb = pixelByteBuffer.getInt()
+            floatBuffer.put(rOffset + i, ((argb shr 16) and 0xFF) / 255f)
+            floatBuffer.put(gOffset + i, ((argb shr 8) and 0xFF) / 255f)
+            floatBuffer.put(bOffset + i, (argb and 0xFF) / 255f)
+        }
         floatBuffer.rewind()
         return OnnxTensor.createTensor(env, floatBuffer, longArrayOf(1, 3, height.toLong(), width.toLong()))
     }

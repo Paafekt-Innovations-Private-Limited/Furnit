@@ -1,0 +1,28 @@
+To optimize your ViT-based model on Android using ExecuTorch, focus on memory planning and hardware-specific kernels.
+
+1. Python: Export & Model Optimization
+For ViT decoders, standard Attention blocks often trigger slow fallback kernels.
+- Fusing Attention: Ensure you use torch.nn.functional.scaled_dot_product_attention (SDPA) within your model. ExecuTorch can lower this to optimized XNNPACK or Core ML kernels.
+- Static Memory Planning: Use Ahead-of-Time (AOT) memory planning during export to avoid dynamic allocation overhead, which is critical for large ViT decoders.
+- Quantization: Use XNNPACK specific quantizer for INT8 to ensure the operators remain on the fast path.
+
+Python export snippet (Ultralytics):
+  import torch
+  from executorch.exir import to_edge
+  from executorch.exir.passes import MemoryPlanningPass
+
+  # 1. Use SDPA in your model forward pass for fused attention
+  # x = torch.nn.functional.scaled_dot_product_attention(q, k, v)
+
+  # 2. Export with XNNPACK Backend
+  edge_model = to_edge(torch.export.export(model, (example_input,)))
+  edge_model = edge_model.to_backend("XNNPACK")
+
+  # 3. Apply Memory Planning to reduce latency
+  edge_model = edge_model.run_decompositions().run_pass(MemoryPlanningPass())
+  with open("part4b.pte", "wb") as f:
+      f.write(edge_model.to_executorch().buffer)
+
+2. Android/Kotlin: Runtime Optimization
+The ExecuTorch integration highlights that runtime configuration is key to CPU performance.
+- Thread count: Use an appropriate number of threads for the ExecuTorch runtime (e.g. via RuntimeConfiguration or delegate options) so Part4b can use available cores without thrashing.
