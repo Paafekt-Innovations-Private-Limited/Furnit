@@ -37,6 +37,10 @@ CURRENT_PROBLEM_QUESTION = """We run a ViT-based 3D reconstruction model (SHARP)
 
 # Room rendering looks bluish: likely color order or SH DC interpretation.
 BLUISH_QUESTION = """We have a 3D Gaussian splatting model (SHARP, ViT-based) running on Android with ExecuTorch. The model outputs Gaussian parameters including spherical harmonic DC coefficients for color (f_dc_0, f_dc_1, f_dc_2). We write PLY with (params - 0.5) / SH_C0 for these three. Input preprocessing uses RGB order (R=argb>>16, G=argb>>8, B=argb). The rendered room looks globally bluish. Could this be: (1) BGR vs RGB in input or in the model's output channel order? (2) Wrong interpretation of SH DC (sign, scale, or channel order in the 14-param Gaussian layout)? (3) Color space (sRGB vs linear) mismatch between training and our PLY? Please suggest a concrete fix (e.g. swap channels, or correct formula for f_dc) for deployment. We are not using YOLO; this is Gaussian splatting / 3D reconstruction."""
+
+# Progress bar: keep percentage ticking during long inference so user sees progress.
+PROGRESS_BAR_QUESTION = """We have an Android app that runs a long (~2 minute) ML inference pipeline (ExecuTorch, ViT-based 3D room generation). The progress bar currently jumps from 20% to 100% at the end because we only report at start and completion. We want the percentage to tick smoothly so the user feels progress is happening. The pipeline has distinct phases: encoder patches (~45s), image encoder (~1.5s), decoder chunks (~3s), one long blocking forward (~80s), then file write (~10s). We can report progress at the end of each patch and phase, but the 80s forward is a single blocking call with no mid-forward callbacks. What are best practices to keep the progress bar moving? Options we're considering: (1) Run the blocking call in a background thread and on a timer (e.g. every 2s) update progress from 55% to 90% based on elapsed time. (2) Show an indeterminate spinner for the long phase. (3) Subdivide the work so we have more granular callbacks. We want concrete UX advice: should we use time-based estimated progress during the blocking call, and what copy/messaging keeps users engaged (e.g. "This may take a minute", "Adding the finishing touches")? Not YOLO; this is 3D reconstruction / Gaussian splatting."""
+
 DEFAULT_QUESTION = CURRENT_PROBLEM_QUESTION
 
 # Other canned questions (use -q with paste or a file).
@@ -287,6 +291,11 @@ def main() -> int:
         help="Use canned question for bluish room (SH DC / BGR vs RGB / color space)",
     )
     parser.add_argument(
+        "--progress-bar",
+        action="store_true",
+        help="Use canned question for progress bar / percentage ticking during long inference",
+    )
+    parser.add_argument(
         "--headless",
         action="store_true",
         help="Run browser headless",
@@ -303,7 +312,11 @@ def main() -> int:
         help="Do not save response to ultralytics_response.txt",
     )
     args = parser.parse_args()
-    question = BLUISH_QUESTION if args.bluish else args.question
+    question = (
+        PROGRESS_BAR_QUESTION if args.progress_bar
+        else BLUISH_QUESTION if args.bluish
+        else args.question
+    )
     save_path = None if args.no_save else RESPONSE_FILE
     response = ask_ultralytics_ai(
         question=question,
