@@ -61,6 +61,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
         private const val PARAMS_PER_GAUSSIAN = 14
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
+        private const val PLY_BATCH_SIZE = 512
 
         private const val LOGIT_LUT_SIZE = 1024
         private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
@@ -148,6 +149,13 @@ class ExecutorchSharp private constructor(private val context: Context) {
     /** ONNX-style: temp dir for intermediate tensors between parts (one part at a time, unload between). */
     private val executorchTempDir: File by lazy {
         File(context.cacheDir, "executorch_sharp_temp").also { it.mkdirs() }
+    }
+
+    private val zeroSHBuffer: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyBatch: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
     }
 
     /** Save FloatArray + shape to file (same format as SplitOnnxSharp: 4 bytes ndim, 8*ndim shape, then floats). */
@@ -633,6 +641,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
         progressCallback: ((Float, String) -> Unit)?
     ): StreamingResult? {
 
+        /** When [blendCount] is non-null, accumulate into [output] and increment [blendCount] per spatial pixel (ONNX-style blend in overlap). Otherwise overwrite. */
         fun mergeOnePatchInto(
             output: FloatArray,
             outSize: Int,
@@ -640,7 +649,8 @@ class ExecutorchSharp private constructor(private val context: Context) {
             gridI: Int,
             gridJ: Int,
             gridSize: Int,
-            padding: Int
+            padding: Int,
+            blendCount: IntArray? = null
         ) {
             val patchH = SPATIAL_SIZE
             val patchW = SPATIAL_SIZE
@@ -669,14 +679,34 @@ class ExecutorchSharp private constructor(private val context: Context) {
 
             val patchHW = patchH * patchW
             val outHW = outSize * outSize
+            val accumulating = blendCount != null
+
             for (c in 0 until C) {
                 val srcBase = c * patchHW
                 val dstBase = c * outHW
                 for (dy in 0 until copyH) {
-                    val srcOff = srcBase + (srcY0 + dy) * patchW + srcX0
-                    val dstOff = dstBase + (outY + dy) * outSize + outX
-                    System.arraycopy(patch, srcOff, output, dstOff, copyW)
+                    val outRow = outY + dy
+                    for (dx in 0 until copyW) {
+                        val srcIdx = srcBase + (srcY0 + dy) * patchW + (srcX0 + dx)
+                        val dstIdx = dstBase + outRow * outSize + (outX + dx)
+                        if (accumulating) {
+                            output[dstIdx] += patch[srcIdx]
+                            if (c == 0) blendCount!![outRow * outSize + (outX + dx)]++
+                        } else {
+                            output[dstIdx] = patch[srcIdx]
+                        }
+                    }
                 }
+            }
+        }
+
+        /** Normalize merged feature maps by per-spatial contribution count (blend match to ONNX). */
+        fun normalizeMergedByCount(output: FloatArray, outSize: Int, count: IntArray) {
+            val outHW = outSize * outSize
+            for (idx in 0 until outHW) {
+                val n = maxOf(1, count[idx])
+                val invN = 1f / n
+                for (c in 0 until FEATURE_DIM) output[c * outHW + idx] *= invN
             }
         }
 
@@ -728,6 +758,8 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val x0Feat  = FloatArray(FEATURE_DIM * mergedSize1x * mergedSize1x) // Part2 features 1x
             val x1Feat  = FloatArray(FEATURE_DIM * mergedSize05x * mergedSize05x) // Part2 features 0.5x
             var x2Feat: FloatArray? = null // Part2 features 0.25x
+            val count1x = IntArray(mergedSize1x * mergedSize1x)   // blend count for ONNX-style merge
+            val count05x = IntArray(mergedSize05x * mergedSize05x)
 
             // -------------------------
             // Part 1 + Part 2: Load both, stream per-patch (no allTokens ~78MB)
@@ -778,12 +810,12 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     val block5 = out1[1].toTensor().getDataAsFloatArray()
 
                     reshapeTokensToSpatialInto(block5, tempSpatial)
-                    mergeOnePatchInto(output = latent0, outSize = mergedSize1x, patch = tempSpatial, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X)
+                    mergeOnePatchInto(output = latent0, outSize = mergedSize1x, patch = tempSpatial, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X, blendCount = count1x)
                     reshapeTokensToSpatialInto(tokens, tempSpatial)
-                    mergeOnePatchInto(output = latent1, outSize = mergedSize1x, patch = tempSpatial, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X)
+                    mergeOnePatchInto(output = latent1, outSize = mergedSize1x, patch = tempSpatial, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X, blendCount = count1x)
 
                     val feat = module2.forward(EValue.from(Tensor.fromBlob(tokens, longArrayOf(1, 577, 1024))))[0].toTensor().getDataAsFloatArray()
-                    mergeOnePatchInto(output = x0Feat, outSize = mergedSize1x, patch = feat, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X)
+                    mergeOnePatchInto(output = x0Feat, outSize = mergedSize1x, patch = feat, gridI = j, gridJ = i, gridSize = GRID_1X, padding = PADDING_1X, blendCount = count1x)
 
                     patchCount++
                     if (patchCount % 5 == 0) {
@@ -791,6 +823,9 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     }
                 }
             }
+            normalizeMergedByCount(latent0, mergedSize1x, count1x)
+            normalizeMergedByCount(latent1, mergedSize1x, count1x)
+            normalizeMergedByCount(x0Feat, mergedSize1x, count1x)
 
             // 0.5x patches (3x3): Part1->tokens, Part2(tokens)->feat, merge x1Feat
             for (i in 0 until GRID_05X) {
@@ -801,10 +836,11 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     val inputTensor = Tensor.fromBlob(patchData, longArrayOf(1, 3, PATCH_SIZE.toLong(), PATCH_SIZE.toLong()))
                     val tokens = module1.forward(EValue.from(inputTensor))[0].toTensor().getDataAsFloatArray()
                     val feat = module2.forward(EValue.from(Tensor.fromBlob(tokens, longArrayOf(1, 577, 1024))))[0].toTensor().getDataAsFloatArray()
-                    mergeOnePatchInto(output = x1Feat, outSize = mergedSize05x, patch = feat, gridI = j, gridJ = i, gridSize = GRID_05X, padding = PADDING_05X)
+                    mergeOnePatchInto(output = x1Feat, outSize = mergedSize05x, patch = feat, gridI = j, gridJ = i, gridSize = GRID_05X, padding = PADDING_05X, blendCount = count05x)
                     patchCount++
                 }
             }
+            normalizeMergedByCount(x1Feat, mergedSize05x, count05x)
             halfBitmap.recycle()
 
             // 0.25x patch: Part1->tokens, Part2(tokens)->feat, x2Feat=feat
@@ -1348,9 +1384,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch; batchBuffer.clear()
             val scaleBoost = 1.3f
             val minScale = 0.001f
             val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
@@ -1359,7 +1393,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             var processed = 0
 
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
 
                 for (j in 0 until currentBatch) {
                     val offset = (processed + j) * PARAMS_PER_GAUSSIAN
@@ -1386,7 +1420,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     batchBuffer.putFloat((g - 0.5f) / SH_C0)
                     batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
-                    repeat(45) { batchBuffer.putFloat(0f) }
+                    zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                     val rawOpacity = params.get(offset + 3).coerceIn(0f, 1f)
                     val lutIndex = (rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)
@@ -1473,9 +1507,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch; batchBuffer.clear()
             val scaleBoost = 1.3f
             val minScale = 0.001f
             val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
@@ -1484,7 +1516,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             var processed = 0
 
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
 
                 for (j in 0 until currentBatch) {
                     val offset = (processed + j) * PARAMS_PER_GAUSSIAN
@@ -1515,7 +1547,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                     batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
                     // Higher order SH (45 zeros)
-                    repeat(45) { batchBuffer.putFloat(0f) }
+                    zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                     // Opacity (at offset 10) -> logit via LUT
                     val rawOpacity = params[offset + 10].coerceIn(0f, 1f)

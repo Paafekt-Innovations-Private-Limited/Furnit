@@ -232,8 +232,12 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         val onnxRadioId = View.generateViewId()
+        val onnxFp16RadioId = View.generateViewId()
+        val onnxInt8RadioId = View.generateViewId()
         val ncnnRadioId = View.generateViewId()
         val executorchRadioId = View.generateViewId()
+        val executorchFp16RadioId = View.generateViewId()
+        val executorchInt8RadioId = View.generateViewId()
         val litertRadioId = View.generateViewId()
 
         val onnxRadio = RadioButton(this).apply {
@@ -242,10 +246,48 @@ class SettingsActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#333333"))
         }
         val onnxRadioDesc = TextView(this).apply {
-            text = "Standard inference with ONNX Runtime"
+            text = "Standard inference with ONNX Runtime (FP32)"
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
             setPadding(48, 0, 0, 8)
+        }
+
+        val onnxFp16Radio = RadioButton(this).apply {
+            id = onnxFp16RadioId
+            text = if (BackendConfig.ENABLE_ONNX_FP16) "ONNX FP16" else "ONNX FP16 (disabled)"
+            setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_ONNX_FP16
+            alpha = if (BackendConfig.ENABLE_ONNX_FP16) 1.0f else 0.5f
+        }
+        val onnxFp16RadioDesc = TextView(this).apply {
+            text = if (BackendConfig.ENABLE_ONNX_FP16) {
+                "FP16 split (50% smaller, faster on ARM)"
+            } else {
+                "Disabled in this build"
+            }
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_ONNX_FP16) 1.0f else 0.5f
+        }
+
+        val onnxInt8Radio = RadioButton(this).apply {
+            id = onnxInt8RadioId
+            text = if (BackendConfig.ENABLE_ONNX_INT8) "ONNX INT8" else "ONNX INT8 (disabled)"
+            setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_ONNX_INT8
+            alpha = if (BackendConfig.ENABLE_ONNX_INT8) 1.0f else 0.5f
+        }
+        val onnxInt8RadioDesc = TextView(this).apply {
+            text = if (BackendConfig.ENABLE_ONNX_INT8) {
+                "Single INT8 model (~700 MB, experimental quality)"
+            } else {
+                "Disabled in this build"
+            }
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_ONNX_INT8) 1.0f else 0.5f
         }
 
         val ncnnRadio = RadioButton(this).apply {
@@ -276,7 +318,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         val executorchRadioDesc = TextView(this).apply {
             text = if (BackendConfig.ENABLE_EXECUTORCH) {
-                "PyTorch on-device inference (camera classification)"
+                "PyTorch on-device inference (ExecuTorch)"
             } else {
                 "Disabled in this build (wrappers kept, ONNX only)"
             }
@@ -284,6 +326,44 @@ class SettingsActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#666666"))
             setPadding(48, 0, 0, 8)
             alpha = if (BackendConfig.ENABLE_EXECUTORCH) 1.0f else 0.5f
+        }
+
+        val executorchFp16Radio = RadioButton(this).apply {
+            id = executorchFp16RadioId
+            text = if (BackendConfig.ENABLE_EXECUTORCH_FP16) "ExecuTorch FP16" else "ExecuTorch FP16 (disabled)"
+            setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_EXECUTORCH_FP16
+            alpha = if (BackendConfig.ENABLE_EXECUTORCH_FP16) 1.0f else 0.5f
+        }
+        val executorchFp16RadioDesc = TextView(this).apply {
+            text = if (BackendConfig.ENABLE_EXECUTORCH_FP16) {
+                "FP16 split (50% smaller, XNNPACK)"
+            } else {
+                "Disabled in this build"
+            }
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_EXECUTORCH_FP16) 1.0f else 0.5f
+        }
+
+        val executorchInt8Radio = RadioButton(this).apply {
+            id = executorchInt8RadioId
+            text = if (BackendConfig.ENABLE_EXECUTORCH_INT8) "ExecuTorch INT8" else "ExecuTorch INT8 (disabled)"
+            setTextColor(Color.parseColor("#333333"))
+            isEnabled = BackendConfig.ENABLE_EXECUTORCH_INT8
+            alpha = if (BackendConfig.ENABLE_EXECUTORCH_INT8) 1.0f else 0.5f
+        }
+        val executorchInt8RadioDesc = TextView(this).apply {
+            text = if (BackendConfig.ENABLE_EXECUTORCH_INT8) {
+                "INT8 quantized, single model (~600MB, XNNPACK)"
+            } else {
+                "Disabled in this build"
+            }
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+            setPadding(48, 0, 0, 8)
+            alpha = if (BackendConfig.ENABLE_EXECUTORCH_INT8) 1.0f else 0.5f
         }
 
         val litertRadio = RadioButton(this).apply {
@@ -307,10 +387,18 @@ class SettingsActivity : AppCompatActivity() {
 
         backendRadioGroup.addView(onnxRadio)
         backendRadioGroup.addView(onnxRadioDesc)
+        backendRadioGroup.addView(onnxFp16Radio)
+        backendRadioGroup.addView(onnxFp16RadioDesc)
+        backendRadioGroup.addView(onnxInt8Radio)
+        backendRadioGroup.addView(onnxInt8RadioDesc)
         backendRadioGroup.addView(ncnnRadio)
         backendRadioGroup.addView(ncnnRadioDesc)
         backendRadioGroup.addView(executorchRadio)
         backendRadioGroup.addView(executorchRadioDesc)
+        backendRadioGroup.addView(executorchFp16Radio)
+        backendRadioGroup.addView(executorchFp16RadioDesc)
+        backendRadioGroup.addView(executorchInt8Radio)
+        backendRadioGroup.addView(executorchInt8RadioDesc)
         backendRadioGroup.addView(litertRadio)
         backendRadioGroup.addView(litertRadioDesc)
 
@@ -382,8 +470,12 @@ class SettingsActivity : AppCompatActivity() {
 
         when (currentBackend) {
             "onnx" -> backendRadioGroup.check(onnxRadioId)
+            "onnx_fp16" -> backendRadioGroup.check(onnxFp16RadioId)
+            "onnx_int8" -> backendRadioGroup.check(onnxInt8RadioId)
             "ncnn" -> backendRadioGroup.check(ncnnRadioId)
             "executorch" -> backendRadioGroup.check(executorchRadioId)
+            "executorch_fp16" -> backendRadioGroup.check(executorchFp16RadioId)
+            "executorch_int8" -> backendRadioGroup.check(executorchInt8RadioId)
             "litert" -> backendRadioGroup.check(litertRadioId)
             "python" -> backendRadioGroup.check(pythonRadioId)
             "torch_mobile" -> backendRadioGroup.check(torchMobileRadioId)
@@ -394,8 +486,12 @@ class SettingsActivity : AppCompatActivity() {
         backendRadioGroup.setOnCheckedChangeListener { _, checkedId ->
             val backend = when (checkedId) {
                 onnxRadioId -> "onnx"
+                onnxFp16RadioId -> "onnx_fp16"
+                onnxInt8RadioId -> "onnx_int8"
                 ncnnRadioId -> "ncnn"
                 executorchRadioId -> "executorch"
+                executorchFp16RadioId -> "executorch_fp16"
+                executorchInt8RadioId -> "executorch_int8"
                 litertRadioId -> "litert"
                 pythonRadioId -> "python"
                 torchMobileRadioId -> "torch_mobile"

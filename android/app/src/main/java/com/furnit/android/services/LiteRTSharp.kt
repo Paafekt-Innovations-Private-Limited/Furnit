@@ -59,6 +59,7 @@ class LiteRTSharp private constructor(private val context: Context) {
         private const val PARAMS_PER_GAUSSIAN = 14
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
+        private const val PLY_BATCH_SIZE = 512
 
         // 4-part split model filenames
         private const val NUM_SPLIT_PARTS = 4
@@ -68,6 +69,10 @@ class LiteRTSharp private constructor(private val context: Context) {
             "sharp_part3_fp16.tflite",
             "sharp_part4_fp16.tflite",
         )
+
+        // Chunked Part 4: split at ViT/decoder boundary to avoid OOM
+        private const val PART4A_FILENAME = "sharp_part4a_fp16.tflite"
+        private const val PART4B_FILENAME = "sharp_part4b_fp16.tflite"
 
         // Sliding pyramid patch configuration
         private const val PATCH_SIZE = 384
@@ -165,6 +170,12 @@ class LiteRTSharp private constructor(private val context: Context) {
     // which may not run promptly, causing native memory pressure and LMK kills.
     private val reusableSaveChunk: ByteBuffer by lazy {
         ByteBuffer.allocateDirect(4 * 1024 * 1024).apply { order(ByteOrder.nativeOrder()) }
+    }
+    private val zeroSHBuffer: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyBatch: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
     }
 
     data class StreamingResult(
@@ -823,7 +834,6 @@ class LiteRTSharp private constructor(private val context: Context) {
                 Log.w(TAG, "Patch count mismatch: processed=$patchIndex expected=$totalPatches")
             }
             interpreter.close()
-            // Pyramid buffers released above; GC can now reclaim ~9MB of direct memory
             System.gc()
             val part1Time = System.currentTimeMillis() - part1Start
             Log.d(TAG, "Part 1 done: $totalPatches patches in ${part1Time}ms (${part1Time / totalPatches}ms/patch)")
@@ -927,7 +937,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             interpreter = createInterpreter(part3File, numThreadsOverride = 4, useXnnpack = true)
             val imgTokensShape = interpreter.getOutputTensor(0).shape()
             val imgTokensSize = imgTokensShape.fold(1) { acc, d -> acc * d }
-            val imgTokensBuf = ByteBuffer.allocateDirect(imgTokensSize * 4).apply { order(ByteOrder.nativeOrder()) }
+            var imgTokensBuf: ByteBuffer? = ByteBuffer.allocateDirect(imgTokensSize * 4).apply { order(ByteOrder.nativeOrder()) }
 
             inputBuffer!!.rewind()
             val part3Start = System.currentTimeMillis()
@@ -935,7 +945,8 @@ class LiteRTSharp private constructor(private val context: Context) {
             val part3Time = System.currentTimeMillis() - part3Start
             Log.d(TAG, "Part 3 done in ${part3Time}ms")
 
-            saveTensorToFile(imgTokensBuf, imgTokensShape, File(tempDir, "image_tokens.tensor"))
+            saveTensorToFile(imgTokensBuf!!, imgTokensShape, File(tempDir, "image_tokens.tensor"))
+            imgTokensBuf = null
             interpreter.close()
 
             // Save inputBuffer to disk so we can release the 27MB DirectByteBuffer BEFORE
@@ -948,91 +959,174 @@ class LiteRTSharp private constructor(private val context: Context) {
 
             System.gc()
 
-            // Step 7: Part 4 — Image Encoder B + Full Decoder + Gaussians
-            // CRITICAL: Part 4 model (386MB) causes large memory spike during
-            // graph compilation. We MUST:
-            //   1. Release ALL unnecessary buffers (inputBuffer, merge buffers) — done above
-            //   2. Create interpreter with XNNPACK OFF (avoid the compile-time spike)
-            //   3. THEN load input tensors from disk
-            // This avoids the LMK kill that was happening at interpreter creation time.
-            progressCallback?.invoke(0.60f, "Part 4: Loading decoder...")
-
-            // Aggressive GC: reclaim DirectByteBuffers from merge phase + inputBuffer
+            // Step 7: Part 4 — chunked into 4a (ViT) + 4b (Decoder) if available
             System.gc()
             Thread.sleep(200)
             System.gc()
-            Log.d(TAG, "Memory before Part 4 interpreter: ${getMemoryInfo()}")
+            Log.d(TAG, "Memory before Part 4: ${getMemoryInfo()}")
 
-            val part4File = findFile(SPLIT_PART_FILENAMES[3])!!
-            Log.d(TAG, "Loading Part 4: ${part4File.name} (${part4File.length() / 1024 / 1024}MB)")
-
-            // Use 2 threads + XNNPACK OFF for Part 4 interpreter creation.
-            // XNNPACK graph compilation for a 386MB model allocates ~800MB working memory,
-            // which causes LMK kill. Without XNNPACK, TFLite uses its built-in CPU kernels
-            // which have a much smaller compilation footprint. Inference is ~20% slower but
-            // actually completes instead of being killed.
-            interpreter = createInterpreter(part4File, numThreadsOverride = 2, useXnnpack = false)
-            Log.d(TAG, "Part 4 interpreter created. Memory: ${getMemoryInfo()}")
-
-            val packedShape = interpreter.getOutputTensor(0).shape()
-            val gaussianCount = packedShape[1]
-            val packedSize = packedShape.fold(1) { acc, d -> acc * d }
-            val packedBuf = ByteBuffer.allocateDirect(packedSize * 4).apply { order(ByteOrder.nativeOrder()) }
-
-            // NOW load Part 4 inputs — interpreter is stable, load tensors from disk.
-            // Delete tensor files immediately after loading to free page cache.
-            progressCallback?.invoke(0.62f, "Part 4: Loading tensors...")
-
-            // Reload inputBuffer from disk (was saved before Part 4 interpreter creation)
-            val inputImageForPart4 = loadTensorFromFile(inputImageFile)
-            inputImageFile.delete()
-
-            val imageTokensFile = File(tempDir, "image_tokens.tensor")
-            val imageTokensTensorBuf = loadTensorFromFile(imageTokensFile)
-            imageTokensFile.delete()
-
-            val latent0File = File(tempDir, "latent0.tensor")
-            val latent0TensorBuf = loadTensorFromFile(latent0File)
-            latent0File.delete()
-
-            val latent1File = File(tempDir, "latent1.tensor")
-            val latent1TensorBuf = loadTensorFromFile(latent1File)
-            latent1File.delete()
-
-            val x0FeatFile = File(tempDir, "x0_feat.tensor")
-            val x0FeatTensorBuf = loadTensorFromFile(x0FeatFile)
-            x0FeatFile.delete()
-
-            val x1FeatFile = File(tempDir, "x1_feat.tensor")
-            val x1FeatTensorBuf = loadTensorFromFile(x1FeatFile)
-            x1FeatFile.delete()
-
-            val x2FeatFile = File(tempDir, "x2_feat.tensor")
-            val x2FeatTensorBuf = loadTensorFromFile(x2FeatFile)
-            x2FeatFile.delete()
-
-            Log.d(TAG, "Part 4 inputs loaded. Memory: ${getMemoryInfo()}")
-
-            val part4Inputs = buildPart4Inputs(
-                interpreter = interpreter,
-                image = inputImageForPart4,
-                imageTokens = imageTokensTensorBuf,
-                latent0 = latent0TensorBuf,
-                latent1 = latent1TensorBuf,
-                x0Feat = x0FeatTensorBuf,
-                x1Feat = x1FeatTensorBuf,
-                x2Feat = x2FeatTensorBuf
-            )
-            val part4OutMap = HashMap<Int, Any>()
-            part4OutMap[0] = packedBuf
-
+            val chunkedPart4Available = findFile(PART4A_FILENAME) != null && findFile(PART4B_FILENAME) != null
             val part4Start = System.currentTimeMillis()
-            interpreter.runForMultipleInputsOutputs(part4Inputs, part4OutMap)
-            val part4Time = System.currentTimeMillis() - part4Start
-            Log.d(TAG, "Part 4 done in ${part4Time}ms. Gaussians: $gaussianCount")
+            val packedBuf: ByteBuffer
+            val gaussianCount: Int
 
-            interpreter.close()
-            System.gc()
+            if (chunkedPart4Available) {
+                // --- Part 4a: ViT blocks 12-23 + norm ---
+                progressCallback?.invoke(0.60f, "Part 4a: ViT blocks...")
+                val part4aFile = findFile(PART4A_FILENAME)!!
+                Log.d(TAG, "Loading Part 4a: ${part4aFile.name} (${part4aFile.length() / 1024 / 1024}MB)")
+
+                interpreter = createInterpreter(part4aFile, numThreadsOverride = 4, useXnnpack = true)
+                Log.d(TAG, "Part 4a interpreter created. Memory: ${getMemoryInfo()}")
+
+                var imageTokensForP4a: ByteBuffer? = loadTensorFromFile(File(tempDir, "image_tokens.tensor"))
+                imageTokensForP4a!!.rewind()
+
+                val tokensNormShape = interpreter.getOutputTensor(0).shape()
+                val tokensNormSize = tokensNormShape.fold(1) { acc, d -> acc * d }
+                var tokensNormBuf: ByteBuffer? = ByteBuffer.allocateDirect(tokensNormSize * 4).apply { order(ByteOrder.nativeOrder()) }
+
+                val part4aStart = System.currentTimeMillis()
+                interpreter.run(imageTokensForP4a, tokensNormBuf)
+                val part4aTime = System.currentTimeMillis() - part4aStart
+                Log.d(TAG, "Part 4a done in ${part4aTime}ms. Memory: ${getMemoryInfo()}")
+
+                interpreter.close()
+                imageTokensForP4a = null
+                File(tempDir, "image_tokens.tensor").delete()
+
+                val tokensNormFile = File(tempDir, "tokens_after_norm.tensor")
+                saveTensorToFile(tokensNormBuf!!, tokensNormShape, tokensNormFile)
+                tokensNormBuf = null
+
+                System.gc()
+                Log.d(TAG, "Part 4a buffers released. Memory: ${getMemoryInfo()}")
+
+                // --- Part 4b: Decoder + Gaussians ---
+                progressCallback?.invoke(0.68f, "Part 4b: Decoder + Gaussians...")
+                val part4bFile = findFile(PART4B_FILENAME)!!
+                Log.d(TAG, "Loading Part 4b: ${part4bFile.name} (${part4bFile.length() / 1024 / 1024}MB)")
+
+                interpreter = createInterpreter(part4bFile, numThreadsOverride = 1, useXnnpack = true)
+                Log.d(TAG, "Part 4b interpreter created. Memory: ${getMemoryInfo()}")
+
+                val p4bPackedShape = interpreter.getOutputTensor(0).shape()
+                gaussianCount = p4bPackedShape[1]
+                val packedSize = p4bPackedShape.fold(1) { acc, d -> acc * d }
+                packedBuf = ByteBuffer.allocateDirect(packedSize * 4).apply { order(ByteOrder.nativeOrder()) }
+
+                progressCallback?.invoke(0.70f, "Part 4b: Loading tensors...")
+
+                var tokensNormForP4b: ByteBuffer? = loadTensorFromFile(tokensNormFile)
+                tokensNormFile.delete()
+
+                var inputImageForPart4: ByteBuffer? = loadTensorFromFile(inputImageFile)
+                inputImageFile.delete()
+
+                var latent0TensorBuf: ByteBuffer? = loadTensorFromFile(File(tempDir, "latent0.tensor"))
+                File(tempDir, "latent0.tensor").delete()
+                var latent1TensorBuf: ByteBuffer? = loadTensorFromFile(File(tempDir, "latent1.tensor"))
+                File(tempDir, "latent1.tensor").delete()
+                var x0FeatTensorBuf: ByteBuffer? = loadTensorFromFile(File(tempDir, "x0_feat.tensor"))
+                File(tempDir, "x0_feat.tensor").delete()
+                var x1FeatTensorBuf: ByteBuffer? = loadTensorFromFile(File(tempDir, "x1_feat.tensor"))
+                File(tempDir, "x1_feat.tensor").delete()
+                var x2FeatTensorBuf: ByteBuffer? = loadTensorFromFile(File(tempDir, "x2_feat.tensor"))
+                File(tempDir, "x2_feat.tensor").delete()
+
+                Log.d(TAG, "Part 4b inputs loaded (~170MB). Memory: ${getMemoryInfo()}")
+
+                var part4bInputs: Array<Any>? = buildPart4bInputs(
+                    interpreter = interpreter,
+                    tokensAfterNorm = tokensNormForP4b!!,
+                    image = inputImageForPart4!!,
+                    latent0 = latent0TensorBuf!!,
+                    latent1 = latent1TensorBuf!!,
+                    x0Feat = x0FeatTensorBuf!!,
+                    x1Feat = x1FeatTensorBuf!!,
+                    x2Feat = x2FeatTensorBuf!!
+                )
+
+                val part4bOutMap = HashMap<Int, Any>()
+                part4bOutMap[0] = packedBuf
+                Log.d(TAG, "Part 4b ready to run. Memory: ${getMemoryInfo()}")
+
+                val part4bStart = System.currentTimeMillis()
+                interpreter.runForMultipleInputsOutputs(part4bInputs!!, part4bOutMap)
+                val part4bTime = System.currentTimeMillis() - part4bStart
+                Log.d(TAG, "Part 4b done in ${part4bTime}ms. Gaussians: $gaussianCount. Memory: ${getMemoryInfo()}")
+
+                // Release ~170MB of input DirectByteBuffers immediately
+                interpreter.close()
+                part4bInputs = null
+                tokensNormForP4b = null
+                inputImageForPart4 = null
+                latent0TensorBuf = null
+                latent1TensorBuf = null
+                x0FeatTensorBuf = null
+                x1FeatTensorBuf = null
+                x2FeatTensorBuf = null
+                System.gc()
+                Log.d(TAG, "Part 4b cleanup done. Memory: ${getMemoryInfo()}")
+
+                Log.d(TAG, "Part 4 (chunked) total: P4a=${part4aTime}ms P4b=${part4bTime}ms")
+            } else {
+                // Fallback: original single Part 4 (may OOM on some devices)
+                progressCallback?.invoke(0.60f, "Part 4: Loading decoder...")
+
+                val part4File = findFile(SPLIT_PART_FILENAMES[3])!!
+                Log.d(TAG, "Loading Part 4 (original): ${part4File.name} (${part4File.length() / 1024 / 1024}MB)")
+
+                interpreter = createInterpreter(part4File, numThreadsOverride = 2, useXnnpack = false)
+                Log.d(TAG, "Part 4 interpreter created. Memory: ${getMemoryInfo()}")
+
+                val packedShape = interpreter.getOutputTensor(0).shape()
+                gaussianCount = packedShape[1]
+                val packedSize = packedShape.fold(1) { acc, d -> acc * d }
+                packedBuf = ByteBuffer.allocateDirect(packedSize * 4).apply { order(ByteOrder.nativeOrder()) }
+
+                progressCallback?.invoke(0.62f, "Part 4: Loading tensors...")
+
+                val inputImageForPart4 = loadTensorFromFile(inputImageFile)
+                inputImageFile.delete()
+
+                val imageTokensFile = File(tempDir, "image_tokens.tensor")
+                val imageTokensTensorBuf = loadTensorFromFile(imageTokensFile)
+                imageTokensFile.delete()
+
+                val latent0TensorBuf = loadTensorFromFile(File(tempDir, "latent0.tensor"))
+                File(tempDir, "latent0.tensor").delete()
+                val latent1TensorBuf = loadTensorFromFile(File(tempDir, "latent1.tensor"))
+                File(tempDir, "latent1.tensor").delete()
+                val x0FeatTensorBuf = loadTensorFromFile(File(tempDir, "x0_feat.tensor"))
+                File(tempDir, "x0_feat.tensor").delete()
+                val x1FeatTensorBuf = loadTensorFromFile(File(tempDir, "x1_feat.tensor"))
+                File(tempDir, "x1_feat.tensor").delete()
+                val x2FeatTensorBuf = loadTensorFromFile(File(tempDir, "x2_feat.tensor"))
+                File(tempDir, "x2_feat.tensor").delete()
+
+                Log.d(TAG, "Part 4 inputs loaded. Memory: ${getMemoryInfo()}")
+
+                val part4Inputs = buildPart4Inputs(
+                    interpreter = interpreter,
+                    image = inputImageForPart4,
+                    imageTokens = imageTokensTensorBuf,
+                    latent0 = latent0TensorBuf,
+                    latent1 = latent1TensorBuf,
+                    x0Feat = x0FeatTensorBuf,
+                    x1Feat = x1FeatTensorBuf,
+                    x2Feat = x2FeatTensorBuf
+                )
+                val part4OutMap = HashMap<Int, Any>()
+                part4OutMap[0] = packedBuf
+
+                interpreter.runForMultipleInputsOutputs(part4Inputs, part4OutMap)
+                interpreter.close()
+                System.gc()
+            }
+
+            val part4Time = System.currentTimeMillis() - part4Start
+            Log.d(TAG, "Part 4 total: ${part4Time}ms. Gaussians: $gaussianCount")
 
             // Clean up temp files
             tempDir.listFiles()?.forEach { it.delete() }
@@ -1044,8 +1138,9 @@ class LiteRTSharp private constructor(private val context: Context) {
             val result = writeGaussianPlyFromPackedBuffer(packedBuf, gaussianCount, progressCallback)
 
             val totalTime = System.currentTimeMillis() - startTime
+            val p4Label = if (chunkedPart4Available) "P4(chunked)" else "P4"
             Log.d(TAG, "Single-Patch LiteRT completed: $gaussianCount Gaussians in ${totalTime}ms")
-            Log.d(TAG, "  P1=${part1Time}ms P2=${part2Time}ms merge=${mergeTime}ms P3=${part3Time}ms P4=${part4Time}ms")
+            Log.d(TAG, "  P1=${part1Time}ms P2=${part2Time}ms merge=${mergeTime}ms P3=${part3Time}ms $p4Label=${part4Time}ms")
 
             progressCallback?.invoke(1.0f, "Done!")
             return result
@@ -1241,6 +1336,82 @@ class LiteRTSharp private constructor(private val context: Context) {
         return inputs as Array<Any>
     }
 
+    /**
+     * Build Part 4b input array, matching interpreter's expected order by arg index or shape.
+     * Part 4b inputs: tokens_after_norm, image, latent0, latent1, x0_feat, x1_feat, x2_feat
+     */
+    private fun buildPart4bInputs(
+        interpreter: Interpreter,
+        tokensAfterNorm: ByteBuffer,
+        image: ByteBuffer,
+        latent0: ByteBuffer,
+        latent1: ByteBuffer,
+        x0Feat: ByteBuffer,
+        x1Feat: ByteBuffer,
+        x2Feat: ByteBuffer
+    ): Array<Any> {
+        val byArgIndex: Map<Int, ByteBuffer> = mapOf(
+            0 to tokensAfterNorm,
+            1 to image,
+            2 to latent0,
+            3 to latent1,
+            4 to x0Feat,
+            5 to x1Feat,
+            6 to x2Feat
+        )
+
+        val inputCount = interpreter.inputTensorCount
+        val inputs = arrayOfNulls<Any>(inputCount)
+
+        Log.d(TAG, "Part 4b interpreter inputs ($inputCount):")
+        for (i in 0 until inputCount) {
+            val t = interpreter.getInputTensor(i)
+            val name = t.name()
+            val shape = t.shape().contentToString()
+            val bytes = t.numBytes()
+            Log.d(TAG, "  input[$i] name=$name shape=$shape bytes=$bytes")
+
+            val argIdx = parseServingArgIndex(name)
+            val buf = argIdx?.let { byArgIndex[it] }
+            if (buf != null) {
+                buf.rewind()
+                inputs[i] = buf
+            }
+        }
+
+        val remaining = mutableListOf(
+            tokensAfterNorm to intArrayOf(1, 577, FEATURE_DIM),
+            image to intArrayOf(1, 3, IMAGE_SIZE, IMAGE_SIZE),
+            latent0 to intArrayOf(1, FEATURE_DIM, 96, 96),
+            latent1 to intArrayOf(1, FEATURE_DIM, 96, 96),
+            x0Feat to intArrayOf(1, FEATURE_DIM, 96, 96),
+            x1Feat to intArrayOf(1, FEATURE_DIM, 48, 48),
+            x2Feat to intArrayOf(1, FEATURE_DIM, 24, 24),
+        )
+        fun shapeEquals(a: IntArray, b: IntArray): Boolean = a.size == b.size && a.indices.all { a[it] == b[it] }
+
+        for (i in 0 until inputCount) {
+            if (inputs[i] != null) continue
+            val t = interpreter.getInputTensor(i)
+            val tShape = t.shape()
+            val candidate = remaining.firstOrNull { (_, s) -> shapeEquals(tShape, s) }
+            if (candidate != null) {
+                candidate.first.rewind()
+                inputs[i] = candidate.first
+                remaining.remove(candidate)
+                Log.w(TAG, "Part 4b: filled input[$i] by shape match (name=${t.name()})")
+            }
+        }
+
+        val missing = inputs.indexOfFirst { it == null }
+        if (missing != -1) {
+            Log.e(TAG, "Part 4b: could not map all inputs; missing index $missing")
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        return inputs as Array<Any>
+    }
+
     // ========================================================================
     // Single mode: full model in one pass (original behavior)
     // ========================================================================
@@ -1378,9 +1549,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch; batchBuffer.clear()
             val scaleBoost = 1.3f
             val minScale = 0.001f
             val logitLutScale = (LOGIT_LUT_SIZE - 1).toFloat()
@@ -1389,7 +1558,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             var processed = 0
 
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
 
                 for (j in 0 until currentBatch) {
                     val offset = (processed + j) * PARAMS_PER_GAUSSIAN
@@ -1418,8 +1587,7 @@ class LiteRTSharp private constructor(private val context: Context) {
                     batchBuffer.putFloat((colorG - 0.5f) / SH_C0)
                     batchBuffer.putFloat((colorB - 0.5f) / SH_C0)
 
-                    // Bulk zero SH block instead of 45 individual putFloat(0f)
-                    batchBuffer.put(ZERO_SH_BLOCK)
+                    zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                     // Sigmoid via LUT (no Math.exp)
                     val rawOpacityLogit = gaussianParams[offset + 3]
@@ -1524,9 +1692,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             headerBuffer.flip()
             channel.write(headerBuffer)
 
-            val batchSize = 512
-            val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-            batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            val batchBuffer = plyBatch; batchBuffer.clear()
             val scaleBoost = 1.3f
             val minScale = 0.001f
             val logitLutScale = (LOGIT_LUT_SIZE - 1).toFloat()
@@ -1534,13 +1700,13 @@ class LiteRTSharp private constructor(private val context: Context) {
             // Pre-allocated local array for vectorized bulk reads — one JNI call per batch
             // instead of batchSize × 14 individual JNI calls. This is the key BLAS-like
             // optimization from the ONNX PLY writer.
-            val localPacked = FloatArray(batchSize * PARAMS_PER_GAUSSIAN)
+            val localPacked = FloatArray(PLY_BATCH_SIZE * PARAMS_PER_GAUSSIAN)
 
             val progressEvery = max(1, gaussianCount / 10)
             var processed = 0
 
             while (processed < gaussianCount) {
-                val currentBatch = minOf(batchSize, gaussianCount - processed)
+                val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
                 val floatsToRead = currentBatch * PARAMS_PER_GAUSSIAN
 
                 // BLAS-like bulk read: one JNI call reads up to 7168 floats (512×14)
@@ -1575,8 +1741,8 @@ class LiteRTSharp private constructor(private val context: Context) {
                     batchBuffer.putFloat((colorG - 0.5f) / SH_C0)
                     batchBuffer.putFloat((colorB - 0.5f) / SH_C0)
 
-                    // Higher order SH (45 zeros) — bulk put instead of 45 individual putFloat(0f)
-                    batchBuffer.put(ZERO_SH_BLOCK)
+                    // Higher order SH (45 zeros)
+                    zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                     // Opacity: sigmoid via LUT (avoids Math.exp per Gaussian)
                     val rawOpacityLogit = localPacked[baseIdx + 3]

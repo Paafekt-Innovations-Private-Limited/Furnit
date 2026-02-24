@@ -50,6 +50,7 @@ class OnnxSharp private constructor(private val context: Context) {
         private const val INPUT_SIZE = 1536
         private const val SH_C0 = 0.28209479177387814f
         private const val BYTES_PER_VERTEX = 62 * 4
+        private const val PLY_BATCH_SIZE = 512
         private const val LOGIT_LUT_SIZE = 1024
 
         // Pre-computed logit LUT: maps [0, 1] opacity to ln(p/(1-p))
@@ -97,6 +98,12 @@ class OnnxSharp private constructor(private val context: Context) {
     // Use external storage directly for large FP32 models (avoid 2.4GB copy)
     private val modelsDir: File by lazy {
         context.getExternalFilesDir("models") ?: File(context.filesDir, "models")
+    }
+    private val zeroSHBuffer: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
+    }
+    private val plyBatch: ByteBuffer by lazy {
+        ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
     }
 
     /**
@@ -483,26 +490,23 @@ class OnnxSharp private constructor(private val context: Context) {
                 headerBuffer.flip()
                 channel.write(headerBuffer)
 
-                // DirectByteBuffer for zero-copy writes (batch 512 vertices ~127KB)
-                val batchSize = 512
-                val batchBuffer = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * batchSize)
-                batchBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                val batchBuffer = plyBatch; batchBuffer.clear()
                 val scaleBoost = 1.3f
                 val minScale = 0.001f
                 val lutScale = (LOGIT_LUT_SIZE - 1).toFloat()
 
                 // Pre-allocate local arrays for vectorized bulk reads
-                val localPositions = FloatArray(batchSize * 3)
-                val localScales = FloatArray(batchSize * 3)
-                val localRotations = FloatArray(batchSize * 4)
-                val localColors = FloatArray(batchSize * 3)
-                val localOpacity = FloatArray(batchSize)
+                val localPositions = FloatArray(PLY_BATCH_SIZE * 3)
+                val localScales = FloatArray(PLY_BATCH_SIZE * 3)
+                val localRotations = FloatArray(PLY_BATCH_SIZE * 4)
+                val localColors = FloatArray(PLY_BATCH_SIZE * 3)
+                val localOpacity = FloatArray(PLY_BATCH_SIZE)
 
                 val progressEvery = max(1, gaussianCount / 10)
                 var processed = 0
 
                 while (processed < gaussianCount) {
-                    val currentBatch = minOf(batchSize, gaussianCount - processed)
+                    val currentBatch = minOf(PLY_BATCH_SIZE, gaussianCount - processed)
 
                     // Vectorized bulk reads
                     posBuffer.position(processed * 3)
@@ -547,7 +551,7 @@ class OnnxSharp private constructor(private val context: Context) {
                         batchBuffer.putFloat((b - 0.5f) / SH_C0)
 
                         // Higher order SH (45 zeros)
-                        repeat(45) { batchBuffer.putFloat(0f) }
+                        zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
 
                         // Opacity -> logit via LUT
                         val rawOpacity = localOpacity[j].coerceIn(0f, 1f)

@@ -55,10 +55,6 @@
             android:exported="false"
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity android:name=".SettingsActivity" android:exported="false" />
-        <activity
-            android:name=".CameraClassifierActivity"
-            android:exported="false"
-            android:screenOrientation="portrait" />
         <activity android:name=".HelpActivity" android:exported="false" />
 
         <!-- FileProvider for camera photos -->

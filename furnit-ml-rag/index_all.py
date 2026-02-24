@@ -16,6 +16,7 @@ Layers:
   - sgemm: SGEMM (single-precision GEMM), BLAS, NCNN convolution, ARM ACL
   - vedic_maths: Vedic mathematics sutras, mental math, multiplication shortcuts
   - ml_fundamentals: Google ML Crash Course - neural networks, activation, backpropagation
+  - beeware_android: BeeWare, Briefcase, Toga, Chaquopy on Android; Python UI; hand-off to native for Sharp
 """
 
 import json
@@ -41,6 +42,72 @@ def get_collection():
         embedding_function=ef,
         metadata={"hnsw:space": "cosine"}
     )
+
+def get_log_collection():
+    """Separate collection for Android log chunks (not wiped by main index)."""
+    client = chromadb.PersistentClient(path=DB_PATH)
+    ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+        model_name="all-MiniLM-L6-v2"
+    )
+    return client.get_or_create_collection(
+        name="furnit_android_logs",
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"}
+    )
+
+def index_android_logs(log_file_path=None, from_adb=False):
+    """Read Android logs from file or adb logcat -d, chunk, and index into furnit_android_logs."""
+    import subprocess
+    if from_adb:
+        try:
+            out = subprocess.run(
+                ["adb", "logcat", "-d", "-v", "time"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            log_text = out.stdout or ""
+            if out.stderr:
+                log_text += "\n" + out.stderr
+        except FileNotFoundError:
+            print("adb not found in PATH; skipping log index")
+            return 0
+        except subprocess.TimeoutExpired:
+            print("adb logcat timed out; skipping")
+            return 0
+    elif log_file_path:
+        path = Path(log_file_path)
+        if not path.exists():
+            print(f"Log file not found: {path}")
+            return 0
+        log_text = path.read_text(encoding="utf-8", errors="replace")
+    else:
+        return 0
+
+    lines = [ln.strip() for ln in log_text.splitlines() if ln.strip()]
+    chunk_size = 80
+    chunks = []
+    for i in range(0, len(lines), chunk_size):
+        block = "\n".join(lines[i : i + chunk_size])
+        chunks.append(block)
+
+    if not chunks:
+        print("No log content to index")
+        return 0
+
+    collection = get_log_collection()
+    try:
+        existing = collection.count()
+        if existing > 0:
+            collection.delete(ids=[c for c in collection.get()["ids"]])
+    except Exception:
+        pass
+
+    ids = [f"android_log_{i}" for i in range(len(chunks))]
+    metadatas = [{"layer": "android_logs"} for _ in chunks]
+    collection.add(ids=ids, documents=chunks, metadatas=metadatas)
+    print(f"Indexed {len(chunks)} Android log chunks")
+    return len(chunks)
 
 # ============================================================================
 # KNOWLEDGE CHUNKS
@@ -70,6 +137,63 @@ Custom shaders go in src/layer/shader/.
 For partial delegation: ops not supported by Vulkan fall back to CPU automatically.
 Vulkan delegate handles standard transformer ops (Linear, LayerNorm, Softmax, SDPA) natively on GPU.
 This is different from NCNN where custom SDPA layers fall back to CPU."""
+    },
+    {
+        "id": "et_vulkan_approach_copy",
+        "layer": "executorch",
+        "content": """ExecuTorch Vulkan approach to COPY (from GitHub examples/vulkan/export.py). Use for ANY model (vision, SHARP, new classes). NOT Llama-specific.
+
+Export (Python):
+1. program = torch.export.export(model, example_inputs, strict=...)
+2. compile_options = {}  # optional: force_fp16=True, skip_memory_planning=True, require_dynamic_shapes=True
+3. edge_program = to_edge_transform_and_lower(program, partitioner=[VulkanPartitioner(compile_options)])
+4. exec_prog = edge_program.to_executorch()
+5. save_pte_program(exec_prog, output_name, output_dir) -> .pte file
+
+Android runtime:
+- Module.load(path) loads .pte (backend inside the file is fixed at export time)
+- forward: EValue.from(tensor) -> module.forward(inputs) -> outputs[0].toTensor().getDataAsFloatArray()
+- Same for SHARP, new classes, or any vision model. No LLM/tokenizer.
+
+Key: Backend is chosen at EXPORT via VulkanPartitioner(compile_options). Options: skip_memory_planning=False (AOT memory planning), force_fp16=True (lower memory/latency). Mirror this exact flow for new models."""
+    },
+    {
+        "id": "et_new_classes_executorch_vulkan",
+        "layer": "executorch",
+        "content": """New classes backend in Furnit = ExecuTorch implementation with Vulkan. Same approach as main ExecuTorch option (SHARP split .pte, Vulkan delegate). NOT Llama, NOT an LLM.
+
+Implementation: Use et_vulkan_approach_copy. Export model (e.g. classifier or SHARP variant with extended classes) with VulkanPartitioner(compile_options). Push .pte to device. SharpService when inference_backend==new_classes uses executorchSharp (same ExecuTorch Vulkan runtime). If no .pte present, fallback to ONNX for that session.
+
+Do not reference or use Llama/LLM for New classes. The only thing to copy from GitHub is the Vulkan EXPORT and RUNTIME pattern (examples/vulkan/export.py), not the Llama model or tokenizer."""
+    },
+    {
+        "id": "executorch_vulkan_sharp_combination",
+        "layer": "executorch",
+        "content": """ExecuTorch + Vulkan + SHARP combination (final alignment).
+
+SHARP outputs 3D Gaussians (sharp_philosophy, sharp_gaussian_maths). The same pipeline runs on Android via ExecuTorch with Vulkan: export SHARP (split or full) with VulkanPartitioner(compile_options) → .pte; on device Module.load(.pte) then forward(image) → same Gaussian tensor [N,14]. So: one model (SHARP), one output format (Gaussians), one runtime (ExecuTorch) and one GPU path (Vulkan). Philosophy (single image → learned 3D) and maths (Gaussian params) are unchanged; only the execution backend (Vulkan) and the framework (ExecuTorch) change. Query sharp_philosophy + sharp_gaussian_maths + vulkan_latest_android_ml + et_vulkan_approach_copy for the full stack."""
+    },
+    {
+        "id": "aot_executorch_vulkan",
+        "layer": "executorch",
+        "content": """AOT (Ahead-of-Time) in ExecuTorch and Vulkan.
+
+AOT = decisions made at export/compile time, not at runtime. For ExecuTorch on Android this means: (1) memory layout and buffer reuse are fixed in the .pte; (2) no dynamic allocation for intermediate tensors on device; (3) lower peak RAM and predictable first-inference cost.
+
+Vulkan AOT memory planning: VulkanPartitioner(compile_options) with skip_memory_planning=False. The Vulkan backend's preprocess runs greedy-style memory planning at export: reuse buffers across ops, share token/activation buffers between subgraphs (e.g. Part1+Part2 combined). Result: fewer VkBuffer allocations on device, less GPU memory. Use force_fp16=True in compile_options for lower bandwidth and memory.
+
+Greedy memory planning (CPU/portable path): For large graphs (e.g. SHARP Part 4) use MemoryPlanningPass(memory_planning_algo=greedy, alloc_graph_input=False, alloc_graph_output=False) in ExecutorchBackendConfig when calling edge.to_executorch(). I/O buffers are caller-managed; intermediates are planned and reused. Reduces peak RAM during inference.
+
+Export flow: to_edge_transform_and_lower(..., partitioner=[VulkanPartitioner({"skip_memory_planning": False, "force_fp16": True})]) then to_executorch(). Optional: combine Part1+Part2 into one .pte so AOT can share the token buffer between Part1 and Part2. See export_sharp_executorch_split4.py and et_vulkan_approach_copy."""
+    },
+    {
+        "id": "executorch_30sec_room_space_philosophy",
+        "layer": "executorch",
+        "content": """ExecuTorch Vulkan: create room in ~30 sec. Philosophy: time dimension may not be fully under our control; space dimension is at our disposal.
+
+Space we control: patch grid (5×5 + 3×3 + 1 = 35 patches), resolution, merge layout. We choose how much of the image to encode (grid density). Vedic maths: Urdhva-tiryagbhyam (vertically and crosswise) — grid rows × cols; Nikhilam for stride/complement. Mental compute: patch index from (i,j) like digit recurrence. Use vedic_mental_compute for algorithm crossover.
+
+To hit ~30 sec: (1) Export with ExecuTorch Vulkan only — VulkanPartitioner(skip_memory_planning=False, force_fp16=True), optional combined Part1+Part2 for AOT buffer sharing (aot_executorch_vulkan). (2) Push Vulkan .pte to device; runtime Module.load uses backend baked in at export. (3) No Llama, no other backends for this path — ExecuTorch option only. (4) Future: reduce patch grid (e.g. 3×3 at 1x) when decoder supports variable merge size to trade space for time further. RAG chunks: et_vulkan_approach_copy, aot_executorch_vulkan, executorch_vulkan_sharp_combination, vulkan_latest_android_ml."""
     },
     {
         "id": "et_quantization",
@@ -284,6 +408,14 @@ The serial processing is why NCNN takes 23 minutes (77s/patch x 35 patches).
 ONNX and TFLite don't have this problem because they support batch dimensions."""
     },
 
+    # ---- VULKAN (LATEST) ----
+    {
+        "id": "vulkan_latest_android_ml",
+        "layer": "android_gpu",
+        "content": """Vulkan for ML on Android (latest and greatest).
+
+Vulkan 1.1+ (1.2 optional): cross-platform GPU API; on Android it drives Mali, Adreno, etc. For ML inference: compute shaders (GLSL compiled to SPIR-V) do matrix ops, activations, attention on GPU. No OpenGL render pipeline—pure compute. Key: VkBuffer for GPU memory, VkDescriptorSet for bindings, dispatch (workgroups) for parallelism. ExecuTorch Vulkan backend uses this: partitioner assigns ops to Vulkan; AOT memory planning (skip_memory_planning=False) reuses buffers; force_fp16 reduces bandwidth. Best practice: export with VulkanPartitioner(compile_options), push .pte, Module.load on device—backend baked in at export. Vulkan 1.1 is the target for broad Android support; 1.2 adds optional features."""
+    },
     # ---- ANDROID GPU ----
     {
         "id": "gpu_mali_g715",
@@ -393,6 +525,22 @@ Risk: some ops may lose precision. Test output quality after conversion."""
     },
 
     # ---- SHARP MODEL ----
+    {
+        "id": "sharp_philosophy",
+        "layer": "sharp_model",
+        "content": """SHARP (Apple-style) philosophy: single image to 3D.
+
+One RGB image in → 3D scene out, represented as many 3D Gaussians (not a mesh or depth map). The network does not measure or know depth explicitly: a ViT encoder turns the image into features, and a decoder trained on multi-view or 3D data predicts 3D Gaussian parameters from those features. Depth and shape are learned priors—the model has seen many images with 3D supervision and infers plausible 3D from one view. So the pipeline is: 2D appearance (encoder) → learned 3D structure (decoder) → Gaussian representation that can be rendered from new viewpoints."""
+    },
+    {
+        "id": "sharp_gaussian_maths",
+        "layer": "sharp_model",
+        "content": """Gaussian representation and bell-curve maths for 3D splatting.
+
+Gaussian bell curve: f(x) = exp(-(x-μ)²/(2σ²)); peak at μ, width σ; symmetric falloff (bright center, smooth fade). In 3D splatting the blob's brightness follows this falloff.
+
+One 3D Gaussian = position (x,y,z), scale (sx,sy,sz), rotation (quaternion qw,qx,qy,qz), opacity, color (r,g,b). SHARP output per Gaussian: 14 floats (e.g. pos 3, opacity 1, scales 3, quats 4, colors 3). Scene = N such Gaussians (e.g. ~1.2M); each covers a small region. Rendering = splat each Gaussian onto the screen with bell-curve falloff; alpha-blend. So 'Gaussian representation' = the 3D world as a cloud of soft 3D blobs defined by these parameters."""
+    },
     {
         "id": "sharp_pipeline",
         "layer": "sharp_model",
@@ -1215,6 +1363,304 @@ Python (export only) -> TorchScript model -> Native C++ engine -> ARM Compute Li
 
 Full FP32. Maximum performance. No framework overhead. Production pathway used by Apple, Meta, ARM."""
     },
+    # ---- PLY WRITER OPTIMIZATIONS (Feb 2026) ----
+    {
+        "id": "ply_buffer_recycling",
+        "layer": "performance",
+        "content": """PLY writer buffer recycling optimization (all 8 backends).
+
+Problem: Each inference call allocated ByteBuffer.allocateDirect(~127KB) for the PLY batch buffer plus 5 FloatArrays.
+DirectByteBuffer cleanup depends on GC finalizers, which are non-deterministic on Android. Under memory pressure
+(Part 4 just finished), these lingering buffers cause native memory fragmentation.
+
+Solution: Promote batch buffer and scratch arrays to class-level reusable fields:
+  private val plyBatch: ByteBuffer by lazy { ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) } }
+  private val plyPositions = FloatArray(PLY_BATCH_SIZE * 3)
+  private val plyScales = FloatArray(PLY_BATCH_SIZE * 3)
+  private val plyRotations = FloatArray(PLY_BATCH_SIZE * 4)
+  private val plyColors = FloatArray(PLY_BATCH_SIZE * 3)
+  private val plyOpacity = FloatArray(PLY_BATCH_SIZE)
+
+In processGaussianOutput: val batchBuffer = plyBatch; batchBuffer.clear() at start, batchBuffer.clear() after each batch write.
+Applied to: SplitOnnxSharp, SplitOnnxFp16Sharp, OnnxInt8Sharp, ExecutorchFp16Sharp, ExecutorchSharp, LiteRTSharp, OnnxSharp, SharpService."""
+    },
+    {
+        "id": "ply_zero_sh_buffer",
+        "layer": "performance",
+        "content": """PLY writer zero SH block optimization (Direct-to-Direct bulk copy).
+
+Problem: Each Gaussian vertex writes 45 zero SH coefficients (180 bytes). Old approaches:
+  - repeat(45) { batchBuffer.putFloat(0f) } → 45 individual JNI calls per vertex × ~1.18M vertices
+  - batchBuffer.put(ByteArray(180)) → heap array → JNI → native copy per vertex (JNI crossing)
+
+Solution: Pre-allocate a Direct ByteBuffer for the zero SH block:
+  private val zeroSHBuffer: ByteBuffer by lazy { ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) } }
+
+In the inner loop: zeroSHBuffer.clear(); batchBuffer.put(zeroSHBuffer)
+Direct→Direct ByteBuffer.put() uses native memcpy (Unsafe.copyMemory), no JNI heap crossing.
+For 1.18M Gaussians: eliminates ~1.18M JNI crossings × 180 bytes = ~212MB of JNI traffic."""
+    },
+    {
+        "id": "ply_batch_io_strategy",
+        "layer": "performance",
+        "content": """PLY batch I/O strategy: 512 vertices per write syscall.
+
+Each vertex = 62 floats = 248 bytes (BYTES_PER_VERTEX). Writing 1.18M vertices one at a time = 1.18M syscalls.
+Batch: accumulate 512 vertices into a 127KB DirectByteBuffer, then one outChannel.write() syscall.
+Result: ~2304 syscalls instead of 1.18M. System calls are high-latency "warehouse trips" in the memory hierarchy.
+
+PLY_BATCH_SIZE = 512 chosen to fit L1 cache (~128KB) while amortizing syscall overhead.
+Format: binary_little_endian PLY with 62 properties per vertex (xyz, normals, f_dc 3, f_rest 45, opacity, scale 3, rot 4).
+
+Logging to measure: PLY batch loop Xms total (I/O write=Yms, compute=Zms), PLY throughput XMB @ Y.YMB/s.
+Look for these in logcat with tags SplitOnnxSharp, ExecutorchFp16Sharp."""
+    },
+    {
+        "id": "ply_lut_optimization",
+        "layer": "performance",
+        "content": """PLY writer LUT optimizations: LOGIT_LUT and LN_LUT.
+
+LOGIT_LUT (1024 entries): maps opacity [0,1] to logit ln(p/(1-p)). Avoids ln() and division per vertex.
+  val LOGIT_LUT = FloatArray(1024) { i -> val p = ...; ln(p / (1f - p)) }
+  Usage: LOGIT_LUT[(rawOpacity * lutScale).toInt().coerceIn(0, LOGIT_LUT_SIZE - 1)]
+
+LN_LUT (2048 entries): maps scale values [0.001, 5.0] to ln(x). Avoids ln() per vertex per axis (3 axes).
+  fun lnLut(x: Float): Float { return LN_LUT[((x - LN_LUT_MIN) * LN_LUT_SCALE).toInt()] }
+
+For 1.18M Gaussians: eliminates ~4.72M ln() calls (1 opacity + 3 scales per vertex).
+Math operations are fast individually but become a bottleneck at 10^6 repetitions."""
+    },
+    {
+        "id": "ply_mmap_tensor_loading",
+        "layer": "performance",
+        "content": """PLY writer tensor loading via memory-mapped files (SplitOnnxSharp).
+
+Gaussian output tensors (positions, scales, rotations, colors, opacity) are saved to disk between model parts.
+Loading for PLY: FileChannel.map(READ_ONLY, offset, size) → FloatBuffer.
+This keeps JVM heap lean (~0 bytes for tensor data). OS handles paging from disk cache.
+
+File format: [4 bytes: numDims][numDims * 8 bytes: shape][float data].
+Memory map starts at dataOffset = 4 + numDims * 8.
+
+For 1.18M Gaussians: positions = 1.18M * 3 * 4 = ~14MB, scales = ~14MB, rotations = ~19MB, colors = ~14MB, opacity = ~4.7MB.
+Total mmap: ~66MB. PLY mmap setup takes ~1-5ms (just page table entries, no data copy)."""
+    },
+
+    # ---- CONV+BN OPERATION FUSION (Feb 2026) ----
+    {
+        "id": "conv_bn_fusion",
+        "layer": "quantization",
+        "content": """Conv+BN operation fusion in SHARP export scripts.
+
+Problem: SHARP decoder (FPN/UNet) has Conv2d + BatchNorm2d pairs. BN computes y = (x - mean) / sqrt(var + eps) * weight + bias.
+This creates intermediate tensors (normalized activations) that consume memory during forward pass.
+
+Solution: fuse_conv_bn(model) recursively walks the model tree, finds Conv2d+BatchNorm2d pairs among direct children
+of each module, and fuses them via torch.ao.quantization.fuse_modules(module, pairs, inplace=True).
+Fused Conv absorbs BN parameters: W_fused = W_conv * (bn_weight / sqrt(bn_var + eps)), b_fused = (b_conv - bn_mean) * bn_weight / sqrt(bn_var + eps) + bn_bias.
+
+Applied to: export_sharp_executorch_split4.py, export_sharp_executorch_fp16.py, export_sharp_onnx_single.py, export_sharp_litert_split.py.
+Called after predictor.eval() and before creating part wrappers.
+
+Benefits: ~15-20% reduction in peak decoder activation memory, smaller exported models, fewer ops for runtime to schedule.
+ViT encoder blocks (LayerNorm, not BatchNorm) are unaffected — fusion targets the decoder Conv+BN pairs only."""
+    },
+
+    # ---- MULTI-BACKEND ARCHITECTURE (Feb 2026) ----
+    {
+        "id": "multi_backend_architecture",
+        "layer": "sharp_model",
+        "content": """SHARP multi-backend architecture on Android (Feb 2026).
+
+8 selectable backends in Settings, each a separate implementation class:
+| Backend | Class | Model files | Status |
+|---------|-------|-------------|--------|
+| ONNX (default) | SplitOnnxSharp | sharp_part{1-4}.onnx + .data | Working, ~5 min |
+| ONNX FP16 | SplitOnnxFp16Sharp | sharp_part{1-4}_fp16.onnx | Experimental (CPU FP16 kernel gaps) |
+| ONNX INT8 | OnnxInt8Sharp | sharp_single_int8.onnx (715MB) | Single model, crashes at Part 4 activation memory |
+| ExecuTorch FP32 | ExecutorchSharp | sharp_split_part{1-4}.pte | Working with XNNPACK |
+| ExecuTorch FP16 | ExecutorchFp16Sharp | sharp_split_part{1-3}_fp16.pte + chunked Part 4 | Working, ~3.4 min |
+| LiteRT | LiteRTSharp | sharp_part{1-4}_fp16.tflite + chunked 4a/4b | Part 4 crashes (decoder OOM) |
+| NativePt | NativePtSharp | sharp_scripted_part{1-4}.ptl | TorchScript Lite |
+| NCNN | NcnnSharp | component .ncnn.bin/.param files | ~23 min, serial patches |
+
+SharpService.kt orchestrates: reads backend from SharedPreferences, initializes the selected class, dispatches inference.
+BackendConfig.kt: feature flags (ENABLE_ONNX_FP16, ENABLE_EXECUTORCH_FP16, etc.).
+SettingsActivity.kt: radio buttons for each backend in Developer section."""
+    },
+    {
+        "id": "executorch_fp16_backend",
+        "layer": "executorch",
+        "content": """ExecuTorch FP16 backend implementation (ExecutorchFp16Sharp.kt).
+
+Mixed-precision split: Parts 1-3 exported as FP16 (~290MB each), Part 4 as FP32 (~755MB).
+Part 4 must be FP32 because F.interpolate (bilinear) in the decoder upcasts FP16→FP32 on CPU,
+causing RuntimeError: 'Input type (float) and bias type (c10::Half) should be the same'.
+
+FP16 tensor handling:
+  halfFloatToShort(f: Float): Short — converts FP32 to IEEE 754 FP16 representation
+  halfShortToFloat(s: Short): Float — converts FP16 back to FP32
+  createHalfTensor(data: FloatArray, shape: LongArray): Tensor — creates FP16 tensor from FP32 data
+  getOutputAsFloatArray(tensor: Tensor): FloatArray — reads FP16 or FP32 output
+
+Chunked Part 4 for memory: part4a_chunk_512_fp16.pte (FP16), part4a_chunk_65_fp16.pte (FP16), part4b_fp16.pte (FP32 decoder).
+Sequentially loaded and destroyed to reduce peak memory from ~755MB to max(~290MB, ~178MB).
+
+Measured performance: Total 205,876ms (~3.4 min). P1+P2=97,975ms, P3=2,791ms, P4(chunked)=93,774ms.
+System memory after Part 4b: 0MB available (tight but no crash thanks to chunking)."""
+    },
+    {
+        "id": "chunked_part4_strategy",
+        "layer": "performance",
+        "content": """Chunked Part 4 strategy for memory-constrained decoder inference.
+
+Problem: Part 4 (decoder + Gaussians) is the largest part (~755-828MB model + ~4GB peak activations).
+Causes LMK (Low Memory Killer) on Android across ALL backends (ONNX, LiteRT, ExecuTorch).
+
+Solution: Split Part 4 into 3 sub-chunks loaded and destroyed sequentially:
+  Part 4a chunk 512: ViT blocks 12-23 on first 512 tokens → ~577-613MB
+  Part 4a chunk 65: ViT blocks 12-23 on remaining 65 tokens → same size
+  Part 4b: Decoder + Gaussian output from concatenated normalized tokens → ~178-186MB
+
+Export: Each chunk is a separate .pte/.onnx/.tflite file.
+Runtime: Load chunk → forward → save output to disk → destroy module → System.gc() → load next chunk.
+Peak memory reduced from ~4GB to max(single_chunk_activations), typically ~1-2GB.
+
+Implemented in: SplitOnnxSharp (ONNX FP32), ExecutorchFp16Sharp (ExecuTorch FP16), LiteRTSharp (LiteRT).
+Detection: isChunkedPart4Available() checks if part4a/part4b files exist. Falls back to single Part 4 if not.
+Also chunked Part 1 in SplitOnnxSharp: Part 1a (blocks 0-11) + Part 1b (blocks 12-18) for same reason."""
+    },
+    {
+        "id": "memory_wall_android_ml",
+        "layer": "performance",
+        "content": """Memory wall problem for large vision models on Android.
+
+The 'memory wall' = memory bandwidth and capacity limit inference speed more than compute.
+SHARP model: 702M params (2.6GB FP32), decoder activations peak ~4GB, on a device with ~4-6GB available RAM.
+
+Strategies implemented in Furnit to address memory wall:
+1. FileChannel.map(READ_ONLY): OS-level data movement, keeps JVM heap lean. ONNX Runtime accesses weights via mmap.
+2. Split models: 4 parts loaded/unloaded sequentially. Peak = max(single_part) not sum(all_parts).
+3. Chunked decoder: Part 4 split into 3 sub-chunks to cap peak activation memory.
+4. Reusable DirectByteBuffers: plyBatch, reusableSaveChunk — avoids GC-dependent buffer cleanup.
+5. Conservative thread counts: Part 4 uses 2 threads (not all cores) to reduce per-thread GEMM memory.
+6. Arena allocator OFF for Part 4: prevents pre-allocation of large memory pools.
+7. System.gc() + Thread.sleep(150) before Part 4: nudges finalizer to release dead DirectByteBuffers.
+8. FP16 models: halve weight size and memory bandwidth (Parts 1-3 in ExecuTorch FP16).
+9. INT8 quantization: quarter weight size for ONNX INT8 backend.
+10. Conv+BN fusion: eliminates BN intermediate tensors, ~15-20% decoder memory reduction."""
+    },
+    {
+        "id": "onnx_session_options_tuning",
+        "layer": "onnx_runtime",
+        "content": """ONNX Runtime session options tuning for SHARP split model (Feb 2026).
+
+Per-part tuning in SplitOnnxSharp.buildSessionOptions(partNumber):
+| Part | OptLevel | Threads | Arena | MemPattern | Notes |
+|------|----------|---------|-------|------------|-------|
+| 1-3 | ALL_OPT | all cores | ON | true | Max throughput for encoder |
+| 4 | ALL_OPT | 2 | OFF | true | Cap GEMM memory in decoder |
+
+Key config entries (via addConfigEntry):
+  session.use_mmap = 1          → weights stay on disk, paged by OS
+  session.enable_mem_reuse = 1  → reuse activation buffers across ops
+  session.intra_op.allow_spinning = 1 → reduce thread wake-up latency
+
+ONNX FP16 (SplitOnnxFp16Sharp): EXTENDED_OPT instead of ALL_OPT to avoid com.microsoft.Gelu fusion
+that has no FP16 CPU kernel. node_block_list in convert_onnx_fp16.py keeps LayerNorm in FP32.
+
+ONNX INT8 (OnnxInt8Sharp single model): NO_OPT, 2 threads, no arena, disable prepacking — conservative
+because single 715MB INT8 model has massive FP32 activations (INT8 weights, FP32 compute)."""
+    },
+    {
+        "id": "ply_writer_logging",
+        "layer": "android_lessons",
+        "content": """PLY writer diagnostic logging (added Feb 2026).
+
+SplitOnnxSharp logcat output during PLY write:
+  PLY writer: reusable buffers (plyBatch=124KB, zeroSH=180B direct)  ← confirms buffer reuse
+  PLY mmap: Xms (5 tensor files memory-mapped)                       ← mmap setup cost
+  PLY batch loop: Xms total (I/O write=Yms, compute=Zms)            ← compute vs I/O breakdown
+  PLY throughput: 279MB @ XX.XMB/s, batches=2304                     ← throughput measurement
+  PLY memory after write: JVM: XXX/512MB, System: XXXXmb available   ← memory impact
+  Breakdown: P1=... P2=... P3=... P4=... PLY=Xms                    ← overall timing
+
+ExecutorchFp16Sharp has same PLY logging (tags: ExecutorchFp16Sharp).
+
+Key metrics to compare before/after optimization:
+  - compute time (batch loop minus I/O) → measures buffer recycling + SH block improvement
+  - throughput MB/s → overall write efficiency
+  - memory after write → confirms no lingering DirectByteBuffer pressure
+
+Filter: adb logcat -s SplitOnnxSharp:D | grep PLY"""
+    },
+    {
+        "id": "measured_backend_timings_feb2026",
+        "layer": "performance",
+        "content": """Measured SHARP backend timings (Feb 2026, Samsung device):
+
+ONNX FP32 Split (SplitOnnxSharp, chunked Part 1 + Part 4):
+  Part 1a: ~25s, Part 1b: ~15s, Part 2: ~9s, Part 3: ~1s, Part 4a: ~50s, Part 4b: ~35s
+  Total: ~2.5-5 min depending on device state
+
+ONNX INT8 Split (OnnxInt8Sharp, 4 parts):
+  Part 1: 30,339ms, Part 2: 8,965ms, Part 3: 1,390ms, Part 4: crashed (activation OOM)
+
+ONNX INT8 Single Model: Session created in 2190ms, crashed during session.run() (peak activation memory)
+
+ExecuTorch FP16 (ExecutorchFp16Sharp, chunked Part 4):
+  Part 1+2: 97,975ms (~1.6 min), Part 3: 2,791ms, Part 4 (chunked): 93,774ms (~1.6 min)
+  Total: 205,876ms (~3.4 min). Gaussians: 1,179,648. Room: 5.1m × 4.9m × 1.1m.
+
+LiteRT FP16: Parts 1-3 work, Part 4 crashes (decoder activation OOM even with chunked 4a/4b).
+ONNX FP16: Fails at Part 1 session creation (com.microsoft.Gelu FP16 kernel not found on CPU EP).
+
+Best reliable backend: ONNX FP32 Split (always completes). Best experimental: ExecuTorch FP16 (~3.4 min)."""
+    },
+
+    # ---- BEEWARE ANDROID ----
+    {
+        "id": "beeware_overview",
+        "layer": "beeware_android",
+        "content": """BeeWare on Android: Python UI apps on device via Briefcase + Toga + Chaquopy.
+
+Briefcase builds the Android app; Toga provides cross-platform widgets (Button, Label, ImageView, etc.); Chaquopy embeds Python and runs the Toga app inside the Android Activity. The Furnit BeeWare app (com.furnit.beeware.furnit_beeware) mirrors the native Furnit flow: Home, Create Room (single photo), AI Room, Manual Setup, Sharp Room viewer, but ML inference (Sharp) does not run in Python on device—Chaquopy has no torch/executorch Android wheels. Use hand-off to native Furnit app (com.furnit.android) for AI Room, or implement hybrid (native SharpInferenceActivity + startActivityForResult)."""
+    },
+    {
+        "id": "beeware_briefcase_android",
+        "layer": "beeware_android",
+        "content": """Briefcase Android configuration (pyproject.toml).
+
+[tool.briefcase.app.<app>.android]
+requires = ["toga-android"]   # pip packages installed by Chaquopy at build time
+permission."android.permission.CAMERA" = true
+permission."android.permission.READ_MEDIA_IMAGES" = true
+build_gradle_extra_content = "..."  # appended to app/build.gradle
+android_manifest_application_extra_content = "..."  # inject <provider>, etc.
+
+Do not add torch or executorch to requires on Android—Chaquopy has no matching wheels; build fails with "No matching distribution found for torch>=2.0.0". BeeWare Android app stays with toga-android only for a working build."""
+    },
+    {
+        "id": "beeware_toga_android_api",
+        "layer": "beeware_android",
+        "content": """Toga Android (toga-android) API for Furnit BeeWare.
+
+Use app._impl.start_activity(intent) for activity results; intent_result is deprecated. Result from start_activity is the Intent (e.g. from gallery picker); use result.getData() for content URI. app._impl.native is the Android Activity (MainActivity). For startActivity(intent) (e.g. launching native Furnit app), call from the main/UI thread—if the handler runs in an async coroutine, consider runOnUiThread(Runnable) or ensure the event loop runs on the main thread. toga.Image: use src= for image data (data= is deprecated). Dialogs: await app.main_window.dialog(toga.InfoDialog(title, message)) (Toga 0.4+ async)."""
+    },
+    {
+        "id": "beeware_chaquopy_limits",
+        "layer": "beeware_android",
+        "content": """Chaquopy on Android: Python packages and limits.
+
+Chaquopy installs pip requirements from requirements.txt (generated from Briefcase android requires). Only packages with Android-compatible wheels (e.g. on chaquo.com/pypi-13.1 or PyPI with android tags) can be installed. torch and executorch do not have Android wheels in Chaquopy's index—adding them to requires causes "No matching distribution found for torch>=2.0.0". So Sharp ML cannot run inside the BeeWare Python process on device. Options: (1) hand off to native Furnit app for AI Room, (2) hybrid: BeeWare starts native SharpInferenceActivity with image URI/path and gets PLY path via onActivityResult."""
+    },
+    {
+        "id": "beeware_android_rag_usage",
+        "layer": "beeware_android",
+        "content": """When to use beeware_android RAG layer.
+
+Query this layer when working on: BeeWare app (beeware/), Briefcase Android build, Toga Android widgets, Chaquopy pip/requirements, photo picker (gallery intent, start_activity), AI Room flow (ExecuTorch unavailable, launch native app), MainActivity/onActivityResult, runOnUiThread, FileProvider for content URIs, or any Python-on-Android behavior in the Furnit project. Combine with executorch or sharp_model when discussing running Sharp in native app vs BeeWare."""
+    },
 ]
 
 
@@ -1265,4 +1711,19 @@ def main():
     print(f"\nExported to {EXPORT_PATH}")
 
 if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser(description="Index Furnit ML RAG")
+    ap.add_argument("--index-logs", action="store_true", help="Also index Android logs into android_logs collection")
+    ap.add_argument("--from-file", type=str, metavar="PATH", help="Index logs from this file (use with --index-logs)")
+    ap.add_argument("--from-adb", action="store_true", help="Index logs from adb logcat -d (use with --index-logs)")
+    args = ap.parse_args()
+
     main()
+
+    if args.index_logs:
+        if args.from_adb:
+            index_android_logs(from_adb=True)
+        elif args.from_file:
+            index_android_logs(log_file_path=args.from_file)
+        else:
+            print("Use --from-file PATH or --from-adb with --index-logs")
