@@ -19,7 +19,9 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.EditText
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -28,8 +30,10 @@ import androidx.core.content.FileProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.furnit.android.services.FurnitureFitManager
+import com.furnit.android.utils.RoomBoundaryManager
 import io.github.sceneview.SceneView
 import io.github.sceneview.math.Position
+import io.github.sceneview.math.Scale
 import io.github.sceneview.node.ModelNode
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
@@ -68,6 +72,19 @@ class FurnitureFitFragment : Fragment() {
     private var selectedRoomFolder: String? = null  // Absolute path to room folder (so correct room is used as background)
     private var usePlyBackground: Boolean = false  // True when background is PLY (WebView), false when GLB (SceneView) or none
     private var roomPlyWebView: WebView? = null
+
+    // Tap to calibrate (from Swift): estimated furniture height from detections, user-entered real height, scale factor
+    private val defaultRoomHeightMeters = 3.0f
+    private var detectedFurnitureHeightMeters: Float? = null
+    private var realFurnitureHeightMeters: Float? = null
+    private var calibratedRoomHeightMeters: Float? = null
+    private var calibrationScaleFactor: Float = 1.0f
+    private var roomModelNode: ModelNode? = null
+    private var roomBoundaryManager: RoomBoundaryManager? = null
+    private var initialCameraSetup: RoomBoundaryManager.CameraSetup? = null
+    private var calibrationPillContainer: View? = null
+    private var calibrationPillLine1: TextView? = null
+    private var calibrationPillLine2: TextView? = null
 
     // For camera drag (when touching outside furniture)
     private var lastCameraTouchX = 0f
@@ -206,6 +223,41 @@ class FurnitureFitFragment : Fragment() {
             layoutParams = lp
         }
         bottomControls.addView(hintLabel)
+
+        // Tap to calibrate pill (center-bottom): Furn X.XXm / Tap to calibrate; Room X.XXm when calibrated
+        val pillContent = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24.dp, 12.dp, 24.dp, 12.dp)
+            gravity = Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xE6333333.toInt())
+                cornerRadius = (24 * resources.displayMetrics.density)
+            }
+        }
+        calibrationPillLine1 = TextView(requireContext()).apply {
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 14f
+            setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
+        }
+        calibrationPillLine2 = TextView(requireContext()).apply {
+            text = "Tap to calibrate"
+            setTextColor(0xAAFFFFFF.toInt())
+            textSize = 12f
+            setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
+        }
+        pillContent.addView(calibrationPillLine1)
+        pillContent.addView(calibrationPillLine2)
+        val calibrationPill = FrameLayout(requireContext()).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+                setMargins(0, 0, 0, 52)
+            }
+            addView(pillContent)
+            visibility = View.GONE
+            setOnClickListener { showCalibrationDialog() }
+        }
+        calibrationPillContainer = calibrationPill
+        bottomControls.addView(calibrationPill)
 
         // Screenshot button (right)
         val screenshotButton = ImageButton(requireContext()).apply {
@@ -426,6 +478,17 @@ class FurnitureFitFragment : Fragment() {
                     statusLabel.text = if (labels.isNotEmpty()) labels else "Detected"
                     overlay.setMaskAndDetections(result.mask, result.detections, result.inputSize)
 
+                    // Estimated furniture height in meters from largest detection (for Tap to calibrate)
+                    val inputSize = result.inputSize
+                    if (result.detections.isNotEmpty() && inputSize > 0) {
+                        val maxH = result.detections.maxOf { it.h }
+                        detectedFurnitureHeightMeters = (maxH / inputSize) * defaultRoomHeightMeters
+                        updateCalibrationPill()
+                    } else {
+                        detectedFurnitureHeightMeters = null
+                        updateCalibrationPill()
+                    }
+
                     // Show 3D room (GLB or PLY) behind segmented furniture, hide camera preview
                     if (showRoomBackground && result.detections.isNotEmpty()) {
                         if (usePlyBackground) {
@@ -461,6 +524,75 @@ class FurnitureFitFragment : Fragment() {
             progressBar.progress = value
             progressLabel.text = text
         }
+    }
+
+    private fun updateCalibrationPill() {
+        activity?.runOnUiThread {
+            val detected = detectedFurnitureHeightMeters
+            calibrationPillContainer?.visibility = if (detected != null) View.VISIBLE else View.GONE
+            if (detected != null) {
+                val roomM = calibratedRoomHeightMeters
+                calibrationPillLine1?.text = if (roomM != null) "Room: ${String.format(Locale.US, "%.2f", roomM)}m" else "Furn: ${String.format(Locale.US, "%.2f", detected)}m"
+                calibrationPillLine1?.setTextColor(if (roomM != null) 0xFF4CAF50.toInt() else 0xFFFFFFFF.toInt())
+                calibrationPillLine2?.text = "Tap to calibrate"
+            }
+        }
+    }
+
+    private fun showCalibrationDialog() {
+        val detected = detectedFurnitureHeightMeters ?: return
+        val ctx = requireContext()
+        val edit = EditText(ctx).apply {
+            setHint("Real height (m)")
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(String.format(Locale.US, "%.2f", detected))
+            setSelection(text?.length ?: 0)
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle("Calibrate Room")
+            .setMessage("Enter real furniture height (meters). Detected: ${String.format(Locale.US, "%.2f", detected)}m")
+            .setView(edit)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val raw = edit.text?.toString()?.trim() ?: return@setPositiveButton
+                val real = raw.toFloatOrNull() ?: return@setPositiveButton
+                if (real <= 0f) {
+                    Toast.makeText(ctx, "Enter a positive number", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                calibrationScaleFactor = real / detected
+                realFurnitureHeightMeters = real
+                calibratedRoomHeightMeters = defaultRoomHeightMeters * calibrationScaleFactor
+                applyScaleToRoom()
+                updateCalibrationPill()
+                Toast.makeText(ctx, "Room scaled by ${String.format(Locale.US, "%.2f", calibrationScaleFactor)}x", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    /**
+     * Apply calibration scale to room and adjust camera position so the room stays framed
+     * (same idea as Swift: scaleRoom then autoFrameRoom — scale mesh then re-frame camera).
+     */
+    private fun applyScaleToRoom() {
+        val scale = calibrationScaleFactor
+        roomModelNode?.let { node ->
+            node.scale = Scale(scale, scale, scale)
+        }
+        val setup = initialCameraSetup
+        if (setup != null) {
+            roomSceneView.cameraNode.apply {
+                position = Position(setup.position.x * scale, setup.position.y * scale, setup.position.z * scale)
+                lookAt(Position(setup.lookAt.x * scale, setup.lookAt.y * scale, setup.lookAt.z * scale))
+            }
+        } else {
+            val baseDistance = 4f
+            roomSceneView.cameraNode.apply {
+                position = Position(0f, 1.6f, baseDistance * scale)
+                lookAt(Position(0f, 1.4f, -baseDistance * scale))
+            }
+        }
+        // PLY WebView: scaling + camera reframe could be added via JS if the viewer supports it
     }
 
     private val Int.dp: Int
@@ -543,18 +675,40 @@ class FurnitureFitFragment : Fragment() {
                         modelInstance = modelInstance,
                         scaleToUnits = null
                     )
-                    modelNode.position = Position(0f, 0f, 0f)
+                    roomModelNode = modelNode
                     roomSceneView.addChildNode(modelNode)
+
+                    // Center room at origin and position camera inside room facing front wall (match ModelDetailActivity / Swift)
+                    val bboxCenter = modelNode.center
+                    val bboxExtents = modelNode.extents
+                    Log.d("FurnitureFit", "Room bbox center=(${bboxCenter.x}, ${bboxCenter.y}, ${bboxCenter.z}) extents=(${bboxExtents.x}, ${bboxExtents.y}, ${bboxExtents.z})")
+                    modelNode.position = Position(-bboxCenter.x, -bboxCenter.y, -bboxCenter.z)
+
+                    val boundaryManager = RoomBoundaryManager()
+                    roomBoundaryManager = boundaryManager
+                    val w = bboxExtents.x
+                    val h = bboxExtents.y
+                    val d = bboxExtents.z
+                    boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
+                    val cameraSetup = boundaryManager.getCameraCenteredView()
+                    initialCameraSetup = cameraSetup
                     roomSceneView.cameraNode.apply {
-                        position = Position(0f, 1.6f, 4f)
-                        lookAt(Position(0f, 1.4f, -4f))
+                        position = cameraSetup.position
+                        lookAt(cameraSetup.lookAt)
                     }
-                    Log.d("FurnitureFit", "3D room loaded successfully")
+                    roomSceneView.post {
+                        roomSceneView.cameraNode.apply {
+                            position = cameraSetup.position
+                            lookAt(cameraSetup.lookAt)
+                        }
+                    }
+                    Log.d("FurnitureFit", "3D room loaded; camera at back looking at front wall: pos=${cameraSetup.position} lookAt=${cameraSetup.lookAt}")
                 } else {
                     roomSceneView.cameraNode.apply {
                         position = Position(0f, 1.6f, 4f)
                         lookAt(Position(0f, 1.4f, -4f))
                     }
+                    initialCameraSetup = null
                     Log.d("FurnitureFit", "No 3D room; camera ready for segmentation")
                 }
             } catch (e: Exception) {

@@ -935,8 +935,10 @@ class SharpRoomActivity : AppCompatActivity() {
             Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()
             Log.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
 
-            // Finish and return to home
-            setResult(RESULT_OK)
+            // Go to room list screen (same as GLBRoomActivity / ModelDetailActivity after save)
+            val intent = Intent(this, ContentActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+            startActivity(intent)
             finish()
 
         } catch (e: Exception) {
