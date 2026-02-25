@@ -140,15 +140,20 @@ class ModelDetailActivity : AppCompatActivity() {
             val glbFile = File(directGlbPath)
             if (glbFile.exists()) {
                 Log.d(TAG, "Preview GLB exists: ${glbFile.length()} bytes")
-                loadModel(directGlbPath)
+                loadModel(directGlbPath, null, null, null)
             } else {
                 Log.e(TAG, "Preview GLB not found: $directGlbPath")
                 Toast.makeText(this, "Room file not found", Toast.LENGTH_SHORT).show()
             }
         } else {
-            // Model ID mode (existing rooms)
+            // Model ID mode (existing rooms - bundled vintage/cozy or from list)
             val modelId = intent.getStringExtra(EXTRA_MODEL_ID) ?: return
-            val model = modelManager.getModel(modelId) ?: return
+            val model = modelManager.getModel(modelId) ?: run {
+                Log.e(TAG, "Model not found for id=$modelId")
+                return
+            }
+
+            Log.d(TAG, "ModelDetail mode: id=$modelId name=${model.name} assetPath=${model.assetPath} isUserCreated=${model.isUserCreated}")
 
             currentModelId = modelId
             glbPath = model.assetPath
@@ -162,13 +167,21 @@ class ModelDetailActivity : AppCompatActivity() {
             // Brain button launches FurnitureFit segmentation with this room as background
             brainButton.visibility = View.VISIBLE
             brainButton.setOnClickListener {
+                val roomFolder = java.io.File(model.assetPath).let { f ->
+                    if (f.isFile) f.parent else f.absolutePath
+                }
+                // Only pass ROOM_FOLDER when it's an absolute path to a real folder (user room).
+                // Bundled assets (models/vintage.glb) have parent "models" - no room.glb there, so omit to use ROOM_ID.
+                val absoluteFolder = if (roomFolder != null && java.io.File(roomFolder).isAbsolute) roomFolder else null
+                Log.d(TAG, "Brain click: ROOM_ID=${model.id} ROOM_FOLDER=$absoluteFolder (raw=$roomFolder)")
                 val intent = Intent(this, FurnitureFitActivity::class.java)
                 intent.putExtra("ROOM_ID", model.id)
                 intent.putExtra("ROOM_NAME", model.name)
+                if (absoluteFolder != null) intent.putExtra("ROOM_FOLDER", absoluteFolder)
                 startActivity(intent)
             }
 
-            loadModel(model.assetPath)
+            loadModel(model.assetPath, model.roomWidth, model.roomHeight, model.roomDepth)
         }
     }
 
@@ -405,13 +418,19 @@ class ModelDetailActivity : AppCompatActivity() {
         updateOrientationLabel()
     }
 
-    private fun loadModel(assetPath: String) {
+    private fun loadModel(
+        assetPath: String,
+        roomWidth: Float?,
+        roomHeight: Float?,
+        roomDepth: Float?
+    ) {
         lifecycleScope.launch {
             try {
                 val isFileSystemPath = assetPath.startsWith("/")
                 Log.d(TAG, "=== Loading Model ===")
                 Log.d(TAG, "  Path type: ${if (isFileSystemPath) "FILE SYSTEM" else "ASSETS"}")
                 Log.d(TAG, "  Path: $assetPath")
+                Log.d(TAG, "  Room dims: ${roomWidth ?: "null"} x ${roomHeight ?: "null"} x ${roomDepth ?: "null"}")
 
                 val modelInstance = if (isFileSystemPath) {
                     // File system path - load from file (user-created rooms)
@@ -427,9 +446,7 @@ class ModelDetailActivity : AppCompatActivity() {
                     )
                 }
 
-                // Room dimensions from GlbGenerator: width=4, depth=4.5, height=2.8
-                // Model Y goes from 0 (floor) to 2.8 (ceiling)
-                // Don't scale - keep original size for proper camera positioning
+                // Don't scale - keep original size
                 val modelNode = ModelNode(
                     modelInstance = modelInstance,
                     scaleToUnits = null  // Keep original scale
@@ -438,22 +455,27 @@ class ModelDetailActivity : AppCompatActivity() {
                 sceneView.addChildNode(modelNode)
                 currentModelNode = modelNode
 
-                // Log model position
-                Log.d(TAG, "  Model added, position: ${modelNode.position}")
+                // Center the room at origin (match Swift: use actual model bounds so camera sees full room)
+                val bboxCenter = modelNode.center
+                val bboxExtents = modelNode.extents
+                Log.d(TAG, "  Model bbox center: (${bboxCenter.x}, ${bboxCenter.y}, ${bboxCenter.z}) extents: (${bboxExtents.x}, ${bboxExtents.y}, ${bboxExtents.z})")
 
-                // Add a debug cuboid in the room (on the floor, centered)
+                modelNode.position = io.github.sceneview.math.Position(
+                    -bboxCenter.x,
+                    -bboxCenter.y,
+                    -bboxCenter.z
+                )
+                Log.d(TAG, "  Model position set to center at origin: (${modelNode.position.x}, ${modelNode.position.y}, ${modelNode.position.z})")
+
                 addDebugCuboid()
 
-                // Use RoomBoundaryManager for camera positioning (like iOS)
-                // Initialize with default room dimensions (matches GlbGenerator)
-                boundaryManager.initializeFromDimensions()
-
-                // Detect orientation - portrait needs camera further back
-                val isPortrait = resources.configuration.orientation ==
-                    android.content.res.Configuration.ORIENTATION_PORTRAIT
-
-                // Get optimal camera position from boundary manager
-                val cameraSetup = boundaryManager.getOptimalCameraPosition(isPortrait = isPortrait)
+                // Use actual model extents so camera bounds match the geometry (not passed dims which may be wrong)
+                val w = bboxExtents.x
+                val h = bboxExtents.y
+                val d = bboxExtents.z
+                boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
+                val cameraSetup = boundaryManager.getCameraCenteredView()
+                Log.d(TAG, "  Room bounds from bbox: ${w}x${h}x${d} -> camera pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
 
                 // Position camera IMMEDIATELY after adding model
                 sceneView.cameraNode.apply {

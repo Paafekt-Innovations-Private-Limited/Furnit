@@ -129,7 +129,7 @@ class SharpService private constructor(private val context: Context) {
      */
     suspend fun preloadSharpModels() = withContext(Dispatchers.IO) {
         val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
-        val backend = prefs.getString("inference_backend", "onnx") ?: "onnx"
+        val backend = prefs.getString("inference_backend", "executorch_int8") ?: "executorch_int8"
         val effective = BackendConfig.normalize(backend)
         when {
             effective == "executorch" && BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady() -> {
@@ -197,7 +197,7 @@ class SharpService private constructor(private val context: Context) {
         } else {
             // Migrate old boolean pref
             val useNcnn = prefs.getBoolean("use_ncnn_backend", false)
-            requestedBackend = if (useNcnn) "ncnn" else "onnx"
+            requestedBackend = if (useNcnn) "ncnn" else "executorch_int8"
             prefs.edit()
                 .putString("inference_backend", requestedBackend)
                 .remove("use_ncnn_backend")

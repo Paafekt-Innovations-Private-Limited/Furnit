@@ -16,6 +16,7 @@ import org.pytorch.executorch.Module
 import org.pytorch.executorch.Tensor
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -59,6 +60,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             "sharp_split_part3_int8.pte",
             "sharp_split_part4_int8.pte"
         )
+        /** Names of .pte files that may be packaged in assets/models/ for testing. */
+        private val ASSET_MODEL_FILENAMES = arrayOf(
+            "sharp_split_part1_int8.pte",
+            "sharp_split_part2_int8.pte",
+            "sharp_split_part3_int8.pte",
+            "sharp_split_part4a_chunk_512.pte",
+            "sharp_split_part4a_chunk_65.pte",
+            "sharp_split_part4b.pte"
+        )
+        private const val ASSET_MODELS_SUBDIR = "models"
 
         private const val LOGIT_LUT_SIZE = 1024
         private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
@@ -102,6 +113,25 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     fun initialize(): Boolean = runBlocking { mutex.withLock { isInitialized = true; true } }
 
+    /** Copy packaged .pte from assets/models/ to filesDir/models so Module.load can use them (for test APKs). */
+    private fun ensureModelsFromAssets() {
+        for (filename in ASSET_MODEL_FILENAMES) {
+            val dest = File(internalModelsDir, filename)
+            if (dest.exists() && dest.length() > 0L) continue
+            val assetPath = "$ASSET_MODELS_SUBDIR/$filename"
+            try {
+                context.assets.open(assetPath).use { input: InputStream ->
+                    FileOutputStream(dest).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Log.d(TAG, "Copied $filename from assets to ${dest.absolutePath}")
+            } catch (e: Exception) {
+                Log.d(TAG, "Asset $assetPath not present or copy failed: ${e.message}")
+            }
+        }
+    }
+
     private fun findFile(filename: String): File? {
         val internal = File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0 }
         return internal ?: File(modelsDir, filename).takeIf { it.exists() && it.length() > 0 }
@@ -115,6 +145,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     suspend fun inferStreaming(bitmap: Bitmap, progressCallback: ((Float, String) -> Unit)? = null): StreamingResult? = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (!isInitialized) return@withContext null
+            ensureModelsFromAssets()
 
             report(0f, "Preparing…", progressCallback)
             // 1. Prepare multi-scale buffers (1x and 0.5x) to match Python export (96x96, 48x48)

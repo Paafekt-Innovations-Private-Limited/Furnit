@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Open Ultralytics deployment docs, click Ask AI, and submit a SHARP/Executorch-focused question.
+Use --gradle for the Gradle build failure (wildcard IP / sysconf on macOS).
 
 Uses Playwright (same pattern as abap-ai-toolkit browser_export.py).
 - Prompt kept under 200 lines (chat limit); no attachments.
@@ -41,6 +42,12 @@ BLUISH_QUESTION = """We have a 3D Gaussian splatting model (SHARP, ViT-based) ru
 # Progress bar: keep percentage ticking during long inference so user sees progress.
 PROGRESS_BAR_QUESTION = """We have an Android app that runs a long (~2 minute) ML inference pipeline (ExecuTorch, ViT-based 3D room generation). The progress bar currently jumps from 20% to 100% at the end because we only report at start and completion. We want the percentage to tick smoothly so the user feels progress is happening. The pipeline has distinct phases: encoder patches (~45s), image encoder (~1.5s), decoder chunks (~3s), one long blocking forward (~80s), then file write (~10s). We can report progress at the end of each patch and phase, but the 80s forward is a single blocking call with no mid-forward callbacks. What are best practices to keep the progress bar moving? Options we're considering: (1) Run the blocking call in a background thread and on a timer (e.g. every 2s) update progress from 55% to 90% based on elapsed time. (2) Show an indeterminate spinner for the long phase. (3) Subdivide the work so we have more granular callbacks. We want concrete UX advice: should we use time-based estimated progress during the blocking call, and what copy/messaging keeps users engaged (e.g. "This may take a minute", "Adding the finishing touches")? Not YOLO; this is 3D reconstruction / Gaussian splatting."""
 
+# Camera: position virtual camera at back wall looking at front wall in 3D room viewer.
+CAMERA_POSITION_QUESTION = """We have an Android WebView 3D room viewer using Three.js and OrbitControls. The room is a Gaussian splatting mesh (PLY) with a bounding box (Box3). We want the initial camera to be placed just inside the imaginary back wall, looking directly at the front wall, for both portrait and landscape photo orientations. We set camera.position to (center.x, eyeHeight, backWallZ - padding) and controls.target to (center.x, center.y, frontWallZ) with backWallZ = box.max.z and frontWallZ = box.min.z, but the camera position does not change from the previous default (camera was at center minus distance along Z, target at center). Why might the new position/target not take effect? Possible causes: (1) autoFrameRoom runs before the mesh has final geometry? (2) OrbitControls or something else resetting camera after we set it? (3) Need to set initialCameraPosition/initialControlsTarget differently? (4) For portrait vs landscape we need different axes (e.g. back/front along X for portrait)? We need the same behaviour for both orientations. Not YOLO; this is 3D reconstruction / room viewer."""
+
+# Orientation: portrait and landscape photos both showing as landscape in 3D viewer.
+ORIENTATION_QUESTION = """We have an Android app that shows a 3D Gaussian-splat room in a WebView (Three.js). The room is generated from a single photo. We pass photo_orientation (portrait or landscape) from the activity intent and inject it into the WebView as isPortrait. We use isPortrait to map Box3 size to roomWidth/roomHeight (portrait: width=X height=Y; landscape: width=Y height=X). We do NOT apply any rotation to the splat mesh (comment says "No rotation - see raw PLY first"). The problem: both portrait and landscape photos result in the room being displayed as landscape only; orientation is not correctly set. What is the right approach? (1) Should we rotate the splat mesh (e.g. 90° around Y) when isPortrait so the room aspect matches the photo? (2) Is the PLY always exported in a fixed coordinate frame (e.g. landscape) so we must apply a rotation in the viewer for portrait? (3) Could the intent extra "photo_orientation" be wrong or not passed, and how should we verify? We lock the activity to SCREEN_ORIENTATION_PORTRAIT or LANDSCAPE based on photo_orientation, but the 3D content still looks landscape. Not YOLO; this is 3D room reconstruction."""
+
 DEFAULT_QUESTION = CURRENT_PROBLEM_QUESTION
 
 # Other canned questions (use -q with paste or a file).
@@ -48,6 +55,9 @@ DEPLOYMENT_QUESTION = """I'm deploying a ViT-based 3D reconstruction model (SHAR
 
 # Use with: python ultralytics_ask_ai.py -q "$(cat android/ultralytics_question_576_vs_577.txt)"
 QUESTION_576_VS_577 = """For TinyViT / PatchEmbed: when processing a single 384x384 patch, can the encoder output (B, N, C) have N=576 (spatial only) instead of N=577 (CLS + 24x24)? We get ArrayIndexOutOfBoundsException at index 589824 when reshaping Part2 output for that single-patch path—our buffer is 576*1024. Should reshapeToSpatial assume 577 tokens and skip CLS, or 576 tokens with no CLS depending on tensor size? Please focus on TinyViT single-patch output shape."""
+
+# Gradle/Android build failure: wildcard IP and sysconf on macOS.
+GRADLE_BUILD_QUESTION = """When building an Android app with Gradle on macOS (darwin), the build fails with: (1) "Could not determine a usable wildcard IP for this machine" and (2) "xargs: sysconf(_SC_ARG_MAX) failed". The project uses AGP 8.5.2 and Kotlin. Building with --no-daemon works. What is the root cause and the recommended fix so that a normal daemon build works? Should we set org.gradle.daemon=false, or -Djava.net.preferIPv4Stack=true in gradle.properties, or something else? We need a concrete fix for Gradle/JVM or macOS environment."""
 
 RESPONSE_FILE = Path(__file__).resolve().parent / "ultralytics_response.txt"
 POPUP_DOM_FILE = Path(__file__).resolve().parent / "ultralytics_popup_dom.html"
@@ -146,7 +156,7 @@ def ask_ultralytics_ai(
             logger.info("Question submitted. Waiting for AI to finish responding, then reading from chat HTML...")
 
             # 1) Wait for the reply, then capture whole popup DOM and latest answer DOM; extract answer from HTML
-            reply_markers = ["The Fix", "skip the CLS", "tokenIdx", "outBase", "out: [C, H, W]", "XNNPACK", "Vulkan", "delegate", "quantization", "latency", "ExecuTorch", "fusion", "best practices"]
+            reply_markers = ["The Fix", "skip the CLS", "tokenIdx", "outBase", "out: [C, H, W]", "XNNPACK", "Vulkan", "delegate", "quantization", "latency", "ExecuTorch", "fusion", "best practices", "Gradle", "daemon", "gradle.properties", "JVM", "wildcard", "IPv4"]
             answer_html: str | None = None
             popup_html: str | None = None
             question_preview = question[:80].replace("\n", " ")
@@ -296,6 +306,21 @@ def main() -> int:
         help="Use canned question for progress bar / percentage ticking during long inference",
     )
     parser.add_argument(
+        "--camera",
+        action="store_true",
+        help="Use canned question for Three.js camera at back wall looking at front wall (portrait + landscape)",
+    )
+    parser.add_argument(
+        "--orientation",
+        action="store_true",
+        help="Use canned question for portrait vs landscape both showing as landscape in 3D room viewer",
+    )
+    parser.add_argument(
+        "--gradle",
+        action="store_true",
+        help="Use canned question for Gradle build failure (wildcard IP / sysconf on macOS)",
+    )
+    parser.add_argument(
         "--headless",
         action="store_true",
         help="Run browser headless",
@@ -314,7 +339,10 @@ def main() -> int:
     args = parser.parse_args()
     question = (
         PROGRESS_BAR_QUESTION if args.progress_bar
+        else CAMERA_POSITION_QUESTION if args.camera
+        else ORIENTATION_QUESTION if args.orientation
         else BLUISH_QUESTION if args.bluish
+        else GRADLE_BUILD_QUESTION if args.gradle
         else args.question
     )
     save_path = None if args.no_save else RESPONSE_FILE

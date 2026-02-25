@@ -480,7 +480,7 @@ class SettingsActivity : AppCompatActivity() {
             "python" -> backendRadioGroup.check(pythonRadioId)
             "torch_mobile" -> backendRadioGroup.check(torchMobileRadioId)
             "native_pt" -> backendRadioGroup.check(nativePtRadioId)
-            else -> backendRadioGroup.check(onnxRadioId)
+            else -> backendRadioGroup.check(executorchInt8RadioId)
         }
 
         backendRadioGroup.setOnCheckedChangeListener { _, checkedId ->
@@ -496,7 +496,7 @@ class SettingsActivity : AppCompatActivity() {
                 pythonRadioId -> "python"
                 torchMobileRadioId -> "torch_mobile"
                 nativePtRadioId -> "native_pt"
-                else -> "onnx"
+                else -> "executorch_int8"
             }
             prefs.edit().putString("inference_backend", backend).apply()
         }
@@ -644,9 +644,9 @@ class SettingsActivity : AppCompatActivity() {
             return normalized
         }
 
-        // Migrate old boolean pref
+        // Migrate old boolean pref (default new installs to ExecuTorch INT8 for easy testing)
         val useNcnn = prefs.getBoolean("use_ncnn_backend", false)
-        val backend = BackendConfig.normalize(if (useNcnn) "ncnn" else "onnx")
+        val backend = BackendConfig.normalize(if (useNcnn) "ncnn" else "executorch_int8")
         prefs.edit()
             .putString("inference_backend", backend)
             .remove("use_ncnn_backend")
