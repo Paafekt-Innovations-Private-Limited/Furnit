@@ -2,6 +2,27 @@
 
 Android app for Furnit (3D room models, SHARP inference, etc.).
 
+## Smaller APK for sharing (arm64-only, no embedded SHARP models)
+
+The default build embeds **ExecuTorch SHARP .pte models** (~1.9 GB) in assets, so the APK is **~2.3 GB**. To build a **much smaller APK** (e.g. ~300–400 MB) for a friend to install:
+
+1. **Build without embedding the SHARP models:**
+   ```bash
+   ./gradlew assembleDebug -PskipExecutorchAssets
+   ```
+   Output: `app/build/outputs/apk/arm64-v8a/debug/app-arm64-v8a-debug.apk`
+
+2. **On the device**, SHARP (AI room from photo) will need the models pushed once. From your machine (with the model files in `android/executorch_int8_models/` and `android/executorch_models/`):
+   ```bash
+   adb push executorch_int8_models/*.pte /sdcard/Android/data/com.furnit.android/files/models/
+   adb push executorch_models/sharp_split_part4a_chunk_512.pte /sdcard/Android/data/com.furnit.android/files/models/
+   adb push executorch_models/sharp_split_part4a_chunk_65.pte /sdcard/Android/data/com.furnit.android/files/models/
+   adb push executorch_models/sharp_split_part4b.pte /sdcard/Android/data/com.furnit.android/files/models/
+   ```
+   Or copy the same files onto the device into that path (e.g. via file manager). Without these, the app runs but “Create room from photo” (AI) will report missing models.
+
+3. **ABI split** is already enabled (arm64-v8a only), so the APK only contains one architecture.
+
 ## Build: Gradle daemon / wildcard IP on macOS
 
 If the build fails with **"Could not determine a usable wildcard IP for this machine"** and/or **"xargs: sysconf(_SC_ARG_MAX) failed"**, try:
@@ -42,6 +63,19 @@ adb logcat -s ContentActivity:D ModelManager:D ModelDetailActivity:D FurnitureFi
 adb logcat -s ModelDetailActivity:D RoomBoundaryManager:D -v time
 ```
 Shows model bbox center/extents, model position, room bounds, and camera pos/lookAt when opening a room from the list.
+
+**Camera debug: which path ran and final position (capture to file):**
+Use this to see whether GLB (RoomBoundaryManager / ModelDetail / FurnitureFit) or PLY (SharpRoomActivity WebView) set the camera, and what values were used.
+```bash
+adb logcat -s RoomBoundaryManager:D ModelDetailActivity:D FurnitureFit:D SharpRoomActivity:D -v time 2>&1 | tee camera_debug.log
+```
+Then open the room (from list or create from photo). Look for:
+- `[BackCenter]` = RoomBoundaryManager computed position (GLB path).
+- `[ModelDetail] getCameraAtBackCenter CALLED` / `camera SET` = opening a GLB room from the list.
+- `[FurnitureFit] getCameraAtBackCenter CALLED` / `camera SET` = GLB room as brain/segmentation background.
+- `[SharpRoom] Building WebView HTML` = PLY/splat viewer started (photo-orientation and isPortrait).
+- `CAMERA_POSITION_FINAL` (in WebGL message) = JS in SharpRoomActivity set the camera; shows pos, depthAlongView, insetFraction, insetFromBack.
+If you only see `[SharpRoom]` and `CAMERA_POSITION_FINAL`, the camera is controlled by the WebView JS (SharpRoomActivity), not Kotlin RoomBoundaryManager.
 
 **WebView GLB viewer (when opening a GLB room from list):**
 ```bash

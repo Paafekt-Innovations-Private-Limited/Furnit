@@ -690,7 +690,8 @@ class FurnitureFitFragment : Fragment() {
                     val h = bboxExtents.y
                     val d = bboxExtents.z
                     boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
-                    val cameraSetup = boundaryManager.getCameraCenteredView()
+                    Log.d("FurnitureFit", "[FurnitureFit] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
+                    val cameraSetup = boundaryManager.getCameraAtBackCenter()
                     initialCameraSetup = cameraSetup
                     roomSceneView.cameraNode.apply {
                         position = cameraSetup.position
@@ -702,7 +703,7 @@ class FurnitureFitFragment : Fragment() {
                             lookAt(cameraSetup.lookAt)
                         }
                     }
-                    Log.d("FurnitureFit", "3D room loaded; camera at back looking at front wall: pos=${cameraSetup.position} lookAt=${cameraSetup.lookAt}")
+                    Log.d("FurnitureFit", "[FurnitureFit] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
                 } else {
                     roomSceneView.cameraNode.apply {
                         position = Position(0f, 1.6f, 4f)

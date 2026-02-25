@@ -118,6 +118,15 @@
 "settings.privacyPolicy" = "Privacy Policy";
 "settings.termsOfService" = "Terms of Service";
 "settings.support" = "Support";
+"settings.licenses" = "Licenses";
+
+// Licenses & Attributions (About)
+"licenses.title" = "Licenses & Attributions";
+"licenses.phase1Notice" = "Phase 1 release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
+"licenses.yoloeTitle" = "Furniture detection (YOLO-E)";
+"licenses.yoloe" = "This app uses models based on YOLO (e.g. Ultralytics YOLO). YOLO is licensed under AGPL-3.0. This Phase 1 release is non-commercial. For commercial use, see https://www.ultralytics.com/license";
+"licenses.sharpTitle" = "3D room reconstruction (SHARP)";
+"licenses.sharp" = "3D room generation from a single photo uses technology based on SHARP (Apple ml-sharp). SHARP is used in accordance with its applicable terms. This Phase 1 release is non-commercial.";
 
 // MARK: - Quality Options
 "quality.standard" = "Standard";

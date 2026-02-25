@@ -201,6 +201,42 @@ class RoomBoundaryManager {
     }
 
     /**
+     * Inset from back wall: depth-adaptive so one formula works for shallow and deep rooms.
+     * Shallow rooms: smaller fraction (camera stays near back). Deep rooms: larger fraction (camera further in, less grey).
+     */
+    private fun backCenterInsetFraction(depth: Float): Float {
+        val t = (depth / 6f).coerceIn(0f, 1f)  // 0 at depth 0, 1 at depth >= 6m
+        return 0.18f + 0.32f * t  // 18% for tiny rooms, up to 50% for deep rooms
+    }
+
+    /**
+     * Get camera position at the center of the imaginary back wall, pushed into the room.
+     * Inset is depth-adaptive so framing works for both small and large rooms.
+     */
+    fun getCameraAtBackCenter(): CameraSetup {
+        val bounds = roomBounds ?: run {
+            initializeFromDimensions()
+            roomBounds!!
+        }
+
+        val fraction = backCenterInsetFraction(bounds.depth)
+        val insetFromBack = (bounds.depth * fraction).coerceAtLeast(CAMERA_PADDING)
+        val camX = bounds.centerX
+        val camY = bounds.centerY + 0.4f
+        val camZ = bounds.backWallZ - insetFromBack
+
+        val targetX = bounds.centerX
+        val targetY = bounds.centerY
+        val targetZ = bounds.frontWallZ
+
+        Log.d(TAG, "[BackCenter] depth=${bounds.depth}m fraction=$fraction inset=${insetFromBack}m -> pos=($camX, $camY, $camZ) lookAt=($targetX, $targetY, $targetZ)")
+        return CameraSetup(
+            position = Position(camX, camY, camZ),
+            lookAt = Position(targetX, targetY, targetZ)
+        )
+    }
+
+    /**
      * Constrain camera position within room boundaries
      * Allows movement inside the room but prevents going through walls
      */

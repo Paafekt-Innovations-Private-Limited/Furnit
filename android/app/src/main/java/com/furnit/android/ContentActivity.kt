@@ -405,6 +405,7 @@ class ContentActivity : AppCompatActivity() {
                     clickedModel.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
                     clickedModel.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
                     intent.putExtra("photo_orientation", clickedModel.photoOrientation)
+                    Log.d("ContentActivity", "Opening SharpRoomActivity photo_orientation=${clickedModel.photoOrientation} roomId=${clickedModel.id}")
                     startActivity(intent)
                 } else if (clickedModel.assetPath.endsWith(".glb")) {
                     // Open WebGL-based GLBRoomActivity for GLB files (matching iOS)
@@ -439,6 +440,7 @@ class ContentActivity : AppCompatActivity() {
                             clickedModel.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
                             clickedModel.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
                             intent.putExtra("photo_orientation", clickedModel.photoOrientation)
+                            Log.d("ContentActivity", "Opening SharpRoomActivity (folder) photo_orientation=${clickedModel.photoOrientation} roomId=${clickedModel.id}")
                             startActivity(intent)
                         }
                         glbFile.exists() -> {

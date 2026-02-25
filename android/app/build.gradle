@@ -35,11 +35,7 @@ android {
         // }
 
         if (enableNative) {
-            // NCNN native library support
-            ndk {
-                abiFilters 'arm64-v8a', 'armeabi-v7a'
-            }
-
+            // NCNN native library support — ABI is controlled by splits.abi below (arm64-v8a only)
             // CMake configuration for NCNN
             externalNativeBuild {
                 cmake {
@@ -98,6 +94,16 @@ android {
     // 16 KB page alignment: our native libs (NCNN) are built with -Wl,-z,max-page-size=16384 in CMake.
     // Warnings about arcore_sdk, filament, fbjni, c++_shared come from third-party AARs; upgrade ARCore/
     // SceneView/ExecuTorch when they ship 16 KB-aligned libs for full compatibility on 16 KB devices.
+
+    // ABI split: build only arm64-v8a APK (much smaller; works on almost all modern phones)
+    splits {
+        abi {
+            enable true
+            reset()
+            include "arm64-v8a"
+            universalApk false
+        }
+    }
 }
 
 // Package ExecuTorch INT8 models in APK for testing (copy only the 6 required .pte files)

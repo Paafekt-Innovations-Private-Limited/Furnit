@@ -202,6 +202,14 @@ struct SettingsView: View {
                                 .font(.caption)
                         }
                     }
+
+                    NavigationLink(destination: LicensesView()) {
+                        HStack {
+                            Image(systemName: "doc.plaintext.fill")
+                                .foregroundColor(.blue)
+                            Text(L10n.Settings.licenses)
+                        }
+                    }
                 } header: {
                     Text(L10n.Settings.legal)
                 }
