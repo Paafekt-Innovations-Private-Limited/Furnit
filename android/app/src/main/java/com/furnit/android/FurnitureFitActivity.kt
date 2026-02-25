@@ -4,12 +4,18 @@ import android.Manifest
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import java.io.File
 
 class FurnitureFitActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "FurnitureFitActivity"
+    }
 
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -44,14 +50,24 @@ class FurnitureFitActivity : AppCompatActivity() {
     private fun loadFragment() {
         val fragment = FurnitureFitFragment()
 
-        // Pass room info to fragment
-        val roomId = intent.getStringExtra("ROOM_ID")
+        // Pass room info to fragment so the 3D background matches the opened room when room.glb exists.
+        // ROOM_FOLDER = absolute path to room folder. No fallback: if no room.glb, no 3D background is shown.
+        var roomId = intent.getStringExtra("ROOM_ID")
         val roomName = intent.getStringExtra("ROOM_NAME")
-        if (roomId != null) {
-            fragment.arguments = Bundle().apply {
-                putString("ROOM_ID", roomId)
-                putString("ROOM_NAME", roomName)
+        var roomFolder = intent.getStringExtra("ROOM_FOLDER")
+        // Resolve to absolute path so fragment can find room.glb
+        if (roomFolder != null && roomFolder.isNotBlank()) {
+            val f = File(roomFolder)
+            if (!f.isAbsolute) {
+                roomFolder = File(filesDir, roomFolder).absolutePath
             }
+        }
+        Log.d(TAG, "Brain opened with ROOM_ID=$roomId ROOM_NAME=$roomName ROOM_FOLDER=$roomFolder")
+
+        fragment.arguments = Bundle().apply {
+            roomId?.let { putString("ROOM_ID", it) }
+            roomName?.let { putString("ROOM_NAME", it) }
+            roomFolder?.let { putString("ROOM_FOLDER", it) }
         }
 
         supportFragmentManager.beginTransaction()

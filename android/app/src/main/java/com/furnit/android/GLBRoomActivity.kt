@@ -288,10 +288,13 @@ class GLBRoomActivity : AppCompatActivity() {
                     bottomMargin = dpToPx(20)
                 }
                 setOnClickListener {
-                    // Launch FurnitureFitActivity (works in preview mode too)
+                    // Launch FurnitureFitActivity with this room as background (pass folder so it uses opened room)
+                    val roomFolder = intent.getStringExtra("ROOM_FOLDER") ?: glbPath?.let { path -> java.io.File(path).parent }
+                    Log.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
                     val intent = Intent(this@GLBRoomActivity, FurnitureFitActivity::class.java)
                     intent.putExtra("ROOM_ID", roomId)
                     intent.putExtra("ROOM_NAME", roomName)
+                    roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
                     intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
                     startActivity(intent)
                 }
@@ -562,17 +565,23 @@ class GLBRoomActivity : AppCompatActivity() {
                 model.position.z = -center.z;
                 model.position.y = -box.min.y;
 
-                // Position camera inside the room looking at front wall
+                // Match iOS RealityKitBoundaryManager: camera at back-left corner inside room, looking at front wall center
                 const roomWidth = size.x;
                 const roomHeight = size.y;
                 const roomDepth = size.z;
+                const halfWidth = roomWidth * 0.5;
+                const halfDepth = roomDepth * 0.5;
+                const padding = 0.3;
 
-                const eyeHeight = roomHeight * 0.5;
-                const cameraZ = roomDepth * 0.2;
-                const targetZ = -roomDepth * 0.2;
+                const eyeHeight = roomHeight * 0.5 + 0.4;
+                const camX = -halfWidth + padding;
+                const camZ = halfDepth - padding;
+                const targetX = 0;
+                const targetY = eyeHeight;
+                const targetZ = -halfDepth;
 
-                camera.position.set(0, eyeHeight, cameraZ);
-                controls.target.set(0, eyeHeight, targetZ);
+                camera.position.set(camX, eyeHeight, camZ);
+                controls.target.set(targetX, targetY, targetZ);
                 controls.update();
 
                 // Save initial camera state for recenter
@@ -580,7 +589,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 initialControlsTarget = controls.target.clone();
 
                 console.log('[GLBViewer] Room size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), 'x', roomDepth.toFixed(2));
-                console.log('[GLBViewer] Camera at (0,', eyeHeight.toFixed(2), ',', cameraZ.toFixed(2), ')');
+                console.log('[GLBViewer] Camera (Swift back-left): (', camX.toFixed(2), ',', eyeHeight.toFixed(2), ',', camZ.toFixed(2), ') lookAt (0,', targetY.toFixed(2), ',', targetZ.toFixed(2), ')');
 
                 // Notify Android that we're loaded
                 if (window.Android) {

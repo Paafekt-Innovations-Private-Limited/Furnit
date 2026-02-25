@@ -13,6 +13,11 @@ android {
     compileSdk 34
     ndkVersion "26.3.11579264"
 
+    // Keep ExecuTorch .pte models uncompressed (smaller heap during build, faster load at runtime)
+    aaptOptions {
+        noCompress 'pte'
+    }
+
     defaultConfig {
         applicationId "com.furnit.android"
         minSdk 24
@@ -89,7 +94,30 @@ android {
         pickFirst '**/libfbjni.so'
         pickFirst '**/libc++_shared.so'
     }
+
+    // 16 KB page alignment: our native libs (NCNN) are built with -Wl,-z,max-page-size=16384 in CMake.
+    // Warnings about arcore_sdk, filament, fbjni, c++_shared come from third-party AARs; upgrade ARCore/
+    // SceneView/ExecuTorch when they ship 16 KB-aligned libs for full compatibility on 16 KB devices.
 }
+
+// Package ExecuTorch INT8 models in APK for testing (copy only the 6 required .pte files)
+// Use -PskipExecutorchAssets to build without embedding (e.g. when disk full); then push models to device.
+def execInt8Dir = project.file("../executorch_int8_models")
+def execChunkedDir = project.file("../executorch_models")
+def assetsModelsDir = project.file("src/main/assets/models")
+def skipExecutorchAssets = project.hasProperty("skipExecutorchAssets")
+tasks.register("copyExecutorchModelsIntoAssets", Copy) {
+    description = "Copy ExecuTorch INT8 .pte models into assets/models for packaging in APK"
+    into assetsModelsDir
+    from(execInt8Dir) {
+        include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte"
+    }
+    from(execChunkedDir) {
+        include "sharp_split_part4a_chunk_512.pte", "sharp_split_part4a_chunk_65.pte", "sharp_split_part4b.pte"
+    }
+    onlyIf { !skipExecutorchAssets && execInt8Dir.exists() && execChunkedDir.exists() }
+}
+if (!skipExecutorchAssets) preBuild.dependsOn copyExecutorchModelsIntoAssets
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.10"

@@ -2,6 +2,74 @@
 
 Android app for Furnit (3D room models, SHARP inference, etc.).
 
+## Build: Gradle daemon / wildcard IP on macOS
+
+If the build fails with **"Could not determine a usable wildcard IP for this machine"** and/or **"xargs: sysconf(_SC_ARG_MAX) failed"**, try:
+
+1. **Use Android Studio’s JDK** (often fixes the IP issue):
+   ```bash
+   export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+   ./gradlew :app:assembleDebug
+   ```
+   (On older Android Studio the JRE path may be `.../jre/jdk/Contents/Home`.)
+
+2. **Disable the daemon** (avoids daemon socket/lock setup that triggers the error):
+   - In `gradle.properties` add: `org.gradle.daemon=false`
+   - Or run once: `./gradlew :app:assembleDebug --no-daemon`
+
+3. **Ask Ultralytics AI** for more suggestions: install Playwright browsers (`playwright install`), then:
+   ```bash
+   python3 ultralytics_ask_ai.py --gradle --headless
+   ```
+   Response is printed and saved to `ultralytics_response.txt`; use it in Cursor and confirm before applying changes.
+
+## Viewing logs
+
+With the device connected (or emulator running), use `adb logcat`. If more than one device is connected, target one with `-s <device_serial>` (see `adb devices`).
+
+**Room list / 3D room view (camera position, model load):**
+```bash
+adb logcat -s ModelDetailActivity:D RoomBoundaryManager:D -v time
+```
+
+**Room picking (tap room name → correct room opens; debug vintage vs correct room):**
+```bash
+adb logcat -s ContentActivity:D ModelManager:D ModelDetailActivity:D FurnitureFit:D SharpRoomActivity:D GLBRoomActivity:D -v time
+```
+
+**Room position / camera (room only right edge visible; centering):**
+```bash
+adb logcat -s ModelDetailActivity:D RoomBoundaryManager:D -v time
+```
+Shows model bbox center/extents, model position, room bounds, and camera pos/lookAt when opening a room from the list.
+
+**WebView GLB viewer (when opening a GLB room from list):**
+```bash
+adb logcat -s chromium:D -v time
+```
+(WebView logs may use the `chromium` tag; check logcat for `[GLBViewer]` in the message.)
+
+**Camera and brain icon (room list / FurnitureFit):**  
+Room list 3D view uses the same virtual camera as iOS: **back-left corner** inside the room (RealityKitBoundaryManager), looking at the front wall. When you tap the **brain icon**, the app starts FurnitureFit (furniture segmentation) and passes **ROOM_FOLDER** and **ROOM_ID** so the 3D background matches the opened room when possible.
+
+**How the brain (segmentation) background is picked:**  
+When you tap the brain from an opened room: (1) If the room folder has **room.glb**, it is shown as the 3D background (SceneView). (2) If the room folder has only **room.ply** (SHARP Gaussian splat), the PLY is shown as the background via a WebView (same SparkJS viewer as the Sharp room screen). (3) Bundled rooms (`vintage`, `cozy_room`) or rooms found by **ROOM_ID** under `rooms/` or `sharp_rooms/` use their `room.glb` when present. No fallback: if there is no `room.glb` and no `room.ply`, no 3D backdrop is shown.
+
+**Logs for brain icon / background:**
+```bash
+adb logcat -s FurnitureFitActivity:D FurnitureFit:D -v time
+```
+
+**SHARP / ExecuTorch INT8:**
+```bash
+adb logcat -s ExecutorchInt8Sharp:D SharpService:D -v time
+```
+
+**Multiple tags:** e.g. room view + SHARP:
+```bash
+adb logcat ModelDetailActivity:D RoomBoundaryManager:D ExecutorchInt8Sharp:D SharpService:D -v time
+```
+
 ## SHARP inference: backend comparison
 
 Typical end-to-end time for one room generation (single photo → 3D Gaussian room) on device:

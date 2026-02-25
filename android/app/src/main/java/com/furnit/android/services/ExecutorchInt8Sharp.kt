@@ -4,6 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -13,6 +16,7 @@ import org.pytorch.executorch.Module
 import org.pytorch.executorch.Tensor
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -56,6 +60,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             "sharp_split_part3_int8.pte",
             "sharp_split_part4_int8.pte"
         )
+        /** Names of .pte files that may be packaged in assets/models/ for testing. */
+        private val ASSET_MODEL_FILENAMES = arrayOf(
+            "sharp_split_part1_int8.pte",
+            "sharp_split_part2_int8.pte",
+            "sharp_split_part3_int8.pte",
+            "sharp_split_part4a_chunk_512.pte",
+            "sharp_split_part4a_chunk_65.pte",
+            "sharp_split_part4b.pte"
+        )
+        private const val ASSET_MODELS_SUBDIR = "models"
 
         private const val LOGIT_LUT_SIZE = 1024
         private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
@@ -99,15 +113,41 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     fun initialize(): Boolean = runBlocking { mutex.withLock { isInitialized = true; true } }
 
+    /** Copy packaged .pte from assets/models/ to filesDir/models so Module.load can use them (for test APKs). */
+    private fun ensureModelsFromAssets() {
+        for (filename in ASSET_MODEL_FILENAMES) {
+            val dest = File(internalModelsDir, filename)
+            if (dest.exists() && dest.length() > 0L) continue
+            val assetPath = "$ASSET_MODELS_SUBDIR/$filename"
+            try {
+                context.assets.open(assetPath).use { input: InputStream ->
+                    FileOutputStream(dest).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Log.d(TAG, "Copied $filename from assets to ${dest.absolutePath}")
+            } catch (e: Exception) {
+                Log.d(TAG, "Asset $assetPath not present or copy failed: ${e.message}")
+            }
+        }
+    }
+
     private fun findFile(filename: String): File? {
         val internal = File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0 }
         return internal ?: File(modelsDir, filename).takeIf { it.exists() && it.length() > 0 }
     }
 
+    /** Report progress 0..1 with engaging messages (aligned with Swift/Android overlay text). */
+    private fun report(progress: Float, message: String, progressCallback: ((Float, String) -> Unit)?) {
+        progressCallback?.invoke(progress.coerceIn(0f, 1f), message)
+    }
+
     suspend fun inferStreaming(bitmap: Bitmap, progressCallback: ((Float, String) -> Unit)? = null): StreamingResult? = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (!isInitialized) return@withContext null
+            ensureModelsFromAssets()
 
+            report(0f, "Preparing…", progressCallback)
             // 1. Prepare multi-scale buffers (1x and 0.5x) to match Python export (96x96, 48x48)
             val scaledBmp = Bitmap.createScaledBitmap(bitmap, IMAGE_SIZE, IMAGE_SIZE, true)
             val halfSize = IMAGE_SIZE / 2
@@ -129,6 +169,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val colOffs1x = buildColumnOffsets(GRID_1X, PADDING_1X)
             val colOffs05x = buildColumnOffsets(GRID_05X, PADDING_05X)
 
+            report(0.02f, "Warming up…", progressCallback)
             // 2. Encoder Phase (Part 1 & 2)
             Log.d(TAG, "Loading INT8 Part1+Part2...")
             val mod1 = Module.load(findFile("sharp_split_part1_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
@@ -136,6 +177,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             Log.d(TAG, "Part1+Part2 loaded. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
 
             val stride = (IMAGE_SIZE - PATCH_SIZE) / 4
+            val total1x = GRID_1X * GRID_1X
+            var patchIdx = 0
             for (i in 0 until GRID_1X) for (j in 0 until GRID_1X) {
                 val patch = Bitmap.createBitmap(scaledBmp, j * stride, i * stride, PATCH_SIZE, PATCH_SIZE)
                 val out1 = mod1.forward(EValue.from(Tensor.fromBlob(preprocess(patch, true), longArrayOf(1, 3, 384, 384))))
@@ -150,10 +193,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 val feat = mod2.forward(EValue.from(Tensor.fromBlob(tokens, longArrayOf(1, 577, 1024))))[0].toTensor().dataAsFloatArray
                 mergeCrop(x0Feat, mSize1x, feat, j, i, GRID_1X, PADDING_1X, rowOffX0, colOffs1x)
                 patch.recycle()
+                patchIdx++
+                report(0.05f + 0.30f * (patchIdx.toFloat() / total1x), "Building your room… step $patchIdx of $total1x", progressCallback)
             }
 
             Log.d(TAG, "1x patches done. Starting 0.5x patches (${GRID_05X}x${GRID_05X})...")
-            // 0.5x scale patches (3x3 grid) -> x1Feat (48x48) to match ImageEncoderPartB expectations
+            val total05x = GRID_05X * GRID_05X
+            var patch05Idx = 0
             val stride05x = (halfSize - PATCH_SIZE) / 2
             for (i in 0 until GRID_05X) {
                 for (j in 0 until GRID_05X) {
@@ -168,10 +214,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     val feat05 = mod2.forward(EValue.from(Tensor.fromBlob(tokens, longArrayOf(1, 577, 1024))))[0].toTensor().dataAsFloatArray
                     mergeCrop(x1Feat, mSize05x, feat05, j, i, GRID_05X, PADDING_05X, rowOff05x, colOffs05x)
                     patch.recycle()
+                    patch05Idx++
+                    report(0.36f + 0.06f * (patch05Idx.toFloat() / total05x), "Building your room…", progressCallback)
                 }
             }
             halfBitmap.recycle()
-            // 35th patch: 0.25x scale (single 384x384) -> x2Feat [1, 1024, 24, 24] for Part4b (buffer-safe)
+            report(0.43f, "Building your room…", progressCallback)
             Log.d(TAG, "0.5x patches done. Running 0.25x patch (35th) for x2Feat...")
             val quarterBmp = Bitmap.createScaledBitmap(scaledBmp, 384, 384, true)
             patchFloatBuffer.rewind()
@@ -188,6 +236,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             Log.d(TAG, "0.25x patch done. Destroying Part1+Part2...")
             mod1.destroy(); mod2.destroy(); System.gc()
 
+            report(0.44f, "Understanding the full picture…", progressCallback)
             // 3. Image Encoder (Part 3)
             Log.d(TAG, "Loading Part3 (image encoder)...")
             val mod3 = Module.load(findFile("sharp_split_part3_int8.pte")!!.absolutePath)
@@ -196,16 +245,18 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val imgTokens = mod3.forward(EValue.from(fullImgTensor))[0].toTensor().dataAsFloatArray
             Log.d(TAG, "Part3 done. imgTokens size=${imgTokens.size}")
             mod3.destroy(); System.gc()
+            report(0.46f, "Understanding the full picture…", progressCallback)
 
+            report(0.48f, "Adding depth and shape…", progressCallback)
             // 4. Chunked Part 4a (tokens 512 + 65); sliceArray for buffer safety with Tensor.fromBlob
             Log.d(TAG, "Starting chunked Part4 decoder...")
             val out512 = runDecoderChunk("sharp_split_part4a_chunk_512.pte", imgTokens.sliceArray(0 until 512 * 1024), 512)
+            report(0.49f, "Adding depth and shape…", progressCallback)
             val out65 = runDecoderChunk("sharp_split_part4a_chunk_65.pte", imgTokens.sliceArray(512 * 1024 until 577 * 1024), 65)
             val combinedTokens = out512 + out65
             Log.d(TAG, "Part4a chunks done. combinedTokens size=${combinedTokens.size}. Loading Part4b...")
 
-            // 5. Part 4b: 7-input forward (strict 96, 96, 48, 24 alignment for skip connections).
-            // Ultralytics: runtime thread config helps CPU; load with mmap + numThreads for decoder.
+            report(0.50f, "Adding the finishing touches…", progressCallback)
             val part4bThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
             val mod4b = Module.load(
                 findFile("sharp_split_part4b.pte")!!.absolutePath,
@@ -213,7 +264,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 part4bThreads
             )
             Log.d(TAG, "Part4b forward: 7 inputs tokens, img, latent0, latent1, x0Feat, x1Feat, x2Feat")
-            val finalParams = mod4b.forward(
+            val part4bInputs = listOf(
                 EValue.from(Tensor.fromBlob(combinedTokens, longArrayOf(1, 577, 1024))),
                 EValue.from(fullImgTensor),
                 EValue.from(Tensor.fromBlob(latent0, longArrayOf(1, 1024, 96, 96))),
@@ -221,11 +272,29 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 EValue.from(Tensor.fromBlob(x0Feat, longArrayOf(1, 1024, 96, 96))),
                 EValue.from(Tensor.fromBlob(x1Feat, longArrayOf(1, 1024, 48, 48))),
                 EValue.from(Tensor.fromBlob(x2Feat, longArrayOf(1, 1024, 24, 24)))
-            )[0].toTensor()
-
+            )
+            val part4bEstimatedSeconds = 80f
+            val part4bProgressStart = 0.55f
+            val part4bProgressSpan = 0.35f
+            val finalParams = coroutineScope {
+                val deferred = async(Dispatchers.IO) {
+                    mod4b.forward(*part4bInputs.toTypedArray())[0].toTensor()
+                }
+                val startMs = System.currentTimeMillis()
+                while (!deferred.isCompleted) {
+                    delay(2000)
+                    if (deferred.isCompleted) break
+                    val elapsedSec = (System.currentTimeMillis() - startMs) / 1000f
+                    val p = part4bProgressStart + (elapsedSec / part4bEstimatedSeconds).coerceIn(0f, 1f) * part4bProgressSpan
+                    report(p, "Adding the finishing touches… This may take a minute.", progressCallback)
+                }
+                deferred.await()
+            }
+            report(0.92f, "Saving your 3D room…", progressCallback)
             Log.d(TAG, "Part4b done. Writing PLY...")
             val result = writePly(finalParams.dataAsFloatArray, progressCallback)
             mod4b.destroy(); scaledBmp.recycle()
+            report(1f, "Your room is ready!", progressCallback)
             Log.d(TAG, "Inference complete. Gaussians=${result.gaussianCount} room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
             return@withContext result
         }
@@ -313,6 +382,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val count = params.size / PARAMS_PER_GAUSSIAN
         val roomFolder = File(File(context.filesDir, "sharp_rooms"), "room_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}").apply { mkdirs() }
         val plyFile = File(roomFolder, "room.ply")
+        val progressReportEvery = (count / 8).coerceAtLeast(1)
 
         var minX = Float.MAX_VALUE; var maxX = -Float.MAX_VALUE
         var minY = Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
@@ -326,6 +396,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             channel.write(ByteBuffer.allocateDirect(header.length).apply { put(header.toByteArray()); flip() })
 
             for (i in 0 until count) {
+                if (i > 0 && i % progressReportEvery == 0) {
+                    report(0.92f + 0.08f * (i.toFloat() / count), "Saving your 3D room…", progressCallback)
+                }
                 val off = i * PARAMS_PER_GAUSSIAN
                 val x = params[off]; val y = -params[off + 1]; val z = -params[off + 2]
                 minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y); minZ = min(minZ, z); maxZ = max(maxZ, z)

@@ -173,8 +173,9 @@ class RoomBoundaryManager {
     }
 
     /**
-     * Get camera position centered at back wall, looking at front wall
-     * Best for viewing the photo directly from the imaginary back wall
+     * Get camera position matching iOS RealityKitBoundaryManager.getOptimalCameraPosition():
+     * Camera INSIDE room at back-left corner (near left wall, near back wall), looking at front wall center.
+     * This gives the same "standing in the back corner" view as Swift.
      */
     fun getCameraCenteredView(): CameraSetup {
         val bounds = roomBounds ?: run {
@@ -182,16 +183,17 @@ class RoomBoundaryManager {
             roomBounds!!
         }
 
-        // Centered at back wall, eye level above room center
-        val camX = bounds.centerX
-        val camY = bounds.centerY + 0.4f  // Slightly above room center
-        val camZ = bounds.backWallZ - CAMERA_PADDING  // At back wall, inside room
+        val wallPadding = CAMERA_PADDING  // 0.3f - match Swift wallPadding
+        val camX = bounds.minX + wallPadding   // Near left wall (Swift: bounds.min.x + wallPadding)
+        val camY = bounds.centerY + 0.4f       // Eye level above center (Swift: roomCenter.y + 0.4)
+        val camZ = bounds.backWallZ - wallPadding  // Near back wall, inside room (Swift: bounds.max.z - wallPadding)
 
-        // Look at front wall center (where the photo is)
-        val targetX = bounds.centerX
+        val targetX = bounds.centerX   // Look at front wall center
         val targetY = bounds.centerY
-        val targetZ = bounds.frontWallZ
+        val targetZ = bounds.frontWallZ  // Front wall (where photo is)
 
+        Log.d(TAG, "  Room position/bounds: min=(${bounds.minX}, ${bounds.minY}, ${bounds.minZ}) max=(${bounds.maxX}, ${bounds.maxY}, ${bounds.maxZ}) center=(${bounds.centerX}, ${bounds.centerY}, ${bounds.centerZ})")
+        Log.d(TAG, "  Camera (Swift-style back-left): pos=($camX, $camY, $camZ) lookAt=($targetX, $targetY, $targetZ)")
         return CameraSetup(
             position = Position(camX, camY, camZ),
             lookAt = Position(targetX, targetY, targetZ)

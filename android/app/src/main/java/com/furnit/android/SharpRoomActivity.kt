@@ -381,10 +381,13 @@ class SharpRoomActivity : AppCompatActivity() {
                     bottomMargin = dpToPx(20)
                 }
                 setOnClickListener {
-                    // Launch FurnitureFitActivity for AI furniture detection
+                    // Launch FurnitureFitActivity; pass ROOM_FOLDER so same room is background if it has room.glb (PLY-only → vintage)
+                    val roomId = roomFolder?.let { File(it).name }
+                    Log.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
                     val intent = Intent(this@SharpRoomActivity, FurnitureFitActivity::class.java)
-                    intent.putExtra("ROOM_ID", roomFolder?.let { File(it).name })
+                    intent.putExtra("ROOM_ID", roomId)
                     intent.putExtra("ROOM_NAME", "Sharp Room")
+                    roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
                     intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
                     startActivity(intent)
                 }
@@ -587,11 +590,11 @@ class SharpRoomActivity : AppCompatActivity() {
         });
         camera.add(spark);
 
-        // Orbit controls
+        // Orbit controls (low sensitivity: higher damping = less oscillation, low rotateSpeed = slow, comfortable drag)
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.rotateSpeed = 3.0;  // Fast rotation for touch
+        controls.dampingFactor = 0.25;   // Settle quickly so orbit does not oscillate
+        controls.rotateSpeed = 0.25;     // Slow rotation for touch so room does not move too fast
         controls.screenSpacePanning = false;
         controls.minDistance = 0.01;
         controls.maxDistance = 100;
@@ -619,6 +622,7 @@ class SharpRoomActivity : AppCompatActivity() {
         // Room dimensions (will be set by autoFrameRoom)
         let measuredRoomWidth = 4.0;
         let measuredRoomHeight = 3.0;
+        let cameraFramedAt = 0;
 
         controls.addEventListener('change', function() {
             needsRender = true;
@@ -626,33 +630,38 @@ class SharpRoomActivity : AppCompatActivity() {
 
         let splatMesh = null;
 
+        // Auto-frame when mesh has valid bounds (called from onLoad when PLY ready, or by polling)
+        let frameAttempts = 0;
+        const maxFrameAttempts = 150;  // 150 * 200ms = 30s for large PLY (e.g. 292MB)
+
         // Load PLY using SparkJS SplatMesh (matching iOS exactly)
-        // URL served by WebViewAssetLoader
+        // URL served by WebViewAssetLoader; onLoad runs when PLY is loaded and decoded
         const plyURL = 'https://appassets.androidplatform.net/files/room.ply';
         console.log('[WebGL] Loading splat from:', plyURL);
 
         try {
             splatMesh = new SplatMesh({
                 url: plyURL,
-                maxSh: 0  // Disable spherical harmonics for cleaner look
+                maxSh: 0,  // Disable spherical harmonics for cleaner look
+                onLoad: function(mesh) {
+                    console.log('[WebGL] SplatMesh onLoad - PLY loaded, framing camera');
+                    autoFrameRoom();
+                }
             });
+            const isPortrait = $isPortrait;
+            if (isPortrait) {
+                splatMesh.rotation.y = Math.PI / 2;
+                console.log('[WebGL] SplatMesh: portrait - applied 90° Y rotation so room aspect matches photo');
+            } else {
+                console.log('[WebGL] SplatMesh: landscape - no rotation');
+            }
             scene.add(splatMesh);
 
-            // Debug: No rotation - see raw PLY orientation first
-            const isPortrait = $isPortrait;
-            console.log('[WebGL] isPortrait =', isPortrait);
-            console.log('[WebGL] SplatMesh: NO ROTATION applied - showing raw PLY');
-
-            // Start auto-framing after delay for async load
+            // Fallback: start polling in case onLoad is slow or not supported
             setTimeout(autoFrameRoom, 500);
-
         } catch (err) {
             console.error('[WebGL] Failed to create SplatMesh:', err);
         }
-
-        // Auto-frame when loaded (matching iOS exactly)
-        let frameAttempts = 0;
-        const maxFrameAttempts = 50;
 
         function autoFrameRoom() {
             frameAttempts++;
@@ -667,6 +676,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 return;
             }
 
+            // Coordinate sync: ensure world matrix is updated (rotation applied) before Box3
+            splatMesh.updateMatrixWorld(true);
             const box = new THREE.Box3().setFromObject(splatMesh);
             const size = box.getSize(new THREE.Vector3());
 
@@ -730,21 +741,33 @@ class SharpRoomActivity : AppCompatActivity() {
 
             const roomRadius = Math.max(roomWidth, roomHeight, roomDepth) * 0.5;
 
-            // Position camera closer to room (was 1.5x fit = too far, room looked small/warped when zoomed out)
-            // Closer default (0.7x) puts camera nearer back wall so room fills view and edge artifacts less visible
-            const fov = camera.fov * (Math.PI / 180);
-            const maxDim = Math.max(roomWidth, roomHeight, roomDepth);
-            const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 0.7;
-            camera.position.set(innerCenterX, innerCenterY, innerCenterZ - cameraDistance);
-            console.log('[WebGL] Camera at negative Z, distance:', cameraDistance.toFixed(2));
-            controls.target.set(innerCenterX, innerCenterY, innerCenterZ);
+            // Place virtual camera just inside the back wall, looking directly at the front wall.
+            // Portrait: mesh was rotated 90° Y so depth is along X (back = maxX, front = minX).
+            // Landscape: depth along Z (back = maxZ, front = minZ).
+            const paddingFromWall = 0.25;
+            const eyeHeight = box.min.y + Math.min(1.6, roomHeight * 0.55);
+            if (isPortrait) {
+                const backWall = box.max.x;
+                const frontWall = box.min.x;
+                camera.position.set(backWall - paddingFromWall, eyeHeight, innerCenterZ);
+                controls.target.set(frontWall, innerCenterY, innerCenterZ);
+                console.log('[WebGL] Portrait: camera at back (x=', (backWall - paddingFromWall).toFixed(2), ') looking at front (x=', frontWall.toFixed(2), ')');
+            } else {
+                const backWallZ = box.max.z;
+                const frontWallZ = box.min.z;
+                camera.position.set(innerCenterX, eyeHeight, backWallZ - paddingFromWall);
+                controls.target.set(innerCenterX, innerCenterY, frontWallZ);
+                console.log('[WebGL] Landscape: camera at back (z=', (backWallZ - paddingFromWall).toFixed(2), ') looking at front (z=', frontWallZ.toFixed(2), ')');
+            }
+            // Essential: sync OrbitControls after manual position/target change (prevents override)
             controls.update();
 
             initialCameraPosition.copy(camera.position);
             initialControlsTarget.copy(controls.target);
 
             // Setup auto-orbit parameters (matches iOS)
-            autoOrbitRadius = camera.position.distanceTo(controls.target);
+            const cameraDistance = camera.position.distanceTo(controls.target);
+            autoOrbitRadius = cameraDistance;
             autoOrbitBaseAngle = Math.atan2(
                 camera.position.x - controls.target.x,
                 camera.position.z - controls.target.z
@@ -754,7 +777,8 @@ class SharpRoomActivity : AppCompatActivity() {
             measuredRoomWidth = roomWidth;
             measuredRoomHeight = roomHeight;
 
-            console.log('[WebGL] Camera positioned at distance:', cameraDistance);
+            console.log('[WebGL] Camera positioned at distance:', cameraDistance.toFixed(2));
+            cameraFramedAt = performance.now();
             needsRender = true;
 
             // Send dimensions to Android (multiple times to ensure delivery)
@@ -774,11 +798,9 @@ class SharpRoomActivity : AppCompatActivity() {
             }
         }
 
-        // Note: autoFrameRoom is called from loadSplat() after mesh loads
-
         // Camera controls (called from Android)
         window.orbitCamera = function(deltaX, deltaY) {
-            const rotateSpeed = 0.015;  // Fast rotation for touch
+            const rotateSpeed = 0.002;   // Slow rotation so touch does not move room too fast
             const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
             const spherical = new THREE.Spherical().setFromVector3(offset);
             spherical.theta -= deltaX * rotateSpeed;
@@ -833,8 +855,9 @@ class SharpRoomActivity : AppCompatActivity() {
                 shouldRender = true;
             }
 
-            // Auto-orbit when enabled and not interacting
-            if (autoOrbitEnabled && autoOrbitRadius > 0.1) {
+            // Auto-orbit when enabled and not interacting (skip for 500ms after framing so initial position is visible)
+            const orbitCooldown = 500;
+            if (autoOrbitEnabled && autoOrbitRadius > 0.1 && (performance.now() - cameraFramedAt) > orbitCooldown) {
                 autoOrbitTime += dt;
                 const speed = 0.35;
                 const t = controls.target;
@@ -912,8 +935,10 @@ class SharpRoomActivity : AppCompatActivity() {
             Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()
             Log.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
 
-            // Finish and return to home
-            setResult(RESULT_OK)
+            // Go to room list screen (same as GLBRoomActivity / ModelDetailActivity after save)
+            val intent = Intent(this, ContentActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+            startActivity(intent)
             finish()
 
         } catch (e: Exception) {

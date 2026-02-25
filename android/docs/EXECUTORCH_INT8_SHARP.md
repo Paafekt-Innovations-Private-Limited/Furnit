@@ -104,10 +104,15 @@ The core implementation lives in `ExecutorchInt8Sharp`:
      `python export_sharp_executorch_split4.py --chunked-part4`  
      Output in `executorch_models/`: `sharp_split_part4a_chunk_512.pte`, `sharp_split_part4a_chunk_65.pte`, `sharp_split_part4b.pte`.
 
-2. **Push models to device**  
+2. **Push models to device** (optional if using packaged APK)  
    `./push_sharp_executorch_int8_models.sh`  
    Pushes from `executorch_int8_models/` and `executorch_models/` to  
    `/sdcard/Android/data/com.furnit.android/files/models/`.
+
+   **Or package in APK for testing:**  
+   Before building, ensure the 6 .pte files exist in `executorch_int8_models/` and `executorch_models/`.  
+   The Gradle task `copyExecutorchModelsIntoAssets` runs before each build and copies them into `app/src/main/assets/models/`.  
+   The app copies from assets to internal storage on first run, so a friend can install the APK and use **Settings → ExecuTorch INT8** without pushing models manually. (APK size increases.)
 
 3. **Build and install**  
    `./gradlew :app:assembleDebug`  
