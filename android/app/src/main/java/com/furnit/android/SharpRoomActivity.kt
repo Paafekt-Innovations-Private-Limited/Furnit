@@ -700,7 +700,8 @@ class SharpRoomActivity : AppCompatActivity() {
             if (size.length() < 0.01) {
                 // Use Kotlin-provided dimensions so we frame the camera even when Box3 is not yet valid
                 if (fallbackRoomWidth > 0.1 && fallbackRoomHeight > 0.1 && fallbackRoomDepth > 0.1) {
-                    const depthAlongView = isPortrait ? fallbackRoomWidth : fallbackRoomDepth;
+                    // depthAlongView = room depth (portrait: along X; landscape: along Z). Matches Box3 mapping.
+                    const depthAlongView = fallbackRoomDepth;
                     const t = Math.min(1, depthAlongView / 6);
                     const insetFraction = 0.18 + 0.32 * t;
                     const insetFromBack = Math.max(0.25, depthAlongView * insetFraction);
@@ -710,8 +711,8 @@ class SharpRoomActivity : AppCompatActivity() {
                     const eyeHeight = floorY + eyeHeightAboveFloor;
                     const centerX = 0, centerZ = 0;
                     if (isPortrait) {
-                        const backWall = fallbackRoomWidth * 0.5;
-                        const frontWall = -fallbackRoomWidth * 0.5;
+                        const backWall = fallbackRoomDepth * 0.5;
+                        const frontWall = -fallbackRoomDepth * 0.5;
                         camera.position.set(backWall - insetFromBack, eyeHeight, centerZ);
                         controls.target.set(frontWall, eyeHeight, centerZ);
                     } else {
@@ -742,19 +743,20 @@ class SharpRoomActivity : AppCompatActivity() {
             }
 
             const center = box.getCenter(new THREE.Vector3());
-            // Dimension mapping matching iOS exactly
-            // After 90° Z rotation, axes mapping depends on photo orientation
-            // Portrait: width = X (narrower), height = Y (taller)
-            // Landscape: width = Y, height = X
+            // Box3 axis mapping after 90° Y rotation (portrait): X↔Z swap in view.
+            // Landscape (no rotation): roomWidth=X, roomHeight=Y, roomDepth=Z.
+            // Portrait (90° Y): roomWidth=Z (original depth spans view width), roomHeight=Y, roomDepth=X.
+            // Correct mapping avoids squeeze (landscape) and snake-like stretch (portrait).
             let roomWidth, roomHeight, roomDepth;
             if (isPortrait) {
+                roomWidth = size.z;
+                roomHeight = size.y;
+                roomDepth = size.x;
+            } else {
                 roomWidth = size.x;
                 roomHeight = size.y;
-            } else {
-                roomWidth = size.y;
-                roomHeight = size.x;
+                roomDepth = size.z;
             }
-            roomDepth = size.z;
 
             console.log('[WebGL] Box3 raw size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), '(isPortrait:', isPortrait, ')');
 
@@ -786,8 +788,8 @@ class SharpRoomActivity : AppCompatActivity() {
             const roomRadius = Math.max(roomWidth, roomHeight, roomDepth) * 0.5;
 
             // Place camera at center of back wall, pushed into room (depth-adaptive to reduce grey).
-            // Portrait: depth along X (back = maxX, front = minX). Landscape: depth along Z (back = maxZ, front = minZ).
-            const depthAlongView = isPortrait ? roomWidth : roomDepth;
+            // depthAlongView is always roomDepth (portrait: X; landscape: Z).
+            const depthAlongView = roomDepth;
             const t = Math.min(1, depthAlongView / 6);
             const insetFraction = 0.18 + 0.32 * t;  // 18% shallow rooms, up to 50% deep rooms
             const insetFromBack = Math.max(0.25, depthAlongView * insetFraction);
@@ -877,6 +879,7 @@ class SharpRoomActivity : AppCompatActivity() {
         };
 
         window.addEventListener('resize', () => {
+            // Camera aspect matches window (activity is locked to portrait/landscape). Uniform scaling only—no independent X/Y scale.
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);

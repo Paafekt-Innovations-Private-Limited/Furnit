@@ -2,6 +2,8 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -27,6 +29,13 @@ import kotlin.math.*
 /**
  * Optimized ExecuTorch INT8 implementation for SHARP models.
  * Handles 35-patch multi-scale merging and chunked decoding to prevent OOM.
+ *
+ * Input: center-crop to square (min(w,h)) then resize to 1536x1536 to avoid black bars;
+ * patch grid must not sample padding or output becomes jagged.
+ * Coordinates: raw model output (no aspect scale); model expects 1:1 space.
+ *
+ * Export note: if jagged output persists, consider FP16 for position/scale decoder heads
+ * (see Ultralytics deployment practices; INT8 on scales/rotations can cause severe artifacts).
  */
 class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
@@ -142,14 +151,60 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         progressCallback?.invoke(progress.coerceIn(0f, 1f), message)
     }
 
+    /**
+     * Center-crop to a square (side = min(w,h)) then resize to targetSize x targetSize.
+     * Avoids black bars so the 5x5 patch grid never samples padding (which causes jagged/garbage output).
+     * Model expects continuous visual data in a 1:1 coordinate space.
+     */
+    private fun getCenterCropBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
+        val side = min(bitmap.width, bitmap.height).coerceAtLeast(1)
+        val left = (bitmap.width - side) / 2
+        val top = (bitmap.height - side) / 2
+        val cropped = Bitmap.createBitmap(bitmap, left, top, side, side)
+        val result = Bitmap.createScaledBitmap(cropped, targetSize, targetSize, true)
+        if (cropped != bitmap) cropped.recycle()
+        Log.d(TAG, "[CENTER_CROP] input=${bitmap.width}x${bitmap.height} -> crop center ${side}x${side} -> ${targetSize}x${targetSize} (no black bars)")
+        return result
+    }
+
+    /**
+     * Letterbox: scale so long side = targetSize, pad short side with black. Kept for reference;
+     * prefer center crop to avoid patch grid sampling black bars (causes jagged output).
+     */
+    private fun getLetterboxBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
+        val scale = targetSize.toFloat() / max(bitmap.width, bitmap.height)
+        val newW = (bitmap.width * scale).toInt().coerceAtLeast(1)
+        val newH = (bitmap.height * scale).toInt().coerceAtLeast(1)
+        val padW = targetSize - newW
+        val padH = targetSize - newH
+        Log.d(TAG, "[LETTERBOX] input=${bitmap.width}x${bitmap.height} -> content=${newW}x${newH} on ${targetSize}x${targetSize} (pad horizontal=$padW px vertical=$padH px)")
+        if (padW < 0 || padH < 0) {
+            Log.w(TAG, "[LETTERBOX] BUG: negative padding (scale or size mismatch)")
+        }
+        val scaled = Bitmap.createScaledBitmap(bitmap, newW, newH, true)
+        val result = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(result)
+        canvas.drawColor(Color.BLACK)
+        val left = (targetSize - newW) / 2f
+        val top = (targetSize - newH) / 2f
+        canvas.drawBitmap(scaled, left, top, null)
+        scaled.recycle()
+        return result
+    }
+
     suspend fun inferStreaming(bitmap: Bitmap, progressCallback: ((Float, String) -> Unit)? = null): StreamingResult? = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (!isInitialized) return@withContext null
             ensureModelsFromAssets()
 
+            val originalWidth = bitmap.width
+            val originalHeight = bitmap.height
+            val isPortrait = originalHeight > originalWidth
+            Log.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | using center crop + raw coords (no aspect scale in PLY)")
+
             report(0f, "Preparing…", progressCallback)
-            // 1. Prepare multi-scale buffers (1x and 0.5x) to match Python export (96x96, 48x48)
-            val scaledBmp = Bitmap.createScaledBitmap(bitmap, IMAGE_SIZE, IMAGE_SIZE, true)
+            // 1. Center-crop to square then resize to 1536x1536 (no black bars; patch grid sees only real image)
+            val scaledBmp = getCenterCropBitmap(bitmap, IMAGE_SIZE)
             val halfSize = IMAGE_SIZE / 2
             val halfBitmap = Bitmap.createScaledBitmap(scaledBmp, halfSize, halfSize, true)
 
@@ -291,11 +346,11 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 deferred.await()
             }
             report(0.92f, "Saving your 3D room…", progressCallback)
-            Log.d(TAG, "Part4b done. Writing PLY...")
-            val result = writePly(finalParams.dataAsFloatArray, progressCallback)
+            Log.d(TAG, "[PLY] Part4b done. Writing PLY with raw coordinates (center-crop input = 1:1, no aspect scale)")
+            val result = writePly(finalParams.dataAsFloatArray, progressCallback, isPortrait)
             mod4b.destroy(); scaledBmp.recycle()
             report(1f, "Your room is ready!", progressCallback)
-            Log.d(TAG, "Inference complete. Gaussians=${result.gaussianCount} room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
+            Log.d(TAG, "[ASPECT] inference complete | Gaussians=${result.gaussianCount} | PLY bbox room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} m")
             return@withContext result
         }
     }
@@ -378,8 +433,18 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         else (1.055f * v.toDouble().pow(1.0 / 2.4).toFloat() - 0.055f).coerceIn(0f, 1f)
     }
 
-    private fun writePly(params: FloatArray, progressCallback: ((Float, String) -> Unit)?): StreamingResult {
+    /**
+     * Write PLY from model output. Uses raw coordinates (no aspect scaling): model trained on square input
+     * expects 1:1 coordinate space. Only y,z are negated for our viewer convention.
+     * See Ultralytics: apply aspectRatio only when mapping to non-square frustum; else normalization issues cause jagged output.
+     */
+    private fun writePly(
+        params: FloatArray,
+        progressCallback: ((Float, String) -> Unit)?,
+        isPortrait: Boolean = false
+    ): StreamingResult {
         val count = params.size / PARAMS_PER_GAUSSIAN
+        Log.d(TAG, "[PLY] writePly: count=$count isPortrait=$isPortrait (raw x,y,z; y,z negated)")
         val roomFolder = File(File(context.filesDir, "sharp_rooms"), "room_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}").apply { mkdirs() }
         val plyFile = File(roomFolder, "room.ply")
         val progressReportEvery = (count / 8).coerceAtLeast(1)
@@ -400,7 +465,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     report(0.92f + 0.08f * (i.toFloat() / count), "Saving your 3D room…", progressCallback)
                 }
                 val off = i * PARAMS_PER_GAUSSIAN
-                val x = params[off]; val y = -params[off + 1]; val z = -params[off + 2]
+                val rawX = params[off]
+                val rawY = params[off + 1]
+                val rawZ = params[off + 2]
+                val x = rawX
+                val y = -rawY
+                val z = -rawZ
                 minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y); minZ = min(minZ, z); maxZ = max(maxZ, z)
 
                 plyBatch.clear()
@@ -421,7 +491,14 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 plyBatch.flip(); while (plyBatch.hasRemaining()) channel.write(plyBatch)
             }
         }
-        return StreamingResult(plyFile, plyFile, count, maxX - minX, maxY - minY, maxZ - minZ)
+        val roomW = maxX - minX
+        val roomH = maxY - minY
+        val roomD = maxZ - minZ
+        Log.d(TAG, "[PLY] saved bbox: roomWidth=$roomW roomHeight=$roomH roomDepth=$roomD (raw coords)")
+        if (roomW > 50f || roomH > 50f || roomD > 50f || roomW < 0.1f || roomH < 0.1f || roomD < 0.1f) {
+            Log.w(TAG, "[PLY] bbox may indicate scale/precision issue (expected room ~2–15 m)")
+        }
+        return StreamingResult(plyFile, plyFile, count, roomW, roomH, roomD)
     }
 }
 

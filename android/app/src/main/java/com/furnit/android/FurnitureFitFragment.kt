@@ -822,15 +822,16 @@ const isPortrait = ${isPortrait};
 const fallbackW = $w;
 const fallbackH = $h;
 const fallbackD = $d;
-const depthAlongView = isPortrait ? fallbackW : fallbackD;
+// depthAlongView = room depth (portrait: along X; landscape: along Z). Matches SharpRoom Box3 mapping.
+const depthAlongView = fallbackD;
 const t = Math.min(1, depthAlongView / 6);
 const insetFraction = 0.18 + 0.32 * t;
 const insetFromBack = Math.max(0.25, depthAlongView * insetFraction);
 const floorY = -fallbackH * 0.5;
 const eyeHeight = floorY + Math.min(1.6, fallbackH * 0.4);
 if (isPortrait) {
-    const backWall = fallbackW * 0.5;
-    const frontWall = -fallbackW * 0.5;
+    const backWall = fallbackD * 0.5;
+    const frontWall = -fallbackD * 0.5;
     camera.position.set(backWall - insetFromBack, eyeHeight, 0);
     camera.lookAt(new THREE.Vector3(frontWall, eyeHeight, 0));
 } else {
