@@ -1,0 +1,19 @@
+We have a ViT-based 3D reconstruction model (SHARP) on Android with ExecuTorch INT8. We followed your recommendation: resize full image to fit inside 1536x1536, then pad to 1536x1536 with 114-gray letterbox (constant padding) instead of edge-extension. We preserve aspect ratio and use raw PLY coordinates (no aspect scale in writePly).
+
+**Current run (portrait):**
+- Input: 2160x3840
+- Letterbox: content 864x1536 centered on 1536x1536 with 114-gray padding (336px left/right)
+- Output: 1,179,648 Gaussians; PLY bbox 4.28 x 5.56 x 2.61 m
+- Problem: the 3D output is still jagged (chaotic edges, not smooth surfaces). The whole image is considered (no crop) but quality is poor.
+
+**Questions:**
+
+1. Could 114-gray letterbox padding still cause jagged output for a ViT trained on square images—e.g. does the patch grid or self-attention get confused by the constant gray bands, or is there a different cause?
+
+2. For SHARP-style 3D Gaussian splatting from a single image, was the model likely trained on center-cropped square images (no letterbox)? If so, should we revert to center-crop to match training distribution even though we lose image content?
+
+3. What preprocessing do you recommend when the model expects 1536x1536 square input and we want the best 3D quality: (a) center-crop to square then resize, (b) letterbox with 114-gray, or (c) something else (e.g. letterbox with black, or resize with stretch)?
+
+4. Could INT8 quantization of the decoder (positions, scales, rotations) be the main cause of jagged geometry regardless of input preprocessing? Should we try FP16 for the Gaussian head outputs?
+
+We need concrete steps to fix the jagged output. This is SHARP 3D room reconstruction, not YOLO.
