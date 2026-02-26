@@ -65,6 +65,12 @@ QUESTION_ASPECT_INT8_FILE = Path(__file__).resolve().parent / "ultralytics_quest
 # Jagged / screwed-up 3D output (full prompt in file).
 QUESTION_JAGGED_OUTPUT_FILE = Path(__file__).resolve().parent / "ultralytics_question_jagged_output.txt"
 
+# 0.5x overlay not in middle (Furniture Fit centering at scale).
+QUESTION_05X_CENTERING_FILE = Path(__file__).resolve().parent / "ultralytics_question_05x_centering.txt"
+
+# Position still wrong after center-crop + raw coords (room 8.78x7.62x4.17).
+QUESTION_POSITION_WRONG_FILE = Path(__file__).resolve().parent / "ultralytics_question_position_wrong.txt"
+
 # Gradle/Android build failure: wildcard IP and sysconf on macOS.
 GRADLE_BUILD_QUESTION = """When building an Android app with Gradle on macOS (darwin), the build fails with: (1) "Could not determine a usable wildcard IP for this machine" and (2) "xargs: sysconf(_SC_ARG_MAX) failed". The project uses AGP 8.5.2 and Kotlin. Building with --no-daemon works. What is the root cause and the recommended fix so that a normal daemon build works? Should we set org.gradle.daemon=false, or -Djava.net.preferIPv4Stack=true in gradle.properties, or something else? We need a concrete fix for Gradle/JVM or macOS environment."""
 
@@ -166,7 +172,7 @@ def ask_ultralytics_ai(
             logger.info("Question submitted. Waiting for AI to finish responding, then reading from chat HTML...")
 
             # 1) Wait for the reply, then capture whole popup DOM and latest answer DOM; extract answer from HTML
-            reply_markers = ["The Fix", "skip the CLS", "tokenIdx", "outBase", "out: [C, H, W]", "XNNPACK", "Vulkan", "delegate", "quantization", "latency", "ExecuTorch", "fusion", "best practices", "Gradle", "daemon", "gradle.properties", "JVM", "wildcard", "IPv4", "aspect", "Box3", "rotation", "width", "height", "squeeze", "portrait", "landscape", "jagged", "letterbox", "Gaussian", "coordinate", "scale"]
+            reply_markers = ["The Fix", "skip the CLS", "tokenIdx", "outBase", "out: [C, H, W]", "XNNPACK", "Vulkan", "delegate", "quantization", "latency", "ExecuTorch", "fusion", "best practices", "Gradle", "daemon", "gradle.properties", "JVM", "wildcard", "IPv4", "aspect", "Box3", "rotation", "width", "height", "squeeze", "portrait", "landscape", "jagged", "letterbox", "Gaussian", "coordinate", "scale", "center", "ScaleGestureDetector", "focus", "pivot", "origin", "bbox", "translate", "centered"]
             answer_html: str | None = None
             popup_html: str | None = None
             question_preview = question[:80].replace("\n", " ")
@@ -341,6 +347,16 @@ def main() -> int:
         help="Use question from ultralytics_question_jagged_output.txt (jagged/screwed-up 3D output, 3840x2160, aspect 1.78)",
     )
     parser.add_argument(
+        "--centering",
+        action="store_true",
+        help="Use question from ultralytics_question_05x_centering.txt (0.5x overlay/photos not in middle)",
+    )
+    parser.add_argument(
+        "--position",
+        action="store_true",
+        help="Use question from ultralytics_question_position_wrong.txt (position still wrong after center-crop + raw coords)",
+    )
+    parser.add_argument(
         "--gradle",
         action="store_true",
         help="Use canned question for Gradle build failure (wildcard IP / sysconf on macOS)",
@@ -375,6 +391,18 @@ def main() -> int:
             question = QUESTION_JAGGED_OUTPUT_FILE.read_text(encoding="utf-8").strip()
         else:
             logger.error("File not found: %s", QUESTION_JAGGED_OUTPUT_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.centering:
+        if QUESTION_05X_CENTERING_FILE.is_file():
+            question = QUESTION_05X_CENTERING_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_05X_CENTERING_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.position:
+        if QUESTION_POSITION_WRONG_FILE.is_file():
+            question = QUESTION_POSITION_WRONG_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_POSITION_WRONG_FILE)
             question = ASPECT_SQUEEZE_QUESTION
     else:
         question = (

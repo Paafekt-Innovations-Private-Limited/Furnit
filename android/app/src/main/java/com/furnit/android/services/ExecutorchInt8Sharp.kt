@@ -200,6 +200,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val originalWidth = bitmap.width
             val originalHeight = bitmap.height
             val isPortrait = originalHeight > originalWidth
+            val pipelineStartMs = System.currentTimeMillis()
             Log.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | using center crop + raw coords (no aspect scale in PLY)")
 
             report(0f, "Preparing…", progressCallback)
@@ -225,11 +226,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val colOffs05x = buildColumnOffsets(GRID_05X, PADDING_05X)
 
             report(0.02f, "Warming up…", progressCallback)
+            val tPart12Load = System.currentTimeMillis()
             // 2. Encoder Phase (Part 1 & 2)
             Log.d(TAG, "Loading INT8 Part1+Part2...")
             val mod1 = Module.load(findFile("sharp_split_part1_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
             val mod2 = Module.load(findFile("sharp_split_part2_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
-            Log.d(TAG, "Part1+Part2 loaded. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
+            Log.d(TAG, "Part1+Part2 loaded in ${System.currentTimeMillis() - tPart12Load}ms. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
+            val t1xStart = System.currentTimeMillis()
 
             val stride = (IMAGE_SIZE - PATCH_SIZE) / 4
             val total1x = GRID_1X * GRID_1X
@@ -252,7 +255,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 report(0.05f + 0.30f * (patchIdx.toFloat() / total1x), "Building your room… step $patchIdx of $total1x", progressCallback)
             }
 
-            Log.d(TAG, "1x patches done. Starting 0.5x patches (${GRID_05X}x${GRID_05X})...")
+            Log.d(TAG, "1x patches done in ${System.currentTimeMillis() - t1xStart}ms. Starting 0.5x patches (${GRID_05X}x${GRID_05X})...")
+            val t05xStart = System.currentTimeMillis()
             val total05x = GRID_05X * GRID_05X
             var patch05Idx = 0
             val stride05x = (halfSize - PATCH_SIZE) / 2
@@ -275,7 +279,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             }
             halfBitmap.recycle()
             report(0.43f, "Building your room…", progressCallback)
-            Log.d(TAG, "0.5x patches done. Running 0.25x patch (35th) for x2Feat...")
+            Log.d(TAG, "0.5x patches done in ${System.currentTimeMillis() - t05xStart}ms. Running 0.25x patch (35th) for x2Feat...")
+            val t025Start = System.currentTimeMillis()
             val quarterBmp = Bitmap.createScaledBitmap(scaledBmp, 384, 384, true)
             patchFloatBuffer.rewind()
             val qOut = mod1.forward(EValue.from(Tensor.fromBlob(preprocess(quarterBmp, true), longArrayOf(1, 3, 384, 384))))
@@ -288,28 +293,31 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val qFeat = mod2.forward(EValue.from(qTokens))[0].toTensor().dataAsFloatArray
             reshapeToSpatial(qFeat, x2Feat)
             quarterBmp.recycle()
-            Log.d(TAG, "0.25x patch done. Destroying Part1+Part2...")
+            Log.d(TAG, "0.25x patch done in ${System.currentTimeMillis() - t025Start}ms. Destroying Part1+Part2...")
             mod1.destroy(); mod2.destroy(); System.gc()
 
             report(0.44f, "Understanding the full picture…", progressCallback)
+            val tPart3Start = System.currentTimeMillis()
             // 3. Image Encoder (Part 3)
             Log.d(TAG, "Loading Part3 (image encoder)...")
             val mod3 = Module.load(findFile("sharp_split_part3_int8.pte")!!.absolutePath)
             imageFloatBuffer.rewind()
             val fullImgTensor = Tensor.fromBlob(preprocess(scaledBmp, false), longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong()))
             val imgTokens = mod3.forward(EValue.from(fullImgTensor))[0].toTensor().dataAsFloatArray
-            Log.d(TAG, "Part3 done. imgTokens size=${imgTokens.size}")
+            Log.d(TAG, "Part3 done in ${System.currentTimeMillis() - tPart3Start}ms. imgTokens size=${imgTokens.size}")
             mod3.destroy(); System.gc()
             report(0.46f, "Understanding the full picture…", progressCallback)
 
             report(0.48f, "Adding depth and shape…", progressCallback)
+            val tPart4aStart = System.currentTimeMillis()
             // 4. Chunked Part 4a (tokens 512 + 65); sliceArray for buffer safety with Tensor.fromBlob
             Log.d(TAG, "Starting chunked Part4 decoder...")
             val out512 = runDecoderChunk("sharp_split_part4a_chunk_512.pte", imgTokens.sliceArray(0 until 512 * 1024), 512)
             report(0.49f, "Adding depth and shape…", progressCallback)
             val out65 = runDecoderChunk("sharp_split_part4a_chunk_65.pte", imgTokens.sliceArray(512 * 1024 until 577 * 1024), 65)
             val combinedTokens = out512 + out65
-            Log.d(TAG, "Part4a chunks done. combinedTokens size=${combinedTokens.size}. Loading Part4b...")
+            Log.d(TAG, "Part4a chunks done in ${System.currentTimeMillis() - tPart4aStart}ms. combinedTokens size=${combinedTokens.size}. Loading Part4b...")
+            val tPart4bStart = System.currentTimeMillis()
 
             report(0.50f, "Adding the finishing touches…", progressCallback)
             val part4bThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
@@ -345,12 +353,19 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 }
                 deferred.await()
             }
+            val part4bMs = System.currentTimeMillis() - tPart4bStart
+            Log.d(TAG, "[TIMING] Part4b forward: ${part4bMs}ms")
             report(0.92f, "Saving your 3D room…", progressCallback)
+            val tPlyStart = System.currentTimeMillis()
             Log.d(TAG, "[PLY] Part4b done. Writing PLY with raw coordinates (center-crop input = 1:1, no aspect scale)")
             val result = writePly(finalParams.dataAsFloatArray, progressCallback, isPortrait)
+            val plyMs = System.currentTimeMillis() - tPlyStart
+            Log.d(TAG, "[TIMING] writePly: ${plyMs}ms")
             mod4b.destroy(); scaledBmp.recycle()
             report(1f, "Your room is ready!", progressCallback)
+            val totalMs = System.currentTimeMillis() - pipelineStartMs
             Log.d(TAG, "[ASPECT] inference complete | Gaussians=${result.gaussianCount} | PLY bbox room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} m")
+            Log.d(TAG, "[TIMING] TOTAL pipeline: ${totalMs}ms (${totalMs / 1000f}s)")
             return@withContext result
         }
     }
