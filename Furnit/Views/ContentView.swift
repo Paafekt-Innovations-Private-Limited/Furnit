@@ -847,10 +847,102 @@ struct GeneralSettingsView: View {
 }
 
 struct AboutView: View {
+    private var appVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.0.0"
+    }
+
     var body: some View {
-        Text("About Paafekt")
-            .navigationTitle("About")
-            .navigationBarTitleDisplayMode(.inline)
+        Form {
+            Section {
+                HStack {
+                    Text(L10n.App.version)
+                    Spacer()
+                    Text(appVersion)
+                        .foregroundColor(.secondary)
+                }
+                HStack {
+                    Text(L10n.App.developer)
+                    Spacer()
+                    Text("Paafekt Team")
+                        .foregroundColor(.secondary)
+                }
+            } header: {
+                Text("About")
+            }
+
+            Section {
+                Text(L10n.Licenses.phase1Notice)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } header: {
+                Text(L10n.Licenses.title)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.yoloeTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.yoloe)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.sharpTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.sharp)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .navigationTitle("About")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Licenses & Attributions (same content as in AboutView, for Settings > Legal > Licenses).
+struct LicensesView: View {
+    var body: some View {
+        Form {
+            Section {
+                Text(L10n.Licenses.phase1Notice)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } header: {
+                Text(L10n.Licenses.title)
+            }
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.yoloeTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.yoloe)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.sharpTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.sharp)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .navigationTitle(L10n.Settings.licenses)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

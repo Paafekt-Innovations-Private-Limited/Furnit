@@ -545,7 +545,7 @@ class SettingsActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#007AFF"))
             setPadding(0, 8, 0, 8)
             setOnClickListener {
-                openUrl("https://paafekt.com/licenses")
+                startActivity(Intent(this@SettingsActivity, LicensesActivity::class.java))
             }
         }
         legalSection.addView(licenseButton)

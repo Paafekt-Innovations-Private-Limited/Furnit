@@ -95,7 +95,8 @@ class SharpRoomActivity : AppCompatActivity() {
         val savedWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, 0f)
         val savedHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, 0f)
         roomDepth = intent.getFloatExtra(EXTRA_ROOM_DEPTH, 4.5f)
-        photoOrientation = intent.getStringExtra("photo_orientation") ?: "portrait"
+        val rawOrientation = intent.getStringExtra("photo_orientation")?.trim()?.lowercase()
+        photoOrientation = if (rawOrientation == "landscape") "landscape" else "portrait"
 
         // Lock orientation based on room's photo orientation (no auto-rotate)
         requestedOrientation = if (photoOrientation == "landscape") {
@@ -389,6 +390,9 @@ class SharpRoomActivity : AppCompatActivity() {
                     intent.putExtra("ROOM_NAME", "Sharp Room")
                     roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
                     intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
+                    intent.putExtra("ROOM_WIDTH", roomWidth)
+                    intent.putExtra("ROOM_HEIGHT", roomHeight)
+                    intent.putExtra("ROOM_DEPTH", roomDepth)
                     startActivity(intent)
                 }
             }
@@ -519,6 +523,11 @@ class SharpRoomActivity : AppCompatActivity() {
         val autoOrbitEnabled = prefs.getBoolean("auto_orbit_enabled", false)
         // Use isPortrait like iOS for consistency
         val isPortrait = photoOrientation != "landscape"
+        Log.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait (this activity = PLY/splat room)")
+        // Pass known room dimensions so camera can be framed when Box3 is not yet valid (SparkJS mesh bounds update async)
+        val fallbackW = roomWidth.toDouble()
+        val fallbackH = roomHeight.toDouble()
+        val fallbackD = roomDepth.toDouble()
 
         // SparkJS implementation matching iOS exactly
         return """
@@ -563,6 +572,12 @@ class SharpRoomActivity : AppCompatActivity() {
         import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
 
         console.log('[WebGL] SparkJS Gaussian Splat viewer initializing...');
+        // Orientation and fallback dimensions from Kotlin (module scope so autoFrameRoom can use them)
+        const isPortrait = $isPortrait;
+        const fallbackRoomWidth = $fallbackW;
+        const fallbackRoomHeight = $fallbackH;
+        const fallbackRoomDepth = $fallbackD;
+        console.log('[SharpRoom] orientation: ' + (isPortrait ? 'portrait' : 'landscape') + ' (isPortrait=' + isPortrait + '), fallbackDims: ' + fallbackRoomWidth.toFixed(2) + 'x' + fallbackRoomHeight.toFixed(2) + 'x' + fallbackRoomDepth.toFixed(2));
 
         // Scene setup (matching iOS exactly)
         const scene = new THREE.Scene();
@@ -597,7 +612,9 @@ class SharpRoomActivity : AppCompatActivity() {
         controls.rotateSpeed = 0.25;     // Slow rotation for touch so room does not move too fast
         controls.screenSpacePanning = false;
         controls.minDistance = 0.01;
-        controls.maxDistance = 100;
+        // Limit zoom-out so the room stays a reasonable size (max ~2.5× largest room dimension, cap 6–25m)
+        const roomMaxDim = Math.max(fallbackRoomWidth, fallbackRoomHeight, fallbackRoomDepth);
+        controls.maxDistance = Math.max(6, Math.min(25, roomMaxDim * 2.5));
         controls.target.set(0, 0, 0);
         controls.minAzimuthAngle = -Infinity;
         controls.maxAzimuthAngle = Infinity;
@@ -644,11 +661,10 @@ class SharpRoomActivity : AppCompatActivity() {
                 url: plyURL,
                 maxSh: 0,  // Disable spherical harmonics for cleaner look
                 onLoad: function(mesh) {
-                    console.log('[WebGL] SplatMesh onLoad - PLY loaded, framing camera');
-                    autoFrameRoom();
+                    console.log('[WebGL] SplatMesh onLoad - PLY loaded, framing camera (delay 150ms then run)');
+                    setTimeout(autoFrameRoom, 150);
                 }
             });
-            const isPortrait = $isPortrait;
             if (isPortrait) {
                 splatMesh.rotation.y = Math.PI / 2;
                 console.log('[WebGL] SplatMesh: portrait - applied 90° Y rotation so room aspect matches photo');
@@ -682,6 +698,36 @@ class SharpRoomActivity : AppCompatActivity() {
             const size = box.getSize(new THREE.Vector3());
 
             if (size.length() < 0.01) {
+                // Use Kotlin-provided dimensions so we frame the camera even when Box3 is not yet valid
+                if (fallbackRoomWidth > 0.1 && fallbackRoomHeight > 0.1 && fallbackRoomDepth > 0.1) {
+                    const depthAlongView = isPortrait ? fallbackRoomWidth : fallbackRoomDepth;
+                    const t = Math.min(1, depthAlongView / 6);
+                    const insetFraction = 0.18 + 0.32 * t;
+                    const insetFromBack = Math.max(0.25, depthAlongView * insetFraction);
+                    // Assume room vertically centered at 0 (floor at -H/2, ceiling at +H/2); place eye at 1.2–1.6m above floor so we are inside the room
+                    const floorY = -fallbackRoomHeight * 0.5;
+                    const eyeHeightAboveFloor = Math.min(1.6, fallbackRoomHeight * 0.4);
+                    const eyeHeight = floorY + eyeHeightAboveFloor;
+                    const centerX = 0, centerZ = 0;
+                    if (isPortrait) {
+                        const backWall = fallbackRoomWidth * 0.5;
+                        const frontWall = -fallbackRoomWidth * 0.5;
+                        camera.position.set(backWall - insetFromBack, eyeHeight, centerZ);
+                        controls.target.set(frontWall, eyeHeight, centerZ);
+                    } else {
+                        const backWallZ = fallbackRoomDepth * 0.5;
+                        const frontWallZ = -fallbackRoomDepth * 0.5;
+                        camera.position.set(centerX, eyeHeight, backWallZ - insetFromBack);
+                        controls.target.set(centerX, eyeHeight, frontWallZ);
+                    }
+                    controls.update();
+                    initialCameraPosition.copy(camera.position);
+                    initialControlsTarget.copy(controls.target);
+                    const camPos = camera.position;
+                    console.log('[SharpRoom] CAMERA_POSITION_FINAL (fallback from Kotlin dims) isPortrait=' + isPortrait + ' pos=(' + camPos.x.toFixed(3) + ',' + camPos.y.toFixed(3) + ',' + camPos.z.toFixed(3) + ') depthAlongView=' + depthAlongView.toFixed(2) + ' insetFromBack=' + insetFromBack.toFixed(2));
+                    if (window.Android) window.Android.onLoaded();
+                    return;
+                }
                 if (frameAttempts < maxFrameAttempts) {
                     console.log('[WebGL] Box3 too small, waiting for splatMesh to load...');
                     setTimeout(autoFrameRoom, 200);
@@ -690,9 +736,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     camera.position.set(0, 0, 5);
                     controls.target.set(0, 0, 0);
                     controls.update();
-                    if (window.Android) {
-                        window.Android.onLoaded();
-                    }
+                    if (window.Android) window.Android.onLoaded();
                 }
                 return;
             }
@@ -741,24 +785,28 @@ class SharpRoomActivity : AppCompatActivity() {
 
             const roomRadius = Math.max(roomWidth, roomHeight, roomDepth) * 0.5;
 
-            // Place virtual camera just inside the back wall, looking directly at the front wall.
-            // Portrait: mesh was rotated 90° Y so depth is along X (back = maxX, front = minX).
-            // Landscape: depth along Z (back = maxZ, front = minZ).
-            const paddingFromWall = 0.25;
+            // Place camera at center of back wall, pushed into room (depth-adaptive to reduce grey).
+            // Portrait: depth along X (back = maxX, front = minX). Landscape: depth along Z (back = maxZ, front = minZ).
+            const depthAlongView = isPortrait ? roomWidth : roomDepth;
+            const t = Math.min(1, depthAlongView / 6);
+            const insetFraction = 0.18 + 0.32 * t;  // 18% shallow rooms, up to 50% deep rooms
+            const insetFromBack = Math.max(0.25, depthAlongView * insetFraction);
             const eyeHeight = box.min.y + Math.min(1.6, roomHeight * 0.55);
             if (isPortrait) {
                 const backWall = box.max.x;
                 const frontWall = box.min.x;
-                camera.position.set(backWall - paddingFromWall, eyeHeight, innerCenterZ);
-                controls.target.set(frontWall, innerCenterY, innerCenterZ);
-                console.log('[WebGL] Portrait: camera at back (x=', (backWall - paddingFromWall).toFixed(2), ') looking at front (x=', frontWall.toFixed(2), ')');
+                camera.position.set(backWall - insetFromBack, eyeHeight, innerCenterZ);
+                controls.target.set(frontWall, eyeHeight, innerCenterZ);
+                console.log('[WebGL] Portrait: camera inset', insetFromBack.toFixed(2), '(frac=', insetFraction.toFixed(2), ') at x=', (backWall - insetFromBack).toFixed(2));
             } else {
                 const backWallZ = box.max.z;
                 const frontWallZ = box.min.z;
-                camera.position.set(innerCenterX, eyeHeight, backWallZ - paddingFromWall);
-                controls.target.set(innerCenterX, innerCenterY, frontWallZ);
-                console.log('[WebGL] Landscape: camera at back (z=', (backWallZ - paddingFromWall).toFixed(2), ') looking at front (z=', frontWallZ.toFixed(2), ')');
+                camera.position.set(innerCenterX, eyeHeight, backWallZ - insetFromBack);
+                controls.target.set(innerCenterX, eyeHeight, frontWallZ);
+                console.log('[WebGL] Landscape: camera inset', insetFromBack.toFixed(2), '(frac=', insetFraction.toFixed(2), ') at z=', (backWallZ - insetFromBack).toFixed(2));
             }
+            const camPos = camera.position;
+            console.log('[SharpRoom] CAMERA_POSITION_FINAL isPortrait=' + isPortrait + ' pos=(' + camPos.x.toFixed(3) + ',' + camPos.y.toFixed(3) + ',' + camPos.z.toFixed(3) + ') depthAlongView=' + depthAlongView.toFixed(2) + ' insetFraction=' + insetFraction.toFixed(2) + ' insetFromBack=' + insetFromBack.toFixed(2));
             // Essential: sync OrbitControls after manual position/target change (prevents override)
             controls.update();
 
@@ -929,7 +977,7 @@ class SharpRoomActivity : AppCompatActivity() {
             metadata.append("roomWidth=$roomWidth\n")
             metadata.append("roomHeight=$roomHeight\n")
             metadata.append("roomDepth=$roomDepth\n")
-            metadata.append("photoOrientation=$photoOrientation\n")
+            metadata.append("photoOrientation=${if (photoOrientation == "landscape") "landscape" else "portrait"}\n")
             metadataFile.writeText(metadata.toString())
 
             Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()

@@ -50,24 +50,30 @@ class FurnitureFitActivity : AppCompatActivity() {
     private fun loadFragment() {
         val fragment = FurnitureFitFragment()
 
-        // Pass room info to fragment so the 3D background matches the opened room when room.glb exists.
-        // ROOM_FOLDER = absolute path to room folder. No fallback: if no room.glb, no 3D background is shown.
+        // Pass room info to fragment so the 3D background matches the opened room (same camera framing as SharpRoom).
         var roomId = intent.getStringExtra("ROOM_ID")
         val roomName = intent.getStringExtra("ROOM_NAME")
         var roomFolder = intent.getStringExtra("ROOM_FOLDER")
-        // Resolve to absolute path so fragment can find room.glb
+        val roomWidth = intent.getFloatExtra("ROOM_WIDTH", 4f)
+        val roomHeight = intent.getFloatExtra("ROOM_HEIGHT", 3f)
+        val roomDepth = intent.getFloatExtra("ROOM_DEPTH", 4.5f)
+        val photoOrientation = intent.getStringExtra("PHOTO_ORIENTATION") ?: "portrait"
         if (roomFolder != null && roomFolder.isNotBlank()) {
             val f = File(roomFolder)
             if (!f.isAbsolute) {
                 roomFolder = File(filesDir, roomFolder).absolutePath
             }
         }
-        Log.d(TAG, "Brain opened with ROOM_ID=$roomId ROOM_NAME=$roomName ROOM_FOLDER=$roomFolder")
+        Log.d(TAG, "Brain opened with ROOM_ID=$roomId ROOM_FOLDER=$roomFolder dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation")
 
         fragment.arguments = Bundle().apply {
             roomId?.let { putString("ROOM_ID", it) }
             roomName?.let { putString("ROOM_NAME", it) }
             roomFolder?.let { putString("ROOM_FOLDER", it) }
+            putFloat("ROOM_WIDTH", roomWidth)
+            putFloat("ROOM_HEIGHT", roomHeight)
+            putFloat("ROOM_DEPTH", roomDepth)
+            putString("PHOTO_ORIENTATION", photoOrientation)
         }
 
         supportFragmentManager.beginTransaction()

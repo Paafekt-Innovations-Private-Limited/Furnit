@@ -119,6 +119,13 @@
     <string name="settings_auto_orbit">Auto Orbit</string>
     <string name="settings_auto_orbit_description">Slowly rotate camera when idle</string>
     <string name="settings_licenses">Licenses</string>
+    <string name="licenses_title">Licenses &amp; Attributions</string>
+    <string name="licenses_phase1_notice">Phase 1 release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.</string>
+    <string name="licenses_yoloe_title">Furniture detection (YOLO-E)</string>
+    <string name="licenses_yoloe">This app uses models based on YOLO (e.g. Ultralytics YOLO). YOLO is licensed under AGPL-3.0. This Phase 1 release is non-commercial. For commercial use, see https://www.ultralytics.com/license</string>
+    <string name="licenses_sharp_title">3D room reconstruction (SHARP)</string>
+    <string name="licenses_sharp">3D room generation from a single photo uses technology based on SHARP (Apple ml-sharp). SHARP is used in accordance with its applicable terms. This Phase 1 release is non-commercial.</string>
+    <string name="licenses_full_online">Full licenses online</string>
     <string name="settings_room_viewer">Room Viewer</string>
     <string name="settings_rendering_quality">Rendering Quality</string>
     <string name="settings_sign_out">Sign Out</string>
@@ -292,6 +299,7 @@
     <string name="orientation_landscape">Landscape</string>
     <string name="orientation_held_vertically">held vertically</string>
     <string name="orientation_held_horizontally">held horizontally</string>
+    <string name="orientation_tap_to_change">%1$s - %2$s (tap to change)</string>
 
     <!-- Camera Capture -->
     <string name="camera_title">Camera</string>

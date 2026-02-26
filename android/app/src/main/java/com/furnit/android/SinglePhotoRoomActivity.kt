@@ -352,12 +352,19 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 400
             ).apply { setMargins(0, 0, 0, 8) })
 
-            // Orientation indicator (matches iOS)
+            // Orientation indicator (tap to override auto-detection)
             orientationIndicator = LinearLayout(this@SinglePhotoRoomActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
                 setPadding(16, 8, 16, 8)
                 setBackgroundColor(Color.parseColor("#F0F0F0"))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    detectedOrientation = if (detectedOrientation.isLandscape) PhotoOrientation.PORTRAIT else PhotoOrientation.LANDSCAPE
+                    updateOrientationIndicator()
+                    Log.d("SinglePhotoRoom", "User overrode orientation to: ${detectedOrientation.value}")
+                }
 
                 orientationIcon = TextView(this@SinglePhotoRoomActivity).apply {
                     text = "\uD83D\uDCF1" // Phone icon
@@ -582,12 +589,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun updateOrientationIndicator() {
-        orientationIcon.text = if (detectedOrientation.isLandscape) "\uD83D\uDCF1" else "\uD83D\uDCF1" // Phone icon
+        orientationIcon.text = "\uD83D\uDCF1" // Phone icon
         orientationIcon.rotation = if (detectedOrientation.isLandscape) 90f else 0f
 
         val orientationLabel = if (detectedOrientation.isLandscape) "Landscape" else "Portrait"
         val heldLabel = if (detectedOrientation.isLandscape) "held horizontally" else "held vertically"
-        orientationText.text = "$orientationLabel - $heldLabel"
+        orientationText.text = getString(R.string.orientation_tap_to_change, orientationLabel, heldLabel)
     }
 
     private fun showMethodPicker() {

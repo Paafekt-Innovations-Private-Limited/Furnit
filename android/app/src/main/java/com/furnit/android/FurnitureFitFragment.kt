@@ -70,6 +70,10 @@ class FurnitureFitFragment : Fragment() {
     private var selectedRoomId: String? = null
     private var selectedRoomName: String? = null
     private var selectedRoomFolder: String? = null  // Absolute path to room folder (so correct room is used as background)
+    private var selectedRoomWidth: Float = 4f
+    private var selectedRoomHeight: Float = 3f
+    private var selectedRoomDepth: Float = 4.5f
+    private var selectedPhotoOrientation: String = "portrait"
     private var usePlyBackground: Boolean = false  // True when background is PLY (WebView), false when GLB (SceneView) or none
     private var roomPlyWebView: WebView? = null
 
@@ -93,11 +97,15 @@ class FurnitureFitFragment : Fragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Get room info from arguments (ROOM_FOLDER = path to opened room so we use it as background)
+        // Get room info from arguments (same as SharpRoom so PLY viewer can use same camera framing)
         selectedRoomId = arguments?.getString("ROOM_ID")
         selectedRoomName = arguments?.getString("ROOM_NAME")
         selectedRoomFolder = arguments?.getString("ROOM_FOLDER")
-        Log.d("FurnitureFit", "Fragment onCreate - ROOM_NAME=$selectedRoomName ROOM_ID=$selectedRoomId ROOM_FOLDER=$selectedRoomFolder")
+        selectedRoomWidth = arguments?.getFloat("ROOM_WIDTH") ?: 4f
+        selectedRoomHeight = arguments?.getFloat("ROOM_HEIGHT") ?: 3f
+        selectedRoomDepth = arguments?.getFloat("ROOM_DEPTH") ?: 4.5f
+        selectedPhotoOrientation = if (arguments?.getString("PHOTO_ORIENTATION")?.trim()?.lowercase() == "landscape") "landscape" else "portrait"
+        Log.d("FurnitureFit", "Fragment onCreate - ROOM_NAME=$selectedRoomName ROOM_ID=$selectedRoomId ROOM_FOLDER=$selectedRoomFolder dims=${selectedRoomWidth}x${selectedRoomHeight}x${selectedRoomDepth} orientation=$selectedPhotoOrientation")
         cameraExecutor = Executors.newSingleThreadExecutor()
         manager = FurnitureFitManager(requireContext())
         // Initialize model - try NCNN first (1280x1280, more efficient), fall back to ONNX
@@ -271,6 +279,11 @@ class FurnitureFitFragment : Fragment() {
         }
         bottomControls.addView(screenshotButton)
 
+        // When opened from brain (room background): show only progress bar, no live camera feed
+        val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
+        if (hasRoomBackground) {
+            previewView.visibility = View.GONE
+        }
         root.addView(previewView)
         root.addView(roomSceneView)
         roomPlyWebView?.let { root.addView(it) }  // PLY splat background (shown when no room.glb)
@@ -416,10 +429,6 @@ class FurnitureFitFragment : Fragment() {
         val cameraProvider = cameraProvider ?: return
         cameraProvider.unbindAll()
 
-        val preview = Preview.Builder().build().also {
-            it.setSurfaceProvider(previewView.surfaceProvider)
-        }
-
         val analysis = ImageAnalysis.Builder()
             .setTargetResolution(android.util.Size(768, 768))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -429,10 +438,21 @@ class FurnitureFitFragment : Fragment() {
             processFrame(imageProxy)
         }
 
+        val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
+
         try {
-            cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            if (hasRoomBackground) {
+                // Brain flow: only analysis (segmentation), no Preview – user sees progress bar only
+                cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+            } else {
+                // No room: show live camera + analysis
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+                cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            }
             activity?.runOnUiThread {
-                statusLabel.text = "Camera ready - detecting furniture..."
+                statusLabel.text = if (hasRoomBackground) "Detecting furniture..." else "Camera ready - detecting furniture..."
             }
         } catch (e: Exception) {
             Log.e("FurnitureFit", "bindToLifecycle failed", e)
@@ -489,8 +509,9 @@ class FurnitureFitFragment : Fragment() {
                         updateCalibrationPill()
                     }
 
-                    // Show 3D room (GLB or PLY) behind segmented furniture, hide camera preview
-                    if (showRoomBackground && result.detections.isNotEmpty()) {
+                    // Show 3D room (GLB or PLY) behind segmented furniture, hide camera preview.
+                    // Show room on first valid segmentation result (mask present), even if no detections yet, so the room is visible and segmentation can continue.
+                    if (showRoomBackground) {
                         if (usePlyBackground) {
                             roomPlyWebView?.visibility = View.VISIBLE
                             roomSceneView.visibility = View.GONE
@@ -638,6 +659,9 @@ class FurnitureFitFragment : Fragment() {
                             Log.d("FurnitureFit", "Using opened folder room.ply as PLY background: ${plyFile.absolutePath}")
                             usePlyBackground = true
                             loadPlyBackground(plyFile)
+                            activity?.runOnUiThread {
+                                roomPlyWebView?.visibility = View.VISIBLE
+                            }
                             null
                         } else {
                             Log.d("FurnitureFit", "No room.glb or room.ply in $roomFolderPath; no 3D background")
@@ -690,7 +714,8 @@ class FurnitureFitFragment : Fragment() {
                     val h = bboxExtents.y
                     val d = bboxExtents.z
                     boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
-                    val cameraSetup = boundaryManager.getCameraCenteredView()
+                    Log.d("FurnitureFit", "[FurnitureFit] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
+                    val cameraSetup = boundaryManager.getCameraAtBackCenter()
                     initialCameraSetup = cameraSetup
                     roomSceneView.cameraNode.apply {
                         position = cameraSetup.position
@@ -702,7 +727,10 @@ class FurnitureFitFragment : Fragment() {
                             lookAt(cameraSetup.lookAt)
                         }
                     }
-                    Log.d("FurnitureFit", "3D room loaded; camera at back looking at front wall: pos=${cameraSetup.position} lookAt=${cameraSetup.lookAt}")
+                    Log.d("FurnitureFit", "[FurnitureFit] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
+                    if (roomFolderPath != null || roomId != null) {
+                        activity?.runOnUiThread { roomSceneView.visibility = View.VISIBLE }
+                    }
                 } else {
                     roomSceneView.cameraNode.apply {
                         position = Position(0f, 1.6f, 4f)
@@ -744,7 +772,13 @@ class FurnitureFitFragment : Fragment() {
                 return assetLoader.shouldInterceptRequest(url)
             }
         }
-        val html = buildPlyViewerHtml(isPortrait = true)
+        val isPortrait = selectedPhotoOrientation != "landscape"
+        val html = buildPlyViewerHtml(
+            isPortrait = isPortrait,
+            roomWidth = selectedRoomWidth,
+            roomHeight = selectedRoomHeight,
+            roomDepth = selectedRoomDepth
+        )
         webView.loadDataWithBaseURL(
             "https://appassets.androidplatform.net/",
             html,
@@ -754,8 +788,11 @@ class FurnitureFitFragment : Fragment() {
         )
     }
 
-    /** Minimal SparkJS splat viewer for PLY background: fixed camera, no orbit controls. */
-    private fun buildPlyViewerHtml(isPortrait: Boolean): String {
+    /** Minimal SparkJS splat viewer for PLY background. Camera framing matches SharpRoomActivity (back-center, depth-adaptive) so the room is not displaced when brain is clicked. */
+    private fun buildPlyViewerHtml(isPortrait: Boolean, roomWidth: Float, roomHeight: Float, roomDepth: Float): String {
+        val w = roomWidth.toDouble()
+        val h = roomHeight.toDouble()
+        val d = roomDepth.toDouble()
         return """
 <!DOCTYPE html>
 <html>
@@ -774,7 +811,6 @@ import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x808080);
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 1.6, 4);
 camera.up.set(0, 1, 0);
 const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -782,15 +818,35 @@ renderer.setPixelRatio(window.devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 const spark = new SparkRenderer({ renderer: renderer, maxStdDev: 3.0, preBlurAmount: 0.5, blurAmount: 0.3, falloff: 0.8, focalAdjustment: 1.5 });
 camera.add(spark);
-const isPortrait = IS_PORTRAIT_PLACEHOLDER;
+const isPortrait = ${isPortrait};
+const fallbackW = $w;
+const fallbackH = $h;
+const fallbackD = $d;
+const depthAlongView = isPortrait ? fallbackW : fallbackD;
+const t = Math.min(1, depthAlongView / 6);
+const insetFraction = 0.18 + 0.32 * t;
+const insetFromBack = Math.max(0.25, depthAlongView * insetFraction);
+const floorY = -fallbackH * 0.5;
+const eyeHeight = floorY + Math.min(1.6, fallbackH * 0.4);
+if (isPortrait) {
+    const backWall = fallbackW * 0.5;
+    const frontWall = -fallbackW * 0.5;
+    camera.position.set(backWall - insetFromBack, eyeHeight, 0);
+    camera.lookAt(new THREE.Vector3(frontWall, eyeHeight, 0));
+} else {
+    const backWallZ = fallbackD * 0.5;
+    const frontWallZ = -fallbackD * 0.5;
+    camera.position.set(0, eyeHeight, backWallZ - insetFromBack);
+    camera.lookAt(new THREE.Vector3(0, eyeHeight, frontWallZ));
+}
 const plyURL = 'https://appassets.androidplatform.net/files/room.ply';
 const splatMesh = new SplatMesh({ url: plyURL, maxSh: 0 });
 if (isPortrait) splatMesh.rotation.y = Math.PI / 2;
 scene.add(splatMesh);
 function animate() {
     requestAnimationFrame(animate);
+    spark.update({ scene });
     renderer.render(scene, camera);
-    spark.render();
 }
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -801,7 +857,7 @@ animate();
 </script>
 </body>
 </html>
-        """.trimIndent().replace("IS_PORTRAIT_PLACEHOLDER", if (isPortrait) "true" else "false")
+        """.trimIndent()
     }
 }
 

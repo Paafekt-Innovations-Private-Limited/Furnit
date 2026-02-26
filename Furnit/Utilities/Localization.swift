@@ -132,6 +132,17 @@ enum L10n {
         static let privacyPolicy = "settings.privacyPolicy".localized
         static let termsOfService = "settings.termsOfService".localized
         static let support = "settings.support".localized
+        static let licenses = "settings.licenses".localized
+    }
+
+    // MARK: Licenses & Attributions
+    enum Licenses {
+        static let title = "licenses.title".localized
+        static let phase1Notice = "licenses.phase1Notice".localized
+        static let yoloeTitle = "licenses.yoloeTitle".localized
+        static let yoloe = "licenses.yoloe".localized
+        static let sharpTitle = "licenses.sharpTitle".localized
+        static let sharp = "licenses.sharp".localized
     }
 
     // MARK: Help & Support

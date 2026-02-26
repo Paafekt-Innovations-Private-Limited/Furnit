@@ -84,7 +84,9 @@ class ModelManager(private val context: Context) {
                         lines.firstOrNull { it.startsWith("roomDepth=") }
                             ?.substringAfter("roomDepth=")?.toFloatOrNull()?.let { roomDepth = it }
                         lines.firstOrNull { it.startsWith("photoOrientation=") }
-                            ?.substringAfter("photoOrientation=")?.let { photoOrientation = it }
+                            ?.substringAfter("photoOrientation=")?.trim()?.lowercase()?.let { raw ->
+                                photoOrientation = if (raw == "landscape") "landscape" else "portrait"
+                            }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to read metadata for ${folder.name}", e)
                     }
@@ -117,7 +119,7 @@ class ModelManager(private val context: Context) {
                     photoOrientation = photoOrientation
                 )
                 userRooms.add(model)
-                Log.d(TAG, "Loaded room: ${model.name} at ${model.assetPath} (created: $createdAt, dims: ${roomWidth}x${roomHeight}x${roomDepth})")
+                Log.d(TAG, "Loaded room: ${model.name} at ${model.assetPath} (created: $createdAt, dims: ${roomWidth}x${roomHeight}x${roomDepth}, photoOrientation: $photoOrientation)")
             }
         }
     }
