@@ -390,6 +390,9 @@ class SharpRoomActivity : AppCompatActivity() {
                     intent.putExtra("ROOM_NAME", "Sharp Room")
                     roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
                     intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
+                    intent.putExtra("ROOM_WIDTH", roomWidth)
+                    intent.putExtra("ROOM_HEIGHT", roomHeight)
+                    intent.putExtra("ROOM_DEPTH", roomDepth)
                     startActivity(intent)
                 }
             }
@@ -609,7 +612,9 @@ class SharpRoomActivity : AppCompatActivity() {
         controls.rotateSpeed = 0.25;     // Slow rotation for touch so room does not move too fast
         controls.screenSpacePanning = false;
         controls.minDistance = 0.01;
-        controls.maxDistance = 100;
+        // Limit zoom-out so the room stays a reasonable size (max ~2.5× largest room dimension, cap 6–25m)
+        const roomMaxDim = Math.max(fallbackRoomWidth, fallbackRoomHeight, fallbackRoomDepth);
+        controls.maxDistance = Math.max(6, Math.min(25, roomMaxDim * 2.5));
         controls.target.set(0, 0, 0);
         controls.minAzimuthAngle = -Infinity;
         controls.maxAzimuthAngle = Infinity;
