@@ -1,0 +1,16 @@
+We have the same 3D reconstruction model (SHARP) on two platforms. On Android we saw jagged output with certain preprocessing; on iOS (Swift) we do not. We want to understand why so we can align behavior or avoid regressions.
+
+**iOS (Swift) preprocessing – no quality problem:**
+- We use CoreML (FP32) with the same SHARP architecture.
+- Preprocessing: we create a 1536x1536 CVPixelBuffer and draw the full source image into it with `context.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1536, height: 1536))`. So the entire image is scaled to fill the square (effectively stretch-to-square; aspect ratio is not preserved). No center-crop, no letterbox, no padding.
+- Result: 3D output looks good; no jagged or chaotic geometry.
+
+**Android preprocessing – we had to change it:**
+- We use ExecuTorch INT8 (same SHARP architecture, quantized).
+- We first tried: resize full image to fit inside 1536x1536, then pad to 1536x1536 with (a) 114-gray letterbox or (b) edge-extension. Both produced jagged, chaotic 3D output.
+- We then switched to: center-crop to square (side = min(w,h)), then resize to 1536x1536. Result: good quality, no jagged output (matches your recommendation to match ViT training with center-crop).
+
+**Question:**
+Why does Swift (stretch-to-square, full image in 1536x1536) not create the same problem we saw on Android with letterbox/padding? Is it likely (1) the precision difference (CoreML FP32 vs ExecuTorch INT8) so that INT8 amplifies artifacts from padding but stretch is still acceptable? (2) The model or training accepting stretched aspect so stretch is “in distribution” while padding is not? (3) Different input pipeline (e.g. CoreML normalizing or handling the buffer differently)? (4) Something else we should check on Android to get closer to Swift’s behavior without reintroducing jagged output?
+
+We are not using YOLO; this is SHARP 3D Gaussian splatting. We want to understand why Swift did not create this problem so we can safely improve Android preprocessing if possible.

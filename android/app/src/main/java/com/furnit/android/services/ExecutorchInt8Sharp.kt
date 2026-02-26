@@ -3,7 +3,6 @@ package com.furnit.android.services
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -30,9 +29,9 @@ import kotlin.math.*
  * Optimized ExecuTorch INT8 implementation for SHARP models.
  * Handles 35-patch multi-scale merging and chunked decoding to prevent OOM.
  *
- * Input: center-crop to square (min(w,h)) then resize to 1536x1536 to avoid black bars;
- * patch grid must not sample padding or output becomes jagged.
- * Coordinates: raw model output (no aspect scale); model expects 1:1 space.
+ * Input: center-crop to square (min(w,h)) then resize to 1536x1536. We do not pad gray to make a bigger square
+ * (e.g. 2x4 -> 4x4 with gray on sides): that was tried (114-gray letterbox) and caused jagged output—ViT sees
+ * the content/padding edge as OOD; INT8 amplifies it. Raw PLY coords; no aspect scale.
  *
  * Export note: if jagged output persists, consider FP16 for position/scale decoder heads
  * (see Ultralytics deployment practices; INT8 on scales/rotations can cause severe artifacts).
@@ -41,6 +40,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     companion object {
         private const val TAG = "ExecutorchInt8Sharp"
+        /** Use Lanczos3 for center-crop resize when true; bilinear when false. Set false if Lanczos is too slow or causes issues. */
+        @JvmField
+        var USE_LANCZOS_RESIZE: Boolean = true
+        /** When true, stretch full image to 1536x1536 (like Swift; no crop). When false, center-crop to square then resize. Set false if stretch causes jagged output on INT8. */
+        @JvmField
+        var USE_STRETCH_TO_SQUARE: Boolean = true
         // Image + merged spatial sizes (must match Python export)
         private const val IMAGE_SIZE = 1536
         private const val M_1X = 96   // 1x merged size
@@ -151,44 +156,91 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         progressCallback?.invoke(progress.coerceIn(0f, 1f), message)
     }
 
+    /** Lanczos3 kernel: sinc(x)*sinc(x/3) for |x|<3, else 0. */
+    private fun lanczos3(x: Double): Double {
+        if (x <= -3.0 || x >= 3.0) return 0.0
+        if (x == 0.0) return 1.0
+        val px = PI * x
+        return (sin(px) / px) * (sin(px / 3.0) / (px / 3.0))
+    }
+
     /**
-     * Center-crop to a square (side = min(w,h)) then resize to targetSize x targetSize.
-     * Avoids black bars so the 5x5 patch grid never samples padding (which causes jagged/garbage output).
-     * Model expects continuous visual data in a 1:1 coordinate space.
+     * Resize bitmap using Lanczos3 (6x6 kernel). Slower than bilinear; use for higher-quality resize.
+     * Output clamped to 0..255 to match bilinear range for INT8 input (per Ultralytics).
+     */
+    private fun resizeWithLanczos3(source: Bitmap, targetW: Int, targetH: Int): Bitmap {
+        val sw = source.width
+        val sh = source.height
+        val srcPixels = IntArray(sw * sh)
+        source.getPixels(srcPixels, 0, sw, 0, 0, sw, sh)
+        val dstPixels = IntArray(targetW * targetH)
+        val scaleX = sw.toDouble() / targetW
+        val scaleY = sh.toDouble() / targetH
+        for (oy in 0 until targetH) {
+            for (ox in 0 until targetW) {
+                val sx = (ox + 0.5) * scaleX - 0.5
+                val sy = (oy + 0.5) * scaleY - 0.5
+                var r = 0.0
+                var g = 0.0
+                var b = 0.0
+                var wSum = 0.0
+                val ix0 = max(0, floor(sx).toInt() - 2)
+                val ix1 = min(sw - 1, ceil(sx).toInt() + 3)
+                val iy0 = max(0, floor(sy).toInt() - 2)
+                val iy1 = min(sh - 1, ceil(sy).toInt() + 3)
+                for (iy in iy0..iy1) {
+                    val wy = lanczos3(sy - iy)
+                    if (wy == 0.0) continue
+                    for (ix in ix0..ix1) {
+                        val wx = lanczos3(sx - ix)
+                        if (wx == 0.0) continue
+                        val w = wx * wy
+                        val pixel = srcPixels[iy * sw + ix]
+                        r += (pixel shr 16 and 0xFF) * w
+                        g += (pixel shr 8 and 0xFF) * w
+                        b += (pixel and 0xFF) * w
+                        wSum += w
+                    }
+                }
+                val n = if (wSum > 0.0) wSum else 1.0
+                val rr = (r / n).toInt().coerceIn(0, 255)
+                val gg = (g / n).toInt().coerceIn(0, 255)
+                val bb = (b / n).toInt().coerceIn(0, 255)
+                dstPixels[oy * targetW + ox] = 0xFF000000.toInt() or (rr shl 16) or (gg shl 8) or bb
+            }
+        }
+        val result = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+        result.setPixels(dstPixels, 0, targetW, 0, 0, targetW, targetH)
+        return result
+    }
+
+    /**
+     * Stretch full image to targetSize x targetSize (no crop). Like Swift; aspect distortion, continuous signal.
+     * May cause artifacts on INT8; set USE_STRETCH_TO_SQUARE=false to fall back to center-crop.
+     */
+    private fun getStretchToSquareBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
+        val result = Bitmap.createScaledBitmap(bitmap, targetSize, targetSize, true)
+        Log.d(TAG, "[STRETCH] input=${bitmap.width}x${bitmap.height} -> ${targetSize}x${targetSize} (full image, no crop)")
+        return result
+    }
+
+    /**
+     * Center-crop to square (side = min(w,h)) then resize to targetSize. Matches ViT training distribution;
+     * avoids letterbox/gray padding which causes jagged output (Ultralytics).
+     * When USE_LANCZOS_RESIZE is true, resize uses Lanczos3; else bilinear. Set USE_LANCZOS_RESIZE=false if slow or problematic.
      */
     private fun getCenterCropBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
         val side = min(bitmap.width, bitmap.height).coerceAtLeast(1)
         val left = (bitmap.width - side) / 2
         val top = (bitmap.height - side) / 2
         val cropped = Bitmap.createBitmap(bitmap, left, top, side, side)
-        val result = Bitmap.createScaledBitmap(cropped, targetSize, targetSize, true)
-        if (cropped != bitmap) cropped.recycle()
-        Log.d(TAG, "[CENTER_CROP] input=${bitmap.width}x${bitmap.height} -> crop center ${side}x${side} -> ${targetSize}x${targetSize} (no black bars)")
-        return result
-    }
-
-    /**
-     * Letterbox: scale so long side = targetSize, pad short side with black. Kept for reference;
-     * prefer center crop to avoid patch grid sampling black bars (causes jagged output).
-     */
-    private fun getLetterboxBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
-        val scale = targetSize.toFloat() / max(bitmap.width, bitmap.height)
-        val newW = (bitmap.width * scale).toInt().coerceAtLeast(1)
-        val newH = (bitmap.height * scale).toInt().coerceAtLeast(1)
-        val padW = targetSize - newW
-        val padH = targetSize - newH
-        Log.d(TAG, "[LETTERBOX] input=${bitmap.width}x${bitmap.height} -> content=${newW}x${newH} on ${targetSize}x${targetSize} (pad horizontal=$padW px vertical=$padH px)")
-        if (padW < 0 || padH < 0) {
-            Log.w(TAG, "[LETTERBOX] BUG: negative padding (scale or size mismatch)")
+        val result = if (USE_LANCZOS_RESIZE && side != targetSize) {
+            resizeWithLanczos3(cropped, targetSize, targetSize)
+        } else {
+            Bitmap.createScaledBitmap(cropped, targetSize, targetSize, true)
         }
-        val scaled = Bitmap.createScaledBitmap(bitmap, newW, newH, true)
-        val result = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-        canvas.drawColor(Color.BLACK)
-        val left = (targetSize - newW) / 2f
-        val top = (targetSize - newH) / 2f
-        canvas.drawBitmap(scaled, left, top, null)
-        scaled.recycle()
+        if (cropped != bitmap) cropped.recycle()
+        Log.d(TAG, "[CENTER_CROP] input=${bitmap.width}x${bitmap.height} -> crop ${side}x${side} -> ${targetSize}x${targetSize} (${if (USE_LANCZOS_RESIZE) "Lanczos3" else "bilinear"})")
         return result
     }
 
@@ -201,11 +253,11 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val originalHeight = bitmap.height
             val isPortrait = originalHeight > originalWidth
             val pipelineStartMs = System.currentTimeMillis()
-            Log.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | using center crop + raw coords (no aspect scale in PLY)")
+            Log.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | ${if (USE_STRETCH_TO_SQUARE) "stretch-to-square" else "center-crop"} + raw coords (no aspect scale in PLY)")
 
             report(0f, "Preparing…", progressCallback)
-            // 1. Center-crop to square then resize to 1536x1536 (no black bars; patch grid sees only real image)
-            val scaledBmp = getCenterCropBitmap(bitmap, IMAGE_SIZE)
+            // 1. Stretch full image to 1536 (like Swift) or center-crop then resize; raw PLY coords
+            val scaledBmp = if (USE_STRETCH_TO_SQUARE) getStretchToSquareBitmap(bitmap, IMAGE_SIZE) else getCenterCropBitmap(bitmap, IMAGE_SIZE)
             val halfSize = IMAGE_SIZE / 2
             val halfBitmap = Bitmap.createScaledBitmap(scaledBmp, halfSize, halfSize, true)
 

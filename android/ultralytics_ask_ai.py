@@ -71,6 +71,21 @@ QUESTION_05X_CENTERING_FILE = Path(__file__).resolve().parent / "ultralytics_que
 # Position still wrong after center-crop + raw coords (room 8.78x7.62x4.17).
 QUESTION_POSITION_WRONG_FILE = Path(__file__).resolve().parent / "ultralytics_question_position_wrong.txt"
 
+# Validate input: resize-fit + edge pad vs center crop (lenient, no black bars).
+QUESTION_VALIDATE_INPUT_FILE = Path(__file__).resolve().parent / "ultralytics_question_validate_input.txt"
+
+# Jagged output with 114-gray letterbox (whole pic, still jagged).
+QUESTION_JAGGED_LETTERBOX114_FILE = Path(__file__).resolve().parent / "ultralytics_question_jagged_letterbox114.txt"
+
+# More image / less crop without screwing quality (describe center-crop, ask for alternatives).
+QUESTION_MORE_IMAGE_KEEP_QUALITY_FILE = Path(__file__).resolve().parent / "ultralytics_question_more_image_keep_quality.txt"
+
+# Why Swift (stretch-to-square) didn't cause jagged output vs Android letterbox.
+QUESTION_SWIFT_VS_ANDROID_FILE = Path(__file__).resolve().parent / "ultralytics_question_swift_vs_android_preprocess.txt"
+
+# Best way to do Lanczos resize on Android for 1536x1536 model input.
+QUESTION_LANCZOS_RESIZE_FILE = Path(__file__).resolve().parent / "ultralytics_question_lanczos_resize.txt"
+
 # Gradle/Android build failure: wildcard IP and sysconf on macOS.
 GRADLE_BUILD_QUESTION = """When building an Android app with Gradle on macOS (darwin), the build fails with: (1) "Could not determine a usable wildcard IP for this machine" and (2) "xargs: sysconf(_SC_ARG_MAX) failed". The project uses AGP 8.5.2 and Kotlin. Building with --no-daemon works. What is the root cause and the recommended fix so that a normal daemon build works? Should we set org.gradle.daemon=false, or -Djava.net.preferIPv4Stack=true in gradle.properties, or something else? We need a concrete fix for Gradle/JVM or macOS environment."""
 
@@ -171,8 +186,15 @@ def ask_ultralytics_ai(
             chat_input.press("Enter")
             logger.info("Question submitted. Waiting for AI to finish responding, then reading from chat HTML...")
 
-            # 1) Wait for the reply, then capture whole popup DOM and latest answer DOM; extract answer from HTML
-            reply_markers = ["The Fix", "skip the CLS", "tokenIdx", "outBase", "out: [C, H, W]", "XNNPACK", "Vulkan", "delegate", "quantization", "latency", "ExecuTorch", "fusion", "best practices", "Gradle", "daemon", "gradle.properties", "JVM", "wildcard", "IPv4", "aspect", "Box3", "rotation", "width", "height", "squeeze", "portrait", "landscape", "jagged", "letterbox", "Gaussian", "coordinate", "scale", "center", "ScaleGestureDetector", "focus", "pivot", "origin", "bbox", "translate", "centered"]
+            # 1) Wait for the reply. Prefer chat container last message so we don't capture the docs page.
+            reply_markers = ["The Fix", "skip the CLS", "tokenIdx", "outBase", "out: [C, H, W]", "XNNPACK", "Vulkan", "delegate", "quantization", "latency", "ExecuTorch", "fusion", "best practices", "Gradle", "daemon", "gradle.properties", "JVM", "wildcard", "IPv4", "aspect", "Box3", "rotation", "width", "height", "squeeze", "portrait", "landscape", "jagged", "letterbox", "Gaussian", "coordinate", "scale", "center", "ScaleGestureDetector", "focus", "pivot", "origin", "bbox", "translate", "centered", "edge", "padding", "resize", "crop", "ViT", "artifact"]
+            # Reject content that looks like the docs page (not the AI reply)
+            DOC_PAGE_PHRASES = ("YOLO26", "Model Deployment Options", "Cloud Deployment", "Edge Deployment", "Local Deployment", "Docker", "TensorFlow Lite", "SageMaker", "Kubernetes", "TLS (Transport Layer Security)", "MFA", "RBAC", "model obfuscation", "TEE")
+            def is_likely_docs_page(text: str) -> bool:
+                if not text or len(text) < 300:
+                    return False
+                return sum(1 for p in DOC_PAGE_PHRASES if p in text) >= 2
+
             answer_html: str | None = None
             popup_html: str | None = None
             question_preview = question[:80].replace("\n", " ")
@@ -189,6 +211,27 @@ def ask_ultralytics_ai(
 
             for attempt in range(50):  # 50 * 3s = 150s max
                 page.wait_for_timeout(3000)
+                # Prefer assistant message in chat (below question): Ultralytics DOM has .ult-message-group[data-role="assistant"] or .ult-message.assistant
+                try:
+                    for assistant_sel in [
+                        '.ult-message-group[data-role="assistant"] .ult-message',
+                        '.ult-message.assistant',
+                        '[data-role="assistant"] .ult-message',
+                        'div.ult-message.assistant',
+                    ]:
+                        loc = page.locator(assistant_sel).last
+                        if loc.count() > 0 and loc.is_visible():
+                            t = loc.inner_text(timeout=2000)
+                            if t and len(t.strip()) > 150 and not is_likely_docs_page(t) and question_preview[:50] not in t:
+                                answer_html = loc.evaluate("node => node.outerHTML")
+                                logger.info("Captured assistant message from chat DOM (below question)")
+                                break
+                        if answer_html:
+                            break
+                except Exception:
+                    pass
+                if answer_html:
+                    break
                 for marker in reply_markers:
                     try:
                         el = page.locator(f"text=/{marker}/").last
@@ -196,7 +239,7 @@ def ask_ultralytics_ai(
                             text, html = capture_block(el)
                             if text and html:
                                 t = text.strip()
-                                if len(t) > 100 and question_preview not in t and not t.startswith("For TinyViT") and not t.startswith("We run a ViT"):
+                                if len(t) > 100 and question_preview not in t and not t.startswith("For TinyViT") and not t.startswith("We run a ViT") and not is_likely_docs_page(t):
                                     answer_html = html
                                     logger.info("Captured answer block (marker '%s')", marker)
                                     break
@@ -228,10 +271,11 @@ def ask_ultralytics_ai(
                                 last_msg = children.nth(n - 1)
                                 if last_msg.is_visible():
                                     t = last_msg.inner_text(timeout=2000)
-                                    if t and 200 < len(t.strip()) < 50000 and ("Fix" in t or "CLS" in t or "589824" in t or "token" in t or "delegate" in t or "latency" in t or "ExecuTorch" in t or "quantization" in t or "XNNPACK" in t or "Vulkan" in t):
-                                        answer_html = last_msg.evaluate("node => node.outerHTML")
-                                        logger.info("Captured last message DOM in chat container")
-                                        break
+                                    if t and 200 < len(t.strip()) < 50000 and not is_likely_docs_page(t):
+                                        if any(m in t for m in ["Fix", "CLS", "token", "delegate", "latency", "ExecuTorch", "quantization", "XNNPACK", "Vulkan", "edge", "padding", "crop", "center", "ViT", "resize", "artifact", "recommend", "suggest", "approach"]):
+                                            answer_html = last_msg.evaluate("node => node.outerHTML")
+                                            logger.info("Captured last message DOM in chat container")
+                                            break
                         if answer_html:
                             break
                 except Exception:
@@ -267,13 +311,28 @@ def ask_ultralytics_ai(
                             break
             except Exception:
                 pass
+            response_text = None
             if popup_html:
                 POPUP_DOM_FILE.write_text(popup_html, encoding="utf-8")
                 logger.info("Saved popup DOM to %s", POPUP_DOM_FILE)
-            if answer_html:
-                ANSWER_DOM_FILE.write_text(answer_html, encoding="utf-8")
-                logger.info("Saved latest answer DOM to %s", ANSWER_DOM_FILE)
-            response_text = extract_text_from_html(answer_html) if answer_html else None
+                # Extract full assistant reply from popup DOM (below question; in case answer_html was truncated)
+                try:
+                    match = re.search(
+                        r'<div[^>]*class="[^"]*ult-message[^"]*assistant[^"]*"[^>]*>([\s\S]*?)</div>\s*(?=<div|$)',
+                        popup_html,
+                    )
+                    if not match:
+                        match = re.search(r'data-role="assistant"[\s\S]*?<div[^>]*class="[^"]*ult-message[^"]*"[\s\S]*?>([\s\S]*?)</div>\s*(?=<div\s|</div>\s*</div>)', popup_html)
+                    if match:
+                        full_assistant_html = match.group(1)
+                        full_text = extract_text_from_html(full_assistant_html).strip()
+                        if full_text and len(full_text) > 200 and not is_likely_docs_page(full_text):
+                            response_text = full_text
+                            answer_html = answer_html or full_assistant_html
+                except Exception:
+                    pass
+            if answer_html and not response_text:
+                response_text = extract_text_from_html(answer_html)
             if response_text:
                 response_text = response_text.strip()
             if not response_text and answer_html:
@@ -357,6 +416,31 @@ def main() -> int:
         help="Use question from ultralytics_question_position_wrong.txt (position still wrong after center-crop + raw coords)",
     )
     parser.add_argument(
+        "--validate-input",
+        action="store_true",
+        help="Validate resize-fit + edge-pad input approach (lenient, no black bars) vs center crop; from ultralytics_question_validate_input.txt",
+    )
+    parser.add_argument(
+        "--jagged-letterbox",
+        action="store_true",
+        help="Jagged output with 114-gray letterbox (whole pic); from ultralytics_question_jagged_letterbox114.txt",
+    )
+    parser.add_argument(
+        "--more-image",
+        action="store_true",
+        help="Include more image without hurting quality; describe center-crop, ask for alternatives; from ultralytics_question_more_image_keep_quality.txt",
+    )
+    parser.add_argument(
+        "--swift-vs-android",
+        action="store_true",
+        help="Why Swift (stretch-to-square) did not cause jagged output vs Android letterbox; from ultralytics_question_swift_vs_android_preprocess.txt",
+    )
+    parser.add_argument(
+        "--lanczos",
+        action="store_true",
+        help="Best way to do Lanczos resize on Android for 1536 input; from ultralytics_question_lanczos_resize.txt",
+    )
+    parser.add_argument(
         "--gradle",
         action="store_true",
         help="Use canned question for Gradle build failure (wildcard IP / sysconf on macOS)",
@@ -403,6 +487,36 @@ def main() -> int:
             question = QUESTION_POSITION_WRONG_FILE.read_text(encoding="utf-8").strip()
         else:
             logger.error("File not found: %s", QUESTION_POSITION_WRONG_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.validate_input:
+        if QUESTION_VALIDATE_INPUT_FILE.is_file():
+            question = QUESTION_VALIDATE_INPUT_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_VALIDATE_INPUT_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.jagged_letterbox:
+        if QUESTION_JAGGED_LETTERBOX114_FILE.is_file():
+            question = QUESTION_JAGGED_LETTERBOX114_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_JAGGED_LETTERBOX114_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.more_image:
+        if QUESTION_MORE_IMAGE_KEEP_QUALITY_FILE.is_file():
+            question = QUESTION_MORE_IMAGE_KEEP_QUALITY_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_MORE_IMAGE_KEEP_QUALITY_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.swift_vs_android:
+        if QUESTION_SWIFT_VS_ANDROID_FILE.is_file():
+            question = QUESTION_SWIFT_VS_ANDROID_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_SWIFT_VS_ANDROID_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.lanczos:
+        if QUESTION_LANCZOS_RESIZE_FILE.is_file():
+            question = QUESTION_LANCZOS_RESIZE_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_LANCZOS_RESIZE_FILE)
             question = ASPECT_SQUEEZE_QUESTION
     else:
         question = (
