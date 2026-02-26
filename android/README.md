@@ -48,6 +48,18 @@ If the build fails with **"Could not determine a usable wildcard IP for this mac
 
 With the device connected (or emulator running), use `adb logcat`. If more than one device is connected, target one with `-s <device_serial>` (see `adb devices`).
 
+**ExecuTorch INT8 pipeline timing:** Filter by `ExecutorchInt8Sharp` to see `[TIMING]` lines (Part4b forward, writePly, TOTAL). Example from a typical run (~3 min total):
+- 1x patches (25): ~36 s  
+- 0.5x patches (9): ~14 s  
+- 0.25x patch: ~1.5 s  
+- Part3 (image encoder): ~2 s  
+- Part4a (2 chunks): ~4 s  
+- **Part4b (decoder + Gaussian head): ~106 s** ← dominant  
+- writePly (1.18M Gaussians): ~14 s  
+```bash
+adb logcat -s ExecutorchInt8Sharp:D SharpService:D -v time
+```
+
 **Room list / 3D room view (camera position, model load):**
 ```bash
 adb logcat -s ModelDetailActivity:D RoomBoundaryManager:D -v time

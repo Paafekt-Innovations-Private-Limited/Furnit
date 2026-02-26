@@ -150,21 +150,16 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
             return false
         }
 
-        // Calculate mask transform (same as onDraw for mask)
-        val baseScaleX = width.toFloat() / bmp.width
-        val baseScaleY = height.toFloat() / bmp.height
+        // Same transform as onDraw: uniform base scale, pivot at bitmap center, screen center + drag
+        val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+        val totalScale = baseScale * furnitureScale
+        val screenCenterX = width / 2f
+        val screenCenterY = height * 0.35f
+        val maskLeft = screenCenterX - (bmp.width / 2f) * totalScale + translateX
+        val maskTop = screenCenterY - (bmp.height / 2f) * totalScale + translateY
 
-        val scaledWidth = bmp.width * baseScaleX * furnitureScale
-        val scaledHeight = bmp.height * baseScaleY * furnitureScale
-        val centerOffsetX = (width - scaledWidth) / 2
-        val floorOffsetY = height * 0.35f
-
-        val maskLeft = centerOffsetX + translateX
-        val maskTop = floorOffsetY + translateY
-
-        // Convert touch coordinates to bitmap pixel coordinates
-        val bmpX = ((touchX - maskLeft) / (baseScaleX * furnitureScale)).toInt()
-        val bmpY = ((touchY - maskTop) / (baseScaleY * furnitureScale)).toInt()
+        val bmpX = ((touchX - maskLeft) / totalScale).toInt()
+        val bmpY = ((touchY - maskTop) / totalScale).toInt()
 
         // Check if within bitmap bounds
         if (bmpX < 0 || bmpX >= bmp.width || bmpY < 0 || bmpY >= bmp.height) {
@@ -210,45 +205,37 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Draw segmented objects (cutout with transparent background)
+        // Draw segmented objects (cutout with transparent background).
+        // Ultralytics-style: uniform base scale to fit, scale around bitmap center (pivot), then translate to screen center.
         maskBitmap?.let { bmp ->
-            val baseScaleX = width.toFloat() / bmp.width
-            val baseScaleY = height.toFloat() / bmp.height
+            val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+            val totalScale = baseScale * furnitureScale
 
             val matrix = Matrix()
-
-            // Apply base scale to fit view
-            matrix.setScale(baseScaleX * furnitureScale, baseScaleY * furnitureScale)
-
-            // Position furniture on the floor (lower part of room)
-            val scaledWidth = bmp.width * baseScaleX * furnitureScale
-            val scaledHeight = bmp.height * baseScaleY * furnitureScale
-            val centerOffsetX = (width - scaledWidth) / 2
-            // Place furniture on floor area (bottom 40% of screen)
-            val floorOffsetY = height * 0.35f  // Move down to floor level
-
-            // Apply translation (floor offset + user drag)
-            matrix.postTranslate(centerOffsetX + translateX, floorOffsetY + translateY)
+            matrix.reset()
+            matrix.postScale(totalScale, totalScale, bmp.width / 2f, bmp.height / 2f)
+            val screenCenterX = width / 2f
+            val screenCenterY = height * 0.35f
+            matrix.postTranslate(screenCenterX - bmp.width / 2f, screenCenterY - bmp.height / 2f)
+            matrix.postTranslate(translateX, translateY)
 
             canvas.drawBitmap(bmp, matrix, maskPaint)
         }
 
-        // Draw bounding boxes and labels only when debug mode is enabled
+        // Draw bounding boxes and labels only when debug mode is enabled (same screen center as mask)
         if (detections.isNotEmpty() && DebugLogger.isDebugMode) {
-            val baseScaleX = width.toFloat() / inputSize
-            val baseScaleY = height.toFloat() / inputSize
-
-            val scaledWidth = width * furnitureScale
-            val floorOffsetY = height * 0.35f
-            val centerOffsetX = (width - scaledWidth) / 2 + translateX
-            val centerOffsetY = floorOffsetY + translateY
+            val baseScale = min(width / inputSize.toFloat(), height / inputSize.toFloat())
+            val totalScale = baseScale * furnitureScale
+            val screenCenterX = width / 2f
+            val screenCenterY = height * 0.35f
+            val centerOffsetX = screenCenterX - (inputSize / 2f) * totalScale + translateX
+            val centerOffsetY = screenCenterY - (inputSize / 2f) * totalScale + translateY
 
             for (det in detections) {
-                // Convert center coords to corner coords and scale to view
-                val left = (det.x - det.w / 2) * baseScaleX * furnitureScale + centerOffsetX
-                val top = (det.y - det.h / 2) * baseScaleY * furnitureScale + centerOffsetY
-                val right = (det.x + det.w / 2) * baseScaleX * furnitureScale + centerOffsetX
-                val bottom = (det.y + det.h / 2) * baseScaleY * furnitureScale + centerOffsetY
+                val left = (det.x - det.w / 2) * totalScale + centerOffsetX
+                val top = (det.y - det.h / 2) * totalScale + centerOffsetY
+                val right = (det.x + det.w / 2) * totalScale + centerOffsetX
+                val bottom = (det.y + det.h / 2) * totalScale + centerOffsetY
 
                 // Draw bounding box
                 canvas.drawRect(left, top, right, bottom, boxPaint)

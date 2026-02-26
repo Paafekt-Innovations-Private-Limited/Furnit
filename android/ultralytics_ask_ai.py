@@ -48,6 +48,9 @@ CAMERA_POSITION_QUESTION = """We have an Android WebView 3D room viewer using Th
 # Orientation: portrait and landscape photos both showing as landscape in 3D viewer.
 ORIENTATION_QUESTION = """We have an Android app that shows a 3D Gaussian-splat room in a WebView (Three.js). The room is generated from a single photo. We pass photo_orientation (portrait or landscape) from the activity intent and inject it into the WebView as isPortrait. We use isPortrait to map Box3 size to roomWidth/roomHeight (portrait: width=X height=Y; landscape: width=Y height=X). We do NOT apply any rotation to the splat mesh (comment says "No rotation - see raw PLY first"). The problem: both portrait and landscape photos result in the room being displayed as landscape only; orientation is not correctly set. What is the right approach? (1) Should we rotate the splat mesh (e.g. 90° around Y) when isPortrait so the room aspect matches the photo? (2) Is the PLY always exported in a fixed coordinate frame (e.g. landscape) so we must apply a rotation in the viewer for portrait? (3) Could the intent extra "photo_orientation" be wrong or not passed, and how should we verify? We lock the activity to SCREEN_ORIENTATION_PORTRAIT or LANDSCAPE based on photo_orientation, but the 3D content still looks landscape. Not YOLO; this is 3D room reconstruction."""
 
+# Aspect distortion: landscape room squeezed, portrait room expanded (snake-like edges).
+ASPECT_SQUEEZE_QUESTION = """We display a 3D Gaussian splatting room (PLY) in a WebView with Three.js. The room comes from a single photo; we know photo_orientation (portrait or landscape) and pass room dimensions (roomWidth, roomHeight, roomDepth in meters). For portrait we apply a 90° rotation around Y to the splat mesh so the room aspect matches the photo. We map the mesh bounding box (Box3) to roomWidth/roomHeight: portrait uses roomWidth=size.x, roomHeight=size.y; landscape uses roomWidth=size.y, roomHeight=size.x; roomDepth=size.z. The problem: in landscape the room looks squeezed (narrow). In portrait it looks expanded with snake-like wavy edges on objects and walls. We use PerspectiveCamera with aspect = window.innerWidth/window.innerHeight and lock the activity to portrait or landscape. What is the correct way to (1) map Box3 axes to room width/height/depth after a 90° Y rotation for portrait so aspect ratio matches the photo? (2) Avoid squeeze in landscape and stretch/snake edges in portrait—could this be wrong width/height swap or camera frustum vs room aspect mismatch? We follow Ultralytics-style orientation (display dimensions: landscape = width > height, portrait = height > width). Not YOLO; this is 3D room reconstruction viewer."""
+
 DEFAULT_QUESTION = CURRENT_PROBLEM_QUESTION
 
 # Other canned questions (use -q with paste or a file).
@@ -55,6 +58,18 @@ DEPLOYMENT_QUESTION = """I'm deploying a ViT-based 3D reconstruction model (SHAR
 
 # Use with: python ultralytics_ask_ai.py -q "$(cat android/ultralytics_question_576_vs_577.txt)"
 QUESTION_576_VS_577 = """For TinyViT / PatchEmbed: when processing a single 384x384 patch, can the encoder output (B, N, C) have N=576 (spatial only) instead of N=577 (CLS + 24x24)? We get ArrayIndexOutOfBoundsException at index 589824 when reshaping Part2 output for that single-patch path—our buffer is 576*1024. Should reshapeToSpatial assume 577 tokens and skip CLS, or 576 tokens with no CLS depending on tensor size? Please focus on TinyViT single-patch output shape."""
+
+# Aspect distortion + full INT8 ExecuTorch code (read from file to keep prompt under limit).
+QUESTION_ASPECT_INT8_FILE = Path(__file__).resolve().parent / "ultralytics_question_aspect_int8.txt"
+
+# Jagged / screwed-up 3D output (full prompt in file).
+QUESTION_JAGGED_OUTPUT_FILE = Path(__file__).resolve().parent / "ultralytics_question_jagged_output.txt"
+
+# 0.5x overlay not in middle (Furniture Fit centering at scale).
+QUESTION_05X_CENTERING_FILE = Path(__file__).resolve().parent / "ultralytics_question_05x_centering.txt"
+
+# Position still wrong after center-crop + raw coords (room 8.78x7.62x4.17).
+QUESTION_POSITION_WRONG_FILE = Path(__file__).resolve().parent / "ultralytics_question_position_wrong.txt"
 
 # Gradle/Android build failure: wildcard IP and sysconf on macOS.
 GRADLE_BUILD_QUESTION = """When building an Android app with Gradle on macOS (darwin), the build fails with: (1) "Could not determine a usable wildcard IP for this machine" and (2) "xargs: sysconf(_SC_ARG_MAX) failed". The project uses AGP 8.5.2 and Kotlin. Building with --no-daemon works. What is the root cause and the recommended fix so that a normal daemon build works? Should we set org.gradle.daemon=false, or -Djava.net.preferIPv4Stack=true in gradle.properties, or something else? We need a concrete fix for Gradle/JVM or macOS environment."""
@@ -92,9 +107,10 @@ def ask_ultralytics_ai(
         return None
 
     question = (question or DEFAULT_QUESTION).strip()
-    if len(question) > 12000:  # ~200 lines at ~60 chars
-        logger.warning("Question is long; Ultralytics chat may truncate. Trimming to first 12000 chars.")
-        question = question[:12000]
+    max_chars = getattr(ask_ultralytics_ai, "_max_question_chars", 12000)
+    if len(question) > max_chars:
+        logger.warning("Question is long; Ultralytics chat may truncate. Trimming to first %s chars.", max_chars)
+        question = question[:max_chars]
 
     try:
         with sync_playwright() as p:
@@ -156,7 +172,7 @@ def ask_ultralytics_ai(
             logger.info("Question submitted. Waiting for AI to finish responding, then reading from chat HTML...")
 
             # 1) Wait for the reply, then capture whole popup DOM and latest answer DOM; extract answer from HTML
-            reply_markers = ["The Fix", "skip the CLS", "tokenIdx", "outBase", "out: [C, H, W]", "XNNPACK", "Vulkan", "delegate", "quantization", "latency", "ExecuTorch", "fusion", "best practices", "Gradle", "daemon", "gradle.properties", "JVM", "wildcard", "IPv4"]
+            reply_markers = ["The Fix", "skip the CLS", "tokenIdx", "outBase", "out: [C, H, W]", "XNNPACK", "Vulkan", "delegate", "quantization", "latency", "ExecuTorch", "fusion", "best practices", "Gradle", "daemon", "gradle.properties", "JVM", "wildcard", "IPv4", "aspect", "Box3", "rotation", "width", "height", "squeeze", "portrait", "landscape", "jagged", "letterbox", "Gaussian", "coordinate", "scale", "center", "ScaleGestureDetector", "focus", "pivot", "origin", "bbox", "translate", "centered"]
             answer_html: str | None = None
             popup_html: str | None = None
             question_preview = question[:80].replace("\n", " ")
@@ -316,6 +332,31 @@ def main() -> int:
         help="Use canned question for portrait vs landscape both showing as landscape in 3D room viewer",
     )
     parser.add_argument(
+        "--aspect",
+        action="store_true",
+        help="Use canned question for landscape squeezed, portrait expanded (snake-like edges); correct Box3/aspect mapping",
+    )
+    parser.add_argument(
+        "--aspect-int8",
+        action="store_true",
+        help="Use question from ultralytics_question_aspect_int8.txt (aspect distortion + full ExecuTorch INT8 code)",
+    )
+    parser.add_argument(
+        "--jagged",
+        action="store_true",
+        help="Use question from ultralytics_question_jagged_output.txt (jagged/screwed-up 3D output, 3840x2160, aspect 1.78)",
+    )
+    parser.add_argument(
+        "--centering",
+        action="store_true",
+        help="Use question from ultralytics_question_05x_centering.txt (0.5x overlay/photos not in middle)",
+    )
+    parser.add_argument(
+        "--position",
+        action="store_true",
+        help="Use question from ultralytics_question_position_wrong.txt (position still wrong after center-crop + raw coords)",
+    )
+    parser.add_argument(
         "--gradle",
         action="store_true",
         help="Use canned question for Gradle build failure (wildcard IP / sysconf on macOS)",
@@ -337,14 +378,42 @@ def main() -> int:
         help="Do not save response to ultralytics_response.txt",
     )
     args = parser.parse_args()
-    question = (
-        PROGRESS_BAR_QUESTION if args.progress_bar
-        else CAMERA_POSITION_QUESTION if args.camera
-        else ORIENTATION_QUESTION if args.orientation
-        else BLUISH_QUESTION if args.bluish
-        else GRADLE_BUILD_QUESTION if args.gradle
-        else args.question
-    )
+    ask_ultralytics_ai._max_question_chars = 12000
+    if args.aspect_int8:
+        if QUESTION_ASPECT_INT8_FILE.is_file():
+            question = QUESTION_ASPECT_INT8_FILE.read_text(encoding="utf-8").strip()
+            ask_ultralytics_ai._max_question_chars = 20000  # allow full INT8 code in prompt
+        else:
+            logger.error("File not found: %s", QUESTION_ASPECT_INT8_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.jagged:
+        if QUESTION_JAGGED_OUTPUT_FILE.is_file():
+            question = QUESTION_JAGGED_OUTPUT_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_JAGGED_OUTPUT_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.centering:
+        if QUESTION_05X_CENTERING_FILE.is_file():
+            question = QUESTION_05X_CENTERING_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_05X_CENTERING_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    elif args.position:
+        if QUESTION_POSITION_WRONG_FILE.is_file():
+            question = QUESTION_POSITION_WRONG_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_POSITION_WRONG_FILE)
+            question = ASPECT_SQUEEZE_QUESTION
+    else:
+        question = (
+            PROGRESS_BAR_QUESTION if args.progress_bar
+            else CAMERA_POSITION_QUESTION if args.camera
+            else ORIENTATION_QUESTION if args.orientation
+            else ASPECT_SQUEEZE_QUESTION if args.aspect
+            else BLUISH_QUESTION if args.bluish
+            else GRADLE_BUILD_QUESTION if args.gradle
+            else args.question
+        )
     save_path = None if args.no_save else RESPONSE_FILE
     response = ask_ultralytics_ai(
         question=question,

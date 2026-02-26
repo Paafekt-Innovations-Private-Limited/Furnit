@@ -2,6 +2,8 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -27,6 +29,13 @@ import kotlin.math.*
 /**
  * Optimized ExecuTorch INT8 implementation for SHARP models.
  * Handles 35-patch multi-scale merging and chunked decoding to prevent OOM.
+ *
+ * Input: center-crop to square (min(w,h)) then resize to 1536x1536 to avoid black bars;
+ * patch grid must not sample padding or output becomes jagged.
+ * Coordinates: raw model output (no aspect scale); model expects 1:1 space.
+ *
+ * Export note: if jagged output persists, consider FP16 for position/scale decoder heads
+ * (see Ultralytics deployment practices; INT8 on scales/rotations can cause severe artifacts).
  */
 class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
@@ -142,14 +151,61 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         progressCallback?.invoke(progress.coerceIn(0f, 1f), message)
     }
 
+    /**
+     * Center-crop to a square (side = min(w,h)) then resize to targetSize x targetSize.
+     * Avoids black bars so the 5x5 patch grid never samples padding (which causes jagged/garbage output).
+     * Model expects continuous visual data in a 1:1 coordinate space.
+     */
+    private fun getCenterCropBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
+        val side = min(bitmap.width, bitmap.height).coerceAtLeast(1)
+        val left = (bitmap.width - side) / 2
+        val top = (bitmap.height - side) / 2
+        val cropped = Bitmap.createBitmap(bitmap, left, top, side, side)
+        val result = Bitmap.createScaledBitmap(cropped, targetSize, targetSize, true)
+        if (cropped != bitmap) cropped.recycle()
+        Log.d(TAG, "[CENTER_CROP] input=${bitmap.width}x${bitmap.height} -> crop center ${side}x${side} -> ${targetSize}x${targetSize} (no black bars)")
+        return result
+    }
+
+    /**
+     * Letterbox: scale so long side = targetSize, pad short side with black. Kept for reference;
+     * prefer center crop to avoid patch grid sampling black bars (causes jagged output).
+     */
+    private fun getLetterboxBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
+        val scale = targetSize.toFloat() / max(bitmap.width, bitmap.height)
+        val newW = (bitmap.width * scale).toInt().coerceAtLeast(1)
+        val newH = (bitmap.height * scale).toInt().coerceAtLeast(1)
+        val padW = targetSize - newW
+        val padH = targetSize - newH
+        Log.d(TAG, "[LETTERBOX] input=${bitmap.width}x${bitmap.height} -> content=${newW}x${newH} on ${targetSize}x${targetSize} (pad horizontal=$padW px vertical=$padH px)")
+        if (padW < 0 || padH < 0) {
+            Log.w(TAG, "[LETTERBOX] BUG: negative padding (scale or size mismatch)")
+        }
+        val scaled = Bitmap.createScaledBitmap(bitmap, newW, newH, true)
+        val result = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(result)
+        canvas.drawColor(Color.BLACK)
+        val left = (targetSize - newW) / 2f
+        val top = (targetSize - newH) / 2f
+        canvas.drawBitmap(scaled, left, top, null)
+        scaled.recycle()
+        return result
+    }
+
     suspend fun inferStreaming(bitmap: Bitmap, progressCallback: ((Float, String) -> Unit)? = null): StreamingResult? = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (!isInitialized) return@withContext null
             ensureModelsFromAssets()
 
+            val originalWidth = bitmap.width
+            val originalHeight = bitmap.height
+            val isPortrait = originalHeight > originalWidth
+            val pipelineStartMs = System.currentTimeMillis()
+            Log.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | using center crop + raw coords (no aspect scale in PLY)")
+
             report(0f, "Preparing…", progressCallback)
-            // 1. Prepare multi-scale buffers (1x and 0.5x) to match Python export (96x96, 48x48)
-            val scaledBmp = Bitmap.createScaledBitmap(bitmap, IMAGE_SIZE, IMAGE_SIZE, true)
+            // 1. Center-crop to square then resize to 1536x1536 (no black bars; patch grid sees only real image)
+            val scaledBmp = getCenterCropBitmap(bitmap, IMAGE_SIZE)
             val halfSize = IMAGE_SIZE / 2
             val halfBitmap = Bitmap.createScaledBitmap(scaledBmp, halfSize, halfSize, true)
 
@@ -170,11 +226,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val colOffs05x = buildColumnOffsets(GRID_05X, PADDING_05X)
 
             report(0.02f, "Warming up…", progressCallback)
+            val tPart12Load = System.currentTimeMillis()
             // 2. Encoder Phase (Part 1 & 2)
             Log.d(TAG, "Loading INT8 Part1+Part2...")
             val mod1 = Module.load(findFile("sharp_split_part1_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
             val mod2 = Module.load(findFile("sharp_split_part2_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
-            Log.d(TAG, "Part1+Part2 loaded. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
+            Log.d(TAG, "Part1+Part2 loaded in ${System.currentTimeMillis() - tPart12Load}ms. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
+            val t1xStart = System.currentTimeMillis()
 
             val stride = (IMAGE_SIZE - PATCH_SIZE) / 4
             val total1x = GRID_1X * GRID_1X
@@ -197,7 +255,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 report(0.05f + 0.30f * (patchIdx.toFloat() / total1x), "Building your room… step $patchIdx of $total1x", progressCallback)
             }
 
-            Log.d(TAG, "1x patches done. Starting 0.5x patches (${GRID_05X}x${GRID_05X})...")
+            Log.d(TAG, "1x patches done in ${System.currentTimeMillis() - t1xStart}ms. Starting 0.5x patches (${GRID_05X}x${GRID_05X})...")
+            val t05xStart = System.currentTimeMillis()
             val total05x = GRID_05X * GRID_05X
             var patch05Idx = 0
             val stride05x = (halfSize - PATCH_SIZE) / 2
@@ -220,7 +279,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             }
             halfBitmap.recycle()
             report(0.43f, "Building your room…", progressCallback)
-            Log.d(TAG, "0.5x patches done. Running 0.25x patch (35th) for x2Feat...")
+            Log.d(TAG, "0.5x patches done in ${System.currentTimeMillis() - t05xStart}ms. Running 0.25x patch (35th) for x2Feat...")
+            val t025Start = System.currentTimeMillis()
             val quarterBmp = Bitmap.createScaledBitmap(scaledBmp, 384, 384, true)
             patchFloatBuffer.rewind()
             val qOut = mod1.forward(EValue.from(Tensor.fromBlob(preprocess(quarterBmp, true), longArrayOf(1, 3, 384, 384))))
@@ -233,28 +293,31 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val qFeat = mod2.forward(EValue.from(qTokens))[0].toTensor().dataAsFloatArray
             reshapeToSpatial(qFeat, x2Feat)
             quarterBmp.recycle()
-            Log.d(TAG, "0.25x patch done. Destroying Part1+Part2...")
+            Log.d(TAG, "0.25x patch done in ${System.currentTimeMillis() - t025Start}ms. Destroying Part1+Part2...")
             mod1.destroy(); mod2.destroy(); System.gc()
 
             report(0.44f, "Understanding the full picture…", progressCallback)
+            val tPart3Start = System.currentTimeMillis()
             // 3. Image Encoder (Part 3)
             Log.d(TAG, "Loading Part3 (image encoder)...")
             val mod3 = Module.load(findFile("sharp_split_part3_int8.pte")!!.absolutePath)
             imageFloatBuffer.rewind()
             val fullImgTensor = Tensor.fromBlob(preprocess(scaledBmp, false), longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong()))
             val imgTokens = mod3.forward(EValue.from(fullImgTensor))[0].toTensor().dataAsFloatArray
-            Log.d(TAG, "Part3 done. imgTokens size=${imgTokens.size}")
+            Log.d(TAG, "Part3 done in ${System.currentTimeMillis() - tPart3Start}ms. imgTokens size=${imgTokens.size}")
             mod3.destroy(); System.gc()
             report(0.46f, "Understanding the full picture…", progressCallback)
 
             report(0.48f, "Adding depth and shape…", progressCallback)
+            val tPart4aStart = System.currentTimeMillis()
             // 4. Chunked Part 4a (tokens 512 + 65); sliceArray for buffer safety with Tensor.fromBlob
             Log.d(TAG, "Starting chunked Part4 decoder...")
             val out512 = runDecoderChunk("sharp_split_part4a_chunk_512.pte", imgTokens.sliceArray(0 until 512 * 1024), 512)
             report(0.49f, "Adding depth and shape…", progressCallback)
             val out65 = runDecoderChunk("sharp_split_part4a_chunk_65.pte", imgTokens.sliceArray(512 * 1024 until 577 * 1024), 65)
             val combinedTokens = out512 + out65
-            Log.d(TAG, "Part4a chunks done. combinedTokens size=${combinedTokens.size}. Loading Part4b...")
+            Log.d(TAG, "Part4a chunks done in ${System.currentTimeMillis() - tPart4aStart}ms. combinedTokens size=${combinedTokens.size}. Loading Part4b...")
+            val tPart4bStart = System.currentTimeMillis()
 
             report(0.50f, "Adding the finishing touches…", progressCallback)
             val part4bThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
@@ -290,12 +353,19 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 }
                 deferred.await()
             }
+            val part4bMs = System.currentTimeMillis() - tPart4bStart
+            Log.d(TAG, "[TIMING] Part4b forward: ${part4bMs}ms")
             report(0.92f, "Saving your 3D room…", progressCallback)
-            Log.d(TAG, "Part4b done. Writing PLY...")
-            val result = writePly(finalParams.dataAsFloatArray, progressCallback)
+            val tPlyStart = System.currentTimeMillis()
+            Log.d(TAG, "[PLY] Part4b done. Writing PLY with raw coordinates (center-crop input = 1:1, no aspect scale)")
+            val result = writePly(finalParams.dataAsFloatArray, progressCallback, isPortrait)
+            val plyMs = System.currentTimeMillis() - tPlyStart
+            Log.d(TAG, "[TIMING] writePly: ${plyMs}ms")
             mod4b.destroy(); scaledBmp.recycle()
             report(1f, "Your room is ready!", progressCallback)
-            Log.d(TAG, "Inference complete. Gaussians=${result.gaussianCount} room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
+            val totalMs = System.currentTimeMillis() - pipelineStartMs
+            Log.d(TAG, "[ASPECT] inference complete | Gaussians=${result.gaussianCount} | PLY bbox room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} m")
+            Log.d(TAG, "[TIMING] TOTAL pipeline: ${totalMs}ms (${totalMs / 1000f}s)")
             return@withContext result
         }
     }
@@ -378,8 +448,18 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         else (1.055f * v.toDouble().pow(1.0 / 2.4).toFloat() - 0.055f).coerceIn(0f, 1f)
     }
 
-    private fun writePly(params: FloatArray, progressCallback: ((Float, String) -> Unit)?): StreamingResult {
+    /**
+     * Write PLY from model output. Uses raw coordinates (no aspect scaling): model trained on square input
+     * expects 1:1 coordinate space. Only y,z are negated for our viewer convention.
+     * See Ultralytics: apply aspectRatio only when mapping to non-square frustum; else normalization issues cause jagged output.
+     */
+    private fun writePly(
+        params: FloatArray,
+        progressCallback: ((Float, String) -> Unit)?,
+        isPortrait: Boolean = false
+    ): StreamingResult {
         val count = params.size / PARAMS_PER_GAUSSIAN
+        Log.d(TAG, "[PLY] writePly: count=$count isPortrait=$isPortrait (raw x,y,z; y,z negated)")
         val roomFolder = File(File(context.filesDir, "sharp_rooms"), "room_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}").apply { mkdirs() }
         val plyFile = File(roomFolder, "room.ply")
         val progressReportEvery = (count / 8).coerceAtLeast(1)
@@ -400,7 +480,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     report(0.92f + 0.08f * (i.toFloat() / count), "Saving your 3D room…", progressCallback)
                 }
                 val off = i * PARAMS_PER_GAUSSIAN
-                val x = params[off]; val y = -params[off + 1]; val z = -params[off + 2]
+                val rawX = params[off]
+                val rawY = params[off + 1]
+                val rawZ = params[off + 2]
+                val x = rawX
+                val y = -rawY
+                val z = -rawZ
                 minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y); minZ = min(minZ, z); maxZ = max(maxZ, z)
 
                 plyBatch.clear()
@@ -421,7 +506,14 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 plyBatch.flip(); while (plyBatch.hasRemaining()) channel.write(plyBatch)
             }
         }
-        return StreamingResult(plyFile, plyFile, count, maxX - minX, maxY - minY, maxZ - minZ)
+        val roomW = maxX - minX
+        val roomH = maxY - minY
+        val roomD = maxZ - minZ
+        Log.d(TAG, "[PLY] saved bbox: roomWidth=$roomW roomHeight=$roomH roomDepth=$roomD (raw coords)")
+        if (roomW > 50f || roomH > 50f || roomD > 50f || roomW < 0.1f || roomH < 0.1f || roomD < 0.1f) {
+            Log.w(TAG, "[PLY] bbox may indicate scale/precision issue (expected room ~2–15 m)")
+        }
+        return StreamingResult(plyFile, plyFile, count, roomW, roomH, roomD)
     }
 }
 

@@ -1,0 +1,18 @@
+In our Android "Furniture Fit" overlay we display a furniture mask (or photo) over a 3D room. The user can pinch-to-zoom to scale the overlay (furnitureScale from 0.3x to 3x). When the content is scaled to 0.5x, it is positioned wrongly and not in the middle of the view.
+
+Current logic (Kotlin):
+- We use ScaleGestureDetector for pinch; furnitureScale *= detector.scaleFactor, clamped to [0.3, 3].
+- Drawing: baseScaleX = width / bmp.width, baseScaleY = height / bmp.height. Scaled size = bmp.size * baseScale * furnitureScale.
+- centerOffsetX = (width - scaledWidth) / 2  (intended to center horizontally).
+- floorOffsetY = height * 0.35f  (place content in lower part of screen).
+- matrix.setScale(baseScaleX * furnitureScale, baseScaleY * furnitureScale); matrix.postTranslate(centerOffsetX + translateX, floorOffsetY + translateY).
+- User can drag to translate (translateX, translateY).
+
+Problem: at 0.5x scale the content is not in the middle. We need the overlay to stay centered (or correctly positioned) at any scale.
+
+Questions:
+1) Is the issue that ScaleGestureDetector scales around the gesture focus (midpoint between fingers) so the content moves when pinching? Should we scale around the view center instead (adjust translate so that after scale the content stays centered)?
+2) Is our centerOffsetX formula correct when furnitureScale != 1? We use (width - scaledWidth)/2 where scaledWidth = bmp.width * baseScaleX * furnitureScale. Does that correctly center the bitmap at any scale?
+3) For pinch-to-zoom that keeps content centered: what is the standard approach—e.g. apply scale around (viewCenterX, viewCenterY) and update translation to keep the content center fixed on the screen?
+
+We want a concrete fix (formula or code snippet) so that at 0.5x (and any scale) the overlay stays centered. This is for a 2D overlay on Android (View with Canvas), not YOLO.
