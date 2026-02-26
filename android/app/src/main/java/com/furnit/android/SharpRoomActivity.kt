@@ -366,7 +366,18 @@ class SharpRoomActivity : AppCompatActivity() {
         return FrameLayout(this).apply {
             setPadding(dpToPx(20), 0, dpToPx(20), dpToPx(40))
 
-            // Left: Brain/AI button (FurnitureFit)
+            // Left: Brain/AI button + orientation helper text (like Swift)
+            val leftBottomRow = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.START or Gravity.BOTTOM
+                    bottomMargin = dpToPx(20)
+                }
+            }
             val brainBtn = TextView(this@SharpRoomActivity).apply {
                 text = "\uD83E\uDDE0" // Brain emoji
                 textSize = 24f
@@ -377,12 +388,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
                 background = bg
                 val size = dpToPx(56)
-                layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                    gravity = Gravity.START or Gravity.BOTTOM
-                    bottomMargin = dpToPx(20)
-                }
+                layoutParams = LinearLayout.LayoutParams(size, size)
                 setOnClickListener {
-                    // Launch FurnitureFitActivity; pass ROOM_FOLDER so same room is background if it has room.glb (PLY-only → vintage)
                     val roomId = roomFolder?.let { File(it).name }
                     Log.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
                     val intent = Intent(this@SharpRoomActivity, FurnitureFitActivity::class.java)
@@ -396,7 +403,16 @@ class SharpRoomActivity : AppCompatActivity() {
                     startActivity(intent)
                 }
             }
-            addView(brainBtn)
+            leftBottomRow.addView(brainBtn)
+            val orientationLabel = TextView(this@SharpRoomActivity).apply {
+                text = if (photoOrientation == "landscape") getString(R.string.orientation_held_horizontally) else getString(R.string.orientation_held_vertically)
+                setTextColor(Color.WHITE)
+                setPadding(dpToPx(12), 0, 0, 0)
+                textSize = 14f
+                alpha = 0.9f
+            }
+            leftBottomRow.addView(orientationLabel)
+            addView(leftBottomRow)
 
             // No joystick - use OrbitControls touch gestures for navigation (matching iOS)
 
