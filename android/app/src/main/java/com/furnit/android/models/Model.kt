@@ -10,5 +10,9 @@ data class Model(
     val roomWidth: Float? = null,        // room width in meters
     val roomHeight: Float? = null,       // room height in meters
     val roomDepth: Float? = null,        // room depth in meters
-    val photoOrientation: String = "portrait"  // "portrait" or "landscape"
+    val roomCenterX: Float? = null,      // bbox center X (for viewer mesh centering)
+    val roomCenterY: Float? = null,      // bbox center Y
+    val roomCenterZ: Float? = null,      // bbox center Z
+    val photoOrientation: String = "portrait",  // "portrait" or "landscape"
+    val photoWideAngle: Boolean = false  // true if photo was taken with wide-angle (0.5x) lens
 )

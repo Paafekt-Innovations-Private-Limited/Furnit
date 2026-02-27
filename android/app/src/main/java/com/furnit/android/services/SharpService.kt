@@ -109,7 +109,10 @@ class SharpService private constructor(private val context: Context) {
         val classicPlyFile: File,
         val roomWidth: Float,
         val roomHeight: Float,
-        val roomDepth: Float
+        val roomDepth: Float,
+        val roomCenterX: Float? = null,
+        val roomCenterY: Float? = null,
+        val roomCenterZ: Float? = null
     )
 
     interface ProgressCallback {
@@ -497,7 +500,7 @@ class SharpService private constructor(private val context: Context) {
                         return
                     }
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (PyTorch Mobile)")
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_torch_mobile")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_torch_mobile", result.roomWidth, result.roomHeight, result.roomDepth)
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
                         plyFile = result.plyFile,
@@ -526,7 +529,7 @@ class SharpService private constructor(private val context: Context) {
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (LiteRT)")
                     Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_litert")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_litert", result.roomWidth, result.roomHeight, result.roomDepth)
 
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -550,7 +553,7 @@ class SharpService private constructor(private val context: Context) {
                         return
                     }
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (Native .pt)")
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_native_pt")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_native_pt", result.roomWidth, result.roomHeight, result.roomDepth)
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
                         plyFile = result.plyFile,
@@ -575,7 +578,7 @@ class SharpService private constructor(private val context: Context) {
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch)")
                     Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch", result.roomWidth, result.roomHeight, result.roomDepth)
 
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -602,7 +605,7 @@ class SharpService private constructor(private val context: Context) {
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch FP16)")
                     Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch_fp16")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch_fp16", result.roomWidth, result.roomHeight, result.roomDepth)
 
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -629,8 +632,10 @@ class SharpService private constructor(private val context: Context) {
 
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
                     Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+                    val isPortraitFeed = image.height > image.width
+                    Log.d(TAG, "VIEWER_FEED isPortrait=$isPortraitFeed roomWidth=${result.roomWidth} roomHeight=${result.roomHeight} roomDepth=${result.roomDepth} path=${result.plyFile.parentFile?.absolutePath}")
 
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch_int8")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch_int8", result.roomWidth, result.roomHeight, result.roomDepth, result.roomCenterX, result.roomCenterY, result.roomCenterZ)
 
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -638,7 +643,10 @@ class SharpService private constructor(private val context: Context) {
                         classicPlyFile = result.classicPlyFile,
                         roomWidth = result.roomWidth,
                         roomHeight = result.roomHeight,
-                        roomDepth = result.roomDepth
+                        roomDepth = result.roomDepth,
+                        roomCenterX = result.roomCenterX,
+                        roomCenterY = result.roomCenterY,
+                        roomCenterZ = result.roomCenterZ
                     ))
                 } else if (useOnnxInt8) {
                     Log.d(TAG, "generateGaussians: invoking ONNX INT8 inferStreaming")
@@ -659,7 +667,7 @@ class SharpService private constructor(private val context: Context) {
                     Log.d(TAG, "generateGaussians: ONNX INT8 SUCCESS ${result.gaussianCount} Gaussians room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
                     Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx_int8")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx_int8", result.roomWidth, result.roomHeight, result.roomDepth)
 
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -686,7 +694,7 @@ class SharpService private constructor(private val context: Context) {
                     }
 
                     Log.d(TAG, "generateGaussians: ONNX FP16 SUCCESS ${result.gaussianCount} Gaussians")
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx_fp16")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx_fp16", result.roomWidth, result.roomHeight, result.roomDepth)
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
                         plyFile = result.plyFile,
@@ -716,7 +724,7 @@ class SharpService private constructor(private val context: Context) {
                     Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
                     // Save thumbnail and metadata
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_split_onnx")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_split_onnx", result.roomWidth, result.roomHeight, result.roomDepth)
 
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -744,7 +752,7 @@ class SharpService private constructor(private val context: Context) {
                     Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
                     // Save thumbnail and metadata
-                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx")
+                    saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx", result.roomWidth, result.roomHeight, result.roomDepth)
 
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -781,7 +789,7 @@ class SharpService private constructor(private val context: Context) {
                     plyFile.copyTo(classicPlyFile, overwrite = true)
 
                     // Save thumbnail and metadata
-                    saveMetadata(roomFolder, image, "sharp_ncnn")
+                    saveMetadata(roomFolder, image, "sharp_ncnn", gaussianResult.roomWidth, gaussianResult.roomHeight, gaussianResult.roomDepth)
 
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -803,19 +811,41 @@ class SharpService private constructor(private val context: Context) {
         }
     }
 
-    private fun saveMetadata(roomFolder: File, image: Bitmap, modelType: String) {
+    private fun saveMetadata(
+        roomFolder: File,
+        image: Bitmap,
+        modelType: String,
+        roomWidth: Float? = null,
+        roomHeight: Float? = null,
+        roomDepth: Float? = null,
+        roomCenterX: Float? = null,
+        roomCenterY: Float? = null,
+        roomCenterZ: Float? = null
+    ) {
         // Save thumbnail
         val thumbnailFile = File(roomFolder, "thumbnail.png")
         FileOutputStream(thumbnailFile).use { out ->
             image.compress(Bitmap.CompressFormat.PNG, 90, out)
         }
 
-        // Save metadata
+        // Save metadata (include dimensions and orientation so list page and viewer use correct values)
         val metadataFile = File(roomFolder, "metadata.txt")
         val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
         val roomName = "AI Room ${dateFormat.format(Date())}"
-        metadataFile.writeText("name=$roomName\ncreated=${System.currentTimeMillis()}\ntype=$modelType")
-        Log.d(TAG, "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath}")
+        val photoOrientation = if (image.height > image.width) "portrait" else "landscape"
+        val sb = StringBuilder()
+        sb.append("name=$roomName\n")
+        sb.append("created=${System.currentTimeMillis()}\n")
+        sb.append("type=$modelType\n")
+        sb.append("photoOrientation=$photoOrientation\n")
+        roomWidth?.let { sb.append("roomWidth=$it\n") }
+        roomHeight?.let { sb.append("roomHeight=$it\n") }
+        roomDepth?.let { sb.append("roomDepth=$it\n") }
+        roomCenterX?.let { sb.append("roomCenterX=$it\n") }
+        roomCenterY?.let { sb.append("roomCenterY=$it\n") }
+        roomCenterZ?.let { sb.append("roomCenterZ=$it\n") }
+        metadataFile.writeText(sb.toString())
+        Log.d(TAG, "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath} dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation")
     }
 
     /**

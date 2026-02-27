@@ -67,7 +67,11 @@ class ModelManager(private val context: Context) {
                 var roomWidth: Float? = null
                 var roomHeight: Float? = null
                 var roomDepth: Float? = null
+                var roomCenterX: Float? = null
+                var roomCenterY: Float? = null
+                var roomCenterZ: Float? = null
                 var photoOrientation = "portrait"
+                var photoWideAngle = false
 
                 if (metadataFile.exists()) {
                     try {
@@ -83,9 +87,19 @@ class ModelManager(private val context: Context) {
                             ?.substringAfter("roomHeight=")?.toFloatOrNull()?.let { roomHeight = it }
                         lines.firstOrNull { it.startsWith("roomDepth=") }
                             ?.substringAfter("roomDepth=")?.toFloatOrNull()?.let { roomDepth = it }
+                        lines.firstOrNull { it.startsWith("roomCenterX=") }
+                            ?.substringAfter("roomCenterX=")?.toFloatOrNull()?.let { roomCenterX = it }
+                        lines.firstOrNull { it.startsWith("roomCenterY=") }
+                            ?.substringAfter("roomCenterY=")?.toFloatOrNull()?.let { roomCenterY = it }
+                        lines.firstOrNull { it.startsWith("roomCenterZ=") }
+                            ?.substringAfter("roomCenterZ=")?.toFloatOrNull()?.let { roomCenterZ = it }
                         lines.firstOrNull { it.startsWith("photoOrientation=") }
                             ?.substringAfter("photoOrientation=")?.trim()?.lowercase()?.let { raw ->
                                 photoOrientation = if (raw == "landscape") "landscape" else "portrait"
+                            }
+                        lines.firstOrNull { it.startsWith("photoWideAngle=") }
+                            ?.substringAfter("photoWideAngle=")?.trim()?.lowercase()?.let { raw ->
+                                photoWideAngle = raw == "true"
                             }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to read metadata for ${folder.name}", e)
@@ -116,7 +130,11 @@ class ModelManager(private val context: Context) {
                     roomWidth = roomWidth,
                     roomHeight = roomHeight,
                     roomDepth = roomDepth,
-                    photoOrientation = photoOrientation
+                    roomCenterX = roomCenterX,
+                    roomCenterY = roomCenterY,
+                    roomCenterZ = roomCenterZ,
+                    photoOrientation = photoOrientation,
+                    photoWideAngle = photoWideAngle
                 )
                 userRooms.add(model)
                 Log.d(TAG, "Loaded room: ${model.name} at ${model.assetPath} (created: $createdAt, dims: ${roomWidth}x${roomHeight}x${roomDepth}, photoOrientation: $photoOrientation)")

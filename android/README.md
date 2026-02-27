@@ -48,6 +48,8 @@ If the build fails with **"Could not determine a usable wildcard IP for this mac
 
 With the device connected (or emulator running), use `adb logcat`. If more than one device is connected, target one with `-s <device_serial>` (see `adb devices`).
 
+**3D viewer (camera framing):** To see WebView camera/Box3 logs, include `SharpRoomActivity` in logcat (e.g. `adb logcat -s ExecutorchInt8Sharp:D SharpService:D SharpRoomActivity:D -v time`). Look for `[SharpRoom] CAMERA_FRAME` with isPortrait, boxMin/Max, center, roomW/H/D, inset, camPos, target. On open, Kotlin logs `SharpRoom intent roomWidth=... isPortrait=...`.
+
 **ExecuTorch INT8 pipeline timing:** Filter by `ExecutorchInt8Sharp` to see `[TIMING]` lines (Part4b forward, writePly, TOTAL). Example from a typical run (~3 min total):
 - 1x patches (25): ~36 s  
 - 0.5x patches (9): ~14 s  

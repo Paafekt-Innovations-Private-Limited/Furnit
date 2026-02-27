@@ -60,6 +60,8 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     private var selectedImageUri: Uri? = null
     private var cameraPhotoUri: Uri? = null
     private var detectedOrientation: PhotoOrientation = PhotoOrientation.PORTRAIT
+    /** True when the user indicates the photo was taken with the wide-angle (0.5x) lens; fixes camera position in the 3D viewer. */
+    private var photoWideAngle: Boolean = false
 
     /** AI generation started on photo select; cancel and release when user picks Manual/Back/Change. */
     private var aiGenerationHandle: SharpService.GenerationHandle? = null
@@ -383,6 +385,45 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             addView(orientationIndicator, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 8) })
+
+            // Wide angle (0.5x) toggle – tap to set if photo was taken with ultra-wide lens (fixes camera position in viewer)
+            val wideAngleRow = LinearLayout(this@SinglePhotoRoomActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(16, 8, 16, 8)
+                setBackgroundColor(Color.parseColor("#F5F5F5"))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    photoWideAngle = !photoWideAngle
+                    updateWideAngleIndicator(this)
+                    Log.d("SinglePhotoRoom", "Wide angle (0.5x): $photoWideAngle")
+                }
+                val wideIcon = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = "\uD83D\uDCF8"
+                    textSize = 16f
+                    setPadding(0, 0, 8, 0)
+                }
+                addView(wideIcon)
+                val wideText = TextView(this@SinglePhotoRoomActivity).apply {
+                    text = getString(R.string.camera_wide_angle_desc)
+                    textSize = 13f
+                    setTextColor(Color.parseColor("#666666"))
+                }
+                addView(wideText)
+                val wideCheck = TextView(this@SinglePhotoRoomActivity).apply {
+                    setTag("wide_check")
+                    text = if (photoWideAngle) " \u2713" else " "
+                    textSize = 16f
+                    setTextColor(Color.parseColor("#4CAF50"))
+                    setPadding(dpToPx(8), 0, 0, 0)
+                }
+                addView(wideCheck)
+            }
+            addView(wideAngleRow, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { setMargins(0, 0, 0, 16) })
 
             // Title
@@ -597,6 +638,10 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         orientationText.text = getString(R.string.orientation_tap_to_change, orientationLabel, heldLabel)
     }
 
+    private fun updateWideAngleIndicator(wideAngleRow: ViewGroup) {
+        (wideAngleRow.findViewWithTag("wide_check") as? TextView)?.text = if (photoWideAngle) " \u2713" else " "
+    }
+
     private fun showMethodPicker() {
         initialView.visibility = View.GONE
         methodPickerView.visibility = View.VISIBLE
@@ -714,8 +759,12 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
             putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
             putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, result.roomDepth)
+            result.roomCenterX?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, it) }
+            result.roomCenterY?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
+            result.roomCenterZ?.let { putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
             putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, true)
             putExtra("photo_orientation", detectedOrientation.value)
+            putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, photoWideAngle)
         }
         startActivity(intent)
     }
