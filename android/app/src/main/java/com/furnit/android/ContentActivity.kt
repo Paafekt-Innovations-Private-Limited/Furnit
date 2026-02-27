@@ -404,8 +404,12 @@ class ContentActivity : AppCompatActivity() {
                     clickedModel.roomWidth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, it) }
                     clickedModel.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
                     clickedModel.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
+                    clickedModel.roomCenterX?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, it) }
+                    clickedModel.roomCenterY?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
+                    clickedModel.roomCenterZ?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
                     intent.putExtra("photo_orientation", clickedModel.photoOrientation)
-                    Log.d("ContentActivity", "Opening SharpRoomActivity photo_orientation=${clickedModel.photoOrientation} roomId=${clickedModel.id}")
+                    intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
+                    Log.d("ContentActivity", "Opening SharpRoomActivity photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
                     startActivity(intent)
                 } else if (clickedModel.assetPath.endsWith(".glb")) {
                     // Open WebGL-based GLBRoomActivity for GLB files (matching iOS)
@@ -439,8 +443,12 @@ class ContentActivity : AppCompatActivity() {
                             clickedModel.roomWidth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, it) }
                             clickedModel.roomHeight?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, it) }
                             clickedModel.roomDepth?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, it) }
+                            clickedModel.roomCenterX?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, it) }
+                            clickedModel.roomCenterY?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
+                            clickedModel.roomCenterZ?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
                             intent.putExtra("photo_orientation", clickedModel.photoOrientation)
-                            Log.d("ContentActivity", "Opening SharpRoomActivity (folder) photo_orientation=${clickedModel.photoOrientation} roomId=${clickedModel.id}")
+                            intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
+                            Log.d("ContentActivity", "Opening SharpRoomActivity (folder) photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
                             startActivity(intent)
                         }
                         glbFile.exists() -> {

@@ -47,7 +47,12 @@ class SharpRoomActivity : AppCompatActivity() {
         const val EXTRA_ROOM_WIDTH = "room_width"
         const val EXTRA_ROOM_HEIGHT = "room_height"
         const val EXTRA_ROOM_DEPTH = "room_depth"
+        const val EXTRA_ROOM_CENTER_X = "room_center_x"
+        const val EXTRA_ROOM_CENTER_Y = "room_center_y"
+        const val EXTRA_ROOM_CENTER_Z = "room_center_z"
         const val EXTRA_ALLOW_SAVE = "allow_save"
+        /** True if the photo was taken with the wide-angle (0.5x) lens; used to adjust initial camera position. */
+        const val EXTRA_PHOTO_WIDE_ANGLE = "photo_wide_angle"
     }
 
     private lateinit var webView: WebView
@@ -61,7 +66,12 @@ class SharpRoomActivity : AppCompatActivity() {
     private var roomWidth: Float = 4.0f
     private var roomHeight: Float = 3.0f
     private var roomDepth: Float = 4.5f
+    private var roomCenterX: Float = 0f
+    private var roomCenterY: Float = 0f
+    private var roomCenterZ: Float = 0f
     private var photoOrientation: String = "portrait"
+    /** True when the photo was taken with wide-angle (0.5x) lens; viewer camera position is adjusted for wider FOV. */
+    private var photoWideAngle: Boolean = false
     private var hasSavedDimensions: Boolean = false  // True if dimensions were passed from saved room
 
     // Calibration state
@@ -95,8 +105,12 @@ class SharpRoomActivity : AppCompatActivity() {
         val savedWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, 0f)
         val savedHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, 0f)
         roomDepth = intent.getFloatExtra(EXTRA_ROOM_DEPTH, 4.5f)
+        roomCenterX = intent.getFloatExtra(EXTRA_ROOM_CENTER_X, 0f)
+        roomCenterY = intent.getFloatExtra(EXTRA_ROOM_CENTER_Y, 0f)
+        roomCenterZ = intent.getFloatExtra(EXTRA_ROOM_CENTER_Z, 0f)
         val rawOrientation = intent.getStringExtra("photo_orientation")?.trim()?.lowercase()
         photoOrientation = if (rawOrientation == "landscape") "landscape" else "portrait"
+        photoWideAngle = intent.getBooleanExtra(EXTRA_PHOTO_WIDE_ANGLE, false)
 
         // Lock orientation based on room's photo orientation (no auto-rotate)
         requestedOrientation = if (photoOrientation == "landscape") {
@@ -116,7 +130,10 @@ class SharpRoomActivity : AppCompatActivity() {
             hasSavedDimensions = false
         }
 
-        Log.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation")
+        Log.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation, photoWideAngle: $photoWideAngle")
+        Log.d(TAG, "SharpRoom intent roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle")
+        val isPortraitReceived = photoOrientation != "landscape"
+        Log.d(TAG, "VIEWER_RECEIVED isPortrait=$isPortraitReceived roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth path=$roomFolder")
 
         if (plyPath == null) {
             Toast.makeText(this, "No PLY file provided", Toast.LENGTH_SHORT).show()
@@ -539,11 +556,15 @@ class SharpRoomActivity : AppCompatActivity() {
         val autoOrbitEnabled = prefs.getBoolean("auto_orbit_enabled", false)
         // Use isPortrait like iOS for consistency
         val isPortrait = photoOrientation != "landscape"
-        Log.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait (this activity = PLY/splat room)")
-        // Pass known room dimensions so camera can be framed when Box3 is not yet valid (SparkJS mesh bounds update async)
+        Log.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait photoWideAngle=$photoWideAngle (this activity = PLY/splat room)")
+        // Pass known room dimensions and bbox center so camera can be framed when Box3 is not yet valid (SparkJS mesh bounds update async)
         val fallbackW = roomWidth.toDouble()
         val fallbackH = roomHeight.toDouble()
         val fallbackD = roomDepth.toDouble()
+        val fallbackCx = roomCenterX.toDouble()
+        val fallbackCy = roomCenterY.toDouble()
+        val fallbackCz = roomCenterZ.toDouble()
+        val usedWideLens = photoWideAngle
 
         // SparkJS implementation matching iOS exactly
         return """
@@ -590,10 +611,14 @@ class SharpRoomActivity : AppCompatActivity() {
         console.log('[WebGL] SparkJS Gaussian Splat viewer initializing...');
         // Orientation and fallback dimensions from Kotlin (module scope so autoFrameRoom can use them)
         const isPortrait = $isPortrait;
+        const usedWideLens = $usedWideLens;
         const fallbackRoomWidth = $fallbackW;
         const fallbackRoomHeight = $fallbackH;
         const fallbackRoomDepth = $fallbackD;
-        console.log('[SharpRoom] orientation: ' + (isPortrait ? 'portrait' : 'landscape') + ' (isPortrait=' + isPortrait + '), fallbackDims: ' + fallbackRoomWidth.toFixed(2) + 'x' + fallbackRoomHeight.toFixed(2) + 'x' + fallbackRoomDepth.toFixed(2));
+        const fallbackRoomCenterX = $fallbackCx;
+        const fallbackRoomCenterY = $fallbackCy;
+        const fallbackRoomCenterZ = $fallbackCz;
+        console.log('[SharpRoom] orientation: ' + (isPortrait ? 'portrait' : 'landscape') + ' (isPortrait=' + isPortrait + '), wideAngle(0.5x): ' + usedWideLens + ', fallbackDims: ' + fallbackRoomWidth.toFixed(2) + 'x' + fallbackRoomHeight.toFixed(2) + 'x' + fallbackRoomDepth.toFixed(2) + ', center: ' + fallbackRoomCenterX.toFixed(2) + ',' + fallbackRoomCenterY.toFixed(2) + ',' + fallbackRoomCenterZ.toFixed(2));
 
         // Scene setup (matching iOS exactly)
         const scene = new THREE.Scene();
@@ -677,8 +702,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 url: plyURL,
                 maxSh: 0,  // Disable spherical harmonics for cleaner look
                 onLoad: function(mesh) {
-                    console.log('[WebGL] SplatMesh onLoad - PLY loaded, framing camera (delay 150ms then run)');
-                    setTimeout(autoFrameRoom, 150);
+                    console.log('[WebGL] SplatMesh onLoad - PLY loaded, framing camera (delay 600ms for bounds)');
+                    setTimeout(autoFrameRoom, 600);
                 }
             });
             if (isPortrait) {
@@ -710,39 +735,44 @@ class SharpRoomActivity : AppCompatActivity() {
 
             // Coordinate sync: ensure world matrix is updated (rotation applied) before Box3
             splatMesh.updateMatrixWorld(true);
-            const box = new THREE.Box3().setFromObject(splatMesh);
-            const size = box.getSize(new THREE.Vector3());
+            let box = new THREE.Box3().setFromObject(splatMesh);
+            let size = box.getSize(new THREE.Vector3());
 
             if (size.length() < 0.01) {
-                // Use Kotlin-provided dimensions so we frame the camera even when Box3 is not yet valid
+                // Use Kotlin-provided dimensions so we frame the camera when Box3 is not yet valid (e.g. SparkJS). Do not move the mesh.
                 if (fallbackRoomWidth > 0.1 && fallbackRoomHeight > 0.1 && fallbackRoomDepth > 0.1) {
                     // depthAlongView = room depth (portrait: along X; landscape: along Z). Matches Box3 mapping.
                     const depthAlongView = fallbackRoomDepth;
                     const t = Math.min(1, depthAlongView / 6);
-                    const insetFraction = 0.18 + 0.32 * t;
+                    let insetFraction = 0.18 + 0.32 * t;
+                    if (usedWideLens) { insetFraction = Math.min(0.55, insetFraction * 1.4); }
                     const insetFromBack = Math.max(0.25, depthAlongView * insetFraction);
                     // Assume room vertically centered at 0 (floor at -H/2, ceiling at +H/2); place eye at 1.2–1.6m above floor so we are inside the room
                     const floorY = -fallbackRoomHeight * 0.5;
                     const eyeHeightAboveFloor = Math.min(1.6, fallbackRoomHeight * 0.4);
                     const eyeHeight = floorY + eyeHeightAboveFloor;
-                    const centerX = 0, centerZ = 0;
+                    // Orbit around room center (mesh centered at origin). Three.js: +Z back, -Z forward; PLY with negated Z so room may face -Z. Place camera on front (min Z) side looking into room toward +Z so interior is visible (per Ultralytics axis convention).
+                    const roomCenterX = 0, roomCenterY = 0, roomCenterZ = 0;
                     if (isPortrait) {
                         const backWall = fallbackRoomDepth * 0.5;
-                        const frontWall = -fallbackRoomDepth * 0.5;
-                        camera.position.set(backWall - insetFromBack, eyeHeight, centerZ);
-                        controls.target.set(frontWall, eyeHeight, centerZ);
+                        camera.position.set(backWall - insetFromBack, eyeHeight, roomCenterZ);
+                        controls.target.set(roomCenterX, roomCenterY, roomCenterZ);
                     } else {
                         const backWallZ = fallbackRoomDepth * 0.5;
                         const frontWallZ = -fallbackRoomDepth * 0.5;
-                        camera.position.set(centerX, eyeHeight, backWallZ - insetFromBack);
-                        controls.target.set(centerX, eyeHeight, frontWallZ);
+                        camera.position.set(roomCenterX, eyeHeight, frontWallZ + insetFromBack);
+                        controls.target.set(roomCenterX, roomCenterY, roomCenterZ);
                     }
                     controls.update();
                     initialCameraPosition.copy(camera.position);
                     initialControlsTarget.copy(controls.target);
                     const camPos = camera.position;
-                    console.log('[SharpRoom] CAMERA_POSITION_FINAL (fallback from Kotlin dims) isPortrait=' + isPortrait + ' pos=(' + camPos.x.toFixed(3) + ',' + camPos.y.toFixed(3) + ',' + camPos.z.toFixed(3) + ') depthAlongView=' + depthAlongView.toFixed(2) + ' insetFromBack=' + insetFromBack.toFixed(2));
+                    console.log('[SharpRoom] CAMERA_FRAME fallback=1 isPortrait=' + (isPortrait ? 1 : 0) + ' fallbackW=' + fallbackRoomWidth.toFixed(2) + ' fallbackH=' + fallbackRoomHeight.toFixed(2) + ' fallbackD=' + fallbackRoomDepth.toFixed(2) + ' inset=' + insetFromBack.toFixed(2) + ' camPos=' + camPos.x.toFixed(3) + ',' + camPos.y.toFixed(3) + ',' + camPos.z.toFixed(3));
                     if (window.Android) window.Android.onLoaded();
+                    // Retry once mesh bounds are ready so we can use Box3 and center mesh (attempts 2–4)
+                    if (frameAttempts <= 4) {
+                        setTimeout(autoFrameRoom, 1200);
+                    }
                     return;
                 }
                 if (frameAttempts < maxFrameAttempts) {
@@ -758,73 +788,62 @@ class SharpRoomActivity : AppCompatActivity() {
                 return;
             }
 
+            // Ultralytics: center mesh at origin so camera framing is consistent (model may output offset origin)
+            const boxCenterBefore = box.getCenter(new THREE.Vector3());
+            splatMesh.position.sub(boxCenterBefore);
+            splatMesh.updateMatrixWorld(true);
+            box = new THREE.Box3().setFromObject(splatMesh);
+            size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
-            // Box3 axis mapping after 90° Y rotation (portrait): X↔Z swap in view.
-            // Landscape (no rotation): roomWidth=X, roomHeight=Y, roomDepth=Z.
-            // Portrait (90° Y): roomWidth=Z (original depth spans view width), roomHeight=Y, roomDepth=X.
-            // Correct mapping avoids squeeze (landscape) and snake-like stretch (portrait).
+
+            // Box3 axis mapping: portrait has 90° Y rotation so depth is along X; landscape depth along Z.
+            // Use same semantic: roomWidth, roomHeight, roomDepth; depthAxis = axis from back wall to front wall.
             let roomWidth, roomHeight, roomDepth;
+            let depthAxisMin, depthAxisMax;  // same formula for both orientations (like portrait)
             if (isPortrait) {
                 roomWidth = size.z;
                 roomHeight = size.y;
                 roomDepth = size.x;
+                depthAxisMin = box.min.x;
+                depthAxisMax = box.max.x;
             } else {
                 roomWidth = size.x;
                 roomHeight = size.y;
                 roomDepth = size.z;
+                depthAxisMin = box.min.z;
+                depthAxisMax = box.max.z;
             }
-
-            console.log('[WebGL] Box3 raw size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), '(isPortrait:', isPortrait, ')');
 
             // Cap to realistic room dimensions (fog makes bounds too large) - matching iOS
             const maxRealisticWidth = isPortrait ? 5.0 : 8.0;
             const maxRealisticHeight = isPortrait ? 3.5 : 3.2;
-            if (roomWidth > maxRealisticWidth) {
-                console.log('[WebGL] Capping width from', roomWidth.toFixed(2), 'to', maxRealisticWidth);
-                roomWidth = maxRealisticWidth;
-            }
-            if (roomHeight > maxRealisticHeight) {
-                console.log('[WebGL] Capping height from', roomHeight.toFixed(2), 'to', maxRealisticHeight);
-                roomHeight = maxRealisticHeight;
-            }
+            if (roomWidth > maxRealisticWidth) roomWidth = maxRealisticWidth;
+            if (roomHeight > maxRealisticHeight) roomHeight = maxRealisticHeight;
 
-            console.log('[WebGL] Box3 capped size:', roomWidth.toFixed(2), roomHeight.toFixed(2), roomDepth.toFixed(2));
-            console.log('[WebGL] Box3 center:', center.x.toFixed(2), center.y.toFixed(2), center.z.toFixed(2));
-
-            // Shrink bounds to ignore foggy outer 15% (matching iOS)
-            const fogFactor = 0.15;
-            const shrinkX = roomWidth * fogFactor * 0.5;
-            const shrinkY = roomHeight * fogFactor * 0.5;
-            const shrinkZ = roomDepth * fogFactor * 0.5;
-
-            const innerCenterX = center.x;
-            const innerCenterY = center.y;
-            const innerCenterZ = center.z;
-
-            const roomRadius = Math.max(roomWidth, roomHeight, roomDepth) * 0.5;
-
-            // Place camera at center of back wall, pushed into room (depth-adaptive to reduce grey).
-            // depthAlongView is always roomDepth (portrait: X; landscape: Z).
+            // Portrait: camera at back (depthAxisMax - inset), target at center. Landscape: camera at front (depthAxisMin + inset) looking toward +Z so interior visible (Three.js +Z back, -Z forward; PLY room faces -Z).
             const depthAlongView = roomDepth;
             const t = Math.min(1, depthAlongView / 6);
-            const insetFraction = 0.18 + 0.32 * t;  // 18% shallow rooms, up to 50% deep rooms
+            let insetFraction = 0.18 + 0.32 * t;
+            if (usedWideLens) { insetFraction = Math.min(0.55, insetFraction * 1.4); }
             const insetFromBack = Math.max(0.25, depthAlongView * insetFraction);
             const eyeHeight = box.min.y + Math.min(1.6, roomHeight * 0.55);
+            const frontWallDepth = depthAxisMin;
+            const backWallDepth = depthAxisMax;
+
             if (isPortrait) {
-                const backWall = box.max.x;
-                const frontWall = box.min.x;
-                camera.position.set(backWall - insetFromBack, eyeHeight, innerCenterZ);
-                controls.target.set(frontWall, eyeHeight, innerCenterZ);
-                console.log('[WebGL] Portrait: camera inset', insetFromBack.toFixed(2), '(frac=', insetFraction.toFixed(2), ') at x=', (backWall - insetFromBack).toFixed(2));
+                const camDepth = backWallDepth - insetFromBack;
+                camera.position.set(camDepth, eyeHeight, center.z);
+                controls.target.copy(center);
             } else {
-                const backWallZ = box.max.z;
-                const frontWallZ = box.min.z;
-                camera.position.set(innerCenterX, eyeHeight, backWallZ - insetFromBack);
-                controls.target.set(innerCenterX, eyeHeight, frontWallZ);
-                console.log('[WebGL] Landscape: camera inset', insetFromBack.toFixed(2), '(frac=', insetFraction.toFixed(2), ') at z=', (backWallZ - insetFromBack).toFixed(2));
+                const camDepth = frontWallDepth + insetFromBack;
+                camera.position.set(center.x, eyeHeight, camDepth);
+                controls.target.copy(center);
             }
+
+            // Single-line structured log for logcat (WebView console -> Log.d SharpRoomActivity)
             const camPos = camera.position;
-            console.log('[SharpRoom] CAMERA_POSITION_FINAL isPortrait=' + isPortrait + ' pos=(' + camPos.x.toFixed(3) + ',' + camPos.y.toFixed(3) + ',' + camPos.z.toFixed(3) + ') depthAlongView=' + depthAlongView.toFixed(2) + ' insetFraction=' + insetFraction.toFixed(2) + ' insetFromBack=' + insetFromBack.toFixed(2));
+            const tgt = controls.target;
+            console.log('[SharpRoom] CAMERA_FRAME isPortrait=' + (isPortrait ? 1 : 0) + ' boxMin=' + box.min.x.toFixed(2) + ',' + box.min.y.toFixed(2) + ',' + box.min.z.toFixed(2) + ' boxMax=' + box.max.x.toFixed(2) + ',' + box.max.y.toFixed(2) + ',' + box.max.z.toFixed(2) + ' center=' + center.x.toFixed(2) + ',' + center.y.toFixed(2) + ',' + center.z.toFixed(2) + ' roomW=' + roomWidth.toFixed(2) + ' roomH=' + roomHeight.toFixed(2) + ' roomD=' + roomDepth.toFixed(2) + ' inset=' + insetFromBack.toFixed(2) + ' camPos=' + camPos.x.toFixed(2) + ',' + camPos.y.toFixed(2) + ',' + camPos.z.toFixed(2) + ' target=' + tgt.x.toFixed(2) + ',' + tgt.y.toFixed(2) + ',' + tgt.z.toFixed(2));
             // Essential: sync OrbitControls after manual position/target change (prevents override)
             controls.update();
 
@@ -996,7 +1015,11 @@ class SharpRoomActivity : AppCompatActivity() {
             metadata.append("roomWidth=$roomWidth\n")
             metadata.append("roomHeight=$roomHeight\n")
             metadata.append("roomDepth=$roomDepth\n")
+            metadata.append("roomCenterX=$roomCenterX\n")
+            metadata.append("roomCenterY=$roomCenterY\n")
+            metadata.append("roomCenterZ=$roomCenterZ\n")
             metadata.append("photoOrientation=${if (photoOrientation == "landscape") "landscape" else "portrait"}\n")
+            metadata.append("photoWideAngle=$photoWideAngle\n")
             metadataFile.writeText(metadata.toString())
 
             Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()

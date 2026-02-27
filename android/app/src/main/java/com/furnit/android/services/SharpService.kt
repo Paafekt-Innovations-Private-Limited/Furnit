@@ -109,7 +109,10 @@ class SharpService private constructor(private val context: Context) {
         val classicPlyFile: File,
         val roomWidth: Float,
         val roomHeight: Float,
-        val roomDepth: Float
+        val roomDepth: Float,
+        val roomCenterX: Float? = null,
+        val roomCenterY: Float? = null,
+        val roomCenterZ: Float? = null
     )
 
     interface ProgressCallback {
@@ -629,6 +632,8 @@ class SharpService private constructor(private val context: Context) {
 
                     Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
                     Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+                    val isPortraitFeed = image.height > image.width
+                    Log.d(TAG, "VIEWER_FEED isPortrait=$isPortraitFeed roomWidth=${result.roomWidth} roomHeight=${result.roomHeight} roomDepth=${result.roomDepth} path=${result.plyFile.parentFile?.absolutePath}")
 
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch_int8")
 
@@ -638,7 +643,10 @@ class SharpService private constructor(private val context: Context) {
                         classicPlyFile = result.classicPlyFile,
                         roomWidth = result.roomWidth,
                         roomHeight = result.roomHeight,
-                        roomDepth = result.roomDepth
+                        roomDepth = result.roomDepth,
+                        roomCenterX = result.roomCenterX,
+                        roomCenterY = result.roomCenterY,
+                        roomCenterZ = result.roomCenterZ
                     ))
                 } else if (useOnnxInt8) {
                     Log.d(TAG, "generateGaussians: invoking ONNX INT8 inferStreaming")

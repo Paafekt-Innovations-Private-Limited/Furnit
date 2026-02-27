@@ -123,7 +123,17 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     private val imagePixelBuffer = ByteBuffer.allocateDirect(INPUT_SIZE * INPUT_SIZE * 4).order(ByteOrder.nativeOrder())
     private val imageFloatBuffer = ByteBuffer.allocateDirect(3 * INPUT_SIZE * INPUT_SIZE * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
 
-    data class StreamingResult(val plyFile: File, val classicPlyFile: File, val gaussianCount: Int, val roomWidth: Float, val roomHeight: Float, val roomDepth: Float)
+    data class StreamingResult(
+        val plyFile: File,
+        val classicPlyFile: File,
+        val gaussianCount: Int,
+        val roomWidth: Float,
+        val roomHeight: Float,
+        val roomDepth: Float,
+        val roomCenterX: Float,
+        val roomCenterY: Float,
+        val roomCenterZ: Float
+    )
 
     fun initialize(): Boolean = runBlocking { mutex.withLock { isInitialized = true; true } }
 
@@ -561,11 +571,14 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val roomW = maxX - minX
         val roomH = maxY - minY
         val roomD = maxZ - minZ
+        val centerX = (minX + maxX) * 0.5f
+        val centerY = (minY + maxY) * 0.5f
+        val centerZ = (minZ + maxZ) * 0.5f
         Log.d(TAG, "[PLY] saved bbox: roomWidth=$roomW roomHeight=$roomH roomDepth=$roomD (raw coords)")
         if (roomW > 50f || roomH > 50f || roomD > 50f || roomW < 0.1f || roomH < 0.1f || roomD < 0.1f) {
             Log.w(TAG, "[PLY] bbox may indicate scale/precision issue (expected room ~2–15 m)")
         }
-        return StreamingResult(plyFile, plyFile, count, roomW, roomH, roomD)
+        return StreamingResult(plyFile, plyFile, count, roomW, roomH, roomD, centerX, centerY, centerZ)
     }
 }
 
