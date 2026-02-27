@@ -2,7 +2,6 @@ package com.furnit.android
 
 import android.content.Context
 import android.graphics.*
-import android.util.Log
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -85,96 +84,110 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
         return handleTouchInternal(event)
     }
 
-    private fun handleTouchInternal(event: MotionEvent): Boolean {
-        // Always let scale gesture detector process the event for pinch-to-zoom
-        scaleGestureDetector.onTouchEvent(event)
+    /**
+     * True if all active pointers are inside the furniture bbox (so pinch/scale applies only to furniture).
+     */
+    private fun allPointersOnFurniture(event: MotionEvent): Boolean {
+        for (i in 0 until event.pointerCount) {
+            if (!isTouchOnFurniture(event.getX(i), event.getY(i))) return false
+        }
+        return event.pointerCount > 0
+    }
 
+    private fun handleTouchInternal(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = event.x
                 lastTouchY = event.y
-                // Check if touch is on the furniture mask
                 touchOnFurniture = isTouchOnFurniture(event.x, event.y)
                 isDraggingFurniture = touchOnFurniture
-                Log.d("FurnitureOverlay", "ACTION_DOWN at (${event.x}, ${event.y}) - onFurniture=$touchOnFurniture, hasMask=${maskBitmap != null}")
-
-                // If touch is outside furniture, notify for camera control
                 if (!touchOnFurniture) {
-                    Log.d("FurnitureOverlay", "Invoking onTouchOutsideFurniture callback")
                     onTouchOutsideFurniture?.invoke(event)
+                    return false
+                }
+                scaleGestureDetector.onTouchEvent(event)
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.pointerCount == 2) {
+                    if (!allPointersOnFurniture(event)) {
+                        touchOnFurniture = false
+                        isDraggingFurniture = false
+                        onTouchOutsideFurniture?.invoke(event)
+                        return false
+                    }
+                    isDraggingFurniture = false
+                }
+                if (touchOnFurniture) {
+                    scaleGestureDetector.onTouchEvent(event)
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (touchOnFurniture) {
-                    // Drag furniture if touch started on it
-                    if (!scaleGestureDetector.isInProgress && event.pointerCount == 1 && isDraggingFurniture) {
-                        val deltaX = event.x - lastTouchX
-                        val deltaY = event.y - lastTouchY
-                        translateX += deltaX
-                        translateY += deltaY
-                        lastTouchX = event.x
-                        lastTouchY = event.y
-                        invalidate()
-                    }
-                } else {
-                    // Touch outside furniture - pass to camera control
+                if (!touchOnFurniture) {
                     onTouchOutsideFurniture?.invoke(event)
+                    return false
+                }
+                scaleGestureDetector.onTouchEvent(event)
+                if (!scaleGestureDetector.isInProgress && event.pointerCount == 1 && isDraggingFurniture) {
+                    val deltaX = event.x - lastTouchX
+                    val deltaY = event.y - lastTouchY
+                    translateX += deltaX
+                    translateY += deltaY
+                    lastTouchX = event.x
+                    lastTouchY = event.y
+                    invalidate()
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (!touchOnFurniture) {
                     onTouchOutsideFurniture?.invoke(event)
+                    return false
                 }
+                scaleGestureDetector.onTouchEvent(event)
+                val wasHandling = touchOnFurniture
                 isDraggingFurniture = false
                 touchOnFurniture = false
+                return wasHandling
             }
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                // Second finger down - stop dragging, let pinch take over
-                isDraggingFurniture = false
-            }
+            else -> if (touchOnFurniture) scaleGestureDetector.onTouchEvent(event)
         }
-        return true
+        return touchOnFurniture
     }
 
     /**
-     * Check if the touch point is on the furniture (on a non-transparent pixel)
+     * Check if the touch point is on the furniture: use detection bbox when available (furniture structure),
+     * otherwise fall back to mask pixel (non-transparent).
      */
     private fun isTouchOnFurniture(touchX: Float, touchY: Float): Boolean {
-        val bmp = maskBitmap
-        if (bmp == null) {
-            Log.d("FurnitureOverlay", "isTouchOnFurniture: no mask, returning false")
-            return false
-        }
-        if (width == 0 || height == 0) {
-            Log.d("FurnitureOverlay", "isTouchOnFurniture: view size is 0")
-            return false
-        }
-
-        // Same transform as onDraw: uniform base scale, pivot at bitmap center, screen center + drag
-        val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-        val totalScale = baseScale * furnitureScale
+        if (width == 0 || height == 0) return false
         val screenCenterX = width / 2f
         val screenCenterY = height * 0.35f
-        val maskLeft = screenCenterX - (bmp.width / 2f) * totalScale + translateX
-        val maskTop = screenCenterY - (bmp.height / 2f) * totalScale + translateY
 
-        val bmpX = ((touchX - maskLeft) / totalScale).toInt()
-        val bmpY = ((touchY - maskTop) / totalScale).toInt()
-
-        // Check if within bitmap bounds
-        if (bmpX < 0 || bmpX >= bmp.width || bmpY < 0 || bmpY >= bmp.height) {
-            Log.d("FurnitureOverlay", "isTouchOnFurniture: touch outside bitmap bounds, bmpCoord=($bmpX,$bmpY)")
+        // Prefer detection bbox (furniture structure) for hit-test when we have detections
+        if (detections.isNotEmpty() && inputSize > 0) {
+            val baseScale = min(width / inputSize.toFloat(), height / inputSize.toFloat())
+            val totalScale = baseScale * furnitureScale
+            val centerOffsetX = screenCenterX - (inputSize / 2f) * totalScale + translateX
+            val centerOffsetY = screenCenterY - (inputSize / 2f) * totalScale + translateY
+            for (det in detections) {
+                val left = (det.x - det.w / 2) * totalScale + centerOffsetX
+                val top = (det.y - det.h / 2) * totalScale + centerOffsetY
+                val right = (det.x + det.w / 2) * totalScale + centerOffsetX
+                val bottom = (det.y + det.h / 2) * totalScale + centerOffsetY
+                if (touchX in left..right && touchY in top..bottom) return true
+            }
             return false
         }
 
-        // Check if the pixel at this location is non-transparent (alpha > 0)
-        val pixel = bmp.getPixel(bmpX, bmpY)
-        val alpha = Color.alpha(pixel)
-        val isOnFurniture = alpha > 10  // Small threshold for anti-aliased edges
-
-        Log.d("FurnitureOverlay", "isTouchOnFurniture: touch=($touchX,$touchY) bmpCoord=($bmpX,$bmpY) alpha=$alpha isOnFurniture=$isOnFurniture")
-
-        return isOnFurniture
+        // Fallback: mask pixel (segmented shape)
+        val bmp = maskBitmap ?: return false
+        val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+        val totalScale = baseScale * furnitureScale
+        val maskLeft = screenCenterX - (bmp.width / 2f) * totalScale + translateX
+        val maskTop = screenCenterY - (bmp.height / 2f) * totalScale + translateY
+        val bmpX = ((touchX - maskLeft) / totalScale).toInt()
+        val bmpY = ((touchY - maskTop) / totalScale).toInt()
+        if (bmpX < 0 || bmpX >= bmp.width || bmpY < 0 || bmpY >= bmp.height) return false
+        return Color.alpha(bmp.getPixel(bmpX, bmpY)) > 10
     }
 
     fun setMask(b: Bitmap?) {
