@@ -1,7 +1,9 @@
 package com.furnit.android
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -18,19 +20,34 @@ import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import android.webkit.*
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import com.furnit.android.models.Model
 import com.furnit.android.models.ModelManager
+import com.furnit.android.services.FurnitureFitManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * SharpRoomActivity - WebGL-based 3D Gaussian Splat viewer
@@ -57,6 +74,9 @@ class SharpRoomActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: FrameLayout
+    private lateinit var brainProgressOverlay: FrameLayout
+    private lateinit var brainDetectionOverlay: FrameLayout
+    private lateinit var brainDetectionOverlayView: FurnitureFitOverlayView
     private lateinit var titleView: TextView
     private var plyPath: String? = null
     private var roomFolder: String? = null
@@ -77,6 +97,26 @@ class SharpRoomActivity : AppCompatActivity() {
     // Calibration state
     private var showCalibrationOverlay = false
     private var detectedFurnitureHeight: Float? = null
+
+    // Brain (SmartyPants) overlay: show progress in same Activity so room stays visible
+    private var brainOverlayVisible = false
+    private var furnitureFitManager: FurnitureFitManager? = null
+    private var cameraProvider: ProcessCameraProvider? = null
+    private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
+    private val isBrainInferenceRunning = AtomicBoolean(false)
+    private val cameraPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        Log.d(TAG, "Brain: camera permission result isGranted=$isGranted")
+        if (isGranted) {
+            showBrainProgressOverlay()
+            startBrainDetection()
+        } else {
+            Log.d(TAG, "Brain: camera permission denied")
+            Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -216,15 +256,20 @@ class SharpRoomActivity : AppCompatActivity() {
                 }
 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                    // Don't log favicon as error (we intercept it; this is a fallback if something else fails)
+                    if (request?.url?.toString()?.contains("favicon") == true) return
                     Log.e(TAG, "WebView error: ${error?.description}")
                 }
 
                 // Use WebViewAssetLoader to serve files
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                     val url = request?.url ?: return null
+                    val urlString = url.toString()
+                    // Suppress favicon request so we don't get net::ERR_NAME_NOT_RESOLVED (matches iOS: no favicon error)
+                    if (urlString.endsWith("/favicon.ico") || urlString.contains("favicon.ico")) {
+                        return WebResourceResponse("image/png", null, ByteArrayInputStream(ByteArray(0)))
+                    }
                     Log.d(TAG, "shouldInterceptRequest: $url")
-
-                    // Let WebViewAssetLoader handle appassets.androidplatform.net URLs
                     return assetLoader.shouldInterceptRequest(url)
                 }
             }
@@ -257,6 +302,48 @@ class SharpRoomActivity : AppCompatActivity() {
         // Loading overlay
         loadingOverlay = createLoadingOverlay()
         rootLayout.addView(loadingOverlay)
+
+        // Brain progress overlay (on top; room stays visible underneath)
+        brainProgressOverlay = createBrainProgressOverlay()
+        brainProgressOverlay.visibility = View.GONE
+        brainProgressOverlay.elevation = 20f
+        rootLayout.addView(brainProgressOverlay)
+
+        // Brain detection overlay: live segmentation on top of room (updates as you point at objects; Done to dismiss)
+        brainDetectionOverlay = FrameLayout(this).apply {
+            visibility = View.GONE
+            elevation = 21f
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        brainDetectionOverlayView = FurnitureFitOverlayView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        brainDetectionOverlay.addView(brainDetectionOverlayView)
+        val doneBtn = TextView(this).apply {
+            text = "Done"
+            setTextColor(Color.WHITE)
+            setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12))
+            textSize = 16f
+            setBackgroundColor(Color.parseColor("#80000000"))
+            val lp = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            lp.bottomMargin = dpToPx(80)
+            layoutParams = lp
+            setOnClickListener {
+                hideBrainDetectionOverlay()
+            }
+        }
+        brainDetectionOverlay.addView(doneBtn)
+        rootLayout.addView(brainDetectionOverlay)
 
         setContentView(rootLayout)
 
@@ -436,15 +523,15 @@ class SharpRoomActivity : AppCompatActivity() {
                 setOnClickListener {
                     val roomId = roomFolder?.let { File(it).name }
                     Log.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
-                    val intent = Intent(this@SharpRoomActivity, FurnitureFitActivity::class.java)
-                    intent.putExtra("ROOM_ID", roomId)
-                    intent.putExtra("ROOM_NAME", "Sharp Room")
-                    roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
-                    intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
-                    intent.putExtra("ROOM_WIDTH", roomWidth)
-                    intent.putExtra("ROOM_HEIGHT", roomHeight)
-                    intent.putExtra("ROOM_DEPTH", roomDepth)
-                    startActivity(intent)
+                    if (ContextCompat.checkSelfPermission(this@SharpRoomActivity, Manifest.permission.CAMERA)
+                        != PackageManager.PERMISSION_GRANTED) {
+                        Log.d(TAG, "Brain: requesting CAMERA permission")
+                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                    } else {
+                        Log.d(TAG, "Brain: permission OK, showing progress and starting detection")
+                        showBrainProgressOverlay()
+                        startBrainDetection()
+                    }
                 }
             }
             leftBottomRow.addView(brainBtn)
@@ -504,7 +591,7 @@ class SharpRoomActivity : AppCompatActivity() {
             Log.d(TAG, "Screenshot saved: ${file.absolutePath}")
 
             // Share the screenshot
-            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            val uri: android.net.Uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
                 putExtra(Intent.EXTRA_STREAM, uri)
@@ -552,6 +639,155 @@ class SharpRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { gravity = Gravity.CENTER })
         }
+    }
+
+    /** Progress overlay when brain is tapped: room stays visible underneath (semi-transparent). */
+    private fun createBrainProgressOverlay(): FrameLayout {
+        return FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#80000000"))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            val content = LinearLayout(this@SharpRoomActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setBackgroundColor(Color.parseColor("#99000000"))
+                setPadding(dpToPx(32), dpToPx(16), dpToPx(32), dpToPx(16))
+                val lp = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                lp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                lp.topMargin = dpToPx(120)
+                layoutParams = lp
+
+                val label = TextView(this@SharpRoomActivity).apply {
+                    text = getString(R.string.smartypants_detecting_furniture)
+                    setTextColor(Color.WHITE)
+                    textSize = 14f
+                    setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(8))
+                }
+                addView(label)
+                val progress = ProgressBar(this@SharpRoomActivity, null, android.R.attr.progressBarStyleHorizontal).apply {
+                    layoutParams = LinearLayout.LayoutParams(dpToPx(250), ViewGroup.LayoutParams.WRAP_CONTENT)
+                    max = 100
+                    progress = 15
+                    progressDrawable.colorFilter = android.graphics.PorterDuffColorFilter(0xFF4CAF50.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+                }
+                addView(progress)
+            }
+            addView(content)
+        }
+    }
+
+    private fun showBrainProgressOverlay() {
+        brainOverlayVisible = true
+        brainProgressOverlay.visibility = View.VISIBLE
+    }
+
+    private fun hideBrainProgressOverlay() {
+        brainProgressOverlay.visibility = View.GONE
+    }
+
+    private fun showBrainDetectionOverlay(mask: Bitmap?, detections: List<DetectionResult>, inputSize: Int) {
+        brainDetectionOverlayView.setMaskAndDetections(mask, detections, inputSize)
+        brainDetectionOverlay.visibility = View.VISIBLE
+    }
+
+    private fun hideBrainDetectionOverlay() {
+        Log.d(TAG, "Brain: hideBrainDetectionOverlay() - user Done or Back, stopping camera")
+        brainOverlayVisible = false
+        brainDetectionOverlay.visibility = View.GONE
+        stopBrainDetection()
+    }
+
+    private fun startBrainDetection() {
+        Log.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
+        lifecycleScope.launch {
+            val manager = withContext(Dispatchers.IO) {
+                val m = FurnitureFitManager(this@SharpRoomActivity)
+                if (m.initializeAuto()) m else null
+            }
+            if (manager == null) {
+                Log.e(TAG, "Brain: SmartyPants failed to initialize")
+                runOnUiThread {
+                    hideBrainProgressOverlay()
+                    Toast.makeText(this@SharpRoomActivity, "SmartyPants failed to initialize", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            Log.d(TAG, "Brain: SmartyPants OK, binding camera on UI thread")
+            furnitureFitManager = manager
+            runOnUiThread { bindBrainCamera(manager) }
+        }
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun bindBrainCamera(manager: FurnitureFitManager) {
+        Log.d(TAG, "Brain: bindBrainCamera() - getting ProcessCameraProvider")
+        val providerFuture = ProcessCameraProvider.getInstance(this)
+        providerFuture.addListener({
+            val provider = providerFuture.get()
+            cameraProvider = provider
+            provider.unbindAll()
+            Log.d(TAG, "Brain: building ImageAnalysis and binding to BACK_CAMERA")
+            val analysis = ImageAnalysis.Builder()
+                .setTargetResolution(android.util.Size(768, 768))
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+            var frameCount = 0
+            val hasFirstResult = BooleanArray(1) { false }
+            analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                try {
+                    val bitmap = imageProxy.toBitmapSafe() ?: return@setAnalyzer
+                    // Only process one frame at a time; drop others so we show current view when camera moves (no "chair forever")
+                    if (isBrainInferenceRunning.get()) {
+                        return@setAnalyzer
+                    }
+                    isBrainInferenceRunning.set(true)
+                    frameCount++
+                    if (frameCount == 1 || frameCount % 30 == 0) {
+                        Log.d(TAG, "Brain: analysis frame $frameCount (camera active)")
+                    }
+                    manager.segmentWithDetectionsAsync(bitmap) { result ->
+                        runOnUiThread {
+                            isBrainInferenceRunning.set(false)
+                            if (!hasFirstResult[0]) {
+                                hasFirstResult[0] = true
+                                Log.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
+                                hideBrainProgressOverlay()
+                                brainDetectionOverlay.visibility = View.VISIBLE
+                            }
+                            val mask = result?.mask
+                            val dets = result?.detections ?: emptyList()
+                            val size = result?.inputSize ?: 640
+                            brainDetectionOverlayView.setMaskAndDetections(mask, dets, size)
+                        }
+                    }
+                } finally {
+                    imageProxy.close()
+                }
+            }
+            try {
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+                Log.d(TAG, "Brain: camera bound successfully - live segmentation running")
+            } catch (e: Exception) {
+                Log.e(TAG, "Brain camera bind failed", e)
+                runOnUiThread {
+                    hideBrainProgressOverlay()
+                    Toast.makeText(this@SharpRoomActivity, "Camera error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun stopBrainDetection() {
+        Log.d(TAG, "Brain: stopBrainDetection() - unbinding camera")
+        try {
+            cameraProvider?.unbindAll()
+        } catch (_: Exception) { }
+        cameraProvider = null
     }
 
     private fun loadWebGLViewer() {
@@ -679,7 +915,7 @@ class SharpRoomActivity : AppCompatActivity() {
         controls.dampingFactor = 0.25;   // Settle quickly so orbit does not oscillate
         controls.rotateSpeed = 0.25;     // Slow rotation for touch so room does not move too fast
         controls.screenSpacePanning = false;
-        controls.minDistance = 0.3;
+        controls.minDistance = 0.01;
         // Limit zoom-out so the room stays a reasonable size (max ~2.5× largest room dimension, cap 6–25m)
         const roomMaxDim = Math.max(fallbackRoomWidth, fallbackRoomHeight, fallbackRoomDepth);
         controls.maxDistance = Math.max(6, Math.min(25, roomMaxDim * 2.5));
@@ -1093,7 +1329,7 @@ class SharpRoomActivity : AppCompatActivity() {
         }
 
         try {
-            val uri = FileProvider.getUriForFile(
+            val uri: android.net.Uri = FileProvider.getUriForFile(
                 this,
                 "${packageName}.fileprovider",
                 plyFile
@@ -1148,7 +1384,19 @@ class SharpRoomActivity : AppCompatActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (brainDetectionOverlay.visibility == View.VISIBLE) {
+            hideBrainDetectionOverlay()
+            return
+        }
+        if (brainProgressOverlay.visibility == View.VISIBLE || brainDetectionOverlay.visibility == View.VISIBLE) {
+            stopBrainDetection()
+            hideBrainProgressOverlay()
+            if (brainDetectionOverlay.visibility == View.VISIBLE) hideBrainDetectionOverlay()
+            else brainOverlayVisible = false
+            return
+        }
         if (webView.canGoBack()) {
             webView.goBack()
         } else {
@@ -1157,6 +1405,11 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        stopBrainDetection()
+        if (!cameraExecutor.isShutdown) {
+            cameraExecutor.shutdown()
+        }
+        furnitureFitManager?.close()
         webView.destroy()
         super.onDestroy()
     }
