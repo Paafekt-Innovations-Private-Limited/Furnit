@@ -154,27 +154,40 @@ class FurnitureFitOverlayView(context: Context) : View(context) {
     }
 
     /**
-     * Check if the touch point is on the furniture (on a non-transparent pixel)
+     * Check if the touch point is on the furniture: use detection bbox when available (furniture structure),
+     * otherwise fall back to mask pixel (non-transparent).
      */
     private fun isTouchOnFurniture(touchX: Float, touchY: Float): Boolean {
-        val bmp = maskBitmap
-        if (bmp == null) return false
         if (width == 0 || height == 0) return false
-
-        // Same transform as onDraw: uniform base scale, pivot at bitmap center, screen center + drag
-        val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
-        val totalScale = baseScale * furnitureScale
         val screenCenterX = width / 2f
         val screenCenterY = height * 0.35f
+
+        // Prefer detection bbox (furniture structure) for hit-test when we have detections
+        if (detections.isNotEmpty() && inputSize > 0) {
+            val baseScale = min(width / inputSize.toFloat(), height / inputSize.toFloat())
+            val totalScale = baseScale * furnitureScale
+            val centerOffsetX = screenCenterX - (inputSize / 2f) * totalScale + translateX
+            val centerOffsetY = screenCenterY - (inputSize / 2f) * totalScale + translateY
+            for (det in detections) {
+                val left = (det.x - det.w / 2) * totalScale + centerOffsetX
+                val top = (det.y - det.h / 2) * totalScale + centerOffsetY
+                val right = (det.x + det.w / 2) * totalScale + centerOffsetX
+                val bottom = (det.y + det.h / 2) * totalScale + centerOffsetY
+                if (touchX in left..right && touchY in top..bottom) return true
+            }
+            return false
+        }
+
+        // Fallback: mask pixel (segmented shape)
+        val bmp = maskBitmap ?: return false
+        val baseScale = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())
+        val totalScale = baseScale * furnitureScale
         val maskLeft = screenCenterX - (bmp.width / 2f) * totalScale + translateX
         val maskTop = screenCenterY - (bmp.height / 2f) * totalScale + translateY
-
         val bmpX = ((touchX - maskLeft) / totalScale).toInt()
         val bmpY = ((touchY - maskTop) / totalScale).toInt()
-
         if (bmpX < 0 || bmpX >= bmp.width || bmpY < 0 || bmpY >= bmp.height) return false
-        val pixel = bmp.getPixel(bmpX, bmpY)
-        return Color.alpha(pixel) > 10
+        return Color.alpha(bmp.getPixel(bmpX, bmpY)) > 10
     }
 
     fun setMask(b: Bitmap?) {
