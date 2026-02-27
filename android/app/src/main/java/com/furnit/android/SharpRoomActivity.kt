@@ -323,6 +323,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            onTouchOutsideFurniture = { ev -> webView.dispatchTouchEvent(ev) }
         }
         brainDetectionOverlay.addView(brainDetectionOverlayView)
         val doneBtn = TextView(this).apply {
