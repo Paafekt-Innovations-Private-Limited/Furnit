@@ -86,6 +86,9 @@ QUESTION_SWIFT_VS_ANDROID_FILE = Path(__file__).resolve().parent / "ultralytics_
 # Best way to do Lanczos resize on Android for 1536x1536 model input.
 QUESTION_LANCZOS_RESIZE_FILE = Path(__file__).resolve().parent / "ultralytics_question_lanczos_resize.txt"
 
+# Brain icon: room not visible when opening furniture detection (grey screen, progress bar only).
+QUESTION_BRAIN_ROOM_FILE = Path(__file__).resolve().parent / "ultralytics_question_brain_room_grey.txt"
+
 # Gradle/Android build failure: wildcard IP and sysconf on macOS.
 GRADLE_BUILD_QUESTION = """When building an Android app with Gradle on macOS (darwin), the build fails with: (1) "Could not determine a usable wildcard IP for this machine" and (2) "xargs: sysconf(_SC_ARG_MAX) failed". The project uses AGP 8.5.2 and Kotlin. Building with --no-daemon works. What is the root cause and the recommended fix so that a normal daemon build works? Should we set org.gradle.daemon=false, or -Djava.net.preferIPv4Stack=true in gradle.properties, or something else? We need a concrete fix for Gradle/JVM or macOS environment."""
 
@@ -441,6 +444,11 @@ def main() -> int:
         help="Best way to do Lanczos resize on Android for 1536 input; from ultralytics_question_lanczos_resize.txt",
     )
     parser.add_argument(
+        "--brain-room",
+        action="store_true",
+        help="Brain icon: room grey when opening furniture detection; from ultralytics_question_brain_room_grey.txt",
+    )
+    parser.add_argument(
         "--gradle",
         action="store_true",
         help="Use canned question for Gradle build failure (wildcard IP / sysconf on macOS)",
@@ -518,6 +526,12 @@ def main() -> int:
         else:
             logger.error("File not found: %s", QUESTION_LANCZOS_RESIZE_FILE)
             question = ASPECT_SQUEEZE_QUESTION
+    elif args.brain_room:
+        if QUESTION_BRAIN_ROOM_FILE.is_file():
+            question = QUESTION_BRAIN_ROOM_FILE.read_text(encoding="utf-8").strip()
+        else:
+            logger.error("File not found: %s", QUESTION_BRAIN_ROOM_FILE)
+            question = PROGRESS_BAR_QUESTION
     else:
         question = (
             PROGRESS_BAR_QUESTION if args.progress_bar

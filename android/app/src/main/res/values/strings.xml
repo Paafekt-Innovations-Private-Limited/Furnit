@@ -231,6 +231,7 @@
     <string name="viewer_capture">Capture</string>
 
     <!-- SmartyPants (Segmentation) -->
+    <string name="smartypants_detecting_furniture">Detecting furniture…</string>
     <string name="smartypants_starting">Starting camera…</string>
     <string name="smartypants_resizing">Resizing…</string>
     <string name="smartypants_preprocessing">Preprocessing…</string>
