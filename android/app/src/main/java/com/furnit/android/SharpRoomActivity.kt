@@ -751,17 +751,18 @@ class SharpRoomActivity : AppCompatActivity() {
                     const floorY = -fallbackRoomHeight * 0.5;
                     const eyeHeightAboveFloor = Math.min(1.6, fallbackRoomHeight * 0.4);
                     const eyeHeight = floorY + eyeHeightAboveFloor;
-                    // Orbit around room center (mesh centered at origin). Three.js: +Z back, -Z forward; PLY with negated Z so room may face -Z. Place camera on front (min Z) side looking into room toward +Z so interior is visible (per Ultralytics axis convention).
+                    // Ultralytics: view room from the back. Camera at back + inset, target at front wall so room is in front of camera on first open.
                     const roomCenterX = 0, roomCenterY = 0, roomCenterZ = 0;
                     if (isPortrait) {
                         const backWall = fallbackRoomDepth * 0.5;
-                        camera.position.set(backWall - insetFromBack, eyeHeight, roomCenterZ);
-                        controls.target.set(roomCenterX, roomCenterY, roomCenterZ);
+                        const frontWall = -fallbackRoomDepth * 0.5;
+                        camera.position.set(backWall + insetFromBack, eyeHeight, roomCenterZ);
+                        controls.target.set(frontWall, eyeHeight, roomCenterZ);
                     } else {
                         const backWallZ = fallbackRoomDepth * 0.5;
                         const frontWallZ = -fallbackRoomDepth * 0.5;
-                        camera.position.set(roomCenterX, eyeHeight, frontWallZ + insetFromBack);
-                        controls.target.set(roomCenterX, roomCenterY, roomCenterZ);
+                        camera.position.set(roomCenterX, eyeHeight, backWallZ + insetFromBack);
+                        controls.target.set(roomCenterX, roomCenterY, frontWallZ);
                     }
                     controls.update();
                     initialCameraPosition.copy(camera.position);
@@ -820,7 +821,7 @@ class SharpRoomActivity : AppCompatActivity() {
             if (roomWidth > maxRealisticWidth) roomWidth = maxRealisticWidth;
             if (roomHeight > maxRealisticHeight) roomHeight = maxRealisticHeight;
 
-            // Portrait: camera at back (depthAxisMax - inset), target at center. Landscape: camera at front (depthAxisMin + inset) looking toward +Z so interior visible (Three.js +Z back, -Z forward; PLY room faces -Z).
+            // Ultralytics: camera at back + inset, target at front wall so room is in front on first open.
             const depthAlongView = roomDepth;
             const t = Math.min(1, depthAlongView / 6);
             let insetFraction = 0.18 + 0.32 * t;
@@ -831,13 +832,13 @@ class SharpRoomActivity : AppCompatActivity() {
             const backWallDepth = depthAxisMax;
 
             if (isPortrait) {
-                const camDepth = backWallDepth - insetFromBack;
+                const camDepth = backWallDepth + insetFromBack;
                 camera.position.set(camDepth, eyeHeight, center.z);
-                controls.target.copy(center);
+                controls.target.set(frontWallDepth, eyeHeight, center.z);
             } else {
-                const camDepth = frontWallDepth + insetFromBack;
+                const camDepth = backWallDepth + insetFromBack;
                 camera.position.set(center.x, eyeHeight, camDepth);
-                controls.target.copy(center);
+                controls.target.set(center.x, eyeHeight, frontWallDepth);
             }
 
             // Single-line structured log for logcat (WebView console -> Log.d SharpRoomActivity)
