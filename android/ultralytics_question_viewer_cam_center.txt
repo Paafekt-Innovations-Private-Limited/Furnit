@@ -1,0 +1,5 @@
+We have an Android WebView 3D room viewer (Three.js, OrbitControls, SparkJS SplatMesh). The room is a Gaussian splat PLY from a ViT model (SHARP). We do not move the mesh. We pass from the pipeline: room dimensions (8.79 x 7.22 x 4.19 m) and bbox center (1.61, 0.90, -3.23) in world coordinates.
+
+We use a "fallback camera" because SparkJS never gives a valid Box3 from the mesh. We set: camera position at pipeline bbox center at eye height (floorY = centerY - roomHeight/2, eyeHeight = floorY + 1.6), target at the front wall (landscape: centerX, centerY, centerZ - roomDepth/2). So camera ends up at (1.61, -1.11, -3.23), target at (1.61, 0.90, -5.33) approximately. The user says the view is still "not right."
+
+What is the correct way to place the initial camera so the user sees the room interior on first open? Should the camera be at the bbox center or offset (e.g. toward the "photo" side)? Is the front wall (min Z in our convention) the right look-at target for landscape? We are not using YOLO; this is 3D Gaussian splatting room reconstruction.

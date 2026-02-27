@@ -279,10 +279,12 @@ class FurnitureFitFragment : Fragment() {
         }
         bottomControls.addView(screenshotButton)
 
-        // When opened from brain (room background): show only progress bar, no live camera feed
+        // When opened from brain (room background): hide camera feed and show room from start so progress bar overlays room (not grey)
         val hasRoomBackground = selectedRoomId != null || !selectedRoomFolder.isNullOrBlank()
         if (hasRoomBackground) {
             previewView.visibility = View.GONE
+            // Show room layer immediately so progress bar overlays the room; PLY will load into this WebView
+            roomPlyWebView?.visibility = View.VISIBLE
         }
         root.addView(previewView)
         root.addView(roomSceneView)
@@ -729,7 +731,10 @@ class FurnitureFitFragment : Fragment() {
                     }
                     Log.d("FurnitureFit", "[FurnitureFit] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
                     if (roomFolderPath != null || roomId != null) {
-                        activity?.runOnUiThread { roomSceneView.visibility = View.VISIBLE }
+                        activity?.runOnUiThread {
+                            roomSceneView.visibility = View.VISIBLE
+                            roomPlyWebView?.visibility = View.GONE
+                        }
                     }
                 } else {
                     roomSceneView.cameraNode.apply {
