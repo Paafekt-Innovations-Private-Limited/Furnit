@@ -1,5 +1,6 @@
 package com.furnit.android.services
 
+import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -156,6 +157,17 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         }
     }
 
+    /** True if device is considered low-RAM (e.g. 4 GB); use fewer Part4b threads to avoid OOM. */
+    private fun isLowRamDevice(): Boolean {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return false
+        return am.isLowRamDevice
+    }
+
+    /** Part4b thread count: 2 on low-RAM to avoid OOM; otherwise CPU count capped 2..8 for ~2 min total on capable devices. */
+    private fun part4bThreadCount(): Int {
+        return if (isLowRamDevice()) 2 else Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
+    }
+
     private fun findFile(filename: String): File? {
         val internal = File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0 }
         return internal ?: File(modelsDir, filename).takeIf { it.exists() && it.length() > 0 }
@@ -258,6 +270,21 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         mutex.withLock {
             if (!isInitialized) return@withContext null
             ensureModelsFromAssets()
+
+            // Require all 6 .pte files (internal or external); avoid NPE and show clear error if missing
+            val required = listOf(
+                "sharp_split_part1_int8.pte",
+                "sharp_split_part2_int8.pte",
+                "sharp_split_part3_int8.pte",
+                "sharp_split_part4a_chunk_512.pte",
+                "sharp_split_part4a_chunk_65.pte",
+                "sharp_split_part4b.pte"
+            )
+            val missing = required.filter { findFile(it) == null }
+            if (missing.isNotEmpty()) {
+                LogUtil.e(TAG, "ExecuTorch INT8 models missing: $missing. Push to ${modelsDir.absolutePath} and retry.")
+                return@withContext null
+            }
 
             val originalWidth = bitmap.width
             val originalHeight = bitmap.height
@@ -382,7 +409,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val tPart4bStart = System.currentTimeMillis()
 
             report(0.50f, "Adding the finishing touches…", progressCallback)
-            val part4bThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
+            // Use 2 threads on low-RAM devices to avoid OOM; otherwise use more threads for ~2 min total (Part4b was ~4 min when forced to 2 on capable devices)
+            val part4bThreads = part4bThreadCount()
+            LogUtil.d(TAG, "Part4b thread count: $part4bThreads (lowRam=${isLowRamDevice()})")
             val mod4b = Module.load(
                 findFile("sharp_split_part4b.pte")!!.absolutePath,
                 Module.LOAD_MODE_MMAP,
