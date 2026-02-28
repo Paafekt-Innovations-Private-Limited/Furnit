@@ -6,7 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import com.furnit.android.models.RoomStructure
 import java.io.File
 import java.io.FileOutputStream
@@ -53,10 +53,10 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         dimensions: RoomDimensions = RoomDimensions(),
         callback: ProgressCallback
     ) {
-        Log.d(TAG, "Starting room reconstruction...")
-        Log.d(TAG, "  Boundaries: floor=${boundaries.floorY}, ceiling=${boundaries.ceilingY}")
-        Log.d(TAG, "  Boundaries: left=${boundaries.leftX}, right=${boundaries.rightX}")
-        Log.d(TAG, "  Boundaries: vp=(${boundaries.vanishingX}, ${boundaries.vanishingY})")
+        LogUtil.d(TAG, "Starting room reconstruction...")
+        LogUtil.d(TAG, "  Boundaries: floor=${boundaries.floorY}, ceiling=${boundaries.ceilingY}")
+        LogUtil.d(TAG, "  Boundaries: left=${boundaries.leftX}, right=${boundaries.rightX}")
+        LogUtil.d(TAG, "  Boundaries: vp=(${boundaries.vanishingX}, ${boundaries.vanishingY})")
 
         Thread {
             try {
@@ -94,7 +94,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                 callback.onComplete(glbFile)
 
             } catch (e: Exception) {
-                Log.e(TAG, "Room reconstruction failed", e)
+                LogUtil.e(TAG, "Room reconstruction failed", e)
                 callback.onError("Failed to create room: ${e.message}")
             }
         }.start()
@@ -112,7 +112,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         return try {
             Bitmap.createBitmap(image, left, top, width, height)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to extract front wall texture", e)
+            LogUtil.w(TAG, "Failed to extract front wall texture", e)
             createSolidColorBitmap(Color.LTGRAY, 256, 256)
         }
     }
@@ -129,7 +129,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         return try {
             Bitmap.createBitmap(image, left, top, width, height)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to extract floor texture", e)
+            LogUtil.w(TAG, "Failed to extract floor texture", e)
             createSolidColorBitmap(Color.parseColor("#D7CCC8"), 256, 256)
         }
     }
@@ -150,7 +150,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
                 createSolidColorBitmap(Color.WHITE, 256, 256)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to extract ceiling texture", e)
+            LogUtil.w(TAG, "Failed to extract ceiling texture", e)
             createSolidColorBitmap(Color.WHITE, 256, 256)
         }
     }
@@ -167,7 +167,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         return try {
             Bitmap.createBitmap(image, left, top, width, height)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to extract left wall texture", e)
+            LogUtil.w(TAG, "Failed to extract left wall texture", e)
             createSolidColorBitmap(Color.parseColor("#E0E0E0"), 256, 256)
         }
     }
@@ -185,7 +185,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         return try {
             Bitmap.createBitmap(image, left, top, width, height)
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to extract right wall texture", e)
+            LogUtil.w(TAG, "Failed to extract right wall texture", e)
             createSolidColorBitmap(Color.parseColor("#E0E0E0"), 256, 256)
         }
     }
@@ -242,7 +242,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         )
 
         if (!success) {
-            Log.e(TAG, "Failed to generate GLB, falling back to textures only")
+            LogUtil.e(TAG, "Failed to generate GLB, falling back to textures only")
         }
 
         // Save dimensions
@@ -254,7 +254,7 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
         val roomName = "My Room ${java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(java.util.Date())}"
         metadataFile.writeText("name=$roomName\ncreated=${System.currentTimeMillis()}\nglb=room.glb")
 
-        Log.d(TAG, "Room created at: ${roomFolder.absolutePath}")
+        LogUtil.d(TAG, "Room created at: ${roomFolder.absolutePath}")
         return if (success) glbFile else File(roomFolder, "front_wall.png")
     }
 
@@ -263,9 +263,9 @@ class SinglePhotoRoomReconstructor(private val context: Context) {
             FileOutputStream(file).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
             }
-            Log.d(TAG, "Saved texture: ${file.name}")
+            LogUtil.d(TAG, "Saved texture: ${file.name}")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save texture: ${file.name}", e)
+            LogUtil.e(TAG, "Failed to save texture: ${file.name}", e)
         }
     }
 }

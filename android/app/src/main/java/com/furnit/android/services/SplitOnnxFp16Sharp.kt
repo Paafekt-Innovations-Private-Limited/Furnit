@@ -5,7 +5,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -76,7 +76,7 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: SplitOnnxFp16Sharp(context.applicationContext).also {
                     instance = it
-                    Log.d(TAG, "SplitOnnxFp16Sharp singleton created")
+                    LogUtil.d(TAG, "SplitOnnxFp16Sharp singleton created")
                 }
             }
         }
@@ -133,11 +133,11 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
             val dataExists = dataFile.exists()
             // FP16 models may inline weights (no .data) if small enough
             val partReady = modelExists && (dataExists || modelFile.length() > 50_000_000)
-            Log.d(TAG, "isModelReady: $model exists=$modelExists size=${if (modelExists) modelFile.length() else 0} " +
+            LogUtil.d(TAG, "isModelReady: $model exists=$modelExists size=${if (modelExists) modelFile.length() else 0} " +
                   "$data exists=$dataExists => $partReady")
             partReady
         }
-        Log.d(TAG, "isModelReady: result=$ready")
+        LogUtil.d(TAG, "isModelReady: result=$ready")
         return ready
     }
 
@@ -165,18 +165,18 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
             addConfigEntry("session.enable_mem_reuse", "1")
             addConfigEntry("session.intra_op.allow_spinning", "1")
         } catch (e: Exception) {
-            Log.w(TAG, "Could not set session config: ${e.message}")
+            LogUtil.w(TAG, "Could not set session config: ${e.message}")
         }
-        Log.d(TAG, "buildSessionOptions(part=$partNumber): threads=$intraThreads arena=${partNumber != 4}")
+        LogUtil.d(TAG, "buildSessionOptions(part=$partNumber): threads=$intraThreads arena=${partNumber != 4}")
     }
 
     suspend fun preloadSessions(progress: ((String) -> Unit)? = null) = withContext(Dispatchers.IO) {
         if (!isModelReady()) {
-            Log.w(TAG, "preloadSessions: model not ready, skipping")
+            LogUtil.w(TAG, "preloadSessions: model not ready, skipping")
             return@withContext
         }
         if (preloadedPart1Session != null) {
-            Log.d(TAG, "preloadSessions: Part 1 already loaded, skipping")
+            LogUtil.d(TAG, "preloadSessions: Part 1 already loaded, skipping")
             return@withContext
         }
         val t0 = System.currentTimeMillis()
@@ -184,12 +184,12 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
             val modelFile = PART_FILENAMES[0].first
             progress?.invoke("Loading FP16 Part 1...")
             val modelPath = File(modelsDir, modelFile).absolutePath
-            Log.d(TAG, "preloadSessions: Part 1 from $modelPath")
+            LogUtil.d(TAG, "preloadSessions: Part 1 from $modelPath")
             preloadedPart1Session = ortEnv.createSession(modelPath, buildSessionOptions(partNumber = 1))
-            Log.d(TAG, "preloadSessions: Part 1 loaded in ${System.currentTimeMillis() - t0}ms. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "preloadSessions: Part 1 loaded in ${System.currentTimeMillis() - t0}ms. Memory: ${getMemoryInfo()}")
             progress?.invoke("FP16 Part 1 ready")
         } catch (e: Exception) {
-            Log.e(TAG, "preloadSessions failed: ${e.message}", e)
+            LogUtil.e(TAG, "preloadSessions failed: ${e.message}", e)
             try { preloadedPart1Session?.close() } catch (_: Exception) {}
             preloadedPart1Session = null
         }
@@ -198,7 +198,7 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
     fun releaseSessions() {
         try { preloadedPart1Session?.close() } catch (_: Exception) {}
         preloadedPart1Session = null
-        Log.d(TAG, "releaseSessions: Part 1 session closed")
+        LogUtil.d(TAG, "releaseSessions: Part 1 session closed")
     }
 
     private fun getMemoryInfo(): String {
@@ -217,14 +217,14 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
         isCancelled: () -> Boolean = { false }
     ): StreamingResult? = withContext(Dispatchers.IO) {
         if (!isModelReady()) {
-            Log.e(TAG, "FP16 model parts not ready. Missing: ${getMissingFiles()}")
+            LogUtil.e(TAG, "FP16 model parts not ready. Missing: ${getMissingFiles()}")
             progressCallback?.invoke(0f, "FP16 model not ready")
             return@withContext null
         }
 
         val startTime = System.currentTimeMillis()
         try {
-            Log.d(TAG, "inferStreaming ENTER (FP16). Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "inferStreaming ENTER (FP16). Memory: ${getMemoryInfo()}")
             progressCallback?.invoke(0.05f, "Initializing (FP16)...")
 
             tempDir.listFiles()?.forEach { it.delete() }
@@ -243,7 +243,7 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
 
             for (partIdx in 0 until NUM_PARTS) {
                 if (isCancelled()) {
-                    Log.d(TAG, "CANCELLED before part ${partIdx + 1}")
+                    LogUtil.d(TAG, "CANCELLED before part ${partIdx + 1}")
                     return@withContext null
                 }
                 val partStartTime = System.currentTimeMillis()
@@ -253,12 +253,12 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
                 val baseProgress = 0.1f + (partIdx * 0.2f)
 
                 progressCallback?.invoke(baseProgress, "FP16 Part $partNumber/4...")
-                Log.d(TAG, "=== FP16 Part $partNumber ($modelFile) === Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "=== FP16 Part $partNumber ($modelFile) === Memory: ${getMemoryInfo()}")
 
                 val outputs = runModelPart(modelPath, currentInputs, partNumber, progressCallback, baseProgress)
 
                 if (outputs == null) {
-                    Log.e(TAG, "FP16 Part $partNumber FAILED")
+                    LogUtil.e(TAG, "FP16 Part $partNumber FAILED")
                     return@withContext null
                 }
 
@@ -269,7 +269,7 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
 
                 currentInputs = currentInputs + outputs + ("image" to imageFile)
                 partTimes[partIdx] = System.currentTimeMillis() - partStartTime
-                Log.d(TAG, "FP16 Part $partNumber done: ${partTimes[partIdx]}ms, tensors: ${currentInputs.size}, ${getMemoryInfo()}")
+                LogUtil.d(TAG, "FP16 Part $partNumber done: ${partTimes[partIdx]}ms, tensors: ${currentInputs.size}, ${getMemoryInfo()}")
             }
 
             if (isCancelled()) return@withContext null
@@ -282,17 +282,17 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
             tempDir.listFiles()?.forEach { it.delete() }
 
             val elapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "FP16 inference completed in ${elapsed}ms")
-            Log.d(TAG, "  Breakdown: P1=${partTimes[0]}ms P2=${partTimes[1]}ms P3=${partTimes[2]}ms P4=${partTimes[3]}ms PLY=${plyTime}ms")
+            LogUtil.d(TAG, "FP16 inference completed in ${elapsed}ms")
+            LogUtil.d(TAG, "  Breakdown: P1=${partTimes[0]}ms P2=${partTimes[1]}ms P3=${partTimes[2]}ms P4=${partTimes[3]}ms PLY=${plyTime}ms")
             progressCallback?.invoke(1.0f, "Done!")
 
             return@withContext result
 
         } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "OUT OF MEMORY during FP16 inference", e)
+            LogUtil.e(TAG, "OUT OF MEMORY during FP16 inference", e)
             return@withContext null
         } catch (e: Exception) {
-            Log.e(TAG, "FP16 inference failed: ${e.message}", e)
+            LogUtil.e(TAG, "FP16 inference failed: ${e.message}", e)
             return@withContext null
         }
     }
@@ -304,27 +304,27 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
         progressCallback: ((Float, String) -> Unit)?,
         baseProgress: Float
     ): Map<String, File>? {
-        Log.d(TAG, "runModelPart ENTER part=$partNumber modelPath=$modelPath")
+        LogUtil.d(TAG, "runModelPart ENTER part=$partNumber modelPath=$modelPath")
         var session: OrtSession? = if (partNumber == 1) preloadedPart1Session else null
         val usePreloaded = session != null
         if (!usePreloaded) {
             val sessionCreateStart = System.currentTimeMillis()
             session = ortEnv.createSession(modelPath, buildSessionOptions(partNumber))
             val sessionCreateTime = System.currentTimeMillis() - sessionCreateStart
-            Log.d(TAG, "Session created for part $partNumber in ${sessionCreateTime}ms")
+            LogUtil.d(TAG, "Session created for part $partNumber in ${sessionCreateTime}ms")
         }
 
         try {
             val activeSession = session!!
             val inputNames = activeSession.inputNames.toList()
             val outputNames = activeSession.outputNames.toList()
-            Log.d(TAG, "Part $partNumber - Inputs: ${inputNames.size}, Outputs: ${outputNames.size}")
+            LogUtil.d(TAG, "Part $partNumber - Inputs: ${inputNames.size}, Outputs: ${outputNames.size}")
 
             val inputTensors = mutableMapOf<String, OnnxTensor>()
             for (name in inputNames) {
                 val file = inputs[name]
                 if (file == null || !file.exists()) {
-                    Log.e(TAG, "MISSING input tensor: $name")
+                    LogUtil.e(TAG, "MISSING input tensor: $name")
                     return null
                 }
                 val tensor = loadTensorFromFile(ortEnv, file, name) ?: return null
@@ -335,14 +335,14 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
                 System.gc()
                 System.runFinalization()
                 Thread.sleep(150)
-                Log.d(TAG, "Part 4 pre-forward memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4 pre-forward memory: ${getMemoryInfo()}")
             }
 
-            Log.d(TAG, "Part $partNumber: calling session.run with ${inputTensors.size} inputs")
+            LogUtil.d(TAG, "Part $partNumber: calling session.run with ${inputTensors.size} inputs")
             val inferStart = System.currentTimeMillis()
             val outputs = activeSession.run(inputTensors)
             val inferTime = System.currentTimeMillis() - inferStart
-            Log.d(TAG, "Part $partNumber inference: ${inferTime}ms")
+            LogUtil.d(TAG, "Part $partNumber inference: ${inferTime}ms")
 
             val outputFiles = mutableMapOf<String, File>()
             for (outputName in outputNames) {
@@ -361,7 +361,7 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
             return outputFiles
 
         } catch (e: Exception) {
-            Log.e(TAG, "runModelPart part=$partNumber EXCEPTION: ${e.message}", e)
+            LogUtil.e(TAG, "runModelPart part=$partNumber EXCEPTION: ${e.message}", e)
             return null
         } finally {
             if (!usePreloaded) {
@@ -466,7 +466,7 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
                 return OnnxTensor.createTensor(env, mappedBuffer.asFloatBuffer(), shape)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "loadTensorFromFile FAILED: $name: ${e.message}", e)
+            LogUtil.e(TAG, "loadTensorFromFile FAILED: $name: ${e.message}", e)
             return null
         }
     }
@@ -483,7 +483,7 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
 
         if (positionsFile == null || scalesFile == null || rotationsFile == null ||
             colorsFile == null || opacityFile == null) {
-            Log.e(TAG, "MISSING output tensors. Available: ${outputs.keys}")
+            LogUtil.e(TAG, "MISSING output tensors. Available: ${outputs.keys}")
             return null
         }
 
@@ -502,7 +502,7 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
             val shape = LongArray(numDims) { shapeBuffer.long }
             val gaussianCount = shape[1].toInt()
 
-            Log.d(TAG, "processGaussianOutput: $gaussianCount Gaussians")
+            LogUtil.d(TAG, "processGaussianOutput: $gaussianCount Gaussians")
             progressCallback?.invoke(0.9f, "Writing PLY ($gaussianCount Gaussians)...")
 
             val headerSize = 4L + numDims * 8L
@@ -620,8 +620,8 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
                 plyFile.copyTo(classicPlyFile, overwrite = true)
             }
 
-            Log.d(TAG, "processGaussianOutput SUCCESS: $gaussianCount Gaussians, PLY=${plyFile.length() / 1024}KB")
-            Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
+            LogUtil.d(TAG, "processGaussianOutput SUCCESS: $gaussianCount Gaussians, PLY=${plyFile.length() / 1024}KB")
+            LogUtil.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
 
             return StreamingResult(
                 plyFile = plyFile,
@@ -633,7 +633,7 @@ class SplitOnnxFp16Sharp private constructor(private val context: Context) {
             )
 
         } catch (e: Exception) {
-            Log.e(TAG, "processGaussianOutput FAILED", e)
+            LogUtil.e(TAG, "processGaussianOutput FAILED", e)
             return null
         } finally {
             channels.forEach { try { it.close() } catch (_: Exception) {} }

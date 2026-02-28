@@ -3,7 +3,7 @@ package com.furnit.android.auth
 import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.PhoneAuthCredential
@@ -105,7 +105,7 @@ class AuthenticationManager private constructor(context: Context) {
                 phoneNumber = "+1234567890"
             )
             isAuthenticated = true
-            Log.d(TAG, "Auth bypassed - using dev user")
+            LogUtil.d(TAG, "Auth bypassed - using dev user")
             notifyListeners()
             return
         }
@@ -122,7 +122,7 @@ class AuthenticationManager private constructor(context: Context) {
                 phoneNumber = savedPhone.ifEmpty { firebaseUser.phoneNumber ?: "" }
             )
             isAuthenticated = true
-            Log.d(TAG, "User authenticated from Firebase: ${currentUser?.phoneNumber}")
+            LogUtil.d(TAG, "User authenticated from Firebase: ${currentUser?.phoneNumber}")
         } else if (prefs.getBoolean(KEY_IS_AUTHENTICATED, false)) {
             // Check local storage for demo/migration
             val userId = prefs.getString(KEY_USER_ID, null)
@@ -132,12 +132,12 @@ class AuthenticationManager private constructor(context: Context) {
             if (userId != null && userName != null && userPhone != null) {
                 currentUser = User(id = userId, name = userName, phoneNumber = userPhone)
                 isAuthenticated = true
-                Log.d(TAG, "User authenticated from local storage: $userPhone")
+                LogUtil.d(TAG, "User authenticated from local storage: $userPhone")
             }
         } else {
             isAuthenticated = false
             currentUser = null
-            Log.d(TAG, "User not authenticated")
+            LogUtil.d(TAG, "User not authenticated")
         }
         notifyListeners()
     }
@@ -223,17 +223,17 @@ class AuthenticationManager private constructor(context: Context) {
             .putLong(KEY_LAST_OTP_REQUEST_TIME, System.currentTimeMillis())
             .apply()
 
-        Log.d(TAG, "Sending OTP to: $phoneNumber")
+        LogUtil.d(TAG, "Sending OTP to: $phoneNumber")
 
         val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
             override fun onVerificationCompleted(credential: PhoneAuthCredential) {
                 // Auto-verification (rare on most devices)
-                Log.d(TAG, "Auto-verification completed")
+                LogUtil.d(TAG, "Auto-verification completed")
                 isLoading = false
             }
 
             override fun onVerificationFailed(e: FirebaseException) {
-                Log.e(TAG, "Verification failed", e)
+                LogUtil.e(TAG, "Verification failed", e)
                 isLoading = false
                 errorMessage = when {
                     e.message?.contains("blocked") == true ->
@@ -251,7 +251,7 @@ class AuthenticationManager private constructor(context: Context) {
                 verificationId: String,
                 token: PhoneAuthProvider.ForceResendingToken
             ) {
-                Log.d(TAG, "OTP code sent successfully")
+                LogUtil.d(TAG, "OTP code sent successfully")
                 this@AuthenticationManager.verificationId = verificationId
                 this@AuthenticationManager.resendToken = token
                 isLoading = false
@@ -297,7 +297,7 @@ class AuthenticationManager private constructor(context: Context) {
             }
 
             override fun onVerificationFailed(e: FirebaseException) {
-                Log.e(TAG, "Resend verification failed", e)
+                LogUtil.e(TAG, "Resend verification failed", e)
                 isLoading = false
                 onError(e.message ?: "Failed to resend code")
             }
@@ -376,7 +376,7 @@ class AuthenticationManager private constructor(context: Context) {
                             .putString(KEY_USER_PHONE, phoneNumber)
                             .apply()
 
-                        Log.d(TAG, "User signed in successfully: $phoneNumber")
+                        LogUtil.d(TAG, "User signed in successfully: $phoneNumber")
                         notifyListeners()
                         onSuccess()
                     } else {
@@ -396,7 +396,7 @@ class AuthenticationManager private constructor(context: Context) {
                         errorMessage = "Invalid code. $remaining attempts remaining."
                         onError(errorMessage!!)
                     }
-                    Log.e(TAG, "Sign in failed", task.exception)
+                    LogUtil.e(TAG, "Sign in failed", task.exception)
                 }
             }
     }
@@ -419,7 +419,7 @@ class AuthenticationManager private constructor(context: Context) {
         verificationId = null
         resendToken = null
 
-        Log.d(TAG, "User signed out")
+        LogUtil.d(TAG, "User signed out")
         notifyListeners()
     }
 

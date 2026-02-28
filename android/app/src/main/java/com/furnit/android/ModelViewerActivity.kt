@@ -23,7 +23,7 @@ class ModelViewerActivity : AppCompatActivity() {
             setPadding(20,20,20,20)
         }
 
-        val title = TextView(this).apply { text = "Models"; textSize = 20f }
+        val title = TextView(this).apply { text = getString(R.string.model_viewer_title); textSize = 20f }
         layout.addView(title)
 
         for (model in modelManager.listModels()) {
@@ -39,7 +39,7 @@ class ModelViewerActivity : AppCompatActivity() {
             }
 
             val viewBtn = Button(this).apply {
-                text = "View 3D"
+                text = getString(R.string.model_viewer_view_3d)
                 setOnClickListener {
                     val i = Intent(this@ModelViewerActivity, ModelDetailActivity::class.java)
                     i.putExtra("MODEL_ID", model.id)
@@ -48,7 +48,7 @@ class ModelViewerActivity : AppCompatActivity() {
             }
 
             val arBtn = Button(this).apply {
-                text = "AR"
+                text = getString(R.string.model_viewer_ar)
                 setOnClickListener {
                     val i = Intent(this@ModelViewerActivity, ARActivity::class.java)
                     i.putExtra("MODEL_ID", model.id)

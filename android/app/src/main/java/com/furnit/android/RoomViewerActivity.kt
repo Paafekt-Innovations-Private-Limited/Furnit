@@ -5,7 +5,7 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Typeface
 import android.os.Bundle
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -61,31 +61,31 @@ class RoomViewerActivity : AppCompatActivity() {
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
 
-        Log.d("RoomViewer", "onCreate called")
+        LogUtil.d("RoomViewer", "onCreate called")
 
         val roomFolderPath = intent.getStringExtra(EXTRA_ROOM_FOLDER)
-        Log.d("RoomViewer", "Room folder path from intent: $roomFolderPath")
+        LogUtil.d("RoomViewer", "Room folder path from intent: $roomFolderPath")
 
         if (roomFolderPath == null) {
-            Log.e("RoomViewer", "No room folder provided")
-            Toast.makeText(this, "No room folder provided", Toast.LENGTH_SHORT).show()
+            LogUtil.e("RoomViewer", "No room folder provided")
+            Toast.makeText(this, getString(R.string.room_viewer_no_folder), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
         val roomFolder = File(roomFolderPath)
-        Log.d("RoomViewer", "Room folder exists: ${roomFolder.exists()}, isDirectory: ${roomFolder.isDirectory}")
+        LogUtil.d("RoomViewer", "Room folder exists: ${roomFolder.exists()}, isDirectory: ${roomFolder.isDirectory}")
 
         if (!roomFolder.exists()) {
-            Log.e("RoomViewer", "Room folder doesn't exist: $roomFolderPath")
-            Toast.makeText(this, "Room folder not found", Toast.LENGTH_SHORT).show()
+            LogUtil.e("RoomViewer", "Room folder doesn't exist: $roomFolderPath")
+            Toast.makeText(this, getString(R.string.room_viewer_folder_not_found), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
         // List files in folder for debugging
         roomFolder.listFiles()?.forEach { file ->
-            Log.d("RoomViewer", "  File: ${file.name}")
+            LogUtil.d("RoomViewer", "  File: ${file.name}")
         }
 
         // Initialize scale gesture detector
@@ -124,7 +124,7 @@ class RoomViewerActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
 
             val backBtn = TextView(this@RoomViewerActivity).apply {
-                text = "< Back"
+                text = getString(R.string.photo_room_back)
                 textSize = 16f
                 setTextColor(Color.parseColor("#007AFF"))
                 setOnClickListener { finish() }
@@ -132,7 +132,7 @@ class RoomViewerActivity : AppCompatActivity() {
             addView(backBtn)
 
             val title = TextView(this@RoomViewerActivity).apply {
-                text = "Your Room"
+                text = getString(R.string.room_viewer_your_room)
                 textSize = 18f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(Color.WHITE)
@@ -142,11 +142,11 @@ class RoomViewerActivity : AppCompatActivity() {
             addView(title)
 
             val saveBtn = TextView(this@RoomViewerActivity).apply {
-                text = "Save"
+                text = getString(R.string.common_save)
                 textSize = 16f
                 setTextColor(Color.parseColor("#4CAF50"))
                 setOnClickListener {
-                    Toast.makeText(this@RoomViewerActivity, "Room saved!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@RoomViewerActivity, getString(R.string.room_viewer_saved_toast), Toast.LENGTH_SHORT).show()
                     finish()
                 }
             }
@@ -238,7 +238,7 @@ class RoomViewerActivity : AppCompatActivity() {
         } else {
             mainImageView = ImageView(this)  // Dummy to avoid uninitialized
             val placeholder = TextView(this).apply {
-                text = "Room preview not available"
+                text = getString(R.string.room_viewer_preview_unavailable)
                 textSize = 16f
                 setTextColor(Color.GRAY)
                 gravity = Gravity.CENTER
@@ -309,7 +309,7 @@ class RoomViewerActivity : AppCompatActivity() {
             setPadding(24, 16, 24, 24)
 
             val infoTitle = TextView(this@RoomViewerActivity).apply {
-                text = "Room Created Successfully!"
+                text = getString(R.string.room_viewer_created_success)
                 textSize = 16f
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(Color.WHITE)
@@ -317,7 +317,7 @@ class RoomViewerActivity : AppCompatActivity() {
             addView(infoTitle)
 
             val infoText = TextView(this@RoomViewerActivity).apply {
-                text = "Your room textures have been extracted from the photo. Tap Save to keep this room."
+                text = getString(R.string.room_viewer_created_message)
                 textSize = 14f
                 setTextColor(Color.LTGRAY)
                 setPadding(0, 8, 0, 0)
@@ -329,7 +329,7 @@ class RoomViewerActivity : AppCompatActivity() {
             if (dimensionsFile.exists()) {
                 val dims = dimensionsFile.readText()
                 val dimsView = TextView(this@RoomViewerActivity).apply {
-                    text = "Dimensions: $dims".replace("\n", ", ")
+                    text = getString(R.string.room_viewer_dimensions, dims.replace("\n", ", "))
                     textSize = 12f
                     setTextColor(Color.GRAY)
                     setPadding(0, 8, 0, 0)

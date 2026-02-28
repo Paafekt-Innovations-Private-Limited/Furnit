@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Paafekt Beta</string>
+    <string name="app_name">Paafekt</string>
     <string name="app_tagline">3D റൂം എക്സ്പ്ലോറർ</string>
     <string name="app_version">പതിപ്പ്</string>
     <string name="app_developer">Furnit ടീം</string>
@@ -36,7 +36,7 @@
     <string name="home_no_models">3D മോഡലുകൾ കണ്ടെത്തിയില്ല</string>
     <string name="home_no_models_description">ഫോട്ടോയിൽ നിന്ന് നിങ്ങളുടെ ആദ്യ മുറി സൃഷ്ടിക്കുക!</string>
     <string name="home_create_room">ഫോട്ടോയിൽ നിന്ന് മുറി സൃഷ്ടിക്കുക</string>
-    <string name="home_rooms_remaining">%d/%d മുറികൾ ബാക്കി</string>
+    <string name="home_rooms_remaining">%1$d/%2$d മുറികൾ ബാക്കി</string>
     <string name="home_delete_hint">പുതിയവ സൃഷ്ടിക്കാൻ പഴയ മുറികൾ ഇല്ലാതാക്കുക</string>
     <string name="home_swipe_hint">ഇല്ലാതാക്കാൻ ഇടത്തേക്ക് സ്വൈപ്പ് ചെയ്യുക</string>
     <string name="home_room_model">3D റൂം മോഡൽ</string>
@@ -230,4 +230,127 @@
     <string name="orientation_held_vertically">held vertically</string>
     <string name="orientation_held_horizontally">held horizontally</string>
     <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+
+    <!-- SharpRoom / PLY viewer -->
+    <string name="sharp_room_no_ply">PLY ഫയൽ നൽകിയിട്ടില്ല</string>
+    <string name="sharp_room_ply_not_found">PLY ഫയൽ കണ്ടെത്തിയില്ല</string>
+    <string name="sharp_room_loading">3D മുറി ലോഡ് ചെയ്യുന്നു…</string>
+    <string name="sharp_room_screenshot_saved">സ്ക്രീൻഷോട്ട് സേവ് ചെയ്തു: %s</string>
+    <string name="sharp_room_screenshot_failed">സ്ക്രീൻഷോട്ട് കാപ്ചർ ചെയ്യുന്നത് പരാജയപ്പെട്ടു</string>
+    <string name="sharp_room_smartypants_failed">SmartyPants ആരംഭിക്കുന്നത് പരാജയപ്പെട്ടു</string>
+    <string name="sharp_room_camera_error">ക്യാമറ പിശക്: %s</string>
+    <string name="sharp_room_cannot_save">സേവ് ചെയ്യാൻ കഴിയില്ല: മുറി ഫോൾഡർ കണ്ടെത്തിയില്ല</string>
+    <string name="sharp_room_saved">മുറി \'%s\' സേവ് ചെയ്തു!</string>
+    <string name="sharp_room_save_failed">സേവ് ചെയ്യുന്നത് പരാജയപ്പെട്ടു: %s</string>
+    <string name="sharp_room_share_failed">പങ്കിടുന്നത് പരാജയപ്പെട്ടു: %s</string>
+
+    <!-- FurnitureFit / SmartyPants -->
+    <string name="smartypants_initializing">ആരംഭിക്കുന്നു…</string>
+    <string name="smartypants_drag_hint">ഫർണിച്ചർ നീക്കാൻ വലിക്കുക • മുറി പാൻ ചെയ്യാൻ പുറത്ത് വലിക്കുക</string>
+    <string name="smartypants_tap_calibrate">കാലിബ്രേറ്റ് ചെയ്യാൻ ടാപ്പ് ചെയ്യുക</string>
+    <string name="smartypants_scanning">സ്കാൻ ചെയ്യുന്നു…</string>
+    <string name="smartypants_camera_error">ക്യാമറ പിശക്: %s</string>
+    <string name="smartypants_screenshot_failed">സ്ക്രീൻഷോട്ട് പരാജയം: %s</string>
+    <string name="smartypants_saved_screenshots">സ്ക്രീൻഷോട്ടുകളിൽ സേവ് ചെയ്തു</string>
+    <string name="smartypants_failed_save_screenshot">സ്ക്രീൻഷോട്ട് സേവ് ചെയ്യുന്നത് പരാജയപ്പെട്ടു</string>
+    <string name="smartypants_failed_save">സേവ് ചെയ്യുന്നത് പരാജയപ്പെട്ടു: %s</string>
+    <string name="smartypants_enter_positive_number">പോസിറ്റീവ് നമ്പർ നൽകുക</string>
+    <string name="smartypants_room_scaled">മുറി %sx സ്കെയിൽ ചെയ്തു</string>
+    <string name="smartypants_detected">കണ്ടെത്തി</string>
+    <string name="smartypants_camera_ready">ക്യാമറ തയ്യാർ - ഫർണിച്ചർ കണ്ടെത്തുന്നു…</string>
+    <string name="smartypants_scanning_for_furniture">ഫർണിച്ചർ തിരയുന്നു…</string>
+    <string name="smartypants_calibrate_title">മുറി കാലിബ്രേറ്റ് ചെയ്യുക</string>
+    <string name="smartypants_calibrate_message">യഥാർത്ഥ ഫർണിച്ചർ ഉയരം (മീറ്റർ) നൽകുക. കണ്ടെത്തി: %sm</string>
+    <string name="smartypants_real_height_hint">യഥാർത്ഥ ഉയരം (മീ)</string>
+
+    <!-- Content / Home -->
+    <string name="home_rooms_remaining_short">1000-ൽ %1$d മുറികൾ ശേഷിക്കുന്നു</string>
+    <string name="home_total">ആകെ</string>
+    <string name="home_zero_mb">0 MB</string>
+    <string name="home_no_rooms_yet">ഇതുവരെ മുറികളില്ല\nആരംഭിക്കാൻ ഇമേജ് ഐക്കൺ ടാപ്പ് ചെയ്യുക</string>
+    <string name="home_3d_room_model">3D മുറി മോഡൽ</string>
+    <string name="home_opening">%s തുറക്കുന്നു…</string>
+    <string name="home_deleted">%s ഇല്ലാതാക്കി</string>
+    <string name="home_failed_delete">ഇല്ലാതാക്കുന്നത് പരാജയപ്പെട്ടു: %s</string>
+
+    <!-- Single Photo Room -->
+    <string name="photo_room_back">\u2039 പിന്നോട്ട്</string>
+    <string name="photo_room_or">അല്ലെങ്കിൽ</string>
+    <string name="photo_room_do_not_screenshots">⚠️ സ്ക്രീൻഷോട്ടുകൾ ഉപയോഗിക്കരുത് - യഥാർത്ഥ ഫോട്ടോകൾ ഉപയോഗിക്കുക</string>
+    <string name="photo_room_portrait_held">പോർട്രെയ്റ്റ് - ലംബമായി പിടിച്ച്</string>
+    <string name="photo_room_how_to_create_short">നിങ്ങളുടെ മുറി എങ്ങനെ സൃഷ്ടിക്കണം?</string>
+    <string name="photo_room_tap_option_short">ചുവടെയുള്ള ഒരു ഓപ്ഷൻ ടാപ്പ് ചെയ്യുക</string>
+    <string name="photo_room_creating_short">നിങ്ങളുടെ 3D മുറി സൃഷ്ടിക്കുന്നു…</string>
+    <string name="photo_room_progress_hint">സാധാരണയായി ഏകദേശം 2 മിനിറ്റ് എടുക്കും. നിങ്ങൾക്കായി എന്തോ മനോഹരമായത് തയ്യാറാക്കുന്നു.</string>
+    <string name="photo_room_error_camera">ക്യാമറ തുറക്കുന്നതിൽ പിശക്: %s</string>
+    <string name="photo_room_error_load">പിശക്: %s</string>
+
+    <!-- GLB Room -->
+    <string name="glb_room_no_file">GLB ഫയൽ നൽകിയിട്ടില്ല</string>
+    <string name="glb_room_not_found">GLB ഫയൽ കണ്ടെത്തിയില്ല</string>
+    <string name="glb_room_saved">മുറി \'%s\' സേവ് ചെയ്തു!</string>
+    <string name="glb_room_error">പിശക്: %s</string>
+    <string name="glb_room_screenshot_saved">സ്ക്രീൻഷോട്ട് സേവ് ചെയ്തു: %s</string>
+    <string name="glb_room_screenshot_failed">സ്ക്രീൻഷോട്ട് കാപ്ചർ ചെയ്യുന്നത് പരാജയപ്പെട്ടു</string>
+
+    <!-- Sharp Inference -->
+    <string name="sharp_inference_no_image">ഇമേജ് URI അല്ലെങ്കിൽ പാതയില്ല</string>
+    <string name="sharp_inference_loading_model">SHARP മോഡൽ ലോഡ് ചെയ്യുന്നു…</string>
+    <string name="sharp_inference_running">SHARP 3D പ്രവർത്തിപ്പിക്കുന്നു…</string>
+    <string name="sharp_inference_preparing">തയ്യാറാക്കുന്നു…</string>
+
+    <!-- Room Boundary -->
+    <string name="boundary_back">\u2039 പിന്നോട്ട്</string>
+    <string name="boundary_done">ചെയ്തു</string>
+    <string name="boundary_reset">റീസെറ്റ്</string>
+    <string name="boundary_no_image">ഇമേജ് ലഭ്യമല്ല</string>
+    <string name="boundary_failed_create">മുറി സൃഷ്ടിക്കുന്നത് പരാജയപ്പെട്ടു</string>
+    <string name="boundary_processing">പ്രോസസ്സ് ചെയ്യുന്നു…</string>
+
+    <!-- Model Detail -->
+    <string name="model_detail_preview">3D മുറി പ്രിവ്യൂ</string>
+    <string name="model_detail_save_first">AI ഡിറ്റക്ഷൻ ഉപയോഗിക്കാൻ ആദ്യം മുറി സേവ് ചെയ്യുക</string>
+    <string name="model_detail_taking_screenshot">സ്ക്രീൻഷോട്ട് എടുക്കുന്നു…</string>
+    <string name="model_detail_room_not_found">മുറി ഫയൽ കണ്ടെത്തിയില്ല</string>
+    <string name="model_detail_no_room_data">സേവ് ചെയ്യാൻ മുറി ഡാറ്റയില്ല</string>
+    <string name="model_detail_failed_save">മുറി സേവ് ചെയ്യുന്നത് പരാജയപ്പെട്ടു</string>
+    <string name="model_detail_failed_share">മുറി പങ്കിടുന്നത് പരാജയപ്പെട്ടു</string>
+    <string name="model_detail_screenshot_failed">സ്ക്രീൻഷോട്ട് പരാജയം</string>
+    <string name="model_detail_failed_capture">സ്ക്രീൻഷോട്ട് കാപ്ചർ ചെയ്യുന്നത് പരാജയപ്പെട്ടു</string>
+    <string name="model_detail_failed_load">ലോഡ് ചെയ്യുന്നത് പരാജയപ്പെട്ടു: %s</string>
+    <string name="model_detail_failed_save_screenshot_message">സ്ക്രീൻഷോട്ട് സേവ് ചെയ്യുന്നത് പരാജയപ്പെട്ടു: %s</string>
+    <string name="model_detail_drag_camera">ക്യാമറ നീക്കാൻ വലിക്കുക</string>
+
+    <!-- Room Viewer -->
+    <string name="room_viewer_no_folder">മുറി ഫോൾഡർ നൽകിയിട്ടില്ല</string>
+    <string name="room_viewer_folder_not_found">മുറി ഫോൾഡർ കണ്ടെത്തിയില്ല</string>
+    <string name="room_viewer_your_room">നിങ്ങളുടെ മുറി</string>
+    <string name="room_viewer_preview_unavailable">മുറി പ്രിവ്യൂ ലഭ്യമല്ല</string>
+    <string name="room_viewer_created_success">മുറി വിജയകരമായി സൃഷ്ടിച്ചു!</string>
+    <string name="room_viewer_created_message">നിങ്ങളുടെ മുറിയുടെ ടെക്സ്ചറുകൾ ഫോട്ടോയിൽ നിന്ന് എടുത്തു. സൂക്ഷിക്കാൻ സേവ് ടാപ്പ് ചെയ്യുക.</string>
+    <string name="room_viewer_dimensions">അളവുകൾ: %s</string>
+    <string name="room_viewer_saved_toast">മുറി സേവ് ചെയ്തു!</string>
+
+    <!-- Model Viewer -->
+    <string name="model_viewer_title">മോഡലുകൾ</string>
+    <string name="model_viewer_view_3d">3D കാണുക</string>
+    <string name="model_viewer_ar">AR</string>
+
+    <!-- Settings (developer) -->
+    <string name="settings_inference_backend">ഇൻഫറൻസ് ബാക്കെൻഡ്</string>
+    <string name="settings_onnx_default">ONNX (ഡിഫോൾട്ട്)</string>
+    <string name="settings_onnx_description">ONNX Runtime (FP32) ഉപയോഗിച്ച് സ്റ്റാൻഡേർഡ് ഇൻഫറൻസ്</string>
+
+    <!-- Auth / Login -->
+    <string name="login_welcome">Furnit-ലേക്ക് സ്വാഗതം</string>
+    <string name="login_sign_in_phone">ഫോൺ നമ്പർ ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക</string>
+    <string name="login_send_code">സ്ഥിരീകരണ കോഡ് അയയ്ക്കുക</string>
+    <string name="login_terms_agree">തുടരുന്നതിലൂടെ, നിങ്ങൾ ഞങ്ങളുടെ സേവന നിബന്ധനകളും സ്വകാര്യതാ നയവും അംഗീകരിക്കുന്നു</string>
+    <string name="otp_back">\u2039 പിന്നോട്ട്</string>
+    <string name="otp_verify_phone">ഫോൺ സ്ഥിരീകരിക്കുക</string>
+    <string name="otp_enter_code">അയച്ച 6 അക്ക കോഡ് നൽകുക\n%s</string>
+    <string name="otp_resend_in_seconds">%ds-ൽ വീണ്ടും അയയ്ക്കുക</string>
+    <string name="otp_resend_code">കോഡ് വീണ്ടും അയയ്ക്കുക</string>
+    <string name="otp_code_sent">കോഡ് അയച്ചു!</string>
+    <string name="login_continue">തുടരുക</string>
 </resources>

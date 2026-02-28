@@ -2,10 +2,9 @@ package com.furnit.android
 
 import android.app.Application
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.os.Process
-import android.util.Log
 import com.furnit.android.utils.DebugLogger
+import com.furnit.android.utils.LogUtil
 import com.google.firebase.FirebaseApp
 
 /**
@@ -22,17 +21,14 @@ class FurnitApplication : Application() {
         super.onCreate()
 
         DebugLogger.init(this)
+        LogUtil.init(this)
         installCrashHandler()
 
         try {
             FirebaseApp.initializeApp(this)
-            if (isDebugBuild()) {
-                Log.d(TAG, "Firebase initialized successfully")
-            }
+            LogUtil.d(TAG, "Firebase initialized successfully")
         } catch (e: Exception) {
-            if (isDebugBuild()) {
-                Log.e(TAG, "Failed to initialize Firebase", e)
-            }
+            LogUtil.e(TAG, "Failed to initialize Firebase", e)
         }
     }
 
@@ -53,7 +49,4 @@ class FurnitApplication : Application() {
         }
     }
 
-    private fun isDebugBuild(): Boolean {
-        return (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-    }
 }

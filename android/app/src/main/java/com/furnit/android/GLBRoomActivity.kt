@@ -10,7 +10,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Environment
 import android.util.Base64
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -96,10 +96,10 @@ class GLBRoomActivity : AppCompatActivity() {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
 
-        Log.d(TAG, "Opening GLBRoomActivity - path: $glbPath, roomId: $roomId, preview: $isPreviewMode, orientation: $photoOrientation")
+        LogUtil.d(TAG, "Opening GLBRoomActivity - path: $glbPath, roomId: $roomId, preview: $isPreviewMode, orientation: $photoOrientation")
 
         if (glbPath == null) {
-            Toast.makeText(this, "No GLB file provided", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.glb_room_no_file), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -118,7 +118,7 @@ class GLBRoomActivity : AppCompatActivity() {
 
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
-                    Log.d(TAG, "WebGL: ${message?.message()}")
+                    LogUtil.d(TAG, "WebGL: ${message?.message()}")
                     return true
                 }
             }
@@ -126,11 +126,11 @@ class GLBRoomActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    Log.d(TAG, "WebView page loaded")
+                    LogUtil.d(TAG, "WebView page loaded")
                 }
 
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                    Log.e(TAG, "WebView error: ${error?.description}")
+                    LogUtil.e(TAG, "WebView error: ${error?.description}")
                 }
             }
 
@@ -290,7 +290,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 setOnClickListener {
                     // Launch FurnitureFitActivity with this room as background (pass folder so it uses opened room)
                     val roomFolder = intent.getStringExtra("ROOM_FOLDER") ?: glbPath?.let { path -> java.io.File(path).parent }
-                    Log.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
+                    LogUtil.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
                     val intent = Intent(this@GLBRoomActivity, FurnitureFitActivity::class.java)
                     intent.putExtra("ROOM_ID", roomId)
                     intent.putExtra("ROOM_NAME", roomName)
@@ -381,7 +381,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 addView(progress)
 
                 val text = TextView(this@GLBRoomActivity).apply {
-                    text = "Loading 3D Room..."
+                    text = getString(R.string.sharp_room_loading)
                     textSize = 16f
                     setTextColor(Color.parseColor("#333333"))
                     gravity = Gravity.CENTER
@@ -407,13 +407,13 @@ class GLBRoomActivity : AppCompatActivity() {
     private fun loadWebGLViewer() {
         val glbFile = File(glbPath!!)
         if (!glbFile.exists()) {
-            Log.e(TAG, "GLB file not found: $glbPath")
-            Toast.makeText(this, "GLB file not found", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "GLB file not found: $glbPath")
+            Toast.makeText(this, getString(R.string.glb_room_not_found), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        Log.d(TAG, "Loading GLB file: ${glbFile.name} (${glbFile.length()} bytes)")
+        LogUtil.d(TAG, "Loading GLB file: ${glbFile.name} (${glbFile.length()} bytes)")
 
         // Read GLB and convert to base64
         val glbData = glbFile.readBytes()
@@ -676,8 +676,8 @@ class GLBRoomActivity : AppCompatActivity() {
 
                 previewRoomFolder.parentFile?.deleteRecursively()
 
-                Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()
-                Log.d(TAG, "Room saved: $name at ${savedRoomFolder.absolutePath}")
+                Toast.makeText(this, getString(R.string.glb_room_saved, name), Toast.LENGTH_SHORT).show()
+                LogUtil.d(TAG, "Room saved: $name at ${savedRoomFolder.absolutePath}")
 
                 val intent = Intent(this, ContentActivity::class.java)
                 intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
@@ -685,8 +685,8 @@ class GLBRoomActivity : AppCompatActivity() {
                 finish()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save room", e)
-            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "Failed to save room", e)
+            Toast.makeText(this, getString(R.string.glb_room_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -705,8 +705,8 @@ class GLBRoomActivity : AppCompatActivity() {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
 
-            Toast.makeText(this, "Screenshot saved: $fileName", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Screenshot saved: ${file.absolutePath}")
+            Toast.makeText(this, getString(R.string.glb_room_screenshot_saved, fileName), Toast.LENGTH_SHORT).show()
+            LogUtil.d(TAG, "Screenshot saved: ${file.absolutePath}")
 
             val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -717,8 +717,8 @@ class GLBRoomActivity : AppCompatActivity() {
             startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to take screenshot", e)
-            Toast.makeText(this, "Failed to capture screenshot", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "Failed to take screenshot", e)
+            Toast.makeText(this, getString(R.string.glb_room_screenshot_failed), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -728,7 +728,7 @@ class GLBRoomActivity : AppCompatActivity() {
         fun onLoaded() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
-                Log.d(TAG, "WebGL viewer reported loaded")
+                LogUtil.d(TAG, "WebGL viewer reported loaded")
             }
         }
 
@@ -737,13 +737,13 @@ class GLBRoomActivity : AppCompatActivity() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
                 Toast.makeText(this@GLBRoomActivity, message, Toast.LENGTH_LONG).show()
-                Log.e(TAG, "WebGL error: $message")
+                LogUtil.e(TAG, "WebGL error: $message")
             }
         }
 
         @JavascriptInterface
         fun log(message: String) {
-            Log.d(TAG, "WebGL: $message")
+            LogUtil.d(TAG, "WebGL: $message")
         }
     }
 

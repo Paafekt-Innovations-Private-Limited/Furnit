@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Paafekt Beta</string>
+    <string name="app_name">Paafekt</string>
     <string name="app_tagline">مستكشف الغرف ثلاثي الأبعاد</string>
     <string name="app_version">الإصدار</string>
     <string name="app_developer">فريق Furnit</string>
@@ -36,7 +36,7 @@
     <string name="home_no_models">لم يتم العثور على نماذج ثلاثية الأبعاد</string>
     <string name="home_no_models_description">أنشئ غرفتك الأولى من صورة!</string>
     <string name="home_create_room">إنشاء غرفة من صورة</string>
-    <string name="home_rooms_remaining">%d/%d غرف متبقية</string>
+    <string name="home_rooms_remaining">%1$d/%2$d غرف متبقية</string>
     <string name="home_delete_hint">احذف الغرف القديمة لإنشاء غرف جديدة</string>
     <string name="home_swipe_hint">اسحب لليسار للحذف</string>
     <string name="home_room_model">نموذج غرفة ثلاثي الأبعاد</string>
@@ -230,4 +230,127 @@
     <string name="orientation_held_vertically">held vertically</string>
     <string name="orientation_held_horizontally">held horizontally</string>
     <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+
+    <!-- SharpRoom / PLY viewer -->
+    <string name="sharp_room_no_ply">لم يتم توفير ملف PLY</string>
+    <string name="sharp_room_ply_not_found">ملف PLY غير موجود</string>
+    <string name="sharp_room_loading">جاري تحميل الغرفة ثلاثية الأبعاد…</string>
+    <string name="sharp_room_screenshot_saved">تم حفظ لقطة الشاشة: %s</string>
+    <string name="sharp_room_screenshot_failed">فشل التقاط لقطة الشاشة</string>
+    <string name="sharp_room_smartypants_failed">فشل تهيئة SmartyPants</string>
+    <string name="sharp_room_camera_error">خطأ في الكاميرا: %s</string>
+    <string name="sharp_room_cannot_save">لا يمكن الحفظ: مجلد الغرفة غير موجود</string>
+    <string name="sharp_room_saved">تم حفظ الغرفة \'%s\'!</string>
+    <string name="sharp_room_save_failed">فشل الحفظ: %s</string>
+    <string name="sharp_room_share_failed">فشل المشاركة: %s</string>
+
+    <!-- FurnitureFit / SmartyPants -->
+    <string name="smartypants_initializing">جاري التهيئة…</string>
+    <string name="smartypants_drag_hint">اسحب الأثاث للتحريك • اسحب خارجاً لتحريك الغرفة</string>
+    <string name="smartypants_tap_calibrate">انقر للمعايرة</string>
+    <string name="smartypants_scanning">جاري المسح…</string>
+    <string name="smartypants_camera_error">خطأ في الكاميرا: %s</string>
+    <string name="smartypants_screenshot_failed">فشلت لقطة الشاشة: %s</string>
+    <string name="smartypants_saved_screenshots">تم الحفظ في لقطات الشاشة</string>
+    <string name="smartypants_failed_save_screenshot">فشل حفظ لقطة الشاشة</string>
+    <string name="smartypants_failed_save">فشل الحفظ: %s</string>
+    <string name="smartypants_enter_positive_number">أدخل رقماً موجباً</string>
+    <string name="smartypants_room_scaled">تم تحجيم الغرفة %sx</string>
+    <string name="smartypants_detected">تم الكشف</string>
+    <string name="smartypants_camera_ready">الكاميرا جاهزة - جاري كشف الأثاث…</string>
+    <string name="smartypants_scanning_for_furniture">جاري البحث عن الأثاث…</string>
+    <string name="smartypants_calibrate_title">معايرة الغرفة</string>
+    <string name="smartypants_calibrate_message">أدخل ارتفاع الأثاث الفعلي (متر). تم الكشف: %sm</string>
+    <string name="smartypants_real_height_hint">الارتفاع الفعلي (م)</string>
+
+    <!-- Content / Home -->
+    <string name="home_rooms_remaining_short">%1$d من 1000 غرفة متبقية</string>
+    <string name="home_total">الإجمالي</string>
+    <string name="home_zero_mb">0 ميجابايت</string>
+    <string name="home_no_rooms_yet">لا توجد غرف بعد\nانقر على أيقونة الصورة للبدء</string>
+    <string name="home_3d_room_model">نموذج غرفة ثلاثي الأبعاد</string>
+    <string name="home_opening">جاري فتح %s…</string>
+    <string name="home_deleted">تم حذف %s</string>
+    <string name="home_failed_delete">فشل الحذف: %s</string>
+
+    <!-- Single Photo Room -->
+    <string name="photo_room_back">\u2039 رجوع</string>
+    <string name="photo_room_or">أو</string>
+    <string name="photo_room_do_not_screenshots">⚠️ لا تستخدم لقطات الشاشة - استخدم صوراً حقيقية</string>
+    <string name="photo_room_portrait_held">عمودي - مُمسوك عمودياً</string>
+    <string name="photo_room_how_to_create_short">كيف تريد إنشاء غرفتك؟</string>
+    <string name="photo_room_tap_option_short">انقر على خيار أدناه</string>
+    <string name="photo_room_creating_short">جاري إنشاء غرفتك ثلاثية الأبعاد…</string>
+    <string name="photo_room_progress_hint">عادةً يستغرق حوالي دقيقتين. نحن نجهز شيئاً جميلاً لك.</string>
+    <string name="photo_room_error_camera">خطأ في فتح الكاميرا: %s</string>
+    <string name="photo_room_error_load">خطأ: %s</string>
+
+    <!-- GLB Room -->
+    <string name="glb_room_no_file">لم يتم توفير ملف GLB</string>
+    <string name="glb_room_not_found">ملف GLB غير موجود</string>
+    <string name="glb_room_saved">تم حفظ الغرفة \'%s\'!</string>
+    <string name="glb_room_error">خطأ: %s</string>
+    <string name="glb_room_screenshot_saved">تم حفظ لقطة الشاشة: %s</string>
+    <string name="glb_room_screenshot_failed">فشل التقاط لقطة الشاشة</string>
+
+    <!-- Sharp Inference -->
+    <string name="sharp_inference_no_image">لا يوجد URI أو مسار للصورة</string>
+    <string name="sharp_inference_loading_model">جاري تحميل نموذج SHARP…</string>
+    <string name="sharp_inference_running">جاري تشغيل SHARP 3D…</string>
+    <string name="sharp_inference_preparing">جاري التحضير…</string>
+
+    <!-- Room Boundary -->
+    <string name="boundary_back">\u2039 رجوع</string>
+    <string name="boundary_done">تم</string>
+    <string name="boundary_reset">إعادة تعيين</string>
+    <string name="boundary_no_image">لا توجد صورة متاحة</string>
+    <string name="boundary_failed_create">فشل إنشاء الغرفة</string>
+    <string name="boundary_processing">جاري المعالجة…</string>
+
+    <!-- Model Detail -->
+    <string name="model_detail_preview">معاينة الغرفة ثلاثية الأبعاد</string>
+    <string name="model_detail_save_first">احفظ الغرفة أولاً لاستخدام كشف الذكاء الاصطناعي</string>
+    <string name="model_detail_taking_screenshot">جاري التقاط لقطة الشاشة…</string>
+    <string name="model_detail_room_not_found">ملف الغرفة غير موجود</string>
+    <string name="model_detail_no_room_data">لا توجد بيانات غرفة للحفظ</string>
+    <string name="model_detail_failed_save">فشل حفظ الغرفة</string>
+    <string name="model_detail_failed_share">فشل مشاركة الغرفة</string>
+    <string name="model_detail_screenshot_failed">فشلت لقطة الشاشة</string>
+    <string name="model_detail_failed_capture">فشل التقاط لقطة الشاشة</string>
+    <string name="model_detail_failed_load">فشل التحميل: %s</string>
+    <string name="model_detail_failed_save_screenshot_message">فشل حفظ لقطة الشاشة: %s</string>
+    <string name="model_detail_drag_camera">اسحب لتحريك الكاميرا</string>
+
+    <!-- Room Viewer -->
+    <string name="room_viewer_no_folder">لم يتم توفير مجلد الغرفة</string>
+    <string name="room_viewer_folder_not_found">مجلد الغرفة غير موجود</string>
+    <string name="room_viewer_your_room">غرفتك</string>
+    <string name="room_viewer_preview_unavailable">معاينة الغرفة غير متاحة</string>
+    <string name="room_viewer_created_success">تم إنشاء الغرفة بنجاح!</string>
+    <string name="room_viewer_created_message">تم استخراج نسيج غرفتك من الصورة. انقر على حفظ للاحتفاظ بهذه الغرفة.</string>
+    <string name="room_viewer_dimensions">الأبعاد: %s</string>
+    <string name="room_viewer_saved_toast">تم حفظ الغرفة!</string>
+
+    <!-- Model Viewer -->
+    <string name="model_viewer_title">النماذج</string>
+    <string name="model_viewer_view_3d">عرض 3D</string>
+    <string name="model_viewer_ar">الواقع المعزز</string>
+
+    <!-- Settings (developer) -->
+    <string name="settings_inference_backend">محرك الاستدلال</string>
+    <string name="settings_onnx_default">ONNX (افتراضي)</string>
+    <string name="settings_onnx_description">استدلال قياسي مع ONNX Runtime (FP32)</string>
+
+    <!-- Auth / Login -->
+    <string name="login_welcome">مرحباً بك في Furnit</string>
+    <string name="login_sign_in_phone">سجّل الدخول برقم هاتفك</string>
+    <string name="login_send_code">إرسال رمز التحقق</string>
+    <string name="login_terms_agree">بالمتابعة، أنت توافق على شروط الخدمة وسياسة الخصوصية</string>
+    <string name="otp_back">\u2039 رجوع</string>
+    <string name="otp_verify_phone">التحقق من الهاتف</string>
+    <string name="otp_enter_code">أدخل الرمز المكون من 6 أرقام المرسل إلى\n%s</string>
+    <string name="otp_resend_in_seconds">إعادة الإرسال خلال %ds</string>
+    <string name="otp_resend_code">إعادة إرسال الرمز</string>
+    <string name="otp_code_sent">تم إرسال الرمز!</string>
+    <string name="login_continue">متابعة</string>
 </resources>

@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Running SHARP 3D..."
+        android:text="@string/sharp_inference_running"
         android:textSize="18sp"
         android:layout_marginBottom="16dp" />
 
@@ -26,6 +26,6 @@
         android:id="@+id/sharp_status"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Preparing..."
+        android:text="@string/sharp_inference_preparing"
         android:textSize="14sp" />
 </LinearLayout>

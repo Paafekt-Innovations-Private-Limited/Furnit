@@ -8,7 +8,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.view.PixelCopy
 import android.view.View
 import android.widget.EditText
@@ -113,8 +113,8 @@ class ModelDetailActivity : AppCompatActivity() {
         if (directGlbPath != null) {
             // Direct GLB path mode (preview before save)
             glbPath = directGlbPath
-            modelTitle.text = "3D Room Preview"
-            Log.d(TAG, "Preview mode - GLB path: $directGlbPath")
+            modelTitle.text = getString(R.string.model_detail_preview)
+            LogUtil.d(TAG, "Preview mode - GLB path: $directGlbPath")
 
             // In preview mode, show save button (down arrow), hide share button
             saveButton.visibility = View.VISIBLE
@@ -124,40 +124,40 @@ class ModelDetailActivity : AppCompatActivity() {
             // Brain button prompts to save first in preview mode
             brainButton.visibility = View.VISIBLE
             brainButton.setOnClickListener {
-                Log.d(TAG, "Brain button clicked in preview mode")
-                Toast.makeText(this, "Save room first to use AI detection", Toast.LENGTH_SHORT).show()
+                LogUtil.d(TAG, "Brain button clicked in preview mode")
+                Toast.makeText(this, getString(R.string.model_detail_save_first), Toast.LENGTH_SHORT).show()
             }
 
             // Screenshot works in preview mode
             screenshotButton.visibility = View.VISIBLE
             screenshotButton.setOnClickListener {
-                Log.d(TAG, "Screenshot button clicked in preview mode")
-                Toast.makeText(this, "Taking screenshot...", Toast.LENGTH_SHORT).show()
+                LogUtil.d(TAG, "Screenshot button clicked in preview mode")
+                Toast.makeText(this, getString(R.string.model_detail_taking_screenshot), Toast.LENGTH_SHORT).show()
                 takeScreenshot()
             }
 
             // Verify file exists before loading
             val glbFile = File(directGlbPath)
             if (glbFile.exists()) {
-                Log.d(TAG, "Preview GLB exists: ${glbFile.length()} bytes")
+                LogUtil.d(TAG, "Preview GLB exists: ${glbFile.length()} bytes")
                 loadModel(directGlbPath, null, null, null)
             } else {
-                Log.e(TAG, "Preview GLB not found: $directGlbPath")
-                Toast.makeText(this, "Room file not found", Toast.LENGTH_SHORT).show()
+                LogUtil.e(TAG, "Preview GLB not found: $directGlbPath")
+                Toast.makeText(this, getString(R.string.model_detail_room_not_found), Toast.LENGTH_SHORT).show()
             }
         } else {
             // Model ID mode (existing rooms - bundled vintage/cozy or from list)
             val modelId = intent.getStringExtra(EXTRA_MODEL_ID) ?: return
             val model = modelManager.getModel(modelId) ?: run {
-                Log.e(TAG, "Model not found for id=$modelId")
+                LogUtil.e(TAG, "Model not found for id=$modelId")
                 return
             }
 
-            Log.d(TAG, "ModelDetail mode: id=$modelId name=${model.name} assetPath=${model.assetPath} isUserCreated=${model.isUserCreated}")
+            LogUtil.d(TAG, "ModelDetail mode: id=$modelId name=${model.name} assetPath=${model.assetPath} isUserCreated=${model.isUserCreated}")
 
             currentModelId = modelId
             glbPath = model.assetPath
-            modelTitle.text = "3D Room View"
+            modelTitle.text = getString(R.string.room_viewer_title)
 
             // In view mode, hide save button and show share button
             saveButton.visibility = View.GONE
@@ -173,7 +173,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 // Only pass ROOM_FOLDER when it's an absolute path to a real folder (user room).
                 // Bundled assets (models/vintage.glb) have parent "models" - no room.glb there, so omit to use ROOM_ID.
                 val absoluteFolder = if (roomFolder != null && java.io.File(roomFolder).isAbsolute) roomFolder else null
-                Log.d(TAG, "Brain click: ROOM_ID=${model.id} ROOM_FOLDER=$absoluteFolder (raw=$roomFolder)")
+                LogUtil.d(TAG, "Brain click: ROOM_ID=${model.id} ROOM_FOLDER=$absoluteFolder (raw=$roomFolder)")
                 val intent = Intent(this, FurnitureFitActivity::class.java)
                 intent.putExtra("ROOM_ID", model.id)
                 intent.putExtra("ROOM_NAME", model.name)
@@ -226,7 +226,7 @@ class ModelDetailActivity : AppCompatActivity() {
     private fun saveRoom(name: String) {
         val path = glbPath
         if (path == null) {
-            Toast.makeText(this, "No room data to save", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.model_detail_no_room_data), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -251,8 +251,8 @@ class ModelDetailActivity : AppCompatActivity() {
                 // Clean up preview directory
                 previewRoomFolder.parentFile?.deleteRecursively()
 
-                Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()
-                Log.d(TAG, "Room saved: $name at ${savedRoomFolder.absolutePath}")
+                Toast.makeText(this, getString(R.string.room_viewer_save_success, name), Toast.LENGTH_SHORT).show()
+                LogUtil.d(TAG, "Room saved: $name at ${savedRoomFolder.absolutePath}")
 
                 // Go to rooms list screen (ContentActivity)
                 val intent = Intent(this, ContentActivity::class.java)
@@ -260,11 +260,11 @@ class ModelDetailActivity : AppCompatActivity() {
                 startActivity(intent)
                 finish()
             } else {
-                Toast.makeText(this, "Failed to save room", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.model_detail_failed_save), Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save room", e)
-            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "Failed to save room", e)
+            Toast.makeText(this, getString(R.string.photo_room_error_load, e.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -273,7 +273,7 @@ class ModelDetailActivity : AppCompatActivity() {
         try {
             val glbFile = File(path)
             if (!glbFile.exists()) {
-                Toast.makeText(this, "Room file not found", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.model_detail_room_not_found), Toast.LENGTH_SHORT).show()
                 return
             }
 
@@ -285,8 +285,8 @@ class ModelDetailActivity : AppCompatActivity() {
             }
             startActivity(Intent.createChooser(shareIntent, "Share Room"))
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to share room", e)
-            Toast.makeText(this, "Failed to share room", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "Failed to share room", e)
+            Toast.makeText(this, getString(R.string.model_detail_failed_share), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -301,15 +301,15 @@ class ModelDetailActivity : AppCompatActivity() {
                         saveAndShareScreenshot(bitmap)
                     } else {
                         runOnUiThread {
-                            Toast.makeText(this, "Failed to capture screenshot", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, getString(R.string.model_detail_failed_capture), Toast.LENGTH_SHORT).show()
                         }
                     }
                 },
                 Handler(Looper.getMainLooper())
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Screenshot failed", e)
-            Toast.makeText(this, "Screenshot failed", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "Screenshot failed", e)
+            Toast.makeText(this, getString(R.string.model_detail_screenshot_failed), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -334,7 +334,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 }
 
                 runOnUiThread {
-                    Toast.makeText(this, "Saved to Screenshots", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.smartypants_saved_screenshots), Toast.LENGTH_SHORT).show()
                 }
 
                 // Share the screenshot
@@ -346,14 +346,14 @@ class ModelDetailActivity : AppCompatActivity() {
                 startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
             } else {
                 runOnUiThread {
-                    Toast.makeText(this, "Failed to save screenshot", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.smartypants_failed_save_screenshot), Toast.LENGTH_SHORT).show()
                 }
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save screenshot", e)
+            LogUtil.e(TAG, "Failed to save screenshot", e)
             runOnUiThread {
-                Toast.makeText(this, "Failed to save screenshot: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.model_detail_failed_save_screenshot_message, e.message ?: ""), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -364,7 +364,7 @@ class ModelDetailActivity : AppCompatActivity() {
                 lastTouchX = event.x
                 lastTouchY = event.y
                 isDragging = true
-                Log.d(TAG, "Touch DOWN at ($lastTouchX, $lastTouchY)")
+                LogUtil.d(TAG, "Touch DOWN at ($lastTouchX, $lastTouchY)")
             }
             MotionEvent.ACTION_MOVE -> {
                 if (isDragging) {
@@ -380,7 +380,7 @@ class ModelDetailActivity : AppCompatActivity() {
                     val newX = position.x - deltaX * sensitivity
                     val newZ = position.z - deltaY * sensitivity
 
-                    Log.d(TAG, "Touch MOVE delta=($deltaX, $deltaY) -> camera ($newX, ${position.y}, $newZ)")
+                    LogUtil.d(TAG, "Touch MOVE delta=($deltaX, $deltaY) -> camera ($newX, ${position.y}, $newZ)")
 
                     camera.position = io.github.sceneview.math.Position(
                         newX,
@@ -394,7 +394,7 @@ class ModelDetailActivity : AppCompatActivity() {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 isDragging = false
-                Log.d(TAG, "Touch UP")
+                LogUtil.d(TAG, "Touch UP")
             }
         }
     }
@@ -405,11 +405,11 @@ class ModelDetailActivity : AppCompatActivity() {
         val titleView = findViewById<TextView>(R.id.orientationTitle)
 
         if (isPortrait) {
-            subtitleView.text = "held vertically"
-            titleView.text = "Portrait"
+            subtitleView.text = getString(R.string.orientation_held_vertically)
+            titleView.text = getString(R.string.orientation_portrait)
         } else {
-            subtitleView.text = "held horizontally"
-            titleView.text = "Landscape"
+            subtitleView.text = getString(R.string.orientation_held_horizontally)
+            titleView.text = getString(R.string.orientation_landscape)
         }
     }
 
@@ -427,15 +427,15 @@ class ModelDetailActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val isFileSystemPath = assetPath.startsWith("/")
-                Log.d(TAG, "=== Loading Model ===")
-                Log.d(TAG, "  Path type: ${if (isFileSystemPath) "FILE SYSTEM" else "ASSETS"}")
-                Log.d(TAG, "  Path: $assetPath")
-                Log.d(TAG, "  Room dims: ${roomWidth ?: "null"} x ${roomHeight ?: "null"} x ${roomDepth ?: "null"}")
+                LogUtil.d(TAG, "=== Loading Model ===")
+                LogUtil.d(TAG, "  Path type: ${if (isFileSystemPath) "FILE SYSTEM" else "ASSETS"}")
+                LogUtil.d(TAG, "  Path: $assetPath")
+                LogUtil.d(TAG, "  Room dims: ${roomWidth ?: "null"} x ${roomHeight ?: "null"} x ${roomDepth ?: "null"}")
 
                 val modelInstance = if (isFileSystemPath) {
                     // File system path - load from file (user-created rooms)
                     val file = File(assetPath)
-                    Log.d(TAG, "  File exists: ${file.exists()}, size: ${file.length()} bytes")
+                    LogUtil.d(TAG, "  File exists: ${file.exists()}, size: ${file.length()} bytes")
                     val bytes = file.readBytes()
                     val buffer = ByteBuffer.wrap(bytes)
                     sceneView.modelLoader.createModelInstance(buffer)
@@ -458,14 +458,14 @@ class ModelDetailActivity : AppCompatActivity() {
                 // Center the room at origin (match Swift: use actual model bounds so camera sees full room)
                 val bboxCenter = modelNode.center
                 val bboxExtents = modelNode.extents
-                Log.d(TAG, "  Model bbox center: (${bboxCenter.x}, ${bboxCenter.y}, ${bboxCenter.z}) extents: (${bboxExtents.x}, ${bboxExtents.y}, ${bboxExtents.z})")
+                LogUtil.d(TAG, "  Model bbox center: (${bboxCenter.x}, ${bboxCenter.y}, ${bboxCenter.z}) extents: (${bboxExtents.x}, ${bboxExtents.y}, ${bboxExtents.z})")
 
                 modelNode.position = io.github.sceneview.math.Position(
                     -bboxCenter.x,
                     -bboxCenter.y,
                     -bboxCenter.z
                 )
-                Log.d(TAG, "  Model position set to center at origin: (${modelNode.position.x}, ${modelNode.position.y}, ${modelNode.position.z})")
+                LogUtil.d(TAG, "  Model position set to center at origin: (${modelNode.position.x}, ${modelNode.position.y}, ${modelNode.position.z})")
 
                 addDebugCuboid()
 
@@ -474,9 +474,9 @@ class ModelDetailActivity : AppCompatActivity() {
                 val h = bboxExtents.y
                 val d = bboxExtents.z
                 boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
-                Log.d(TAG, "[ModelDetail] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
+                LogUtil.d(TAG, "[ModelDetail] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
                 val cameraSetup = boundaryManager.getCameraAtBackCenter()
-                Log.d(TAG, "[ModelDetail] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
+                LogUtil.d(TAG, "[ModelDetail] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
 
                 // Position camera IMMEDIATELY after adding model
                 sceneView.cameraNode.apply {
@@ -484,8 +484,8 @@ class ModelDetailActivity : AppCompatActivity() {
                     lookAt(cameraSetup.lookAt)
                 }
 
-                Log.d(TAG, "  Camera position set: ${cameraSetup.position}")
-                Log.d(TAG, "  Camera lookAt: ${cameraSetup.lookAt}")
+                LogUtil.d(TAG, "  Camera position set: ${cameraSetup.position}")
+                LogUtil.d(TAG, "  Camera lookAt: ${cameraSetup.lookAt}")
 
                 // Re-apply camera position after a frame to override any manipulator reset
                 sceneView.post {
@@ -493,7 +493,7 @@ class ModelDetailActivity : AppCompatActivity() {
                         position = cameraSetup.position
                         lookAt(cameraSetup.lookAt)
                     }
-                    Log.d(TAG, "  Camera position re-applied (post)")
+                    LogUtil.d(TAG, "  Camera position re-applied (post)")
                 }
 
                 // Also re-apply after a short delay to handle async initialization
@@ -502,19 +502,19 @@ class ModelDetailActivity : AppCompatActivity() {
                         position = cameraSetup.position
                         lookAt(cameraSetup.lookAt)
                     }
-                    Log.d(TAG, "  Camera position re-applied (delayed)")
-                    Log.d(TAG, "  Final camera: ${sceneView.cameraNode.position}")
+                    LogUtil.d(TAG, "  Camera position re-applied (delayed)")
+                    LogUtil.d(TAG, "  Final camera: ${sceneView.cameraNode.position}")
                 }, 100)
 
-                Log.d(TAG, "=== Model Load Complete ===")
+                LogUtil.d(TAG, "=== Model Load Complete ===")
 
                 loadingIndicator.visibility = View.GONE
 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to load model", e)
+                LogUtil.e(TAG, "Failed to load model", e)
                 e.printStackTrace()
                 loadingIndicator.visibility = View.GONE
-                modelTitle.text = "Failed to load: ${e.message}"
+                modelTitle.text = getString(R.string.model_detail_failed_load, e.message ?: "")
             }
         }
     }
@@ -544,7 +544,7 @@ class ModelDetailActivity : AppCompatActivity() {
             val minZ = bounds.minZ  // Front wall
             val maxZ = bounds.maxZ  // Back wall
 
-            Log.d(TAG, "Room bounds: X[$minX to $maxX], Y[$minY to $maxY], Z[$minZ to $maxZ]")
+            LogUtil.d(TAG, "Room bounds: X[$minX to $maxX], Y[$minY to $maxY], Z[$minZ to $maxZ]")
 
             // Create 12 edge beams
 
@@ -572,9 +572,9 @@ class ModelDetailActivity : AppCompatActivity() {
             addCornerMarker(minX, minY, maxZ, Color.YELLOW, "Back-Left-Floor")
             addCornerMarker(maxX, minY, maxZ, Color.MAGENTA, "Back-Right-Floor")
 
-            Log.d(TAG, "Room wireframe added with corner markers")
+            LogUtil.d(TAG, "Room wireframe added with corner markers")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to add room wireframe", e)
+            LogUtil.e(TAG, "Failed to add room wireframe", e)
         }
     }
 
@@ -610,7 +610,7 @@ class ModelDetailActivity : AppCompatActivity() {
         )
         marker.position = io.github.sceneview.math.Position(x, y + 0.125f, z)
         sceneView.addChildNode(marker)
-        Log.d(TAG, "Corner marker '$label' at ($x, $y, $z)")
+        LogUtil.d(TAG, "Corner marker '$label' at ($x, $y, $z)")
     }
 
     override fun onDestroy() {

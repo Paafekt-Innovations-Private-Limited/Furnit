@@ -4,7 +4,7 @@ import android.Manifest
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -23,7 +23,7 @@ class FurnitureFitActivity : AppCompatActivity() {
         if (isGranted) {
             loadFragment()
         } else {
-            Toast.makeText(this, "Camera permission required", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
             finish()
         }
     }
@@ -64,7 +64,7 @@ class FurnitureFitActivity : AppCompatActivity() {
                 roomFolder = File(filesDir, roomFolder).absolutePath
             }
         }
-        Log.d(TAG, "Brain opened with ROOM_ID=$roomId ROOM_FOLDER=$roomFolder dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation")
+        LogUtil.d(TAG, "Brain opened with ROOM_ID=$roomId ROOM_FOLDER=$roomFolder dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation")
 
         fragment.arguments = Bundle().apply {
             roomId?.let { putString("ROOM_ID", it) }

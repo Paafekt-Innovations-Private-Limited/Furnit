@@ -2,7 +2,7 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -129,7 +129,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: ExecutorchSharp(context.applicationContext).also {
                     instance = it
-                    Log.d(TAG, "ExecutorchSharp singleton created")
+                    LogUtil.d(TAG, "ExecutorchSharp singleton created")
                 }
             }
         }
@@ -171,7 +171,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
             dataBuf.asFloatBuffer().put(data)
             channel.write(dataBuf)
         }
-        Log.d(TAG, "Saved ${file.name} shape=${shape.contentToString()} size=${data.size}")
+        LogUtil.d(TAG, "Saved ${file.name} shape=${shape.contentToString()} size=${data.size}")
     }
 
     /** Load FloatArray and shape from file. Caller must use shape for Tensor.fromBlob. */
@@ -190,7 +190,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val data = FloatArray(totalFloats)
             val dataBuf = channel.map(FileChannel.MapMode.READ_ONLY, 4L + 8 * numDims, totalFloats * 4L).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
             dataBuf.get(data)
-            Log.d(TAG, "Loaded ${file.name} shape=${shape.contentToString()}")
+            LogUtil.d(TAG, "Loaded ${file.name} shape=${shape.contentToString()}")
             return data to shape
         }
     }
@@ -205,27 +205,27 @@ class ExecutorchSharp private constructor(private val context: Context) {
     )
 
     private fun findFile(filename: String): File? {
-        Log.d(TAG, "findFile: looking for $filename")
+        LogUtil.d(TAG, "findFile: looking for $filename")
         val internal = File(internalModelsDir, filename)
         if (internal.exists() && internal.length() > 0) {
-            Log.d(TAG, "findFile: $filename found internal path=${internal.absolutePath} size=${internal.length()}")
+            LogUtil.d(TAG, "findFile: $filename found internal path=${internal.absolutePath} size=${internal.length()}")
             return internal
         }
         externalModelsDir?.let { ext ->
             val external = File(ext, filename)
             if (external.exists() && external.length() > 0) {
-                Log.d(TAG, "findFile: $filename found external path=${external.absolutePath}")
+                LogUtil.d(TAG, "findFile: $filename found external path=${external.absolutePath}")
                 return external
             }
         }
         for (dir in EXTRA_SEARCH_DIRS) {
             val file = File(dir, filename)
             if (file.exists() && file.length() > 0) {
-                Log.d(TAG, "findFile: $filename found extra path=${file.absolutePath}")
+                LogUtil.d(TAG, "findFile: $filename found extra path=${file.absolutePath}")
                 return file
             }
         }
-        Log.w(TAG, "findFile: $filename NOT FOUND")
+        LogUtil.w(TAG, "findFile: $filename NOT FOUND")
         return null
     }
 
@@ -295,17 +295,17 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val src = findSourceForCopy(filename)
             if (src == null) {
                 if (!dst.exists() || dst.length() <= 0) {
-                    Log.w(TAG, "ensureSplitModels: no source for $filename")
+                    LogUtil.w(TAG, "ensureSplitModels: no source for $filename")
                     return false
                 }
                 continue
             }
             if (dst.exists() && dst.length() == src.length()) {
-                Log.d(TAG, "ensureSplitModels: $filename already internal (${dst.length() / 1024 / 1024}MB)")
+                LogUtil.d(TAG, "ensureSplitModels: $filename already internal (${dst.length() / 1024 / 1024}MB)")
                 continue
             }
             try {
-                Log.d(TAG, "Copying $filename (${src.length() / 1024 / 1024} MB) to internal...")
+                LogUtil.d(TAG, "Copying $filename (${src.length() / 1024 / 1024} MB) to internal...")
                 val tmp = File(internalModelsDir, "$filename.tmp")
                 FileInputStream(src).use { fis ->
                     FileOutputStream(tmp).use { fos ->
@@ -321,18 +321,18 @@ class ExecutorchSharp private constructor(private val context: Context) {
                     }
                 }
                 if (tmp.length() != src.length()) {
-                    Log.e(TAG, "Copy validation failed: $filename tmp=${tmp.length()} src=${src.length()}")
+                    LogUtil.e(TAG, "Copy validation failed: $filename tmp=${tmp.length()} src=${src.length()}")
                     tmp.delete()
                     return false
                 }
                 if (!tmp.renameTo(dst)) {
-                    Log.e(TAG, "Copy rename failed: $filename")
+                    LogUtil.e(TAG, "Copy rename failed: $filename")
                     tmp.delete()
                     return false
                 }
-                Log.d(TAG, "Copied $filename to ${dst.absolutePath} size=${dst.length()}")
+                LogUtil.d(TAG, "Copied $filename to ${dst.absolutePath} size=${dst.length()}")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to copy $filename: ${e.message}")
+                LogUtil.e(TAG, "Failed to copy $filename: ${e.message}")
                 File(internalModelsDir, "$filename.tmp").delete()
                 return false
             }
@@ -345,7 +345,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
 
     private fun isSplitModelReady(): Boolean {
         val ready = SPLIT_FILENAMES.all { findFile(it) != null }
-        Log.d(TAG, "isSplitModelReady: $ready")
+        LogUtil.d(TAG, "isSplitModelReady: $ready")
         return ready
     }
 
@@ -370,7 +370,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
         val fullReady = findFullModel() != null
         val legacyReady = findPatchEncoder() != null && findFile(GAUSSIAN_HEAD_FILENAME) != null
         val ready = splitReady || fullReady || legacyReady
-        Log.d(TAG, "isModelReady: split=$splitReady full=$fullReady legacy=$legacyReady => $ready")
+        LogUtil.d(TAG, "isModelReady: split=$splitReady full=$fullReady legacy=$legacyReady => $ready")
         return ready
     }
 
@@ -380,41 +380,41 @@ class ExecutorchSharp private constructor(private val context: Context) {
      * the first forward is already acceptable. Re-enabling warmup would block screen open.
      */
     suspend fun preloadAndWarmup(progress: ((String) -> Unit)? = null) = withContext(Dispatchers.IO) {
-        Log.d(TAG, "preloadAndWarmup ENTER (load-only, no warmup)")
+        LogUtil.d(TAG, "preloadAndWarmup ENTER (load-only, no warmup)")
         mutex.withLock {
             if (!isInitialized) initializeImpl()
         }
         if (!useSplitMode) {
-            Log.d(TAG, "preloadAndWarmup: not split mode, skipping")
+            LogUtil.d(TAG, "preloadAndWarmup: not split mode, skipping")
             return@withContext
         }
         val part1File = findFile(SPLIT_PART1) ?: return@withContext
-        Log.d(TAG, "preloadAndWarmup: validating Part1 from ${part1File.absolutePath} size=${part1File.length() / 1024 / 1024}MB")
+        LogUtil.d(TAG, "preloadAndWarmup: validating Part1 from ${part1File.absolutePath} size=${part1File.length() / 1024 / 1024}MB")
         progress?.invoke("Validating encoder A...")
         val t0 = System.currentTimeMillis()
         val module = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
-        Log.d(TAG, "PRELOAD Part1 load ${System.currentTimeMillis() - t0}ms (no warmup forward)")
+        LogUtil.d(TAG, "PRELOAD Part1 load ${System.currentTimeMillis() - t0}ms (no warmup forward)")
         module.destroy()
         System.gc()
-        Log.d(TAG, "preloadAndWarmup DONE total=${System.currentTimeMillis() - t0}ms")
+        LogUtil.d(TAG, "preloadAndWarmup DONE total=${System.currentTimeMillis() - t0}ms")
         progress?.invoke("Preload done")
     }
 
     /** Caller must hold mutex. Prefer split over full (split uses less peak RAM; Part 4 can use greedy-planned .pte). */
     private fun initializeImpl(): Boolean {
-        Log.d(TAG, "initialize ENTER. Memory: ${getMemoryInfo()}")
+        LogUtil.d(TAG, "initialize ENTER. Memory: ${getMemoryInfo()}")
 
         // Copy split models to internal storage (required before inference)
         if (!ensureSplitModelsInInternalStorage()) {
-            Log.e(TAG, "initialize: copy to internal failed")
+            LogUtil.e(TAG, "initialize: copy to internal failed")
         }
         // Priority 1: 4-part split (lower peak RAM, Part 4 exported with greedy memory planning)
         if (areAllSplitModelsInternal()) {
             for (fn in SPLIT_FILENAMES) {
                 val f = File(internalModelsDir, fn)
-                Log.d(TAG, "  Split internal: ${f.name} (${f.length() / 1024 / 1024}MB)")
+                LogUtil.d(TAG, "  Split internal: ${f.name} (${f.length() / 1024 / 1024}MB)")
             }
-            Log.d(TAG, "Split model (preferred): 4 parts")
+            LogUtil.d(TAG, "Split model (preferred): 4 parts")
             useSplitMode = true
             useFullModel = false
             isInitialized = true
@@ -424,7 +424,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
         // Priority 2: Full model
         val fullModel = findFullModel()
         if (fullModel != null) {
-            Log.d(TAG, "Full model: ${fullModel.name} (${fullModel.length() / 1024 / 1024}MB)")
+            LogUtil.d(TAG, "Full model: ${fullModel.name} (${fullModel.length() / 1024 / 1024}MB)")
             useSplitMode = false
             useFullModel = true
             isInitialized = true
@@ -435,14 +435,14 @@ class ExecutorchSharp private constructor(private val context: Context) {
         val patchFile = findPatchEncoder()
         val headFile = findFile(GAUSSIAN_HEAD_FILENAME)
         if (patchFile != null && headFile != null) {
-            Log.w(TAG, "Using LEGACY component mode (7MB head - incorrect output)")
+            LogUtil.w(TAG, "Using LEGACY component mode (7MB head - incorrect output)")
             useSplitMode = false
             useFullModel = false
             isInitialized = true
             return true
         }
 
-        Log.e(TAG, "No ExecuTorch models found")
+        LogUtil.e(TAG, "No ExecuTorch models found")
         return false
     }
 
@@ -463,23 +463,23 @@ class ExecutorchSharp private constructor(private val context: Context) {
     ): StreamingResult? = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (!isInitialized) {
-                Log.e(TAG, "Not initialized")
+                LogUtil.e(TAG, "Not initialized")
                 return@withContext null
             }
             val streamStartTime = System.currentTimeMillis()
-            Log.d(TAG, "inferStreaming ENTER bitmap=${bitmap.width}x${bitmap.height} thread=${Thread.currentThread().name} split=$useSplitMode full=$useFullModel Memory: ${getMemoryInfo()} native=${nativeHeapMB()}MB")
+            LogUtil.d(TAG, "inferStreaming ENTER bitmap=${bitmap.width}x${bitmap.height} thread=${Thread.currentThread().name} split=$useSplitMode full=$useFullModel Memory: ${getMemoryInfo()} native=${nativeHeapMB()}MB")
 
             try {
                 when {
                     useSplitMode -> {
-                        Log.d(TAG, "inferStreaming calling inferSplitMode()")
+                        LogUtil.d(TAG, "inferStreaming calling inferSplitMode()")
                         return@withContext inferSplitMode(bitmap, progressCallback)
                     }
                     useFullModel -> {
-                        Log.d(TAG, "inferStreaming calling inferFullModel()")
+                        LogUtil.d(TAG, "inferStreaming calling inferFullModel()")
                         return@withContext inferFullModel(bitmap, progressCallback)
                     }
-                    else -> Log.d(TAG, "inferStreaming using legacy component mode")
+                    else -> LogUtil.d(TAG, "inferStreaming using legacy component mode")
                 }
 
             val startTime = System.currentTimeMillis()
@@ -487,7 +487,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
             // Step 1: Scale input image to 1536x1536
             progressCallback?.invoke(0.02f, "Preprocessing image...")
             val scaledBitmap = Bitmap.createScaledBitmap(bitmap, IMAGE_SIZE, IMAGE_SIZE, true)
-            Log.d(TAG, "Image scaled to ${IMAGE_SIZE}x${IMAGE_SIZE}")
+            LogUtil.d(TAG, "Image scaled to ${IMAGE_SIZE}x${IMAGE_SIZE}")
 
             // Step 2: Create downsampled images for multi-scale pyramid
             val halfSize = IMAGE_SIZE / 2  // 768
@@ -499,7 +499,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val patchEncoderFile = findPatchEncoder()!!
             val encoderLoadStart = System.currentTimeMillis()
             val patchEncoder = Module.load(patchEncoderFile.absolutePath, Module.LOAD_MODE_MMAP)
-            Log.d(TAG, "Patch encoder loaded in ${System.currentTimeMillis() - encoderLoadStart}ms")
+            LogUtil.d(TAG, "Patch encoder loaded in ${System.currentTimeMillis() - encoderLoadStart}ms")
 
             // Step 4: Encode all 35 patches (25 @ 1x + 9 @ 0.5x + 1 @ 0.25x)
             val patchFeatures1x = ArrayList<FloatArray>(PATCHES_1X)
@@ -523,7 +523,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
                     }
                 }
             }
-            Log.d(TAG, "1x patches encoded: ${patchFeatures1x.size} in ${System.currentTimeMillis() - encodeStart}ms")
+            LogUtil.d(TAG, "1x patches encoded: ${patchFeatures1x.size} in ${System.currentTimeMillis() - encodeStart}ms")
 
             // 0.5x patches (3x3 grid)
             val stride05x = (halfSize - PATCH_SIZE) / (GRID_05X - 1) // 192
@@ -538,7 +538,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
                     patchCount++
                 }
             }
-            Log.d(TAG, "0.5x patches encoded: ${patchFeatures05x.size} in ${System.currentTimeMillis() - encode05Start}ms")
+            LogUtil.d(TAG, "0.5x patches encoded: ${patchFeatures05x.size} in ${System.currentTimeMillis() - encode05Start}ms")
             halfBitmap.recycle()
 
             // 0.25x patch (single 384x384)
@@ -546,17 +546,17 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val features025x = encodePatch(patchEncoder, quarterBitmap)
             quarterBitmap.recycle()
             patchCount++
-            Log.d(TAG, "0.25x patch encoded in ${System.currentTimeMillis() - encode025Start}ms")
+            LogUtil.d(TAG, "0.25x patch encoded in ${System.currentTimeMillis() - encode025Start}ms")
 
             val totalEncodeTime = System.currentTimeMillis() - encodeStart
-            Log.d(TAG, "All $patchCount patches encoded in ${totalEncodeTime}ms (${totalEncodeTime / patchCount}ms/patch)")
+            LogUtil.d(TAG, "All $patchCount patches encoded in ${totalEncodeTime}ms (${totalEncodeTime / patchCount}ms/patch)")
             progressCallback?.invoke(0.55f, "All $patchCount patches encoded")
 
             scaledBitmap.recycle()
 
             // Step 5: Unload patch encoder to free memory
             patchEncoder.destroy()
-            Log.d(TAG, "Patch encoder released")
+            LogUtil.d(TAG, "Patch encoder released")
             System.gc()
 
             // Step 6: Merge features on CPU
@@ -564,19 +564,19 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val mergeStart = System.currentTimeMillis()
             val merged1x = mergePatchGrid(patchFeatures1x, GRID_1X, PADDING_1X)
             patchFeatures1x.clear()
-            Log.d(TAG, "Merged 1x: ${merged1x.size} floats")
+            LogUtil.d(TAG, "Merged 1x: ${merged1x.size} floats")
 
             // Merge 0.5x and 0.25x are not used by current gaussian head
             // but we encode them for future use / quality improvement
             patchFeatures05x.clear()
-            Log.d(TAG, "Merge done in ${System.currentTimeMillis() - mergeStart}ms")
+            LogUtil.d(TAG, "Merge done in ${System.currentTimeMillis() - mergeStart}ms")
 
             // Step 7: Load gaussian head
             progressCallback?.invoke(0.62f, "Loading Gaussian head...")
             val headFile = findFile(GAUSSIAN_HEAD_FILENAME)!!
             val headLoadStart = System.currentTimeMillis()
             val gaussianHead = Module.load(headFile.absolutePath, Module.LOAD_MODE_MMAP)
-            Log.d(TAG, "Gaussian head loaded in ${System.currentTimeMillis() - headLoadStart}ms")
+            LogUtil.d(TAG, "Gaussian head loaded in ${System.currentTimeMillis() - headLoadStart}ms")
 
             // Step 8: Run gaussian head on merged features
             progressCallback?.invoke(0.65f, "Running Gaussian head...")
@@ -589,32 +589,32 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val headStart = System.currentTimeMillis()
             val headOutputs = gaussianHead.forward(EValue.from(mergedTensor))
             val headTime = System.currentTimeMillis() - headStart
-            Log.d(TAG, "Gaussian head completed in ${headTime}ms")
+            LogUtil.d(TAG, "Gaussian head completed in ${headTime}ms")
 
             val headOutput = headOutputs[0].toTensor().getDataAsFloatArray()
 
             // Step 9: Release gaussian head
             gaussianHead.destroy()
-            Log.d(TAG, "Gaussian head released")
+            LogUtil.d(TAG, "Gaussian head released")
 
             // Step 10: Extract Gaussians from [1, 14, 384, 384] output
             progressCallback?.invoke(0.70f, "Extracting Gaussians...")
             val gaussianCount = OUTPUT_SPATIAL * OUTPUT_SPATIAL // 147,456
             val params = extractGaussians(headOutput, OUTPUT_SPATIAL, OUTPUT_SPATIAL)
-            Log.d(TAG, "Extracted $gaussianCount Gaussians")
+            LogUtil.d(TAG, "Extracted $gaussianCount Gaussians")
 
             // Step 11: Write PLY
             progressCallback?.invoke(0.75f, "Writing PLY ($gaussianCount Gaussians)...")
             val result = writeStreamingPlyPacked(gaussianCount, params, progressCallback)
 
             val elapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "ExecuTorch component-mode SHARP completed: $gaussianCount Gaussians in ${elapsed}ms")
+            LogUtil.d(TAG, "ExecuTorch component-mode SHARP completed: $gaussianCount Gaussians in ${elapsed}ms")
 
             progressCallback?.invoke(1.0f, "Done!")
             return@withContext result
 
         } catch (e: Exception) {
-            Log.e(TAG, "ExecuTorch SHARP inference failed after ${System.currentTimeMillis() - streamStartTime}ms native=${nativeHeapMB()}MB", e)
+            LogUtil.e(TAG, "ExecuTorch SHARP inference failed after ${System.currentTimeMillis() - streamStartTime}ms native=${nativeHeapMB()}MB", e)
             progressCallback?.invoke(0f, "Error: ${e.message}")
             return@withContext null
         }
@@ -672,7 +672,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val outY = if (gridJ == 0) 0 else firstContrib + (gridJ - 1) * innerContrib
 
             if (outX < 0 || outY < 0 || outX + copyW > outSize || outY + copyH > outSize) {
-                Log.e(TAG, "mergeOnePatchInto OOB: grid=($gridI,$gridJ)/$gridSize pad=$padding " +
+                LogUtil.e(TAG, "mergeOnePatchInto OOB: grid=($gridI,$gridJ)/$gridSize pad=$padding " +
                         "outSize=$outSize out=($outX,$outY) copy=($copyW,$copyH) srcX=[$srcX0,$srcX1) srcY=[$srcY0,$srcY1)")
                 throw IllegalStateException("mergeOnePatchInto bounds invalid")
             }
@@ -731,12 +731,12 @@ class ExecutorchSharp private constructor(private val context: Context) {
         val startTime = System.currentTimeMillis()
 
         try {
-            Log.d(TAG, "inferSplitMode ENTER bitmap=${bitmap.width}x${bitmap.height} thread=${Thread.currentThread().name} Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "inferSplitMode ENTER bitmap=${bitmap.width}x${bitmap.height} thread=${Thread.currentThread().name} Memory: ${getMemoryInfo()}")
 
             progressCallback?.invoke(0.02f, "Preprocessing...")
             val tScale0 = System.currentTimeMillis()
             val scaledBitmap = Bitmap.createScaledBitmap(bitmap, IMAGE_SIZE, IMAGE_SIZE, true)
-            Log.d(TAG, "inferSplitMode scale done in ${System.currentTimeMillis() - tScale0}ms")
+            LogUtil.d(TAG, "inferSplitMode scale done in ${System.currentTimeMillis() - tScale0}ms")
 
             // Pyramid bitmaps for patch extraction (imageData deferred to before Part 3)
             val halfSize = IMAGE_SIZE / 2
@@ -748,7 +748,7 @@ class ExecutorchSharp private constructor(private val context: Context) {
             val mergedSize05x = getMergedSize(GRID_05X, SPATIAL_SIZE, PADDING_05X) // 48
             val stride1x = (IMAGE_SIZE - PATCH_SIZE) / 4 // 288
             val stride05x = (halfSize - PATCH_SIZE) / 2  // 192
-            Log.d(TAG, "inferSplitMode: mergedSize1x=$mergedSize1x mergedSize05x=$mergedSize05x stride1x=$stride1x stride05x=$stride05x")
+            LogUtil.d(TAG, "inferSplitMode: mergedSize1x=$mergedSize1x mergedSize05x=$mergedSize05x stride1x=$stride1x stride05x=$stride05x")
 
             // Part 1+2 + save in a block so latent0/latent1/x0Feat/x1Feat/x2/imageData go out of scope after save (~180MB reclaimable)
             data class Part12Saved(val inputImageFile: File, val mergedSize1x: Int, val mergedSize05x: Int, val part1Time: Long, val part2Time: Long)
@@ -766,19 +766,19 @@ class ExecutorchSharp private constructor(private val context: Context) {
             // -------------------------
             progressCallback?.invoke(0.05f, "Loading encoder A + B...")
             val part1File = findFile(SPLIT_PART1) ?: run {
-                Log.e(TAG, "Missing ${SPLIT_PART1}")
+                LogUtil.e(TAG, "Missing ${SPLIT_PART1}")
                 return null
             }
             val part2File = findFile(SPLIT_PART2) ?: run {
-                Log.e(TAG, "Missing ${SPLIT_PART2}")
+                LogUtil.e(TAG, "Missing ${SPLIT_PART2}")
                 return null
             }
-            Log.d(TAG, "Part1 load from ${part1File.absolutePath} size=${part1File.length() / 1024 / 1024}MB")
-            Log.d(TAG, "Part2 load from ${part2File.absolutePath} size=${part2File.length() / 1024 / 1024}MB")
+            LogUtil.d(TAG, "Part1 load from ${part1File.absolutePath} size=${part1File.length() / 1024 / 1024}MB")
+            LogUtil.d(TAG, "Part2 load from ${part2File.absolutePath} size=${part2File.length() / 1024 / 1024}MB")
             val tLoad0 = System.currentTimeMillis()
 val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
         val module2 = Module.load(part2File.absolutePath, Module.LOAD_MODE_MMAP)
-            Log.d(TAG, "Part1+Part2 load done in ${System.currentTimeMillis() - tLoad0}ms")
+            LogUtil.d(TAG, "Part1+Part2 load done in ${System.currentTimeMillis() - tLoad0}ms")
 
             var patchCount = 0
             val part12Start = System.currentTimeMillis()
@@ -793,19 +793,19 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                         PATCH_SIZE,
                         PATCH_SIZE
                     )
-                    if (patchCount == 0) Log.d(TAG, "P1 PATCH 0 preprocess start")
+                    if (patchCount == 0) LogUtil.d(TAG, "P1 PATCH 0 preprocess start")
                     val patchData = preprocessPatch(patchBitmap)
-                    if (patchCount == 0) Log.d(TAG, "P1 PATCH 0 preprocess done")
+                    if (patchCount == 0) LogUtil.d(TAG, "P1 PATCH 0 preprocess done")
                     patchBitmap.recycle()
 
                     val inputTensor = Tensor.fromBlob(
                         patchData,
                         longArrayOf(1, 3, PATCH_SIZE.toLong(), PATCH_SIZE.toLong())
                     )
-                    if (patchCount == 0) Log.d(TAG, "P1 PATCH 0 forward start")
+                    if (patchCount == 0) LogUtil.d(TAG, "P1 PATCH 0 forward start")
                     val tForward = if (patchCount == 0) System.currentTimeMillis() else 0L
                     val out1 = module1.forward(EValue.from(inputTensor))
-                    if (patchCount == 0) Log.d(TAG, "P1 PATCH 0 forward done in ${System.currentTimeMillis() - tForward}ms")
+                    if (patchCount == 0) LogUtil.d(TAG, "P1 PATCH 0 forward done in ${System.currentTimeMillis() - tForward}ms")
                     val tokens = out1[0].toTensor().getDataAsFloatArray()
                     val block5 = out1[1].toTensor().getDataAsFloatArray()
 
@@ -855,10 +855,10 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             module2.destroy()
             System.gc()
             System.runFinalization()
-            Log.d(TAG, "Part 1+2 done: $patchCount patches in ${System.currentTimeMillis() - part12Start}ms (streamed, no allTokens) Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 1+2 done: $patchCount patches in ${System.currentTimeMillis() - part12Start}ms (streamed, no allTokens) Memory: ${getMemoryInfo()}")
 
             val x2 = x2Feat ?: run {
-                Log.e(TAG, "Missing x2Feat (0.25x) output")
+                LogUtil.e(TAG, "Missing x2Feat (0.25x) output")
                 return null
             }
 
@@ -880,14 +880,14 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             }
             System.gc()
             System.runFinalization()
-            Log.d(TAG, "Part 1+2 intermediates on disk, block closed (latent0/1 x0Feat/x1Feat/x2/imageData reclaimable). Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 1+2 intermediates on disk, block closed (latent0/1 x0Feat/x1Feat/x2/imageData reclaimable). Memory: ${getMemoryInfo()}")
 
             val inputImageFile = part12Saved.inputImageFile
 
             // Part 3: load only Part 3, input from disk, run, save imageTokens, unload (block so imageDataP3/imageTokens reclaimable)
             progressCallback?.invoke(0.50f, "Part 3: Image encoder...")
             val part3File = findFile(SPLIT_PART3) ?: run {
-                Log.e(TAG, "Missing ${SPLIT_PART3}")
+                LogUtil.e(TAG, "Missing ${SPLIT_PART3}")
                 return null
             }
             val part3Start = System.currentTimeMillis()
@@ -902,7 +902,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             System.gc()
             System.runFinalization()
             val part3Time = System.currentTimeMillis() - part3Start
-            Log.d(TAG, "Part 3 done in ${part3Time}ms, unloaded. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 3 done in ${part3Time}ms, unloaded. Memory: ${getMemoryInfo()}")
 
             // Part 4: single .pte or chunked (4a_512 + 4a_65 + 4b) for lower peak RAM
             progressCallback?.invoke(0.60f, "Part 4: Decoder...")
@@ -925,14 +925,14 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             val part4Output: Array<EValue>
             var part4ModuleToDestroy: Module? = null
             val useChunkedPart4 = isChunkedPart4Available()
-            Log.d(TAG, "Part 4: chunked available=$useChunkedPart4 (need part4a_chunk_512, part4a_chunk_65, part4b .pte)")
+            LogUtil.d(TAG, "Part 4: chunked available=$useChunkedPart4 (need part4a_chunk_512, part4a_chunk_65, part4b .pte)")
 
             if (useChunkedPart4) {
                 // Chunked Part 4: ViT on token slices (512 + 65), then decoder once. Lowers peak RAM.
                 val part4a512File = findFile(SPLIT_PART4A_CHUNK_512)!!
                 val part4a65File = findFile(SPLIT_PART4A_CHUNK_65)!!
                 val part4bFile = findFile(SPLIT_PART4B)!!
-                Log.d(TAG, "Part 4: chunked path (4a_512 + 4a_65 + 4b). Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4: chunked path (4a_512 + 4a_65 + 4b). Memory: ${getMemoryInfo()}")
                 val (imageTokensFull, _) = loadFloatArrayFromFile(imageTokensFile)
                 val chunk512Input = FloatArray(CHUNK_LEN_FIRST * FEATURE_DIM)
                 System.arraycopy(imageTokensFull, 0, chunk512Input, 0, chunk512Input.size)
@@ -959,7 +959,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                 System.arraycopy(out65, 0, tokensAfterBlocks, out512.size, out65.size)
                 System.gc()
                 // Part 4b signature: (tokens_after_blocks, image, latent0, latent1, x0_feat, x1_feat, x2_feat)
-                Log.d(TAG, "Part 4: running 4b (decoder). Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4: running 4b (decoder). Memory: ${getMemoryInfo()}")
                 val module4b = Module.load(part4bFile.absolutePath, Module.LOAD_MODE_MMAP)
                 val ev1Tokens = EValue.from(Tensor.fromBlob(tokensAfterBlocks, longArrayOf(1, IMAGE_TOKENS_SEQ_LEN.toLong(), FEATURE_DIM.toLong())))
                 System.gc()
@@ -978,10 +978,10 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                 System.runFinalization()
                 part4Output = try {
                     val out = module4b.forward(ev1Tokens, ev2Image, ev3, ev4, ev5, ev6, ev7)
-                    Log.d(TAG, "Part 4: 4b forward returned in ${System.currentTimeMillis() - part4Start}ms")
+                    LogUtil.d(TAG, "Part 4: 4b forward returned in ${System.currentTimeMillis() - part4Start}ms")
                     out
                 } catch (e: OutOfMemoryError) {
-                    Log.e(TAG, "Part 4: OOM during 4b decoder forward.", e)
+                    LogUtil.e(TAG, "Part 4: OOM during 4b decoder forward.", e)
                     module4b.destroy()
                     System.gc()
                     progressCallback?.invoke(0f, "Out of memory during 3D decoder. Close other apps or use a device with 6GB+ RAM.")
@@ -992,10 +992,10 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             } else {
                 // Single Part 4: load inputs one-by-one, one forward (can OOM on low-RAM devices)
                 val part4File = findFile(SPLIT_PART4) ?: run {
-                    Log.e(TAG, "Missing ${SPLIT_PART4}")
+                    LogUtil.e(TAG, "Missing ${SPLIT_PART4}")
                     return null
                 }
-                Log.d(TAG, "Part 4: loading inputs one-by-one from disk. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4: loading inputs one-by-one from disk. Memory: ${getMemoryInfo()}")
                 System.gc()
                 System.runFinalization()
                 val module4 = Module.load(part4File.absolutePath, Module.LOAD_MODE_MMAP)
@@ -1017,13 +1017,13 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                 val ev7 = loadPart4Input(x2File, shapeX2)
                 System.gc()
                 System.runFinalization()
-                Log.d(TAG, "Part 4: forward starting. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4: forward starting. Memory: ${getMemoryInfo()}")
                 part4Output = try {
                     val out = module4.forward(ev1, ev2, ev3, ev4, ev5, ev6, ev7)
-                    Log.d(TAG, "Part 4: forward returned in ${System.currentTimeMillis() - part4Start}ms")
+                    LogUtil.d(TAG, "Part 4: forward returned in ${System.currentTimeMillis() - part4Start}ms")
                     out
                 } catch (e: OutOfMemoryError) {
-                    Log.e(TAG, "Part 4: OOM during decoder forward.", e)
+                    LogUtil.e(TAG, "Part 4: OOM during decoder forward.", e)
                     module4.destroy()
                     part4ModuleToDestroy = null
                     System.gc()
@@ -1033,7 +1033,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             }
 
             val part4Time = System.currentTimeMillis() - part4Start
-            Log.d(TAG, "Part 4 done in ${part4Time}ms Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 4 done in ${part4Time}ms Memory: ${getMemoryInfo()}")
 
             val outputTensor = part4Output[0].toTensor()
             val outputBuffer = getTensorDataAsFloatBuffer(outputTensor)
@@ -1047,14 +1047,14 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             System.runFinalization()
 
             val elapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "inferSplitMode SUCCESS totalMs=$elapsed gaussianCount=$gaussianCount (ONNX-style)")
-            Log.d(TAG, "  Breakdown: P1=${part12Saved.part1Time}ms P2=${part12Saved.part2Time}ms P3=${part3Time}ms P4=${part4Time}ms")
+            LogUtil.d(TAG, "inferSplitMode SUCCESS totalMs=$elapsed gaussianCount=$gaussianCount (ONNX-style)")
+            LogUtil.d(TAG, "  Breakdown: P1=${part12Saved.part1Time}ms P2=${part12Saved.part2Time}ms P3=${part3Time}ms P4=${part4Time}ms")
 
             progressCallback?.invoke(1.0f, "Done!")
             return result
 
         } catch (e: Exception) {
-            Log.e(TAG, "ExecuTorch SHARP split inference failed after ${System.currentTimeMillis() - startTime}ms", e)
+            LogUtil.e(TAG, "ExecuTorch SHARP split inference failed after ${System.currentTimeMillis() - startTime}ms", e)
             progressCallback?.invoke(0f, "Error: ${e.message}")
             return null
         }
@@ -1088,21 +1088,21 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
         progressCallback: ((Float, String) -> Unit)?
     ): StreamingResult? {
         val startTime = System.currentTimeMillis()
-        Log.d(TAG, "inferFullModel ENTER bitmap=${bitmap.width}x${bitmap.height} Memory: ${getMemoryInfo()}")
+        LogUtil.d(TAG, "inferFullModel ENTER bitmap=${bitmap.width}x${bitmap.height} Memory: ${getMemoryInfo()}")
 
         // Preprocess
         // #region agent log
-        Log.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 0.05","data":{"progress":0.05,"msg":"Preprocessing"},"timestamp":${System.currentTimeMillis()}}""")
+        LogUtil.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 0.05","data":{"progress":0.05,"msg":"Preprocessing"},"timestamp":${System.currentTimeMillis()}}""")
         // #endregion
         progressCallback?.invoke(0.05f, "Preprocessing image...")
         val scaledBitmap = Bitmap.createScaledBitmap(bitmap, IMAGE_SIZE, IMAGE_SIZE, true)
         val inputData = preprocessPatch(scaledBitmap) // reuse existing CHW preprocessing
         scaledBitmap.recycle()
-        Log.d(TAG, "Image preprocessed to ${IMAGE_SIZE}x${IMAGE_SIZE}")
+        LogUtil.d(TAG, "Image preprocessed to ${IMAGE_SIZE}x${IMAGE_SIZE}")
 
         // Load full model
         // #region agent log
-        Log.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 0.10","data":{"progress":0.1,"msg":"Loading model"},"timestamp":${System.currentTimeMillis()}}""")
+        LogUtil.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 0.10","data":{"progress":0.1,"msg":"Loading model"},"timestamp":${System.currentTimeMillis()}}""")
         // #endregion
         progressCallback?.invoke(0.10f, "Loading full SHARP model...")
         val modelFile = findFullModel()!!
@@ -1111,7 +1111,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
         // Peak RSS ~80-150 MB instead of 1.3 GB, avoids LMK.
         val module = Module.load(modelFile.absolutePath, Module.LOAD_MODE_MMAP)
         val loadTime = System.currentTimeMillis() - loadStart
-        Log.d(TAG, "Full model loaded (mmap): ${modelFile.name} in ${loadTime}ms")
+        LogUtil.d(TAG, "Full model loaded (mmap): ${modelFile.name} in ${loadTime}ms")
 
         // Create input tensor - detect FP16 model and provide Half tensor
         val inputShape = longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong())
@@ -1127,36 +1127,36 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
         } else {
             Tensor.fromBlob(inputData, inputShape)
         }
-        Log.d(TAG, "Input tensor created (fp16=$isFp16)")
+        LogUtil.d(TAG, "Input tensor created (fp16=$isFp16)")
 
         // Run inference (single forward pass - handles everything internally)
         // #region agent log
-        Log.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 0.20, BEFORE forward","data":{"progress":0.2,"msg":"Running SHARP inference"},"timestamp":${System.currentTimeMillis()}}""")
+        LogUtil.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 0.20, BEFORE forward","data":{"progress":0.2,"msg":"Running SHARP inference"},"timestamp":${System.currentTimeMillis()}}""")
         // #endregion
         progressCallback?.invoke(0.20f, "Running SHARP inference...")
         val inferStart = System.currentTimeMillis()
         val outputs = module.forward(EValue.from(inputTensor))
         val inferTime = System.currentTimeMillis() - inferStart
         // #region agent log
-        Log.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"AFTER forward (inference done)","data":{"inferTimeMs":$inferTime},"timestamp":${System.currentTimeMillis()}}""")
+        LogUtil.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"AFTER forward (inference done)","data":{"inferTimeMs":$inferTime},"timestamp":${System.currentTimeMillis()}}""")
         // #endregion
-        Log.d(TAG, "Full model inference completed in ${inferTime}ms")
+        LogUtil.d(TAG, "Full model inference completed in ${inferTime}ms")
 
         // Zero-copy: read from native FloatBuffer instead of getDataAsFloatArray (saves ~60MB JVM alloc)
         val outputTensor = outputs[0].toTensor()
         val outputBuffer = getTensorDataAsFloatBuffer(outputTensor)
         val gaussianCount = (outputTensor.numel() / PARAMS_PER_GAUSSIAN).toInt().coerceAtLeast(0)
-        Log.d(TAG, "Full model produced $gaussianCount Gaussians")
+        LogUtil.d(TAG, "Full model produced $gaussianCount Gaussians")
 
         if (gaussianCount <= 0) {
-            Log.e(TAG, "Full model produced 0 Gaussians")
+            LogUtil.e(TAG, "Full model produced 0 Gaussians")
             module.destroy()
             return null
         }
 
         // Convert to packed format for PLY writing (consume buffer before destroy)
         // #region agent log
-        Log.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 0.75","data":{"progress":0.75,"gaussianCount":$gaussianCount},"timestamp":${System.currentTimeMillis()}}""")
+        LogUtil.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 0.75","data":{"progress":0.75,"gaussianCount":$gaussianCount},"timestamp":${System.currentTimeMillis()}}""")
         // #endregion
         progressCallback?.invoke(0.75f, "Writing PLY ($gaussianCount Gaussians)...")
         val result = writeStreamingPlyPackedFromBuffer(gaussianCount, outputBuffer, progressCallback)
@@ -1165,11 +1165,11 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
         System.gc()
 
         val elapsed = System.currentTimeMillis() - startTime
-        Log.d(TAG, "inferFullModel SUCCESS totalMs=$elapsed gaussianCount=$gaussianCount")
-        Log.d(TAG, "  Breakdown: load=${loadTime}ms, infer=${inferTime}ms")
+        LogUtil.d(TAG, "inferFullModel SUCCESS totalMs=$elapsed gaussianCount=$gaussianCount")
+        LogUtil.d(TAG, "  Breakdown: load=${loadTime}ms, infer=${inferTime}ms")
 
         // #region agent log
-        Log.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 1.0 Done","data":{"progress":1.0},"timestamp":${System.currentTimeMillis()}}""")
+        LogUtil.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 1.0 Done","data":{"progress":1.0},"timestamp":${System.currentTimeMillis()}}""")
         // #endregion
         progressCallback?.invoke(1.0f, "Done!")
         return result
@@ -1189,7 +1189,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                 else -> FloatBuffer.wrap(tensor.getDataAsFloatArray())
             }
         } catch (e: Exception) {
-            Log.w(TAG, "getRawDataBuffer failed, fallback to getDataAsFloatArray: ${e.message}")
+            LogUtil.w(TAG, "getRawDataBuffer failed, fallback to getDataAsFloatArray: ${e.message}")
             FloatBuffer.wrap(tensor.getDataAsFloatArray())
         }
     }
@@ -1290,7 +1290,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
             outY += copyH
         }
 
-        Log.d(TAG, "Merged ${patches.size} patches into [${FEATURE_DIM}, $outSize, $outSize]")
+        LogUtil.d(TAG, "Merged ${patches.size} patches into [${FEATURE_DIM}, $outSize, $outSize]")
         return output
     }
 
@@ -1358,7 +1358,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
         params: FloatBuffer,
         progressCallback: ((Float, String) -> Unit)?
     ): StreamingResult {
-        Log.d(TAG, "writeStreamingPlyPackedFromBuffer ENTER gaussianCount=$gaussianCount (zero-copy)")
+        LogUtil.d(TAG, "writeStreamingPlyPackedFromBuffer ENTER gaussianCount=$gaussianCount (zero-copy)")
         val roomsDir = File(context.filesDir, "sharp_rooms")
         roomsDir.mkdirs()
 
@@ -1459,8 +1459,8 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
 
         plyFile.copyTo(classicPlyFile, overwrite = true)
 
-        Log.d(TAG, "writeStreamingPlyPackedFromBuffer DONE file=${plyFile.absolutePath} bytes=${plyFile.length()}")
-        Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
+        LogUtil.d(TAG, "writeStreamingPlyPackedFromBuffer DONE file=${plyFile.absolutePath} bytes=${plyFile.length()}")
+        LogUtil.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
 
         return StreamingResult(
             plyFile = plyFile,
@@ -1481,7 +1481,7 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
         params: FloatArray,
         progressCallback: ((Float, String) -> Unit)?
     ): StreamingResult {
-        Log.d(TAG, "writeStreamingPlyPacked ENTER gaussianCount=$gaussianCount paramsLen=${params.size}")
+        LogUtil.d(TAG, "writeStreamingPlyPacked ENTER gaussianCount=$gaussianCount paramsLen=${params.size}")
         val roomsDir = File(context.filesDir, "sharp_rooms")
         roomsDir.mkdirs()
 
@@ -1589,8 +1589,8 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
 
         plyFile.copyTo(classicPlyFile, overwrite = true)
 
-        Log.d(TAG, "writeStreamingPlyPacked DONE file=${plyFile.absolutePath} bytes=${plyFile.length()}")
-        Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m min=($minX,$minY,$minZ) max=($maxX,$maxY,$maxZ)")
+        LogUtil.d(TAG, "writeStreamingPlyPacked DONE file=${plyFile.absolutePath} bytes=${plyFile.length()}")
+        LogUtil.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m min=($minX,$minY,$minZ) max=($maxX,$maxY,$maxZ)")
 
         return StreamingResult(
             plyFile = plyFile,
@@ -1647,6 +1647,6 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
 
     fun release() {
         isInitialized = false
-        Log.d(TAG, "ExecutorchSharp released")
+        LogUtil.d(TAG, "ExecutorchSharp released")
     }
 }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Paafekt Beta</string>
+    <string name="app_name">Paafekt</string>
     <string name="app_tagline">3D房間探索器</string>
     <string name="app_version">版本</string>
     <string name="app_developer">Furnit團隊</string>
@@ -36,7 +36,7 @@
     <string name="home_no_models">未找到3D模型</string>
     <string name="home_no_models_description">從照片建立你的第一個房間！</string>
     <string name="home_create_room">從照片建立房間</string>
-    <string name="home_rooms_remaining">剩餘%d/%d個房間</string>
+    <string name="home_rooms_remaining">剩餘 %1$d/%2$d 個房間</string>
     <string name="home_delete_hint">刪除舊房間以建立新房間</string>
     <string name="home_swipe_hint">向左滑動刪除</string>
     <string name="home_room_model">3D房間模型</string>
@@ -230,4 +230,127 @@
     <string name="orientation_held_vertically">held vertically</string>
     <string name="orientation_held_horizontally">held horizontally</string>
     <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+
+    <!-- SharpRoom / PLY viewer -->
+    <string name="sharp_room_no_ply">未提供 PLY 檔案</string>
+    <string name="sharp_room_ply_not_found">找不到 PLY 檔案</string>
+    <string name="sharp_room_loading">正在載入 3D 房間…</string>
+    <string name="sharp_room_screenshot_saved">螢幕截圖已儲存：%s</string>
+    <string name="sharp_room_screenshot_failed">螢幕截圖失敗</string>
+    <string name="sharp_room_smartypants_failed">SmartyPants 初始化失敗</string>
+    <string name="sharp_room_camera_error">相機錯誤：%s</string>
+    <string name="sharp_room_cannot_save">無法儲存：找不到房間資料夾</string>
+    <string name="sharp_room_saved">房間 \'%s\' 已儲存！</string>
+    <string name="sharp_room_save_failed">儲存失敗：%s</string>
+    <string name="sharp_room_share_failed">分享失敗：%s</string>
+
+    <!-- FurnitureFit / SmartyPants -->
+    <string name="smartypants_initializing">正在初始化…</string>
+    <string name="smartypants_drag_hint">拖動傢俱移動 · 向外拖動平移房間</string>
+    <string name="smartypants_tap_calibrate">點擊校準</string>
+    <string name="smartypants_scanning">正在掃描…</string>
+    <string name="smartypants_camera_error">相機錯誤：%s</string>
+    <string name="smartypants_screenshot_failed">螢幕截圖失敗：%s</string>
+    <string name="smartypants_saved_screenshots">已儲存至螢幕截圖</string>
+    <string name="smartypants_failed_save_screenshot">儲存螢幕截圖失敗</string>
+    <string name="smartypants_failed_save">儲存失敗：%s</string>
+    <string name="smartypants_enter_positive_number">請輸入正數</string>
+    <string name="smartypants_room_scaled">房間已縮放 %sx</string>
+    <string name="smartypants_detected">已偵測</string>
+    <string name="smartypants_camera_ready">相機就緒 - 正在偵測傢俱…</string>
+    <string name="smartypants_scanning_for_furniture">正在掃描傢俱…</string>
+    <string name="smartypants_calibrate_title">校準房間</string>
+    <string name="smartypants_calibrate_message">輸入實際傢俱高度（公尺）。偵測到：%sm</string>
+    <string name="smartypants_real_height_hint">實際高度（公尺）</string>
+
+    <!-- Content / Home -->
+    <string name="home_rooms_remaining_short">剩餘 %1$d / 1000 間房間</string>
+    <string name="home_total">總計</string>
+    <string name="home_zero_mb">0 MB</string>
+    <string name="home_no_rooms_yet">尚無房間\n點擊圖片圖示開始</string>
+    <string name="home_3d_room_model">3D 房間模型</string>
+    <string name="home_opening">正在開啟 %s…</string>
+    <string name="home_deleted">已刪除 %s</string>
+    <string name="home_failed_delete">刪除失敗：%s</string>
+
+    <!-- Single Photo Room -->
+    <string name="photo_room_back">\u2039 返回</string>
+    <string name="photo_room_or">或</string>
+    <string name="photo_room_do_not_screenshots">⚠️ 請勿使用螢幕截圖 - 請使用實際照片</string>
+    <string name="photo_room_portrait_held">直向 - 直立握持</string>
+    <string name="photo_room_how_to_create_short">您想如何建立房間？</string>
+    <string name="photo_room_tap_option_short">點擊下方選項</string>
+    <string name="photo_room_creating_short">正在建立您的 3D 房間…</string>
+    <string name="photo_room_progress_hint">通常需要約 2 分鐘。我們正在為您準備精彩內容。</string>
+    <string name="photo_room_error_camera">開啟相機錯誤：%s</string>
+    <string name="photo_room_error_load">錯誤：%s</string>
+
+    <!-- GLB Room -->
+    <string name="glb_room_no_file">未提供 GLB 檔案</string>
+    <string name="glb_room_not_found">找不到 GLB 檔案</string>
+    <string name="glb_room_saved">房間 \'%s\' 已儲存！</string>
+    <string name="glb_room_error">錯誤：%s</string>
+    <string name="glb_room_screenshot_saved">螢幕截圖已儲存：%s</string>
+    <string name="glb_room_screenshot_failed">螢幕截圖失敗</string>
+
+    <!-- Sharp Inference -->
+    <string name="sharp_inference_no_image">無圖片 URI 或路徑</string>
+    <string name="sharp_inference_loading_model">正在載入 SHARP 模型…</string>
+    <string name="sharp_inference_running">正在執行 SHARP 3D…</string>
+    <string name="sharp_inference_preparing">準備中…</string>
+
+    <!-- Room Boundary -->
+    <string name="boundary_back">\u2039 返回</string>
+    <string name="boundary_done">完成</string>
+    <string name="boundary_reset">重設</string>
+    <string name="boundary_no_image">無可用圖片</string>
+    <string name="boundary_failed_create">建立房間失敗</string>
+    <string name="boundary_processing">處理中…</string>
+
+    <!-- Model Detail -->
+    <string name="model_detail_preview">3D 房間預覽</string>
+    <string name="model_detail_save_first">請先儲存房間以使用 AI 偵測</string>
+    <string name="model_detail_taking_screenshot">正在擷取螢幕…</string>
+    <string name="model_detail_room_not_found">找不到房間檔案</string>
+    <string name="model_detail_no_room_data">無房間資料可儲存</string>
+    <string name="model_detail_failed_save">儲存房間失敗</string>
+    <string name="model_detail_failed_share">分享房間失敗</string>
+    <string name="model_detail_screenshot_failed">螢幕截圖失敗</string>
+    <string name="model_detail_failed_capture">擷取螢幕失敗</string>
+    <string name="model_detail_failed_load">載入失敗：%s</string>
+    <string name="model_detail_failed_save_screenshot_message">儲存螢幕截圖失敗：%s</string>
+    <string name="model_detail_drag_camera">拖動移動相機</string>
+
+    <!-- Room Viewer -->
+    <string name="room_viewer_no_folder">未提供房間資料夾</string>
+    <string name="room_viewer_folder_not_found">找不到房間資料夾</string>
+    <string name="room_viewer_your_room">您的房間</string>
+    <string name="room_viewer_preview_unavailable">房間預覽不可用</string>
+    <string name="room_viewer_created_success">房間建立成功！</string>
+    <string name="room_viewer_created_message">您的房間材質已從照片中擷取。點擊儲存以保留此房間。</string>
+    <string name="room_viewer_dimensions">尺寸：%s</string>
+    <string name="room_viewer_saved_toast">房間已儲存！</string>
+
+    <!-- Model Viewer -->
+    <string name="model_viewer_title">模型</string>
+    <string name="model_viewer_view_3d">檢視 3D</string>
+    <string name="model_viewer_ar">AR</string>
+
+    <!-- Settings (developer) -->
+    <string name="settings_inference_backend">推論後端</string>
+    <string name="settings_onnx_default">ONNX（預設）</string>
+    <string name="settings_onnx_description">使用 ONNX Runtime (FP32) 的標準推論</string>
+
+    <!-- Auth / Login -->
+    <string name="login_welcome">歡迎使用 Furnit</string>
+    <string name="login_sign_in_phone">使用手機號碼登入</string>
+    <string name="login_send_code">傳送驗證碼</string>
+    <string name="login_terms_agree">繼續即表示您同意我們的服務條款與隱私權政策</string>
+    <string name="otp_back">\u2039 返回</string>
+    <string name="otp_verify_phone">驗證手機</string>
+    <string name="otp_enter_code">輸入傳送至的 6 位數驗證碼\n%s</string>
+    <string name="otp_resend_in_seconds">%ds 後重傳</string>
+    <string name="otp_resend_code">重新傳送驗證碼</string>
+    <string name="otp_code_sent">驗證碼已傳送！</string>
+    <string name="login_continue">繼續</string>
 </resources>

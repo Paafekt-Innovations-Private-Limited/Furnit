@@ -2,7 +2,7 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.Interpreter
@@ -148,7 +148,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: LiteRTSharp(context.applicationContext).also {
                     instance = it
-                    Log.d(TAG, "LiteRTSharp singleton created")
+                    LogUtil.d(TAG, "LiteRTSharp singleton created")
                 }
             }
         }
@@ -215,10 +215,10 @@ class LiteRTSharp private constructor(private val context: Context) {
     fun initialize(): Boolean {
         // Prefer 4-part split mode (avoids OOM)
         if (isSplitModelReady()) {
-            Log.d(TAG, "4-part split mode:")
+            LogUtil.d(TAG, "4-part split mode:")
             for (filename in SPLIT_PART_FILENAMES) {
                 val file = findFile(filename)!!
-                Log.d(TAG, "  ${file.name}: ${file.length() / 1024 / 1024}MB")
+                LogUtil.d(TAG, "  ${file.name}: ${file.length() / 1024 / 1024}MB")
             }
             useSplitMode = true
             isInitialized = true
@@ -228,19 +228,19 @@ class LiteRTSharp private constructor(private val context: Context) {
         // Fallback to single model
         val modelFile = findSingleModel()
         if (modelFile == null) {
-            Log.e(TAG, "No model found (tried split: ${SPLIT_PART_FILENAMES.joinToString()}, single: ${SINGLE_MODEL_FILENAMES.joinToString()})")
+            LogUtil.e(TAG, "No model found (tried split: ${SPLIT_PART_FILENAMES.joinToString()}, single: ${SINGLE_MODEL_FILENAMES.joinToString()})")
             return false
         }
 
         val modelSizeMB = modelFile.length() / 1024 / 1024
-        Log.d(TAG, "Single mode: ${modelFile.absolutePath} (${modelSizeMB}MB)")
+        LogUtil.d(TAG, "Single mode: ${modelFile.absolutePath} (${modelSizeMB}MB)")
 
         // Safety: the single LiteRT model can be >1GB and frequently causes the app to be
         // killed by low-memory killer on real devices. Prefer split files instead.
         // (Your log shows vit_gaussian_fp16.tflite ~1258MB.)
         val maxSingleModelMB = 700L
         if (modelSizeMB > maxSingleModelMB) {
-            Log.e(TAG, "Single LiteRT model too large (${modelSizeMB}MB). Push split models instead: ${SPLIT_PART_FILENAMES.joinToString()}")
+            LogUtil.e(TAG, "Single LiteRT model too large (${modelSizeMB}MB). Push split models instead: ${SPLIT_PART_FILENAMES.joinToString()}")
             return false
         }
         useSplitMode = false
@@ -282,19 +282,19 @@ class LiteRTSharp private constructor(private val context: Context) {
                         }
                         addDelegate(gpuDelegate)
                     }
-                    Log.d(TAG, "Creating GPU interpreter for ${modelFile.name} (threads=$numThreads)...")
+                    LogUtil.d(TAG, "Creating GPU interpreter for ${modelFile.name} (threads=$numThreads)...")
                     val interpreter = Interpreter(modelFile, gpuInterpreterOptions)
-                    Log.d(TAG, "GPU interpreter created for ${modelFile.name}")
+                    LogUtil.d(TAG, "GPU interpreter created for ${modelFile.name}")
                     return interpreter
                 } else {
-                    Log.w(TAG, "GPU delegate not supported on this device — using CPU")
+                    LogUtil.w(TAG, "GPU delegate not supported on this device — using CPU")
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "GPU delegate failed for ${modelFile.name}, falling back to CPU: ${e.message}")
+                LogUtil.w(TAG, "GPU delegate failed for ${modelFile.name}, falling back to CPU: ${e.message}")
                 try { gpuDelegate?.close() } catch (_: Exception) {}
             } catch (e: Error) {
                 // Catches UnsatisfiedLinkError, native crashes surfaced as java.lang.Error
-                Log.w(TAG, "GPU delegate native error for ${modelFile.name}, falling back to CPU: ${e.message}")
+                LogUtil.w(TAG, "GPU delegate native error for ${modelFile.name}, falling back to CPU: ${e.message}")
                 try { gpuDelegate?.close() } catch (_: Exception) {}
             }
         }
@@ -308,12 +308,12 @@ class LiteRTSharp private constructor(private val context: Context) {
                     setUseNNAPI(true)
                     setAllowFp16PrecisionForFp32(true)
                 }
-                Log.d(TAG, "Creating NNAPI interpreter for ${modelFile.name} (${modelSizeMB}MB, threads=$numThreads)...")
+                LogUtil.d(TAG, "Creating NNAPI interpreter for ${modelFile.name} (${modelSizeMB}MB, threads=$numThreads)...")
                 val interpreter = Interpreter(modelFile, nnapiOptions)
-                Log.d(TAG, "NNAPI interpreter created for ${modelFile.name}")
+                LogUtil.d(TAG, "NNAPI interpreter created for ${modelFile.name}")
                 return interpreter
             } catch (e: Throwable) {
-                Log.w(TAG, "NNAPI failed for ${modelFile.name}: ${e.message} — falling back to CPU+XNNPACK")
+                LogUtil.w(TAG, "NNAPI failed for ${modelFile.name}: ${e.message} — falling back to CPU+XNNPACK")
             }
         }
 
@@ -323,12 +323,12 @@ class LiteRTSharp private constructor(private val context: Context) {
             try { setUseXNNPACK(useXnnpack) } catch (_: Throwable) {}
             setAllowFp16PrecisionForFp32(true)
         }
-        Log.d(
+        LogUtil.d(
             TAG,
             "Creating CPU interpreter for ${modelFile.name} (${modelSizeMB}MB, threads=$numThreads, xnnpack=$useXnnpack)..."
         )
         val interpreter = Interpreter(modelFile, cpuOptions)
-        Log.d(TAG, "CPU interpreter created for ${modelFile.name}")
+        LogUtil.d(TAG, "CPU interpreter created for ${modelFile.name}")
         return interpreter
     }
 
@@ -351,7 +351,7 @@ class LiteRTSharp private constructor(private val context: Context) {
         progressCallback: ((Float, String) -> Unit)? = null
     ): StreamingResult? = withContext(Dispatchers.IO) {
         if (!isInitialized) {
-            Log.e(TAG, "Not initialized")
+            LogUtil.e(TAG, "Not initialized")
             return@withContext null
         }
 
@@ -362,10 +362,10 @@ class LiteRTSharp private constructor(private val context: Context) {
                 inferSingleMode(bitmap, progressCallback)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "LiteRT inference failed: ${e.message}", e)
+            LogUtil.e(TAG, "LiteRT inference failed: ${e.message}", e)
             return@withContext null
         } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "LiteRT OOM during inference: ${e.message}")
+            LogUtil.e(TAG, "LiteRT OOM during inference: ${e.message}")
             System.gc()
             return@withContext null
         }
@@ -697,8 +697,8 @@ class LiteRTSharp private constructor(private val context: Context) {
     ): StreamingResult? {
         try {
             val startTime = System.currentTimeMillis()
-            Log.d(TAG, "=== Single-Patch LiteRT inference ===")
-            Log.d(TAG, "Memory before: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "=== Single-Patch LiteRT inference ===")
+            LogUtil.d(TAG, "Memory before: ${getMemoryInfo()}")
 
             tempDir.listFiles()?.forEach { it.delete() }
 
@@ -707,7 +707,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             val scaledBitmap = Bitmap.createScaledBitmap(bitmap, IMAGE_SIZE, IMAGE_SIZE, true)
             var inputBuffer: ByteBuffer? = preprocessImage(scaledBitmap)
             scaledBitmap.recycle()
-            Log.d(TAG, "Image preprocessed to ${IMAGE_SIZE}x${IMAGE_SIZE}")
+            LogUtil.d(TAG, "Image preprocessed to ${IMAGE_SIZE}x${IMAGE_SIZE}")
 
             // Step 2: Create pyramid and extract patches
             progressCallback?.invoke(0.03f, "Creating pyramid patches...")
@@ -753,12 +753,12 @@ class LiteRTSharp private constructor(private val context: Context) {
             val x1Stride = (PATCH_SIZE * (1f - 0.5f)).toInt()    // 192
             val x1Steps = ((x1Size - PATCH_SIZE).toFloat() / x1Stride).toInt() + 1
 
-            Log.d(TAG, "Patch grid: x0Steps=$x0Steps (expected 5), x1Steps=$x1Steps (expected 3), total=$totalPatches")
+            LogUtil.d(TAG, "Patch grid: x0Steps=$x0Steps (expected 5), x1Steps=$x1Steps (expected 3), total=$totalPatches")
 
             // Step 3: Load Part 1, run on each patch
             progressCallback?.invoke(0.05f, "Part 1: Encoding patches (0/$totalPatches)...")
             val part1File = findFile(SPLIT_PART_FILENAMES[0])!!
-            Log.d(TAG, "Loading Part 1: ${part1File.name} (${part1File.length() / 1024 / 1024}MB)")
+            LogUtil.d(TAG, "Loading Part 1: ${part1File.name} (${part1File.length() / 1024 / 1024}MB)")
             var interpreter = createInterpreter(part1File, numThreadsOverride = 4, useXnnpack = true)
 
             val tokensShape = interpreter.getOutputTensor(0).shape()
@@ -831,17 +831,17 @@ class LiteRTSharp private constructor(private val context: Context) {
             x2Buffer = null
 
             if (patchIndex != totalPatches) {
-                Log.w(TAG, "Patch count mismatch: processed=$patchIndex expected=$totalPatches")
+                LogUtil.w(TAG, "Patch count mismatch: processed=$patchIndex expected=$totalPatches")
             }
             interpreter.close()
             System.gc()
             val part1Time = System.currentTimeMillis() - part1Start
-            Log.d(TAG, "Part 1 done: $totalPatches patches in ${part1Time}ms (${part1Time / totalPatches}ms/patch)")
+            LogUtil.d(TAG, "Part 1 done: $totalPatches patches in ${part1Time}ms (${part1Time / totalPatches}ms/patch)")
 
             // Step 4: Load Part 2, run on each token set
             progressCallback?.invoke(0.30f, "Part 2: Processing features (0/$totalPatches)...")
             val part2File = findFile(SPLIT_PART_FILENAMES[1])!!
-            Log.d(TAG, "Loading Part 2: ${part2File.name} (${part2File.length() / 1024 / 1024}MB)")
+            LogUtil.d(TAG, "Loading Part 2: ${part2File.name} (${part2File.length() / 1024 / 1024}MB)")
             interpreter = createInterpreter(part2File, numThreadsOverride = 4, useXnnpack = true)
 
             val featShape = interpreter.getOutputTensor(0).shape()
@@ -869,7 +869,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             interpreter.close()
             System.gc()
             val part2Time = System.currentTimeMillis() - part2Start
-            Log.d(TAG, "Part 2 done: $totalPatches patches in ${part2Time}ms (${part2Time / totalPatches}ms/patch)")
+            LogUtil.d(TAG, "Part 2 done: $totalPatches patches in ${part2Time}ms (${part2Time / totalPatches}ms/patch)")
 
             // Step 5: Streaming merge — process ONE patch at a time (iOS Accelerate-style)
             // Old approach materialized all 25 patches (~60MB) in lists; this streams through
@@ -884,28 +884,28 @@ class LiteRTSharp private constructor(private val context: Context) {
             // This mimics iOS's pattern of releasing buffers as soon as they're persisted.
 
             // latent0: block5 tokens reshaped (x0 patches, 5x5 grid)
-            Log.d(TAG, "Merge: streaming latent0 (block5, 25 patches)...")
+            LogUtil.d(TAG, "Merge: streaming latent0 (block5, 25 patches)...")
             streamingMerge("block5", 0, 5, X0_MERGE_PADDING, isTokenReshape = true).let { buf ->
                 saveTensorToFile(buf, intArrayOf(1, FEATURE_DIM, latent0OutH, latent0OutH),
                     File(tempDir, "latent0.tensor"))
             } // buf released here — ~38MB DirectByteBuffer eligible for GC
 
             // latent1: block11 tokens reshaped (x0 patches, 5x5 grid)
-            Log.d(TAG, "Merge: streaming latent1 (tokens, 25 patches)...")
+            LogUtil.d(TAG, "Merge: streaming latent1 (tokens, 25 patches)...")
             streamingMerge("tokens", 0, 5, X0_MERGE_PADDING, isTokenReshape = true).let { buf ->
                 saveTensorToFile(buf, intArrayOf(1, FEATURE_DIM, latent0OutH, latent0OutH),
                     File(tempDir, "latent1.tensor"))
             }
 
             // x0_feat: Part 2 features (x0 patches, 5x5 grid)
-            Log.d(TAG, "Merge: streaming x0_feat (feat, 25 patches)...")
+            LogUtil.d(TAG, "Merge: streaming x0_feat (feat, 25 patches)...")
             streamingMerge("feat", 0, 5, X0_MERGE_PADDING, isTokenReshape = false).let { buf ->
                 saveTensorToFile(buf, intArrayOf(1, FEATURE_DIM, latent0OutH, latent0OutH),
                     File(tempDir, "x0_feat.tensor"))
             }
 
             // x1_feat: Part 2 features (x1 patches, 3x3 grid)
-            Log.d(TAG, "Merge: streaming x1_feat (feat, 9 patches)...")
+            LogUtil.d(TAG, "Merge: streaming x1_feat (feat, 9 patches)...")
             streamingMerge("feat", X0_PATCH_COUNT, 3, X1_MERGE_PADDING, isTokenReshape = false).let { buf ->
                 saveTensorToFile(buf, intArrayOf(1, FEATURE_DIM, x1OutH, x1OutH),
                     File(tempDir, "x1_feat.tensor"))
@@ -927,13 +927,13 @@ class LiteRTSharp private constructor(private val context: Context) {
             System.gc()
 
             val mergeTime = System.currentTimeMillis() - mergeStart
-            Log.d(TAG, "Streaming merge done in ${mergeTime}ms. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Streaming merge done in ${mergeTime}ms. Memory: ${getMemoryInfo()}")
 
             // Step 6: Part 3 — Image Encoder A (full image → image_tokens)
             progressCallback?.invoke(0.50f, "Part 3: Image encoder...")
-            Log.d(TAG, "Memory before Part 3: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Memory before Part 3: ${getMemoryInfo()}")
             val part3File = findFile(SPLIT_PART_FILENAMES[2])!!
-            Log.d(TAG, "Loading Part 3: ${part3File.name}")
+            LogUtil.d(TAG, "Loading Part 3: ${part3File.name}")
             interpreter = createInterpreter(part3File, numThreadsOverride = 4, useXnnpack = true)
             val imgTokensShape = interpreter.getOutputTensor(0).shape()
             val imgTokensSize = imgTokensShape.fold(1) { acc, d -> acc * d }
@@ -943,7 +943,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             val part3Start = System.currentTimeMillis()
             interpreter.run(inputBuffer, imgTokensBuf)
             val part3Time = System.currentTimeMillis() - part3Start
-            Log.d(TAG, "Part 3 done in ${part3Time}ms")
+            LogUtil.d(TAG, "Part 3 done in ${part3Time}ms")
 
             saveTensorToFile(imgTokensBuf!!, imgTokensShape, File(tempDir, "image_tokens.tensor"))
             imgTokensBuf = null
@@ -955,7 +955,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             val inputImageFile = File(tempDir, "input_image.tensor")
             saveTensorToFile(inputBuffer!!, intArrayOf(1, 3, IMAGE_SIZE, IMAGE_SIZE), inputImageFile)
             inputBuffer = null  // Release 27MB DirectByteBuffer
-            Log.d(TAG, "inputBuffer saved to disk and released (27MB freed)")
+            LogUtil.d(TAG, "inputBuffer saved to disk and released (27MB freed)")
 
             System.gc()
 
@@ -963,7 +963,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             System.gc()
             Thread.sleep(200)
             System.gc()
-            Log.d(TAG, "Memory before Part 4: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Memory before Part 4: ${getMemoryInfo()}")
 
             val chunkedPart4Available = findFile(PART4A_FILENAME) != null && findFile(PART4B_FILENAME) != null
             val part4Start = System.currentTimeMillis()
@@ -974,10 +974,10 @@ class LiteRTSharp private constructor(private val context: Context) {
                 // --- Part 4a: ViT blocks 12-23 + norm ---
                 progressCallback?.invoke(0.60f, "Part 4a: ViT blocks...")
                 val part4aFile = findFile(PART4A_FILENAME)!!
-                Log.d(TAG, "Loading Part 4a: ${part4aFile.name} (${part4aFile.length() / 1024 / 1024}MB)")
+                LogUtil.d(TAG, "Loading Part 4a: ${part4aFile.name} (${part4aFile.length() / 1024 / 1024}MB)")
 
                 interpreter = createInterpreter(part4aFile, numThreadsOverride = 4, useXnnpack = true)
-                Log.d(TAG, "Part 4a interpreter created. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4a interpreter created. Memory: ${getMemoryInfo()}")
 
                 var imageTokensForP4a: ByteBuffer? = loadTensorFromFile(File(tempDir, "image_tokens.tensor"))
                 imageTokensForP4a!!.rewind()
@@ -989,7 +989,7 @@ class LiteRTSharp private constructor(private val context: Context) {
                 val part4aStart = System.currentTimeMillis()
                 interpreter.run(imageTokensForP4a, tokensNormBuf)
                 val part4aTime = System.currentTimeMillis() - part4aStart
-                Log.d(TAG, "Part 4a done in ${part4aTime}ms. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4a done in ${part4aTime}ms. Memory: ${getMemoryInfo()}")
 
                 interpreter.close()
                 imageTokensForP4a = null
@@ -1000,15 +1000,15 @@ class LiteRTSharp private constructor(private val context: Context) {
                 tokensNormBuf = null
 
                 System.gc()
-                Log.d(TAG, "Part 4a buffers released. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4a buffers released. Memory: ${getMemoryInfo()}")
 
                 // --- Part 4b: Decoder + Gaussians ---
                 progressCallback?.invoke(0.68f, "Part 4b: Decoder + Gaussians...")
                 val part4bFile = findFile(PART4B_FILENAME)!!
-                Log.d(TAG, "Loading Part 4b: ${part4bFile.name} (${part4bFile.length() / 1024 / 1024}MB)")
+                LogUtil.d(TAG, "Loading Part 4b: ${part4bFile.name} (${part4bFile.length() / 1024 / 1024}MB)")
 
                 interpreter = createInterpreter(part4bFile, numThreadsOverride = 1, useXnnpack = true)
-                Log.d(TAG, "Part 4b interpreter created. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4b interpreter created. Memory: ${getMemoryInfo()}")
 
                 val p4bPackedShape = interpreter.getOutputTensor(0).shape()
                 gaussianCount = p4bPackedShape[1]
@@ -1034,7 +1034,7 @@ class LiteRTSharp private constructor(private val context: Context) {
                 var x2FeatTensorBuf: ByteBuffer? = loadTensorFromFile(File(tempDir, "x2_feat.tensor"))
                 File(tempDir, "x2_feat.tensor").delete()
 
-                Log.d(TAG, "Part 4b inputs loaded (~170MB). Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4b inputs loaded (~170MB). Memory: ${getMemoryInfo()}")
 
                 var part4bInputs: Array<Any>? = buildPart4bInputs(
                     interpreter = interpreter,
@@ -1049,12 +1049,12 @@ class LiteRTSharp private constructor(private val context: Context) {
 
                 val part4bOutMap = HashMap<Int, Any>()
                 part4bOutMap[0] = packedBuf
-                Log.d(TAG, "Part 4b ready to run. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4b ready to run. Memory: ${getMemoryInfo()}")
 
                 val part4bStart = System.currentTimeMillis()
                 interpreter.runForMultipleInputsOutputs(part4bInputs!!, part4bOutMap)
                 val part4bTime = System.currentTimeMillis() - part4bStart
-                Log.d(TAG, "Part 4b done in ${part4bTime}ms. Gaussians: $gaussianCount. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4b done in ${part4bTime}ms. Gaussians: $gaussianCount. Memory: ${getMemoryInfo()}")
 
                 // Release ~170MB of input DirectByteBuffers immediately
                 interpreter.close()
@@ -1067,18 +1067,18 @@ class LiteRTSharp private constructor(private val context: Context) {
                 x1FeatTensorBuf = null
                 x2FeatTensorBuf = null
                 System.gc()
-                Log.d(TAG, "Part 4b cleanup done. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4b cleanup done. Memory: ${getMemoryInfo()}")
 
-                Log.d(TAG, "Part 4 (chunked) total: P4a=${part4aTime}ms P4b=${part4bTime}ms")
+                LogUtil.d(TAG, "Part 4 (chunked) total: P4a=${part4aTime}ms P4b=${part4bTime}ms")
             } else {
                 // Fallback: original single Part 4 (may OOM on some devices)
                 progressCallback?.invoke(0.60f, "Part 4: Loading decoder...")
 
                 val part4File = findFile(SPLIT_PART_FILENAMES[3])!!
-                Log.d(TAG, "Loading Part 4 (original): ${part4File.name} (${part4File.length() / 1024 / 1024}MB)")
+                LogUtil.d(TAG, "Loading Part 4 (original): ${part4File.name} (${part4File.length() / 1024 / 1024}MB)")
 
                 interpreter = createInterpreter(part4File, numThreadsOverride = 2, useXnnpack = false)
-                Log.d(TAG, "Part 4 interpreter created. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4 interpreter created. Memory: ${getMemoryInfo()}")
 
                 val packedShape = interpreter.getOutputTensor(0).shape()
                 gaussianCount = packedShape[1]
@@ -1105,7 +1105,7 @@ class LiteRTSharp private constructor(private val context: Context) {
                 val x2FeatTensorBuf = loadTensorFromFile(File(tempDir, "x2_feat.tensor"))
                 File(tempDir, "x2_feat.tensor").delete()
 
-                Log.d(TAG, "Part 4 inputs loaded. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4 inputs loaded. Memory: ${getMemoryInfo()}")
 
                 val part4Inputs = buildPart4Inputs(
                     interpreter = interpreter,
@@ -1126,7 +1126,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             }
 
             val part4Time = System.currentTimeMillis() - part4Start
-            Log.d(TAG, "Part 4 total: ${part4Time}ms. Gaussians: $gaussianCount")
+            LogUtil.d(TAG, "Part 4 total: ${part4Time}ms. Gaussians: $gaussianCount")
 
             // Clean up temp files
             tempDir.listFiles()?.forEach { it.delete() }
@@ -1139,20 +1139,20 @@ class LiteRTSharp private constructor(private val context: Context) {
 
             val totalTime = System.currentTimeMillis() - startTime
             val p4Label = if (chunkedPart4Available) "P4(chunked)" else "P4"
-            Log.d(TAG, "Single-Patch LiteRT completed: $gaussianCount Gaussians in ${totalTime}ms")
-            Log.d(TAG, "  P1=${part1Time}ms P2=${part2Time}ms merge=${mergeTime}ms P3=${part3Time}ms $p4Label=${part4Time}ms")
+            LogUtil.d(TAG, "Single-Patch LiteRT completed: $gaussianCount Gaussians in ${totalTime}ms")
+            LogUtil.d(TAG, "  P1=${part1Time}ms P2=${part2Time}ms merge=${mergeTime}ms P3=${part3Time}ms $p4Label=${part4Time}ms")
 
             progressCallback?.invoke(1.0f, "Done!")
             return result
 
         } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "OUT OF MEMORY during single-patch LiteRT inference", e)
+            LogUtil.e(TAG, "OUT OF MEMORY during single-patch LiteRT inference", e)
             System.gc()
             tempDir.listFiles()?.forEach { it.delete() }
             progressCallback?.invoke(0f, "Out of memory")
             return null
         } catch (e: Exception) {
-            Log.e(TAG, "Single-patch LiteRT inference failed", e)
+            LogUtil.e(TAG, "Single-patch LiteRT inference failed", e)
             tempDir.listFiles()?.forEach { it.delete() }
             progressCallback?.invoke(0f, "Error: ${e.message}")
             return null
@@ -1247,7 +1247,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             }
             dataBuffer.flip()
 
-            Log.d(TAG, "Loaded tensor: shape=${shape.contentToString()}, size=${dataSizeBytes / 1024}KB")
+            LogUtil.d(TAG, "Loaded tensor: shape=${shape.contentToString()}, size=${dataSizeBytes / 1024}KB")
             return dataBuffer
         }
     }
@@ -1288,13 +1288,13 @@ class LiteRTSharp private constructor(private val context: Context) {
         val inputCount = interpreter.inputTensorCount
         val inputs = arrayOfNulls<Any>(inputCount)
 
-        Log.d(TAG, "Part 4 interpreter inputs ($inputCount):")
+        LogUtil.d(TAG, "Part 4 interpreter inputs ($inputCount):")
         for (i in 0 until inputCount) {
             val t = interpreter.getInputTensor(i)
             val name = t.name()
             val shape = t.shape().contentToString()
             val bytes = t.numBytes()
-            Log.d(TAG, "  input[$i] name=$name shape=$shape bytes=$bytes")
+            LogUtil.d(TAG, "  input[$i] name=$name shape=$shape bytes=$bytes")
 
             val argIdx = parseServingArgIndex(name)
             val buf = argIdx?.let { byArgIndex[it] }
@@ -1323,13 +1323,13 @@ class LiteRTSharp private constructor(private val context: Context) {
             if (candidate != null) {
                 inputs[i] = candidate.first
                 remaining.remove(candidate)
-                Log.w(TAG, "Part 4: filled input[$i] by shape match (name=${t.name()})")
+                LogUtil.w(TAG, "Part 4: filled input[$i] by shape match (name=${t.name()})")
             }
         }
 
         val missing = inputs.indexOfFirst { it == null }
         if (missing != -1) {
-            Log.e(TAG, "Part 4: could not map all inputs; missing index $missing")
+            LogUtil.e(TAG, "Part 4: could not map all inputs; missing index $missing")
         }
 
         @Suppress("UNCHECKED_CAST")
@@ -1363,13 +1363,13 @@ class LiteRTSharp private constructor(private val context: Context) {
         val inputCount = interpreter.inputTensorCount
         val inputs = arrayOfNulls<Any>(inputCount)
 
-        Log.d(TAG, "Part 4b interpreter inputs ($inputCount):")
+        LogUtil.d(TAG, "Part 4b interpreter inputs ($inputCount):")
         for (i in 0 until inputCount) {
             val t = interpreter.getInputTensor(i)
             val name = t.name()
             val shape = t.shape().contentToString()
             val bytes = t.numBytes()
-            Log.d(TAG, "  input[$i] name=$name shape=$shape bytes=$bytes")
+            LogUtil.d(TAG, "  input[$i] name=$name shape=$shape bytes=$bytes")
 
             val argIdx = parseServingArgIndex(name)
             val buf = argIdx?.let { byArgIndex[it] }
@@ -1399,13 +1399,13 @@ class LiteRTSharp private constructor(private val context: Context) {
                 candidate.first.rewind()
                 inputs[i] = candidate.first
                 remaining.remove(candidate)
-                Log.w(TAG, "Part 4b: filled input[$i] by shape match (name=${t.name()})")
+                LogUtil.w(TAG, "Part 4b: filled input[$i] by shape match (name=${t.name()})")
             }
         }
 
         val missing = inputs.indexOfFirst { it == null }
         if (missing != -1) {
-            Log.e(TAG, "Part 4b: could not map all inputs; missing index $missing")
+            LogUtil.e(TAG, "Part 4b: could not map all inputs; missing index $missing")
         }
 
         @Suppress("UNCHECKED_CAST")
@@ -1428,18 +1428,18 @@ class LiteRTSharp private constructor(private val context: Context) {
             val scaledBitmap = Bitmap.createScaledBitmap(bitmap, IMAGE_SIZE, IMAGE_SIZE, true)
             val inputBuffer = preprocessImage(scaledBitmap)
             scaledBitmap.recycle()
-            Log.d(TAG, "Image preprocessed to ${IMAGE_SIZE}x${IMAGE_SIZE}")
+            LogUtil.d(TAG, "Image preprocessed to ${IMAGE_SIZE}x${IMAGE_SIZE}")
 
             // Step 2: Load interpreter
             progressCallback?.invoke(0.10f, "Loading SHARP model (LiteRT)...")
             val modelFile = findSingleModel()!!
-            Log.d(TAG, "Loading model: ${modelFile.name} (${modelFile.length() / 1024 / 1024}MB)")
+            LogUtil.d(TAG, "Loading model: ${modelFile.name} (${modelFile.length() / 1024 / 1024}MB)")
             val interpreter = createInterpreter(modelFile, numThreadsOverride = 4, useXnnpack = true)
 
             val outputTensor = interpreter.getOutputTensor(0)
             val outputShape = outputTensor.shape()
             val gaussianCount = outputShape[1]
-            Log.d(TAG, "Model loaded. Output shape: ${outputShape.contentToString()}")
+            LogUtil.d(TAG, "Model loaded. Output shape: ${outputShape.contentToString()}")
 
             val outputSize = gaussianCount * PARAMS_PER_GAUSSIAN * 4
             val outputBuffer = ByteBuffer.allocateDirect(outputSize).apply {
@@ -1451,7 +1451,7 @@ class LiteRTSharp private constructor(private val context: Context) {
             val inferenceStart = System.currentTimeMillis()
             interpreter.run(inputBuffer, outputBuffer)
             val inferenceTime = System.currentTimeMillis() - inferenceStart
-            Log.d(TAG, "Inference completed in ${inferenceTime}ms ($gaussianCount Gaussians)")
+            LogUtil.d(TAG, "Inference completed in ${inferenceTime}ms ($gaussianCount Gaussians)")
 
             interpreter.close()
             System.gc()
@@ -1464,13 +1464,13 @@ class LiteRTSharp private constructor(private val context: Context) {
             val result = writeGaussianPlyFromPackedBuffer(outputBuffer, gaussianCount, progressCallback)
 
             val totalTime = System.currentTimeMillis() - startTime
-            Log.d(TAG, "Single LiteRT SHARP completed: $gaussianCount Gaussians in ${totalTime}ms")
+            LogUtil.d(TAG, "Single LiteRT SHARP completed: $gaussianCount Gaussians in ${totalTime}ms")
 
             progressCallback?.invoke(1.0f, "Done!")
             return result
 
         } catch (e: Exception) {
-            Log.e(TAG, "Single LiteRT inference failed", e)
+            LogUtil.e(TAG, "Single LiteRT inference failed", e)
             progressCallback?.invoke(0f, "Error: ${e.message}")
             return null
         }
@@ -1629,8 +1629,8 @@ class LiteRTSharp private constructor(private val context: Context) {
 
         plyFile.copyTo(classicPlyFile, overwrite = true)
 
-        Log.d(TAG, "PLY written: $gaussianCount Gaussians")
-        Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
+        LogUtil.d(TAG, "PLY written: $gaussianCount Gaussians")
+        LogUtil.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
 
         return StreamingResult(
             plyFile = plyFile,
@@ -1787,8 +1787,8 @@ class LiteRTSharp private constructor(private val context: Context) {
 
         plyFile.copyTo(classicPlyFile, overwrite = true)
 
-        Log.d(TAG, "PLY written: $gaussianCount Gaussians")
-        Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
+        LogUtil.d(TAG, "PLY written: $gaussianCount Gaussians")
+        LogUtil.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
 
         return StreamingResult(
             plyFile = plyFile,
@@ -1828,6 +1828,6 @@ class LiteRTSharp private constructor(private val context: Context) {
     fun release() {
         isInitialized = false
         tempDir.listFiles()?.forEach { it.delete() }
-        Log.d(TAG, "LiteRTSharp released")
+        LogUtil.d(TAG, "LiteRTSharp released")
     }
 }

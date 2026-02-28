@@ -13,7 +13,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.view.*
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -105,13 +105,13 @@ class FurnitureFitFragment : Fragment() {
         selectedRoomHeight = arguments?.getFloat("ROOM_HEIGHT") ?: 3f
         selectedRoomDepth = arguments?.getFloat("ROOM_DEPTH") ?: 4.5f
         selectedPhotoOrientation = if (arguments?.getString("PHOTO_ORIENTATION")?.trim()?.lowercase() == "landscape") "landscape" else "portrait"
-        Log.d("FurnitureFit", "Fragment onCreate - ROOM_NAME=$selectedRoomName ROOM_ID=$selectedRoomId ROOM_FOLDER=$selectedRoomFolder dims=${selectedRoomWidth}x${selectedRoomHeight}x${selectedRoomDepth} orientation=$selectedPhotoOrientation")
+        LogUtil.d("FurnitureFit", "Fragment onCreate - ROOM_NAME=$selectedRoomName ROOM_ID=$selectedRoomId ROOM_FOLDER=$selectedRoomFolder dims=${selectedRoomWidth}x${selectedRoomHeight}x${selectedRoomDepth} orientation=$selectedPhotoOrientation")
         cameraExecutor = Executors.newSingleThreadExecutor()
         manager = FurnitureFitManager(requireContext())
         // Initialize model - try NCNN first (1280x1280, more efficient), fall back to ONNX
-        Log.d("FurnitureFit", "Calling initializeAuto...")
+        LogUtil.d("FurnitureFit", "Calling initializeAuto...")
         val success = manager.initializeAuto()
-        Log.d("FurnitureFit", "initializeAuto completed, success=$success")
+        LogUtil.d("FurnitureFit", "initializeAuto completed, success=$success")
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -135,7 +135,7 @@ class FurnitureFitFragment : Fragment() {
             setBackgroundColor(Color.parseColor("#808080"))
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
-                    msg?.let { Log.d("FurnitureFit", "PLY WebView: ${it.message()}") }
+                    msg?.let { LogUtil.d("FurnitureFit", "PLY WebView: ${it.message()}") }
                     return true
                 }
             }
@@ -151,7 +151,7 @@ class FurnitureFitFragment : Fragment() {
         }
 
         statusLabel = TextView(requireContext()).apply {
-            text = "Initializing..."
+            text = getString(R.string.smartypants_initializing)
             setTextColor(0xFFFFFFFF.toInt())
             setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
             setPadding(24, 48, 24, 24)
@@ -171,7 +171,7 @@ class FurnitureFitFragment : Fragment() {
         }
 
         progressLabel = TextView(requireContext()).apply {
-            text = "Starting camera..."
+            text = getString(R.string.smartypants_starting)
             setTextColor(0xFFFFFFFF.toInt())
             textSize = 14f
             gravity = Gravity.CENTER
@@ -221,7 +221,7 @@ class FurnitureFitFragment : Fragment() {
 
         // Hint label (center) - shows drag instruction
         val hintLabel = TextView(requireContext()).apply {
-            text = "Drag furniture to move • Drag outside to pan room"
+            text = getString(R.string.smartypants_drag_hint)
             setTextColor(0xAAFFFFFF.toInt())
             textSize = 12f
             setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
@@ -248,7 +248,7 @@ class FurnitureFitFragment : Fragment() {
             setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
         }
         calibrationPillLine2 = TextView(requireContext()).apply {
-            text = "Tap to calibrate"
+            text = getString(R.string.smartypants_tap_calibrate)
             setTextColor(0xAAFFFFFF.toInt())
             textSize = 12f
             setShadowLayer(2f, 1f, 1f, 0xFF000000.toInt())
@@ -304,14 +304,14 @@ class FurnitureFitFragment : Fragment() {
     }
 
     private fun handleCameraDrag(event: MotionEvent) {
-        Log.d("FurnitureFit", "handleCameraDrag called, action=${event.actionMasked}, roomVisible=${roomSceneView.visibility == View.VISIBLE}")
+        LogUtil.d("FurnitureFit", "handleCameraDrag called, action=${event.actionMasked}, roomVisible=${roomSceneView.visibility == View.VISIBLE}")
         if (roomSceneView.visibility != View.VISIBLE) return
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastCameraTouchX = event.x
                 lastCameraTouchY = event.y
-                Log.d("FurnitureFit", "Camera drag DOWN at (${event.x}, ${event.y})")
+                LogUtil.d("FurnitureFit", "Camera drag DOWN at (${event.x}, ${event.y})")
             }
             MotionEvent.ACTION_MOVE -> {
                 val deltaX = event.x - lastCameraTouchX
@@ -324,7 +324,7 @@ class FurnitureFitFragment : Fragment() {
 
                 val newX = position.x - deltaX * sensitivity
                 val newZ = position.z - deltaY * sensitivity
-                Log.d("FurnitureFit", "Camera drag MOVE: delta=($deltaX, $deltaY), newPos=($newX, ${position.y}, $newZ)")
+                LogUtil.d("FurnitureFit", "Camera drag MOVE: delta=($deltaX, $deltaY), newPos=($newX, ${position.y}, $newZ)")
 
                 camera.position = Position(newX, position.y, newZ)
 
@@ -370,8 +370,8 @@ class FurnitureFitFragment : Fragment() {
                 Handler(Looper.getMainLooper())
             )
         } catch (e: Exception) {
-            Log.e("FurnitureFit", "Screenshot failed", e)
-            Toast.makeText(requireContext(), "Screenshot failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            LogUtil.e("FurnitureFit", "Screenshot failed", e)
+            Toast.makeText(requireContext(), getString(R.string.smartypants_screenshot_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -396,7 +396,7 @@ class FurnitureFitFragment : Fragment() {
                 }
 
                 activity?.runOnUiThread {
-                    Toast.makeText(requireContext(), "Saved to Screenshots", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), getString(R.string.smartypants_saved_screenshots), Toast.LENGTH_SHORT).show()
                 }
 
                 // Share the screenshot
@@ -408,13 +408,13 @@ class FurnitureFitFragment : Fragment() {
                 startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
             } else {
                 activity?.runOnUiThread {
-                    Toast.makeText(requireContext(), "Failed to save screenshot", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), getString(R.string.smartypants_failed_save_screenshot), Toast.LENGTH_SHORT).show()
                 }
             }
         } catch (e: Exception) {
-            Log.e("FurnitureFit", "Save screenshot failed", e)
+            LogUtil.e("FurnitureFit", "Save screenshot failed", e)
             activity?.runOnUiThread {
-                Toast.makeText(requireContext(), "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), getString(R.string.smartypants_failed_save, e.message ?: ""), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -454,12 +454,12 @@ class FurnitureFitFragment : Fragment() {
                 cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
             }
             activity?.runOnUiThread {
-                statusLabel.text = if (hasRoomBackground) "Detecting furniture..." else "Camera ready - detecting furniture..."
+                statusLabel.text = if (hasRoomBackground) getString(R.string.smartypants_detecting_furniture) else getString(R.string.smartypants_camera_ready)
             }
         } catch (e: Exception) {
-            Log.e("FurnitureFit", "bindToLifecycle failed", e)
+            LogUtil.e("FurnitureFit", "bindToLifecycle failed", e)
             activity?.runOnUiThread {
-                statusLabel.text = "Camera error: ${e.message}"
+                statusLabel.text = getString(R.string.smartypants_camera_error, e.message ?: "")
             }
         }
     }
@@ -473,7 +473,7 @@ class FurnitureFitFragment : Fragment() {
 
         val bitmap = imageProxy.toBitmapSafe()
         if (bitmap == null) {
-            Log.w("FurnitureFit", "Failed to convert imageProxy to bitmap")
+            LogUtil.w("FurnitureFit", "Failed to convert imageProxy to bitmap")
             isProcessing = false
             imageProxy.close()
             return
@@ -481,7 +481,7 @@ class FurnitureFitFragment : Fragment() {
 
         // Update progress during processing
         if (!hasFirstDetection) {
-            setProgress(15, "Preprocessing...")
+            setProgress(15, getString(R.string.smartypants_preprocessing))
         }
 
         manager.segmentWithDetectionsAsync(bitmap) { result ->
@@ -497,7 +497,7 @@ class FurnitureFitFragment : Fragment() {
                     val labels = result.detections.take(3).joinToString(", ") {
                         "${it.label} ${(it.confidence * 100).toInt()}%"
                     }
-                    statusLabel.text = if (labels.isNotEmpty()) labels else "Detected"
+                    statusLabel.text = if (labels.isNotEmpty()) labels else getString(R.string.smartypants_detected)
                     overlay.setMaskAndDetections(result.mask, result.detections, result.inputSize)
 
                     // Estimated furniture height in meters from largest detection (for Tap to calibrate)
@@ -525,9 +525,9 @@ class FurnitureFitFragment : Fragment() {
                     }
                 } else {
                     if (!hasFirstDetection) {
-                        setProgress(40, "Scanning for furniture...")
+                        setProgress(40, getString(R.string.smartypants_scanning_for_furniture))
                     }
-                    statusLabel.text = "Scanning..."
+                    statusLabel.text = getString(R.string.smartypants_scanning)
                     overlay.setMaskAndDetections(null, emptyList())
                     roomSceneView.visibility = View.GONE
                     roomPlyWebView?.visibility = View.GONE
@@ -557,7 +557,7 @@ class FurnitureFitFragment : Fragment() {
                 val roomM = calibratedRoomHeightMeters
                 calibrationPillLine1?.text = if (roomM != null) "Room: ${String.format(Locale.US, "%.2f", roomM)}m" else "Furn: ${String.format(Locale.US, "%.2f", detected)}m"
                 calibrationPillLine1?.setTextColor(if (roomM != null) 0xFF4CAF50.toInt() else 0xFFFFFFFF.toInt())
-                calibrationPillLine2?.text = "Tap to calibrate"
+                calibrationPillLine2?.text = getString(R.string.smartypants_tap_calibrate)
             }
         }
     }
@@ -566,21 +566,21 @@ class FurnitureFitFragment : Fragment() {
         val detected = detectedFurnitureHeightMeters ?: return
         val ctx = requireContext()
         val edit = EditText(ctx).apply {
-            setHint("Real height (m)")
+            setHint(getString(R.string.smartypants_real_height_hint))
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
             setText(String.format(Locale.US, "%.2f", detected))
             setSelection(text?.length ?: 0)
         }
         AlertDialog.Builder(ctx)
-            .setTitle("Calibrate Room")
-            .setMessage("Enter real furniture height (meters). Detected: ${String.format(Locale.US, "%.2f", detected)}m")
+            .setTitle(getString(R.string.smartypants_calibrate_title))
+            .setMessage(getString(R.string.smartypants_calibrate_message, String.format(Locale.US, "%.2f", detected)))
             .setView(edit)
             .setNegativeButton(android.R.string.cancel, null)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val raw = edit.text?.toString()?.trim() ?: return@setPositiveButton
                 val real = raw.toFloatOrNull() ?: return@setPositiveButton
                 if (real <= 0f) {
-                    Toast.makeText(ctx, "Enter a positive number", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, getString(R.string.smartypants_enter_positive_number), Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
                 calibrationScaleFactor = real / detected
@@ -588,7 +588,7 @@ class FurnitureFitFragment : Fragment() {
                 calibratedRoomHeightMeters = defaultRoomHeightMeters * calibrationScaleFactor
                 applyScaleToRoom()
                 updateCalibrationPill()
-                Toast.makeText(ctx, "Room scaled by ${String.format(Locale.US, "%.2f", calibrationScaleFactor)}x", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, getString(R.string.smartypants_room_scaled, String.format(Locale.US, "%.2f", calibrationScaleFactor)), Toast.LENGTH_SHORT).show()
             }
             .show()
     }
@@ -636,7 +636,7 @@ class FurnitureFitFragment : Fragment() {
     private fun loadRoom3D() {
         val roomId = selectedRoomId
         val roomFolderPath = selectedRoomFolder
-        Log.d("FurnitureFit", "loadRoom3D: ROOM_ID=$roomId ROOM_FOLDER=$roomFolderPath")
+        LogUtil.d("FurnitureFit", "loadRoom3D: ROOM_ID=$roomId ROOM_FOLDER=$roomFolderPath")
 
         lifecycleScope.launch {
             try {
@@ -644,7 +644,7 @@ class FurnitureFitFragment : Fragment() {
                     // Bundled rooms in assets
                     roomId == "vintage" || roomId == "cozy_room" -> {
                         val assetPath = "models/$roomId.glb"
-                        Log.d("FurnitureFit", "Using assets: $assetPath")
+                        LogUtil.d("FurnitureFit", "Using assets: $assetPath")
                         roomSceneView.modelLoader.createModelInstance(assetFileLocation = assetPath)
                     }
                     // Explicit room folder – use room.glb if present, else room.ply (splat) as WebView background
@@ -653,12 +653,12 @@ class FurnitureFitFragment : Fragment() {
                         val glbFile = java.io.File(folder, "room.glb")
                         val plyFile = java.io.File(folder, "room.ply")
                         if (glbFile.exists()) {
-                            Log.d("FurnitureFit", "Using opened folder room.glb: ${glbFile.absolutePath}")
+                            LogUtil.d("FurnitureFit", "Using opened folder room.glb: ${glbFile.absolutePath}")
                             val bytes = glbFile.readBytes()
                             val buffer = java.nio.ByteBuffer.wrap(bytes)
                             roomSceneView.modelLoader.createModelInstance(buffer)
                         } else if (plyFile.exists()) {
-                            Log.d("FurnitureFit", "Using opened folder room.ply as PLY background: ${plyFile.absolutePath}")
+                            LogUtil.d("FurnitureFit", "Using opened folder room.ply as PLY background: ${plyFile.absolutePath}")
                             usePlyBackground = true
                             loadPlyBackground(plyFile)
                             activity?.runOnUiThread {
@@ -666,7 +666,7 @@ class FurnitureFitFragment : Fragment() {
                             }
                             null
                         } else {
-                            Log.d("FurnitureFit", "No room.glb or room.ply in $roomFolderPath; no 3D background")
+                            LogUtil.d("FurnitureFit", "No room.glb or room.ply in $roomFolderPath; no 3D background")
                             null
                         }
                     }
@@ -681,17 +681,17 @@ class FurnitureFitFragment : Fragment() {
                             else -> null
                         }
                         if (glbFile != null) {
-                            Log.d("FurnitureFit", "Using rooms/sharp_rooms by id: ${glbFile.absolutePath}")
+                            LogUtil.d("FurnitureFit", "Using rooms/sharp_rooms by id: ${glbFile.absolutePath}")
                             val bytes = glbFile.readBytes()
                             val buffer = java.nio.ByteBuffer.wrap(bytes)
                             roomSceneView.modelLoader.createModelInstance(buffer)
                         } else {
-                            Log.d("FurnitureFit", "No room.glb for id=$roomId; no 3D background")
+                            LogUtil.d("FurnitureFit", "No room.glb for id=$roomId; no 3D background")
                             null
                         }
                     }
                     else -> {
-                        Log.d("FurnitureFit", "No ROOM_ID or ROOM_FOLDER; no 3D background")
+                        LogUtil.d("FurnitureFit", "No ROOM_ID or ROOM_FOLDER; no 3D background")
                         null
                     }
                 }
@@ -707,7 +707,7 @@ class FurnitureFitFragment : Fragment() {
                     // Center room at origin and position camera inside room facing front wall (match ModelDetailActivity / Swift)
                     val bboxCenter = modelNode.center
                     val bboxExtents = modelNode.extents
-                    Log.d("FurnitureFit", "Room bbox center=(${bboxCenter.x}, ${bboxCenter.y}, ${bboxCenter.z}) extents=(${bboxExtents.x}, ${bboxExtents.y}, ${bboxExtents.z})")
+                    LogUtil.d("FurnitureFit", "Room bbox center=(${bboxCenter.x}, ${bboxCenter.y}, ${bboxCenter.z}) extents=(${bboxExtents.x}, ${bboxExtents.y}, ${bboxExtents.z})")
                     modelNode.position = Position(-bboxCenter.x, -bboxCenter.y, -bboxCenter.z)
 
                     val boundaryManager = RoomBoundaryManager()
@@ -716,7 +716,7 @@ class FurnitureFitFragment : Fragment() {
                     val h = bboxExtents.y
                     val d = bboxExtents.z
                     boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
-                    Log.d("FurnitureFit", "[FurnitureFit] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
+                    LogUtil.d("FurnitureFit", "[FurnitureFit] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
                     val cameraSetup = boundaryManager.getCameraAtBackCenter()
                     initialCameraSetup = cameraSetup
                     roomSceneView.cameraNode.apply {
@@ -729,7 +729,7 @@ class FurnitureFitFragment : Fragment() {
                             lookAt(cameraSetup.lookAt)
                         }
                     }
-                    Log.d("FurnitureFit", "[FurnitureFit] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
+                    LogUtil.d("FurnitureFit", "[FurnitureFit] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
                     if (roomFolderPath != null || roomId != null) {
                         activity?.runOnUiThread {
                             roomSceneView.visibility = View.VISIBLE
@@ -742,10 +742,10 @@ class FurnitureFitFragment : Fragment() {
                         lookAt(Position(0f, 1.4f, -4f))
                     }
                     initialCameraSetup = null
-                    Log.d("FurnitureFit", "No 3D room; camera ready for segmentation")
+                    LogUtil.d("FurnitureFit", "No 3D room; camera ready for segmentation")
                 }
             } catch (e: Exception) {
-                Log.e("FurnitureFit", "Failed to load 3D room", e)
+                LogUtil.e("FurnitureFit", "Failed to load 3D room", e)
             }
         }
     }
@@ -759,9 +759,9 @@ class FurnitureFitFragment : Fragment() {
         val destPly = File(internalDir, "room.ply")
         try {
             plyFile.copyTo(destPly, overwrite = true)
-            Log.d("FurnitureFit", "Copied PLY for background: ${destPly.absolutePath}")
+            LogUtil.d("FurnitureFit", "Copied PLY for background: ${destPly.absolutePath}")
         } catch (e: Exception) {
-            Log.e("FurnitureFit", "Failed to copy PLY for background", e)
+            LogUtil.e("FurnitureFit", "Failed to copy PLY for background", e)
             return
         }
         val assetLoader = WebViewAssetLoader.Builder()
@@ -922,7 +922,7 @@ fun ImageProxy.toBitmapSafe(): Bitmap? {
         }
         bitmap
     } catch (e: Exception) {
-        Log.e("FurnitureFit", "toBitmap failed: ${e.message}")
+        LogUtil.e("FurnitureFit", "toBitmap failed: ${e.message}")
         e.printStackTrace()
         null
     }

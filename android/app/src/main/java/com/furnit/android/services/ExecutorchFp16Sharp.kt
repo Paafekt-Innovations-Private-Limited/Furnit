@@ -2,7 +2,7 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -95,7 +95,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: ExecutorchFp16Sharp(context.applicationContext).also {
                     instance = it
-                    Log.d(TAG, "ExecutorchFp16Sharp singleton created")
+                    LogUtil.d(TAG, "ExecutorchFp16Sharp singleton created")
                 }
             }
         }
@@ -146,7 +146,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
 
     fun isModelReady(): Boolean {
         val ready = SPLIT_FILENAMES.all { findFile(it) != null }
-        Log.d(TAG, "isModelReady: $ready")
+        LogUtil.d(TAG, "isModelReady: $ready")
         return ready
     }
 
@@ -191,12 +191,12 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
         for (filename in SPLIT_FILENAMES) {
             val dst = File(internalModelsDir, filename)
             val src = findSourceForCopy(filename) ?: if (dst.exists() && dst.length() > 0) continue else {
-                Log.w(TAG, "ensureSplitModels: no source for $filename")
+                LogUtil.w(TAG, "ensureSplitModels: no source for $filename")
                 return false
             }
             if (dst.exists() && dst.length() == src.length()) continue
             try {
-                Log.d(TAG, "Copying $filename (${src.length() / 1024 / 1024} MB) to internal...")
+                LogUtil.d(TAG, "Copying $filename (${src.length() / 1024 / 1024} MB) to internal...")
                 val tmp = File(internalModelsDir, "$filename.tmp")
                 FileInputStream(src).use { fis ->
                     FileOutputStream(tmp).use { fos ->
@@ -211,9 +211,9 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 }
                 if (tmp.length() != src.length()) { tmp.delete(); return false }
                 if (!tmp.renameTo(dst)) { tmp.delete(); return false }
-                Log.d(TAG, "Copied $filename to ${dst.absolutePath}")
+                LogUtil.d(TAG, "Copied $filename to ${dst.absolutePath}")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to copy $filename: ${e.message}")
+                LogUtil.e(TAG, "Failed to copy $filename: ${e.message}")
                 File(internalModelsDir, "$filename.tmp").delete()
                 return false
             }
@@ -224,14 +224,14 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
     // ---- Initialize ----
 
     private fun initializeImpl(): Boolean {
-        Log.d(TAG, "initialize ENTER. Memory: ${getMemoryInfo()}")
+        LogUtil.d(TAG, "initialize ENTER. Memory: ${getMemoryInfo()}")
         if (!ensureSplitModelsInInternalStorage()) {
-            Log.e(TAG, "initialize: copy to internal failed")
+            LogUtil.e(TAG, "initialize: copy to internal failed")
         }
         if (areAllSplitModelsInternal()) {
             for (fn in SPLIT_FILENAMES) {
                 val f = File(internalModelsDir, fn)
-                Log.d(TAG, "  FP16 split: ${f.name} (${f.length() / 1024 / 1024}MB)")
+                LogUtil.d(TAG, "  FP16 split: ${f.name} (${f.length() / 1024 / 1024}MB)")
             }
             isInitialized = true
             return true
@@ -240,7 +240,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
             isInitialized = true
             return true
         }
-        Log.e(TAG, "No FP16 ExecuTorch models found")
+        LogUtil.e(TAG, "No FP16 ExecuTorch models found")
         return false
     }
 
@@ -253,14 +253,14 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
             if (!isInitialized) initializeImpl()
         }
         val part1File = findFile(SPLIT_PART1) ?: return@withContext
-        Log.d(TAG, "preloadAndWarmup: validating Part1 FP16 (${part1File.length() / 1024 / 1024}MB)")
+        LogUtil.d(TAG, "preloadAndWarmup: validating Part1 FP16 (${part1File.length() / 1024 / 1024}MB)")
         progress?.invoke("Validating FP16 encoder A...")
         val t0 = System.currentTimeMillis()
         val module = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
-        Log.d(TAG, "PRELOAD FP16 Part1 load ${System.currentTimeMillis() - t0}ms")
+        LogUtil.d(TAG, "PRELOAD FP16 Part1 load ${System.currentTimeMillis() - t0}ms")
         module.destroy()
         System.gc()
-        Log.d(TAG, "preloadAndWarmup DONE")
+        LogUtil.d(TAG, "preloadAndWarmup DONE")
         progress?.invoke("Preload done")
     }
 
@@ -316,7 +316,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
         return try {
             tensor.getDataAsFloatArray()
         } catch (e: Exception) {
-            Log.d(TAG, "getDataAsFloatArray failed (FP16 tensor?), converting manually: ${e.message}")
+            LogUtil.d(TAG, "getDataAsFloatArray failed (FP16 tensor?), converting manually: ${e.message}")
             try {
                 val method = tensor.javaClass.getDeclaredMethod("getRawDataBuffer")
                 method.isAccessible = true
@@ -337,7 +337,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                     else -> throw RuntimeException("Unknown buffer type: ${buf?.javaClass}")
                 }
             } catch (e2: Exception) {
-                Log.e(TAG, "Manual FP16 read also failed: ${e2.message}")
+                LogUtil.e(TAG, "Manual FP16 read also failed: ${e2.message}")
                 throw e2
             }
         }
@@ -370,7 +370,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 else -> FloatBuffer.wrap(tensor.getDataAsFloatArray())
             }
         } catch (e: Exception) {
-            Log.w(TAG, "getTensorDataAsFloatBuffer fallback: ${e.message}")
+            LogUtil.w(TAG, "getTensorDataAsFloatBuffer fallback: ${e.message}")
             FloatBuffer.wrap(getOutputAsFloatArray(tensor))
         }
     }
@@ -461,10 +461,10 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
     ): StreamingResult? = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (!isInitialized) {
-                Log.e(TAG, "Not initialized")
+                LogUtil.e(TAG, "Not initialized")
                 return@withContext null
             }
-            Log.d(TAG, "inferStreaming ENTER (FP16) bitmap=${bitmap.width}x${bitmap.height} Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "inferStreaming ENTER (FP16) bitmap=${bitmap.width}x${bitmap.height} Memory: ${getMemoryInfo()}")
             return@withContext inferSplitMode(bitmap, progressCallback)
         }
     }
@@ -539,7 +539,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
         val startTime = System.currentTimeMillis()
 
         try {
-            Log.d(TAG, "inferSplitMode ENTER (FP16) Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "inferSplitMode ENTER (FP16) Memory: ${getMemoryInfo()}")
 
             progressCallback?.invoke(0.02f, "Preprocessing...")
             val scaledBitmap = Bitmap.createScaledBitmap(bitmap, IMAGE_SIZE, IMAGE_SIZE, true)
@@ -573,7 +573,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 val tLoad0 = System.currentTimeMillis()
                 val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
                 val module2 = Module.load(part2File.absolutePath, Module.LOAD_MODE_MMAP)
-                Log.d(TAG, "FP16 Part1+Part2 load done in ${System.currentTimeMillis() - tLoad0}ms")
+                LogUtil.d(TAG, "FP16 Part1+Part2 load done in ${System.currentTimeMillis() - tLoad0}ms")
 
                 var patchCount = 0
                 val part12Start = System.currentTimeMillis()
@@ -633,7 +633,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
 
                 module1.destroy(); module2.destroy()
                 System.gc(); System.runFinalization()
-                Log.d(TAG, "FP16 Part 1+2 done: $patchCount patches in ${System.currentTimeMillis() - part12Start}ms Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "FP16 Part 1+2 done: $patchCount patches in ${System.currentTimeMillis() - part12Start}ms Memory: ${getMemoryInfo()}")
 
                 val x2 = x2Feat ?: return null
                 tempDir.listFiles()?.forEach { it.delete() }
@@ -650,7 +650,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 Part12Saved(inputImageFile, mergedSize1x, mergedSize05x, System.currentTimeMillis() - part12Start)
             }
             System.gc(); System.runFinalization()
-            Log.d(TAG, "FP16 Part 1+2 intermediates on disk. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "FP16 Part 1+2 intermediates on disk. Memory: ${getMemoryInfo()}")
 
             // Part 3
             progressCallback?.invoke(0.50f, "FP16 Part 3: Image encoder...")
@@ -666,7 +666,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
             }
             System.gc(); System.runFinalization()
             val part3Time = System.currentTimeMillis() - part3Start
-            Log.d(TAG, "FP16 Part 3 done in ${part3Time}ms Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "FP16 Part 3 done in ${part3Time}ms Memory: ${getMemoryInfo()}")
 
             // Part 4: chunked (4a_512 FP16 + 4a_65 FP16 + 4b FP32) or single FP32 fallback
             progressCallback?.invoke(0.60f, "Part 4: Decoder...")
@@ -683,7 +683,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
             val part4Output: Array<EValue>
             var part4ModuleToDestroy: Module? = null
             val useChunkedPart4 = isChunkedPart4Available()
-            Log.d(TAG, "Part 4: chunked=$useChunkedPart4. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 4: chunked=$useChunkedPart4. Memory: ${getMemoryInfo()}")
 
             if (useChunkedPart4) {
                 // Chunked: 4a_512 (FP16) → 4a_65 (FP16) → concat → 4b (FP32 decoder)
@@ -702,7 +702,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 val out512 = getOutputAsFloatArray(module4a.forward(EValue.from(chunk512Tensor))[0].toTensor())
                 module4a.destroy()
                 System.gc(); System.runFinalization()
-                Log.d(TAG, "Part 4a (512) done. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4a (512) done. Memory: ${getMemoryInfo()}")
 
                 // 4a: 65-token chunk (FP16)
                 val chunk65Input = FloatArray(CHUNK_LEN_LAST * FEATURE_DIM)
@@ -713,7 +713,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 val out65 = getOutputAsFloatArray(module4a.forward(EValue.from(chunk65Tensor))[0].toTensor())
                 module4a.destroy()
                 System.gc(); System.runFinalization()
-                Log.d(TAG, "Part 4a (65) done. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4a (65) done. Memory: ${getMemoryInfo()}")
 
                 // Concat token outputs
                 val tokensAfterBlocks = FloatArray(IMAGE_TOKENS_SEQ_LEN * FEATURE_DIM)
@@ -722,7 +722,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 System.gc()
 
                 // 4b: decoder (FP32)
-                Log.d(TAG, "Part 4b (decoder FP32) starting. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4b (decoder FP32) starting. Memory: ${getMemoryInfo()}")
                 val module4b = Module.load(part4bFile.absolutePath, Module.LOAD_MODE_MMAP)
                 val ev1Tokens = EValue.from(Tensor.fromBlob(tokensAfterBlocks, longArrayOf(1, IMAGE_TOKENS_SEQ_LEN.toLong(), FEATURE_DIM.toLong())))
                 System.gc()
@@ -741,10 +741,10 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
 
                 part4Output = try {
                     val out = module4b.forward(ev1Tokens, ev2Image, ev3, ev4, ev5, ev6, ev7)
-                    Log.d(TAG, "Part 4b forward returned in ${System.currentTimeMillis() - part4Start}ms")
+                    LogUtil.d(TAG, "Part 4b forward returned in ${System.currentTimeMillis() - part4Start}ms")
                     out
                 } catch (e: OutOfMemoryError) {
-                    Log.e(TAG, "Part 4b: OOM during decoder forward.", e)
+                    LogUtil.e(TAG, "Part 4b: OOM during decoder forward.", e)
                     module4b.destroy(); System.gc()
                     progressCallback?.invoke(0f, "Out of memory during decoder. Close other apps or use 6GB+ RAM device.")
                     return null
@@ -753,7 +753,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
             } else {
                 // Single Part 4 fallback (FP32)
                 val part4File = findFile(SPLIT_PART4) ?: return null
-                Log.d(TAG, "Part 4: single FP32 path. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4: single FP32 path. Memory: ${getMemoryInfo()}")
                 System.gc(); System.runFinalization()
                 val module4 = Module.load(part4File.absolutePath, Module.LOAD_MODE_MMAP)
                 System.gc()
@@ -772,13 +772,13 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
                 val ev7 = loadFp32Input(File(tempDir, "x2.tensor"), shapeX2)
                 System.gc(); System.runFinalization()
 
-                Log.d(TAG, "Part 4: forward starting. Memory: ${getMemoryInfo()}")
+                LogUtil.d(TAG, "Part 4: forward starting. Memory: ${getMemoryInfo()}")
                 part4Output = try {
                     val out = module4.forward(ev1, ev2, ev3, ev4, ev5, ev6, ev7)
-                    Log.d(TAG, "Part 4: forward returned in ${System.currentTimeMillis() - part4Start}ms")
+                    LogUtil.d(TAG, "Part 4: forward returned in ${System.currentTimeMillis() - part4Start}ms")
                     out
                 } catch (e: OutOfMemoryError) {
-                    Log.e(TAG, "Part 4: OOM during decoder forward.", e)
+                    LogUtil.e(TAG, "Part 4: OOM during decoder forward.", e)
                     module4.destroy(); System.gc()
                     progressCallback?.invoke(0f, "Out of memory during decoder.")
                     return null
@@ -787,7 +787,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
             }
 
             val part4Time = System.currentTimeMillis() - part4Start
-            Log.d(TAG, "Part 4 done in ${part4Time}ms Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 4 done in ${part4Time}ms Memory: ${getMemoryInfo()}")
 
             val outputTensor = part4Output[0].toTensor()
             val outputBuffer = getTensorDataAsFloatBuffer(outputTensor)
@@ -800,14 +800,14 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
             System.gc(); System.runFinalization()
 
             val elapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "inferSplitMode FP16 SUCCESS totalMs=$elapsed gaussianCount=$gaussianCount")
-            Log.d(TAG, "  Breakdown: P1+P2=${part12Saved.elapsedMs}ms P3=${part3Time}ms P4=${part4Time}ms")
+            LogUtil.d(TAG, "inferSplitMode FP16 SUCCESS totalMs=$elapsed gaussianCount=$gaussianCount")
+            LogUtil.d(TAG, "  Breakdown: P1+P2=${part12Saved.elapsedMs}ms P3=${part3Time}ms P4=${part4Time}ms")
 
             progressCallback?.invoke(1.0f, "Done!")
             return result
 
         } catch (e: Exception) {
-            Log.e(TAG, "FP16 split inference failed after ${System.currentTimeMillis() - startTime}ms", e)
+            LogUtil.e(TAG, "FP16 split inference failed after ${System.currentTimeMillis() - startTime}ms", e)
             progressCallback?.invoke(0f, "Error: ${e.message}")
             return null
         }
@@ -833,7 +833,7 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
 
         val header = buildPlyHeader(gaussianCount)
 
-        Log.d(TAG, "PLY writer: reusable buffers (plyBatch=${BYTES_PER_VERTEX * PLY_BATCH_SIZE / 1024}KB, zeroSH=180B direct)")
+        LogUtil.d(TAG, "PLY writer: reusable buffers (plyBatch=${BYTES_PER_VERTEX * PLY_BATCH_SIZE / 1024}KB, zeroSH=180B direct)")
         val batchLoopStart: Long
         var totalWriteNs = 0L
         FileOutputStream(plyFile).use { fos ->
@@ -900,12 +900,12 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
         val totalWriteMs = totalWriteNs / 1_000_000
         val plyBytes = gaussianCount.toLong() * BYTES_PER_VERTEX
         val throughputMBps = if (batchLoopTime > 0) plyBytes * 1000.0 / batchLoopTime / 1024 / 1024 else 0.0
-        Log.d(TAG, "PLY batch loop: ${batchLoopTime}ms total (I/O write=${totalWriteMs}ms, compute=${batchLoopTime - totalWriteMs}ms)")
-        Log.d(TAG, "PLY throughput: ${plyBytes / 1024 / 1024}MB @ ${String.format("%.1f", throughputMBps)}MB/s, batches=${(gaussianCount + PLY_BATCH_SIZE - 1) / PLY_BATCH_SIZE}")
+        LogUtil.d(TAG, "PLY batch loop: ${batchLoopTime}ms total (I/O write=${totalWriteMs}ms, compute=${batchLoopTime - totalWriteMs}ms)")
+        LogUtil.d(TAG, "PLY throughput: ${plyBytes / 1024 / 1024}MB @ ${String.format("%.1f", throughputMBps)}MB/s, batches=${(gaussianCount + PLY_BATCH_SIZE - 1) / PLY_BATCH_SIZE}")
 
         plyFile.copyTo(classicPlyFile, overwrite = true)
-        Log.d(TAG, "PLY written: ${plyFile.absolutePath} (${plyFile.length()} bytes)")
-        Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
+        LogUtil.d(TAG, "PLY written: ${plyFile.absolutePath} (${plyFile.length()} bytes)")
+        LogUtil.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
 
         return StreamingResult(
             plyFile = plyFile, classicPlyFile = classicPlyFile,
@@ -930,6 +930,6 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
 
     fun release() {
         isInitialized = false
-        Log.d(TAG, "ExecutorchFp16Sharp released")
+        LogUtil.d(TAG, "ExecutorchFp16Sharp released")
     }
 }

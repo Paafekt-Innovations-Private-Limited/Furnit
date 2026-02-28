@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Paafekt Beta</string>
+    <string name="app_name">Paafekt</string>
     <string name="app_tagline">Explorateur de pièces 3D</string>
     <string name="app_version">Version</string>
     <string name="app_developer">Équipe Furnit</string>
@@ -36,7 +36,7 @@
     <string name="home_no_models">Aucun modèle 3D trouvé</string>
     <string name="home_no_models_description">Créez votre première pièce à partir d\'une photo !</string>
     <string name="home_create_room">Créer une pièce à partir d\'une photo</string>
-    <string name="home_rooms_remaining">%d pièces sur %d restantes</string>
+    <string name="home_rooms_remaining">%1$d pièces sur %2$d restantes</string>
     <string name="home_delete_hint">Supprimez d\'anciennes pièces pour en créer de nouvelles</string>
     <string name="home_swipe_hint">Balayez vers la gauche pour supprimer</string>
     <string name="home_room_model">Modèle de pièce 3D</string>
@@ -230,4 +230,127 @@
     <string name="orientation_held_vertically">held vertically</string>
     <string name="orientation_held_horizontally">held horizontally</string>
     <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+
+    <!-- SharpRoom / PLY viewer -->
+    <string name="sharp_room_no_ply">Aucun fichier PLY fourni</string>
+    <string name="sharp_room_ply_not_found">Fichier PLY introuvable</string>
+    <string name="sharp_room_loading">Chargement de la pièce 3D…</string>
+    <string name="sharp_room_screenshot_saved">Capture enregistrée : %s</string>
+    <string name="sharp_room_screenshot_failed">Échec de la capture d\'écran</string>
+    <string name="sharp_room_smartypants_failed">Échec de l\'initialisation de SmartyPants</string>
+    <string name="sharp_room_camera_error">Erreur caméra : %s</string>
+    <string name="sharp_room_cannot_save">Impossible d\'enregistrer : dossier de pièce introuvable</string>
+    <string name="sharp_room_saved">Pièce \'%s\' enregistrée !</string>
+    <string name="sharp_room_save_failed">Échec de l\'enregistrement : %s</string>
+    <string name="sharp_room_share_failed">Échec du partage : %s</string>
+
+    <!-- FurnitureFit / SmartyPants -->
+    <string name="smartypants_initializing">Initialisation…</string>
+    <string name="smartypants_drag_hint">Faites glisser le meuble pour déplacer • Glissez à l\'extérieur pour déplacer la pièce</string>
+    <string name="smartypants_tap_calibrate">Appuyez pour calibrer</string>
+    <string name="smartypants_scanning">Analyse…</string>
+    <string name="smartypants_camera_error">Erreur caméra : %s</string>
+    <string name="smartypants_screenshot_failed">Échec de la capture : %s</string>
+    <string name="smartypants_saved_screenshots">Enregistré dans Captures</string>
+    <string name="smartypants_failed_save_screenshot">Échec de l\'enregistrement de la capture</string>
+    <string name="smartypants_failed_save">Échec de l\'enregistrement : %s</string>
+    <string name="smartypants_enter_positive_number">Entrez un nombre positif</string>
+    <string name="smartypants_room_scaled">Pièce mise à l\'échelle %sx</string>
+    <string name="smartypants_detected">Détecté</string>
+    <string name="smartypants_camera_ready">Caméra prête - détection des meubles…</string>
+    <string name="smartypants_scanning_for_furniture">Recherche de meubles…</string>
+    <string name="smartypants_calibrate_title">Calibrer la pièce</string>
+    <string name="smartypants_calibrate_message">Entrez la hauteur réelle du meuble (mètres). Détecté : %sm</string>
+    <string name="smartypants_real_height_hint">Hauteur réelle (m)</string>
+
+    <!-- Content / Home -->
+    <string name="home_rooms_remaining_short">%1$d sur 1000 pièces restantes</string>
+    <string name="home_total">Total</string>
+    <string name="home_zero_mb">0 Mo</string>
+    <string name="home_no_rooms_yet">Pas encore de pièces\nAppuyez sur l\'icône image pour commencer</string>
+    <string name="home_3d_room_model">Modèle de pièce 3D</string>
+    <string name="home_opening">Ouverture de %s…</string>
+    <string name="home_deleted">%s supprimé</string>
+    <string name="home_failed_delete">Échec de la suppression : %s</string>
+
+    <!-- Single Photo Room -->
+    <string name="photo_room_back">\u2039 Retour</string>
+    <string name="photo_room_or">ou</string>
+    <string name="photo_room_do_not_screenshots">⚠️ N\'utilisez pas de captures d\'écran - utilisez de vraies photos</string>
+    <string name="photo_room_portrait_held">Portrait - tenu verticalement</string>
+    <string name="photo_room_how_to_create_short">Comment souhaitez-vous créer votre pièce ?</string>
+    <string name="photo_room_tap_option_short">Appuyez sur une option ci-dessous</string>
+    <string name="photo_room_creating_short">Création de votre pièce 3D…</string>
+    <string name="photo_room_progress_hint">Cela prend généralement environ 2 minutes. Nous préparons quelque chose de bien pour vous.</string>
+    <string name="photo_room_error_camera">Erreur d\'ouverture de la caméra : %s</string>
+    <string name="photo_room_error_load">Erreur : %s</string>
+
+    <!-- GLB Room -->
+    <string name="glb_room_no_file">Aucun fichier GLB fourni</string>
+    <string name="glb_room_not_found">Fichier GLB introuvable</string>
+    <string name="glb_room_saved">Pièce \'%s\' enregistrée !</string>
+    <string name="glb_room_error">Erreur : %s</string>
+    <string name="glb_room_screenshot_saved">Capture enregistrée : %s</string>
+    <string name="glb_room_screenshot_failed">Échec de la capture d\'écran</string>
+
+    <!-- Sharp Inference -->
+    <string name="sharp_inference_no_image">Aucune URI ou chemin d\'image</string>
+    <string name="sharp_inference_loading_model">Chargement du modèle SHARP…</string>
+    <string name="sharp_inference_running">Exécution de SHARP 3D…</string>
+    <string name="sharp_inference_preparing">Préparation…</string>
+
+    <!-- Room Boundary -->
+    <string name="boundary_back">\u2039 Retour</string>
+    <string name="boundary_done">Terminé</string>
+    <string name="boundary_reset">Réinitialiser</string>
+    <string name="boundary_no_image">Aucune image disponible</string>
+    <string name="boundary_failed_create">Échec de la création de la pièce</string>
+    <string name="boundary_processing">Traitement…</string>
+
+    <!-- Model Detail -->
+    <string name="model_detail_preview">Aperçu de la pièce 3D</string>
+    <string name="model_detail_save_first">Enregistrez d\'abord la pièce pour utiliser la détection IA</string>
+    <string name="model_detail_taking_screenshot">Capture en cours…</string>
+    <string name="model_detail_room_not_found">Fichier de pièce introuvable</string>
+    <string name="model_detail_no_room_data">Aucune donnée de pièce à enregistrer</string>
+    <string name="model_detail_failed_save">Échec de l\'enregistrement de la pièce</string>
+    <string name="model_detail_failed_share">Échec du partage de la pièce</string>
+    <string name="model_detail_screenshot_failed">Échec de la capture</string>
+    <string name="model_detail_failed_capture">Échec de la capture d\'écran</string>
+    <string name="model_detail_failed_load">Échec du chargement : %s</string>
+    <string name="model_detail_failed_save_screenshot_message">Échec de l\'enregistrement de la capture : %s</string>
+    <string name="model_detail_drag_camera">Glissez pour déplacer la caméra</string>
+
+    <!-- Room Viewer -->
+    <string name="room_viewer_no_folder">Aucun dossier de pièce fourni</string>
+    <string name="room_viewer_folder_not_found">Dossier de pièce introuvable</string>
+    <string name="room_viewer_your_room">Votre pièce</string>
+    <string name="room_viewer_preview_unavailable">Aperçu non disponible</string>
+    <string name="room_viewer_created_success">Pièce créée avec succès !</string>
+    <string name="room_viewer_created_message">Les textures de votre pièce ont été extraites de la photo. Appuyez sur Enregistrer pour la conserver.</string>
+    <string name="room_viewer_dimensions">Dimensions : %s</string>
+    <string name="room_viewer_saved_toast">Pièce enregistrée !</string>
+
+    <!-- Model Viewer -->
+    <string name="model_viewer_title">Modèles</string>
+    <string name="model_viewer_view_3d">Voir 3D</string>
+    <string name="model_viewer_ar">RA</string>
+
+    <!-- Settings (developer) -->
+    <string name="settings_inference_backend">Moteur d\'inférence</string>
+    <string name="settings_onnx_default">ONNX (par défaut)</string>
+    <string name="settings_onnx_description">Inférence standard avec ONNX Runtime (FP32)</string>
+
+    <!-- Auth / Login -->
+    <string name="login_welcome">Bienvenue sur Furnit</string>
+    <string name="login_sign_in_phone">Connectez-vous avec votre numéro de téléphone</string>
+    <string name="login_send_code">Envoyer le code de vérification</string>
+    <string name="login_terms_agree">En continuant, vous acceptez nos Conditions d\'utilisation et notre Politique de confidentialité</string>
+    <string name="otp_back">\u2039 Retour</string>
+    <string name="otp_verify_phone">Vérifier le téléphone</string>
+    <string name="otp_enter_code">Entrez le code à 6 chiffres envoyé à\n%s</string>
+    <string name="otp_resend_in_seconds">Renvoyer dans %ds</string>
+    <string name="otp_resend_code">Renvoyer le code</string>
+    <string name="otp_code_sent">Code envoyé !</string>
+    <string name="login_continue">Continuer</string>
 </resources>

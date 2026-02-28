@@ -10,7 +10,7 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -287,7 +287,7 @@ class OTPVerificationActivity : AppCompatActivity() {
         val otp = getEnteredOtp()
         if (otp.length != OTP_LENGTH) return
 
-        Log.d(TAG, "Verifying OTP: $otp")
+        LogUtil.d(TAG, "Verifying OTP: $otp")
 
         errorText.visibility = View.GONE
         progressBar.visibility = View.VISIBLE
@@ -334,7 +334,7 @@ class OTPVerificationActivity : AppCompatActivity() {
     private fun resendOtp() {
         if (!canResend) return
 
-        Log.d(TAG, "Resending OTP to: $phoneNumber")
+        LogUtil.d(TAG, "Resending OTP to: $phoneNumber")
 
         resendButton.isEnabled = false
         progressBar.visibility = View.VISIBLE

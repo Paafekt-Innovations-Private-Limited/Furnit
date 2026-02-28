@@ -2,7 +2,7 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -64,7 +64,7 @@ class SharpService private constructor(private val context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: SharpService(context.applicationContext).also {
                     instance = it
-                    Log.d(TAG, "SharpService singleton created")
+                    LogUtil.d(TAG, "SharpService singleton created")
                 }
             }
         }
@@ -136,32 +136,32 @@ class SharpService private constructor(private val context: Context) {
         val effective = BackendConfig.normalize(backend)
         when {
             effective == "executorch" && BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady() -> {
-                Log.d(TAG, "Preloading ExecuTorch Part1...")
+                LogUtil.d(TAG, "Preloading ExecuTorch Part1...")
                 executorchSharp.preloadAndWarmup()
-                Log.d(TAG, "ExecuTorch preload done")
+                LogUtil.d(TAG, "ExecuTorch preload done")
             }
             effective == "executorch_fp16" && BackendConfig.ENABLE_EXECUTORCH_FP16 && executorchFp16Sharp.isModelReady() -> {
-                Log.d(TAG, "Preloading ExecuTorch FP16 Part1...")
+                LogUtil.d(TAG, "Preloading ExecuTorch FP16 Part1...")
                 executorchFp16Sharp.preloadAndWarmup()
-                Log.d(TAG, "ExecuTorch FP16 preload done")
+                LogUtil.d(TAG, "ExecuTorch FP16 preload done")
             }
             effective == "executorch_int8" && BackendConfig.ENABLE_EXECUTORCH_INT8 -> {
-                Log.d(TAG, "ExecuTorch INT8 backend selected – no explicit preload step")
+                LogUtil.d(TAG, "ExecuTorch INT8 backend selected – no explicit preload step")
             }
             effective == "onnx" && splitOnnxSharp.isModelReady() -> {
-                Log.d(TAG, "Preloading Split ONNX sessions (all 4 parts)...")
+                LogUtil.d(TAG, "Preloading Split ONNX sessions (all 4 parts)...")
                 splitOnnxSharp.preloadSessions()
-                Log.d(TAG, "Split ONNX preload done")
+                LogUtil.d(TAG, "Split ONNX preload done")
             }
             effective == "onnx_fp16" && BackendConfig.ENABLE_ONNX_FP16 && splitOnnxFp16Sharp.isModelReady() -> {
-                Log.d(TAG, "Preloading ONNX FP16 Part 1...")
+                LogUtil.d(TAG, "Preloading ONNX FP16 Part 1...")
                 splitOnnxFp16Sharp.preloadSessions()
-                Log.d(TAG, "ONNX FP16 preload done")
+                LogUtil.d(TAG, "ONNX FP16 preload done")
             }
             effective == "onnx_int8" && BackendConfig.ENABLE_ONNX_INT8 -> {
-                Log.d(TAG, "Preloading ONNX INT8 single model session...")
+                LogUtil.d(TAG, "Preloading ONNX INT8 single model session...")
                 onnxInt8Sharp.initialize()
-                Log.d(TAG, "ONNX INT8 preload done")
+                LogUtil.d(TAG, "ONNX INT8 preload done")
             }
             else -> { /* ncnn, litert, native_pt, etc.: no preload */ }
         }
@@ -209,14 +209,14 @@ class SharpService private constructor(private val context: Context) {
 
         var effectiveBackend = BackendConfig.normalize(requestedBackend)
         if (effectiveBackend != requestedBackend) {
-            Log.w(TAG, "Backend '$requestedBackend' disabled; falling back to '$effectiveBackend'")
+            LogUtil.w(TAG, "Backend '$requestedBackend' disabled; falling back to '$effectiveBackend'")
             prefs.edit().putString("inference_backend", effectiveBackend).apply()
         }
 
         // Re-initialize if the user switched backends in Settings
         if (isInitialized && currentBackendId == effectiveBackend) return true
         if (isInitialized && currentBackendId != effectiveBackend) {
-            Log.d(TAG, "Backend changed from '$currentBackendId' to '$effectiveBackend' — re-initializing")
+            LogUtil.d(TAG, "Backend changed from '$currentBackendId' to '$effectiveBackend' — re-initializing")
             release()
         }
 
@@ -233,113 +233,113 @@ class SharpService private constructor(private val context: Context) {
         useNativePt = false
 
         if (effectiveBackend == "native_pt") {
-            Log.d(TAG, "Native .pt backend selected (no fallback)")
+            LogUtil.d(TAG, "Native .pt backend selected (no fallback)")
             if (nativePtSharp.isModelReady()) {
                 if (nativePtSharp.initialize()) {
                     isInitialized = true
                     useNativePt = true
                     currentBackendId = "native_pt"
-                    Log.d(TAG, "Native .pt SHARP initialized successfully")
+                    LogUtil.d(TAG, "Native .pt SHARP initialized successfully")
                     return true
                 }
             }
-            Log.e(TAG, "Native .pt engine not available. Push sharp_scripted.ptl to device. No fallback.")
+            LogUtil.e(TAG, "Native .pt engine not available. Push sharp_scripted.ptl to device. No fallback.")
             return false
         }
 
         if (effectiveBackend == "python") {
-            Log.w(TAG, "Python backend not available (needs Chaquopy + ARM PyTorch). Falling back to ONNX.")
+            LogUtil.w(TAG, "Python backend not available (needs Chaquopy + ARM PyTorch). Falling back to ONNX.")
             effectiveBackend = "onnx"
         }
 
         if (effectiveBackend == "torch_mobile") {
-            Log.d(TAG, "PyTorch Mobile backend selected -- pre-loading model")
+            LogUtil.d(TAG, "PyTorch Mobile backend selected -- pre-loading model")
             if (torchMobileSharp.isModelReady()) {
                 // Initialize pre-loads the model into memory NOW
                 // so it's ready when user taps Generate
                 if (torchMobileSharp.initialize()) {
                     isInitialized = true
                     currentBackendId = "torch_mobile"
-                    Log.d(TAG, "PyTorch Mobile initialized + pre-loaded successfully")
+                    LogUtil.d(TAG, "PyTorch Mobile initialized + pre-loaded successfully")
                     return true
                 }
             }
-            Log.w(TAG, "PyTorch Mobile model not found. Falling back to ONNX.")
+            LogUtil.w(TAG, "PyTorch Mobile model not found. Falling back to ONNX.")
             effectiveBackend = "onnx"
         }
 
         if (effectiveBackend == "ncnn") {
-            Log.d(TAG, "NCNN backend selected in settings")
+            LogUtil.d(TAG, "NCNN backend selected in settings")
             // Component mode only - full model hangs at conv_106
             if (ncnnSharp.isComponentModelReady()) {
                 try {
                     ncnnSharp.init(useGpu = true, numThreads = 4, useComponentMode = true)
                     isInitialized = true
-                    Log.d(TAG, "NCNN component mode initialized successfully")
+                    LogUtil.d(TAG, "NCNN component mode initialized successfully")
                     return true
                 } catch (e: Exception) {
-                    Log.e(TAG, "NCNN component init failed: ${e.message}")
+                    LogUtil.e(TAG, "NCNN component init failed: ${e.message}")
                 }
             }
             // No component files: fall back to ONNX instead of full model (avoids hang)
-            Log.w(TAG, "NCNN component files not found. Falling back to ONNX.")
+            LogUtil.w(TAG, "NCNN component files not found. Falling back to ONNX.")
             effectiveBackend = "onnx"
         }
 
         if (effectiveBackend == "litert") {
             // User explicitly wants LiteRT (TFLite FP16). No fallback to ONNX.
-            Log.d(TAG, "LiteRT backend selected in settings")
+            LogUtil.d(TAG, "LiteRT backend selected in settings")
             if (litertSharp.isModelReady()) {
                 if (litertSharp.initialize()) {
                     isInitialized = true
                     useLiteRT = true
                     currentBackendId = "litert"
-                    Log.d(TAG, "LiteRT SHARP initialized successfully")
+                    LogUtil.d(TAG, "LiteRT SHARP initialized successfully")
                     return true
                 } else {
-                    Log.e(TAG, "LiteRT SHARP init failed")
+                    LogUtil.e(TAG, "LiteRT SHARP init failed")
                     return false
                 }
             } else {
-                Log.e(TAG, "LiteRT model files not found. Push .tflite files to device.")
+                LogUtil.e(TAG, "LiteRT model files not found. Push .tflite files to device.")
                 return false
             }
         }
 
         if (effectiveBackend == "executorch") {
-            Log.d(TAG, "ExecuTorch backend selected in settings")
+            LogUtil.d(TAG, "ExecuTorch backend selected in settings")
             if (executorchSharp.isModelReady()) {
                 if (executorchSharp.initialize()) {
                     isInitialized = true
                     useExecutorch = true
-                    Log.d(TAG, "ExecuTorch SHARP initialized successfully")
+                    LogUtil.d(TAG, "ExecuTorch SHARP initialized successfully")
                     return true
                 } else {
-                    Log.e(TAG, "ExecuTorch SHARP init failed")
+                    LogUtil.e(TAG, "ExecuTorch SHARP init failed")
                     return false
                 }
             } else {
-                Log.e(TAG, "ExecuTorch SHARP model not found. Push sharp.pte to device.")
+                LogUtil.e(TAG, "ExecuTorch SHARP model not found. Push sharp.pte to device.")
                 return false
             }
         }
 
         if (effectiveBackend == "executorch_fp16") {
-            Log.d(TAG, "ExecuTorch FP16 backend selected in settings")
+            LogUtil.d(TAG, "ExecuTorch FP16 backend selected in settings")
             if (executorchFp16Sharp.isModelReady()) {
                 if (executorchFp16Sharp.initialize()) {
                     isInitialized = true
                     useExecutorchFp16 = true
                     currentBackendId = "executorch_fp16"
-                    Log.d(TAG, "ExecuTorch FP16 SHARP initialized successfully")
+                    LogUtil.d(TAG, "ExecuTorch FP16 SHARP initialized successfully")
                     return true
                 } else {
-                    Log.e(TAG, "ExecuTorch FP16 SHARP init failed")
+                    LogUtil.e(TAG, "ExecuTorch FP16 SHARP init failed")
                     return false
                 }
             } else {
                 val missing = executorchFp16Sharp.getMissingFiles()
-                Log.e(TAG, "ExecuTorch FP16 models not found, missing: $missing")
+                LogUtil.e(TAG, "ExecuTorch FP16 models not found, missing: $missing")
                 lastInitFailureMessage = "FP16 .pte models not found. Push sharp_split_part*_fp16.pte to ${executorchFp16Sharp.getModelsDirPath()}"
                 return false
             }
@@ -347,15 +347,15 @@ class SharpService private constructor(private val context: Context) {
 
         // ExecuTorch INT8 backend
         if (effectiveBackend == "executorch_int8") {
-            Log.d(TAG, "ExecuTorch INT8 backend selected in settings")
+            LogUtil.d(TAG, "ExecuTorch INT8 backend selected in settings")
             if (executorchInt8Sharp.initialize()) {
                 isInitialized = true
                 useExecutorchInt8 = true
                 currentBackendId = "executorch_int8"
-                Log.d(TAG, "ExecuTorch INT8 SHARP initialized successfully")
+                LogUtil.d(TAG, "ExecuTorch INT8 SHARP initialized successfully")
                 return true
             } else {
-                Log.e(TAG, "ExecuTorch INT8 SHARP init failed")
+                LogUtil.e(TAG, "ExecuTorch INT8 SHARP init failed")
                 return false
             }
         }
@@ -364,18 +364,18 @@ class SharpService private constructor(private val context: Context) {
         if (effectiveBackend == "onnx_int8") {
             if (onnxInt8Sharp.isModelReady()) {
                 if (onnxInt8Sharp.initialize()) {
-                    Log.d(TAG, "ONNX INT8 single model initialized successfully")
+                    LogUtil.d(TAG, "ONNX INT8 single model initialized successfully")
                     isInitialized = true
                     useOnnxInt8 = true
                     currentBackendId = "onnx_int8"
                     return true
                 } else {
-                    Log.e(TAG, "ONNX INT8 session init failed")
+                    LogUtil.e(TAG, "ONNX INT8 session init failed")
                     lastInitFailureMessage = "INT8 model init failed (OOM?). Check logcat for details."
                     return false
                 }
             } else {
-                Log.e(TAG, "ONNX INT8 not ready. Push sharp_single_int8.onnx + .data to ${onnxInt8Sharp.getModelsDirPath()}")
+                LogUtil.e(TAG, "ONNX INT8 not ready. Push sharp_single_int8.onnx + .data to ${onnxInt8Sharp.getModelsDirPath()}")
                 lastInitFailureMessage = "INT8 model not found. Push sharp_single_int8.onnx and sharp_single_int8.onnx.data to ${onnxInt8Sharp.getModelsDirPath()}"
                 return false
             }
@@ -384,26 +384,26 @@ class SharpService private constructor(private val context: Context) {
         // ONNX FP16 split backend
         if (effectiveBackend == "onnx_fp16") {
             if (splitOnnxFp16Sharp.isModelReady()) {
-                Log.d(TAG, "ONNX FP16 split model ready — using 4-part FP16 inference")
+                LogUtil.d(TAG, "ONNX FP16 split model ready — using 4-part FP16 inference")
                 isInitialized = true
                 useOnnxFp16 = true
                 currentBackendId = "onnx_fp16"
                 return true
             } else {
                 val missing = splitOnnxFp16Sharp.getMissingFiles()
-                Log.e(TAG, "ONNX FP16 not ready, missing: $missing")
+                LogUtil.e(TAG, "ONNX FP16 not ready, missing: $missing")
                 lastInitFailureMessage = "FP16 models not found. Push sharp_part*_fp16.onnx to ${splitOnnxFp16Sharp.getModelsDirPath()}"
                 return false
             }
         }
 
         // ONNX FP32 selected (or fallback from NCNN)
-        Log.d(TAG, "Backend: $effectiveBackend - using ONNX for room generation")
-        Log.d(TAG, "ONNX init: splitOnnxSharp.isModelReady=${splitOnnxSharp.isModelReady()} onnxSharp.isModelReady=${onnxSharp.isModelReady()}")
+        LogUtil.d(TAG, "Backend: $effectiveBackend - using ONNX for room generation")
+        LogUtil.d(TAG, "ONNX init: splitOnnxSharp.isModelReady=${splitOnnxSharp.isModelReady()} onnxSharp.isModelReady=${onnxSharp.isModelReady()}")
 
         // Try Split ONNX first (memory-efficient 4-part model)
         if (splitOnnxSharp.isModelReady()) {
-            Log.d(TAG, "Split ONNX model ready - using memory-efficient 4-part inference")
+            LogUtil.d(TAG, "Split ONNX model ready - using memory-efficient 4-part inference")
             isInitialized = true
             useSplitOnnx = true
             currentBackendId = effectiveBackend
@@ -411,9 +411,9 @@ class SharpService private constructor(private val context: Context) {
         } else {
             val missing = splitOnnxSharp.getMissingFiles()
             val path = splitOnnxSharp.getModelsDirPath()
-            Log.w(TAG, "Split ONNX not ready, missing: $missing")
-            Log.w(TAG, "Push split ONNX to device: $path")
-            Log.w(TAG, "Example: adb push sharp_part1.onnx $path/ && adb push sharp_part1.onnx.data $path/  (repeat for part2, part3, part4)")
+            LogUtil.w(TAG, "Split ONNX not ready, missing: $missing")
+            LogUtil.w(TAG, "Push split ONNX to device: $path")
+            LogUtil.w(TAG, "Example: adb push sharp_part1.onnx $path/ && adb push sharp_part1.onnx.data $path/  (repeat for part2, part3, part4)")
         }
 
         // Fall back to regular ONNX with mmap (may cause OOM on some devices)
@@ -423,15 +423,15 @@ class SharpService private constructor(private val context: Context) {
                     isInitialized = true
                     useOnnx = true
                     currentBackendId = effectiveBackend
-                    Log.d(TAG, "ONNX with mmap initialized successfully")
+                    LogUtil.d(TAG, "ONNX with mmap initialized successfully")
                     return true
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "ONNX init failed: ${e.message}")
+                LogUtil.e(TAG, "ONNX init failed: ${e.message}")
             }
         }
 
-        Log.e(TAG, "No model backend available")
+        LogUtil.e(TAG, "No model backend available")
         val path = splitOnnxSharp.getModelsDirPath()
         val missing = splitOnnxSharp.getMissingFiles()
         lastInitFailureMessage = "SHARP model not found. Push split ONNX files to device:\n" +
@@ -452,7 +452,7 @@ class SharpService private constructor(private val context: Context) {
         val handle = object : GenerationHandle {
             override fun cancel() {
                 generationCancelled.set(true)
-                Log.d(TAG, "Generation cancelled by user")
+                LogUtil.d(TAG, "Generation cancelled by user")
             }
         }
         Thread {
@@ -473,7 +473,7 @@ class SharpService private constructor(private val context: Context) {
     }
 
     private fun generateGaussiansInternal(image: Bitmap, callback: ProgressCallback, isCancelled: () -> Boolean) {
-        Log.d(TAG, "Starting generation: ${image.width}x${image.height}")
+        LogUtil.d(TAG, "Starting generation: ${image.width}x${image.height}")
 
         try {
                 callback.onProgress(0.1f, "Preparing...")
@@ -499,7 +499,7 @@ class SharpService private constructor(private val context: Context) {
                         callback.onError("PyTorch Mobile inference failed")
                         return
                     }
-                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (PyTorch Mobile)")
+                    LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (PyTorch Mobile)")
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_torch_mobile", result.roomWidth, result.roomHeight, result.roomDepth)
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -526,8 +526,8 @@ class SharpService private constructor(private val context: Context) {
                         return
                     }
 
-                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (LiteRT)")
-                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+                    LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (LiteRT)")
+                    LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_litert", result.roomWidth, result.roomHeight, result.roomDepth)
 
@@ -552,7 +552,7 @@ class SharpService private constructor(private val context: Context) {
                         callback.onError("Native .pt inference failed")
                         return
                     }
-                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (Native .pt)")
+                    LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (Native .pt)")
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_native_pt", result.roomWidth, result.roomHeight, result.roomDepth)
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -575,8 +575,8 @@ class SharpService private constructor(private val context: Context) {
                         return
                     }
 
-                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch)")
-                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+                    LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch)")
+                    LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch", result.roomWidth, result.roomHeight, result.roomDepth)
 
@@ -589,7 +589,7 @@ class SharpService private constructor(private val context: Context) {
                         roomDepth = result.roomDepth
                     ))
                 } else if (useExecutorchFp16) {
-                    Log.d(TAG, "generateGaussians: invoking ExecuTorch FP16 inferStreaming")
+                    LogUtil.d(TAG, "generateGaussians: invoking ExecuTorch FP16 inferStreaming")
                     callback.onProgress(0.2f, "Running SHARP (ExecuTorch FP16)...")
                     val result = kotlinx.coroutines.runBlocking {
                         executorchFp16Sharp.inferStreaming(image) { progress, message ->
@@ -602,8 +602,8 @@ class SharpService private constructor(private val context: Context) {
                         return
                     }
 
-                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch FP16)")
-                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+                    LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch FP16)")
+                    LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch_fp16", result.roomWidth, result.roomHeight, result.roomDepth)
 
@@ -616,7 +616,7 @@ class SharpService private constructor(private val context: Context) {
                         roomDepth = result.roomDepth
                     ))
                 } else if (useExecutorchInt8) {
-                    Log.d(TAG, "generateGaussians: invoking ExecuTorch INT8 inferStreaming")
+                    LogUtil.d(TAG, "generateGaussians: invoking ExecuTorch INT8 inferStreaming")
                     callback.onProgress(0.2f, "Running SHARP (ExecuTorch INT8)...")
                     val result = kotlinx.coroutines.runBlocking {
                         executorchInt8Sharp.inferStreaming(image) { progress, message ->
@@ -630,10 +630,10 @@ class SharpService private constructor(private val context: Context) {
                         return
                     }
 
-                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
-                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+                    LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ExecuTorch INT8)")
+                    LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
                     val isPortraitFeed = image.height > image.width
-                    Log.d(TAG, "VIEWER_FEED isPortrait=$isPortraitFeed roomWidth=${result.roomWidth} roomHeight=${result.roomHeight} roomDepth=${result.roomDepth} path=${result.plyFile.parentFile?.absolutePath}")
+                    LogUtil.d(TAG, "VIEWER_FEED isPortrait=$isPortraitFeed roomWidth=${result.roomWidth} roomHeight=${result.roomHeight} roomDepth=${result.roomDepth} path=${result.plyFile.parentFile?.absolutePath}")
 
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_executorch_int8", result.roomWidth, result.roomHeight, result.roomDepth, result.roomCenterX, result.roomCenterY, result.roomCenterZ)
 
@@ -649,7 +649,7 @@ class SharpService private constructor(private val context: Context) {
                         roomCenterZ = result.roomCenterZ
                     ))
                 } else if (useOnnxInt8) {
-                    Log.d(TAG, "generateGaussians: invoking ONNX INT8 inferStreaming")
+                    LogUtil.d(TAG, "generateGaussians: invoking ONNX INT8 inferStreaming")
                     callback.onProgress(0.2f, "Running SHARP (ONNX INT8)...")
                     val result = kotlinx.coroutines.runBlocking {
                         onnxInt8Sharp.inferStreaming(image, { progress, message ->
@@ -659,13 +659,13 @@ class SharpService private constructor(private val context: Context) {
 
                     if (result == null) {
                         if (isCancelled()) return
-                        Log.e(TAG, "generateGaussians: ONNX INT8 inferStreaming returned null")
+                        LogUtil.e(TAG, "generateGaussians: ONNX INT8 inferStreaming returned null")
                         callback.onError("SHARP ONNX INT8 inference failed")
                         return
                     }
 
-                    Log.d(TAG, "generateGaussians: ONNX INT8 SUCCESS ${result.gaussianCount} Gaussians room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
-                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+                    LogUtil.d(TAG, "generateGaussians: ONNX INT8 SUCCESS ${result.gaussianCount} Gaussians room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
+                    LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx_int8", result.roomWidth, result.roomHeight, result.roomDepth)
 
@@ -678,7 +678,7 @@ class SharpService private constructor(private val context: Context) {
                         roomDepth = result.roomDepth
                     ))
                 } else if (useOnnxFp16) {
-                    Log.d(TAG, "generateGaussians: invoking ONNX FP16 inferStreaming")
+                    LogUtil.d(TAG, "generateGaussians: invoking ONNX FP16 inferStreaming")
                     callback.onProgress(0.2f, "Running SHARP (ONNX FP16)...")
                     val result = kotlinx.coroutines.runBlocking {
                         splitOnnxFp16Sharp.inferStreaming(image, { progress, message ->
@@ -688,12 +688,12 @@ class SharpService private constructor(private val context: Context) {
 
                     if (result == null) {
                         if (isCancelled()) return
-                        Log.e(TAG, "generateGaussians: ONNX FP16 inferStreaming returned null")
+                        LogUtil.e(TAG, "generateGaussians: ONNX FP16 inferStreaming returned null")
                         callback.onError("SHARP ONNX FP16 inference failed")
                         return
                     }
 
-                    Log.d(TAG, "generateGaussians: ONNX FP16 SUCCESS ${result.gaussianCount} Gaussians")
+                    LogUtil.d(TAG, "generateGaussians: ONNX FP16 SUCCESS ${result.gaussianCount} Gaussians")
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx_fp16", result.roomWidth, result.roomHeight, result.roomDepth)
                     callback.onProgress(1.0f, "Done!")
                     callback.onComplete(GenerationResult(
@@ -705,7 +705,7 @@ class SharpService private constructor(private val context: Context) {
                     ))
                 } else if (useSplitOnnx) {
                     // Use Split ONNX backend (memory-efficient 4-part model)
-                    Log.d(TAG, "generateGaussians: invoking Split ONNX inferStreaming")
+                    LogUtil.d(TAG, "generateGaussians: invoking Split ONNX inferStreaming")
                     callback.onProgress(0.2f, "Running SHARP (Split ONNX - memory efficient)...")
                     val result = kotlinx.coroutines.runBlocking {
                         splitOnnxSharp.inferStreaming(image, { progress, message ->
@@ -715,13 +715,13 @@ class SharpService private constructor(private val context: Context) {
 
                     if (result == null) {
                         if (isCancelled()) return
-                        Log.e(TAG, "generateGaussians: Split ONNX inferStreaming returned null")
+                        LogUtil.e(TAG, "generateGaussians: Split ONNX inferStreaming returned null")
                         callback.onError("SHARP Split ONNX inference failed")
                         return
                     }
 
-                    Log.d(TAG, "generateGaussians: Split ONNX SUCCESS ${result.gaussianCount} Gaussians room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
-                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+                    LogUtil.d(TAG, "generateGaussians: Split ONNX SUCCESS ${result.gaussianCount} Gaussians room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth}")
+                    LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
                     // Save thumbnail and metadata
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_split_onnx", result.roomWidth, result.roomHeight, result.roomDepth)
@@ -748,8 +748,8 @@ class SharpService private constructor(private val context: Context) {
                         return
                     }
 
-                    Log.d(TAG, "Generated ${result.gaussianCount} Gaussians (ONNX)")
-                    Log.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
+                    LogUtil.d(TAG, "Generated ${result.gaussianCount} Gaussians (ONNX)")
+                    LogUtil.d(TAG, "Room: ${result.roomWidth}m x ${result.roomHeight}m x ${result.roomDepth}m")
 
                     // Save thumbnail and metadata
                     saveMetadata(result.plyFile.parentFile!!, image, "sharp_onnx", result.roomWidth, result.roomHeight, result.roomDepth)
@@ -770,8 +770,8 @@ class SharpService private constructor(private val context: Context) {
 
                     callback.onProgress(0.6f, "Writing PLY file...")
 
-                    Log.d(TAG, "Generated ${gaussianResult.gaussianCount} Gaussians (NCNN)")
-                    Log.d(TAG, "Room: ${gaussianResult.roomWidth}m x ${gaussianResult.roomHeight}m x ${gaussianResult.roomDepth}m")
+                    LogUtil.d(TAG, "Generated ${gaussianResult.gaussianCount} Gaussians (NCNN)")
+                    LogUtil.d(TAG, "Room: ${gaussianResult.roomWidth}m x ${gaussianResult.roomHeight}m x ${gaussianResult.roomDepth}m")
 
                     // Create output directory
                     val roomsDir = File(context.filesDir, "sharp_rooms")
@@ -803,10 +803,10 @@ class SharpService private constructor(private val context: Context) {
 
         } catch (e: Exception) {
             if (isCancelled()) {
-                Log.d(TAG, "Generation stopped (cancelled)")
+                LogUtil.d(TAG, "Generation stopped (cancelled)")
                 return
             }
-            Log.e(TAG, "Generation failed", e)
+            LogUtil.e(TAG, "Generation failed", e)
             callback.onError("Failed: ${e.message}")
         }
     }
@@ -845,7 +845,7 @@ class SharpService private constructor(private val context: Context) {
         roomCenterY?.let { sb.append("roomCenterY=$it\n") }
         roomCenterZ?.let { sb.append("roomCenterZ=$it\n") }
         metadataFile.writeText(sb.toString())
-        Log.d(TAG, "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath} dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation")
+        LogUtil.d(TAG, "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath} dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation")
     }
 
     /**
@@ -945,7 +945,7 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        Log.d(TAG, "Wrote PLY file: ${file.absolutePath} (${file.length()} bytes)")
+        LogUtil.d(TAG, "Wrote PLY file: ${file.absolutePath} (${file.length()} bytes)")
     }
 
     /**

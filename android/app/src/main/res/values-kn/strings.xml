@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Paafekt Beta</string>
+    <string name="app_name">Paafekt</string>
     <string name="app_tagline">3D ಕೊಠಡಿ ಎಕ್ಸ್‌ಪ್ಲೋರರ್</string>
     <string name="app_version">ಆವೃತ್ತಿ</string>
     <string name="app_developer">Furnit ತಂಡ</string>
@@ -36,7 +36,7 @@
     <string name="home_no_models">3D ಮಾದರಿಗಳು ಕಂಡುಬಂದಿಲ್ಲ</string>
     <string name="home_no_models_description">ಫೋಟೋದಿಂದ ನಿಮ್ಮ ಮೊದಲ ಕೊಠಡಿಯನ್ನು ರಚಿಸಿ!</string>
     <string name="home_create_room">ಫೋಟೋದಿಂದ ಕೊಠಡಿ ರಚಿಸು</string>
-    <string name="home_rooms_remaining">%d/%d ಕೊಠಡಿಗಳು ಉಳಿದಿವೆ</string>
+    <string name="home_rooms_remaining">%1$d/%2$d ಕೊಠಡಿಗಳು ಉಳಿದಿವೆ</string>
     <string name="home_delete_hint">ಹೊಸದನ್ನು ರಚಿಸಲು ಹಳೆಯ ಕೊಠಡಿಗಳನ್ನು ಅಳಿಸಿ</string>
     <string name="home_swipe_hint">ಅಳಿಸಲು ಎಡಕ್ಕೆ ಸ್ವೈಪ್ ಮಾಡಿ</string>
     <string name="home_room_model">3D ಕೊಠಡಿ ಮಾದರಿ</string>
@@ -230,4 +230,127 @@
     <string name="orientation_held_vertically">held vertically</string>
     <string name="orientation_held_horizontally">held horizontally</string>
     <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+
+    <!-- SharpRoom / PLY viewer -->
+    <string name="sharp_room_no_ply">PLY ಫೈಲ್ ಒದಗಿಸಲಾಗಿಲ್ಲ</string>
+    <string name="sharp_room_ply_not_found">PLY ಫೈಲ್ ಕಂಡುಬಂದಿಲ್ಲ</string>
+    <string name="sharp_room_loading">3D ಕೊಠಡಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ…</string>
+    <string name="sharp_room_screenshot_saved">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಉಳಿಸಲಾಗಿದೆ: %s</string>
+    <string name="sharp_room_screenshot_failed">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಕ್ಯಾಪ್ಚರ್ ಮಾಡಲು ವಿಫಲವಾಯಿತು</string>
+    <string name="sharp_room_smartypants_failed">SmartyPants ಪ್ರಾರಂಭಿಸಲು ವಿಫಲವಾಯಿತು</string>
+    <string name="sharp_room_camera_error">ಕ್ಯಾಮೆರಾ ದೋಷ: %s</string>
+    <string name="sharp_room_cannot_save">ಉಳಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ: ಕೊಠಡಿ ಫೋಲ್ಡರ್ ಕಂಡುಬಂದಿಲ್ಲ</string>
+    <string name="sharp_room_saved">ಕೊಠಡಿ \'%s\' ಉಳಿಸಲಾಗಿದೆ!</string>
+    <string name="sharp_room_save_failed">ಉಳಿಸಲು ವಿಫಲವಾಯಿತು: %s</string>
+    <string name="sharp_room_share_failed">ಹಂಚಿಕೆ ವಿಫಲವಾಯಿತು: %s</string>
+
+    <!-- FurnitureFit / SmartyPants -->
+    <string name="smartypants_initializing">ಪ್ರಾರಂಭಿಸುತ್ತಿದೆ…</string>
+    <string name="smartypants_drag_hint">ಫರ್ನಿಚರ್ ಚಲಿಸಲು ಎಳೆಯಿರಿ • ಕೊಠಡಿ ಪ್ಯಾನ್ ಮಾಡಲು ಹೊರಗೆ ಎಳೆಯಿರಿ</string>
+    <string name="smartypants_tap_calibrate">ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ</string>
+    <string name="smartypants_scanning">ಸ್ಕ್ಯಾನ್ ಆಗುತ್ತಿದೆ…</string>
+    <string name="smartypants_camera_error">ಕ್ಯಾಮೆರಾ ದೋಷ: %s</string>
+    <string name="smartypants_screenshot_failed">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ವಿಫಲ: %s</string>
+    <string name="smartypants_saved_screenshots">ಸ್ಕ್ರೀನ್‌ಶಾಟ್‌ಗಳಲ್ಲಿ ಉಳಿಸಲಾಗಿದೆ</string>
+    <string name="smartypants_failed_save_screenshot">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಉಳಿಸಲು ವಿಫಲವಾಯಿತು</string>
+    <string name="smartypants_failed_save">ಉಳಿಸಲು ವಿಫಲವಾಯಿತು: %s</string>
+    <string name="smartypants_enter_positive_number">ಧನಾತ್ಮಕ ಸಂಖ್ಯೆ ನಮೂದಿಸಿ</string>
+    <string name="smartypants_room_scaled">ಕೊಠಡಿ %sx ಅಳತೆ ಮಾಡಲಾಗಿದೆ</string>
+    <string name="smartypants_detected">ಕಂಡುಹಿಡಿಯಲಾಗಿದೆ</string>
+    <string name="smartypants_camera_ready">ಕ್ಯಾಮೆರಾ ಸಿದ್ಧ - ಫರ್ನಿಚರ್ ಕಂಡುಹಿಡಿಯುತ್ತಿದೆ…</string>
+    <string name="smartypants_scanning_for_furniture">ಫರ್ನಿಚರ್ ಹುಡುಕುತ್ತಿದೆ…</string>
+    <string name="smartypants_calibrate_title">ಕೊಠಡಿ ಕ್ಯಾಲಿಬ್ರೇಟ್ ಮಾಡಿ</string>
+    <string name="smartypants_calibrate_message">ನಿಜ ಫರ್ನಿಚರ್ ಎತ್ತರ (ಮೀಟರ್) ನಮೂದಿಸಿ. ಕಂಡುಹಿಡಿದಿದೆ: %sm</string>
+    <string name="smartypants_real_height_hint">ನಿಜ ಎತ್ತರ (ಮೀ)</string>
+
+    <!-- Content / Home -->
+    <string name="home_rooms_remaining_short">1000ರಲ್ಲಿ %1$d ಕೊಠಡಿಗಳು ಉಳಿದಿವೆ</string>
+    <string name="home_total">ಒಟ್ಟು</string>
+    <string name="home_zero_mb">0 MB</string>
+    <string name="home_no_rooms_yet">ಇನ್ನೂ ಕೊಠಡಿಗಳಿಲ್ಲ\nಪ್ರಾರಂಭಿಸಲು ಚಿತ್ರ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ</string>
+    <string name="home_3d_room_model">3D ಕೊಠಡಿ ಮಾದರಿ</string>
+    <string name="home_opening">%s ತೆರೆಯಲಾಗುತ್ತಿದೆ…</string>
+    <string name="home_deleted">%s ಅಳಿಸಲಾಗಿದೆ</string>
+    <string name="home_failed_delete">ಅಳಿಸಲು ವಿಫಲವಾಯಿತು: %s</string>
+
+    <!-- Single Photo Room -->
+    <string name="photo_room_back">\u2039 ಹಿಂದೆ</string>
+    <string name="photo_room_or">ಅಥವಾ</string>
+    <string name="photo_room_do_not_screenshots">⚠️ ಸ್ಕ್ರೀನ್‌ಶಾಟ್‌ಗಳನ್ನು ಬಳಸಬೇಡಿ - ನಿಜ ಫೋಟೋಗಳನ್ನು ಬಳಸಿ</string>
+    <string name="photo_room_portrait_held">ಪೋರ್ಟ್ರೇಟ್ - ಲಂಬವಾಗಿ ಹಿಡಿದಿದೆ</string>
+    <string name="photo_room_how_to_create_short">ನಿಮ್ಮ ಕೊಠಡಿಯನ್ನು ಹೇಗೆ ರಚಿಸಲು ಬಯಸುತ್ತೀರಿ?</string>
+    <string name="photo_room_tap_option_short">ಕೆಳಗೆ ಒಂದು ಆಯ್ಕೆ ಟ್ಯಾಪ್ ಮಾಡಿ</string>
+    <string name="photo_room_creating_short">ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲಾಗುತ್ತಿದೆ…</string>
+    <string name="photo_room_progress_hint">ಸಾಮಾನ್ಯವಾಗಿ ಸುಮಾರು 2 ನಿಮಿಷ ತೆಗೆದುಕೊಳ್ಳುತ್ತದೆ. ನಿಮಗಾಗಿ ಏನೋ ಸುಂದರವಾದುದನ್ನು ತಯಾರಿಸುತ್ತಿದ್ದೇವೆ.</string>
+    <string name="photo_room_error_camera">ಕ್ಯಾಮೆರಾ ತೆರೆಯಲು ದೋಷ: %s</string>
+    <string name="photo_room_error_load">ದೋಷ: %s</string>
+
+    <!-- GLB Room -->
+    <string name="glb_room_no_file">GLB ಫೈಲ್ ಒದಗಿಸಲಾಗಿಲ್ಲ</string>
+    <string name="glb_room_not_found">GLB ಫೈಲ್ ಕಂಡುಬಂದಿಲ್ಲ</string>
+    <string name="glb_room_saved">ಕೊಠಡಿ \'%s\' ಉಳಿಸಲಾಗಿದೆ!</string>
+    <string name="glb_room_error">ದೋಷ: %s</string>
+    <string name="glb_room_screenshot_saved">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಉಳಿಸಲಾಗಿದೆ: %s</string>
+    <string name="glb_room_screenshot_failed">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಕ್ಯಾಪ್ಚರ್ ಮಾಡಲು ವಿಫಲವಾಯಿತು</string>
+
+    <!-- Sharp Inference -->
+    <string name="sharp_inference_no_image">ಚಿತ್ರ URI ಅಥವಾ ಮಾರ್ಗ ಇಲ್ಲ</string>
+    <string name="sharp_inference_loading_model">SHARP ಮಾದರಿ ಲೋಡ್ ಆಗುತ್ತಿದೆ…</string>
+    <string name="sharp_inference_running">SHARP 3D ಚಾಲನೆಯಲ್ಲಿದೆ…</string>
+    <string name="sharp_inference_preparing">ತಯಾರಿ ಆಗುತ್ತಿದೆ…</string>
+
+    <!-- Room Boundary -->
+    <string name="boundary_back">\u2039 ಹಿಂದೆ</string>
+    <string name="boundary_done">ಮುಗಿದಿದೆ</string>
+    <string name="boundary_reset">ರೀಸೆಟ್</string>
+    <string name="boundary_no_image">ಚಿತ್ರ ಲಭ್ಯವಿಲ್ಲ</string>
+    <string name="boundary_failed_create">ಕೊಠಡಿ ರಚಿಸಲು ವಿಫಲವಾಯಿತು</string>
+    <string name="boundary_processing">ಸಂಸ್ಕರಿಸುತ್ತಿದೆ…</string>
+
+    <!-- Model Detail -->
+    <string name="model_detail_preview">3D ಕೊಠಡಿ ಮುನ್ನೋಟ</string>
+    <string name="model_detail_save_first">AI ಶೋಧನೆ ಬಳಸಲು ಮೊದಲು ಕೊಠಡಿ ಉಳಿಸಿ</string>
+    <string name="model_detail_taking_screenshot">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ತೆಗೆಯಲಾಗುತ್ತಿದೆ…</string>
+    <string name="model_detail_room_not_found">ಕೊಠಡಿ ಫೈಲ್ ಕಂಡುಬಂದಿಲ್ಲ</string>
+    <string name="model_detail_no_room_data">ಉಳಿಸಲು ಕೊಠಡಿ ಡೇಟಾ ಇಲ್ಲ</string>
+    <string name="model_detail_failed_save">ಕೊಠಡಿ ಉಳಿಸಲು ವಿಫಲವಾಯಿತು</string>
+    <string name="model_detail_failed_share">ಕೊಠಡಿ ಹಂಚಲು ವಿಫಲವಾಯಿತು</string>
+    <string name="model_detail_screenshot_failed">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ವಿಫಲ</string>
+    <string name="model_detail_failed_capture">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಕ್ಯಾಪ್ಚರ್ ಮಾಡಲು ವಿಫಲವಾಯಿತು</string>
+    <string name="model_detail_failed_load">ಲೋಡ್ ಮಾಡಲು ವಿಫಲವಾಯಿತು: %s</string>
+    <string name="model_detail_failed_save_screenshot_message">ಸ್ಕ್ರೀನ್‌ಶಾಟ್ ಉಳಿಸಲು ವಿಫಲವಾಯಿತು: %s</string>
+    <string name="model_detail_drag_camera">ಕ್ಯಾಮೆರಾ ಚಲಿಸಲು ಎಳೆಯಿರಿ</string>
+
+    <!-- Room Viewer -->
+    <string name="room_viewer_no_folder">ಕೊಠಡಿ ಫೋಲ್ಡರ್ ಒದಗಿಸಲಾಗಿಲ್ಲ</string>
+    <string name="room_viewer_folder_not_found">ಕೊಠಡಿ ಫೋಲ್ಡರ್ ಕಂಡುಬಂದಿಲ್ಲ</string>
+    <string name="room_viewer_your_room">ನಿಮ್ಮ ಕೊಠಡಿ</string>
+    <string name="room_viewer_preview_unavailable">ಕೊಠಡಿ ಮುನ್ನೋಟ ಲಭ್ಯವಿಲ್ಲ</string>
+    <string name="room_viewer_created_success">ಕೊಠಡಿ ಯಶಸ್ವಿಯಾಗಿ ರಚಿಸಲಾಗಿದೆ!</string>
+    <string name="room_viewer_created_message">ನಿಮ್ಮ ಕೊಠಡಿ ಟೆಕ್ಸ್ಚರ್‌ಗಳು ಫೋಟೋದಿಂದ ಹೊರತೆಗೆಯಲಾಗಿದೆ. ಇರಿಸಿಕೊಳ್ಳಲು ಉಳಿಸಿ ಟ್ಯಾಪ್ ಮಾಡಿ.</string>
+    <string name="room_viewer_dimensions">ಅಳತೆಗಳು: %s</string>
+    <string name="room_viewer_saved_toast">ಕೊಠಡಿ ಉಳಿಸಲಾಗಿದೆ!</string>
+
+    <!-- Model Viewer -->
+    <string name="model_viewer_title">ಮಾದರಿಗಳು</string>
+    <string name="model_viewer_view_3d">3D ನೋಡಿ</string>
+    <string name="model_viewer_ar">AR</string>
+
+    <!-- Settings (developer) -->
+    <string name="settings_inference_backend">ಅನುಮಾನ ಬ್ಯಾಕ್‌ಎಂಡ್</string>
+    <string name="settings_onnx_default">ONNX (ಡೀಫಾಲ್ಟ್)</string>
+    <string name="settings_onnx_description">ONNX Runtime (FP32) ಜೊತೆ ಪ್ರಮಾಣಿತ ಅನುಮಾನ</string>
+
+    <!-- Auth / Login -->
+    <string name="login_welcome">Furnit ಗೆ ಸ್ವಾಗತ</string>
+    <string name="login_sign_in_phone">ನಿಮ್ಮ ಫೋನ್ ನಂಬರ್‌ನೊಂದಿಗೆ ಸೈನ್ ಇನ್ ಮಾಡಿ</string>
+    <string name="login_send_code">ಪರಿಶೀಲನಾ ಕೋಡ್ ಅನ್ನು ಕಳುಹಿಸಿ</string>
+    <string name="login_terms_agree">ಮುಂದುವರಿಸುವ ಮೂಲಕ, ನೀವು ನಮ್ಮ ಸೇವಾ ನಿಯಮಗಳು ಮತ್ತು ಗೌಪ್ಯತಾ ನೀತಿಗೆ ಸಮ್ಮತಿಸುತ್ತೀರಿ</string>
+    <string name="otp_back">\u2039 ಹಿಂದೆ</string>
+    <string name="otp_verify_phone">ಫೋನ್ ಪರಿಶೀಲಿಸಿ</string>
+    <string name="otp_enter_code">ಕಳುಹಿಸಿದ 6 ಅಂಕಿಯ ಕೋಡ್ ನಮೂದಿಸಿ\n%s</string>
+    <string name="otp_resend_in_seconds">%ds ನಲ್ಲಿ ಮರುಕಳುಹಿಸಿ</string>
+    <string name="otp_resend_code">ಕೋಡ್ ಮರುಕಳುಹಿಸಿ</string>
+    <string name="otp_code_sent">ಕೋಡ್ ಕಳುಹಿಸಲಾಗಿದೆ!</string>
+    <string name="login_continue">ಮುಂದುವರಿಸಿ</string>
 </resources>
