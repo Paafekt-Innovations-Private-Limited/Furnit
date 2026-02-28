@@ -2,7 +2,7 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.os.Debug
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import org.pytorch.executorch.EValue
 import org.pytorch.executorch.Module
 import org.pytorch.executorch.Tensor
@@ -288,7 +288,7 @@ class SharpInferencePipeline(
         val modelFile = if (File(ptePath).exists()) File(ptePath) else assetToFile(ptePath)
         // LOAD_MODE_MMAP: OS pages in only current layer's weights; cold pages evicted.
         module = Module.load(modelFile.absolutePath, Module.LOAD_MODE_MMAP)
-        Log.i(TAG, "Loaded SHARP model (mmap) from $ptePath (pool capacity ${cfg.scratchPoolBytes / 1024 / 1024}MB)")
+        LogUtil.i(TAG, "Loaded SHARP model (mmap) from $ptePath (pool capacity ${cfg.scratchPoolBytes / 1024 / 1024}MB)")
     }
 
     private fun assetToFile(assetName: String): File {
@@ -307,7 +307,7 @@ class SharpInferencePipeline(
         val mod = module ?: throw IllegalStateException("Call loadModel first")
         pool.reset()
         val scratch = ScratchBuffers(seqLen, cfg)
-        Log.i(TAG, "Scratch allocated: ${scratch.totalBytes() / 1024 / 1024} MB (heap free: ${heapFreeMB()} MB)")
+        LogUtil.i(TAG, "Scratch allocated: ${scratch.totalBytes() / 1024 / 1024} MB (heap free: ${heapFreeMB()} MB)")
         val t0 = System.nanoTime()
 
         val inputTensor = Tensor.fromBlob(inputImage, longArrayOf(1, seqLen.toLong(), cfg.hiddenDim.toLong()))
@@ -325,7 +325,7 @@ class SharpInferencePipeline(
             // gcIfPressured every 4 layers to avoid GC thrash (not every layer)
             if ((layer + 1) % 4 == 0) gcIfPressured()
             if ((layer + 1) % 6 == 0) logMemory(layer)
-            Log.d(TAG, "Layer $layer/${cfg.numLayers} - heap free: ${heapFreeMB()} MB")
+            LogUtil.d(TAG, "Layer $layer/${cfg.numLayers} - heap free: ${heapFreeMB()} MB")
         }
 
         val numVerts = min(seqLen, cfg.maxVertices)
@@ -335,7 +335,7 @@ class SharpInferencePipeline(
         decodeGeometry(scratch.hiddenE, numVerts, vertices, normals, colors)
 
         val elapsed = (System.nanoTime() - t0) / 1_000_000
-        Log.i(TAG, "Inference done in ${elapsed}ms - $numVerts vertices")
+        LogUtil.i(TAG, "Inference done in ${elapsed}ms - $numVerts vertices")
 
         return SharpOutput(vertices, normals, colors, numVerts)
     }
@@ -436,7 +436,7 @@ class SharpInferencePipeline(
         val used = rt.totalMemory() - rt.freeMemory()
         val max = rt.maxMemory()
         if (used.toFloat() / max > cfg.heapPressureThreshold) {
-            Log.w(TAG, "Heap at ${used / 1024 / 1024}/${max / 1024 / 1024} MB - forcing GC")
+            LogUtil.w(TAG, "Heap at ${used / 1024 / 1024}/${max / 1024 / 1024} MB - forcing GC")
             System.gc()
         }
     }
@@ -455,7 +455,7 @@ class SharpInferencePipeline(
         val pss = try {
             android.os.Debug.getPss()  // Process statm PSS in bytes
         } catch (_: Exception) { -1L }
-        Log.i(TAG, "Memory layer=$layer heap=${used / 1024 / 1024}/${max / 1024 / 1024}MB " +
+        LogUtil.i(TAG, "Memory layer=$layer heap=${used / 1024 / 1024}/${max / 1024 / 1024}MB " +
             "native=${nativeHeap / 1024 / 1024}MB PSS=${pss / 1024}MB")
     }
 
@@ -560,7 +560,7 @@ class PlyGenerator(private val cfg: SharpConfig) {
                 out.write((output.colors[i * 3 + 2] * 255).toInt().coerceIn(0, 255))
             }
         }
-        Log.i("PlyGenerator", "Binary PLY written: ${outFile.absolutePath} ($nv vertices)")
+        LogUtil.i("PlyGenerator", "Binary PLY written: ${outFile.absolutePath} ($nv vertices)")
     }
 
     fun writeAsciiPly(output: SharpOutput, outFile: File) {
@@ -678,7 +678,7 @@ window.addEventListener('resize', function(){
         val dir = plyFile.parentFile ?: context.getExternalFilesDir(null)!!
         val htmlFile = File(dir, "viewer.html")
         htmlFile.writeText(generateViewerHtml(plyFile.name))
-        Log.i("WebGLViewer", "Viewer written: ${htmlFile.absolutePath}")
+        LogUtil.i("WebGLViewer", "Viewer written: ${htmlFile.absolutePath}")
         return htmlFile
     }
 }
@@ -694,7 +694,7 @@ class PlyHttpServer(private val port: Int, private val serveDir: File) {
     fun start() {
         running = true
         serverSocket = java.net.ServerSocket(port)
-        Log.i("PlyHttpServer", "Serving ${serveDir.absolutePath} at http://localhost:$port")
+        LogUtil.i("PlyHttpServer", "Serving ${serveDir.absolutePath} at http://localhost:$port")
         Thread({
             while (running) {
                 try {

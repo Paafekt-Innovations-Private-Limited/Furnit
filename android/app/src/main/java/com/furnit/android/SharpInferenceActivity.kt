@@ -3,7 +3,7 @@ package com.furnit.android
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -27,7 +27,7 @@ class SharpInferenceActivity : AppCompatActivity() {
         val imageUri = intent.getStringExtra(EXTRA_IMAGE_URI)?.let { Uri.parse(it) }
         val imagePath = intent.getStringExtra(EXTRA_IMAGE_PATH)
         if (imageUri == null && imagePath.isNullOrBlank()) {
-            Toast.makeText(this, "No image URI or path", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.sharp_inference_no_image), Toast.LENGTH_SHORT).show()
             setResult(RESULT_CANCELED)
             finish()
             return
@@ -37,13 +37,13 @@ class SharpInferenceActivity : AppCompatActivity() {
             else -> BitmapFactory.decodeFile(imagePath)
         }
         if (bitmap == null) {
-            Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.failed_load_image), Toast.LENGTH_SHORT).show()
             setResult(RESULT_CANCELED)
             finish()
             return
         }
 
-        statusText.text = "Loading SHARP model..."
+        statusText.text = getString(R.string.sharp_inference_loading_model)
         SharpService.getInstance(this).generateGaussians(bitmap, object : SharpService.ProgressCallback {
             override fun onProgress(progress: Float, message: String) {
                 runOnUiThread {
@@ -53,14 +53,14 @@ class SharpInferenceActivity : AppCompatActivity() {
             }
             override fun onComplete(result: SharpService.GenerationResult) {
                 runOnUiThread {
-                    Log.d(TAG, "Sharp inference done: ${result.classicPlyFile.absolutePath}")
+                    LogUtil.d(TAG, "Sharp inference done: ${result.classicPlyFile.absolutePath}")
                     setResult(RESULT_OK, android.content.Intent().putExtra(EXTRA_PLY_PATH, result.classicPlyFile.absolutePath))
                     finish()
                 }
             }
             override fun onError(message: String) {
                 runOnUiThread {
-                    Log.e(TAG, "Sharp inference error: $message")
+                    LogUtil.e(TAG, "Sharp inference error: $message")
                     Toast.makeText(this@SharpInferenceActivity, message, Toast.LENGTH_LONG).show()
                     setResult(RESULT_CANCELED)
                     finish()
@@ -75,7 +75,7 @@ class SharpInferenceActivity : AppCompatActivity() {
                 stream?.let { BitmapFactory.decodeStream(it) }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load image from URI", e)
+            LogUtil.e(TAG, "Failed to load image from URI", e)
             null
         }
     }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Paafekt Beta</string>
+    <string name="app_name">Paafekt</string>
     <string name="app_tagline">3D房间探索器</string>
     <string name="app_version">版本</string>
     <string name="app_developer">Furnit团队</string>
@@ -36,7 +36,7 @@
     <string name="home_no_models">未找到3D模型</string>
     <string name="home_no_models_description">从照片建立你的第一个房间！</string>
     <string name="home_create_room">从照片建立房间</string>
-    <string name="home_rooms_remaining">剩餘%d/%d个房间</string>
+    <string name="home_rooms_remaining">剩餘 %1$d/%2$d 个房间</string>
     <string name="home_delete_hint">删除舊房间以建立新房间</string>
     <string name="home_swipe_hint">向左滑动删除</string>
     <string name="home_room_model">3D房间模型</string>
@@ -129,8 +129,8 @@
     <string name="faq_how_to_take_photo_answer">点击主屏幕上的相机图标直接拍照。您可以选择标准(1x)或广角(0.5x超广角)镜头。保持设备稳定并点击拍摄按钮。照片将用于创建您的3D房间。</string>
     <string name="faq_two_methods">What are the two room creation options?</string>
     <string name="faq_two_methods_answer">When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.</string>
-    <string name="faq_what_is_airoom">What is AI-Powered 3D Room?</string>
-    <string name="faq_what_is_airoom_answer">This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!</string>
+    <string name="faq_what_is_ai_room">什么是 AI 驱动的 3D 房间？</string>
+    <string name="faq_what_is_ai_room_answer">此选项使用智能技术自动将您的照片转换为可漫步的 3D 房间。只需选择一张照片，应用会完成其余工作，无需绘制或调整。就像魔法一样！</string>
     <string name="faq_what_is_manual_room">What is Manual Setup?</string>
     <string name="faq_what_is_manual_room_answer">With Manual Setup, you draw the outline of your room\'s walls on the photo. This gives you more control over exactly how the 3D room looks. It\'s great when you want to fine-tune the room shape yourself.</string>
     <string name="faq_which_method_better">Which method should I choose?</string>
@@ -230,4 +230,127 @@
     <string name="orientation_held_vertically">held vertically</string>
     <string name="orientation_held_horizontally">held horizontally</string>
     <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+
+    <!-- SharpRoom / PLY viewer -->
+    <string name="sharp_room_no_ply">未提供 PLY 文件</string>
+    <string name="sharp_room_ply_not_found">未找到 PLY 文件</string>
+    <string name="sharp_room_loading">正在加载 3D 房间…</string>
+    <string name="sharp_room_screenshot_saved">截图已保存：%s</string>
+    <string name="sharp_room_screenshot_failed">截图失败</string>
+    <string name="sharp_room_smartypants_failed">SmartyPants 初始化失败</string>
+    <string name="sharp_room_camera_error">相机错误：%s</string>
+    <string name="sharp_room_cannot_save">无法保存：未找到房间文件夹</string>
+    <string name="sharp_room_saved">房间 \'%s\' 已保存！</string>
+    <string name="sharp_room_save_failed">保存失败：%s</string>
+    <string name="sharp_room_share_failed">分享失败：%s</string>
+
+    <!-- FurnitureFit / SmartyPants -->
+    <string name="smartypants_initializing">正在初始化…</string>
+    <string name="smartypants_drag_hint">拖动家具移动 · 向外拖动平移房间</string>
+    <string name="smartypants_tap_calibrate">点击校准</string>
+    <string name="smartypants_scanning">正在扫描…</string>
+    <string name="smartypants_camera_error">相机错误：%s</string>
+    <string name="smartypants_screenshot_failed">截图失败：%s</string>
+    <string name="smartypants_saved_screenshots">已保存到截图</string>
+    <string name="smartypants_failed_save_screenshot">保存截图失败</string>
+    <string name="smartypants_failed_save">保存失败：%s</string>
+    <string name="smartypants_enter_positive_number">请输入正数</string>
+    <string name="smartypants_room_scaled">房间已缩放 %sx</string>
+    <string name="smartypants_detected">已检测</string>
+    <string name="smartypants_camera_ready">相机就绪 - 正在检测家具…</string>
+    <string name="smartypants_scanning_for_furniture">正在扫描家具…</string>
+    <string name="smartypants_calibrate_title">校准房间</string>
+    <string name="smartypants_calibrate_message">输入实际家具高度（米）。检测到：%sm</string>
+    <string name="smartypants_real_height_hint">实际高度（米）</string>
+
+    <!-- Content / Home -->
+    <string name="home_rooms_remaining_short">剩余 %1$d / 1000 个房间</string>
+    <string name="home_total">总计</string>
+    <string name="home_zero_mb">0 MB</string>
+    <string name="home_no_rooms_yet">暂无房间\n点击图片图标开始</string>
+    <string name="home_3d_room_model">3D 房间模型</string>
+    <string name="home_opening">正在打开 %s…</string>
+    <string name="home_deleted">已删除 %s</string>
+    <string name="home_failed_delete">删除失败：%s</string>
+
+    <!-- Single Photo Room -->
+    <string name="photo_room_back">\u2039 返回</string>
+    <string name="photo_room_or">或</string>
+    <string name="photo_room_do_not_screenshots">⚠️ 请勿使用截图 - 请使用实际照片</string>
+    <string name="photo_room_portrait_held">竖屏 - 竖直握持</string>
+    <string name="photo_room_how_to_create_short">您想如何创建房间？</string>
+    <string name="photo_room_tap_option_short">点击下方选项</string>
+    <string name="photo_room_creating_short">正在创建您的 3D 房间…</string>
+    <string name="photo_room_progress_hint">通常需要约 2 分钟。我们正在为您准备精彩内容。</string>
+    <string name="photo_room_error_camera">打开相机错误：%s</string>
+    <string name="photo_room_error_load">错误：%s</string>
+
+    <!-- GLB Room -->
+    <string name="glb_room_no_file">未提供 GLB 文件</string>
+    <string name="glb_room_not_found">未找到 GLB 文件</string>
+    <string name="glb_room_saved">房间 \'%s\' 已保存！</string>
+    <string name="glb_room_error">错误：%s</string>
+    <string name="glb_room_screenshot_saved">截图已保存：%s</string>
+    <string name="glb_room_screenshot_failed">截图失败</string>
+
+    <!-- Sharp Inference -->
+    <string name="sharp_inference_no_image">无图片 URI 或路径</string>
+    <string name="sharp_inference_loading_model">正在加载 SHARP 模型…</string>
+    <string name="sharp_inference_running">正在运行 SHARP 3D…</string>
+    <string name="sharp_inference_preparing">准备中…</string>
+
+    <!-- Room Boundary -->
+    <string name="boundary_back">\u2039 返回</string>
+    <string name="boundary_done">完成</string>
+    <string name="boundary_reset">重置</string>
+    <string name="boundary_no_image">无可用图片</string>
+    <string name="boundary_failed_create">创建房间失败</string>
+    <string name="boundary_processing">处理中…</string>
+
+    <!-- Model Detail -->
+    <string name="model_detail_preview">3D 房间预览</string>
+    <string name="model_detail_save_first">请先保存房间以使用 AI 检测</string>
+    <string name="model_detail_taking_screenshot">正在截图…</string>
+    <string name="model_detail_room_not_found">未找到房间文件</string>
+    <string name="model_detail_no_room_data">无房间数据可保存</string>
+    <string name="model_detail_failed_save">保存房间失败</string>
+    <string name="model_detail_failed_share">分享房间失败</string>
+    <string name="model_detail_screenshot_failed">截图失败</string>
+    <string name="model_detail_failed_capture">截图失败</string>
+    <string name="model_detail_failed_load">加载失败：%s</string>
+    <string name="model_detail_failed_save_screenshot_message">保存截图失败：%s</string>
+    <string name="model_detail_drag_camera">拖动移动相机</string>
+
+    <!-- Room Viewer -->
+    <string name="room_viewer_no_folder">未提供房间文件夹</string>
+    <string name="room_viewer_folder_not_found">未找到房间文件夹</string>
+    <string name="room_viewer_your_room">您的房间</string>
+    <string name="room_viewer_preview_unavailable">房间预览不可用</string>
+    <string name="room_viewer_created_success">房间创建成功！</string>
+    <string name="room_viewer_created_message">您的房间纹理已从照片中提取。点击保存以保留此房间。</string>
+    <string name="room_viewer_dimensions">尺寸：%s</string>
+    <string name="room_viewer_saved_toast">房间已保存！</string>
+
+    <!-- Model Viewer -->
+    <string name="model_viewer_title">模型</string>
+    <string name="model_viewer_view_3d">查看 3D</string>
+    <string name="model_viewer_ar">AR</string>
+
+    <!-- Settings (developer) -->
+    <string name="settings_inference_backend">推理后端</string>
+    <string name="settings_onnx_default">ONNX（默认）</string>
+    <string name="settings_onnx_description">使用 ONNX Runtime (FP32) 的标准推理</string>
+
+    <!-- Auth / Login -->
+    <string name="login_welcome">欢迎使用 Furnit</string>
+    <string name="login_sign_in_phone">使用手机号登录</string>
+    <string name="login_send_code">发送验证码</string>
+    <string name="login_terms_agree">继续即表示您同意我们的服务条款和隐私政策</string>
+    <string name="otp_back">\u2039 返回</string>
+    <string name="otp_verify_phone">验证手机</string>
+    <string name="otp_enter_code">输入发送至的 6 位验证码\n%s</string>
+    <string name="otp_resend_in_seconds">%ds 后重发</string>
+    <string name="otp_resend_code">重新发送验证码</string>
+    <string name="otp_code_sent">验证码已发送！</string>
+    <string name="login_continue">继续</string>
 </resources>

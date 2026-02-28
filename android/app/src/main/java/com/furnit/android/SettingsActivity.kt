@@ -216,7 +216,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // Inference Backend selection (3-way radio group)
         val backendTitle = TextView(this).apply {
-            text = "Inference Backend"
+            text = getString(R.string.settings_inference_backend)
             textSize = 16f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#333333"))
@@ -242,11 +242,11 @@ class SettingsActivity : AppCompatActivity() {
 
         val onnxRadio = RadioButton(this).apply {
             id = onnxRadioId
-            text = "ONNX (default)"
+            text = getString(R.string.settings_onnx_default)
             setTextColor(Color.parseColor("#333333"))
         }
         val onnxRadioDesc = TextView(this).apply {
-            text = "Standard inference with ONNX Runtime (FP32)"
+            text = getString(R.string.settings_onnx_description)
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
             setPadding(48, 0, 0, 8)
@@ -555,7 +555,7 @@ class SettingsActivity : AppCompatActivity() {
         // App info section
         val appSection = createSection(getString(R.string.profile_about))
         val versionText = TextView(this).apply {
-            text = "Furnit v1.0.0"
+            text = getString(R.string.app_version_display)
             textSize = 14f
             setTextColor(Color.parseColor("#666666"))
         }

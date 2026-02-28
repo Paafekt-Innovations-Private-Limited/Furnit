@@ -60,7 +60,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:text="3D Room View"
+                android:text="@string/room_viewer_title"
                 android:textSize="17sp"
                 android:textStyle="bold"
                 android:textColor="@android:color/white" />
@@ -151,7 +151,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Drag to move camera"
+                android:text="@string/model_detail_drag_camera"
                 android:textSize="12sp"
                 android:textColor="#AAFFFFFF"
                 android:shadowColor="#000000"
@@ -177,7 +177,7 @@
                     android:id="@+id/orientationSubtitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="held vertically"
+                    android:text="@string/orientation_held_vertically"
                     android:textSize="12sp"
                     android:textColor="@android:color/white" />
 
@@ -185,7 +185,7 @@
                     android:id="@+id/orientationTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Portrait"
+                    android:text="@string/orientation_portrait"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:textColor="@android:color/white" />

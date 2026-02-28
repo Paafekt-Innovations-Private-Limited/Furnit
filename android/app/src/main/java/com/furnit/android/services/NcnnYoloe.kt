@@ -5,7 +5,7 @@ import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.graphics.Bitmap.Config
 import android.graphics.Color
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 
 /**
  * NcnnYoloe provides high-performance YOLOE inference using NCNN.
@@ -36,9 +36,9 @@ class NcnnYoloe {
                 // NCNN rebuilt with 16KB page alignment for Android 15+ compatibility
                 System.loadLibrary("yoloe_ncnn")
                 libraryLoaded = true
-                Log.i(TAG, "NCNN native library loaded successfully (16KB aligned)")
+                LogUtil.i(TAG, "NCNN native library loaded successfully (16KB aligned)")
             } catch (e: UnsatisfiedLinkError) {
-                Log.w(TAG, "Failed to load yoloe_ncnn library: ${e.message}")
+                LogUtil.w(TAG, "Failed to load yoloe_ncnn library: ${e.message}")
                 libraryLoaded = false
                 libraryLoadError = e.message
             }
@@ -71,12 +71,12 @@ class NcnnYoloe {
         numThreads: Int = 4
     ): Boolean {
         if (!libraryLoaded) {
-            Log.e(TAG, "Native library not loaded, cannot initialize")
+            LogUtil.e(TAG, "Native library not loaded, cannot initialize")
             return false
         }
 
         if (isInitialized) {
-            Log.w(TAG, "Already initialized, call release() first")
+            LogUtil.w(TAG, "Already initialized, call release() first")
             return true
         }
 
@@ -88,10 +88,10 @@ class NcnnYoloe {
             val actualUseGpu = useGpu && gpuAvailable
 
             if (useGpu && !gpuAvailable) {
-                Log.w(TAG, "GPU requested but not available, using CPU")
+                LogUtil.w(TAG, "GPU requested but not available, using CPU")
             }
 
-            Log.i(TAG, "Initializing NCNN: param=$paramAsset, bin=$binAsset, gpu=$actualUseGpu, threads=$numThreads")
+            LogUtil.i(TAG, "Initializing NCNN: param=$paramAsset, bin=$binAsset, gpu=$actualUseGpu, threads=$numThreads")
 
             nativeHandle = nativeInit(
                 assetManager,
@@ -103,14 +103,14 @@ class NcnnYoloe {
 
             if (nativeHandle != 0L) {
                 isInitialized = true
-                Log.i(TAG, "NCNN initialization successful, handle=$nativeHandle")
+                LogUtil.i(TAG, "NCNN initialization successful, handle=$nativeHandle")
                 true
             } else {
-                Log.e(TAG, "NCNN initialization failed")
+                LogUtil.e(TAG, "NCNN initialization failed")
                 false
             }
         } catch (e: Exception) {
-            Log.e(TAG, "NCNN init exception: ${e.message}", e)
+            LogUtil.e(TAG, "NCNN init exception: ${e.message}", e)
             false
         }
     }
@@ -129,7 +129,7 @@ class NcnnYoloe {
         iouThreshold: Float = 0.45f
     ): List<Detection> {
         if (!isInitialized || nativeHandle == 0L) {
-            Log.w(TAG, "Not initialized, returning empty detections")
+            LogUtil.w(TAG, "Not initialized, returning empty detections")
             return emptyList()
         }
 
@@ -152,7 +152,7 @@ class NcnnYoloe {
             // Format: [x, y, w, h, confidence, classId, coeff0...coeff31] per detection
             parseDetections(results, bitmap.width, bitmap.height)
         } catch (e: Exception) {
-            Log.e(TAG, "Detection failed: ${e.message}", e)
+            LogUtil.e(TAG, "Detection failed: ${e.message}", e)
             emptyList()
         }
     }
@@ -171,7 +171,7 @@ class NcnnYoloe {
         maskThreshold: Float = 0.5f
     ): Bitmap? {
         if (!isInitialized || nativeHandle == 0L) {
-            Log.w(TAG, "Not initialized, cannot generate mask")
+            LogUtil.w(TAG, "Not initialized, cannot generate mask")
             return null
         }
 
@@ -210,7 +210,7 @@ class NcnnYoloe {
             maskBitmap.setPixels(maskPixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
             maskBitmap
         } catch (e: Exception) {
-            Log.e(TAG, "Mask generation failed: ${e.message}", e)
+            LogUtil.e(TAG, "Mask generation failed: ${e.message}", e)
             null
         }
     }
@@ -248,7 +248,7 @@ class NcnnYoloe {
             nativeHandle = 0
         }
         isInitialized = false
-        Log.i(TAG, "NCNN resources released")
+        LogUtil.i(TAG, "NCNN resources released")
     }
 
     /**
@@ -295,7 +295,7 @@ class NcnnYoloe {
             ))
         }
 
-        Log.d(TAG, "Parsed ${detections.size} detections")
+        LogUtil.d(TAG, "Parsed ${detections.size} detections")
         return detections
     }
 

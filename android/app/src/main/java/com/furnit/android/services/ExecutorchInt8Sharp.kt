@@ -1,9 +1,10 @@
 package com.furnit.android.services
 
+import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -149,11 +150,22 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                         input.copyTo(output)
                     }
                 }
-                Log.d(TAG, "Copied $filename from assets to ${dest.absolutePath}")
+                LogUtil.d(TAG, "Copied $filename from assets to ${dest.absolutePath}")
             } catch (e: Exception) {
-                Log.d(TAG, "Asset $assetPath not present or copy failed: ${e.message}")
+                LogUtil.d(TAG, "Asset $assetPath not present or copy failed: ${e.message}")
             }
         }
+    }
+
+    /** True if device is considered low-RAM (e.g. 4 GB); use fewer Part4b threads to avoid OOM. */
+    private fun isLowRamDevice(): Boolean {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return false
+        return am.isLowRamDevice
+    }
+
+    /** Part4b thread count: 2 on low-RAM to avoid OOM; otherwise CPU count capped 2..8 for ~2 min total on capable devices. */
+    private fun part4bThreadCount(): Int {
+        return if (isLowRamDevice()) 2 else Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
     }
 
     private fun findFile(filename: String): File? {
@@ -230,7 +242,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
      */
     private fun getStretchToSquareBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
         val result = Bitmap.createScaledBitmap(bitmap, targetSize, targetSize, true)
-        Log.d(TAG, "[STRETCH] input=${bitmap.width}x${bitmap.height} -> ${targetSize}x${targetSize} (full image, no crop)")
+        LogUtil.d(TAG, "[STRETCH] input=${bitmap.width}x${bitmap.height} -> ${targetSize}x${targetSize} (full image, no crop)")
         return result
     }
 
@@ -250,7 +262,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             Bitmap.createScaledBitmap(cropped, targetSize, targetSize, true)
         }
         if (cropped != bitmap) cropped.recycle()
-        Log.d(TAG, "[CENTER_CROP] input=${bitmap.width}x${bitmap.height} -> crop ${side}x${side} -> ${targetSize}x${targetSize} (${if (USE_LANCZOS_RESIZE) "Lanczos3" else "bilinear"})")
+        LogUtil.d(TAG, "[CENTER_CROP] input=${bitmap.width}x${bitmap.height} -> crop ${side}x${side} -> ${targetSize}x${targetSize} (${if (USE_LANCZOS_RESIZE) "Lanczos3" else "bilinear"})")
         return result
     }
 
@@ -259,11 +271,26 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             if (!isInitialized) return@withContext null
             ensureModelsFromAssets()
 
+            // Require all 6 .pte files (internal or external); avoid NPE and show clear error if missing
+            val required = listOf(
+                "sharp_split_part1_int8.pte",
+                "sharp_split_part2_int8.pte",
+                "sharp_split_part3_int8.pte",
+                "sharp_split_part4a_chunk_512.pte",
+                "sharp_split_part4a_chunk_65.pte",
+                "sharp_split_part4b.pte"
+            )
+            val missing = required.filter { findFile(it) == null }
+            if (missing.isNotEmpty()) {
+                LogUtil.e(TAG, "ExecuTorch INT8 models missing: $missing. Push to ${modelsDir.absolutePath} and retry.")
+                return@withContext null
+            }
+
             val originalWidth = bitmap.width
             val originalHeight = bitmap.height
             val isPortrait = originalHeight > originalWidth
             val pipelineStartMs = System.currentTimeMillis()
-            Log.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | ${if (USE_STRETCH_TO_SQUARE) "stretch-to-square" else "center-crop"} + raw coords (no aspect scale in PLY)")
+            LogUtil.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | ${if (USE_STRETCH_TO_SQUARE) "stretch-to-square" else "center-crop"} + raw coords (no aspect scale in PLY)")
 
             report(0f, "Preparing…", progressCallback)
             // 1. Stretch full image to 1536 (like Swift) or center-crop then resize; raw PLY coords
@@ -290,10 +317,10 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             report(0.02f, "Warming up…", progressCallback)
             val tPart12Load = System.currentTimeMillis()
             // 2. Encoder Phase (Part 1 & 2)
-            Log.d(TAG, "Loading INT8 Part1+Part2...")
+            LogUtil.d(TAG, "Loading INT8 Part1+Part2...")
             val mod1 = Module.load(findFile("sharp_split_part1_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
             val mod2 = Module.load(findFile("sharp_split_part2_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
-            Log.d(TAG, "Part1+Part2 loaded in ${System.currentTimeMillis() - tPart12Load}ms. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
+            LogUtil.d(TAG, "Part1+Part2 loaded in ${System.currentTimeMillis() - tPart12Load}ms. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
             val t1xStart = System.currentTimeMillis()
 
             val stride = (IMAGE_SIZE - PATCH_SIZE) / 4
@@ -317,7 +344,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 report(0.05f + 0.30f * (patchIdx.toFloat() / total1x), "Building your room… step $patchIdx of $total1x", progressCallback)
             }
 
-            Log.d(TAG, "1x patches done in ${System.currentTimeMillis() - t1xStart}ms. Starting 0.5x patches (${GRID_05X}x${GRID_05X})...")
+            LogUtil.d(TAG, "1x patches done in ${System.currentTimeMillis() - t1xStart}ms. Starting 0.5x patches (${GRID_05X}x${GRID_05X})...")
             val t05xStart = System.currentTimeMillis()
             val total05x = GRID_05X * GRID_05X
             var patch05Idx = 0
@@ -327,7 +354,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     val patch = Bitmap.createBitmap(halfBitmap, j * stride05x, i * stride05x, PATCH_SIZE, PATCH_SIZE)
                     val out05 = mod1.forward(EValue.from(Tensor.fromBlob(preprocess(patch, true), longArrayOf(1, 3, PATCH_SIZE.toLong(), PATCH_SIZE.toLong()))))
                     if (out05.isEmpty()) {
-                        Log.e(TAG, "Part1 returned no outputs at 0.5x i=$i j=$j")
+                        LogUtil.e(TAG, "Part1 returned no outputs at 0.5x i=$i j=$j")
                         patch.recycle(); halfBitmap.recycle(); mod1.destroy(); mod2.destroy()
                         return@withContext null
                     }
@@ -341,13 +368,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             }
             halfBitmap.recycle()
             report(0.43f, "Building your room…", progressCallback)
-            Log.d(TAG, "0.5x patches done in ${System.currentTimeMillis() - t05xStart}ms. Running 0.25x patch (35th) for x2Feat...")
+            LogUtil.d(TAG, "0.5x patches done in ${System.currentTimeMillis() - t05xStart}ms. Running 0.25x patch (35th) for x2Feat...")
             val t025Start = System.currentTimeMillis()
             val quarterBmp = Bitmap.createScaledBitmap(scaledBmp, 384, 384, true)
             patchFloatBuffer.rewind()
             val qOut = mod1.forward(EValue.from(Tensor.fromBlob(preprocess(quarterBmp, true), longArrayOf(1, 3, 384, 384))))
             if (qOut.isEmpty()) {
-                Log.e(TAG, "Part1 returned no outputs for 0.25x patch")
+                LogUtil.e(TAG, "Part1 returned no outputs for 0.25x patch")
                 quarterBmp.recycle(); mod1.destroy(); mod2.destroy()
                 return@withContext null
             }
@@ -355,40 +382,42 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val qFeat = mod2.forward(EValue.from(qTokens))[0].toTensor().dataAsFloatArray
             reshapeToSpatial(qFeat, x2Feat)
             quarterBmp.recycle()
-            Log.d(TAG, "0.25x patch done in ${System.currentTimeMillis() - t025Start}ms. Destroying Part1+Part2...")
+            LogUtil.d(TAG, "0.25x patch done in ${System.currentTimeMillis() - t025Start}ms. Destroying Part1+Part2...")
             mod1.destroy(); mod2.destroy(); System.gc()
 
             report(0.44f, "Understanding the full picture…", progressCallback)
             val tPart3Start = System.currentTimeMillis()
             // 3. Image Encoder (Part 3)
-            Log.d(TAG, "Loading Part3 (image encoder)...")
+            LogUtil.d(TAG, "Loading Part3 (image encoder)...")
             val mod3 = Module.load(findFile("sharp_split_part3_int8.pte")!!.absolutePath)
             imageFloatBuffer.rewind()
             val fullImgTensor = Tensor.fromBlob(preprocess(scaledBmp, false), longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong()))
             val imgTokens = mod3.forward(EValue.from(fullImgTensor))[0].toTensor().dataAsFloatArray
-            Log.d(TAG, "Part3 done in ${System.currentTimeMillis() - tPart3Start}ms. imgTokens size=${imgTokens.size}")
+            LogUtil.d(TAG, "Part3 done in ${System.currentTimeMillis() - tPart3Start}ms. imgTokens size=${imgTokens.size}")
             mod3.destroy(); System.gc()
             report(0.46f, "Understanding the full picture…", progressCallback)
 
             report(0.48f, "Adding depth and shape…", progressCallback)
             val tPart4aStart = System.currentTimeMillis()
             // 4. Chunked Part 4a (tokens 512 + 65); sliceArray for buffer safety with Tensor.fromBlob
-            Log.d(TAG, "Starting chunked Part4 decoder...")
+            LogUtil.d(TAG, "Starting chunked Part4 decoder...")
             val out512 = runDecoderChunk("sharp_split_part4a_chunk_512.pte", imgTokens.sliceArray(0 until 512 * 1024), 512)
             report(0.49f, "Adding depth and shape…", progressCallback)
             val out65 = runDecoderChunk("sharp_split_part4a_chunk_65.pte", imgTokens.sliceArray(512 * 1024 until 577 * 1024), 65)
             val combinedTokens = out512 + out65
-            Log.d(TAG, "Part4a chunks done in ${System.currentTimeMillis() - tPart4aStart}ms. combinedTokens size=${combinedTokens.size}. Loading Part4b...")
+            LogUtil.d(TAG, "Part4a chunks done in ${System.currentTimeMillis() - tPart4aStart}ms. combinedTokens size=${combinedTokens.size}. Loading Part4b...")
             val tPart4bStart = System.currentTimeMillis()
 
             report(0.50f, "Adding the finishing touches…", progressCallback)
-            val part4bThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
+            // Use 2 threads on low-RAM devices to avoid OOM; otherwise use more threads for ~2 min total (Part4b was ~4 min when forced to 2 on capable devices)
+            val part4bThreads = part4bThreadCount()
+            LogUtil.d(TAG, "Part4b thread count: $part4bThreads (lowRam=${isLowRamDevice()})")
             val mod4b = Module.load(
                 findFile("sharp_split_part4b.pte")!!.absolutePath,
                 Module.LOAD_MODE_MMAP,
                 part4bThreads
             )
-            Log.d(TAG, "Part4b forward: 7 inputs tokens, img, latent0, latent1, x0Feat, x1Feat, x2Feat")
+            LogUtil.d(TAG, "Part4b forward: 7 inputs tokens, img, latent0, latent1, x0Feat, x1Feat, x2Feat")
             val part4bInputs = listOf(
                 EValue.from(Tensor.fromBlob(combinedTokens, longArrayOf(1, 577, 1024))),
                 EValue.from(fullImgTensor),
@@ -416,35 +445,35 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 deferred.await()
             }
             val part4bMs = System.currentTimeMillis() - tPart4bStart
-            Log.d(TAG, "[TIMING] Part4b forward: ${part4bMs}ms")
+            LogUtil.d(TAG, "[TIMING] Part4b forward: ${part4bMs}ms")
             report(0.92f, "Saving your 3D room…", progressCallback)
             val tPlyStart = System.currentTimeMillis()
-            Log.d(TAG, "[PLY] Part4b done. Writing PLY with raw coordinates (center-crop input = 1:1, no aspect scale)")
+            LogUtil.d(TAG, "[PLY] Part4b done. Writing PLY with raw coordinates (center-crop input = 1:1, no aspect scale)")
             val result = writePly(finalParams.dataAsFloatArray, progressCallback, isPortrait)
             val plyMs = System.currentTimeMillis() - tPlyStart
-            Log.d(TAG, "[TIMING] writePly: ${plyMs}ms")
+            LogUtil.d(TAG, "[TIMING] writePly: ${plyMs}ms")
             mod4b.destroy(); scaledBmp.recycle()
             report(1f, "Your room is ready!", progressCallback)
             val totalMs = System.currentTimeMillis() - pipelineStartMs
-            Log.d(TAG, "[ASPECT] inference complete | Gaussians=${result.gaussianCount} | PLY bbox room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} m")
-            Log.d(TAG, "[TIMING] TOTAL pipeline: ${totalMs}ms (${totalMs / 1000f}s)")
+            LogUtil.d(TAG, "[ASPECT] inference complete | Gaussians=${result.gaussianCount} | PLY bbox room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} m")
+            LogUtil.d(TAG, "[TIMING] TOTAL pipeline: ${totalMs}ms (${totalMs / 1000f}s)")
             return@withContext result
         }
     }
 
     private fun runDecoderChunk(name: String, data: FloatArray, count: Int): FloatArray {
-        Log.d(TAG, "runDecoderChunk: $name count=$count dataLen=${data.size}")
+        LogUtil.d(TAG, "runDecoderChunk: $name count=$count dataLen=${data.size}")
         val mod = Module.load(findFile(name)!!.absolutePath)
         patchFloatBuffer.rewind()
         val inputTensor = Tensor.fromBlob(data, longArrayOf(1, count.toLong(), 1024))
         val output = mod.forward(EValue.from(inputTensor))
         if (output.isEmpty()) {
-            Log.e(TAG, "runDecoderChunk: $name returned no outputs")
+            LogUtil.e(TAG, "runDecoderChunk: $name returned no outputs")
             mod.destroy()
             return FloatArray(0)
         }
         val out = output[0].toTensor().dataAsFloatArray
-        Log.d(TAG, "runDecoderChunk: $name outputLen=${out.size}")
+        LogUtil.d(TAG, "runDecoderChunk: $name outputLen=${out.size}")
         mod.destroy()
         System.gc()
         return out
@@ -521,7 +550,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         isPortrait: Boolean = false
     ): StreamingResult {
         val count = params.size / PARAMS_PER_GAUSSIAN
-        Log.d(TAG, "[PLY] writePly: count=$count isPortrait=$isPortrait (raw x,y,z; y,z negated)")
+        LogUtil.d(TAG, "[PLY] writePly: count=$count isPortrait=$isPortrait (raw x,y,z; y,z negated)")
         val roomFolder = File(File(context.filesDir, "sharp_rooms"), "room_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}").apply { mkdirs() }
         val plyFile = File(roomFolder, "room.ply")
         val progressReportEvery = (count / 8).coerceAtLeast(1)
@@ -574,9 +603,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val centerX = (minX + maxX) * 0.5f
         val centerY = (minY + maxY) * 0.5f
         val centerZ = (minZ + maxZ) * 0.5f
-        Log.d(TAG, "[PLY] saved bbox: roomWidth=$roomW roomHeight=$roomH roomDepth=$roomD (raw coords)")
+        LogUtil.d(TAG, "[PLY] saved bbox: roomWidth=$roomW roomHeight=$roomH roomDepth=$roomD (raw coords)")
         if (roomW > 50f || roomH > 50f || roomD > 50f || roomW < 0.1f || roomH < 0.1f || roomD < 0.1f) {
-            Log.w(TAG, "[PLY] bbox may indicate scale/precision issue (expected room ~2–15 m)")
+            LogUtil.w(TAG, "[PLY] bbox may indicate scale/precision issue (expected room ~2–15 m)")
         }
         return StreamingResult(plyFile, plyFile, count, roomW, roomH, roomD, centerX, centerY, centerZ)
     }

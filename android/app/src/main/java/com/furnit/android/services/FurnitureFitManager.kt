@@ -5,7 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Bitmap.Config
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import ai.onnxruntime.OnnxTensor
@@ -82,12 +82,12 @@ class FurnitureFitManager(private val context: Context) {
             val t = interpreter!!.getInputTensor(idx)
             inputShape = t.shape()
             inputDataType = t.dataType()
-            Log.i(
+            LogUtil.i(
                 "FurnitureFitManager",
                 "Loaded TFLite model '$tfliteAssetName' inputShape=${inputShape?.joinToString()} dataType=$inputDataType"
             )
         } catch (e: Exception) {
-            Log.w("FurnitureFitManager", "Failed to load tflite: ${e.message}")
+            LogUtil.w("FurnitureFitManager", "Failed to load tflite: ${e.message}")
             interpreter = null
         }
     }
@@ -106,14 +106,14 @@ class FurnitureFitManager(private val context: Context) {
         binAsset: String = "yoloe-11l-seg.bin",
         useGpu: Boolean = true
     ): Boolean {
-        Log.i(
+        LogUtil.i(
             "FurnitureFitManager",
             "initializeNcnn called with param='$paramAsset', bin='$binAsset', gpu=$useGpu"
         )
 
         if (!NcnnYoloe.isAvailable()) {
             val error = NcnnYoloe.getLoadError() ?: "unknown reason"
-            Log.w("FurnitureFitManager", "NCNN native library not available: $error")
+            LogUtil.w("FurnitureFitManager", "NCNN native library not available: $error")
             return false
         }
 
@@ -123,18 +123,18 @@ class FurnitureFitManager(private val context: Context) {
 
             if (success) {
                 useNcnn = true
-                Log.i(
+                LogUtil.i(
                     "FurnitureFitManager",
                     "NCNN initialization successful (GPU: ${ncnnYoloe!!.hasGpu()})"
                 )
                 return true
             } else {
-                Log.e("FurnitureFitManager", "NCNN initialization failed")
+                LogUtil.e("FurnitureFitManager", "NCNN initialization failed")
                 ncnnYoloe = null
                 return false
             }
         } catch (e: Exception) {
-            Log.e("FurnitureFitManager", "NCNN init exception: ${e.message}", e)
+            LogUtil.e("FurnitureFitManager", "NCNN init exception: ${e.message}", e)
             ncnnYoloe = null
             return false
         }
@@ -145,73 +145,73 @@ class FurnitureFitManager(private val context: Context) {
      * Tries NCNN first, then ONNX, then TFLite.
      */
     fun initializeAuto(): Boolean {
-        Log.i("FurnitureFitManager", "Auto-initializing with best available backend...")
+        LogUtil.i("FurnitureFitManager", "Auto-initializing with best available backend...")
 
         // Try NCNN first (best performance) — disabled by default.
         if (BackendConfig.ENABLE_NCNN) {
             if (initializeNcnn()) {
-                Log.i("FurnitureFitManager", "Using NCNN backend")
+                LogUtil.i("FurnitureFitManager", "Using NCNN backend")
                 return true
             }
         } else {
-            Log.i("FurnitureFitManager", "NCNN backend disabled; skipping")
+            LogUtil.i("FurnitureFitManager", "NCNN backend disabled; skipping")
         }
 
         // Fall back to ONNX Runtime
         try {
             initializeOnnx()
             if (ortSession != null) {
-                Log.i("FurnitureFitManager", "Using ONNX Runtime backend")
+                LogUtil.i("FurnitureFitManager", "Using ONNX Runtime backend")
                 return true
             }
         } catch (e: Exception) {
-            Log.w("FurnitureFitManager", "ONNX initialization failed: ${e.message}")
+            LogUtil.w("FurnitureFitManager", "ONNX initialization failed: ${e.message}")
         }
 
         // Fall back to TFLite
         try {
             initialize()
             if (interpreter != null) {
-                Log.i("FurnitureFitManager", "Using TFLite backend")
+                LogUtil.i("FurnitureFitManager", "Using TFLite backend")
                 return true
             }
         } catch (e: Exception) {
-            Log.w("FurnitureFitManager", "TFLite initialization failed: ${e.message}")
+            LogUtil.w("FurnitureFitManager", "TFLite initialization failed: ${e.message}")
         }
 
-        Log.e("FurnitureFitManager", "No inference backend available - segmentation disabled")
+        LogUtil.e("FurnitureFitManager", "No inference backend available - segmentation disabled")
         return false
     }
 
     /** Initialize ONNX Runtime session from asset ONNX model. */
     fun initializeOnnx(onnxAssetName: String = "yoloe-11l-seg-pf.onnx") {
-        Log.i("FurnitureFitManager", "initializeOnnx called with '$onnxAssetName'")
+        LogUtil.i("FurnitureFitManager", "initializeOnnx called with '$onnxAssetName'")
         try {
-            Log.d("FurnitureFitManager", "Copying asset to cache...")
+            LogUtil.d("FurnitureFitManager", "Copying asset to cache...")
             val file = copyAssetToFile(onnxAssetName)
-            Log.d(
+            LogUtil.d(
                 "FurnitureFitManager",
                 "Asset copied to: ${file.absolutePath}, size: ${file.length()}"
             )
 
-            Log.d("FurnitureFitManager", "Getting ORT environment...")
+            LogUtil.d("FurnitureFitManager", "Getting ORT environment...")
             ortEnv = OrtEnvironment.getEnvironment()
 
-            Log.d("FurnitureFitManager", "Creating ONNX session...")
+            LogUtil.d("FurnitureFitManager", "Creating ONNX session...")
             val opts = SessionOptions()
             ortSession = ortEnv!!.createSession(file.absolutePath, opts)
 
             // Log input/output info
-            Log.i("FurnitureFitManager", "ONNX model loaded successfully")
+            LogUtil.i("FurnitureFitManager", "ONNX model loaded successfully")
             for ((name, info) in ortSession!!.inputInfo) {
-                Log.i("FurnitureFitManager", "ONNX input: $name -> ${info.info}")
+                LogUtil.i("FurnitureFitManager", "ONNX input: $name -> ${info.info}")
             }
             for ((name, info) in ortSession!!.outputInfo) {
-                Log.i("FurnitureFitManager", "ONNX output: $name -> ${info.info}")
+                LogUtil.i("FurnitureFitManager", "ONNX output: $name -> ${info.info}")
             }
-            Log.i("FurnitureFitManager", "Loaded ONNX model '$onnxAssetName' into ONNX Runtime")
+            LogUtil.i("FurnitureFitManager", "Loaded ONNX model '$onnxAssetName' into ONNX Runtime")
         } catch (e: Exception) {
-            Log.e("FurnitureFitManager", "Failed to load onnx: ${e.message}", e)
+            LogUtil.e("FurnitureFitManager", "Failed to load onnx: ${e.message}", e)
             ortSession = null
             ortEnv = null
         }
@@ -300,7 +300,7 @@ class FurnitureFitManager(private val context: Context) {
 
                 mainHandler.post { callback(null) }
             } catch (e: Exception) {
-                Log.e("FurnitureFitManager", "inference error", e)
+                LogUtil.e("FurnitureFitManager", "inference error", e)
                 mainHandler.post { callback(null) }
             }
         }
@@ -312,7 +312,7 @@ class FurnitureFitManager(private val context: Context) {
     private fun runNcnnInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
         try {
             val ncnn = ncnnYoloe ?: run {
-                Log.e("FurnitureFitManager", "NCNN not initialized")
+                LogUtil.e("FurnitureFitManager", "NCNN not initialized")
                 mainHandler.post { callback(null) }
                 return
             }
@@ -328,14 +328,14 @@ class FurnitureFitManager(private val context: Context) {
             )
 
             val inferenceTime = System.currentTimeMillis() - startTime
-            Log.d(
+            LogUtil.d(
                 "FurnitureFitManager",
                 "NCNN inference: ${result.detections.size} detections in ${inferenceTime}ms"
             )
 
             // Log top detections
             for ((idx, det) in result.detections.take(5).withIndex()) {
-                Log.d(
+                LogUtil.d(
                     "FurnitureFitManager",
                     "  [$idx] ${det.label} (${det.classId}): conf=${det.confidence}, bbox=(${det.x},${det.y},${det.width},${det.height})"
                 )
@@ -353,7 +353,7 @@ class FurnitureFitManager(private val context: Context) {
                 mainHandler.post { callback(maskBmp) }
             }
         } catch (e: Exception) {
-            Log.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)
+            LogUtil.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)
             mainHandler.post { callback(null) }
         }
     }
@@ -393,12 +393,12 @@ class FurnitureFitManager(private val context: Context) {
     private fun runOnnxInference(frame: Bitmap, callback: (Bitmap?) -> Unit) {
         try {
             val session = ortSession ?: run {
-                Log.e("FurnitureFitManager", "ortSession is null")
+                LogUtil.e("FurnitureFitManager", "ortSession is null")
                 mainHandler.post { callback(null) }
                 return
             }
             val env = ortEnv ?: run {
-                Log.e("FurnitureFitManager", "ortEnv is null")
+                LogUtil.e("FurnitureFitManager", "ortEnv is null")
                 mainHandler.post { callback(null) }
                 return
             }
@@ -406,7 +406,7 @@ class FurnitureFitManager(private val context: Context) {
             // Use first input info to determine shape
             val firstInput = session.inputInfo.entries.firstOrNull()
             if (firstInput == null) {
-                Log.w("FurnitureFitManager", "ONNX session has no inputs")
+                LogUtil.w("FurnitureFitManager", "ONNX session has no inputs")
                 mainHandler.post { callback(null) }
                 return
             }
@@ -432,7 +432,7 @@ class FurnitureFitManager(private val context: Context) {
             }
 
             // Resize to model input size
-            Log.d(
+            LogUtil.d(
                 "FurnitureFitManager",
                 "Resizing frame ${frame.width}x${frame.height} to ${inputW}x${inputH}"
             )
@@ -461,12 +461,12 @@ class FurnitureFitManager(private val context: Context) {
             }
 
             val shapeLong = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
-            Log.d("FurnitureFitManager", "Creating input tensor with shape ${shapeLong.toList()}")
-            Log.d(
+            LogUtil.d("FurnitureFitManager", "Creating input tensor with shape ${shapeLong.toList()}")
+            LogUtil.d(
                 "FurnitureFitManager",
                 "Input sample - R[0]=${inputFloats[0]}, G[0]=${inputFloats[hw]}, B[0]=${inputFloats[2 * hw]}"
             )
-            Log.d("FurnitureFitManager", "Input range - min=${inputFloats.minOrNull()}, max=${inputFloats.maxOrNull()}")
+            LogUtil.d("FurnitureFitManager", "Input range - min=${inputFloats.minOrNull()}, max=${inputFloats.maxOrNull()}")
 
             val tensor = OnnxTensor.createTensor(
                 env,
@@ -476,9 +476,9 @@ class FurnitureFitManager(private val context: Context) {
 
             var maskResult: Bitmap? = null
 
-            Log.d("FurnitureFitManager", "Running ONNX inference...")
+            LogUtil.d("FurnitureFitManager", "Running ONNX inference...")
             session.run(mapOf(inputName to tensor)).use { results ->
-                Log.d("FurnitureFitManager", "Inference complete, processing outputs...")
+                LogUtil.d("FurnitureFitManager", "Inference complete, processing outputs...")
 
                 val outInfos = ortSession!!.outputInfo.entries.toList()
 
@@ -492,7 +492,7 @@ class FurnitureFitManager(private val context: Context) {
                     val info = outInfos[i].value.info
                     if (info is ai.onnxruntime.TensorInfo) {
                         val sh = info.shape
-                        Log.d("FurnitureFitManager", "Output $i shape: ${sh.toList()}")
+                        LogUtil.d("FurnitureFitManager", "Output $i shape: ${sh.toList()}")
                         if (sh.size == 3 && detIndex == -1) {
                             detIndex = i
                             detShape = sh
@@ -505,14 +505,14 @@ class FurnitureFitManager(private val context: Context) {
                 }
 
                 if (detIndex == -1 || protoIndex == -1 || detShape == null || protoShape == null) {
-                    Log.w("FurnitureFitManager", "Could not find detection/prototype outputs")
+                    LogUtil.w("FurnitureFitManager", "Could not find detection/prototype outputs")
                     mainHandler.post { callback(null) }
                     tensor.close()
                     return
                 }
 
-                Log.d("FurnitureFitManager", "Detection output[$detIndex] shape: ${detShape.toList()}")
-                Log.d("FurnitureFitManager", "Proto output[$protoIndex] shape: ${protoShape.toList()}")
+                LogUtil.d("FurnitureFitManager", "Detection output[$detIndex] shape: ${detShape.toList()}")
+                LogUtil.d("FurnitureFitManager", "Proto output[$protoIndex] shape: ${protoShape.toList()}")
 
                 val detResult = results.get(detIndex)
                 val protoResult = results.get(protoIndex)
@@ -535,19 +535,19 @@ class FurnitureFitManager(private val context: Context) {
                 val protoH = protoShape[2].toInt()
                 val protoW = protoShape[3].toInt()
 
-                Log.d(
+                LogUtil.d(
                     "FurnitureFitManager",
                     "Features=$numFeatures Anchors=$numAnchors Classes=$numClasses MaskCoeffs=$numMaskCoeffs Protos=$numProtos ProtoSize=${protoW}x${protoH}"
                 )
 
                 if (numFeatures < (4 + numMaskCoeffs + 1) || numAnchors <= 0 || numProtos <= 0) {
-                    Log.e("FurnitureFitManager", "Invalid tensor dimensions")
+                    LogUtil.e("FurnitureFitManager", "Invalid tensor dimensions")
                     mainHandler.post { callback(null) }
                     tensor.close()
                     return
                 }
 
-                Log.d("FurnitureFitManager", "DetValue type: ${detValue?.javaClass}")
+                LogUtil.d("FurnitureFitManager", "DetValue type: ${detValue?.javaClass}")
 
                 // Extract detection tensor (3D preferred)
                 var det3d: Array<Array<FloatArray>>? = null
@@ -558,12 +558,12 @@ class FurnitureFitManager(private val context: Context) {
                         try {
                             @Suppress("UNCHECKED_CAST")
                             det3d = detValue as Array<Array<FloatArray>>
-                            Log.d(
+                            LogUtil.d(
                                 "FurnitureFitManager",
                                 "Det as 3D array: [${det3d.size}][${det3d[0].size}][${det3d[0][0].size}]"
                             )
                         } catch (e: Exception) {
-                            Log.w(
+                            LogUtil.w(
                                 "FurnitureFitManager",
                                 "Failed to cast as 3D array, trying flatten: ${e.message}"
                             )
@@ -572,39 +572,39 @@ class FurnitureFitManager(private val context: Context) {
                     }
                     is FloatArray -> {
                         detFlat = detValue
-                        Log.d("FurnitureFitManager", "Det as flat FloatArray: ${detFlat.size}")
+                        LogUtil.d("FurnitureFitManager", "Det as flat FloatArray: ${detFlat.size}")
                     }
                     is java.nio.FloatBuffer -> {
                         detFlat = FloatArray(detValue.remaining())
                         detValue.get(detFlat)
-                        Log.d("FurnitureFitManager", "Det as FloatBuffer: ${detFlat.size}")
+                        LogUtil.d("FurnitureFitManager", "Det as FloatBuffer: ${detFlat.size}")
                     }
                     else -> {
-                        Log.w("FurnitureFitManager", "Unknown det type: ${detValue?.javaClass}")
+                        LogUtil.w("FurnitureFitManager", "Unknown det type: ${detValue?.javaClass}")
                         detFlat = extractFloatArray(detValue)
                     }
                 }
 
                 if (det3d == null && (detFlat == null || detFlat.isEmpty())) {
-                    Log.e("FurnitureFitManager", "Could not extract detection tensor")
+                    LogUtil.e("FurnitureFitManager", "Could not extract detection tensor")
                     mainHandler.post { callback(null) }
                     tensor.close()
                     return
                 }
 
                 // Extract prototype tensor
-                Log.d("FurnitureFitManager", "Extracting proto array...")
+                LogUtil.d("FurnitureFitManager", "Extracting proto array...")
                 val proto = extractFloatArray(protoValue)
-                Log.d("FurnitureFitManager", "Proto extracted: ${proto.size} floats")
+                LogUtil.d("FurnitureFitManager", "Proto extracted: ${proto.size} floats")
 
                 if (proto.isEmpty()) {
-                    Log.w("FurnitureFitManager", "Empty proto output")
+                    LogUtil.w("FurnitureFitManager", "Empty proto output")
                     mainHandler.post { callback(null) }
                     tensor.close()
                     return
                 }
 
-                Log.d(
+                LogUtil.d(
                     "FurnitureFitManager",
                     "Proto[0]=${proto[0]}, Proto[1]=${proto[1]}, Proto[160]=${proto.getOrNull(160)}, Proto[25600]=${proto.getOrNull(25600)}"
                 )
@@ -637,7 +637,7 @@ class FurnitureFitManager(private val context: Context) {
                         }
                     }
                 }
-                Log.d(
+                LogUtil.d(
                     "FurnitureFitManager",
                     "Global max class score: $globalMaxScore at anchor $globalMaxAnchor, class $globalMaxClass"
                 )
@@ -649,12 +649,12 @@ class FurnitureFitManager(private val context: Context) {
                 val dbgH = getDetValue(3, dbgAnchor)
                 val dbgC0 = getDetValue(4, dbgAnchor)
                 val dbgC1 = getDetValue(5, dbgAnchor)
-                Log.d(
+                LogUtil.d(
                     "FurnitureFitManager",
                     "Anchor[$dbgAnchor]: bbox=($dbgX,$dbgY,$dbgW,$dbgH), class0=$dbgC0, class1=$dbgC1"
                 )
 
-                Log.d(
+                LogUtil.d(
                     "FurnitureFitManager",
                     "Scanning $numAnchors anchors with conf threshold $confThreshold..."
                 )
@@ -697,7 +697,7 @@ class FurnitureFitManager(private val context: Context) {
                 }
 
                 val scanTime = System.currentTimeMillis() - startTime
-                Log.d(
+                LogUtil.d(
                     "FurnitureFitManager",
                     "Found ${detections.size} detections above conf $confThreshold in ${scanTime}ms"
                 )
@@ -709,12 +709,12 @@ class FurnitureFitManager(private val context: Context) {
                 }
 
                 val topDets = detections.sortedByDescending { it.confidence }.take(5)
-                Log.d("FurnitureFitManager", "=== TOP DETECTIONS ===")
+                LogUtil.d("FurnitureFitManager", "=== TOP DETECTIONS ===")
                 for ((idx, det) in topDets.withIndex()) {
                     val label = getClassName(det.classId)
-                    Log.d("FurnitureFitManager", "  [$idx] $label: conf=${String.format("%.3f", det.confidence)}")
+                    LogUtil.d("FurnitureFitManager", "  [$idx] $label: conf=${String.format("%.3f", det.confidence)}")
                 }
-                Log.d("FurnitureFitManager", "======================")
+                LogUtil.d("FurnitureFitManager", "======================")
 
                 val sortedDets = detections.sortedByDescending { it.confidence }.take(maxDetections)
 
@@ -732,11 +732,11 @@ class FurnitureFitManager(private val context: Context) {
                     }
                 }
 
-                Log.d("FurnitureFitManager", "After NMS: ${keepDets.size} detections kept")
+                LogUtil.d("FurnitureFitManager", "After NMS: ${keepDets.size} detections kept")
 
                 if (keepDets.isNotEmpty()) {
                     val firstDet = keepDets[0]
-                    Log.d(
+                    LogUtil.d(
                         "FurnitureFitManager",
                         "First det coeffs[0..3]: ${firstDet.coeffs[0]}, ${firstDet.coeffs[1]}, ${firstDet.coeffs[2]}, ${firstDet.coeffs[3]}"
                     )
@@ -783,7 +783,7 @@ class FurnitureFitManager(private val context: Context) {
                 val maskMin = maskProto.minOrNull() ?: 0f
                 val maskMax = maskProto.maxOrNull() ?: 0f
                 val maskAbove05 = maskProto.count { it > 0.5f }
-                Log.d("FurnitureFitManager", "Mask stats: min=$maskMin, max=$maskMax, pixels>0.5=$maskAbove05")
+                LogUtil.d("FurnitureFitManager", "Mask stats: min=$maskMin, max=$maskMax, pixels>0.5=$maskAbove05")
 
                 // Create mask bitmap from computed maskProto values
                 val maskBmp = Bitmap.createBitmap(protoW, protoH, Config.ARGB_8888)
@@ -799,17 +799,17 @@ class FurnitureFitManager(private val context: Context) {
                 // Scale mask to original frame size
                 val outMask = Bitmap.createScaledBitmap(maskBmp, frame.width, frame.height, true)
                 maskResult = outMask
-                Log.d("FurnitureFitManager", "Mask generated: ${outMask.width}x${outMask.height}")
+                LogUtil.d("FurnitureFitManager", "Mask generated: ${outMask.width}x${outMask.height}")
             }
 
             tensor.close()
             val finalMask = maskResult
             mainHandler.post { callback(finalMask) }
         } catch (e: OrtException) {
-            Log.e("FurnitureFitManager", "ONNX inference failed", e)
+            LogUtil.e("FurnitureFitManager", "ONNX inference failed", e)
             mainHandler.post { callback(null) }
         } catch (e: Exception) {
-            Log.e("FurnitureFitManager", "ONNX inference exception", e)
+            LogUtil.e("FurnitureFitManager", "ONNX inference exception", e)
             e.printStackTrace()
             mainHandler.post { callback(null) }
         }
@@ -846,7 +846,7 @@ class FurnitureFitManager(private val context: Context) {
                 }
             }
 
-            Log.d("FurnitureFitManager", "Resizing frame ${frame.width}x${frame.height} to ${inputW}x${inputH}")
+            LogUtil.d("FurnitureFitManager", "Resizing frame ${frame.width}x${frame.height} to ${inputW}x${inputH}")
             val resized = Bitmap.createScaledBitmap(frame, inputW, inputH, true)
                 .copy(Config.ARGB_8888, false)
 
@@ -1037,7 +1037,7 @@ class FurnitureFitManager(private val context: Context) {
             val result = SegmentationResult(maskResult, detectionResults, inputW)
             mainHandler.post { callback(result) }
         } catch (e: Exception) {
-            Log.e("FurnitureFitManager", "ONNX inference with detections failed", e)
+            LogUtil.e("FurnitureFitManager", "ONNX inference with detections failed", e)
             mainHandler.post { callback(null) }
         }
     }
@@ -1046,7 +1046,7 @@ class FurnitureFitManager(private val context: Context) {
     private fun runNcnnInferenceWithDetections(frame: Bitmap, callback: (SegmentationResult?) -> Unit) {
         try {
             val ncnn = ncnnYoloe ?: run {
-                Log.e("FurnitureFitManager", "NCNN not initialized")
+                LogUtil.e("FurnitureFitManager", "NCNN not initialized")
                 mainHandler.post { callback(null) }
                 return
             }
@@ -1081,7 +1081,7 @@ class FurnitureFitManager(private val context: Context) {
             )
 
             val inferenceTime = System.currentTimeMillis() - startTime
-            Log.d("FurnitureFitManager", "NCNN inference: primary detection ${primaryDet.label} (${String.format("%.2f", primaryDet.confidence)}) in ${inferenceTime}ms")
+            LogUtil.d("FurnitureFitManager", "NCNN inference: primary detection ${primaryDet.label} (${String.format("%.2f", primaryDet.confidence)}) in ${inferenceTime}ms")
 
             // Convert to DetectionResult
             val detectionResult = DetectionResult(
@@ -1096,7 +1096,7 @@ class FurnitureFitManager(private val context: Context) {
             val result = SegmentationResult(mask, listOf(detectionResult), 640)
             mainHandler.post { callback(result) }
         } catch (e: Exception) {
-            Log.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)
+            LogUtil.e("FurnitureFitManager", "NCNN inference error: ${e.message}", e)
             mainHandler.post { callback(null) }
         }
     }
@@ -1111,7 +1111,7 @@ class FurnitureFitManager(private val context: Context) {
                 arr
             }
             else -> {
-                Log.w("FurnitureFitManager", "Unknown output type: ${value?.javaClass}")
+                LogUtil.w("FurnitureFitManager", "Unknown output type: ${value?.javaClass}")
                 FloatArray(0)
             }
         }

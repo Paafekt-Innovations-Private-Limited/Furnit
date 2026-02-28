@@ -168,7 +168,7 @@
     <string name="faq_how_to_create">How do I create a 3D room?</string>
     <string name="faq_how_to_create_answer">Tap the photo icon in the top-left corner of the home screen, then take or select a photo of your room. You\'ll see two options to choose from for creating your 3D room.</string>
     <string name="faq_how_to_take_photo">How do I take a photo to create a room?</string>
-    <string name="faq_how_to_take_photo_answer">Tap the image (gallery) icon on the home screen, then choose Take Photo or select from your library. You can use Standard (1x) or Wide Angle (0.5x) when taking a photo. The photo will then be used to create your 3D room.</string>
+    <string name="faq_how_to_take_photo_answer">Tap the camera icon on the home screen to take a photo directly. You can choose between Standard (1x) or Wide Angle (0.5x ultra-wide) lens. Hold your device steady and tap the capture button. The photo will then be used to create your 3D room.</string>
     <string name="faq_two_methods">What are the two room creation options?</string>
     <string name="faq_two_methods_answer">When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.</string>
     <string name="faq_what_is_ai_room">What is AI-Powered 3D Room?</string>
@@ -334,8 +334,6 @@
     <string name="app_version_display">Furnit v1.0.0</string>
 
     <!-- Additional strings from iOS translations -->
-    <string name="faq_what_is_airoom">What is AI-Powered 3D Room?</string>
-    <string name="faq_what_is_airoom_answer">This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!</string>
     <string name="room_viewer_exporting_usdz">Exporting to USDZ format…</string>
     <string name="faq_multiple_pieces">Can I add multiple furniture pieces?</string>
     <string name="faq_multiple_pieces_answer">Yes! You can add multiple furniture pieces to your room. Simply segment each piece and add them one by one.</string>

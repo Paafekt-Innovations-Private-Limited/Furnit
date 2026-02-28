@@ -2,7 +2,7 @@ package com.furnit.android.services
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.pytorch.IValue
@@ -85,21 +85,21 @@ class TorchMobileSharp private constructor(private val context: Context) {
     fun initialize(): Boolean {
         val modelFile = findModelFile()
         if (modelFile == null) {
-            Log.e(TAG, "Model not found: $MODEL_FILENAME")
+            LogUtil.e(TAG, "Model not found: $MODEL_FILENAME")
             return false
         }
         val sizeMB = modelFile.length() / 1024 / 1024
-        Log.d(TAG, "Model found: ${modelFile.name} (${sizeMB}MB)")
+        LogUtil.d(TAG, "Model found: ${modelFile.name} (${sizeMB}MB)")
 
         // Pre-load model NOW so it's ready for inference later
-        Log.d(TAG, "Pre-loading model into memory...")
+        LogUtil.d(TAG, "Pre-loading model into memory...")
         val loadStart = System.currentTimeMillis()
         try {
             module = LiteModuleLoader.load(modelFile.absolutePath)
             val loadTime = System.currentTimeMillis() - loadStart
-            Log.d(TAG, "Model pre-loaded in ${loadTime}ms")
+            LogUtil.d(TAG, "Model pre-loaded in ${loadTime}ms")
         } catch (e: Exception) {
-            Log.e(TAG, "Model pre-load failed: ${e.message}")
+            LogUtil.e(TAG, "Model pre-load failed: ${e.message}")
             // Don't fail init -- will retry during inference
         }
 
@@ -112,7 +112,7 @@ class TorchMobileSharp private constructor(private val context: Context) {
         progressCallback: ((Float, String) -> Unit)? = null
     ): StreamingResult? = withContext(Dispatchers.IO) {
         if (!isInitialized) {
-            Log.e(TAG, "Not initialized")
+            LogUtil.e(TAG, "Not initialized")
             return@withContext null
         }
 
@@ -136,7 +136,7 @@ class TorchMobileSharp private constructor(private val context: Context) {
             }
 
             val inputTensor = Tensor.fromBlob(floatData, longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong()))
-            Log.d(TAG, "Image preprocessed")
+            LogUtil.d(TAG, "Image preprocessed")
 
             // Use pre-loaded model (or load now if not pre-loaded)
             val loadTime: Long
@@ -146,10 +146,10 @@ class TorchMobileSharp private constructor(private val context: Context) {
                 val loadStart = System.currentTimeMillis()
                 module = LiteModuleLoader.load(modelFile.absolutePath)
                 loadTime = System.currentTimeMillis() - loadStart
-                Log.d(TAG, "Model loaded on-demand in ${loadTime}ms")
+                LogUtil.d(TAG, "Model loaded on-demand in ${loadTime}ms")
             } else {
                 loadTime = 0
-                Log.d(TAG, "Using pre-loaded model")
+                LogUtil.d(TAG, "Using pre-loaded model")
             }
 
             // Run inference -- single forward pass, same as Python
@@ -157,11 +157,11 @@ class TorchMobileSharp private constructor(private val context: Context) {
             val inferStart = System.currentTimeMillis()
             val output = module!!.forward(IValue.from(inputTensor)).toTensor()
             val inferTime = System.currentTimeMillis() - inferStart
-            Log.d(TAG, "Inference completed in ${inferTime}ms")
+            LogUtil.d(TAG, "Inference completed in ${inferTime}ms")
 
             val outputData = output.dataAsFloatArray
             val gaussianCount = outputData.size / PARAMS_PER_GAUSSIAN
-            Log.d(TAG, "Produced $gaussianCount Gaussians")
+            LogUtil.d(TAG, "Produced $gaussianCount Gaussians")
 
             // Write PLY
             progressCallback?.invoke(0.80f, "Writing PLY ($gaussianCount Gaussians)...")
@@ -189,9 +189,9 @@ class TorchMobileSharp private constructor(private val context: Context) {
             }
 
             val elapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "PyTorch Mobile completed: $gaussianCount Gaussians in ${elapsed}ms")
-            Log.d(TAG, "  load=${loadTime}ms infer=${inferTime}ms total=${elapsed}ms")
-            Log.d(TAG, "  Room: ${maxX-minX}m x ${maxY-minY}m x ${maxZ-minZ}m")
+            LogUtil.d(TAG, "PyTorch Mobile completed: $gaussianCount Gaussians in ${elapsed}ms")
+            LogUtil.d(TAG, "  load=${loadTime}ms infer=${inferTime}ms total=${elapsed}ms")
+            LogUtil.d(TAG, "  Room: ${maxX-minX}m x ${maxY-minY}m x ${maxZ-minZ}m")
 
             progressCallback?.invoke(1.0f, "Done!")
 
@@ -205,7 +205,7 @@ class TorchMobileSharp private constructor(private val context: Context) {
             )
 
         } catch (e: Exception) {
-            Log.e(TAG, "PyTorch Mobile inference failed", e)
+            LogUtil.e(TAG, "PyTorch Mobile inference failed", e)
             progressCallback?.invoke(0f, "Error: ${e.message}")
             return@withContext null
         }
@@ -290,6 +290,6 @@ class TorchMobileSharp private constructor(private val context: Context) {
         module?.destroy()
         module = null
         isInitialized = false
-        Log.d(TAG, "TorchMobileSharp released")
+        LogUtil.d(TAG, "TorchMobileSharp released")
     }
 }

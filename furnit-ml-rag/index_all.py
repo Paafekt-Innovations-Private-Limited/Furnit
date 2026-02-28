@@ -17,6 +17,7 @@ Layers:
   - vedic_maths: Vedic mathematics sutras, mental math, multiplication shortcuts
   - ml_fundamentals: Google ML Crash Course - neural networks, activation, backpropagation
   - beeware_android: BeeWare, Briefcase, Toga, Chaquopy on Android; Python UI; hand-off to native for Sharp
+  - paafekt_standards: Paafekt/Furnit UX standards (e.g. landscape room opening camera position)
 """
 
 import json
@@ -1660,6 +1661,13 @@ Chaquopy installs pip requirements from requirements.txt (generated from Briefca
         "content": """When to use beeware_android RAG layer.
 
 Query this layer when working on: BeeWare app (beeware/), Briefcase Android build, Toga Android widgets, Chaquopy pip/requirements, photo picker (gallery intent, start_activity), AI Room flow (ExecuTorch unavailable, launch native app), MainActivity/onActivityResult, runOnUiThread, FileProvider for content URIs, or any Python-on-Android behavior in the Furnit project. Combine with executorch or sharp_model when discussing running Sharp in native app vs BeeWare."""
+    },
+    {
+        "id": "paafekt_standard_landscape_camera",
+        "layer": "paafekt_standards",
+        "content": """Paafekt standard: landscape room opening position (3D viewer).
+
+When a room from a landscape photo is opened, the camera must use the standard 'good position' so the room is framed correctly. Android (SharpRoomActivity WebGL): use L_CAM_X=0, L_CAM_Y=0.00207, L_CAM_Z=-0.130, L_TGT_Z=-0.444. Camera position = (center.x + L_CAM_X*W, center.y + L_CAM_Y*H, center.z + L_CAM_Z*D). Target = (center.x, center.y, center.z + L_TGT_Z*D). Box3 landscape: roomWidth=size.x, roomHeight=size.y, roomDepth=size.z; depth along Z. iOS should match the same viewing angle. See docs/PAAFEKT_STANDARDS.md."""
     },
 ]
 

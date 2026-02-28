@@ -9,7 +9,7 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -276,7 +276,7 @@ class LoginActivity : AppCompatActivity() {
         val phoneDigits = phoneInput.text.toString().replace(Regex("[^0-9]"), "")
         val fullPhoneNumber = "${selectedCountry.dialCode}$phoneDigits"
 
-        Log.d(TAG, "Sending OTP to: $fullPhoneNumber")
+        LogUtil.d(TAG, "Sending OTP to: $fullPhoneNumber")
 
         // Hide error, show progress
         errorText.visibility = View.GONE

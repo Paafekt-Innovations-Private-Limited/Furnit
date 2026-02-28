@@ -1,7 +1,7 @@
 package com.furnit.android.services
 
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -53,7 +53,7 @@ class GlbGenerator {
         rightWallTexture: Bitmap
     ): Boolean {
         return try {
-            Log.d(TAG, "Generating GLB: ${outputFile.absolutePath}")
+            LogUtil.d(TAG, "Generating GLB: ${outputFile.absolutePath}")
 
             // Create plane geometries based on room dimensions
             val halfWidth = dimensions.width / 2f
@@ -114,11 +114,11 @@ class GlbGenerator {
                 fos.write(glbData)
             }
 
-            Log.d(TAG, "GLB generated: ${outputFile.length()} bytes")
+            LogUtil.d(TAG, "GLB generated: ${outputFile.length()} bytes")
             true
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to generate GLB", e)
+            LogUtil.e(TAG, "Failed to generate GLB", e)
             false
         }
     }

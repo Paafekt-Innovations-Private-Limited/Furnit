@@ -10,25 +10,39 @@ This guide explains how to set up NCNN for running YOLOE object detection/segmen
 
 ## Step 1: Download NCNN Android Libraries
 
-1. Go to [NCNN Releases](https://github.com/Tencent/ncnn/releases)
-2. Download the latest `ncnn-YYYYMMDD-android-vulkan.zip`
-3. Extract to `app/src/main/cpp/ncnn-android-vulkan/`
+**Required:** CMake expects prebuilt NCNN at `app/src/main/cpp/ncnn-20260113-android-vulkan/`. If you see *"missing and no known rule to make it"* for `libncnn.a`, the archive was not extracted there.
 
-The folder structure should be:
+1. Download the **Android Vulkan** prebuild (not the shared variant for this project):
+   - **Releases:** [NCNN Releases](https://github.com/Tencent/ncnn/releases) — get `ncnn-20260113-android-vulkan.zip`
+   - **Mirror:** [SourceForge ncnn 20260113](https://sourceforge.net/projects/ncnn.mirror/files/20260113/) — same file
+2. Extract the zip so the **folder name** is exactly `ncnn-20260113-android-vulkan` and it lives **inside** `app/src/main/cpp/`:
+   ```bash
+   cd android/app/src/main/cpp
+   unzip /path/to/ncnn-20260113-android-vulkan.zip
+   # If the zip extracts as "ncnn-20260113-android-vulkan/", you're done.
+   # If it extracts as "ncnn/" or something else, rename to ncnn-20260113-android-vulkan
+   mv ncnn ncnn-20260113-android-vulkan   # only if needed
+   ```
+3. Verify the path exists:
+   ```bash
+   ls app/src/main/cpp/ncnn-20260113-android-vulkan/arm64-v8a/lib/libncnn.a
+   ```
+
+The folder structure must be:
 ```
 app/src/main/cpp/
-├── ncnn-android-vulkan/
+├── ncnn-20260113-android-vulkan/
 │   ├── arm64-v8a/
+│   │   ├── include/
 │   │   └── lib/
-│   │       └── libncnn.a
+│   │       ├── libncnn.a
+│   │       ├── libglslang.a
+│   │       ├── libSPIRV.a
+│   │       └── ...
 │   ├── armeabi-v7a/
 │   │   └── lib/
 │   │       └── libncnn.a
-│   └── include/
-│       └── ncnn/
-│           ├── net.h
-│           ├── layer.h
-│           └── ...
+│   └── (other ABIs optional)
 ├── CMakeLists.txt
 └── yoloe_ncnn.cpp
 ```

@@ -12,7 +12,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Environment
 import android.util.Base64
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -108,12 +108,12 @@ class SharpRoomActivity : AppCompatActivity() {
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        Log.d(TAG, "Brain: camera permission result isGranted=$isGranted")
+        LogUtil.d(TAG, "Brain: camera permission result isGranted=$isGranted")
         if (isGranted) {
             showBrainProgressOverlay()
             startBrainDetection()
         } else {
-            Log.d(TAG, "Brain: camera permission denied")
+            LogUtil.d(TAG, "Brain: camera permission denied")
             Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
         }
     }
@@ -170,9 +170,9 @@ class SharpRoomActivity : AppCompatActivity() {
                             line.startsWith("photoOrientation=") -> rawOrientation = line.substringAfter("photoOrientation=").trim().lowercase()
                         }
                     }
-                    Log.d(TAG, "Loaded from metadata.txt: ${savedWidth}x${savedHeight}x${roomDepth} orientation=$rawOrientation")
+                    LogUtil.d(TAG, "Loaded from metadata.txt: ${savedWidth}x${savedHeight}x${roomDepth} orientation=$rawOrientation")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to read metadata.txt", e)
+                    LogUtil.w(TAG, "Failed to read metadata.txt", e)
                 }
             }
         }
@@ -197,13 +197,13 @@ class SharpRoomActivity : AppCompatActivity() {
             hasSavedDimensions = false
         }
 
-        Log.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation, photoWideAngle: $photoWideAngle")
-        Log.d(TAG, "SharpRoom intent roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle")
+        LogUtil.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation, photoWideAngle: $photoWideAngle")
+        LogUtil.d(TAG, "SharpRoom intent roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle")
         val isPortraitReceived = photoOrientation != "landscape"
-        Log.d(TAG, "VIEWER_RECEIVED isPortrait=$isPortraitReceived roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth path=$roomFolder")
+        LogUtil.d(TAG, "VIEWER_RECEIVED isPortrait=$isPortraitReceived roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth path=$roomFolder")
 
         if (plyPath == null) {
-            Toast.makeText(this, "No PLY file provided", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.sharp_room_no_ply), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -218,7 +218,7 @@ class SharpRoomActivity : AppCompatActivity() {
         val internalPlyFile = File(internalPlyDir, "room.ply")
         if (plyFile.exists()) {
             plyFile.copyTo(internalPlyFile, overwrite = true)
-            Log.d(TAG, "Copied PLY to internal storage: ${internalPlyFile.absolutePath}")
+            LogUtil.d(TAG, "Copied PLY to internal storage: ${internalPlyFile.absolutePath}")
         }
 
         // WebViewAssetLoader serves files from internal storage via https:// URL
@@ -240,7 +240,7 @@ class SharpRoomActivity : AppCompatActivity() {
 
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
-                    Log.d(TAG, "WebGL: ${message?.message()}")
+                    LogUtil.d(TAG, "WebGL: ${message?.message()}")
                     return true
                 }
             }
@@ -248,7 +248,7 @@ class SharpRoomActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    Log.d(TAG, "WebView page loaded")
+                    LogUtil.d(TAG, "WebView page loaded")
                     // Hide loading after a delay for splat rendering
                     postDelayed({
                         loadingOverlay.visibility = View.GONE
@@ -258,7 +258,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                     // Don't log favicon as error (we intercept it; this is a fallback if something else fails)
                     if (request?.url?.toString()?.contains("favicon") == true) return
-                    Log.e(TAG, "WebView error: ${error?.description}")
+                    LogUtil.e(TAG, "WebView error: ${error?.description}")
                 }
 
                 // Use WebViewAssetLoader to serve files
@@ -269,7 +269,7 @@ class SharpRoomActivity : AppCompatActivity() {
                     if (urlString.endsWith("/favicon.ico") || urlString.contains("favicon.ico")) {
                         return WebResourceResponse("image/png", null, ByteArrayInputStream(ByteArray(0)))
                     }
-                    Log.d(TAG, "shouldInterceptRequest: $url")
+                    LogUtil.d(TAG, "shouldInterceptRequest: $url")
                     return assetLoader.shouldInterceptRequest(url)
                 }
             }
@@ -327,7 +327,7 @@ class SharpRoomActivity : AppCompatActivity() {
         }
         brainDetectionOverlay.addView(brainDetectionOverlayView)
         val doneBtn = TextView(this).apply {
-            text = "Done"
+            text = getString(R.string.common_done)
             setTextColor(Color.WHITE)
             setPadding(dpToPx(24), dpToPx(12), dpToPx(24), dpToPx(12))
             textSize = 16f
@@ -523,13 +523,13 @@ class SharpRoomActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(size, size)
                 setOnClickListener {
                     val roomId = roomFolder?.let { File(it).name }
-                    Log.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
+                    LogUtil.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
                     if (ContextCompat.checkSelfPermission(this@SharpRoomActivity, Manifest.permission.CAMERA)
                         != PackageManager.PERMISSION_GRANTED) {
-                        Log.d(TAG, "Brain: requesting CAMERA permission")
+                        LogUtil.d(TAG, "Brain: requesting CAMERA permission")
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     } else {
-                        Log.d(TAG, "Brain: permission OK, showing progress and starting detection")
+                        LogUtil.d(TAG, "Brain: permission OK, showing progress and starting detection")
                         showBrainProgressOverlay()
                         startBrainDetection()
                     }
@@ -588,8 +588,8 @@ class SharpRoomActivity : AppCompatActivity() {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
 
-            Toast.makeText(this, "Screenshot saved: $fileName", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Screenshot saved: ${file.absolutePath}")
+            Toast.makeText(this, getString(R.string.sharp_room_screenshot_saved, fileName), Toast.LENGTH_SHORT).show()
+            LogUtil.d(TAG, "Screenshot saved: ${file.absolutePath}")
 
             // Share the screenshot
             val uri: android.net.Uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
@@ -601,8 +601,8 @@ class SharpRoomActivity : AppCompatActivity() {
             startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to take screenshot", e)
-            Toast.makeText(this, "Failed to capture screenshot", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "Failed to take screenshot", e)
+            Toast.makeText(this, getString(R.string.sharp_room_screenshot_failed), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -626,7 +626,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 addView(progress)
 
                 val text = TextView(this@SharpRoomActivity).apply {
-                    text = "Loading 3D Room..."
+                    text = getString(R.string.sharp_room_loading)
                     textSize = 16f
                     setTextColor(Color.parseColor("#333333"))
                     gravity = Gravity.CENTER
@@ -697,28 +697,28 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun hideBrainDetectionOverlay() {
-        Log.d(TAG, "Brain: hideBrainDetectionOverlay() - user Done or Back, stopping camera")
+        LogUtil.d(TAG, "Brain: hideBrainDetectionOverlay() - user Done or Back, stopping camera")
         brainOverlayVisible = false
         brainDetectionOverlay.visibility = View.GONE
         stopBrainDetection()
     }
 
     private fun startBrainDetection() {
-        Log.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
+        LogUtil.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
         lifecycleScope.launch {
             val manager = withContext(Dispatchers.IO) {
                 val m = FurnitureFitManager(this@SharpRoomActivity)
                 if (m.initializeAuto()) m else null
             }
             if (manager == null) {
-                Log.e(TAG, "Brain: SmartyPants failed to initialize")
+                LogUtil.e(TAG, "Brain: SmartyPants failed to initialize")
                 runOnUiThread {
                     hideBrainProgressOverlay()
-                    Toast.makeText(this@SharpRoomActivity, "SmartyPants failed to initialize", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@SharpRoomActivity, getString(R.string.sharp_room_smartypants_failed), Toast.LENGTH_SHORT).show()
                 }
                 return@launch
             }
-            Log.d(TAG, "Brain: SmartyPants OK, binding camera on UI thread")
+            LogUtil.d(TAG, "Brain: SmartyPants OK, binding camera on UI thread")
             furnitureFitManager = manager
             runOnUiThread { bindBrainCamera(manager) }
         }
@@ -726,13 +726,13 @@ class SharpRoomActivity : AppCompatActivity() {
 
     @SuppressLint("UnsafeOptInUsageError")
     private fun bindBrainCamera(manager: FurnitureFitManager) {
-        Log.d(TAG, "Brain: bindBrainCamera() - getting ProcessCameraProvider")
+        LogUtil.d(TAG, "Brain: bindBrainCamera() - getting ProcessCameraProvider")
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             val provider = providerFuture.get()
             cameraProvider = provider
             provider.unbindAll()
-            Log.d(TAG, "Brain: building ImageAnalysis and binding to BACK_CAMERA")
+            LogUtil.d(TAG, "Brain: building ImageAnalysis and binding to BACK_CAMERA")
             val analysis = ImageAnalysis.Builder()
                 .setTargetResolution(android.util.Size(768, 768))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -749,14 +749,14 @@ class SharpRoomActivity : AppCompatActivity() {
                     isBrainInferenceRunning.set(true)
                     frameCount++
                     if (frameCount == 1 || frameCount % 30 == 0) {
-                        Log.d(TAG, "Brain: analysis frame $frameCount (camera active)")
+                        LogUtil.d(TAG, "Brain: analysis frame $frameCount (camera active)")
                     }
                     manager.segmentWithDetectionsAsync(bitmap) { result ->
                         runOnUiThread {
                             isBrainInferenceRunning.set(false)
                             if (!hasFirstResult[0]) {
                                 hasFirstResult[0] = true
-                                Log.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
+                                LogUtil.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
                                 hideBrainProgressOverlay()
                                 brainDetectionOverlay.visibility = View.VISIBLE
                             }
@@ -772,19 +772,19 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             try {
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
-                Log.d(TAG, "Brain: camera bound successfully - live segmentation running")
+                LogUtil.d(TAG, "Brain: camera bound successfully - live segmentation running")
             } catch (e: Exception) {
-                Log.e(TAG, "Brain camera bind failed", e)
+                LogUtil.e(TAG, "Brain camera bind failed", e)
                 runOnUiThread {
                     hideBrainProgressOverlay()
-                    Toast.makeText(this@SharpRoomActivity, "Camera error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@SharpRoomActivity, getString(R.string.sharp_room_camera_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
                 }
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
     private fun stopBrainDetection() {
-        Log.d(TAG, "Brain: stopBrainDetection() - unbinding camera")
+        LogUtil.d(TAG, "Brain: stopBrainDetection() - unbinding camera")
         try {
             cameraProvider?.unbindAll()
         } catch (_: Exception) { }
@@ -794,13 +794,13 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun loadWebGLViewer() {
         val plyFile = File(plyPath!!)
         if (!plyFile.exists()) {
-            Log.e(TAG, "PLY file not found: $plyPath")
-            Toast.makeText(this, "PLY file not found", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "PLY file not found: $plyPath")
+            Toast.makeText(this, getString(R.string.sharp_room_ply_not_found), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        Log.d(TAG, "Loading PLY file: ${plyFile.name} (${plyFile.length()} bytes)")
+        LogUtil.d(TAG, "Loading PLY file: ${plyFile.name} (${plyFile.length()} bytes)")
 
         // Load HTML using WebViewAssetLoader base URL
         // SparkJS will fetch PLY from https://appassets.androidplatform.net/files/room.ply
@@ -820,7 +820,7 @@ class SharpRoomActivity : AppCompatActivity() {
         val autoOrbitEnabled = prefs.getBoolean("auto_orbit_enabled", false)
         // Use isPortrait like iOS for consistency
         val isPortrait = photoOrientation != "landscape"
-        Log.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait photoWideAngle=$photoWideAngle (this activity = PLY/splat room)")
+        LogUtil.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait photoWideAngle=$photoWideAngle (this activity = PLY/splat room)")
         // Pass known room dimensions and bbox center so camera can be framed when Box3 is not yet valid (SparkJS mesh bounds update async)
         val fallbackW = roomWidth.toDouble()
         val fallbackH = roomHeight.toDouble()
@@ -1279,7 +1279,7 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun saveRoom(name: String) {
         val folder = roomFolder
         if (folder == null) {
-            Toast.makeText(this, "Cannot save: room folder not found", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.sharp_room_cannot_save), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1300,8 +1300,8 @@ class SharpRoomActivity : AppCompatActivity() {
             metadata.append("photoWideAngle=$photoWideAngle\n")
             metadataFile.writeText(metadata.toString())
 
-            Toast.makeText(this, "Room '$name' saved!", Toast.LENGTH_SHORT).show()
-            Log.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
+            Toast.makeText(this, getString(R.string.sharp_room_saved, name), Toast.LENGTH_SHORT).show()
+            LogUtil.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
 
             // Go to room list screen (same as GLBRoomActivity / ModelDetailActivity after save)
             val intent = Intent(this, ContentActivity::class.java)
@@ -1310,8 +1310,8 @@ class SharpRoomActivity : AppCompatActivity() {
             finish()
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save room", e)
-            Toast.makeText(this, "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "Failed to save room", e)
+            Toast.makeText(this, getString(R.string.sharp_room_save_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1325,7 +1325,7 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun sharePlyFile() {
         val plyFile = File(plyPath ?: return)
         if (!plyFile.exists()) {
-            Toast.makeText(this, "PLY file not found", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.sharp_room_ply_not_found), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -1345,11 +1345,11 @@ class SharpRoomActivity : AppCompatActivity() {
             }
 
             startActivity(Intent.createChooser(shareIntent, "Share PLY File"))
-            Log.d(TAG, "Sharing PLY file: ${plyFile.name}")
+            LogUtil.d(TAG, "Sharing PLY file: ${plyFile.name}")
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to share PLY file", e)
-            Toast.makeText(this, "Failed to share: ${e.message}", Toast.LENGTH_SHORT).show()
+            LogUtil.e(TAG, "Failed to share PLY file", e)
+            Toast.makeText(this, getString(R.string.sharp_room_share_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1359,7 +1359,7 @@ class SharpRoomActivity : AppCompatActivity() {
         fun onLoaded() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
-                Log.d(TAG, "WebGL viewer reported loaded")
+                LogUtil.d(TAG, "WebGL viewer reported loaded")
             }
         }
 
@@ -1372,16 +1372,16 @@ class SharpRoomActivity : AppCompatActivity() {
                     roomHeight = height
                     // Update title
                     titleView.text = String.format("%.1f × %.1f m", roomWidth, roomHeight)
-                    Log.d(TAG, "WebGL dimensions measured (using): ${roomWidth}x${roomHeight}")
+                    LogUtil.d(TAG, "WebGL dimensions measured (using): ${roomWidth}x${roomHeight}")
                 } else {
-                    Log.d(TAG, "WebGL dimensions measured (ignored, using saved): ${width}x${height}")
+                    LogUtil.d(TAG, "WebGL dimensions measured (ignored, using saved): ${width}x${height}")
                 }
             }
         }
 
         @JavascriptInterface
         fun log(message: String) {
-            Log.d(TAG, "WebGL: $message")
+            LogUtil.d(TAG, "WebGL: $message")
         }
     }
 

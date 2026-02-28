@@ -3,7 +3,7 @@ package com.furnit.android.services
 import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -109,10 +109,10 @@ class NativePtSharp private constructor(private val context: Context) {
     )
 
     private fun findFile(filename: String): File? {
-        Log.d(TAG, "findFile: looking for $filename")
+        LogUtil.d(TAG, "findFile: looking for $filename")
         val internal = File(internalModelsDir, filename)
         if (internal.exists() && internal.length() > 0) {
-            Log.d(TAG, "findFile: $filename found internal path=${internal.absolutePath} size=${internal.length()}")
+            LogUtil.d(TAG, "findFile: $filename found internal path=${internal.absolutePath} size=${internal.length()}")
             return internal
         }
         externalModelsDir?.let { ext ->
@@ -121,20 +121,20 @@ class NativePtSharp private constructor(private val context: Context) {
                 try {
                     internalModelsDir.mkdirs()
                     external.copyTo(internal, overwrite = true)
-                    Log.d(TAG, "findFile: Copied $filename to internal storage from ${external.absolutePath}")
+                    LogUtil.d(TAG, "findFile: Copied $filename to internal storage from ${external.absolutePath}")
                     return internal
                 } catch (e: Exception) {
-                    Log.d(TAG, "findFile: copy failed, using external path=${external.absolutePath}")
+                    LogUtil.d(TAG, "findFile: copy failed, using external path=${external.absolutePath}")
                     return external
                 }
             }
         }
         val tmp = File("/data/local/tmp/furnit/", filename)
         if (tmp.exists() && tmp.length() > 0) {
-            Log.d(TAG, "findFile: $filename found tmp path=${tmp.absolutePath} size=${tmp.length()}")
+            LogUtil.d(TAG, "findFile: $filename found tmp path=${tmp.absolutePath} size=${tmp.length()}")
             return tmp
         }
-        Log.w(TAG, "findFile: $filename NOT FOUND")
+        LogUtil.w(TAG, "findFile: $filename NOT FOUND")
         return null
     }
 
@@ -153,36 +153,36 @@ class NativePtSharp private constructor(private val context: Context) {
     fun isModelReady(): Boolean = isSplitModelReady() || findModelFile() != null
 
     fun initialize(): Boolean {
-        Log.d(TAG, "initialize ENTER. Memory: ${getMemoryInfo()}")
+        LogUtil.d(TAG, "initialize ENTER. Memory: ${getMemoryInfo()}")
         if (isSplitModelReady()) {
             useSplitMode = true
             module = null
             isInitialized = true
-            Log.d(TAG, "initialize: Native .pt SPLIT mode: 4 parts (~500-800MB each, load on demand)")
-            SPLIT_FILENAMES.forEach { fn -> Log.d(TAG, "initialize: split part ${findFile(fn)?.absolutePath ?: "MISSING"}") }
+            LogUtil.d(TAG, "initialize: Native .pt SPLIT mode: 4 parts (~500-800MB each, load on demand)")
+            SPLIT_FILENAMES.forEach { fn -> LogUtil.d(TAG, "initialize: split part ${findFile(fn)?.absolutePath ?: "MISSING"}") }
             return true
         }
         val modelFile = findModelFile()
         if (modelFile == null) {
-            Log.e(TAG, "Model not found. Push sharp_scripted_part1-4.ptl (split) or sharp_scripted.ptl (full).")
+            LogUtil.e(TAG, "Model not found. Push sharp_scripted_part1-4.ptl (split) or sharp_scripted.ptl (full).")
             return false
         }
         val sizeMB = modelFile.length() / 1024 / 1024
-        Log.d(TAG, "Native .pt FULL model: ${modelFile.name} (${sizeMB}MB) - may OOM")
+        LogUtil.d(TAG, "Native .pt FULL model: ${modelFile.name} (${sizeMB}MB) - may OOM")
 
         try {
-            Log.d(TAG, "Native .pt: LiteModuleLoader.load...")
+            LogUtil.d(TAG, "Native .pt: LiteModuleLoader.load...")
             val loadStart = System.currentTimeMillis()
             module = LiteModuleLoader.load(modelFile.absolutePath)
             useSplitMode = false
             isInitialized = true
-            Log.d(TAG, "Native .pt full initialized in ${System.currentTimeMillis() - loadStart}ms")
+            LogUtil.d(TAG, "Native .pt full initialized in ${System.currentTimeMillis() - loadStart}ms")
             return true
         } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "Native .pt OOM: Use split model (export_sharp_torchscript_split.py)", e)
+            LogUtil.e(TAG, "Native .pt OOM: Use split model (export_sharp_torchscript_split.py)", e)
             return false
         } catch (e: Exception) {
-            Log.e(TAG, "Native .pt init failed: ${e.javaClass.simpleName} ${e.message}", e)
+            LogUtil.e(TAG, "Native .pt init failed: ${e.javaClass.simpleName} ${e.message}", e)
             return false
         }
     }
@@ -192,18 +192,18 @@ class NativePtSharp private constructor(private val context: Context) {
         progressCallback: ((Float, String) -> Unit)? = null,
         isCancelled: () -> Boolean = { false }
     ): StreamingResult? = withContext(Dispatchers.IO) {
-        Log.d(TAG, "inferStreaming ENTER bitmap=${bitmap.width}x${bitmap.height} useSplitMode=$useSplitMode")
+        LogUtil.d(TAG, "inferStreaming ENTER bitmap=${bitmap.width}x${bitmap.height} useSplitMode=$useSplitMode")
         if (!isInitialized) {
-            Log.e(TAG, "inferStreaming: Not initialized")
+            LogUtil.e(TAG, "inferStreaming: Not initialized")
             return@withContext null
         }
         if (useSplitMode) {
-            Log.d(TAG, "inferStreaming: delegating to inferStreamingSplit")
+            LogUtil.d(TAG, "inferStreaming: delegating to inferStreamingSplit")
             return@withContext inferStreamingSplit(bitmap, progressCallback, isCancelled)
         }
 
         try {
-            Log.d(TAG, "inferStreaming: FULL model path, preprocessing...")
+            LogUtil.d(TAG, "inferStreaming: FULL model path, preprocessing...")
             progressCallback?.invoke(0.05f, "Preprocessing image...")
             val scaledBitmap = SharpImagePreprocessor.resizeForSharp(bitmap)
             val pixels = IntArray(IMAGE_SIZE * IMAGE_SIZE)
@@ -228,11 +228,11 @@ class NativePtSharp private constructor(private val context: Context) {
             val inferStart = System.currentTimeMillis()
             val output = module!!.forward(IValue.from(inputTensor)).toTensor()
             val inferTime = System.currentTimeMillis() - inferStart
-            Log.d(TAG, "Native .pt inference: ${inferTime}ms")
+            LogUtil.d(TAG, "Native .pt inference: ${inferTime}ms")
 
             val outputData = output.dataAsFloatArray
             val gaussianCount = outputData.size / PARAMS_PER_GAUSSIAN
-            Log.d(TAG, "Produced $gaussianCount Gaussians (Native .pt)")
+            LogUtil.d(TAG, "Produced $gaussianCount Gaussians (Native .pt)")
 
             progressCallback?.invoke(0.8f, "Writing PLY ($gaussianCount Gaussians)...")
             val roomsDir = File(context.filesDir, "sharp_rooms")
@@ -268,7 +268,7 @@ class NativePtSharp private constructor(private val context: Context) {
             val roomWidth = maxX - minX
             val roomHeight = maxY - minY
             val roomDepth = maxZ - minZ
-            Log.d(TAG, "Native .pt done: $gaussianCount Gaussians, room ${roomWidth}m x ${roomHeight}m x ${roomDepth}m")
+            LogUtil.d(TAG, "Native .pt done: $gaussianCount Gaussians, room ${roomWidth}m x ${roomHeight}m x ${roomDepth}m")
 
             progressCallback?.invoke(1.0f, "Done!")
             return@withContext StreamingResult(
@@ -280,7 +280,7 @@ class NativePtSharp private constructor(private val context: Context) {
                 roomDepth = roomDepth
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Native .pt inference failed", e)
+            LogUtil.e(TAG, "Native .pt inference failed", e)
             progressCallback?.invoke(0f, "Error: ${e.message}")
             return@withContext null
         }
@@ -328,7 +328,7 @@ class NativePtSharp private constructor(private val context: Context) {
             }
         }
         val mean = if (data.isNotEmpty()) (sum / data.size).toFloat() else 0f
-        Log.d(TAG, "Quality[$name]: min=$minVal max=$maxVal mean=$mean hasNan=$hasNan hasInf=$hasInf n=${data.size}")
+        LogUtil.d(TAG, "Quality[$name]: min=$minVal max=$maxVal mean=$mean hasNan=$hasNan hasInf=$hasInf n=${data.size}")
         return FeatureStats(minVal, maxVal, mean, hasNan, hasInf, data.size)
     }
 
@@ -351,7 +351,7 @@ class NativePtSharp private constructor(private val context: Context) {
             if (kotlin.math.abs(x) > 100f || kotlin.math.abs(y) > 100f || kotlin.math.abs(z) > 100f) outOfBoundsPos++
         }
         val ok = nanCount == 0 && infCount == 0
-        Log.d(TAG, "Quality[Gaussians]: gaussianCount=$gaussianCount nanCount=$nanCount infCount=$infCount outOfBoundsPos=$outOfBoundsPos ok=$ok")
+        LogUtil.d(TAG, "Quality[Gaussians]: gaussianCount=$gaussianCount nanCount=$nanCount infCount=$infCount outOfBoundsPos=$outOfBoundsPos ok=$ok")
         return ok
     }
 
@@ -359,9 +359,9 @@ class NativePtSharp private constructor(private val context: Context) {
         val ok1 = mergedSize1x == EXPECTED_MERGED_SIZE_1X
         val ok2 = mergedSize05x == EXPECTED_MERGED_SIZE_05X
         if (!ok1 || !ok2) {
-            Log.e(TAG, "Quality[Merge]: mergedSize1x=$mergedSize1x (expected $EXPECTED_MERGED_SIZE_1X) mergedSize05x=$mergedSize05x (expected $EXPECTED_MERGED_SIZE_05X)")
+            LogUtil.e(TAG, "Quality[Merge]: mergedSize1x=$mergedSize1x (expected $EXPECTED_MERGED_SIZE_1X) mergedSize05x=$mergedSize05x (expected $EXPECTED_MERGED_SIZE_05X)")
         } else {
-            Log.d(TAG, "Quality[Merge]: mergedSize1x=$mergedSize1x mergedSize05x=$mergedSize05x OK")
+            LogUtil.d(TAG, "Quality[Merge]: mergedSize1x=$mergedSize1x mergedSize05x=$mergedSize05x OK")
         }
         return ok1 && ok2
     }
@@ -470,10 +470,10 @@ class NativePtSharp private constructor(private val context: Context) {
         }
 
         val startTime = System.currentTimeMillis()
-        Log.d(TAG, "inferStreamingSplit ENTER. Memory: ${getMemoryInfo()} bitmap=${bitmap.width}x${bitmap.height}")
+        LogUtil.d(TAG, "inferStreamingSplit ENTER. Memory: ${getMemoryInfo()} bitmap=${bitmap.width}x${bitmap.height}")
         try {
             if (isCancelled()) {
-                Log.d(TAG, "inferStreamingSplit CANCELLED before preprocessing")
+                LogUtil.d(TAG, "inferStreamingSplit CANCELLED before preprocessing")
                 return null
             }
             progressCallback?.invoke(0.02f, "Preprocessing...")
@@ -482,7 +482,7 @@ class NativePtSharp private constructor(private val context: Context) {
             val halfSize = IMAGE_SIZE / 2
             val halfBitmap = Bitmap.createScaledBitmap(scaledBitmap, halfSize, halfSize, true)
             val quarterBitmap = Bitmap.createScaledBitmap(scaledBitmap, PATCH_SIZE, PATCH_SIZE, true)
-            Log.d(TAG, "inferStreamingSplit: preprocessing done in ${System.currentTimeMillis() - preprocessStart}ms scaled=${scaledBitmap.width}x${scaledBitmap.height} half=${halfSize} quarter=${PATCH_SIZE}")
+            LogUtil.d(TAG, "inferStreamingSplit: preprocessing done in ${System.currentTimeMillis() - preprocessStart}ms scaled=${scaledBitmap.width}x${scaledBitmap.height} half=${halfSize} quarter=${PATCH_SIZE}")
 
             val mergedSize1x = getMergedSize(GRID_1X, SPATIAL_SIZE, PADDING_1X)
             val mergedSize05x = getMergedSize(GRID_05X, SPATIAL_SIZE, PADDING_05X)
@@ -496,7 +496,7 @@ class NativePtSharp private constructor(private val context: Context) {
             val patchShape = longArrayOf(1, 3, PATCH_SIZE.toLong(), PATCH_SIZE.toLong())
             val stride1x = (IMAGE_SIZE - PATCH_SIZE) / 4
             val stride05x = (halfSize - PATCH_SIZE) / 2
-            Log.d(TAG, "inferStreamingSplit: stride1x=$stride1x stride05x=$stride05x patchShape=[1,3,$PATCH_SIZE,$PATCH_SIZE] merged1x=$mergedSize1x merged05x=$mergedSize05x")
+            LogUtil.d(TAG, "inferStreamingSplit: stride1x=$stride1x stride05x=$stride05x patchShape=[1,3,$PATCH_SIZE,$PATCH_SIZE] merged1x=$mergedSize1x merged05x=$mergedSize05x")
 
             val prePreparedPatches: List<FloatArray>? = if (USE_PARALLEL_PATCH_PREP) {
                 progressCallback?.invoke(0.03f, "Part 1: Preparing patches in parallel...")
@@ -507,7 +507,7 @@ class NativePtSharp private constructor(private val context: Context) {
                             preparePatchAtIndex(scaledBitmap, halfBitmap, quarterBitmap, idx, stride1x, stride05x)
                         }
                     }.awaitAll()
-                }.also { Log.d(TAG, "Prepared $TOTAL_PATCHES patches in parallel in ${System.currentTimeMillis() - prepStart}ms") }
+                }.also { LogUtil.d(TAG, "Prepared $TOTAL_PATCHES patches in parallel in ${System.currentTimeMillis() - prepStart}ms") }
             } else null
 
             if (USE_PARALLEL_PATCH_PREP) {
@@ -516,18 +516,18 @@ class NativePtSharp private constructor(private val context: Context) {
             }
 
             if (isCancelled()) {
-                Log.d(TAG, "inferStreamingSplit CANCELLED before Part 1")
+                LogUtil.d(TAG, "inferStreamingSplit CANCELLED before Part 1")
                 return null
             }
             // Part 1: Patch Encoder A
             progressCallback?.invoke(0.05f, "Part 1: Loading encoder A...")
             val part1File = findFile(SPLIT_PART1) ?: return null
-            Log.d(TAG, "inferStreamingSplit: Part1 load from ${part1File.absolutePath} size=${part1File.length() / 1024 / 1024}MB")
+            LogUtil.d(TAG, "inferStreamingSplit: Part1 load from ${part1File.absolutePath} size=${part1File.length() / 1024 / 1024}MB")
             var ptModule = LiteModuleLoader.load(part1File.absolutePath)
             val reusablePatchBuffer = FloatArray(3 * PATCH_SIZE * PATCH_SIZE)
             val warmupStart = System.currentTimeMillis()
             ptModule.forward(IValue.from(Tensor.fromBlob(reusablePatchBuffer, patchShape)))
-            Log.d(TAG, "inferStreamingSplit: Part1 warmup done in ${System.currentTimeMillis() - warmupStart}ms")
+            LogUtil.d(TAG, "inferStreamingSplit: Part1 warmup done in ${System.currentTimeMillis() - warmupStart}ms")
 
             val allTokens = ArrayList<FloatArray>(TOTAL_PATCHES)
             var patchCount = 0
@@ -570,12 +570,12 @@ class NativePtSharp private constructor(private val context: Context) {
                 }
                 patchCount++
                 if (idx == 0 || idx == PATCHES_1X - 1 || idx == PATCHES_1X || idx == TOTAL_PATCHES - 1) {
-                    Log.d(TAG, "inferStreamingSplit: Part1 patch idx=$idx tokensLen=${tokens.size} block5Len=${block5.size} mergeInto=${if (idx < PATCHES_1X) "latent0+latent1" else "tokensOnly"}")
+                    LogUtil.d(TAG, "inferStreamingSplit: Part1 patch idx=$idx tokensLen=${tokens.size} block5Len=${block5.size} mergeInto=${if (idx < PATCHES_1X) "latent0+latent1" else "tokensOnly"}")
                 }
                 if (patchCount % 5 == 0) progressCallback?.invoke(0.05f + (patchCount.toFloat() / TOTAL_PATCHES) * 0.20f, "Part 1: Patch $patchCount/$TOTAL_PATCHES...")
             }
 
-            Log.d(TAG, "inferStreamingSplit: Part1 forward loop ${patchCount} patches in ${System.currentTimeMillis() - part1FwdStart}ms (avg ${(System.currentTimeMillis() - part1FwdStart) / patchCount}ms/patch)")
+            LogUtil.d(TAG, "inferStreamingSplit: Part1 forward loop ${patchCount} patches in ${System.currentTimeMillis() - part1FwdStart}ms (avg ${(System.currentTimeMillis() - part1FwdStart) / patchCount}ms/patch)")
 
             if (!USE_PARALLEL_PATCH_PREP) {
                 halfBitmap.recycle()
@@ -586,22 +586,22 @@ class NativePtSharp private constructor(private val context: Context) {
             ptModule = null
             System.gc()
             val part1Ms = System.currentTimeMillis() - startTime
-            Log.d(TAG, "Part 1 done: $patchCount tokens in ${part1Ms}ms. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 1 done: $patchCount tokens in ${part1Ms}ms. Memory: ${getMemoryInfo()}")
             computeFeatureStats(latent0, "latent0_after_part1")
             computeFeatureStats(latent1, "latent1_after_part1")
 
             if (isCancelled()) {
-                Log.d(TAG, "inferStreamingSplit CANCELLED before Part 2")
+                LogUtil.d(TAG, "inferStreamingSplit CANCELLED before Part 2")
                 return null
             }
             // Part 2: Patch Encoder B
             progressCallback?.invoke(0.30f, "Part 2: Loading encoder B...")
-            Log.d(TAG, "Part 2: before load. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 2: before load. Memory: ${getMemoryInfo()}")
             val part2LoadStart = System.currentTimeMillis()
             val part2File = findFile(SPLIT_PART2) ?: return null
-            Log.d(TAG, "inferStreamingSplit: Part2 load from ${part2File.absolutePath} size=${part2File.length() / 1024 / 1024}MB")
+            LogUtil.d(TAG, "inferStreamingSplit: Part2 load from ${part2File.absolutePath} size=${part2File.length() / 1024 / 1024}MB")
             ptModule = LiteModuleLoader.load(part2File.absolutePath)
-            Log.d(TAG, "Part 2: load done in ${System.currentTimeMillis() - part2LoadStart}ms. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 2: load done in ${System.currentTimeMillis() - part2LoadStart}ms. Memory: ${getMemoryInfo()}")
             val part2Start = System.currentTimeMillis()
             val part2Features: List<FloatArray> = if (USE_PARALLEL_PART2) {
                 val fwdStart = System.currentTimeMillis()
@@ -613,7 +613,7 @@ class NativePtSharp private constructor(private val context: Context) {
                         }
                     }.awaitAll()
                 }
-                Log.d(TAG, "Part 2: parallel forward ${patchCount} patches in ${System.currentTimeMillis() - fwdStart}ms")
+                LogUtil.d(TAG, "Part 2: parallel forward ${patchCount} patches in ${System.currentTimeMillis() - fwdStart}ms")
                 feats
             } else {
                 buildList {
@@ -621,11 +621,11 @@ class NativePtSharp private constructor(private val context: Context) {
                         val tokenTensor = Tensor.fromBlob(allTokens[idx], longArrayOf(1, 577, 1024))
                         val fwdStart = if (idx == 0) System.currentTimeMillis() else 0L
                         val out = ptModule.forward(IValue.from(tokenTensor))
-                        if (idx == 0) Log.d(TAG, "Part 2: first forward ${System.currentTimeMillis() - fwdStart}ms")
+                        if (idx == 0) LogUtil.d(TAG, "Part 2: first forward ${System.currentTimeMillis() - fwdStart}ms")
                         add(out.toTensor().dataAsFloatArray)
                         allTokens[idx] = FloatArray(0)
                         if (idx > 0 && idx % 10 == 0) System.gc()
-                        if (idx % 5 == 0 || idx <= 1) Log.d(TAG, "Part 2: patch $idx/$patchCount")
+                        if (idx % 5 == 0 || idx <= 1) LogUtil.d(TAG, "Part 2: patch $idx/$patchCount")
                         if (idx % 5 == 0) progressCallback?.invoke(0.30f + (idx.toFloat() / patchCount) * 0.15f, "Part 2: Feature $idx/$patchCount...")
                     }
                 }
@@ -641,11 +641,11 @@ class NativePtSharp private constructor(private val context: Context) {
                     else -> x2Feat = feat
                 }
                 if (idx == 0 || idx == PATCHES_1X - 1 || idx == PATCHES_1X || idx == PATCHES_1X + PATCHES_05X - 1 || idx == patchCount - 1) {
-                    Log.d(TAG, "inferStreamingSplit: Part2 merge idx=$idx into=${when { idx < PATCHES_1X -> "x0Feat"; idx < PATCHES_1X + PATCHES_05X -> "x1Feat"; else -> "x2Feat" }} featLen=${feat.size}")
+                    LogUtil.d(TAG, "inferStreamingSplit: Part2 merge idx=$idx into=${when { idx < PATCHES_1X -> "x0Feat"; idx < PATCHES_1X + PATCHES_05X -> "x1Feat"; else -> "x2Feat" }} featLen=${feat.size}")
                 }
                 if (idx % 5 == 0 && !USE_PARALLEL_PART2) progressCallback?.invoke(0.30f + (idx.toFloat() / patchCount) * 0.15f, "Part 2: Merge $idx/$patchCount...")
             }
-            Log.d(TAG, "inferStreamingSplit: Part2 merge loop done, x2Feat=${x2Feat?.size ?: 0}")
+            LogUtil.d(TAG, "inferStreamingSplit: Part2 merge loop done, x2Feat=${x2Feat?.size ?: 0}")
             allTokens.clear()
             if (USE_PARALLEL_PART2) progressCallback?.invoke(0.45f, "Part 2: Merge done...")
             ptModule.destroy()
@@ -653,7 +653,7 @@ class NativePtSharp private constructor(private val context: Context) {
             allTokens.clear()
             System.gc()
             val part2Ms = System.currentTimeMillis() - part2Start
-            Log.d(TAG, "Part 2 done in ${part2Ms}ms. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 2 done in ${part2Ms}ms. Memory: ${getMemoryInfo()}")
             computeFeatureStats(x0Feat, "x0Feat_after_part2")
             computeFeatureStats(x1Feat, "x1Feat_after_part2")
 
@@ -662,40 +662,40 @@ class NativePtSharp private constructor(private val context: Context) {
             var imageData = FloatArray(3 * IMAGE_SIZE * IMAGE_SIZE)
             preprocessPatchInto(scaledBitmap, imageData)
             scaledBitmap.recycle()
-            Log.d(TAG, "inferStreamingSplit: imageData preprocessed ${IMAGE_SIZE}x${IMAGE_SIZE} len=${imageData.size} first3=${imageData.take(3)}")
+            LogUtil.d(TAG, "inferStreamingSplit: imageData preprocessed ${IMAGE_SIZE}x${IMAGE_SIZE} len=${imageData.size} first3=${imageData.take(3)}")
 
             if (isCancelled()) {
-                Log.d(TAG, "inferStreamingSplit CANCELLED before Part 3")
+                LogUtil.d(TAG, "inferStreamingSplit CANCELLED before Part 3")
                 return null
             }
             // Part 3: Image Encoder A
             progressCallback?.invoke(0.50f, "Part 3: Image encoder...")
-            Log.d(TAG, "Part 3: before load. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 3: before load. Memory: ${getMemoryInfo()}")
             val part3Start = System.currentTimeMillis()
             val part3File = findFile(SPLIT_PART3) ?: return null
-            Log.d(TAG, "inferStreamingSplit: Part3 load from ${part3File.absolutePath} size=${part3File.length() / 1024 / 1024}MB")
+            LogUtil.d(TAG, "inferStreamingSplit: Part3 load from ${part3File.absolutePath} size=${part3File.length() / 1024 / 1024}MB")
             ptModule = LiteModuleLoader.load(part3File.absolutePath)
             var imageTensor: Tensor? = Tensor.fromBlob(imageData, longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong()))
             val imageTokensOut = ptModule.forward(IValue.from(imageTensor))
             var imageTokens = imageTokensOut.toTensor().dataAsFloatArray
-            Log.d(TAG, "inferStreamingSplit: Part3 output imageTokens len=${imageTokens.size}")
+            LogUtil.d(TAG, "inferStreamingSplit: Part3 output imageTokens len=${imageTokens.size}")
             ptModule.destroy()
             ptModule = null
             System.gc()
-            Log.d(TAG, "Part 3 done in ${System.currentTimeMillis() - part3Start}ms. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 3 done in ${System.currentTimeMillis() - part3Start}ms. Memory: ${getMemoryInfo()}")
 
             if (isCancelled()) {
-                Log.d(TAG, "inferStreamingSplit CANCELLED before Part 4")
+                LogUtil.d(TAG, "inferStreamingSplit CANCELLED before Part 4")
                 return null
             }
             // Part 4: Decoder + Gaussians
             progressCallback?.invoke(0.60f, "Part 4: Decoder...")
-            Log.d(TAG, "Part 4: before load. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 4: before load. Memory: ${getMemoryInfo()}")
             val part4LoadStart = System.currentTimeMillis()
             val part4File = findFile(SPLIT_PART4) ?: return null
-            Log.d(TAG, "inferStreamingSplit: Part4 load from ${part4File.absolutePath} size=${part4File.length() / 1024 / 1024}MB")
+            LogUtil.d(TAG, "inferStreamingSplit: Part4 load from ${part4File.absolutePath} size=${part4File.length() / 1024 / 1024}MB")
             ptModule = LiteModuleLoader.load(part4File.absolutePath)
-            Log.d(TAG, "Part 4: load done in ${System.currentTimeMillis() - part4LoadStart}ms. Input shapes: image[1,3,$IMAGE_SIZE,$IMAGE_SIZE] tokens[1,577,1024] latent0[1,$FEATURE_DIM,$mergedSize1x,$mergedSize1x] x0Feat x1Feat x2[1,$FEATURE_DIM,$SPATIAL_SIZE,$SPATIAL_SIZE]")
+            LogUtil.d(TAG, "Part 4: load done in ${System.currentTimeMillis() - part4LoadStart}ms. Input shapes: image[1,3,$IMAGE_SIZE,$IMAGE_SIZE] tokens[1,577,1024] latent0[1,$FEATURE_DIM,$mergedSize1x,$mergedSize1x] x0Feat x1Feat x2[1,$FEATURE_DIM,$SPATIAL_SIZE,$SPATIAL_SIZE]")
             val part4Start = System.currentTimeMillis()
             val part4Output = ptModule.forward(
                 IValue.from(imageTensor!!),
@@ -707,7 +707,7 @@ class NativePtSharp private constructor(private val context: Context) {
                 IValue.from(Tensor.fromBlob(x2, longArrayOf(1, FEATURE_DIM.toLong(), SPATIAL_SIZE.toLong(), SPATIAL_SIZE.toLong())))
             )
             val packedOutput = part4Output.toTensor().dataAsFloatArray
-            Log.d(TAG, "inferStreamingSplit: Part4 output len=${packedOutput.size} paramsPerGaussian=$PARAMS_PER_GAUSSIAN first14=${packedOutput.take(14)}")
+            LogUtil.d(TAG, "inferStreamingSplit: Part4 output len=${packedOutput.size} paramsPerGaussian=$PARAMS_PER_GAUSSIAN first14=${packedOutput.take(14)}")
             ptModule.destroy()
             ptModule = null
             latent0 = FloatArray(0)
@@ -719,14 +719,14 @@ class NativePtSharp private constructor(private val context: Context) {
             imageTokens = FloatArray(0)
             imageTensor = null
             System.gc()
-            Log.d(TAG, "Part 4 done in ${System.currentTimeMillis() - part4Start}ms. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Part 4 done in ${System.currentTimeMillis() - part4Start}ms. Memory: ${getMemoryInfo()}")
 
             val gaussianCount = packedOutput.size / PARAMS_PER_GAUSSIAN
-            Log.d(TAG, "Native .pt SPLIT produced $gaussianCount Gaussians in ${System.currentTimeMillis() - startTime}ms")
+            LogUtil.d(TAG, "Native .pt SPLIT produced $gaussianCount Gaussians in ${System.currentTimeMillis() - startTime}ms")
             validateGaussianOutput(packedOutput, gaussianCount)
 
             progressCallback?.invoke(0.80f, "Writing PLY ($gaussianCount Gaussians)...")
-            Log.d(TAG, "inferStreamingSplit: Writing PLY gaussianCount=$gaussianCount roomBounds pending")
+            LogUtil.d(TAG, "inferStreamingSplit: Writing PLY gaussianCount=$gaussianCount roomBounds pending")
             val roomsDir = File(context.filesDir, "sharp_rooms")
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val roomFolder = File(roomsDir, "room_$timestamp")
@@ -736,7 +736,7 @@ class NativePtSharp private constructor(private val context: Context) {
             val writeStart = System.currentTimeMillis()
             writePly(plyFile, packedOutput, gaussianCount)
             plyFile.copyTo(classicPlyFile, overwrite = true)
-            Log.d(TAG, "inferStreamingSplit: writePly done in ${System.currentTimeMillis() - writeStart}ms ${plyFile.absolutePath} size=${plyFile.length()}")
+            LogUtil.d(TAG, "inferStreamingSplit: writePly done in ${System.currentTimeMillis() - writeStart}ms ${plyFile.absolutePath} size=${plyFile.length()}")
 
             var minX = Float.MAX_VALUE
             var maxX = -Float.MAX_VALUE
@@ -754,7 +754,7 @@ class NativePtSharp private constructor(private val context: Context) {
             val roomWidth = maxX - minX
             val roomHeight = maxY - minY
             val roomDepth = maxZ - minZ
-            Log.d(TAG, "inferStreamingSplit SUCCESS totalMs=${System.currentTimeMillis() - startTime} gaussianCount=$gaussianCount room ${roomWidth}m x ${roomHeight}m x ${roomDepth}m bounds min=($minX,$minY,$minZ) max=($maxX,$maxY,$maxZ)")
+            LogUtil.d(TAG, "inferStreamingSplit SUCCESS totalMs=${System.currentTimeMillis() - startTime} gaussianCount=$gaussianCount room ${roomWidth}m x ${roomHeight}m x ${roomDepth}m bounds min=($minX,$minY,$minZ) max=($maxX,$maxY,$maxZ)")
             progressCallback?.invoke(1.0f, "Done!")
             return StreamingResult(
                 plyFile = plyFile,
@@ -765,14 +765,14 @@ class NativePtSharp private constructor(private val context: Context) {
                 roomDepth = roomDepth
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Native .pt SPLIT inference failed after ${System.currentTimeMillis() - startTime}ms", e)
+            LogUtil.e(TAG, "Native .pt SPLIT inference failed after ${System.currentTimeMillis() - startTime}ms", e)
             progressCallback?.invoke(0f, "Error: ${e.message}")
             return null
         }
     }
 
     private fun writePly(file: File, params: FloatArray, gaussianCount: Int) {
-        Log.d(TAG, "writePly ENTER file=${file.absolutePath} gaussianCount=$gaussianCount paramsLen=${params.size}")
+        LogUtil.d(TAG, "writePly ENTER file=${file.absolutePath} gaussianCount=$gaussianCount paramsLen=${params.size}")
         val header = buildString {
             append("ply\nformat binary_little_endian 1.0\n")
             append("element vertex $gaussianCount\n")
@@ -846,13 +846,13 @@ class NativePtSharp private constructor(private val context: Context) {
                 processed += count
             }
         }
-        Log.d(TAG, "writePly DONE file=${file.absolutePath} bytes=${file.length()}")
+        LogUtil.d(TAG, "writePly DONE file=${file.absolutePath} bytes=${file.length()}")
     }
 
     fun release() {
         module?.destroy()
         module = null
         isInitialized = false
-        Log.d(TAG, "NativePtSharp released")
+        LogUtil.d(TAG, "NativePtSharp released")
     }
 }

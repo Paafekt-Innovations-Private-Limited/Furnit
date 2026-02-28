@@ -1,6 +1,6 @@
 package com.furnit.android.utils
 
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import io.github.sceneview.math.Position
 
 /**
@@ -98,11 +98,11 @@ class RoomBoundaryManager {
             maxZ = halfDepth    // Back wall (camera side)
         )
 
-        Log.d(TAG, "Initialized room bounds from dimensions:")
-        Log.d(TAG, "  Size: ${width}x${height}x${depth}")
-        Log.d(TAG, "  X: ${-halfWidth} to ${halfWidth}")
-        Log.d(TAG, "  Y: 0 to $height")
-        Log.d(TAG, "  Z: ${-halfDepth} to ${halfDepth}")
+        LogUtil.d(TAG, "Initialized room bounds from dimensions:")
+        LogUtil.d(TAG, "  Size: ${width}x${height}x${depth}")
+        LogUtil.d(TAG, "  X: ${-halfWidth} to ${halfWidth}")
+        LogUtil.d(TAG, "  Y: 0 to $height")
+        LogUtil.d(TAG, "  Z: ${-halfDepth} to ${halfDepth}")
     }
 
     /**
@@ -138,10 +138,10 @@ class RoomBoundaryManager {
             lookAt = Position(targetX, targetY, targetZ)
         )
 
-        Log.d(TAG, "Camera position (back-wall corner) for ${if (isPortrait) "PORTRAIT" else "LANDSCAPE"}:")
-        Log.d(TAG, "  Room: ${bounds.width}x${bounds.height}x${bounds.depth}")
-        Log.d(TAG, "  Camera at back-left corner: ($camX, $camY, $camZ)")
-        Log.d(TAG, "  Looking at front wall: ($targetX, $targetY, $targetZ)")
+        LogUtil.d(TAG, "Camera position (back-wall corner) for ${if (isPortrait) "PORTRAIT" else "LANDSCAPE"}:")
+        LogUtil.d(TAG, "  Room: ${bounds.width}x${bounds.height}x${bounds.depth}")
+        LogUtil.d(TAG, "  Camera at back-left corner: ($camX, $camY, $camZ)")
+        LogUtil.d(TAG, "  Looking at front wall: ($targetX, $targetY, $targetZ)")
 
         return cameraSetup
     }
@@ -192,8 +192,8 @@ class RoomBoundaryManager {
         val targetY = bounds.centerY
         val targetZ = bounds.frontWallZ  // Front wall (where photo is)
 
-        Log.d(TAG, "  Room position/bounds: min=(${bounds.minX}, ${bounds.minY}, ${bounds.minZ}) max=(${bounds.maxX}, ${bounds.maxY}, ${bounds.maxZ}) center=(${bounds.centerX}, ${bounds.centerY}, ${bounds.centerZ})")
-        Log.d(TAG, "  Camera (Swift-style back-left): pos=($camX, $camY, $camZ) lookAt=($targetX, $targetY, $targetZ)")
+        LogUtil.d(TAG, "  Room position/bounds: min=(${bounds.minX}, ${bounds.minY}, ${bounds.minZ}) max=(${bounds.maxX}, ${bounds.maxY}, ${bounds.maxZ}) center=(${bounds.centerX}, ${bounds.centerY}, ${bounds.centerZ})")
+        LogUtil.d(TAG, "  Camera (Swift-style back-left): pos=($camX, $camY, $camZ) lookAt=($targetX, $targetY, $targetZ)")
         return CameraSetup(
             position = Position(camX, camY, camZ),
             lookAt = Position(targetX, targetY, targetZ)
@@ -229,7 +229,7 @@ class RoomBoundaryManager {
         val targetY = bounds.centerY
         val targetZ = bounds.frontWallZ
 
-        Log.d(TAG, "[BackCenter] depth=${bounds.depth}m fraction=$fraction inset=${insetFromBack}m -> pos=($camX, $camY, $camZ) lookAt=($targetX, $targetY, $targetZ)")
+        LogUtil.d(TAG, "[BackCenter] depth=${bounds.depth}m fraction=$fraction inset=${insetFromBack}m -> pos=($camX, $camY, $camZ) lookAt=($targetX, $targetY, $targetZ)")
         return CameraSetup(
             position = Position(camX, camY, camZ),
             lookAt = Position(targetX, targetY, targetZ)

@@ -6,7 +6,7 @@ import ai.onnxruntime.OrtSession
 import ai.onnxruntime.providers.NNAPIFlags
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -86,7 +86,7 @@ class OnnxSharp private constructor(private val context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: OnnxSharp(context.applicationContext).also {
                     instance = it
-                    Log.d(TAG, "OnnxSharp singleton created")
+                    LogUtil.d(TAG, "OnnxSharp singleton created")
                 }
             }
         }
@@ -156,7 +156,7 @@ class OnnxSharp private constructor(private val context: Context) {
      */
     suspend fun ensureModelDownloaded(callback: DownloadCallback? = null): Boolean = withContext(Dispatchers.IO) {
         if (isModelReady()) {
-            Log.d(TAG, "Model already downloaded")
+            LogUtil.d(TAG, "Model already downloaded")
             callback?.onComplete()
             return@withContext true
         }
@@ -170,7 +170,7 @@ class OnnxSharp private constructor(private val context: Context) {
             val externalWeights = File(externalModelsDir, WEIGHTS_FILENAME)
 
             if (externalModel.exists() && externalWeights.exists()) {
-                Log.d(TAG, "Copying model from external storage")
+                LogUtil.d(TAG, "Copying model from external storage")
                 externalModel.copyTo(File(modelsDir, MODEL_FILENAME), overwrite = true)
                 externalWeights.copyTo(File(modelsDir, WEIGHTS_FILENAME), overwrite = true)
                 callback?.onComplete()
@@ -179,7 +179,7 @@ class OnnxSharp private constructor(private val context: Context) {
 
             // TODO: Implement actual download from server
             // For now, log instructions for manual setup
-            Log.w(TAG, """
+            LogUtil.w(TAG, """
                 Model not found. Push model files manually:
 
                 For FP32 single file (after re-export):
@@ -198,7 +198,7 @@ class OnnxSharp private constructor(private val context: Context) {
             return@withContext false
 
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to prepare model", e)
+            LogUtil.e(TAG, "Failed to prepare model", e)
             callback?.onError(e.message ?: "Unknown error")
             return@withContext false
         }
@@ -229,14 +229,14 @@ class OnnxSharp private constructor(private val context: Context) {
         if (ortSession != null) return@withContext true
 
         if (!isModelReady()) {
-            Log.e(TAG, "Model not ready - call ensureModelDownloaded first")
+            LogUtil.e(TAG, "Model not ready - call ensureModelDownloaded first")
             return@withContext false
         }
 
         try {
             val modelPath = File(modelsDir, MODEL_FILENAME).absolutePath
-            Log.d(TAG, "Loading ONNX model from: $modelPath")
-            Log.d(TAG, "Available memory: ${getAvailableMemoryMB()}MB")
+            LogUtil.d(TAG, "Loading ONNX model from: $modelPath")
+            LogUtil.d(TAG, "Available memory: ${getAvailableMemoryMB()}MB")
 
             ortEnvironment = OrtEnvironment.getEnvironment()
 
@@ -273,26 +273,26 @@ class OnnxSharp private constructor(private val context: Context) {
                     // Enable memory-efficient graph execution
                     addConfigEntry("session.enable_mem_reuse", "1")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Could not set advanced session config: ${e.message}")
+                    LogUtil.w(TAG, "Could not set advanced session config: ${e.message}")
                 }
 
-                Log.d(TAG, "Using CPU with sequential execution and memory-mapped external weights")
+                LogUtil.d(TAG, "Using CPU with sequential execution and memory-mapped external weights")
             }
 
             // Log model and memory info
             val modelFile = File(modelPath)
             val modelSize = modelFile.length() / 1024 / 1024
-            Log.d(TAG, "Model file: $modelPath (${modelSize}MB)")
+            LogUtil.d(TAG, "Model file: $modelPath (${modelSize}MB)")
 
             if (WEIGHTS_FILENAME.isNotEmpty()) {
                 val weightsFile = File(modelsDir, WEIGHTS_FILENAME)
                 val weightsSize = weightsFile.length() / 1024 / 1024
-                Log.d(TAG, "Weights file: ${weightsFile.absolutePath} (${weightsSize}MB)")
-                Log.d(TAG, "Weights file exists: ${weightsFile.exists()}")
+                LogUtil.d(TAG, "Weights file: ${weightsFile.absolutePath} (${weightsSize}MB)")
+                LogUtil.d(TAG, "Weights file exists: ${weightsFile.exists()}")
 
                 // Verify external data is in same directory as model (required for mmap)
                 if (weightsFile.parentFile?.absolutePath != modelFile.parentFile?.absolutePath) {
-                    Log.w(TAG, "WARNING: Weights not in same directory as model - mmap may fail")
+                    LogUtil.w(TAG, "WARNING: Weights not in same directory as model - mmap may fail")
                 }
             }
 
@@ -301,34 +301,34 @@ class OnnxSharp private constructor(private val context: Context) {
             val usedMemMB = (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024
             val maxMemMB = runtime.maxMemory() / 1024 / 1024
             val availSysMB = getAvailableMemoryMB()
-            Log.d(TAG, "Memory before load - Used: ${usedMemMB}MB, Max: ${maxMemMB}MB, System Available: ${availSysMB}MB")
+            LogUtil.d(TAG, "Memory before load - Used: ${usedMemMB}MB, Max: ${maxMemMB}MB, System Available: ${availSysMB}MB")
 
             // Force GC before loading large model
             System.gc()
             Thread.sleep(100)
 
-            Log.d(TAG, "Creating ONNX session (FP32 with external mmap weights)...")
-            Log.d(TAG, "ONNX Runtime should automatically mmap external data file")
+            LogUtil.d(TAG, "Creating ONNX session (FP32 with external mmap weights)...")
+            LogUtil.d(TAG, "ONNX Runtime should automatically mmap external data file")
 
             val loadStartTime = System.currentTimeMillis()
             ortSession = ortEnvironment?.createSession(modelPath, sessionOptions)
             val loadTime = System.currentTimeMillis() - loadStartTime
 
-            Log.d(TAG, "ONNX session created successfully in ${loadTime}ms")
+            LogUtil.d(TAG, "ONNX session created successfully in ${loadTime}ms")
 
             // Log memory after load
             val usedAfterMB = (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024
-            Log.d(TAG, "Memory after load - Used: ${usedAfterMB}MB (delta: ${usedAfterMB - usedMemMB}MB)")
+            LogUtil.d(TAG, "Memory after load - Used: ${usedAfterMB}MB (delta: ${usedAfterMB - usedMemMB}MB)")
 
             return@withContext true
 
         } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "OUT OF MEMORY loading ONNX model", e)
-            Log.e(TAG, "FP32 model (2.6GB) too large for device. Consider FP16 or NCNN backend.")
+            LogUtil.e(TAG, "OUT OF MEMORY loading ONNX model", e)
+            LogUtil.e(TAG, "FP32 model (2.6GB) too large for device. Consider FP16 or NCNN backend.")
             System.gc()
             return@withContext false
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize ONNX session: ${e.javaClass.simpleName}", e)
+            LogUtil.e(TAG, "Failed to initialize ONNX session: ${e.javaClass.simpleName}", e)
             return@withContext false
         }
     }
@@ -344,7 +344,7 @@ class OnnxSharp private constructor(private val context: Context) {
         val env = ortEnvironment
 
         if (session == null || env == null) {
-            Log.e(TAG, "Session not initialized")
+            LogUtil.e(TAG, "Session not initialized")
             return@withContext null
         }
 
@@ -356,7 +356,7 @@ class OnnxSharp private constructor(private val context: Context) {
             val inputTensor = preprocessImage(env, scaledBitmap)
             scaledBitmap.recycle()
 
-            Log.d(TAG, "Running SHARP inference...")
+            LogUtil.d(TAG, "Running SHARP inference...")
             val inputs = mapOf("image" to inputTensor)
             val outputs = session.run(inputs)
 
@@ -380,7 +380,7 @@ class OnnxSharp private constructor(private val context: Context) {
             outputs.close()
 
             val elapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "SHARP inference completed: $gaussianCount Gaussians in ${elapsed}ms")
+            LogUtil.d(TAG, "SHARP inference completed: $gaussianCount Gaussians in ${elapsed}ms")
 
             return@withContext SharpResult(
                 positions = positions,
@@ -392,7 +392,7 @@ class OnnxSharp private constructor(private val context: Context) {
             )
 
         } catch (e: Exception) {
-            Log.e(TAG, "Inference failed", e)
+            LogUtil.e(TAG, "Inference failed", e)
             return@withContext null
         }
     }
@@ -413,7 +413,7 @@ class OnnxSharp private constructor(private val context: Context) {
         val env = ortEnvironment
 
         if (session == null || env == null) {
-            Log.e(TAG, "Session not initialized")
+            LogUtil.e(TAG, "Session not initialized")
             return@withContext null
         }
 
@@ -428,7 +428,7 @@ class OnnxSharp private constructor(private val context: Context) {
             scaledBitmap.recycle()
 
             progressCallback?.invoke(0.2f, "Running SHARP inference...")
-            Log.d(TAG, "Running SHARP streaming inference...")
+            LogUtil.d(TAG, "Running SHARP streaming inference...")
 
             val inputs = mapOf("image" to inputTensor)
             val outputs = session.run(inputs)
@@ -453,7 +453,7 @@ class OnnxSharp private constructor(private val context: Context) {
             val posShape = positionsTensor.info.shape  // [1, N, 3]
             val gaussianCount = posShape[1].toInt()
 
-            Log.d(TAG, "Streaming $gaussianCount Gaussians to PLY file...")
+            LogUtil.d(TAG, "Streaming $gaussianCount Gaussians to PLY file...")
 
             progressCallback?.invoke(0.6f, "Creating PLY file ($gaussianCount Gaussians)...")
 
@@ -604,8 +604,8 @@ class OnnxSharp private constructor(private val context: Context) {
             System.gc()
 
             val elapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "SHARP streaming completed: $gaussianCount Gaussians in ${elapsed}ms")
-            Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
+            LogUtil.d(TAG, "SHARP streaming completed: $gaussianCount Gaussians in ${elapsed}ms")
+            LogUtil.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
 
             progressCallback?.invoke(1.0f, "Done!")
 
@@ -619,7 +619,7 @@ class OnnxSharp private constructor(private val context: Context) {
             )
 
         } catch (e: Exception) {
-            Log.e(TAG, "Streaming inference failed", e)
+            LogUtil.e(TAG, "Streaming inference failed", e)
             return@withContext null
         }
     }

@@ -4,7 +4,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import androidx.appcompat.app.AppCompatActivity
 import android.widget.LinearLayout
 import android.view.Gravity
@@ -139,7 +139,7 @@ class ContentActivity : AppCompatActivity() {
         }
 
         statsText = TextView(this).apply {
-            text = "0 of 1000 rooms remaining"
+            text = getString(R.string.home_rooms_remaining_short, 0, 1000)
             textSize = 14f
             setTextColor(primaryTextColor)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -147,7 +147,7 @@ class ContentActivity : AppCompatActivity() {
         statsRow.addView(statsText)
 
         val totalLabel = TextView(this).apply {
-            text = "Total"
+            text = getString(R.string.home_total)
             textSize = 12f
             setTextColor(secondaryTextColor)
             setPadding(0, 0, dpToPx(8), 0)
@@ -155,7 +155,7 @@ class ContentActivity : AppCompatActivity() {
         statsRow.addView(totalLabel)
 
         totalSizeText = TextView(this).apply {
-            text = "0 MB"
+            text = getString(R.string.home_zero_mb)
             textSize = 14f
             setTextColor(primaryTextColor)
             setTypeface(null, Typeface.BOLD)
@@ -179,7 +179,7 @@ class ContentActivity : AppCompatActivity() {
         hintRow.addView(bulbIcon)
 
         val hintText = TextView(this).apply {
-            text = "Long press to delete"
+            text = getString(R.string.home_long_press_hint)
             textSize = 14f
             setTextColor(secondaryTextColor)
         }
@@ -235,15 +235,15 @@ class ContentActivity : AppCompatActivity() {
         roomsContainer.removeAllViews()
 
         val models = modelManager.listModels()
-        Log.d("ContentActivity", "Loaded ${models.size} models:")
+        LogUtil.d("ContentActivity", "Loaded ${models.size} models:")
         models.forEach { model ->
-            Log.d("ContentActivity", "  - ${model.name} (id=${model.id}, isUserCreated=${model.isUserCreated}, path=${model.assetPath})")
+            LogUtil.d("ContentActivity", "  - ${model.name} (id=${model.id}, isUserCreated=${model.isUserCreated}, path=${model.assetPath})")
         }
 
         // Update stats
         val roomCount = models.size
         val remaining = 1000 - roomCount
-        statsText.text = "$remaining of 1000 rooms remaining"
+        statsText.text = getString(R.string.home_rooms_remaining_short, remaining, 1000)
 
         // Calculate total size
         var totalBytes = 0L
@@ -271,7 +271,7 @@ class ContentActivity : AppCompatActivity() {
         if (models.isEmpty()) {
             // Empty state
             val emptyText = TextView(this).apply {
-                text = "No rooms yet\nTap the image icon to get started"
+                text = getString(R.string.home_no_rooms_yet)
                 textSize = 16f
                 setTextColor(secondaryTextColor)
                 gravity = Gravity.CENTER
@@ -350,7 +350,7 @@ class ContentActivity : AppCompatActivity() {
 
         // Type subtitle
         val typeText = TextView(this)
-        typeText.text = "3D Room Model"
+        typeText.text = getString(R.string.home_3d_room_model)
         typeText.textSize = 13f
         typeText.setTextColor(secondaryTextColor)
         typeText.setPadding(0, dpToPx(2), 0, 0)
@@ -388,15 +388,15 @@ class ContentActivity : AppCompatActivity() {
         // Click listener - use captured model for this card so correct room opens
         val clickedModel = model
         card.setOnClickListener { v ->
-            Toast.makeText(this, "Opening ${clickedModel.name}...", Toast.LENGTH_SHORT).show()
-            Log.d("ContentActivity", "Room clicked: name=${clickedModel.name} id=${clickedModel.id} isUserCreated=${clickedModel.isUserCreated} assetPath=${clickedModel.assetPath}")
+            Toast.makeText(this, getString(R.string.home_opening, clickedModel.name), Toast.LENGTH_SHORT).show()
+            LogUtil.d("ContentActivity", "Room clicked: name=${clickedModel.name} id=${clickedModel.id} isUserCreated=${clickedModel.isUserCreated} assetPath=${clickedModel.assetPath}")
 
             if (clickedModel.isUserCreated) {
                 if (clickedModel.assetPath.endsWith(".ply")) {
                     // Open SharpRoomActivity for PLY files (Gaussian splat)
                     val plyFile = File(clickedModel.assetPath)
                     val roomFolder = plyFile.parentFile
-                    Log.d("ContentActivity", "Branch PLY: roomFolder=${roomFolder?.absolutePath} starting SharpRoomActivity")
+                    LogUtil.d("ContentActivity", "Branch PLY: roomFolder=${roomFolder?.absolutePath} starting SharpRoomActivity")
                     val intent = Intent(this, SharpRoomActivity::class.java)
                     intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
                     intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder?.absolutePath)
@@ -409,13 +409,13 @@ class ContentActivity : AppCompatActivity() {
                     clickedModel.roomCenterZ?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
                     intent.putExtra("photo_orientation", clickedModel.photoOrientation)
                     intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
-                    Log.d("ContentActivity", "Opening SharpRoomActivity photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
+                    LogUtil.d("ContentActivity", "Opening SharpRoomActivity photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
                     startActivity(intent)
                 } else if (clickedModel.assetPath.endsWith(".glb")) {
                     // Open WebGL-based GLBRoomActivity for GLB files (matching iOS)
                     val glbFile = File(clickedModel.assetPath)
                     val roomFolderPath = glbFile.parent
-                    Log.d("ContentActivity", "Branch GLB: path=${clickedModel.assetPath} roomFolder=$roomFolderPath starting GLBRoomActivity")
+                    LogUtil.d("ContentActivity", "Branch GLB: path=${clickedModel.assetPath} roomFolder=$roomFolderPath starting GLBRoomActivity")
                     val intent = Intent(this, GLBRoomActivity::class.java)
                     intent.putExtra(GLBRoomActivity.EXTRA_GLB_PATH, clickedModel.assetPath)
                     intent.putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, clickedModel.name)
@@ -431,11 +431,11 @@ class ContentActivity : AppCompatActivity() {
                     val roomFolder = File(clickedModel.assetPath)
                     val plyFile = File(roomFolder, "room.ply")
                     val glbFile = File(roomFolder, "room.glb")
-                    Log.d("ContentActivity", "Branch folder: ${roomFolder.absolutePath} plyExists=${plyFile.exists()} glbExists=${glbFile.exists()}")
+                    LogUtil.d("ContentActivity", "Branch folder: ${roomFolder.absolutePath} plyExists=${plyFile.exists()} glbExists=${glbFile.exists()}")
 
                     when {
                         plyFile.exists() -> {
-                            Log.d("ContentActivity", "Opening SharpRoomActivity with PLY: ${plyFile.absolutePath}, roomFolder=${roomFolder.absolutePath}")
+                            LogUtil.d("ContentActivity", "Opening SharpRoomActivity with PLY: ${plyFile.absolutePath}, roomFolder=${roomFolder.absolutePath}")
                             val intent = Intent(this, SharpRoomActivity::class.java)
                             intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
                             intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder.absolutePath)
@@ -448,11 +448,11 @@ class ContentActivity : AppCompatActivity() {
                             clickedModel.roomCenterZ?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
                             intent.putExtra("photo_orientation", clickedModel.photoOrientation)
                             intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
-                            Log.d("ContentActivity", "Opening SharpRoomActivity (folder) photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
+                            LogUtil.d("ContentActivity", "Opening SharpRoomActivity (folder) photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
                             startActivity(intent)
                         }
                         glbFile.exists() -> {
-                            Log.d("ContentActivity", "Opening GLBRoomActivity with GLB: ${glbFile.absolutePath}, roomFolder=${roomFolder.absolutePath}")
+                            LogUtil.d("ContentActivity", "Opening GLBRoomActivity with GLB: ${glbFile.absolutePath}, roomFolder=${roomFolder.absolutePath}")
                             val intent = Intent(this, GLBRoomActivity::class.java)
                             intent.putExtra(GLBRoomActivity.EXTRA_GLB_PATH, glbFile.absolutePath)
                             intent.putExtra(GLBRoomActivity.EXTRA_ROOM_NAME, clickedModel.name)
@@ -465,7 +465,7 @@ class ContentActivity : AppCompatActivity() {
                             startActivity(intent)
                         }
                         else -> {
-                            Log.d("ContentActivity", "No PLY/GLB in folder, opening RoomViewerActivity: ${clickedModel.assetPath}")
+                            LogUtil.d("ContentActivity", "No PLY/GLB in folder, opening RoomViewerActivity: ${clickedModel.assetPath}")
                             val intent = Intent(this, RoomViewerActivity::class.java)
                             intent.putExtra(RoomViewerActivity.EXTRA_ROOM_FOLDER, clickedModel.assetPath)
                             startActivity(intent)
@@ -473,7 +473,7 @@ class ContentActivity : AppCompatActivity() {
                     }
                 }
             } else {
-                Log.d("ContentActivity", "Branch bundled: opening ModelDetailActivity with id=${clickedModel.id} (name=${clickedModel.name})")
+                LogUtil.d("ContentActivity", "Branch bundled: opening ModelDetailActivity with id=${clickedModel.id} (name=${clickedModel.name})")
                 val intent = Intent(this, ModelDetailActivity::class.java)
                 intent.putExtra("MODEL_ID", clickedModel.id)
                 startActivity(intent)
@@ -528,10 +528,10 @@ class ContentActivity : AppCompatActivity() {
     private fun deleteRoom(model: Model) {
         try {
             modelManager.deleteRoom(model.id)
-            Toast.makeText(this, "Deleted ${model.name}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.deleted_room, model.name), Toast.LENGTH_SHORT).show()
             refreshRoomsList()
         } catch (e: Exception) {
-            Toast.makeText(this, "Failed to delete: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.home_failed_delete, e.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
 }

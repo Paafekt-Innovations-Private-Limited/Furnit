@@ -6,7 +6,7 @@ import ai.onnxruntime.OrtSession
 import ai.onnxruntime.providers.NNAPIFlags
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -69,7 +69,7 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: OnnxInt8Sharp(context.applicationContext).also {
                     instance = it
-                    Log.d(TAG, "OnnxInt8Sharp singleton created")
+                    LogUtil.d(TAG, "OnnxInt8Sharp singleton created")
                 }
             }
         }
@@ -108,11 +108,11 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
         val modelExists = modelFile.exists()
         val weightsFile = File(modelsDir, WEIGHTS_FILENAME)
         val weightsExists = weightsFile.exists()
-        Log.d(TAG, "isModelReady: $MODEL_FILENAME exists=$modelExists size=${if (modelExists) modelFile.length() else 0}, " +
+        LogUtil.d(TAG, "isModelReady: $MODEL_FILENAME exists=$modelExists size=${if (modelExists) modelFile.length() else 0}, " +
               "$WEIGHTS_FILENAME exists=$weightsExists size=${if (weightsExists) weightsFile.length() else 0}")
         // INT8 quantization may inline all weights into the graph (no .data file needed)
         val ready = modelExists && (weightsExists || modelFile.length() > 100_000_000)
-        Log.d(TAG, "isModelReady: result=$ready")
+        LogUtil.d(TAG, "isModelReady: result=$ready")
         return ready
     }
 
@@ -135,14 +135,14 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
         if (ortSession != null) return@withContext true
 
         if (!isModelReady()) {
-            Log.e(TAG, "Model not ready — call isModelReady() first")
+            LogUtil.e(TAG, "Model not ready — call isModelReady() first")
             return@withContext false
         }
 
         try {
             val modelPath = File(modelsDir, MODEL_FILENAME).absolutePath
-            Log.d(TAG, "Loading INT8 ONNX model from: $modelPath")
-            Log.d(TAG, "Memory before load: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "Loading INT8 ONNX model from: $modelPath")
+            LogUtil.d(TAG, "Memory before load: ${getMemoryInfo()}")
 
             ortEnvironment = OrtEnvironment.getEnvironment()
 
@@ -159,7 +159,7 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
                     addConfigEntry("session.inter_op.allow_spinning", "0")
                     addConfigEntry("session.enable_mem_reuse", "1")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Could not set session config: ${e.message}")
+                    LogUtil.w(TAG, "Could not set session config: ${e.message}")
                 }
             }
 
@@ -170,9 +170,9 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
                     NNAPIFlags.CPU_DISABLED
                 ))
                 nnapiEnabled = true
-                Log.d(TAG, "NNAPI execution provider added (USE_FP16, CPU_DISABLED)")
+                LogUtil.d(TAG, "NNAPI execution provider added (USE_FP16, CPU_DISABLED)")
             } catch (e: Exception) {
-                Log.w(TAG, "NNAPI not available, using CPU only: ${e.message}")
+                LogUtil.w(TAG, "NNAPI not available, using CPU only: ${e.message}")
             }
 
             System.gc()
@@ -182,15 +182,15 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             ortSession = ortEnvironment?.createSession(modelPath, sessionOptions)
             val loadTime = System.currentTimeMillis() - loadStart
 
-            Log.d(TAG, "INT8 ONNX session created in ${loadTime}ms (optLevel=ALL, arena=true, memPattern=true, threads=4, nnapi=$nnapiEnabled). Memory after load: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "INT8 ONNX session created in ${loadTime}ms (optLevel=ALL, arena=true, memPattern=true, threads=4, nnapi=$nnapiEnabled). Memory after load: ${getMemoryInfo()}")
             return@withContext true
 
         } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "OUT OF MEMORY loading INT8 model", e)
+            LogUtil.e(TAG, "OUT OF MEMORY loading INT8 model", e)
             System.gc()
             return@withContext false
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize INT8 session: ${e.javaClass.simpleName}", e)
+            LogUtil.e(TAG, "Failed to initialize INT8 session: ${e.javaClass.simpleName}", e)
             return@withContext false
         }
     }
@@ -207,13 +207,13 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
         val env = ortEnvironment
 
         if (session == null || env == null) {
-            Log.e(TAG, "Session not initialized — call initialize() first")
+            LogUtil.e(TAG, "Session not initialized — call initialize() first")
             return@withContext null
         }
 
         try {
             val startTime = System.currentTimeMillis()
-            Log.d(TAG, "inferStreaming ENTER (single INT8). Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "inferStreaming ENTER (single INT8). Memory: ${getMemoryInfo()}")
 
             progressCallback?.invoke(0.1f, "Preprocessing image (INT8)...")
 
@@ -221,7 +221,7 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             val preprocessStart = System.currentTimeMillis()
             val inputTensor = preprocessImageFast(env, scaledBitmap)
             val preprocessTime = System.currentTimeMillis() - preprocessStart
-            Log.d(TAG, "Preprocessing: ${preprocessTime}ms (${scaledBitmap.width}x${scaledBitmap.height})")
+            LogUtil.d(TAG, "Preprocessing: ${preprocessTime}ms (${scaledBitmap.width}x${scaledBitmap.height})")
             scaledBitmap.recycle()
 
             if (isCancelled()) {
@@ -230,13 +230,13 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             }
 
             progressCallback?.invoke(0.2f, "Running SHARP INT8 inference...")
-            Log.d(TAG, "Running single-model INT8 inference...")
+            LogUtil.d(TAG, "Running single-model INT8 inference...")
 
             val inferStart = System.currentTimeMillis()
             val inputs = mapOf("image" to inputTensor)
             val outputs = session.run(inputs)
             val inferTime = System.currentTimeMillis() - inferStart
-            Log.d(TAG, "INT8 inference completed in ${inferTime}ms. Memory: ${getMemoryInfo()}")
+            LogUtil.d(TAG, "INT8 inference completed in ${inferTime}ms. Memory: ${getMemoryInfo()}")
 
             if (isCancelled()) {
                 inputTensor.close()
@@ -261,7 +261,7 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             val posShape = positionsTensor.info.shape  // [1, N, 3]
             val gaussianCount = posShape[1].toInt()
 
-            Log.d(TAG, "Streaming $gaussianCount Gaussians to PLY...")
+            LogUtil.d(TAG, "Streaming $gaussianCount Gaussians to PLY...")
             progressCallback?.invoke(0.6f, "Writing PLY ($gaussianCount Gaussians)...")
 
             val roomsDir = File(context.filesDir, "sharp_rooms")
@@ -377,9 +377,9 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             System.gc()
 
             val totalElapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "INT8 single-model completed: $gaussianCount Gaussians in ${totalElapsed}ms " +
+            LogUtil.d(TAG, "INT8 single-model completed: $gaussianCount Gaussians in ${totalElapsed}ms " +
                   "(inference=${inferTime}ms, PLY=${totalElapsed - inferTime - (inferStart - startTime)}ms)")
-            Log.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
+            LogUtil.d(TAG, "Room bounds: ${maxX - minX}m x ${maxY - minY}m x ${maxZ - minZ}m")
 
             progressCallback?.invoke(1.0f, "Done!")
 
@@ -393,7 +393,7 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
             )
 
         } catch (e: Exception) {
-            Log.e(TAG, "INT8 streaming inference failed", e)
+            LogUtil.e(TAG, "INT8 streaming inference failed", e)
             return@withContext null
         }
     }
@@ -453,6 +453,6 @@ class OnnxInt8Sharp private constructor(private val context: Context) {
         ortEnvironment?.close()
         ortSession = null
         ortEnvironment = null
-        Log.d(TAG, "INT8 session released")
+        LogUtil.d(TAG, "INT8 session released")
     }
 }

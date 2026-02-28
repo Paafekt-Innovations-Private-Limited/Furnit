@@ -3,7 +3,7 @@ package com.furnit.android.services
 import android.content.Context
 import android.content.res.AssetManager
 import android.graphics.Bitmap
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import kotlin.math.max
 import kotlin.math.min
 
@@ -61,9 +61,9 @@ class NcnnSharp(private val context: Context) {
             try {
                 System.loadLibrary("sharp_ncnn")
                 libraryLoaded = true
-                Log.i(TAG, "SHARP NCNN library loaded")
+                LogUtil.i(TAG, "SHARP NCNN library loaded")
             } catch (e: UnsatisfiedLinkError) {
-                Log.w(TAG, "SHARP NCNN library not available: ${e.message}")
+                LogUtil.w(TAG, "SHARP NCNN library not available: ${e.message}")
                 libraryLoaded = false
                 libraryLoadError = e.message
             }
@@ -132,7 +132,7 @@ class NcnnSharp(private val context: Context) {
      */
     fun ensureModelReady(): Boolean {
         if (isModelReady()) {
-            Log.d(TAG, "Model already available in $modelsDir")
+            LogUtil.d(TAG, "Model already available in $modelsDir")
             return true
         }
 
@@ -144,18 +144,18 @@ class NcnnSharp(private val context: Context) {
         val externalBin = java.io.File(externalModelsDir, BIN_FILENAME)
 
         if (externalParam.exists() && externalBin.exists()) {
-            Log.d(TAG, "Copying NCNN model from external storage")
+            LogUtil.d(TAG, "Copying NCNN model from external storage")
             try {
                 externalParam.copyTo(java.io.File(modelsDir, PARAM_FILENAME), overwrite = true)
                 externalBin.copyTo(java.io.File(modelsDir, BIN_FILENAME), overwrite = true)
-                Log.d(TAG, "Model copied successfully")
+                LogUtil.d(TAG, "Model copied successfully")
                 return true
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to copy model: ${e.message}")
+                LogUtil.e(TAG, "Failed to copy model: ${e.message}")
             }
         }
 
-        Log.w(TAG, """
+        LogUtil.w(TAG, """
             Model not found. Push model files manually:
             adb push sharp.ncnn.param /sdcard/Android/data/com.furnit.android/files/models/
             adb push sharp.ncnn.bin /sdcard/Android/data/com.furnit.android/files/models/
@@ -200,7 +200,7 @@ class NcnnSharp(private val context: Context) {
         }
 
         if (!internalReady) {
-            Log.d(TAG, "Component models not in internal storage. Copying from external...")
+            LogUtil.d(TAG, "Component models not in internal storage. Copying from external...")
             val externalModelsDir = context.getExternalFilesDir("models")
             if (externalModelsDir != null) {
                 modelsDir.mkdirs()
@@ -210,15 +210,15 @@ class NcnnSharp(private val context: Context) {
                     val internal = java.io.File(modelsDir, filename)
                     if (external.exists() && !internal.exists()) {
                         try {
-                            Log.d(TAG, "Copying $filename (${external.length() / 1024 / 1024} MB)...")
+                            LogUtil.d(TAG, "Copying $filename (${external.length() / 1024 / 1024} MB)...")
                             external.copyTo(internal)
-                            Log.d(TAG, "Copied $filename")
+                            LogUtil.d(TAG, "Copied $filename")
                         } catch (e: Exception) {
-                            Log.e(TAG, "Failed to copy $filename: ${e.message}")
+                            LogUtil.e(TAG, "Failed to copy $filename: ${e.message}")
                             allCopied = false
                         }
                     } else if (!external.exists()) {
-                        Log.w(TAG, "Missing external file: $filename")
+                        LogUtil.w(TAG, "Missing external file: $filename")
                         allCopied = false
                     }
                 }
@@ -231,20 +231,20 @@ class NcnnSharp(private val context: Context) {
                 throw IllegalStateException("External storage not available")
             }
         } else {
-            Log.d(TAG, "Component models already in internal storage")
+            LogUtil.d(TAG, "Component models already in internal storage")
         }
 
         try {
-            Log.i(TAG, "Loading SHARP NCNN components from: $modelsDir")
+            LogUtil.i(TAG, "Loading SHARP NCNN components from: $modelsDir")
             componentHandle = nativeInitComponents(modelsDir.absolutePath, useGpu, numThreads)
             isInitialized = componentHandle != 0L
             if (!isInitialized) {
                 throw RuntimeException("Failed to load SHARP NCNN components")
             }
-            Log.i(TAG, "NCNN SHARP components initialized successfully")
+            LogUtil.i(TAG, "NCNN SHARP components initialized successfully")
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "Component init failed: ${e.message}", e)
+            LogUtil.e(TAG, "Component init failed: ${e.message}", e)
             throw e
         }
     }
@@ -261,7 +261,7 @@ class NcnnSharp(private val context: Context) {
         val binPath = java.io.File(modelsDir, BIN_FILENAME).absolutePath
 
         try {
-            Log.i(TAG, "Loading SHARP NCNN model from: $modelsDir")
+            LogUtil.i(TAG, "Loading SHARP NCNN model from: $modelsDir")
             nativeHandle = nativeInitFromPath(
                 paramPath,
                 binPath,
@@ -272,10 +272,10 @@ class NcnnSharp(private val context: Context) {
             if (!isInitialized) {
                 throw RuntimeException("Failed to load SHARP NCNN model")
             }
-            Log.i(TAG, "NCNN SHARP initialized successfully")
+            LogUtil.i(TAG, "NCNN SHARP initialized successfully")
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "NCNN init failed: ${e.message}", e)
+            LogUtil.e(TAG, "NCNN init failed: ${e.message}", e)
             throw e
         }
     }
@@ -297,13 +297,13 @@ class NcnnSharp(private val context: Context) {
      */
     private fun generateGaussiansNative(bitmap: Bitmap): GaussianResult {
         val scaledBitmap = if (bitmap.width != INPUT_SIZE || bitmap.height != INPUT_SIZE) {
-            Log.d(TAG, "Scaling bitmap from ${bitmap.width}x${bitmap.height} to ${INPUT_SIZE}x${INPUT_SIZE}")
+            LogUtil.d(TAG, "Scaling bitmap from ${bitmap.width}x${bitmap.height} to ${INPUT_SIZE}x${INPUT_SIZE}")
             Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
         } else {
             bitmap
         }
 
-        Log.d(TAG, "Running NCNN inference (component mode: $useComponentMode)...")
+        LogUtil.d(TAG, "Running NCNN inference (component mode: $useComponentMode)...")
         val rawParams = if (useComponentMode) {
             nativeInferComponents(componentHandle, scaledBitmap)
         } else {
@@ -315,7 +315,7 @@ class NcnnSharp(private val context: Context) {
         }
 
         val gaussianCount = rawParams.size / PARAMS_PER_GAUSSIAN
-        Log.d(TAG, "NCNN inference generated $gaussianCount Gaussians")
+        LogUtil.d(TAG, "NCNN inference generated $gaussianCount Gaussians")
 
         // Calculate bounding box from positions
         var minX = Float.MAX_VALUE
@@ -342,7 +342,7 @@ class NcnnSharp(private val context: Context) {
         val roomHeight = maxY - minY
         val roomDepth = maxZ - minZ
 
-        Log.d(TAG, "Room bounds: ${roomWidth}x${roomHeight}x${roomDepth} meters")
+        LogUtil.d(TAG, "Room bounds: ${roomWidth}x${roomHeight}x${roomDepth} meters")
 
         return GaussianResult(
             params = rawParams,

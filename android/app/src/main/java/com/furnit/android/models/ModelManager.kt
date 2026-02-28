@@ -1,7 +1,7 @@
 package com.furnit.android.models
 
 import android.content.Context
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import java.io.File
 
 class ModelManager(private val context: Context) {
@@ -44,12 +44,12 @@ class ModelManager(private val context: Context) {
 
     private fun loadRoomsFromDir(roomsDir: File, userRooms: MutableList<Model>) {
         if (!roomsDir.exists()) {
-            Log.d(TAG, "Directory not found: ${roomsDir.name}")
+            LogUtil.d(TAG, "Directory not found: ${roomsDir.name}")
             return
         }
 
         val roomFolders = roomsDir.listFiles { file -> file.isDirectory } ?: return
-        Log.d(TAG, "Found ${roomFolders.size} rooms in ${roomsDir.name}")
+        LogUtil.d(TAG, "Found ${roomFolders.size} rooms in ${roomsDir.name}")
 
         for (folder in roomFolders) {
             val frontWall = File(folder, "front_wall.png")
@@ -102,7 +102,7 @@ class ModelManager(private val context: Context) {
                                 photoWideAngle = raw == "true"
                             }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to read metadata for ${folder.name}", e)
+                        LogUtil.w(TAG, "Failed to read metadata for ${folder.name}", e)
                     }
                 }
 
@@ -137,7 +137,7 @@ class ModelManager(private val context: Context) {
                     photoWideAngle = photoWideAngle
                 )
                 userRooms.add(model)
-                Log.d(TAG, "Loaded room: ${model.name} at ${model.assetPath} (created: $createdAt, dims: ${roomWidth}x${roomHeight}x${roomDepth}, photoOrientation: $photoOrientation)")
+                LogUtil.d(TAG, "Loaded room: ${model.name} at ${model.assetPath} (created: $createdAt, dims: ${roomWidth}x${roomHeight}x${roomDepth}, photoOrientation: $photoOrientation)")
             }
         }
     }
@@ -159,10 +159,10 @@ class ModelManager(private val context: Context) {
         return try {
             folder?.deleteRecursively()
             models.remove(model)
-            Log.d(TAG, "Deleted room: $id")
+            LogUtil.d(TAG, "Deleted room: $id")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete room: $id", e)
+            LogUtil.e(TAG, "Failed to delete room: $id", e)
             false
         }
     }

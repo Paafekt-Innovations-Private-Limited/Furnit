@@ -8,7 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.furnit.android.utils.LogUtil
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -63,7 +63,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
         val imageUriString = intent.getStringExtra(EXTRA_IMAGE_URI)
         if (imageUriString == null) {
-            Log.e("RoomBoundary", "No image URI provided")
+            LogUtil.e("RoomBoundary", "No image URI provided")
             finish()
             return
         }
@@ -75,7 +75,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
             "square" -> PhotoOrientation.SQUARE
             else -> PhotoOrientation.PORTRAIT
         }
-        Log.d("RoomBoundary", "Photo orientation: ${photoOrientation.value}")
+        LogUtil.d("RoomBoundary", "Photo orientation: ${photoOrientation.value}")
 
         // Lock screen orientation to match photo orientation (like iOS)
         requestedOrientation = if (isLandscape) {
@@ -108,9 +108,9 @@ class RoomBoundaryActivity : AppCompatActivity() {
             val inputStream: InputStream? = contentResolver.openInputStream(uri)
             imageBitmap = BitmapFactory.decodeStream(inputStream)
             inputStream?.close()
-            Log.d("RoomBoundary", "Image loaded: ${imageBitmap?.width}x${imageBitmap?.height}")
+            LogUtil.d("RoomBoundary", "Image loaded: ${imageBitmap?.width}x${imageBitmap?.height}")
         } catch (e: Exception) {
-            Log.e("RoomBoundary", "Failed to load image", e)
+            LogUtil.e("RoomBoundary", "Failed to load image", e)
         }
     }
 
@@ -190,7 +190,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
         // Back button
         val backBtn = TextView(this).apply {
-            text = "< Back"
+            text = getString(R.string.boundary_back)
             textSize = 14f
             setTextColor(Color.parseColor("#007AFF"))
             setPadding(0, 0, 24, 0)
@@ -204,7 +204,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
         // Reset button
         val resetBtn = Button(this).apply {
-            text = "Reset"
+            text = getString(R.string.common_reset)
             textSize = 12f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#555555"))
@@ -223,7 +223,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
         // Done button
         val doneBtn = Button(this).apply {
-            text = "Done"
+            text = getString(R.string.common_done)
             textSize = 12f
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#4CAF50"))
@@ -247,7 +247,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
 
             val backBtn = TextView(this@RoomBoundaryActivity).apply {
-                text = "< Back"
+                text = getString(R.string.boundary_back)
                 textSize = 16f
                 setTextColor(Color.parseColor("#007AFF"))
                 setOnClickListener { finish() }
@@ -255,7 +255,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
             addView(backBtn)
 
             val title = TextView(this@RoomBoundaryActivity).apply {
-                text = "Adjust Boundaries"
+                text = getString(R.string.boundary_adjust)
                 textSize = 18f
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
@@ -347,7 +347,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
                 // Buttons
                 val resetBtn = Button(this@RoomBoundaryActivity).apply {
-                    text = "Reset"
+                    text = getString(R.string.common_reset)
                     textSize = 12f
                     setTextColor(Color.WHITE)
                     setBackgroundColor(Color.parseColor("#555555"))
@@ -365,7 +365,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
                 ).apply { setMargins(8, 0, 8, 0) })
 
                 val doneBtn = Button(this@RoomBoundaryActivity).apply {
-                    text = "Done"
+                    text = getString(R.string.common_done)
                     textSize = 12f
                     setTextColor(Color.WHITE)
                     setBackgroundColor(Color.parseColor("#4CAF50"))
@@ -385,7 +385,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
 
             // Instruction hint
             val instructionText = TextView(this@RoomBoundaryActivity).apply {
-                text = "Drag handles to adjust boundaries"
+                text = getString(R.string.boundary_drag_handles)
                 textSize = 11f
                 setTextColor(Color.GRAY)
                 gravity = Gravity.CENTER
@@ -428,14 +428,14 @@ class RoomBoundaryActivity : AppCompatActivity() {
     }
 
     private fun onDonePressed() {
-        Log.d("RoomBoundary", "Done pressed with boundaries:")
-        Log.d("RoomBoundary", "  Floor: ${structure.floorY}, Ceiling: ${structure.ceilingY}")
-        Log.d("RoomBoundary", "  Left: ${structure.leftX}, Right: ${structure.rightX}")
-        Log.d("RoomBoundary", "  VP: (${structure.vanishingX}, ${structure.vanishingY})")
+        LogUtil.d("RoomBoundary", "Done pressed with boundaries:")
+        LogUtil.d("RoomBoundary", "  Floor: ${structure.floorY}, Ceiling: ${structure.ceilingY}")
+        LogUtil.d("RoomBoundary", "  Left: ${structure.leftX}, Right: ${structure.rightX}")
+        LogUtil.d("RoomBoundary", "  VP: (${structure.vanishingX}, ${structure.vanishingY})")
 
         val bitmap = imageBitmap
         if (bitmap == null) {
-            Toast.makeText(this, "No image available", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.boundary_no_image), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -475,7 +475,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
                             }
                             finish()
                         } else {
-                            Toast.makeText(this@RoomBoundaryActivity, "Failed to create room", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@RoomBoundaryActivity, getString(R.string.boundary_failed_create), Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -521,7 +521,7 @@ class RoomBoundaryActivity : AppCompatActivity() {
             container.addView(progressBar)
 
             progressText = TextView(this@RoomBoundaryActivity).apply {
-                text = "Processing..."
+                text = getString(R.string.boundary_processing)
                 textSize = 16f
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Paafekt Beta</string>
+    <string name="app_name">Paafekt</string>
     <string name="app_tagline">Explorador de cuartos 3D</string>
     <string name="app_version">Versión</string>
     <string name="app_developer">Equipo Furnit</string>
@@ -36,7 +36,7 @@
     <string name="home_no_models">No se encontraron modelos 3D</string>
     <string name="home_no_models_description">¡Crea tu primer cuarto a partir de una foto!</string>
     <string name="home_create_room">Crear cuarto desde foto</string>
-    <string name="home_rooms_remaining">%d de %d cuartos disponibles</string>
+    <string name="home_rooms_remaining">%1$d de %2$d cuartos disponibles</string>
     <string name="home_delete_hint">Elimina cuartos viejos para crear nuevos</string>
     <string name="home_swipe_hint">Desliza a la izquierda para eliminar</string>
     <string name="home_room_model">Modelo de cuarto 3D</string>
@@ -127,14 +127,14 @@
     <string name="faq_how_to_create_answer">Toca el ícono de foto en la esquina superior izquierda de la pantalla de inicio, luego toma o selecciona una foto de tu cuarto. Verás dos opciones para elegir cómo crear tu cuarto 3D.</string>
     <string name="faq_how_to_take_photo">¿Cómo tomo una foto para crear un cuarto?</string>
     <string name="faq_how_to_take_photo_answer">Toca el ícono de cámara en la pantalla de inicio para tomar una foto directamente. Puedes elegir entre lente Estándar (1x) o Gran Angular (0.5x ultra ancho). Mantén tu dispositivo firme y toca el botón de captura. La foto se usará para crear tu cuarto 3D.</string>
-    <string name="faq_two_methods">What are the two room creation options?</string>
-    <string name="faq_two_methods_answer">When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.</string>
-    <string name="faq_what_is_airoom">What is AI-Powered 3D Room?</string>
-    <string name="faq_what_is_airoom_answer">This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!</string>
-    <string name="faq_what_is_manual_room">What is Manual Setup?</string>
-    <string name="faq_what_is_manual_room_answer">With Manual Setup, you draw the outline of your room\'s walls on the photo. This gives you more control over exactly how the 3D room looks. It\'s great when you want to fine-tune the room shape yourself.</string>
-    <string name="faq_which_method_better">Which method should I choose?</string>
-    <string name="faq_which_method_better_answer">Try AI-Powered first - it\'s faster and works great for most rooms. If the result doesn\'t look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!</string>
+    <string name="faq_two_methods">¿Cuáles son las dos opciones para crear cuarto?</string>
+    <string name="faq_two_methods_answer">Al elegir una foto puedes escoger: 1) Cuarto 3D con IA: crea automáticamente un cuarto 3D realista con inteligencia artificial, o 2) Configuración manual: tú dibujas los límites del cuarto para tener más control.</string>
+    <string name="faq_what_is_ai_room">¿Qué es el cuarto 3D con IA?</string>
+    <string name="faq_what_is_ai_room_answer">Esta opción usa tecnología inteligente para convertir tu foto en un cuarto 3D por el que puedes caminar. Solo elige una foto y la app hace el resto; no hace falta dibujar ni ajustar. ¡Funciona como magia!</string>
+    <string name="faq_what_is_manual_room">¿Qué es la configuración manual?</string>
+    <string name="faq_what_is_manual_room_answer">En la configuración manual dibujas el contorno de las paredes de tu cuarto en la foto. Así tienes más control sobre el resultado 3D. Ideal cuando quieres afinar tú mismo la forma del cuarto.</string>
+    <string name="faq_which_method_better">¿Qué método debería elegir?</string>
+    <string name="faq_which_method_better_answer">Prueba primero con IA: es más rápido y funciona muy bien en la mayoría de cuartos. Si el resultado no te convence, usa la configuración manual para dibujar las paredes donde quieras. ¡Siempre puedes probar ambos!</string>
     <string name="faq_best_photos">¿Qué tipo de fotos funcionan mejor?</string>
     <string name="faq_best_photos_answer">Para mejores resultados, toma fotos con buena iluminación y la cámara en horizontal. Intenta capturar todo el cuarto incluyendo pisos, paredes y bordes del techo. Evita fotos borrosas u oscuras.</string>
     <string name="faq_generation_failing">¿Por qué falla la generación de mi cuarto?</string>
@@ -230,4 +230,127 @@
     <string name="orientation_held_vertically">held vertically</string>
     <string name="orientation_held_horizontally">held horizontally</string>
     <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+
+    <!-- SharpRoom / PLY viewer -->
+    <string name="sharp_room_no_ply">No se proporcionó archivo PLY</string>
+    <string name="sharp_room_ply_not_found">Archivo PLY no encontrado</string>
+    <string name="sharp_room_loading">Cargando habitación 3D…</string>
+    <string name="sharp_room_screenshot_saved">Captura guardada: %s</string>
+    <string name="sharp_room_screenshot_failed">Error al capturar pantalla</string>
+    <string name="sharp_room_smartypants_failed">SmartyPants no pudo inicializarse</string>
+    <string name="sharp_room_camera_error">Error de cámara: %s</string>
+    <string name="sharp_room_cannot_save">No se puede guardar: carpeta de habitación no encontrada</string>
+    <string name="sharp_room_saved">¡Habitación \'%s\' guardada!</string>
+    <string name="sharp_room_save_failed">Error al guardar: %s</string>
+    <string name="sharp_room_share_failed">Error al compartir: %s</string>
+
+    <!-- FurnitureFit / SmartyPants -->
+    <string name="smartypants_initializing">Inicializando…</string>
+    <string name="smartypants_drag_hint">Arrastra el mueble para mover • Arrastra fuera para desplazar la habitación</string>
+    <string name="smartypants_tap_calibrate">Toca para calibrar</string>
+    <string name="smartypants_scanning">Escaneando…</string>
+    <string name="smartypants_camera_error">Error de cámara: %s</string>
+    <string name="smartypants_screenshot_failed">Error en captura: %s</string>
+    <string name="smartypants_saved_screenshots">Guardado en Capturas</string>
+    <string name="smartypants_failed_save_screenshot">Error al guardar captura</string>
+    <string name="smartypants_failed_save">Error al guardar: %s</string>
+    <string name="smartypants_enter_positive_number">Introduce un número positivo</string>
+    <string name="smartypants_room_scaled">Habitación escalada %sx</string>
+    <string name="smartypants_detected">Detectado</string>
+    <string name="smartypants_camera_ready">Cámara lista - detectando muebles…</string>
+    <string name="smartypants_scanning_for_furniture">Buscando muebles…</string>
+    <string name="smartypants_calibrate_title">Calibrar habitación</string>
+    <string name="smartypants_calibrate_message">Introduce la altura real del mueble (metros). Detectado: %sm</string>
+    <string name="smartypants_real_height_hint">Altura real (m)</string>
+
+    <!-- Content / Home -->
+    <string name="home_rooms_remaining_short">%1$d de 1000 habitaciones restantes</string>
+    <string name="home_total">Total</string>
+    <string name="home_zero_mb">0 MB</string>
+    <string name="home_no_rooms_yet">Aún no hay habitaciones\nToca el icono de imagen para empezar</string>
+    <string name="home_3d_room_model">Modelo de habitación 3D</string>
+    <string name="home_opening">Abriendo %s…</string>
+    <string name="home_deleted">%s eliminado</string>
+    <string name="home_failed_delete">Error al eliminar: %s</string>
+
+    <!-- Single Photo Room -->
+    <string name="photo_room_back">\u2039 Atrás</string>
+    <string name="photo_room_or">o</string>
+    <string name="photo_room_do_not_screenshots">⚠️ No uses capturas de pantalla - usa fotos reales</string>
+    <string name="photo_room_portrait_held">Vertical - sostenido en vertical</string>
+    <string name="photo_room_how_to_create_short">¿Cómo quieres crear tu habitación?</string>
+    <string name="photo_room_tap_option_short">Toca una opción abajo</string>
+    <string name="photo_room_creating_short">Creando tu habitación 3D…</string>
+    <string name="photo_room_progress_hint">Suele tardar unos 2 minutos. Estamos preparando algo bonito para ti.</string>
+    <string name="photo_room_error_camera">Error al abrir cámara: %s</string>
+    <string name="photo_room_error_load">Error: %s</string>
+
+    <!-- GLB Room -->
+    <string name="glb_room_no_file">No se proporcionó archivo GLB</string>
+    <string name="glb_room_not_found">Archivo GLB no encontrado</string>
+    <string name="glb_room_saved">¡Habitación \'%s\' guardada!</string>
+    <string name="glb_room_error">Error: %s</string>
+    <string name="glb_room_screenshot_saved">Captura guardada: %s</string>
+    <string name="glb_room_screenshot_failed">Error al capturar pantalla</string>
+
+    <!-- Sharp Inference -->
+    <string name="sharp_inference_no_image">Sin URI o ruta de imagen</string>
+    <string name="sharp_inference_loading_model">Cargando modelo SHARP…</string>
+    <string name="sharp_inference_running">Ejecutando SHARP 3D…</string>
+    <string name="sharp_inference_preparing">Preparando…</string>
+
+    <!-- Room Boundary -->
+    <string name="boundary_back">\u2039 Atrás</string>
+    <string name="boundary_done">Hecho</string>
+    <string name="boundary_reset">Restablecer</string>
+    <string name="boundary_no_image">No hay imagen disponible</string>
+    <string name="boundary_failed_create">Error al crear habitación</string>
+    <string name="boundary_processing">Procesando…</string>
+
+    <!-- Model Detail -->
+    <string name="model_detail_preview">Vista previa de habitación 3D</string>
+    <string name="model_detail_save_first">Guarda la habitación primero para usar detección AI</string>
+    <string name="model_detail_taking_screenshot">Capturando pantalla…</string>
+    <string name="model_detail_room_not_found">Archivo de habitación no encontrado</string>
+    <string name="model_detail_no_room_data">No hay datos de habitación para guardar</string>
+    <string name="model_detail_failed_save">Error al guardar habitación</string>
+    <string name="model_detail_failed_share">Error al compartir habitación</string>
+    <string name="model_detail_screenshot_failed">Error en captura</string>
+    <string name="model_detail_failed_capture">Error al capturar pantalla</string>
+    <string name="model_detail_failed_load">Error al cargar: %s</string>
+    <string name="model_detail_failed_save_screenshot_message">Error al guardar captura: %s</string>
+    <string name="model_detail_drag_camera">Arrastra para mover la cámara</string>
+
+    <!-- Room Viewer -->
+    <string name="room_viewer_no_folder">No se proporcionó carpeta de habitación</string>
+    <string name="room_viewer_folder_not_found">Carpeta de habitación no encontrada</string>
+    <string name="room_viewer_your_room">Tu habitación</string>
+    <string name="room_viewer_preview_unavailable">Vista previa no disponible</string>
+    <string name="room_viewer_created_success">¡Habitación creada con éxito!</string>
+    <string name="room_viewer_created_message">Las texturas de tu habitación se han extraído de la foto. Toca Guardar para conservarla.</string>
+    <string name="room_viewer_dimensions">Dimensiones: %s</string>
+    <string name="room_viewer_saved_toast">¡Habitación guardada!</string>
+
+    <!-- Model Viewer -->
+    <string name="model_viewer_title">Modelos</string>
+    <string name="model_viewer_view_3d">Ver 3D</string>
+    <string name="model_viewer_ar">RA</string>
+
+    <!-- Settings (developer) -->
+    <string name="settings_inference_backend">Motor de inferencia</string>
+    <string name="settings_onnx_default">ONNX (predeterminado)</string>
+    <string name="settings_onnx_description">Inferencia estándar con ONNX Runtime (FP32)</string>
+
+    <!-- Auth / Login -->
+    <string name="login_welcome">Bienvenido a Furnit</string>
+    <string name="login_sign_in_phone">Inicia sesión con tu número de teléfono</string>
+    <string name="login_send_code">Enviar código de verificación</string>
+    <string name="login_terms_agree">Al continuar, aceptas nuestros Términos de servicio y Política de privacidad</string>
+    <string name="otp_back">\u2039 Atrás</string>
+    <string name="otp_verify_phone">Verificar teléfono</string>
+    <string name="otp_enter_code">Introduce el código de 6 dígitos enviado a\n%s</string>
+    <string name="otp_resend_in_seconds">Reenviar en %ds</string>
+    <string name="otp_resend_code">Reenviar código</string>
+    <string name="otp_code_sent">¡Código enviado!</string>
+    <string name="login_continue">Continuar</string>
 </resources>
