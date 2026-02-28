@@ -19,13 +19,15 @@ object DebugLogger {
     private const val PREFS_NAME = "furnit_prefs"
 
     private var prefs: SharedPreferences? = null
+    private var appContext: Context? = null
 
     /**
      * Initialize the logger with a context.
      * Should be called early in Application or Activity lifecycle.
      */
     fun init(context: Context) {
-        prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        appContext = context.applicationContext
+        prefs = appContext!!.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 
     /**
@@ -42,52 +44,59 @@ object DebugLogger {
         log("Debug mode ${if (enabled) "enabled" else "disabled"}")
     }
 
+    /** True when we are allowed to log (debug build only; no logging in production). */
+    private val isLoggingEnabled: Boolean
+        get() {
+            val ctx = appContext ?: return false
+            return (ctx.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        }
+
     /**
-     * Log a debug message (only when debug mode is enabled)
-     * Similar to iOS logDebug() function
+     * Log a debug message (only in debug builds and when debug mode is enabled)
      */
     fun log(message: String) {
-        if (isDebugMode) {
+        if (isLoggingEnabled && isDebugMode) {
             Log.d(TAG, message)
         }
     }
 
     /**
-     * Log a debug message with a custom tag (only when debug mode is enabled)
+     * Log a debug message with a custom tag (only in debug builds and when debug mode is enabled)
      */
     fun d(tag: String, message: String) {
-        if (isDebugMode) {
+        if (isLoggingEnabled && isDebugMode) {
             Log.d(tag, message)
         }
     }
 
     /**
-     * Log an info message with a custom tag (only when debug mode is enabled)
+     * Log an info message with a custom tag (only in debug builds and when debug mode is enabled)
      */
     fun i(tag: String, message: String) {
-        if (isDebugMode) {
+        if (isLoggingEnabled && isDebugMode) {
             Log.i(tag, message)
         }
     }
 
     /**
-     * Log a warning message with a custom tag (only when debug mode is enabled)
+     * Log a warning message with a custom tag (only in debug builds and when debug mode is enabled)
      */
     fun w(tag: String, message: String) {
-        if (isDebugMode) {
+        if (isLoggingEnabled && isDebugMode) {
             Log.w(tag, message)
         }
     }
 
     /**
-     * Log an error message (always logs, regardless of debug mode)
-     * Errors are always important to capture
+     * Log an error message (only in debug builds; no logging in production)
      */
     fun e(tag: String, message: String, throwable: Throwable? = null) {
-        if (throwable != null) {
-            Log.e(tag, message, throwable)
-        } else {
-            Log.e(tag, message)
+        if (isLoggingEnabled) {
+            if (throwable != null) {
+                Log.e(tag, message, throwable)
+            } else {
+                Log.e(tag, message)
+            }
         }
     }
 

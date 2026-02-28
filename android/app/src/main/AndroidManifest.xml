@@ -57,6 +57,11 @@
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".LicensesActivity" android:exported="false" />
         <activity android:name=".HelpActivity" android:exported="false" />
+        <activity
+            android:name=".CrashReportActivity"
+            android:exported="false"
+            android:process=":crash"
+            android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar" />
 
         <!-- FileProvider for camera photos -->
         <provider
