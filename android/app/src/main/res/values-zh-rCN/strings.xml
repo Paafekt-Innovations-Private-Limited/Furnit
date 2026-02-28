@@ -129,8 +129,8 @@
     <string name="faq_how_to_take_photo_answer">点击主屏幕上的相机图标直接拍照。您可以选择标准(1x)或广角(0.5x超广角)镜头。保持设备稳定并点击拍摄按钮。照片将用于创建您的3D房间。</string>
     <string name="faq_two_methods">What are the two room creation options?</string>
     <string name="faq_two_methods_answer">When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.</string>
-    <string name="faq_what_is_airoom">What is AI-Powered 3D Room?</string>
-    <string name="faq_what_is_airoom_answer">This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!</string>
+    <string name="faq_what_is_ai_room">什么是 AI 驱动的 3D 房间？</string>
+    <string name="faq_what_is_ai_room_answer">此选项使用智能技术自动将您的照片转换为可漫步的 3D 房间。只需选择一张照片，应用会完成其余工作，无需绘制或调整。就像魔法一样！</string>
     <string name="faq_what_is_manual_room">What is Manual Setup?</string>
     <string name="faq_what_is_manual_room_answer">With Manual Setup, you draw the outline of your room\'s walls on the photo. This gives you more control over exactly how the 3D room looks. It\'s great when you want to fine-tune the room shape yourself.</string>
     <string name="faq_which_method_better">Which method should I choose?</string>

@@ -7,7 +7,11 @@ class RealityKitBoundaryManager {
     
     // Room boundary properties
     private var roomBounds: (min: SIMD3<Float>, max: SIMD3<Float>)?
-    private let boundaryPadding: Float = 0.5 // Padding from walls in meters
+    /// Padding from walls when constraining camera (allow navigating close to walls; was 0.5)
+    private let boundaryPadding: Float = 0.15
+    
+    /// Match Android RoomBoundaryManager.CAMERA_PADDING
+    private let cameraPadding: Float = 0.3
     
     // ✅ NEW: Public accessor for bounds (used by camera positioning)
     var bounds: (min: SIMD3<Float>, max: SIMD3<Float>)? {
@@ -205,78 +209,51 @@ class RealityKitBoundaryManager {
         return constrainCameraPosition(safePosition)
     }
     
-    // ✅ Get optimal camera position for viewing the room
-    // Returns a tuple with camera position and look-at target
-    // STRATEGY: Position camera at BACK-LEFT corner for every room
-    func getOptimalCameraPosition() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+    /// Depth-adaptive inset fraction (matches Android RoomBoundaryManager.backCenterInsetFraction).
+    /// Shallow rooms: smaller fraction (camera stays near back). Deep rooms: larger fraction (camera further in).
+    private func backCenterInsetFraction(depth: Float) -> Float {
+        let t = min(1.0, max(0.0, depth / 6.0))
+        return 0.18 + 0.32 * t  // 18% for tiny rooms, up to 50% for deep rooms
+    }
+    
+    /// Camera at back CENTER with depth-adaptive inset (matches Android when room opened from list / room created).
+    /// One formula works for shallow and deep rooms.
+    func getCameraAtBackCenter() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
         let debugMode = AppStateManager.shared.qualitySettings.debugMode
         
-        if debugMode {
-            logDebug("🎯🎯🎯 [BoundaryManager] === BACK-LEFT CORNER CAMERA CALCULATION ===")
-        }
-
         guard let bounds = roomBounds else {
-            if debugMode {
-                logDebug("   ⚠️ NO BOUNDS - using default position")
-            }
             let defaultPosition = SIMD3<Float>(0, 1.5, 3)
             let defaultLookAt = SIMD3<Float>(0, 1.4, 0)
             return (position: defaultPosition, lookAt: defaultLookAt)
         }
-
-        let roomSize = getRoomDimensions()
+        
         let roomCenter = getRoomCenter()
-
-        if debugMode {
-            logDebug("   📦 Room bounds:")
-            logDebug("      MIN: X=\(bounds.min.x), Y=\(bounds.min.y), Z=\(bounds.min.z)")
-            logDebug("      MAX: X=\(bounds.max.x), Y=\(bounds.max.y), Z=\(bounds.max.z)")
-            logDebug("   📏 Room size: \(roomSize.x)m x \(roomSize.y)m x \(roomSize.z)m")
-            logDebug("   🎯 Room center: X=\(roomCenter.x), Y=\(roomCenter.y), Z=\(roomCenter.z)")
-            logDebug("   🧱 Boundary padding: \(boundaryPadding)m")
-        }
-
-        // Camera positioning strategy: INSIDE the room near back wall corner, looking toward front wall
-        // Position camera INSIDE room at back wall corner, looking at front wall
-        // This gives the feeling of standing in the back corner of the home
-
-        let cameraHeight = roomCenter.y + 0.4  // Raise camera higher - eye level above center
+        let depth = bounds.max.z - bounds.min.z  // backWallZ - frontWallZ
+        let fraction = backCenterInsetFraction(depth: depth)
+        let insetFromBack = max(depth * fraction, cameraPadding)
         
-        // Position camera near the back wall corner (back-left corner)
-        let wallPadding: Float = 0.3  // 30cm from walls for realistic positioning
-        let camX = bounds.min.x + wallPadding  // Near left wall
-        let camZ = bounds.max.z - wallPadding  // Near back wall
+        let camX = roomCenter.x
+        let camY = roomCenter.y + 0.4
+        let camZ = bounds.max.z - insetFromBack  // back wall, pushed into room
+        
+        let targetX = roomCenter.x
+        let targetY = roomCenter.y
+        let targetZ = bounds.min.z  // front wall (where photo is)
         
         if debugMode {
-            logDebug("   📐 BACK-CORNER positioning (inside room at back wall):")
-            logDebug("   📐 Camera X: \(bounds.min.x) + \(wallPadding) = \(camX) (NEAR LEFT WALL)")
-            logDebug("   📐 Camera Y: \(roomCenter.y) (CENTER HEIGHT)")
-            logDebug("   📐 Camera Z: \(bounds.max.z) - \(wallPadding) = \(camZ) (NEAR BACK WALL)")
+            logDebug("🎯 [BoundaryManager] getCameraAtBackCenter depth=\(depth) fraction=\(fraction) inset=\(insetFromBack) pos=(\(camX),\(camY),\(camZ)) lookAt=(\(targetX),\(targetY),\(targetZ))")
         }
-
-        let cameraPosition = SIMD3<Float>(camX, cameraHeight, camZ)
-
-        // Look-at point: Front wall, but slightly toward the center for better view
-        let lookX = roomCenter.x  // Center X for balanced view
-        let lookY = roomCenter.y  // Center height
-        let lookZ = bounds.min.z  // FRONT wall (MIN Z) where photo is
-        let lookAtPosition = SIMD3<Float>(lookX, lookY, lookZ)
-
-        if debugMode {
-            logDebug("   📐 Looking at FRONT/PHOTO wall:")
-            logDebug("   📐 LookAt X: \(roomCenter.x) (CENTER)")
-            logDebug("   📐 LookAt Y: \(roomCenter.y) (CENTER HEIGHT)")
-            logDebug("   📐 LookAt Z: \(bounds.min.z) = \(lookZ) (FRONT/PHOTO wall)")
-
-            logDebug("   📷 FINAL CAMERA POSITION:")
-            logDebug("      X=\(cameraPosition.x), Y=\(cameraPosition.y), Z=\(cameraPosition.z)")
-            logDebug("   👁️ LOOK-AT POSITION:")
-            logDebug("      X=\(lookAtPosition.x), Y=\(lookAtPosition.y), Z=\(lookAtPosition.z)")
-            logDebug("   ✅ Strategy: BACK-LEFT CORNER (against walls) → looking toward front center")
-            logDebug("🎯🎯🎯 [BoundaryManager] === END CALCULATION ===")
-        }
-
-        return (position: cameraPosition, lookAt: lookAtPosition)
+        
+        return (
+            position: SIMD3<Float>(camX, camY, camZ),
+            lookAt: SIMD3<Float>(targetX, targetY, targetZ)
+        )
+    }
+    
+    // ✅ Get optimal camera position for viewing the room (delegates to Android-matching back-center formula)
+    // Used when room is opened from list or when room is created.
+    func getOptimalCameraPosition() -> (position: SIMD3<Float>, lookAt: SIMD3<Float>) {
+        return getCameraAtBackCenter()
     }
     
     // Reset boundary calculations

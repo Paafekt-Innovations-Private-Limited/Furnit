@@ -129,8 +129,8 @@
     <string name="faq_how_to_take_photo_answer">నేరుగా ఫోటో తీయడానికి హోమ్ స్క్రీన్‌లో కెమెరా ఐకాన్ ట్యాప్ చేయండి. స్టాండర్డ్ (1x) లేదా వైడ్ యాంగిల్ (0.5x అల్ట్రా-వైడ్) లెన్స్ మీరు ఎంచుకోవచ్చు. మీ పరికరాన్ని స్థిరంగా పట్టుకొని క్యాప్చర్ బటన్ ట్యాప్ చేయండి. ఫోటో మీ 3D గది సృష్టించడానికి ఉపయోగించబడుతుంది.</string>
     <string name="faq_two_methods">What are the two room creation options?</string>
     <string name="faq_two_methods_answer">When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.</string>
-    <string name="faq_what_is_airoom">What is AI-Powered 3D Room?</string>
-    <string name="faq_what_is_airoom_answer">This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!</string>
+    <string name="faq_what_is_ai_room">AI నడిచే 3D గది అంటే ఏమిటి?</string>
+    <string name="faq_what_is_ai_room_answer">ఈ ఎంపిక మీ ఫోటోను మీరు నడవగల 3D గదిగా స్వయంచాలకంగా మార్చడానికి స్మార్ట్ టెక్నాలజీని ఉపయోగిస్తుంది. ఒక ఫోటో ఎంచుకోండి, యాప్ మిగతావాటిని చేస్తుంది - గీయడం లేదా సర్దుబాటు అవసరం లేదు. మంత్రం లాగా పనిచేస్తుంది!</string>
     <string name="faq_what_is_manual_room">What is Manual Setup?</string>
     <string name="faq_what_is_manual_room_answer">With Manual Setup, you draw the outline of your room\'s walls on the photo. This gives you more control over exactly how the 3D room looks. It\'s great when you want to fine-tune the room shape yourself.</string>
     <string name="faq_which_method_better">Which method should I choose?</string>

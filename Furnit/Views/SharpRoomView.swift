@@ -35,32 +35,34 @@ struct RoomBoundaryManager {
         RoomBounds(minX: -2, maxX: 2, minY: -1.5, maxY: 1.5, minZ: -5, maxZ: -1)
     }
 
-    /// Calculate camera position just INSIDE the room, near the front wall,
-    /// looking towards the room center.
-    ///
-    /// insideFactor:
-    ///   - 0.0  => exactly at front wall plane
-    ///   - 0.1  => 10% of room depth inside from the front wall
-    ///   - 0.5  => at room center
-    func getCameraAtBackWall(fovDegrees: Float = 60) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
-        // Delegate to SharpRoomCameraUtils for camera position calculation
-        let result = SharpRoomCameraUtils.calculateCameraPosition(
-            frontWallZ: frontWallZ,
-            backWallZ: backWallZ,
-            centerX: centerX,
-            centerY: centerY,
-            centerZ: centerZ,
-            insideFactor: 0.15  // 15% into the room from the front wall
-        )
-
-        logDebug("📷 [BoundaryManager] frontWallZ=\(frontWallZ), backWallZ=\(backWallZ), depth=\(depth)")
-        logDebug("📷 [BoundaryManager] INSIDE room: eye=(\(result.eye.x), \(result.eye.y), \(result.eye.z)) target=(\(result.target.x), \(result.target.y), \(result.target.z))")
-
-        return result
+    /// Match Android RoomBoundaryManager: depth-adaptive inset (18% for tiny rooms, up to 50% for deep).
+    private static func backCenterInsetFraction(depth: Float) -> Float {
+        let t = min(1.0, max(0.0, depth / 6.0))
+        return 0.18 + 0.32 * t
     }
 
+    /// Camera at back center with depth-adaptive inset (matches Android when room opened from list / room created).
+    private let cameraPadding: Float = 0.3
 
+    /// Calculate camera position using Android formula: back center, depth-adaptive inset, look at front wall.
+    func getCameraAtBackCenter() -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
+        let fraction = Self.backCenterInsetFraction(depth: depth)
+        let insetFromBack = max(depth * fraction, cameraPadding)
+        // PLY: back wall = minZ, so camera Z = backWallZ + insetFromBack (inside room from back)
+        let camZ = backWallZ + insetFromBack
+        let camY = centerY + 0.4
+        let eye = SIMD3<Float>(centerX, camY, camZ)
+        let target = SIMD3<Float>(centerX, centerY, frontWallZ)
+        logDebug("📷 [BoundaryManager] getCameraAtBackCenter depth=\(depth) fraction=\(fraction) inset=\(insetFromBack) eye=(\(eye.x),\(eye.y),\(eye.z)) target=(\(target.x),\(target.y),\(target.z))")
+        return (eye: eye, target: target)
+    }
+
+    /// Calculate camera position just INSIDE the room (matches Android formula for list / created room).
+    func getCameraAtBackWall(fovDegrees: Float = 60) -> (eye: SIMD3<Float>, target: SIMD3<Float>) {
+        return getCameraAtBackCenter()
+    }
 }
+
 
 // MARK: - Orbit Gesture View (like antimatter15/splat)
 
@@ -589,12 +591,12 @@ struct SharpRoomView: View {
             }
 
             // Landscape layout: normal bottom bar (device actually in landscape mode)
+            // Use ZStack so only the bar receives touches; rest pass through to OrbitGestureView
             if photoOrientation == .landscape {
-                VStack {
-                    Spacer()
+                ZStack(alignment: .bottom) {
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
-
-                    // Horizontal bottom bar
                     HStack(spacing: 20) {
                         // Brain button (left)
                         Button(action: {
@@ -1677,9 +1679,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                     let newX = camera.position.x + dx * moveSpeed;
                     let newZ = camera.position.z + dy * moveSpeed;
 
-                    // Clamp to room bounds if available
+                    // Clamp to room bounds if available (minimal margin so user can reach wall)
                     if (roomBoundsForClamping) {
-                        const margin = 0.2;  // Smaller margin to approach walls more closely
+                        const margin = 0.05;
                         newX = Math.max(roomBoundsForClamping.minX + margin,
                                Math.min(roomBoundsForClamping.maxX - margin, newX));
                         newZ = Math.max(roomBoundsForClamping.minZ + margin,
@@ -1724,25 +1726,19 @@ struct AntimatterSplatView: UIViewRepresentable {
                     needsRender = true;  // Request render after orbit
                 };
 
-                // Zoom handler (for Swift pinch gesture)
+                // Zoom handler (for Swift pinch gesture) — incremental scale from Swift
                 window.zoomCamera = function(scale) {
-                    // Stop auto orbit when user pinches
                     autoOrbitEnabled = false;
-
-                    // Amplify zoom speed (2.5x) - matching RealityKit/SceneKit feel
+                    if (typeof scale !== 'number' || scale <= 0 || !isFinite(scale)) return;
                     const amplifiedScale = 1 + (scale - 1) * 2.5;
-
                     const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
                     offset.multiplyScalar(1 / amplifiedScale);
-
-                    // Clamp distance
                     const dist = offset.length();
-                    if (dist < 0.5) offset.setLength(0.5);
+                    if (dist < 0.01) offset.setLength(0.01);
                     if (dist > 50) offset.setLength(50);
-
                     camera.position.copy(controls.target).add(offset);
                     controls.update();
-                    needsRender = true;  // Request render after zoom
+                    needsRender = true;
                 };
 
                 // Animation loop with battery optimization

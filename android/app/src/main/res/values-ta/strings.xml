@@ -129,8 +129,8 @@
     <string name="faq_how_to_take_photo_answer">நேரடியாக புகைப்படம் எடுக்க முகப்பு திரையில் கேமரா ஐகானைத் தட்டவும். நிலையான (1x) அல்லது அகலக்கோண (0.5x அல்ட்ரா-வைட்) லென்ஸைத் தேர்வு செய்யலாம். உங்கள் சாதனத்தை நிலையாகப் பிடித்து, படப்பிடிப்பு பொத்தானைத் தட்டவும். புகைப்படம் உங்கள் 3D அறையை உருவாக்க பயன்படுத்தப்படும்.</string>
     <string name="faq_two_methods">What are the two room creation options?</string>
     <string name="faq_two_methods_answer">When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.</string>
-    <string name="faq_what_is_airoom">What is AI-Powered 3D Room?</string>
-    <string name="faq_what_is_airoom_answer">This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!</string>
+    <string name="faq_what_is_ai_room">AI இயக்கப்பட்ட 3D அறை என்றால் என்ன?</string>
+    <string name="faq_what_is_ai_room_answer">இந்த விருப்பம் உங்கள் படத்தை நீங்கள் நடக்கக்கூடிய 3D அறையாக தானாக மாற்ற ஸ்மார்ட் தொழில்நுட்பத்தைப் பயன்படுத்துகிறது. ஒரு படத்தைத் தேர்ந்தெடுத்தால் பயன்பாடு மீதியைச் செய்யும் - வரைதல் அல்லது சரிசெய்தல் தேவையில்லை. மந்திரம் போல வேலை செய்கிறது!</string>
     <string name="faq_what_is_manual_room">What is Manual Setup?</string>
     <string name="faq_what_is_manual_room_answer">With Manual Setup, you draw the outline of your room\'s walls on the photo. This gives you more control over exactly how the 3D room looks. It\'s great when you want to fine-tune the room shape yourself.</string>
     <string name="faq_which_method_better">Which method should I choose?</string>

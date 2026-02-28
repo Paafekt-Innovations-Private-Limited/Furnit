@@ -12,6 +12,10 @@
 #   ./push_sharp_executorch_int8_models.sh [INT8_DIR] [CHUNKED_PART4_DIR]
 #
 # Destination: /sdcard/Android/data/com.furnit.android/files/models/
+#
+# If adb push says "target is not a directory":
+#   1. Install and run the Furnit app once (open it) so Android creates the path.
+#   2. Then run this script again, or: adb shell mkdir -p "/sdcard/Android/data/com.furnit.android/files/models" && adb push ...
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,7 +39,8 @@ echo "  Chunked Part 4:     $CHUNKED_DIR"
 echo "  Destination:        $DEST"
 echo ""
 
-adb shell "mkdir -p $DEST"
+# Create destination (if app was never run, parent path may not exist — run the app once then retry)
+adb shell "mkdir -p $DEST" || true
 
 FILES_TO_PUSH=()
 
