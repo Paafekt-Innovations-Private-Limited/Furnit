@@ -1354,7 +1354,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                 controls.rotateSpeed = 1.5;     // Faster rotation
                 controls.zoomSpeed = 2.0;       // Faster zoom
                 controls.screenSpacePanning = false;
-                controls.minDistance = 0.01;
+                // Portrait: allow zoom into wall (0.001); landscape 0.01 (match Android)
+                controls.minDistance = isPortrait ? 0.001 : 0.01;
                 controls.maxDistance = 100;
                 // Default target, autoFrameRoom will update using Box3
                 controls.target.set(0, 0, 0);
@@ -1396,8 +1397,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Unlimited spin around object (train-style orbit)
                 controls.minAzimuthAngle = -Infinity;
                 controls.maxAzimuthAngle =  Infinity;
-                controls.minPolarAngle = 0.01;           // just above straight up
-                controls.maxPolarAngle = Math.PI - 0.01; // just below straight down
+                // Relax polar limits so zoom-into-wall works (match Android)
+                controls.minPolarAngle = 0.001;
+                controls.maxPolarAngle = Math.PI - 0.001;
 
                 // Camera clamping disabled for train-style free orbit
                 // Re-enable if needed for room boundary constraints
@@ -1575,21 +1577,35 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 });
                             }
 
-                            // 5) Place camera outside, looking at inner center
-                            const fov = camera.fov * (Math.PI / 180);
-                            const maxDim = Math.max(roomWidth, roomHeight, roomDepth);
-                            const cameraDistance = (maxDim / 2) / Math.tan(fov / 2) * 1.5;
+                            // 5) Place camera inside room (Paafekt standard: same formulas as Android for portrait/landscape)
+                            let newCamPos, newTarget;
+                            if (isPortrait) {
+                                const P_CAM_D = 0.076, P_CAM_Y = -0.133, P_TGT_D = -0.494;
+                                newCamPos = new THREE.Vector3(
+                                    innerCenterX,
+                                    innerCenterY + P_CAM_Y * roomHeight,
+                                    innerCenterZ + P_CAM_D * roomDepth
+                                );
+                                newTarget = new THREE.Vector3(
+                                    innerCenterX,
+                                    innerCenterY + P_CAM_Y * roomHeight,
+                                    innerCenterZ + P_TGT_D * roomDepth
+                                );
+                            } else {
+                                const L_CAM_X = 0, L_CAM_Y = 0.00207, L_CAM_Z = -0.130, L_TGT_Z = -0.444;
+                                newCamPos = new THREE.Vector3(
+                                    innerCenterX + L_CAM_X * roomWidth,
+                                    innerCenterY + L_CAM_Y * roomHeight,
+                                    innerCenterZ + L_CAM_Z * roomDepth
+                                );
+                                newTarget = new THREE.Vector3(
+                                    innerCenterX + L_CAM_X * roomWidth,
+                                    innerCenterY,
+                                    innerCenterZ + L_TGT_Z * roomDepth
+                                );
+                            }
 
-                            const newCamPos = new THREE.Vector3(
-                                innerCenterX,
-                                innerCenterY,
-                                innerCenterZ + cameraDistance
-                            );
-                            const newTarget = new THREE.Vector3(innerCenterX, innerCenterY, innerCenterZ);
-
-                            console.log('Camera distance:', cameraDistance.toFixed(2));
-                            console.log('Camera pos:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2));
-                            console.log('Target:', newTarget.x.toFixed(2), newTarget.y.toFixed(2), newTarget.z.toFixed(2));
+                            console.log('Camera (Paafekt) isPortrait:', isPortrait, 'pos:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2), 'tgt:', newTarget.x.toFixed(2), newTarget.y.toFixed(2), newTarget.z.toFixed(2));
 
                             camera.position.copy(newCamPos);
                             controls.target.copy(newTarget);

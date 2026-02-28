@@ -916,15 +916,17 @@ class SharpRoomActivity : AppCompatActivity() {
         controls.dampingFactor = 0.25;   // Settle quickly so orbit does not oscillate
         controls.rotateSpeed = 0.25;     // Slow rotation for touch so room does not move too fast
         controls.screenSpacePanning = false;
-        controls.minDistance = 0.01;
+        // Portrait: allow zooming much closer (0.001) so user can zoom into wall; landscape 0.01 is enough
+        controls.minDistance = isPortrait ? 0.001 : 0.01;
         // Limit zoom-out so the room stays a reasonable size (max ~2.5× largest room dimension, cap 6–25m)
         const roomMaxDim = Math.max(fallbackRoomWidth, fallbackRoomHeight, fallbackRoomDepth);
         controls.maxDistance = Math.max(6, Math.min(25, roomMaxDim * 2.5));
         controls.target.set(0, 0, 0);
         controls.minAzimuthAngle = -Infinity;
         controls.maxAzimuthAngle = Infinity;
-        controls.minPolarAngle = 0.01;
-        controls.maxPolarAngle = Math.PI - 0.01;
+        // Slightly relax polar limits so portrait "zoom into wall" views are not clamped (was 0.01 / PI-0.01)
+        controls.minPolarAngle = 0.001;
+        controls.maxPolarAngle = Math.PI - 0.001;
 
         let initialCameraPosition = camera.position.clone();
         let initialControlsTarget = controls.target.clone();
@@ -1019,17 +1021,17 @@ class SharpRoomActivity : AppCompatActivity() {
                     try {
                         // Portrait only: center mesh at origin so benchmark formula is in room space (mesh has 90° Y rotation).
                         // Landscape: do not move mesh — it was already correct before; centering broke the view (grey).
+                        const cx = fallbackRoomCenterX, cy = fallbackRoomCenterY, cz = fallbackRoomCenterZ;
                         if (isPortrait) {
-                            const cx = fallbackRoomCenterX, cy = fallbackRoomCenterY, cz = fallbackRoomCenterZ;
                             splatMesh.position.set(cz, -cy, -cx);
                             splatMesh.updateMatrixWorld(true);
                         }
-                        // Portrait benchmark Feb 28: pos 0.114,-0.58,0 tgt -0.742,-0.58,0 dist=0.856. Landscape: posY=0.002*H posZ=-0.13*D tgtZ=-0.444*D.
+                        // Portrait benchmark Feb 28: pos 0.114,-0.58,0 tgt -0.742,-0.58,0 dist=0.856. In portrait we moved mesh to (cz,-cy,-cx) so camera/target must be in world space = mesh position + room offset.
                         const W = fallbackRoomWidth, H = fallbackRoomHeight, D = fallbackRoomDepth;
                         if (isPortrait) {
                             const P_CAM_D = 0.076, P_CAM_Y = -0.133, P_TGT_D = -0.494;
-                            camera.position.set(P_CAM_D * D, P_CAM_Y * H, 0);
-                            controls.target.set(P_TGT_D * D, P_CAM_Y * H, 0);
+                            camera.position.set(cz + P_CAM_D * D, -cy + P_CAM_Y * H, -cx);
+                            controls.target.set(cz + P_TGT_D * D, -cy + P_CAM_Y * H, -cx);
                         } else {
                             const L_CAM_X = 0, L_CAM_Y = 0.00207, L_CAM_Z = -0.130, L_TGT_Z = -0.444;
                             camera.position.set(L_CAM_X * W, L_CAM_Y * H, L_CAM_Z * D);
