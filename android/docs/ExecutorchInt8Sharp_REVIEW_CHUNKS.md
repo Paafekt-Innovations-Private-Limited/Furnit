@@ -1,3 +1,12 @@
+# ExecutorchInt8Sharp.kt – Chunked for external review (~150 lines per chunk)
+
+**Context:** Kotlin class for ExecuTorch INT8 SHARP 3D Gaussian splatting on Android. Pipeline: Part1+2 (patch encoder), Part3 (image encoder), Part4a (chunked decoder), Part4b (final decoder), then PLY write. Paste each chunk into Ultralytics (or your reviewer) and ask: "Review this chunk for performance, memory, and correctness. Suggest optimizations."
+
+---
+
+## Chunk 1 of 5 (Lines 1–150): Package, constants, LUTs, instance buffers
+
+```kotlin
 package com.furnit.android.services
 
 import android.content.Context
@@ -41,26 +50,18 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     companion object {
         private const val TAG = "ExecutorchInt8Sharp"
-        /** Use Lanczos3 for center-crop resize when true; bilinear when false. Set false if Lanczos is too slow or causes issues. */
-        @JvmField
-        var USE_LANCZOS_RESIZE: Boolean = true
-        /** When true, stretch full image to 1536x1536 (like Swift; no crop). When false, center-crop to square then resize. Set false if stretch causes jagged output on INT8. */
-        @JvmField
-        var USE_STRETCH_TO_SQUARE: Boolean = true
-        /** When true, run one Part4b forward and discard before real run (warm-up for threads/caches). Doubles Part4b time; set true only for stability testing. */
-        @JvmField
-        var WARMUP_PART4B: Boolean = false
-        // Image + merged spatial sizes (must match Python export)
+        @JvmField var USE_LANCZOS_RESIZE: Boolean = true
+        @JvmField var USE_STRETCH_TO_SQUARE: Boolean = true
+        @JvmField var WARMUP_PART4B: Boolean = false
         private const val IMAGE_SIZE = 1536
-        private const val M_1X = 96   // 1x merged size
-        private const val M_05X = 48  // 0.5x merged size
+        private const val M_1X = 96
+        private const val M_05X = 48
         private const val INPUT_SIZE = IMAGE_SIZE
         private const val PATCH_SIZE = 384
         private const val FEATURE_DIM = 1024
         private const val SPATIAL_SIZE = 24
         private const val PARAMS_PER_GAUSSIAN = 14
         private const val SH_C0 = 0.28209479177387814f
-        // Match SHARP save_ply: model outputs linear RGB; PLY stores f_dc in sRGB (convert before SH).
         private const val LINEAR_TO_SRGB_THRESHOLD = 0.0031308f
         private const val LINEAR_TO_SRGB_12_92 = 12.92f
         private val LINEAR_TO_SRGB_POW = 1.0 / 2.4
@@ -78,56 +79,29 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         private const val TOTAL_PATCHES = 35
         private const val PADDING_1X = 3
         private const val PADDING_05X = 6
-
-        private const val MODEL_FILENAME = "sharp_int8.pte"
-        private val SPLIT_FILENAMES = arrayOf(
-            "sharp_split_part1_int8.pte",
-            "sharp_split_part2_int8.pte",
-            "sharp_split_part3_int8.pte",
-            "sharp_split_part4_int8.pte"
-        )
-        /** Names of .pte files that may be packaged in assets/models/ for testing. */
-        private val ASSET_MODEL_FILENAMES = arrayOf(
-            "sharp_split_part1_int8.pte",
-            "sharp_split_part2_int8.pte",
-            "sharp_split_part3_int8.pte",
-            "sharp_split_part4a_chunk_512.pte",
-            "sharp_split_part4a_chunk_65.pte",
-            "sharp_split_part4b.pte"
-        )
+        private val SPLIT_FILENAMES = arrayOf("sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte", "sharp_split_part4_int8.pte")
+        private val ASSET_MODEL_FILENAMES = arrayOf("sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte", "sharp_split_part4a_chunk_512.pte", "sharp_split_part4a_chunk_65.pte", "sharp_split_part4b.pte")
         private const val ASSET_MODELS_SUBDIR = "models"
-
         private const val LOGIT_LUT_SIZE = 1024
-        private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
-            val p = (i.toFloat() / (LOGIT_LUT_SIZE - 1)).coerceIn(1e-4f, 1f - 1e-4f)
-            ln(p / (1f - p))
-        }
-
+        private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i -> val p = (i.toFloat() / (LOGIT_LUT_SIZE - 1)).coerceIn(1e-4f, 1f - 1e-4f); ln(p / (1f - p)) }
         private const val LN_LUT_SIZE = 2048
         private const val LN_LUT_MIN = 0.001f
         private const val LN_LUT_MAX = 5.0f
         private val LN_LUT_SCALE = (LN_LUT_SIZE - 1).toFloat() / (LN_LUT_MAX - LN_LUT_MIN)
         private val LN_LUT = FloatArray(LN_LUT_SIZE) { i -> ln(LN_LUT_MIN + (LN_LUT_MAX - LN_LUT_MIN) * i / (LN_LUT_SIZE - 1)) }
-
         private fun lnLut(x: Float): Float {
             if (x <= LN_LUT_MIN) return LN_LUT[0]
             if (x >= LN_LUT_MAX) return LN_LUT[LN_LUT_SIZE - 1]
             return LN_LUT[((x - LN_LUT_MIN) * LN_LUT_SCALE).toInt()]
         }
-
-        @Volatile
-        private var instance: ExecutorchInt8Sharp? = null
-
-        fun getInstance(context: Context) = instance ?: synchronized(this) {
-            instance ?: ExecutorchInt8Sharp(context.applicationContext).also { instance = it }
-        }
+        @Volatile private var instance: ExecutorchInt8Sharp? = null
+        fun getInstance(context: Context) = instance ?: synchronized(this) { instance ?: ExecutorchInt8Sharp(context.applicationContext).also { instance = it } }
     }
 
     private val mutex = Mutex()
     private var isInitialized = false
     private val modelsDir by lazy { context.getExternalFilesDir("models") ?: File(context.filesDir, "models") }
     private val internalModelsDir by lazy { File(context.filesDir, "models").also { it.mkdirs() } }
-
     private val plyBatch = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
     private val plyWriteByteArray = ByteArray(BYTES_PER_VERTEX * PLY_BATCH_SIZE)
     private val zeroSHBuffer = ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
@@ -137,25 +111,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     private val imageFloatBuffer = ByteBuffer.allocateDirect(3 * INPUT_SIZE * INPUT_SIZE * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val patchIntArray = IntArray(PATCH_SIZE * PATCH_SIZE)
     private val imageIntArray = IntArray(INPUT_SIZE * INPUT_SIZE)
-    /** Reusable buffers for Lanczos resize to avoid allocating 2x IMAGE_SIZE² IntArrays per center-crop. */
-    private val lanczosSrcPixels = IntArray(IMAGE_SIZE * IMAGE_SIZE)
-    private val lanczosDstPixels = IntArray(IMAGE_SIZE * IMAGE_SIZE)
 
-    data class StreamingResult(
-        val plyFile: File,
-        val classicPlyFile: File,
-        val gaussianCount: Int,
-        val roomWidth: Float,
-        val roomHeight: Float,
-        val roomDepth: Float,
-        val roomCenterX: Float,
-        val roomCenterY: Float,
-        val roomCenterZ: Float
-    )
-
+    data class StreamingResult(val plyFile: File, val classicPlyFile: File, val gaussianCount: Int, val roomWidth: Float, val roomHeight: Float, val roomDepth: Float, val roomCenterX: Float, val roomCenterY: Float, val roomCenterZ: Float)
     fun initialize(): Boolean = runBlocking { mutex.withLock { isInitialized = true; true } }
+```
 
-    /** Copy packaged .pte from assets/models/ to filesDir/models so Module.load can use them (for test APKs). */
+---
+
+## Chunk 2 of 5 (Lines 151–300): Asset copy, helpers, Lanczos resize, inferStreaming start
+
+```kotlin
     private fun ensureModelsFromAssets() {
         for (filename in ASSET_MODEL_FILENAMES) {
             val dest = File(internalModelsDir, filename)
@@ -163,9 +128,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val assetPath = "$ASSET_MODELS_SUBDIR/$filename"
             try {
                 context.assets.open(assetPath).use { input: InputStream ->
-                    FileOutputStream(dest).use { output ->
-                        input.copyTo(output)
-                    }
+                    FileOutputStream(dest).use { output -> input.copyTo(output) }
                 }
                 LogUtil.d(TAG, "Copied $filename from assets to ${dest.absolutePath}")
             } catch (e: Exception) {
@@ -174,23 +137,15 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         }
     }
 
-    /**
-     * Part4b thread count: fixed 2 so behavior matches 8 GB phone and does not OOM on any device
-     * (12 GB and others). More threads can be re-enabled later for simulator/testing.
-     */
     private fun part4bThreadCount(): Int = 2
-
     private fun findFile(filename: String): File? {
         val internal = File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0 }
         return internal ?: File(modelsDir, filename).takeIf { it.exists() && it.length() > 0 }
     }
-
-    /** Report progress 0..1 with engaging messages (aligned with Swift/Android overlay text). */
     private fun report(progress: Float, message: String, progressCallback: ((Float, String) -> Unit)?) {
         progressCallback?.invoke(progress.coerceIn(0f, 1f), message)
     }
 
-    /** Lanczos3 kernel: sinc(x)*sinc(x/3) for |x|<3, else 0. */
     private fun lanczos3(x: Double): Double {
         if (x <= -3.0 || x >= 3.0) return 0.0
         if (x == 0.0) return 1.0
@@ -198,30 +153,19 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         return (sin(px) / px) * (sin(px / 3.0) / (px / 3.0))
     }
 
-    /**
-     * Resize bitmap using Lanczos3 (6x6 kernel). Slower than bilinear; use for higher-quality resize.
-     * Output clamped to 0..255 to match bilinear range for INT8 input (per Ultralytics).
-     * Reuses instance-level buffers when dimensions <= IMAGE_SIZE to avoid large allocations per run.
-     */
     private fun resizeWithLanczos3(source: Bitmap, targetW: Int, targetH: Int): Bitmap {
         val sw = source.width
         val sh = source.height
-        val srcLen = sw * sh
-        val dstLen = targetW * targetH
-        val useReusable = srcLen <= lanczosSrcPixels.size && dstLen <= lanczosDstPixels.size
-        val srcPixels = if (useReusable) lanczosSrcPixels else IntArray(srcLen)
-        val dstPixels = if (useReusable) lanczosDstPixels else IntArray(dstLen)
+        val srcPixels = IntArray(sw * sh)
         source.getPixels(srcPixels, 0, sw, 0, 0, sw, sh)
+        val dstPixels = IntArray(targetW * targetH)
         val scaleX = sw.toDouble() / targetW
         val scaleY = sh.toDouble() / targetH
         for (oy in 0 until targetH) {
             for (ox in 0 until targetW) {
                 val sx = (ox + 0.5) * scaleX - 0.5
                 val sy = (oy + 0.5) * scaleY - 0.5
-                var r = 0.0
-                var g = 0.0
-                var b = 0.0
-                var wSum = 0.0
+                var r = 0.0; var g = 0.0; var b = 0.0; var wSum = 0.0
                 val ix0 = max(0, floor(sx).toInt() - 2)
                 val ix1 = min(sw - 1, ceil(sx).toInt() + 3)
                 val iy0 = max(0, floor(sy).toInt() - 2)
@@ -252,21 +196,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         return result
     }
 
-    /**
-     * Stretch full image to targetSize x targetSize (no crop). Like Swift; aspect distortion, continuous signal.
-     * May cause artifacts on INT8; set USE_STRETCH_TO_SQUARE=false to fall back to center-crop.
-     */
     private fun getStretchToSquareBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
         val result = Bitmap.createScaledBitmap(bitmap, targetSize, targetSize, true)
         LogUtil.d(TAG, "[STRETCH] input=${bitmap.width}x${bitmap.height} -> ${targetSize}x${targetSize} (full image, no crop)")
         return result
     }
 
-    /**
-     * Center-crop to square (side = min(w,h)) then resize to targetSize. Matches ViT training distribution;
-     * avoids letterbox/gray padding which causes jagged output (Ultralytics).
-     * When USE_LANCZOS_RESIZE is true, resize uses Lanczos3; else bilinear. Set USE_LANCZOS_RESIZE=false if slow or problematic.
-     */
     private fun getCenterCropBitmap(bitmap: Bitmap, targetSize: Int): Bitmap {
         val side = min(bitmap.width, bitmap.height).coerceAtLeast(1)
         val left = (bitmap.width - side) / 2
@@ -278,7 +213,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             Bitmap.createScaledBitmap(cropped, targetSize, targetSize, true)
         }
         if (cropped != bitmap) cropped.recycle()
-        LogUtil.d(TAG, "[CENTER_CROP] input=${bitmap.width}x${bitmap.height} -> crop ${side}x${side} -> ${targetSize}x${targetSize} (${if (USE_LANCZOS_RESIZE) "Lanczos3" else "bilinear"})")
+        LogUtil.d(TAG, "[CENTER_CROP] input=${bitmap.width}x${bitmap.height} -> crop ${side}x${side} -> ${targetSize}x${targetSize}")
         return result
     }
 
@@ -286,34 +221,20 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         mutex.withLock {
             if (!isInitialized) return@withContext null
             ensureModelsFromAssets()
-
-            // Require all 6 .pte files (internal or external); avoid NPE and show clear error if missing
-            val required = listOf(
-                "sharp_split_part1_int8.pte",
-                "sharp_split_part2_int8.pte",
-                "sharp_split_part3_int8.pte",
-                "sharp_split_part4a_chunk_512.pte",
-                "sharp_split_part4a_chunk_65.pte",
-                "sharp_split_part4b.pte"
-            )
+            val required = listOf("sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte", "sharp_split_part4a_chunk_512.pte", "sharp_split_part4a_chunk_65.pte", "sharp_split_part4b.pte")
             val missing = required.filter { findFile(it) == null }
             if (missing.isNotEmpty()) {
-                LogUtil.e(TAG, "ExecuTorch INT8 models missing: $missing. Push to ${modelsDir.absolutePath} and retry.")
+                LogUtil.e(TAG, "ExecuTorch INT8 models missing: $missing.")
                 return@withContext null
             }
-
             val originalWidth = bitmap.width
             val originalHeight = bitmap.height
             val isPortrait = originalHeight > originalWidth
             val pipelineStartMs = System.currentTimeMillis()
-            LogUtil.d(TAG, "[ASPECT] input=${originalWidth}x${originalHeight} | isPortrait=$isPortrait | ${if (USE_STRETCH_TO_SQUARE) "stretch-to-square" else "center-crop"} + raw coords (no aspect scale in PLY)")
-
             report(0f, "Preparing…", progressCallback)
-            // 1. Stretch full image to 1536 (like Swift) or center-crop then resize; raw PLY coords
             val scaledBmp = if (USE_STRETCH_TO_SQUARE) getStretchToSquareBitmap(bitmap, IMAGE_SIZE) else getCenterCropBitmap(bitmap, IMAGE_SIZE)
             val halfSize = IMAGE_SIZE / 2
             val halfBitmap = Bitmap.createScaledBitmap(scaledBmp, halfSize, halfSize, true)
-
             val mSize1x = M_1X
             val mSize05x = M_05X
             val latent0 = FloatArray(FEATURE_DIM * mSize1x * mSize1x)
@@ -322,23 +243,23 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val x1Feat = FloatArray(FEATURE_DIM * mSize05x * mSize05x)
             val x2Feat = FloatArray(FEATURE_DIM * SPATIAL_SIZE * SPATIAL_SIZE)
             val tempSpatial = FloatArray(FEATURE_DIM * SPATIAL_SIZE * SPATIAL_SIZE)
-
-            val rowOffL0 = intArrayOf(0)
-            val rowOffL1 = intArrayOf(0)
-            val rowOffX0 = intArrayOf(0)
-            val rowOff05x = intArrayOf(0)
+            val rowOffL0 = intArrayOf(0); val rowOffL1 = intArrayOf(0); val rowOffX0 = intArrayOf(0); val rowOff05x = intArrayOf(0)
             val colOffs1x = buildColumnOffsets(GRID_1X, PADDING_1X)
             val colOffs05x = buildColumnOffsets(GRID_05X, PADDING_05X)
+```
 
+---
+
+## Chunk 3 of 5 (Lines 301–450): Part1+2 patches, Part3, Part4a, Part4b load and forward
+
+```kotlin
             report(0.02f, "Warming up…", progressCallback)
             val tPart12Load = System.currentTimeMillis()
-            // 2. Encoder Phase (Part 1 & 2)
             LogUtil.d(TAG, "Loading INT8 Part1+Part2...")
             val mod1 = Module.load(findFile("sharp_split_part1_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
             val mod2 = Module.load(findFile("sharp_split_part2_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
             LogUtil.d(TAG, "Part1+Part2 loaded in ${System.currentTimeMillis() - tPart12Load}ms. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
             val t1xStart = System.currentTimeMillis()
-
             val stride = (IMAGE_SIZE - PATCH_SIZE) / 4
             val total1x = GRID_1X * GRID_1X
             var patchIdx = 0
@@ -346,20 +267,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 val patch = Bitmap.createBitmap(scaledBmp, j * stride, i * stride, PATCH_SIZE, PATCH_SIZE)
                 val out1 = mod1.forward(EValue.from(Tensor.fromBlob(preprocess(patch, true), longArrayOf(1, 3, 384, 384))))
                 val tokens = out1[0].toTensor().dataAsFloatArray
-
                 reshapeToSpatial(out1[1].toTensor().dataAsFloatArray, tempSpatial)
                 mergeCrop(latent0, mSize1x, tempSpatial, j, i, GRID_1X, PADDING_1X, rowOffL0, colOffs1x)
-
                 reshapeToSpatial(tokens, tempSpatial)
                 mergeCrop(latent1, mSize1x, tempSpatial, j, i, GRID_1X, PADDING_1X, rowOffL1, colOffs1x)
-
                 val feat = mod2.forward(EValue.from(Tensor.fromBlob(tokens, longArrayOf(1, 577, 1024))))[0].toTensor().dataAsFloatArray
                 mergeCrop(x0Feat, mSize1x, feat, j, i, GRID_1X, PADDING_1X, rowOffX0, colOffs1x)
                 patch.recycle()
                 patchIdx++
                 report(0.05f + 0.30f * (patchIdx.toFloat() / total1x), "Building your room… step $patchIdx of $total1x", progressCallback)
             }
-
             LogUtil.d(TAG, "1x patches done in ${System.currentTimeMillis() - t1xStart}ms. Starting 0.5x patches (${GRID_05X}x${GRID_05X})...")
             val t05xStart = System.currentTimeMillis()
             val total05x = GRID_05X * GRID_05X
@@ -403,7 +320,6 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
             report(0.44f, "Understanding the full picture…", progressCallback)
             val tPart3Start = System.currentTimeMillis()
-            // 3. Image Encoder (Part 3)
             LogUtil.d(TAG, "Loading Part3 (image encoder)...")
             val mod3 = Module.load(findFile("sharp_split_part3_int8.pte")!!.absolutePath)
             imageFloatBuffer.rewind()
@@ -415,7 +331,6 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
             report(0.48f, "Adding depth and shape…", progressCallback)
             val tPart4aStart = System.currentTimeMillis()
-            // 4. Chunked Part 4a (tokens 512 + 65); sliceArray for buffer safety with Tensor.fromBlob
             LogUtil.d(TAG, "Starting chunked Part4 decoder...")
             var out512 = runDecoderChunk("sharp_split_part4a_chunk_512.pte", imgTokens.sliceArray(0 until 512 * 1024), 512)
             report(0.49f, "Adding depth and shape…", progressCallback)
@@ -428,13 +343,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val tPart4bStart = System.currentTimeMillis()
 
             report(0.50f, "Adding the finishing touches…", progressCallback)
-            // Use 2 threads on low-RAM devices to avoid OOM; otherwise use more threads for ~2 min total (Part4b was ~4 min when forced to 2 on capable devices)
             val part4bThreads = part4bThreadCount()
-            val mod4b = Module.load(
-                findFile("sharp_split_part4b.pte")!!.absolutePath,
-                Module.LOAD_MODE_MMAP,
-                part4bThreads
-            )
+            val mod4b = Module.load(findFile("sharp_split_part4b.pte")!!.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
             LogUtil.d(TAG, "Part4b forward: 7 inputs tokens, img, latent0, latent1, x0Feat, x1Feat, x2Feat")
             val part4bInputs = listOf(
                 EValue.from(Tensor.fromBlob(combinedTokens, longArrayOf(1, 577, 1024))),
@@ -477,12 +387,17 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             mod4b.destroy(); scaledBmp.recycle()
             report(1f, "Your room is ready!", progressCallback)
             val totalMs = System.currentTimeMillis() - pipelineStartMs
-            LogUtil.d(TAG, "[ASPECT] inference complete | Gaussians=${result.gaussianCount} | PLY bbox room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} m")
             LogUtil.d(TAG, "[TIMING] TOTAL pipeline: ${totalMs}ms (${totalMs / 1000f}s)")
             return@withContext result
         }
     }
+```
 
+---
+
+## Chunk 4 of 5 (Lines 451–550): runDecoderChunk, preprocess, mergeCrop, reshapeToSpatial, linearToSrgb
+
+```kotlin
     private fun runDecoderChunk(name: String, data: FloatArray, count: Int): FloatArray {
         LogUtil.d(TAG, "runDecoderChunk: $name count=$count dataLen=${data.size}")
         val mod = Module.load(findFile(name)!!.absolutePath)
@@ -536,14 +451,10 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         if (gI == gS - 1) offY[0] += cH
     }
 
-    /**
-     * Maps token sequence to spatial [C, H, W]. Out buffer is 24*24*1024 = 589824.
-     * If tokens.size == 577*1024 (CLS + 576 spatial), skip CLS with +1. If tokens.size == 576*1024 (no CLS), use 0-based index.
-     */
     private fun reshapeToSpatial(tokens: FloatArray, out: FloatArray, H: Int = 24, W: Int = 24) {
         val C = 1024
         val spatialCount = H * W
-        val hasCls = (tokens.size == (spatialCount + 1) * C) // 577*1024 -> skip index 0
+        val hasCls = (tokens.size == (spatialCount + 1) * C)
         val tokenOffset = if (hasCls) 1 else 0
         for (h in 0 until H) {
             for (w in 0 until W) {
@@ -560,18 +471,18 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         var x = 0; for (i in 0 until gS) { this[i] = x; x += 24 - (if (i != 0) pad else 0) - (if (i != gS - 1) pad else 0) }
     }
 
-    /** Linear RGB [0,1] -> sRGB [0,1]. LUT for 5–10x speedup in PLY export (avoids Math.pow in hot loop). */
     private fun linearToSrgb(linear: Float): Float {
         val v = linear.coerceIn(0f, 1f)
         val idx = (v * (LINEAR_TO_SRGB_LUT_SIZE - 1)).toInt().coerceIn(0, LINEAR_TO_SRGB_LUT_SIZE - 1)
         return LINEAR_TO_SRGB_LUT[idx]
     }
+```
 
-    /**
-     * Write PLY from model output. Uses raw coordinates (no aspect scaling): model trained on square input
-     * expects 1:1 coordinate space. Only y,z are negated for our viewer convention.
-     * See Ultralytics: apply aspectRatio only when mapping to non-square frustum; else normalization issues cause jagged output.
-     */
+---
+
+## Chunk 5 of 5 (Lines 551–634): writePly (batched BufferedOutputStream + LUT)
+
+```kotlin
     private fun writePly(
         params: FloatArray,
         progressCallback: ((Float, String) -> Unit)?,
@@ -637,4 +548,23 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         return StreamingResult(plyFile, plyFile, count, roomW, roomH, roomD, centerX, centerY, centerZ)
     }
 }
+```
 
+---
+
+## How to use
+
+1. Open [Ultralytics](https://docs.ultralytics.com/) or your reviewer (e.g. ChatGPT, Claude) with a ~150-line limit.
+2. For each **Chunk 1** … **Chunk 5** above:
+   - Copy the code block (between the triple backticks).
+   - Paste into the reviewer.
+   - Ask: *"Review this chunk of an ExecuTorch INT8 SHARP Android pipeline (Kotlin). Focus on: performance (loops, allocations, I/O), memory (GC pressure, buffer reuse), and correctness. Suggest concrete optimizations. This is chunk N of 5."*
+3. After all five, ask: *"These 5 chunks form one Kotlin file (ExecutorchInt8Sharp.kt). Summarize top cross-chunk optimizations and any refactors you’d recommend for the full pipeline."*
+
+---
+
+## Suggested prompt for Ultralytics (per chunk)
+
+**Prompt to paste before each chunk:**
+
+"Review the following Kotlin code. It is part of an ExecuTorch INT8 inference pipeline for a 3D Gaussian splatting model (SHARP) on Android. The full file is ~630 lines; this is one of five chunks. Please suggest: (1) performance optimizations (CPU, memory, I/O), (2) memory/GC improvements, (3) correctness or numerical issues, (4) alignment with Ultralytics/ExecuTorch deployment best practices. Be specific (e.g. 'replace X with Y to avoid Z')."
