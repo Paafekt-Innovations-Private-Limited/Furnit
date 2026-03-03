@@ -53,14 +53,38 @@ for f in "$INT8_DIR"/sharp_split_part1_int8.pte "$INT8_DIR"/sharp_split_part2_in
   fi
 done
 
-# Chunked Part 4 (FP32)
-for f in "$CHUNKED_DIR"/sharp_split_part4a_chunk_512.pte "$CHUNKED_DIR"/sharp_split_part4a_chunk_65.pte "$CHUNKED_DIR"/sharp_split_part4b.pte; do
+# Chunked Part 4a
+for f in "$CHUNKED_DIR"/sharp_split_part4a_chunk_512.pte "$CHUNKED_DIR"/sharp_split_part4a_chunk_65.pte; do
   if [ -f "$f" ] && [ -s "$f" ]; then
     FILES_TO_PUSH+=("$f")
   else
     echo "Warning: Missing or empty $f"
   fi
 done
+
+# Part4b: prefer FP16 (Vulkan/XNNPACK), then chunked (depth+gauss), then single.
+# Check INT8_DIR first since export_sharp_executorch_int8_split4.py --part4b-fp16 writes to --output-dir (INT8_DIR).
+if [ -f "$INT8_DIR/sharp_split_part4b_fp16.pte" ]; then
+  FILES_TO_PUSH+=("$INT8_DIR/sharp_split_part4b_fp16.pte")
+  echo "  Part4b: using FP16 (Vulkan/XNNPACK) from $INT8_DIR"
+elif [ -f "$CHUNKED_DIR/sharp_split_part4b_fp16.pte" ]; then
+  FILES_TO_PUSH+=("$CHUNKED_DIR/sharp_split_part4b_fp16.pte")
+  echo "  Part4b: using FP16 (Vulkan/XNNPACK) from $CHUNKED_DIR"
+elif [ -f "$INT8_DIR/sharp_split_part4b_depth.pte" ] && [ -f "$INT8_DIR/sharp_split_part4b_gauss.pte" ]; then
+  FILES_TO_PUSH+=("$INT8_DIR/sharp_split_part4b_depth.pte" "$INT8_DIR/sharp_split_part4b_gauss.pte")
+  echo "  Part4b: using chunked (depth + gauss stages) from $INT8_DIR"
+elif [ -f "$CHUNKED_DIR/sharp_split_part4b_depth.pte" ] && [ -f "$CHUNKED_DIR/sharp_split_part4b_gauss.pte" ]; then
+  FILES_TO_PUSH+=("$CHUNKED_DIR/sharp_split_part4b_depth.pte" "$CHUNKED_DIR/sharp_split_part4b_gauss.pte")
+  echo "  Part4b: using chunked (depth + gauss stages) from $CHUNKED_DIR"
+elif [ -f "$CHUNKED_DIR/sharp_split_part4b.pte" ]; then
+  FILES_TO_PUSH+=("$CHUNKED_DIR/sharp_split_part4b.pte")
+  echo "  Part4b: using single forward"
+elif [ -f "$INT8_DIR/sharp_split_part4b.pte" ]; then
+  FILES_TO_PUSH+=("$INT8_DIR/sharp_split_part4b.pte")
+  echo "  Part4b: using single forward from $INT8_DIR"
+else
+  echo "Warning: No Part4b files found in $CHUNKED_DIR or $INT8_DIR"
+fi
 
 if [ ${#FILES_TO_PUSH[@]} -eq 0 ]; then
   echo "Error: No valid .pte files found."
@@ -79,4 +103,7 @@ done
 echo ""
 echo "Done! ExecuTorch INT8 model files pushed."
 echo "In the app: Settings > Developer > Inference Backend = ExecuTorch INT8"
+echo ""
+echo "If the app still uses an old Part4b (e.g. Vulkan shader error), remove the internal copy so it uses the pushed file:"
+echo "  adb shell run-as com.furnit.android rm -f files/models/sharp_split_part4b_fp16.pte"
 echo ""

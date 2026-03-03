@@ -156,12 +156,11 @@ class GaussianComposer(nn.Module):
 
     def _forward_mean(self, base_values: GaussianBaseValues, delta: torch.Tensor) -> torch.Tensor:
         # Concatenate base vectors and apply mean activation.
+        dtype = base_values.mean_x_ndc.dtype
         delta_factor = torch.tensor(
             [self.delta_factor.xy, self.delta_factor.xy, self.delta_factor.z],
-            device=delta.device,
+            device=delta.device, dtype=dtype,
         )[None, :, None, None, None]
-
-        dtype = base_values.mean_x_ndc.dtype
         device = base_values.mean_x_ndc.device
         target_shape = (1, 3, 1, 1, 1)
         mean_x_mask = torch.tensor([1.0, 0.0, 0.0], dtype=dtype, device=device).reshape(

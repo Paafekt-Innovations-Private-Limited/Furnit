@@ -97,6 +97,8 @@ def parse_args():
         help="Disable XNNPACK (same as --backend portable)")
     pa.add_argument("--chunked-part4", action="store_true",
         help="Also export chunked Part 4 (4a_chunk_512, 4a_chunk_65, 4b) for lower peak RAM on decoder.")
+    pa.add_argument("--chunked-part4b", action="store_true",
+        help="Further split Part4b into 2 stages: depth decoder + Gaussian generator (better progress UX, lower peak memory).")
     return pa.parse_args()
 
 
@@ -267,9 +269,293 @@ class ImageEncoderPartBFromTokens(nn.Module):
             output_features.extend(encoder_features)
         if self.return_decoder_features:
             output_features.append(decoder_features)
-        disparity_factor = torch.ones(1, 1, 1, 1, device=image.device)
-        monodepth = disparity_factor / disparity.clamp(min=1e-4, max=1e4)
+        monodepth = torch.reciprocal(disparity.clamp(min=1e-4, max=1e4))
         init_output = self.init_model(image, monodepth)
+        image_features = self.feature_model(init_output.feature_input, encodings=output_features)
+        delta_values = self.prediction_head(image_features)
+        gaussians = self.gaussian_composer(
+            delta=delta_values,
+            base_values=init_output.gaussian_base_values,
+            global_scale=init_output.global_scale,
+        )
+        positions = gaussians.mean_vectors
+        opacities = gaussians.opacities.unsqueeze(-1)
+        scales = gaussians.singular_values
+        quaternions = gaussians.quaternions
+        colors = gaussians.colors
+        return torch.cat([positions, opacities, scales, quaternions, colors], dim=-1)
+
+
+def _window_partition_nxn(tensor, n):
+    """Split (B, C, H, W) into n*n tiles. H,W must be divisible by n. Returns list of n*n tensors (B, C, H/n, W/n)."""
+    B, C, H, W = tensor.shape
+    assert H % n == 0 and W % n == 0, f"H,W must be divisible by n={n}, got H={H} W={W}"
+    h, w = H // n, W // n
+    tiles = []
+    for i in range(n):
+        for j in range(n):
+            tiles.append(tensor[:, :, i * h : (i + 1) * h, j * w : (j + 1) * w])
+    return tiles
+
+
+def _window_unpartition_nxn(tiles, n):
+    """Merge n*n tiles (B, C, h, w) into (B, C, n*h, n*w)."""
+    B, C, h, w = tiles[0].shape
+    out = torch.empty(B, C, n * h, n * w, device=tiles[0].device, dtype=tiles[0].dtype)
+    for i in range(n):
+        for j in range(n):
+            out[:, :, i * h : (i + 1) * h, j * w : (j + 1) * w] = tiles[i * n + j]
+    return out
+
+
+class Part4bDepthDecoder(nn.Module):
+    """Part4b stage 1: tokens + features → monodepth + intermediate feature maps.
+    Splits ImageEncoderPartBFromTokens at the monodepth boundary.
+    Input: tokens [1,577,1024] + 5 feature maps (no image needed).
+    Output: (monodepth, feat0..feat4, decoder_feat) — 7 tensors."""
+    def __init__(self, predictor):
+        super().__init__()
+        spn = predictor.monodepth_model.monodepth_predictor.encoder
+        ie = spn.image_encoder
+        mono = predictor.monodepth_model
+        self.num_prefix_tokens = ie.num_prefix_tokens
+        self.grid_size = ie.patch_embed.grid_size
+        self.upsample_latent0 = spn.upsample_latent0
+        self.upsample_latent1 = spn.upsample_latent1
+        self.upsample0 = spn.upsample0
+        self.upsample1 = spn.upsample1
+        self.upsample2 = spn.upsample2
+        self.upsample_lowres = spn.upsample_lowres
+        self.fuse_lowres = spn.fuse_lowres
+        self.decoder = mono.monodepth_predictor.decoder
+        self.head = mono.monodepth_predictor.head
+        self.num_monodepth_layers = mono.num_monodepth_layers
+        self.sorting_monodepth = mono.sorting_monodepth
+
+    def _reshape_feature(self, embeddings):
+        batch, seq_len, channel = embeddings.shape
+        h, w = self.grid_size
+        if self.num_prefix_tokens:
+            embeddings = embeddings[:, self.num_prefix_tokens:, :]
+        return embeddings.reshape(batch, h, w, channel).permute(0, 3, 1, 2)
+
+    def forward(self, tokens_after_blocks, latent0, latent1, x0_feat, x1_feat, x2_feat):
+        x_lowres = self._reshape_feature(tokens_after_blocks)
+        latent0_up = self.upsample_latent0(latent0)
+        latent1_up = self.upsample_latent1(latent1)
+        x0_up = self.upsample0(x0_feat)
+        x1_up = self.upsample1(x1_feat)
+        x2_up = self.upsample2(x2_feat)
+        x_lowres_up = self.upsample_lowres(x_lowres)
+        x_fused = self.fuse_lowres(torch.cat((x2_up, x_lowres_up), dim=1))
+        encoder_features = [latent0_up, latent1_up, x0_up, x1_up, x_fused]
+        decoder_features = self.decoder(encoder_features)
+        disparity = self.head(decoder_features)
+        if self.num_monodepth_layers == 2 and self.sorting_monodepth:
+            first_layer = disparity.max(dim=1, keepdims=True).values
+            second_layer = disparity.min(dim=1, keepdims=True).values
+            disparity = torch.cat([first_layer, second_layer], dim=1)
+        monodepth = torch.reciprocal(disparity.clamp(min=1e-4, max=1e4))
+        return monodepth, latent0_up, latent1_up, x0_up, x1_up, x_fused, decoder_features
+
+
+class Part4bGaussGenerator(nn.Module):
+    """Part4b stage 2: image + monodepth + intermediate features → [1, N, 14] Gaussians.
+    Takes intermediate outputs from Part4bDepthDecoder.
+    Input: image [1,3,1536,1536] + monodepth + 6 feature tensors = 8 inputs.
+    Output: packed Gaussians [1, N, 14]."""
+    def __init__(self, predictor):
+        super().__init__()
+        mono = predictor.monodepth_model
+        self.return_encoder_features = mono.return_encoder_features
+        self.return_decoder_features = mono.return_decoder_features
+        self.init_model = predictor.init_model
+        self.feature_model = predictor.feature_model
+        self.prediction_head = predictor.prediction_head
+        self.gaussian_composer = predictor.gaussian_composer
+
+    def forward(self, image, monodepth, feat0, feat1, feat2, feat3, feat4, decoder_feat):
+        output_features = []
+        if self.return_encoder_features:
+            output_features.extend([feat0, feat1, feat2, feat3, feat4])
+        if self.return_decoder_features:
+            output_features.append(decoder_feat)
+        init_output = self.init_model(image, monodepth)
+        image_features = self.feature_model(init_output.feature_input, encodings=output_features)
+        delta_values = self.prediction_head(image_features)
+        gaussians = self.gaussian_composer(
+            delta=delta_values,
+            base_values=init_output.gaussian_base_values,
+            global_scale=init_output.global_scale,
+        )
+        positions = gaussians.mean_vectors
+        opacities = gaussians.opacities.unsqueeze(-1)
+        scales = gaussians.singular_values
+        quaternions = gaussians.quaternions
+        colors = gaussians.colors
+        return torch.cat([positions, opacities, scales, quaternions, colors], dim=-1)
+
+
+# Number of tiles per axis for Part4b tiled decoder (n*n pieces; 4*4=16 pieces >= 10).
+PART4B_TILED_GRID = 4
+
+
+class Part4bDepthDecoderTiled(nn.Module):
+    """Part4b depth decoder run in n*n spatial tiles to reduce peak memory (layer-specific tiling).
+    Same I/O as Part4bDepthDecoder; runs decoder + head per tile then stitches. Default 4x4=16 pieces."""
+    def __init__(self, predictor, n_tiles=PART4B_TILED_GRID):
+        super().__init__()
+        self.depth_decoder = Part4bDepthDecoder(predictor)
+        self.n_tiles = n_tiles
+
+    def forward(self, tokens_after_blocks, latent0, latent1, x0_feat, x1_feat, x2_feat):
+        n = self.n_tiles
+        d = self.depth_decoder
+        x_lowres = d._reshape_feature(tokens_after_blocks)
+        latent0_up = d.upsample_latent0(latent0)
+        latent1_up = d.upsample_latent1(latent1)
+        x0_up = d.upsample0(x0_feat)
+        x1_up = d.upsample1(x1_feat)
+        x2_up = d.upsample2(x2_feat)
+        x_lowres_up = d.upsample_lowres(x_lowres)
+        x_fused = d.fuse_lowres(torch.cat((x2_up, x_lowres_up), dim=1))
+        encoder_features = [latent0_up, latent1_up, x0_up, x1_up, x_fused]
+        # n*n tiles: 96->96/n, 48->48/n, 24->24/n (e.g. n=4 -> 24, 12, 6)
+        part_0 = _window_partition_nxn(encoder_features[0], n)
+        part_1 = _window_partition_nxn(encoder_features[1], n)
+        part_2 = _window_partition_nxn(encoder_features[2], n)
+        part_3 = _window_partition_nxn(encoder_features[3], n)
+        part_4 = _window_partition_nxn(encoder_features[4], n)
+        num_tiles = n * n
+        all_enc = [
+            [part_0[i], part_1[i], part_2[i], part_3[i], part_4[i]]
+            for i in range(num_tiles)
+        ]
+        decoder_tiles = [d.decoder(enc) for enc in all_enc]
+        disparity_tiles = [d.head(df) for df in decoder_tiles]
+        if d.num_monodepth_layers == 2 and d.sorting_monodepth:
+            disparity_tiles = [
+                torch.cat([
+                    t.max(dim=1, keepdims=True).values,
+                    t.min(dim=1, keepdims=True).values,
+                ], dim=1) for t in disparity_tiles
+            ]
+        monodepth_tiles = [torch.reciprocal(t.clamp(min=1e-4, max=1e4)) for t in disparity_tiles]
+        monodepth = _window_unpartition_nxn(monodepth_tiles, n)
+        decoder_features = _window_unpartition_nxn(decoder_tiles, n)
+        return monodepth, latent0_up, latent1_up, x0_up, x1_up, x_fused, decoder_features
+
+
+class Part4bUpsample(nn.Module):
+    """Upsample + fuse stage only (no decoder). Run once, output 5 full-res encoder features.
+    These are then tiled in Java and fed to Part4bTileDecoder 16 times."""
+    def __init__(self, predictor):
+        super().__init__()
+        spn = predictor.monodepth_model.monodepth_predictor.encoder
+        ie = spn.image_encoder
+        self.num_prefix_tokens = ie.num_prefix_tokens
+        self.grid_size = ie.patch_embed.grid_size
+        self.upsample_latent0 = spn.upsample_latent0
+        self.upsample_latent1 = spn.upsample_latent1
+        self.upsample0 = spn.upsample0
+        self.upsample1 = spn.upsample1
+        self.upsample2 = spn.upsample2
+        self.upsample_lowres = spn.upsample_lowres
+        self.fuse_lowres = spn.fuse_lowres
+
+    def _reshape_feature(self, embeddings):
+        batch, seq_len, channel = embeddings.shape
+        h, w = self.grid_size
+        if self.num_prefix_tokens:
+            embeddings = embeddings[:, self.num_prefix_tokens:, :]
+        return embeddings.reshape(batch, h, w, channel).permute(0, 3, 1, 2)
+
+    def forward(self, tokens_after_blocks, latent0, latent1, x0_feat, x1_feat, x2_feat):
+        x_lowres = self._reshape_feature(tokens_after_blocks)
+        latent0_up = self.upsample_latent0(latent0)
+        latent1_up = self.upsample_latent1(latent1)
+        x0_up = self.upsample0(x0_feat)
+        x1_up = self.upsample1(x1_feat)
+        x2_up = self.upsample2(x2_feat)
+        x_lowres_up = self.upsample_lowres(x_lowres)
+        x_fused = self.fuse_lowres(torch.cat((x2_up, x_lowres_up), dim=1))
+        return latent0_up, latent1_up, x0_up, x1_up, x_fused
+
+
+class Part4bTileDecoder(nn.Module):
+    """Decoder + head only. Takes 5 tile-sized encoder features, returns (monodepth_tile, decoder_features_tile).
+    Load once, run 16 times with different tile crops, unload. Much smaller than full depth decoder."""
+    def __init__(self, predictor):
+        super().__init__()
+        mono = predictor.monodepth_model
+        self.decoder = mono.monodepth_predictor.decoder
+        self.head = mono.monodepth_predictor.head
+        self.num_monodepth_layers = mono.num_monodepth_layers
+        self.sorting_monodepth = mono.sorting_monodepth
+
+    def forward(self, f0, f1, f2, f3, f4):
+        decoder_features = self.decoder([f0, f1, f2, f3, f4])
+        disparity = self.head(decoder_features)
+        if self.num_monodepth_layers == 2 and self.sorting_monodepth:
+            disparity = torch.cat([
+                disparity.max(dim=1, keepdims=True).values,
+                disparity.min(dim=1, keepdims=True).values,
+            ], dim=1)
+        monodepth_tile = torch.reciprocal(disparity.clamp(min=1e-4, max=1e4))
+        return monodepth_tile, decoder_features
+
+
+class Part4bTileFull(nn.Module):
+    """Complete Part4b for one spatial tile: upsample(low-res crops) → decode → gauss → packed Gaussians.
+    Takes LOW-RES tile crops (pre-cropped in Java at the low-res spatial dims) and an image tile.
+    All upsamples are ConvTranspose2d(k=2,s=2,p=0), so crop-before-upsample is mathematically exact.
+    Never creates full-resolution tensors. Peak memory is tile-sized (~50 MB vs ~877 MB full-res).
+    Position and scale corrections must be applied in Java after forward (see Kotlin code)."""
+    def __init__(self, predictor):
+        super().__init__()
+        spn = predictor.monodepth_model.monodepth_predictor.encoder
+        mono = predictor.monodepth_model
+        self.upsample_latent0 = spn.upsample_latent0
+        self.upsample_latent1 = spn.upsample_latent1
+        self.upsample0 = spn.upsample0
+        self.upsample1 = spn.upsample1
+        self.upsample2 = spn.upsample2
+        self.upsample_lowres = spn.upsample_lowres
+        self.fuse_lowres = spn.fuse_lowres
+        self.decoder = mono.monodepth_predictor.decoder
+        self.head = mono.monodepth_predictor.head
+        self.num_monodepth_layers = mono.num_monodepth_layers
+        self.sorting_monodepth = mono.sorting_monodepth
+        self.return_encoder_features = mono.return_encoder_features
+        self.return_decoder_features = mono.return_decoder_features
+        self.init_model = predictor.init_model
+        self.feature_model = predictor.feature_model
+        self.prediction_head = predictor.prediction_head
+        self.gaussian_composer = predictor.gaussian_composer
+
+    def forward(self, image_tile, latent0_tile, latent1_tile, x0_tile, x1_tile, x2_tile, x_lowres_tile):
+        latent0_up = self.upsample_latent0(latent0_tile)
+        latent1_up = self.upsample_latent1(latent1_tile)
+        x0_up = self.upsample0(x0_tile)
+        x1_up = self.upsample1(x1_tile)
+        x2_up = self.upsample2(x2_tile)
+        x_lowres_up = self.upsample_lowres(x_lowres_tile)
+        x_fused = self.fuse_lowres(torch.cat((x2_up, x_lowres_up), dim=1))
+        encoder_features = [latent0_up, latent1_up, x0_up, x1_up, x_fused]
+        decoder_features = self.decoder(encoder_features)
+        disparity = self.head(decoder_features)
+        if self.num_monodepth_layers == 2 and self.sorting_monodepth:
+            disparity = torch.cat([
+                disparity.max(dim=1, keepdims=True).values,
+                disparity.min(dim=1, keepdims=True).values,
+            ], dim=1)
+        monodepth = torch.reciprocal(disparity.clamp(min=1e-4, max=1e4))
+        output_features = []
+        if self.return_encoder_features:
+            output_features.extend(encoder_features)
+        if self.return_decoder_features:
+            output_features.append(decoder_features)
+        init_output = self.init_model(image_tile, monodepth)
         image_features = self.feature_model(init_output.feature_input, encodings=output_features)
         delta_values = self.prediction_head(image_features)
         gaussians = self.gaussian_composer(
@@ -347,8 +633,7 @@ class ImageEncoderPartBFull(nn.Module):
             output_features.extend(encoder_features)
         if self.return_decoder_features:
             output_features.append(decoder_features)
-        disparity_factor = torch.ones(1, 1, 1, 1, device=image.device)
-        monodepth = disparity_factor / disparity.clamp(min=1e-4, max=1e4)
+        monodepth = torch.reciprocal(disparity.clamp(min=1e-4, max=1e4))
         init_output = self.init_model(image, monodepth)
         image_features = self.feature_model(init_output.feature_input, encodings=output_features)
         delta_values = self.prediction_head(image_features)
@@ -419,10 +704,25 @@ def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend
     print(f"{'='*60}")
 
     if use_fp16:
-        wrapper = wrapper.half()
-        sample_inputs = tuple(
-            inp.half() if inp.is_floating_point() else inp for inp in sample_inputs
-        )
+        # Keep FP32 input signature so Android (which feeds FP32 via Tensor.fromBlob) can run the model.
+        # The wrapper casts inputs to half inside the graph so the .pte accepts float32.
+        inner = wrapper.half()
+
+        class _FP32InputWrapper(nn.Module):
+            def __init__(self, inner_module):
+                super().__init__()
+                self._inner = inner_module
+
+            def forward(self, *args):
+                half_args = tuple(
+                    a.to(torch.float16) if isinstance(a, torch.Tensor) and a.is_floating_point() else a
+                    for a in args
+                )
+                return self._inner(*half_args)
+
+        wrapper = _FP32InputWrapper(inner)
+        # Export with FP32 sample_inputs so the program has float32 input spec
+        # sample_inputs stay as-is (FP32)
 
     start = time.time()
     exported = torch.export.export(wrapper, sample_inputs, strict=False)
@@ -436,12 +736,17 @@ def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend
         )
     elif backend == "vulkan":
         try:
-            from executorch.backends.vulkan.partition.vulkan_partitioner import VulkanPartitioner
+            try:
+                from executorch.backends.vulkan.partition.vulkan_partitioner import VulkanPartitioner
+            except ModuleNotFoundError:
+                from executorch.backends.vulkan.partitioner.vulkan_partitioner import VulkanPartitioner
             from executorch.exir import to_edge_transform_and_lower
+            # Vulkan memory: AOT planning (buffer reuse) + FP16 to reduce peak GPU memory (avoid OOM).
+            vulkan_options = {"skip_memory_planning": False, "force_fp16": True}
             edge = to_edge_transform_and_lower(
                 exported,
                 compile_config=EdgeCompileConfig(_check_ir_validity=False),
-                partitioner=[VulkanPartitioner()],
+                partitioner=[VulkanPartitioner(vulkan_options)],
             )
         except Exception as e:
             print(f"Vulkan export failed: {e}, falling back to XNNPACK")
@@ -688,6 +993,41 @@ def main():
             packed_chunked = part4b(tokens_after_blocks, sample_image, latent0, latent1, x0_feat, x1_feat, x2_feat)
         assert packed_chunked.shape == packed.shape, f"Chunked {packed_chunked.shape} vs full {packed.shape}"
         print(f"  Chunked Part 4 output shape OK (Gaussians: {packed_chunked.shape[1]:,})")
+
+    # Chunked Part4b: split Part4b into depth decoder (stage 1) + Gaussian generator (stage 2).
+    if getattr(args, "chunked_part4b", False):
+        if not getattr(args, "chunked_part4", False):
+            print("\nERROR: --chunked-part4b requires --chunked-part4 (Part4a+4b split must exist first)")
+            return 1
+        depth_decoder = Part4bDepthDecoder(predictor).eval()
+        gauss_generator = Part4bGaussGenerator(predictor).eval()
+        with torch.no_grad():
+            intermediates = depth_decoder(tokens_after_blocks, latent0, latent1, x0_feat, x1_feat, x2_feat)
+        monodepth_sample, f0, f1, f2, f3, f4, df = intermediates
+        print(f"\n  Part4b depth decoder output shapes: monodepth={monodepth_sample.shape}")
+        print(f"    feat0={f0.shape} feat1={f1.shape} feat2={f2.shape} feat3={f3.shape} feat4={f4.shape} decoder={df.shape}")
+
+        sizes["part4b_depth"] = export_pte(
+            "Part4b stage 1 (depth decoder)",
+            depth_decoder,
+            (tokens_after_blocks, latent0, latent1, x0_feat, x1_feat, x2_feat),
+            output_dir / "sharp_split_part4b_depth.pte",
+            use_fp16=False,
+            backend=backend,
+        )
+        sizes["part4b_gauss"] = export_pte(
+            "Part4b stage 2 (Gaussian generator)",
+            gauss_generator,
+            (sample_image, monodepth_sample, f0, f1, f2, f3, f4, df),
+            output_dir / "sharp_split_part4b_gauss.pte",
+            use_fp16=False,
+            backend=backend,
+            use_greedy_memory_planning=True,
+        )
+        with torch.no_grad():
+            packed_staged = gauss_generator(sample_image, monodepth_sample, f0, f1, f2, f3, f4, df)
+        assert packed_staged.shape == packed.shape, f"Staged {packed_staged.shape} vs full {packed.shape}"
+        print(f"  Chunked Part4b output shape OK (Gaussians: {packed_staged.shape[1]:,})")
 
     total_mb = sum(sizes.values())
     elapsed = time.time() - overall_start

@@ -21,7 +21,7 @@ Discloser and Recipient are each a “**Party**” and together the “**Parties
 
 ### 1. Purpose and Scope
 
-Recipient may receive Confidential Information from Discloser in connection with **ABAP AI Toolkit** (the “**Project**”), including but not limited to: product concepts, roadmaps, technical documentation, source code, algorithms, SAP/ABAP integration approaches, RAG (Retrieval-Augmented Generation), Clean Core, migration tooling, CRV (Custom Code Validation), twin discovery, and related business or technical information.
+Recipient may receive Confidential Information from Discloser in connection with **ABAP AI Toolkit** (the “**Project**”), including but not limited to related business or technical information.
 
 ---
 

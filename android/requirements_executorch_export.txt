@@ -1,0 +1,7 @@
+# For ExecuTorch SHARP export (export_sharp_executorch_int8_split4.py etc.)
+# Use with: python3 -m venv ultralytics && source ultralytics/bin/activate && pip install -r requirements_executorch_export.txt
+torch>=2.0
+numpy
+timm
+executorch
+plyfile

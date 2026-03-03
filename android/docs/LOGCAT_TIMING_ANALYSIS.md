@@ -55,11 +55,64 @@
 
 ---
 
+## Run 2 (2025-03-01 15:04 – after chunked INT8 push)
+
+| Phase | Duration | % of total |
+|-------|----------|------------|
+| Part4b forward | 134,298 ms (~2 min 14 s) | 72.3% |
+| Part1+2 (1×) | 30,716 ms | 16.5% |
+| Part1+2 (0.5×) | 11,446 ms | 6.2% |
+| Part4a | 3,362 ms | 1.8% |
+| writePly | 2,438 ms | 1.3% |
+| Part3 | 1,349 ms | 0.7% |
+| Part1+2 (0.25×) | 1,335 ms | 0.7% |
+| **TOTAL** | **185,771 ms** (~3 min 6 s) | 100% |
+
+**Note:** Log showed "Part4b: using sharp_split_part4b_fp16.pte (FP16)" – so the device had an existing `sharp_split_part4b_fp16.pte` (e.g. from a previous push). We only pushed `sharp_split_part4b.pte` (FP32); if both exist, the app prefers FP16. Part4b was ~20 s slower than Run 1 (134 s vs 114 s); could be FP16 build, device load, or thermal. Log line was updated to show actual filename + (FP16)/(FP32) so it's unambiguous.
+
+---
+
 ## Quick reference (from logcat)
 
+**Run 1:**
 ```
 [TIMING] Part4b forward: 114203ms
 [TIMING] writePly: 3048ms
 [TIMING] TOTAL pipeline: 166772ms (166.772s)
 Gaussians=1179648  room=9.286518 x 6.9414244 x 4.7297034 m
+```
+
+**Run 2:**
+```
+Part4b: using sharp_split_part4b_fp16.pte (FP16)  ← device had FP16 file
+[TIMING] Part4b forward: 134298ms
+[TIMING] writePly: 2438ms
+[TIMING] TOTAL pipeline: 185771ms (185.771s)
+```
+
+---
+
+## Run 3 (2025-03-01 16:54 – Part4b FP32 only, after removing part4b_fp16.pte)
+
+| Phase | Duration | % of total |
+|-------|----------|------------|
+| Part4b forward | 142,307 ms (~2 min 22 s) | 72.4% |
+| Part1+2 (1×) | 31,498 ms | 16.0% |
+| Part1+2 (0.5×) | 11,929 ms | 6.1% |
+| Part4a | 3,717 ms | 1.9% |
+| writePly | 3,151 ms | 1.6% |
+| Part3 | 1,507 ms | 0.8% |
+| Part1+2 (0.25×) | 1,417 ms | 0.7% |
+| **TOTAL** | **196,473 ms** (~3 min 16 s) | 100% |
+
+**Note:** Part4b FP32 (`sharp_split_part4b.pte`) confirmed in log. Part4b ~142 s (vs 134 s with old FP16 file, vs 114 s in earliest Run 1). FP32 decoder on CPU is the bottleneck; Vulkan or working FP16 export would be the next lever.
+
+**SharpRoomActivity:** Logs show the viewer opening twice in quick succession (two "Opening SharpRoomActivity with PLY", two "Copied PLY" / "Loading PLY file") with "Brain: stopBrainDetection()" between—suggesting one instance replaced by another or duplicate start; PLY is copied twice.
+
+**Run 3 quick reference:**
+```
+Part4b: using sharp_split_part4b.pte (FP32)
+[TIMING] Part4b forward: 142307ms
+[TIMING] writePly: 3151ms
+[TIMING] TOTAL pipeline: 196473ms (196.473s)
 ```

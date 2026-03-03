@@ -121,6 +121,9 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
     from(execChunkedDir) {
         include "sharp_split_part4a_chunk_512.pte", "sharp_split_part4a_chunk_65.pte", "sharp_split_part4b.pte"
     }
+    from(execInt8Dir) {
+        include "sharp_split_part4b_fp16.pte"
+    }
     onlyIf { !skipExecutorchAssets && execInt8Dir.exists() && execChunkedDir.exists() }
 }
 if (!skipExecutorchAssets) preBuild.dependsOn copyExecutorchModelsIntoAssets
@@ -157,8 +160,11 @@ dependencies {
     // 1.24.2 fixes EXTENDED_OPT crash (shape merging on Concat, #24340); 1.18.0 was 18mo behind
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.2'
 
-    // ExecuTorch for on-device inference (MobileNetV3 classification + SHARP room gen)
-    implementation 'org.pytorch:executorch-android:1.1.0'
+    // ExecuTorch for on-device inference (Vulkan delegate + view_convert_buffer_float_half for Part4b FP16)
+    // Use locally built AAR from: ./scripts/build_executorch_vulkan_aar.sh
+    implementation files('libs/executorch.aar')
+    implementation 'com.facebook.soloader:soloader:0.10.5'
+    implementation 'com.facebook.fbjni:fbjni:0.7.0'
 
     // PyTorch Mobile Lite - loads .ptl files directly (no model conversion)
     implementation('org.pytorch:pytorch_android_lite:2.1.0') {

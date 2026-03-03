@@ -397,7 +397,9 @@ class ContentActivity : AppCompatActivity() {
                     val plyFile = File(clickedModel.assetPath)
                     val roomFolder = plyFile.parentFile
                     LogUtil.d("ContentActivity", "Branch PLY: roomFolder=${roomFolder?.absolutePath} starting SharpRoomActivity")
-                    val intent = Intent(this, SharpRoomActivity::class.java)
+                    val intent = Intent(this, SharpRoomActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    }
                     intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
                     intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder?.absolutePath)
                     intent.putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false)
@@ -410,6 +412,7 @@ class ContentActivity : AppCompatActivity() {
                     intent.putExtra("photo_orientation", clickedModel.photoOrientation)
                     intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
                     LogUtil.d("ContentActivity", "Opening SharpRoomActivity photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
+                    android.util.Log.d("SharpService", "startActivity(SharpRoomActivity) caller=ContentActivity(PLY)")
                     startActivity(intent)
                 } else if (clickedModel.assetPath.endsWith(".glb")) {
                     // Open WebGL-based GLBRoomActivity for GLB files (matching iOS)
@@ -436,7 +439,9 @@ class ContentActivity : AppCompatActivity() {
                     when {
                         plyFile.exists() -> {
                             LogUtil.d("ContentActivity", "Opening SharpRoomActivity with PLY: ${plyFile.absolutePath}, roomFolder=${roomFolder.absolutePath}")
-                            val intent = Intent(this, SharpRoomActivity::class.java)
+                            val intent = Intent(this, SharpRoomActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                            }
                             intent.putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyFile.absolutePath)
                             intent.putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder.absolutePath)
                             intent.putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false)
@@ -449,6 +454,7 @@ class ContentActivity : AppCompatActivity() {
                             intent.putExtra("photo_orientation", clickedModel.photoOrientation)
                             intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
                             LogUtil.d("ContentActivity", "Opening SharpRoomActivity (folder) photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
+                            android.util.Log.d("SharpService", "startActivity(SharpRoomActivity) caller=ContentActivity(folder)")
                             startActivity(intent)
                         }
                         glbFile.exists() -> {

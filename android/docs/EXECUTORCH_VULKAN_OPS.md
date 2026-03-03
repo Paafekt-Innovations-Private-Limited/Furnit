@@ -1,5 +1,25 @@
 # ExecuTorch Vulkan: Missing Attention Ops
 
+## Part4b FP16 Vulkan: missing shader on prebuilt AAR
+
+When Part4b is exported with **Vulkan** (`--part4b-fp16 --part4b-backend vulkan`), the resulting `.pte` uses FP16 buffer conversion. At runtime the **prebuilt** `org.pytorch:executorch-android-vulkan:1.1.0` AAR does **not** include the shader `view_convert_buffer_float_half`. You get:
+
+```text
+Part4b FP16 failed (Exception ... get_shader_info ... Could not find ShaderInfo with name view_convert_buffer_float_half). Falling back to FP32 Part4b.
+```
+
+The app then loads `sharp_split_part4b.pte` (FP32) and runs Part4b on CPU (~118s). So Vulkan Part4b does not run on the prebuilt AAR.
+
+**Recommendation:** Export Part4b as FP16 with **XNNPACK** so the same file works on device without that shader:
+
+```bash
+cd android
+PYTHONPATH=third_party/executorch:$PYTHONPATH python export_sharp_executorch_int8_split4.py --chunked-part4 --part4b-fp16 --part4b-backend xnnpack
+./push_sharp_executorch_int8_models.sh executorch_int8_models executorch_int8_models
+```
+
+Then the app uses `sharp_split_part4b_fp16.pte` on CPU (XNNPACK); quality stays FP16, no Vulkan shader required. To get Vulkan Part4b you would need an ExecuTorch Vulkan build that registers this shader (e.g. build from source or a newer/full AAR).
+
 ## What “attention ops not implemented” means
 
 When we export the SHARP model with **Vulkan** (`--backend vulkan`), the ExecuTorch **Vulkan partitioner** walks the model graph and, for each operator:

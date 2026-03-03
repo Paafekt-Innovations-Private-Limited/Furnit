@@ -93,8 +93,20 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             "sharp_split_part3_int8.pte",
             "sharp_split_part4a_chunk_512.pte",
             "sharp_split_part4a_chunk_65.pte",
-            "sharp_split_part4b.pte"
+            "sharp_split_part4b.pte",
+            "sharp_split_part4b_fp16.pte",
+            "sharp_split_part4b_depth.pte",
+            "sharp_split_part4b_gauss.pte",
+            "sharp_split_part4b_depth_tiled.pte",
+            "sharp_split_part4b_gauss_tiled.pte",
+            "sharp_split_part4b_tile_full.pte",
+            "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte",
+            "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte",
+            "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte",
+            "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
         )
+        private const val PART4B_TILED_GRID = 4
+        private const val PART4B_TILED_NUM = PART4B_TILED_GRID * PART4B_TILED_GRID // 16
         private const val ASSET_MODELS_SUBDIR = "models"
 
         private const val LOGIT_LUT_SIZE = 1024
@@ -183,6 +195,35 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     private fun findFile(filename: String): File? {
         val internal = File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0 }
         return internal ?: File(modelsDir, filename).takeIf { it.exists() && it.length() > 0 }
+    }
+
+    /** Crop tile (row,col) from NCHW flat array. shape=[1,C,H,W], output=[C*(H/n)*(W/n)]. */
+    private fun cropTileNCHW(data: FloatArray, channels: Int, fullH: Int, fullW: Int, tileRow: Int, tileCol: Int): FloatArray {
+        val tileH = fullH / PART4B_TILED_GRID
+        val tileW = fullW / PART4B_TILED_GRID
+        val out = FloatArray(channels * tileH * tileW)
+        for (c in 0 until channels) for (y in 0 until tileH) for (x in 0 until tileW) {
+            out[c * tileH * tileW + y * tileW + x] =
+                data[c * fullH * fullW + (tileRow * tileH + y) * fullW + (tileCol * tileW + x)]
+        }
+        return out
+    }
+
+    /** Stitch 16 tiles (4x4) into one NCHW buffer. Each tile is [C, tileH, tileW]. */
+    private fun stitchTilesNCHW(tileData: List<FloatArray>, channels: Int, tileH: Int, tileW: Int): FloatArray {
+        val fullH = tileH * PART4B_TILED_GRID
+        val fullW = tileW * PART4B_TILED_GRID
+        val full = FloatArray(channels * fullH * fullW)
+        for (k in 0 until PART4B_TILED_NUM) {
+            val row = k / PART4B_TILED_GRID
+            val col = k % PART4B_TILED_GRID
+            val tile = tileData[k]
+            for (c in 0 until channels) for (y in 0 until tileH) for (x in 0 until tileW) {
+                full[c * fullH * fullW + (row * tileH + y) * fullW + (col * tileW + x)] =
+                    tile[c * tileH * tileW + y * tileW + x]
+            }
+        }
+        return full
     }
 
     /** Report progress 0..1 with engaging messages (aligned with Swift/Android overlay text). */
@@ -287,19 +328,51 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             if (!isInitialized) return@withContext null
             ensureModelsFromAssets()
 
-            // Require all 6 .pte files (internal or external); avoid NPE and show clear error if missing
+            // Require Part1–3 and Part4a chunks; Part4b can be .pte or _fp16.pte (prefer FP16 for quality/latency).
             val required = listOf(
                 "sharp_split_part1_int8.pte",
                 "sharp_split_part2_int8.pte",
                 "sharp_split_part3_int8.pte",
                 "sharp_split_part4a_chunk_512.pte",
-                "sharp_split_part4a_chunk_65.pte",
-                "sharp_split_part4b.pte"
+                "sharp_split_part4a_chunk_65.pte"
             )
+            val part4bDepthFile = findFile("sharp_split_part4b_depth.pte")
+            val part4bGaussFile = findFile("sharp_split_part4b_gauss.pte")
+            val part4bDepthTiledFile = findFile("sharp_split_part4b_depth_tiled.pte")
+            val part4bGaussTiledFile = findFile("sharp_split_part4b_gauss_tiled.pte")
+            val part4bTileFullFile = findFile("sharp_split_part4b_tile_full.pte")
+            val part4bTileFiles = (0 until PART4B_TILED_NUM).map { findFile("sharp_split_part4b_tile_%02d.pte".format(it)) }
+            val hasAll16TileFiles = part4bTileFiles.all { it != null }
+            val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+            val usePart4bTiledPref = prefs.getBoolean("executorch_int8_use_part4b_tiled", false)
+            val skipTiledAfterOom = prefs.getBoolean("executorch_int8_skip_tiled_after_oom", false)
+            val useChunkedPart4bTiled16Files = usePart4bTiledPref && !skipTiledAfterOom && (hasAll16TileFiles || part4bTileFullFile != null)
+            val useChunkedPart4bTiled = usePart4bTiledPref && part4bGaussTiledFile != null && (useChunkedPart4bTiled16Files || part4bDepthTiledFile != null)
+            var useChunkedPart4b = !useChunkedPart4bTiled && part4bDepthFile != null && part4bGaussFile != null
+
+            // Part4b: use FP32 only. FP16 (Vulkan or XNNPACK) OOMs on device; FP32 completes (~2–2.5 min).
+            val part4bDefault = findFile("sharp_split_part4b.pte")
+            val part4bFile = part4bDefault
+            // After Vulkan device-lost we prefer single Part4b from start on this device (skip chunked).
+            if (useChunkedPart4b && part4bFile != null && prefs.getBoolean("executorch_int8_prefer_single_part4b", false)) {
+                useChunkedPart4b = false
+                LogUtil.d(TAG, "Part4b: preferring single (FP32) from previous Vulkan device-lost on this device")
+            }
             val missing = required.filter { findFile(it) == null }
-            if (missing.isNotEmpty()) {
-                LogUtil.e(TAG, "ExecuTorch INT8 models missing: $missing. Push to ${modelsDir.absolutePath} and retry.")
+            val needPart4b = !useChunkedPart4bTiled && !useChunkedPart4b
+            if (missing.isNotEmpty() || (needPart4b && part4bFile == null)) {
+                val missingPart4b = if (needPart4b && part4bFile == null)
+                    listOf("sharp_split_part4b.pte (or _depth.pte + _gauss.pte, or _depth_tiled.pte + _gauss_tiled.pte)")
+                else emptyList()
+                LogUtil.e(TAG, "ExecuTorch INT8 models missing: ${missing + missingPart4b}. Push to ${modelsDir.absolutePath} and retry.")
                 return@withContext null
+            }
+            when {
+                useChunkedPart4bTiled16Files -> LogUtil.d(TAG, "Part4b: using ${if (hasAll16TileFiles) "16 fused tile files" else "tile_full.pte 16x"} (upsample+decode+gauss per tile, XNNPACK)")
+                skipTiledAfterOom && usePart4bTiledPref -> LogUtil.d(TAG, "Part4b: skipping tiled path (previous OOM); using single or chunked Part4b")
+                useChunkedPart4bTiled -> LogUtil.d(TAG, "Part4b: using tiled chunked pipeline (depth_tiled + gauss_tiled)")
+                useChunkedPart4b -> LogUtil.d(TAG, "Part4b: using chunked pipeline (depth + gauss stages)")
+                else -> LogUtil.d(TAG, "Part4b: using ${part4bFile!!.name} (FP32)")
             }
 
             val originalWidth = bitmap.width
@@ -424,57 +497,293 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             out512 = FloatArray(0)
             out65 = FloatArray(0)
             System.gc()
+            // Free memory before Part4b so Vulkan/chunked depth+gauss have peak headroom (reduce OOM risk).
+            LogUtil.d(TAG, "Freeing memory before Part4b...")
+            Runtime.getRuntime().runFinalization()
+            System.gc()
             LogUtil.d(TAG, "Part4a chunks done in ${System.currentTimeMillis() - tPart4aStart}ms. combinedTokens size=${combinedTokens.size}. Loading Part4b...")
             val tPart4bStart = System.currentTimeMillis()
 
             report(0.50f, "Adding the finishing touches…", progressCallback)
-            // Use 2 threads on low-RAM devices to avoid OOM; otherwise use more threads for ~2 min total (Part4b was ~4 min when forced to 2 on capable devices)
             val part4bThreads = part4bThreadCount()
-            val mod4b = Module.load(
-                findFile("sharp_split_part4b.pte")!!.absolutePath,
-                Module.LOAD_MODE_MMAP,
-                part4bThreads
-            )
-            LogUtil.d(TAG, "Part4b forward: 7 inputs tokens, img, latent0, latent1, x0Feat, x1Feat, x2Feat")
-            val part4bInputs = listOf(
-                EValue.from(Tensor.fromBlob(combinedTokens, longArrayOf(1, 577, 1024))),
-                EValue.from(fullImgTensor),
-                EValue.from(Tensor.fromBlob(latent0, longArrayOf(1, 1024, 96, 96))),
-                EValue.from(Tensor.fromBlob(latent1, longArrayOf(1, 1024, 96, 96))),
-                EValue.from(Tensor.fromBlob(x0Feat, longArrayOf(1, 1024, 96, 96))),
-                EValue.from(Tensor.fromBlob(x1Feat, longArrayOf(1, 1024, 48, 48))),
-                EValue.from(Tensor.fromBlob(x2Feat, longArrayOf(1, 1024, 24, 24)))
-            )
-            if (WARMUP_PART4B) {
-                mod4b.forward(*part4bInputs.toTypedArray())
-                LogUtil.d(TAG, "Part4b warm-up run done")
-            }
-            val part4bEstimatedSeconds = 80f
-            val part4bProgressStart = 0.55f
-            val part4bProgressSpan = 0.35f
-            val finalParams = coroutineScope {
-                val deferred = async(Dispatchers.IO) {
-                    mod4b.forward(*part4bInputs.toTypedArray())[0].toTensor()
+            val tokensTensor = EValue.from(Tensor.fromBlob(combinedTokens, longArrayOf(1, 577, 1024)))
+            val latent0Eval = EValue.from(Tensor.fromBlob(latent0, longArrayOf(1, 1024, 96, 96)))
+            val latent1Eval = EValue.from(Tensor.fromBlob(latent1, longArrayOf(1, 1024, 96, 96)))
+            val x0Eval = EValue.from(Tensor.fromBlob(x0Feat, longArrayOf(1, 1024, 96, 96)))
+            val x1Eval = EValue.from(Tensor.fromBlob(x1Feat, longArrayOf(1, 1024, 48, 48)))
+            val x2Eval = EValue.from(Tensor.fromBlob(x2Feat, longArrayOf(1, 1024, 24, 24)))
+
+            var finalParams: Tensor? = null
+            var gaussianData: FloatArray
+            try {
+            if (useChunkedPart4bTiled16Files) {
+                // --- Fused tiled Part4b: each tile file does upsample+decode+gauss from LOW-RES crops ---
+                // No full-res tensors ever cross to Java. Peak memory per tile ~50 MB.
+                LogUtil.d(TAG, "Part4b tiled path: XNNPACK, fused tiles (upsample+decode+gauss per tile)")
+                Runtime.getRuntime().runFinalization()
+                System.gc()
+                val tTiledStart = System.currentTimeMillis()
+
+                // Reshape tokens → x_lowres [1,1024,24,24] (strip prefix token, permute to NCHW)
+                val xLowresH = 24; val xLowresW = 24; val xLowresC = 1024
+                val xLowres = FloatArray(xLowresC * xLowresH * xLowresW)
+                for (row in 0 until xLowresH) {
+                    for (col in 0 until xLowresW) {
+                        val srcBase = (1 + row * xLowresW + col) * xLowresC
+                        for (ch in 0 until xLowresC) {
+                            xLowres[ch * xLowresH * xLowresW + row * xLowresW + col] = combinedTokens[srcBase + ch]
+                        }
+                    }
                 }
-                val startMs = System.currentTimeMillis()
-                while (!deferred.isCompleted) {
-                    delay(2000)
-                    if (deferred.isCompleted) break
-                    val elapsedSec = (System.currentTimeMillis() - startMs) / 1000f
-                    val p = part4bProgressStart + (elapsedSec / part4bEstimatedSeconds).coerceIn(0f, 1f) * part4bProgressSpan
-                    report(p, "Adding the finishing touches… This may take a minute.", progressCallback)
+
+                // Full image as NCHW float array for tiling
+                val fullImgData = fullImgTensor.dataAsFloatArray
+                val imgC = 3; val imgH = IMAGE_SIZE; val imgW = IMAGE_SIZE
+
+                val allTileGaussians = mutableListOf<FloatArray>()
+                val grid = PART4B_TILED_GRID
+                for (tileIdx in 0 until PART4B_TILED_NUM) {
+                    val tileRow = tileIdx / grid
+                    val tileCol = tileIdx % grid
+                    val tileFile = if (hasAll16TileFiles) part4bTileFiles[tileIdx]!! else part4bTileFullFile!!
+                    val tTile = System.currentTimeMillis()
+
+                    // Crop image tile [1,3,384,384]
+                    val imgTileCrop = cropTileNCHW(fullImgData, imgC, imgH, imgW, tileRow, tileCol)
+                    val imgTileH = imgH / grid; val imgTileW = imgW / grid
+
+                    // Crop low-res features (tiny)
+                    val lat0Crop = cropTileNCHW(latent0, 1024, 96, 96, tileRow, tileCol)
+                    val lat1Crop = cropTileNCHW(latent1, 1024, 96, 96, tileRow, tileCol)
+                    val x0Crop = cropTileNCHW(x0Feat, 1024, 96, 96, tileRow, tileCol)
+                    val x1Crop = cropTileNCHW(x1Feat, 1024, 48, 48, tileRow, tileCol)
+                    val x2Crop = cropTileNCHW(x2Feat, 1024, 24, 24, tileRow, tileCol)
+                    val xlCrop = cropTileNCHW(xLowres, xLowresC, xLowresH, xLowresW, tileRow, tileCol)
+
+                    val tileInputs = arrayOf(
+                        EValue.from(Tensor.fromBlob(imgTileCrop, longArrayOf(1, 3, imgTileH.toLong(), imgTileW.toLong()))),
+                        EValue.from(Tensor.fromBlob(lat0Crop, longArrayOf(1, 1024, 24, 24))),
+                        EValue.from(Tensor.fromBlob(lat1Crop, longArrayOf(1, 1024, 24, 24))),
+                        EValue.from(Tensor.fromBlob(x0Crop, longArrayOf(1, 1024, 24, 24))),
+                        EValue.from(Tensor.fromBlob(x1Crop, longArrayOf(1, 1024, 12, 12))),
+                        EValue.from(Tensor.fromBlob(x2Crop, longArrayOf(1, 1024, 6, 6))),
+                        EValue.from(Tensor.fromBlob(xlCrop, longArrayOf(1, 1024, 6, 6)))
+                    )
+
+                    val modTile = Module.load(tileFile.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
+                    val tileOut = modTile.forward(*tileInputs)
+                    val packedTile = tileOut[0].toTensor().dataAsFloatArray.copyOf()
+                    modTile.destroy()
+                    System.gc()
+
+                    // Correct NDC positions and scales for tile → full image mapping
+                    // Packed layout: [N, 14] = pos_x, pos_y, pos_z, opacity, scale_x, scale_y, scale_z, q0..q3, r, g, b
+                    val numGaussians = packedTile.size / 14
+                    val ndcOffsetX = (2f * tileCol + 1f - grid) / grid
+                    val ndcOffsetY = (2f * tileRow + 1f - grid) / grid
+                    val invGrid = 1f / grid
+                    for (g in 0 until numGaussians) {
+                        val base = g * 14
+                        val posZ = packedTile[base + 2]
+                        packedTile[base + 0] = packedTile[base + 0] * invGrid + posZ * ndcOffsetX
+                        packedTile[base + 1] = packedTile[base + 1] * invGrid + posZ * ndcOffsetY
+                        packedTile[base + 4] *= invGrid
+                        packedTile[base + 5] *= invGrid
+                        packedTile[base + 6] *= invGrid
+                    }
+
+                    allTileGaussians.add(packedTile)
+                    val tileMs = System.currentTimeMillis() - tTile
+                    LogUtil.d(TAG, "Part4b tile $tileIdx: ${numGaussians} Gaussians, ${tileMs}ms")
+                    report(0.50f + 0.40f * (tileIdx + 1) / PART4B_TILED_NUM, "Generating 3D room (tile ${tileIdx + 1}/$PART4B_TILED_NUM)…", progressCallback)
                 }
-                deferred.await()
+
+                // Concatenate all tile Gaussians
+                val totalGaussians = allTileGaussians.sumOf { it.size }
+                gaussianData = FloatArray(totalGaussians)
+                var offset = 0
+                for (tileG in allTileGaussians) {
+                    System.arraycopy(tileG, 0, gaussianData, offset, tileG.size)
+                    offset += tileG.size
+                }
+                val totalMs = System.currentTimeMillis() - tTiledStart
+                LogUtil.d(TAG, "[TIMING] Part4b tiled total: ${totalMs}ms, ${totalGaussians / 14} Gaussians")
+            } else if (useChunkedPart4bTiled || useChunkedPart4b) {
+                // --- Chunked Part4b (or single-file tiled): depth decoder (stage 1) → Gaussian generator (stage 2) ---
+                val part4bDepthFileToUse = if (useChunkedPart4bTiled) part4bDepthTiledFile!! else part4bDepthFile!!
+                val part4bGaussFileToUse = if (useChunkedPart4bTiled) part4bGaussTiledFile!! else part4bGaussFile!!
+                LogUtil.d(TAG, "Starting chunked Part4b: stage 1 (depth decoder)...")
+                LogUtil.d(TAG, "Part4b depth model: path=${part4bDepthFileToUse.absolutePath} exists=${part4bDepthFileToUse.exists()} size=${part4bDepthFileToUse.length()}")
+                val tDepthStart = System.currentTimeMillis()
+                val modDepth = try {
+                    Module.load(part4bDepthFileToUse.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
+                } catch (e: Throwable) {
+                    LogUtil.e(TAG, "Part4b depth module load failed: ${e.message}", e)
+                    throw e
+                }
+                LogUtil.d(TAG, "Part4b depth module loaded in ${System.currentTimeMillis() - tDepthStart}ms, running forward...")
+                val depthOutputs = modDepth.forward(tokensTensor, latent0Eval, latent1Eval, x0Eval, x1Eval, x2Eval)
+                val depthMs = System.currentTimeMillis() - tDepthStart
+                LogUtil.d(TAG, "[TIMING] Part4b depth decoder: ${depthMs}ms, outputs=${depthOutputs.size}")
+
+                val monodepthData = depthOutputs[0].toTensor().dataAsFloatArray
+                val monodepthShape = depthOutputs[0].toTensor().shape()
+                val intermediateData = Array(6) { depthOutputs[it + 1].toTensor().dataAsFloatArray }
+                val intermediateShapes = Array(6) { depthOutputs[it + 1].toTensor().shape() }
+                LogUtil.d(TAG, "Part4b depth outputs copied; destroying depth module...")
+                modDepth.destroy()
+                System.gc()
+                LogUtil.d(TAG, "Freeing memory before Part4b stage 2 (Gaussian)...")
+                Runtime.getRuntime().runFinalization()
+                System.gc()
+
+                report(0.55f, "Generating 3D room…", progressCallback)
+                LogUtil.d(TAG, "Starting chunked Part4b: stage 2 (Gaussian generator)...")
+                val tGaussStart = System.currentTimeMillis()
+                val modGauss = Module.load(part4bGaussFileToUse.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
+
+                val gaussInputs = arrayOf(
+                    EValue.from(fullImgTensor),
+                    EValue.from(Tensor.fromBlob(monodepthData, monodepthShape)),
+                    EValue.from(Tensor.fromBlob(intermediateData[0], intermediateShapes[0])),
+                    EValue.from(Tensor.fromBlob(intermediateData[1], intermediateShapes[1])),
+                    EValue.from(Tensor.fromBlob(intermediateData[2], intermediateShapes[2])),
+                    EValue.from(Tensor.fromBlob(intermediateData[3], intermediateShapes[3])),
+                    EValue.from(Tensor.fromBlob(intermediateData[4], intermediateShapes[4])),
+                    EValue.from(Tensor.fromBlob(intermediateData[5], intermediateShapes[5]))
+                )
+
+                val gaussEstimatedSeconds = 140f
+                val gaussProgressStart = 0.55f
+                val gaussProgressSpan = 0.35f
+                finalParams = coroutineScope {
+                    val deferred = async(Dispatchers.IO) {
+                        modGauss.forward(*gaussInputs)[0].toTensor()
+                    }
+                    val startMs = System.currentTimeMillis()
+                    while (!deferred.isCompleted) {
+                        delay(2000)
+                        if (deferred.isCompleted) break
+                        val elapsedSec = (System.currentTimeMillis() - startMs) / 1000f
+                        val progressFraction = gaussProgressStart + (elapsedSec / gaussEstimatedSeconds).coerceIn(0f, 1f) * gaussProgressSpan
+                        report(progressFraction, "Generating 3D room… This may take a minute.", progressCallback)
+                    }
+                    deferred.await()
+                }
+                val gaussMs = System.currentTimeMillis() - tGaussStart
+                LogUtil.d(TAG, "[TIMING] Part4b Gaussian generator: ${gaussMs}ms")
+                LogUtil.d(TAG, "[TIMING] Part4b total (depth+gauss): ${depthMs + gaussMs}ms")
+                gaussianData = finalParams!!.dataAsFloatArray.copyOf()
+                modGauss.destroy()
+            } else {
+                // --- Single Part4b forward (original path). If FP16 was built for Vulkan and runtime has no Vulkan, fall back to FP32. ---
+                val part4bInputs = arrayOf(
+                    tokensTensor, EValue.from(fullImgTensor),
+                    latent0Eval, latent1Eval, x0Eval, x1Eval, x2Eval
+                )
+                val part4bEstimatedSeconds = 140f
+                val part4bProgressStart = 0.55f
+                val part4bProgressSpan = 0.35f
+
+                fun runPart4bForward(module: org.pytorch.executorch.Module): Tensor =
+                    module.forward(*part4bInputs)[0].toTensor()
+
+                var mod4b = Module.load(part4bFile!!.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
+                LogUtil.d(TAG, "Part4b forward: 7 inputs tokens, img, latent0, latent1, x0Feat, x1Feat, x2Feat")
+                if (WARMUP_PART4B) {
+                    mod4b.forward(*part4bInputs)
+                    LogUtil.d(TAG, "Part4b warm-up run done")
+                }
+                finalParams = try {
+                    coroutineScope {
+                        val deferred = async(Dispatchers.IO) { runPart4bForward(mod4b) }
+                        val startMs = System.currentTimeMillis()
+                        while (!deferred.isCompleted) {
+                            delay(2000)
+                            if (deferred.isCompleted) break
+                            val elapsedSec = (System.currentTimeMillis() - startMs) / 1000f
+                            val progressFraction = part4bProgressStart + (elapsedSec / part4bEstimatedSeconds).coerceIn(0f, 1f) * part4bProgressSpan
+                            report(progressFraction, "Adding the finishing touches… This may take a minute.", progressCallback)
+                        }
+                        deferred.await()
+                    }
+                } catch (e: Throwable) {
+                    throw e
+                }
+                val part4bMs = System.currentTimeMillis() - tPart4bStart
+                LogUtil.d(TAG, "[TIMING] Part4b forward: ${part4bMs}ms")
+                // Copy tensor data before destroy(); output buffer is owned by the module and freed on destroy().
+                gaussianData = finalParams!!.dataAsFloatArray.copyOf()
+                mod4b.destroy()
             }
-            val part4bMs = System.currentTimeMillis() - tPart4bStart
-            LogUtil.d(TAG, "[TIMING] Part4b forward: ${part4bMs}ms")
+            } catch (e: Throwable) {
+                // OOM or tiled-path failure: skip tiled next run and fall back to single Part4b when available.
+                val isVulkanDeviceLost = e.message?.contains("Device lost") == true ||
+                    e.message?.contains("VK_ERROR_DEVICE_LOST") == true ||
+                    e.cause?.message?.contains("Device lost") == true
+                val tiledPathFailed = useChunkedPart4bTiled16Files
+                val shouldFallback = (tiledPathFailed || ((useChunkedPart4bTiled || useChunkedPart4b) && isVulkanDeviceLost)) && part4bFile != null
+                if (tiledPathFailed) {
+                    context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+                        .edit()
+                        .putBoolean("executorch_int8_skip_tiled_after_oom", true)
+                        .putBoolean("executorch_int8_prefer_single_part4b", true)
+                        .apply()
+                    LogUtil.d(TAG, "Part4b tiled OOM/failure: will skip tiled path on next run")
+                }
+                if (shouldFallback && part4bFile != null) {
+                    val part4bFallbackFile = part4bFile
+                    LogUtil.d(TAG, "Part4b tiled path failed (${e.message}), falling back to single Part4b")
+                    report(0.52f, "Adding the finishing touches… (FP32 fallback)", progressCallback)
+                    try {
+                        val part4bInputsFallback = arrayOf(
+                            tokensTensor, EValue.from(fullImgTensor),
+                            latent0Eval, latent1Eval, x0Eval, x1Eval, x2Eval
+                        )
+                        val mod4bFallback = Module.load(part4bFallbackFile.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
+                        val fallbackEstimatedSeconds = 140f
+                        val fallbackProgressStart = 0.52f
+                        val fallbackProgressSpan = 0.38f
+                        val fallbackResult = coroutineScope {
+                            val deferred = async(Dispatchers.IO) {
+                                mod4bFallback.forward(*part4bInputsFallback)[0].toTensor()
+                            }
+                            val startMs = System.currentTimeMillis()
+                            while (!deferred.isCompleted) {
+                                delay(2000)
+                                if (deferred.isCompleted) break
+                                val elapsedSec = (System.currentTimeMillis() - startMs) / 1000f
+                                val progressFraction = fallbackProgressStart + (elapsedSec / fallbackEstimatedSeconds).coerceIn(0f, 1f) * fallbackProgressSpan
+                                report(progressFraction, "Adding the finishing touches… This may take a minute.", progressCallback)
+                            }
+                            deferred.await()
+                        }
+                        gaussianData = fallbackResult.dataAsFloatArray.copyOf()
+                        mod4bFallback.destroy()
+                        LogUtil.d(TAG, "[TIMING] Part4b FP32 fallback completed")
+                        context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+                            .edit()
+                            .putBoolean("executorch_int8_prefer_single_part4b", true)
+                            .apply()
+                    } catch (fallbackEx: Throwable) {
+                        LogUtil.e(TAG, "FP32 fallback also failed: ${fallbackEx.message}", fallbackEx)
+                        throw fallbackEx
+                    }
+                } else if (tiledPathFailed && part4bFile == null) {
+                    LogUtil.e(TAG, "Part4b tiled path OOM and single Part4b not found. Push sharp_split_part4b.pte or disable Part4b tiled in Settings.")
+                    throw IllegalStateException("Part4b tiled ran out of memory. Add sharp_split_part4b.pte to models for fallback, or turn off Part4b tiled in Settings.", e)
+                } else {
+                    throw e
+                }
+            }
+
             report(0.92f, "Saving your 3D room…", progressCallback)
             val tPlyStart = System.currentTimeMillis()
             LogUtil.d(TAG, "[PLY] Part4b done. Writing PLY with raw coordinates (center-crop input = 1:1, no aspect scale)")
-            val result = writePly(finalParams.dataAsFloatArray, progressCallback, isPortrait)
+            val result = writePly(gaussianData, progressCallback, isPortrait)
             val plyMs = System.currentTimeMillis() - tPlyStart
             LogUtil.d(TAG, "[TIMING] writePly: ${plyMs}ms")
-            mod4b.destroy(); scaledBmp.recycle()
+            scaledBmp.recycle()
             report(1f, "Your room is ready!", progressCallback)
             val totalMs = System.currentTimeMillis() - pipelineStartMs
             LogUtil.d(TAG, "[ASPECT] inference complete | Gaussians=${result.gaussianCount} | PLY bbox room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} m")

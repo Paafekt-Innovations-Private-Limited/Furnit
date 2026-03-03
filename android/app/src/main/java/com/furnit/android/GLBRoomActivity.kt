@@ -288,15 +288,30 @@ class GLBRoomActivity : AppCompatActivity() {
                     bottomMargin = dpToPx(20)
                 }
                 setOnClickListener {
-                    // Launch FurnitureFitActivity with this room as background (pass folder so it uses opened room)
-                    val roomFolder = intent.getStringExtra("ROOM_FOLDER") ?: glbPath?.let { path -> java.io.File(path).parent }
+                    val roomFolder = intent.getStringExtra("ROOM_FOLDER") ?: glbPath?.let { path -> File(path).parent }
                     LogUtil.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
-                    val intent = Intent(this@GLBRoomActivity, FurnitureFitActivity::class.java)
-                    intent.putExtra("ROOM_ID", roomId)
-                    intent.putExtra("ROOM_NAME", roomName)
-                    roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
-                    intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
-                    startActivity(intent)
+                    val roomPlyExists = roomFolder != null && File(roomFolder, "room.ply").exists()
+                    if (roomPlyExists) {
+                        val i = Intent(this@GLBRoomActivity, SharpRoomActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                            putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, roomFolder)
+                            putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, roomWidth)
+                            putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, roomHeight)
+                            putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, 4.5f)
+                            putExtra("photo_orientation", photoOrientation)
+                            putExtra(SharpRoomActivity.EXTRA_OPEN_BRAIN_ON_LOAD, true)
+                            putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false)
+                        }
+                        android.util.Log.d("SharpService", "startActivity(SharpRoomActivity) caller=GLBRoomActivity")
+                        startActivity(i)
+                    } else {
+                        val intent = Intent(this@GLBRoomActivity, FurnitureFitActivity::class.java)
+                        intent.putExtra("ROOM_ID", roomId)
+                        intent.putExtra("ROOM_NAME", roomName)
+                        roomFolder?.let { intent.putExtra("ROOM_FOLDER", it) }
+                        intent.putExtra("PHOTO_ORIENTATION", photoOrientation)
+                        startActivity(intent)
+                    }
                 }
             }
             addView(brainBtn)

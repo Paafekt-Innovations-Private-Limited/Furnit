@@ -449,6 +449,10 @@
 
     <!-- Settings (developer) -->
     <string name="settings_inference_backend">Inference Backend</string>
+    <string name="settings_stable_part4b">Stable mode (single Part4b only)</string>
+    <string name="settings_stable_part4b_description">Use single decoder to avoid OOM or black screen on some devices. Slower but more reliable.</string>
+    <string name="settings_part4b_tiled">Part4b tiled (experimental)</string>
+    <string name="settings_part4b_tiled_description">Use window-tiled Part4b to reduce memory. Requires tiled .pte models on device.</string>
     <string name="settings_onnx_default">ONNX (default)</string>
     <string name="settings_onnx_description">Standard inference with ONNX Runtime (FP32)</string>
 

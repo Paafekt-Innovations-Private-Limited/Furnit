@@ -164,21 +164,39 @@ class ModelDetailActivity : AppCompatActivity() {
             shareButton.visibility = View.VISIBLE
             shareButton.setOnClickListener { shareRoom() }
 
-            // Brain button launches FurnitureFit segmentation with this room as background
+            // Brain: single-Activity (Ultralytics) – open SharpRoomActivity with overlay so 3D room stays visible; fallback to FurnitureFitActivity for non-PLY.
             brainButton.visibility = View.VISIBLE
             brainButton.setOnClickListener {
                 val roomFolder = java.io.File(model.assetPath).let { f ->
                     if (f.isFile) f.parent else f.absolutePath
                 }
-                // Only pass ROOM_FOLDER when it's an absolute path to a real folder (user room).
-                // Bundled assets (models/vintage.glb) have parent "models" - no room.glb there, so omit to use ROOM_ID.
-                val absoluteFolder = if (roomFolder != null && java.io.File(roomFolder).isAbsolute) roomFolder else null
+                val absoluteFolder = if (roomFolder != null && File(roomFolder).isAbsolute) roomFolder else null
                 LogUtil.d(TAG, "Brain click: ROOM_ID=${model.id} ROOM_FOLDER=$absoluteFolder (raw=$roomFolder)")
-                val intent = Intent(this, FurnitureFitActivity::class.java)
-                intent.putExtra("ROOM_ID", model.id)
-                intent.putExtra("ROOM_NAME", model.name)
-                if (absoluteFolder != null) intent.putExtra("ROOM_FOLDER", absoluteFolder)
-                startActivity(intent)
+                val roomPlyExists = absoluteFolder != null && File(absoluteFolder, "room.ply").exists()
+                if (roomPlyExists) {
+                    val intent = Intent(this, SharpRoomActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, absoluteFolder)
+                        putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, model.roomWidth ?: 4f)
+                        putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, model.roomHeight ?: 3f)
+                        putExtra(SharpRoomActivity.EXTRA_ROOM_DEPTH, model.roomDepth ?: 4.5f)
+                        putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, model.roomCenterX ?: 0f)
+                        putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, model.roomCenterY ?: 0f)
+                        putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, model.roomCenterZ ?: 0f)
+                        putExtra("photo_orientation", model.photoOrientation)
+                        putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, model.photoWideAngle)
+                        putExtra(SharpRoomActivity.EXTRA_OPEN_BRAIN_ON_LOAD, true)
+                        putExtra(SharpRoomActivity.EXTRA_ALLOW_SAVE, false)
+                    }
+                    android.util.Log.d("SharpService", "startActivity(SharpRoomActivity) caller=ModelDetailActivity")
+                    startActivity(intent)
+                } else {
+                    val intent = Intent(this, FurnitureFitActivity::class.java)
+                    intent.putExtra("ROOM_ID", model.id)
+                    intent.putExtra("ROOM_NAME", model.name)
+                    if (absoluteFolder != null) intent.putExtra("ROOM_FOLDER", absoluteFolder)
+                    startActivity(intent)
+                }
             }
 
             loadModel(model.assetPath, model.roomWidth, model.roomHeight, model.roomDepth)

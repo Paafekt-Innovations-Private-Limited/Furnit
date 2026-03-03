@@ -59,6 +59,12 @@ class SharpRoomActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "SharpRoomActivity"
+        /** If another instance is alive and showing this path, we finish immediately to avoid duplicate PLY copy/load. */
+        private var currentInstanceRef: java.lang.ref.WeakReference<SharpRoomActivity>? = null
+        private var currentPlyPath: String? = null
+        private var currentPlyPathOpenedAtMs: Long = 0L
+        private val duplicateCheckLock = Object()
+
         const val EXTRA_PLY_PATH = "ply_path"
         const val EXTRA_ROOM_FOLDER = "room_folder"
         const val EXTRA_ROOM_WIDTH = "room_width"
@@ -70,7 +76,14 @@ class SharpRoomActivity : AppCompatActivity() {
         const val EXTRA_ALLOW_SAVE = "allow_save"
         /** True if the photo was taken with the wide-angle (0.5x) lens; used to adjust initial camera position. */
         const val EXTRA_PHOTO_WIDE_ANGLE = "photo_wide_angle"
+        /** When true, after the room WebView is loaded, automatically open the brain (furniture detection) overlay so the 3D room stays visible (single-Activity; no FurnitureFitActivity). */
+        const val EXTRA_OPEN_BRAIN_ON_LOAD = "open_brain_on_load"
     }
+
+    /** True if we finished in onCreate because another instance is already showing the same room. */
+    private var isDuplicateInstance: Boolean = false
+    /** Set in onCreate (after duplicate check) for timing log when viewer reports loaded. */
+    private var viewerCreateTimeMs: Long = 0L
 
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: FrameLayout
@@ -93,6 +106,7 @@ class SharpRoomActivity : AppCompatActivity() {
     /** True when the photo was taken with wide-angle (0.5x) lens; viewer camera position is adjusted for wider FOV. */
     private var photoWideAngle: Boolean = false
     private var hasSavedDimensions: Boolean = false  // True if dimensions were passed from saved room
+    private var openBrainOnLoad: Boolean = false
 
     // Calibration state
     private var showCalibrationOverlay = false
@@ -139,7 +153,39 @@ class SharpRoomActivity : AppCompatActivity() {
 
         plyPath = intent.getStringExtra(EXTRA_PLY_PATH)
         roomFolder = intent.getStringExtra(EXTRA_ROOM_FOLDER)
+        if (plyPath == null && roomFolder != null) {
+            val roomPly = File(roomFolder, "room.ply")
+            if (roomPly.exists()) plyPath = roomPly.absolutePath
+        }
+        // If another SharpRoomActivity is already alive and showing this room, finish to avoid duplicate copy/load.
+        // Only finish when existing != null: if the first instance was destroyed (e.g. system recreated for singleTask),
+        // the "second" is the only live instance and must show the room — do not finish it.
+        val pathToShow = plyPath
+        if (pathToShow != null) {
+            val isDuplicate = synchronized(duplicateCheckLock) {
+                val existing = currentInstanceRef?.get()
+                val samePath = currentPlyPath == pathToShow
+                android.util.Log.d("SharpService", "SharpRoomActivity onCreate: path=$pathToShow existing=${existing != null} samePath=$samePath this=${System.identityHashCode(this)}")
+                if (existing != null && existing != this && samePath) {
+                    true
+                } else {
+                    currentInstanceRef = java.lang.ref.WeakReference(this)
+                    currentPlyPath = pathToShow
+                    currentPlyPathOpenedAtMs = System.currentTimeMillis()
+                    false
+                }
+            }
+            if (isDuplicate) {
+                LogUtil.d(TAG, "onCreate: another instance already showing same room, finishing duplicate")
+                android.util.Log.d("SharpService", "SharpRoomActivity: finishing duplicate instance (same path)")
+                isDuplicateInstance = true
+                finish()
+                return
+            }
+        }
+        viewerCreateTimeMs = System.currentTimeMillis()
         allowSave = intent.getBooleanExtra(EXTRA_ALLOW_SAVE, true)
+        openBrainOnLoad = intent.getBooleanExtra(EXTRA_OPEN_BRAIN_ON_LOAD, false)
 
         // Load saved dimensions and orientation from intent (if available)
         var savedWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, 0f)
@@ -252,6 +298,12 @@ class SharpRoomActivity : AppCompatActivity() {
                     // Hide loading after a delay for splat rendering
                     postDelayed({
                         loadingOverlay.visibility = View.GONE
+                        // Ultralytics: single-Activity – open brain overlay in same Activity so room stays visible
+                        if (openBrainOnLoad) {
+                            openBrainOnLoad = false
+                            LogUtil.d(TAG, "Brain: OPEN_BRAIN_ON_LOAD – requesting camera permission")
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
                     }, 2000)
                 }
 
@@ -349,6 +401,51 @@ class SharpRoomActivity : AppCompatActivity() {
         setContentView(rootLayout)
 
         // Load the WebGL viewer
+        loadWebGLViewer()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val newPath = intent.getStringExtra(EXTRA_PLY_PATH) ?: intent.getStringExtra(EXTRA_ROOM_FOLDER)?.let { File(it, "room.ply").takeIf { f -> f.exists() }?.absolutePath }
+        val newFolder = intent.getStringExtra(EXTRA_ROOM_FOLDER)
+        val currentPath = plyPath
+        val currentFolder = roomFolder
+        val sameRoom = when {
+            newPath == null && newFolder == null -> false
+            currentPath == null && currentFolder == null -> false
+            newFolder != null && currentFolder != null -> runCatching {
+                File(newFolder).canonicalPath == File(currentFolder).canonicalPath
+            }.getOrDefault(newFolder == currentFolder)
+            newPath != null && currentPath != null -> when {
+                newPath == currentPath -> true
+                else -> runCatching { File(newPath).canonicalPath == File(currentPath).canonicalPath }.getOrDefault(false)
+            }
+            else -> false
+        }
+        LogUtil.d(TAG, "onNewIntent: newPath=$newPath currentPath=$currentPath sameRoom=$sameRoom")
+        if (sameRoom) {
+            LogUtil.d(TAG, "onNewIntent: same room already shown, skip re-load")
+            return
+        }
+        plyPath = intent.getStringExtra(EXTRA_PLY_PATH)
+        roomFolder = intent.getStringExtra(EXTRA_ROOM_FOLDER)
+        if (plyPath == null && roomFolder != null) {
+            val roomPly = File(roomFolder, "room.ply")
+            if (roomPly.exists()) plyPath = roomPly.absolutePath
+        }
+        if (plyPath == null) return
+        roomWidth = intent.getFloatExtra(EXTRA_ROOM_WIDTH, roomWidth)
+        roomHeight = intent.getFloatExtra(EXTRA_ROOM_HEIGHT, roomHeight)
+        roomDepth = intent.getFloatExtra(EXTRA_ROOM_DEPTH, roomDepth)
+        roomCenterX = intent.getFloatExtra(EXTRA_ROOM_CENTER_X, roomCenterX)
+        roomCenterY = intent.getFloatExtra(EXTRA_ROOM_CENTER_Y, roomCenterY)
+        roomCenterZ = intent.getFloatExtra(EXTRA_ROOM_CENTER_Z, roomCenterZ)
+        photoOrientation = intent.getStringExtra("photo_orientation")?.trim()?.lowercase() ?: photoOrientation
+        photoWideAngle = intent.getBooleanExtra(EXTRA_PHOTO_WIDE_ANGLE, photoWideAngle)
+        LogUtil.d(TAG, "onNewIntent: different room, reloading PLY: $plyPath")
+        val internalPlyFile = File(filesDir, "webview_assets/room.ply")
+        File(plyPath!!).copyTo(internalPlyFile, overwrite = true)
         loadWebGLViewer()
     }
 
@@ -968,6 +1065,7 @@ class SharpRoomActivity : AppCompatActivity() {
         // Auto-frame when mesh has valid bounds (called from onLoad when PLY ready, or by polling)
         let frameAttempts = 0;
         const maxFrameAttempts = 150;  // 150 * 200ms = 30s for large PLY (e.g. 292MB)
+        let framingDone = false;
 
         // Load PLY using SparkJS SplatMesh (matching iOS exactly)
         // URL served by WebViewAssetLoader; onLoad runs when PLY is loaded and decoded
@@ -990,14 +1088,12 @@ class SharpRoomActivity : AppCompatActivity() {
                 console.log('[WebGL] SplatMesh: landscape - no rotation');
             }
             scene.add(splatMesh);
-
-            // Fallback: start polling in case onLoad is slow or not supported
-            setTimeout(autoFrameRoom, 500);
         } catch (err) {
             console.error('[WebGL] Failed to create SplatMesh:', err);
         }
 
         function autoFrameRoom() {
+            if (framingDone) return;
             frameAttempts++;
             console.log('[WebGL] autoFrameRoom() called, attempt:', frameAttempts);
 
@@ -1053,10 +1149,9 @@ class SharpRoomActivity : AppCompatActivity() {
                         controls.update();
                         if (window.Android) window.Android.onLoaded();
                     }
-                    // Retry once mesh bounds are ready so we can use Box3 and center mesh (attempts 2–4)
-                    if (frameAttempts <= 4) {
-                        setTimeout(autoFrameRoom, 1200);
-                    }
+                    // Fallback framing is good enough; SparkJS splat meshes don't report Box3 geometry,
+                    // so retrying just produces duplicate CAMERA_FRAME logs with no improvement.
+                    framingDone = true;
                     return;
                 }
                 if (frameAttempts < maxFrameAttempts) {
@@ -1145,6 +1240,7 @@ class SharpRoomActivity : AppCompatActivity() {
             console.log('[WebGL] Camera positioned at distance:', cameraDistance.toFixed(2));
             cameraFramedAt = performance.now();
             needsRender = true;
+            framingDone = true;
 
             // Send dimensions to Android (multiple times to ensure delivery)
             function sendDimensionsToAndroid() {
@@ -1361,7 +1457,8 @@ class SharpRoomActivity : AppCompatActivity() {
         fun onLoaded() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
-                LogUtil.d(TAG, "WebGL viewer reported loaded")
+                val elapsedMs = if (viewerCreateTimeMs > 0L) System.currentTimeMillis() - viewerCreateTimeMs else 0L
+                LogUtil.d(TAG, "WebGL viewer reported loaded (${elapsedMs}ms since onCreate)")
             }
         }
 
@@ -1408,6 +1505,15 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (currentInstanceRef?.get() == this) {
+            currentInstanceRef = null
+            // Do not clear currentPlyPath/currentPlyPathOpenedAtMs so a recreated duplicate (second onCreate)
+            // sees recentOpen=true and finishes instead of copying/loading PLY again.
+        }
+        if (isDuplicateInstance) {
+            super.onDestroy()
+            return
+        }
         stopBrainDetection()
         if (!cameraExecutor.isShutdown) {
             cameraExecutor.shutdown()

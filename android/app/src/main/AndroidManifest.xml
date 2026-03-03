@@ -49,6 +49,8 @@
         <activity
             android:name=".SharpRoomActivity"
             android:exported="false"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|keyboardHidden"
             android:theme="@style/Theme.Furnit.FullScreen" />
         <activity
             android:name=".GLBRoomActivity"

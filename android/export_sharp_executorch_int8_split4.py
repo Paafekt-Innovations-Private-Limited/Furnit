@@ -27,6 +27,7 @@ Usage:
 
 import argparse
 import math
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -35,7 +36,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-IMAGE_SIZE = 1536
+IMAGE_SIZE = 1536  # overridden by --image-size
 PATCH_SIZE = 384
 VIT_SPLIT_BLOCK = 12
 FEATURE_DIM = 1024
@@ -395,14 +396,28 @@ def parse_args():
     pa.add_argument("--output-dir",
         default=str(Path(__file__).resolve().parent / "executorch_int8_models"),
         help="Output directory")
+    pa.add_argument("--chunked-part4", action="store_true",
+        help="Export chunked Part 4 (4a_chunk_512, 4a_chunk_65, 4b) for lower peak RAM. Part4a INT8, Part4b FP16 or FP32.")
+    pa.add_argument("--chunked-part4b", action="store_true",
+        help="Further split Part4b into 2 stages: depth decoder + Gaussian generator (better progress UX, lower peak memory).")
+    pa.add_argument("--part4b-fp16", action="store_true",
+        help="Export Part4b as FP16 (recommended for quality; avoids INT8 artifacts on positions/scales/rotations). Implies --chunked-part4.")
+    pa.add_argument("--part4b-backend", choices=("xnnpack", "vulkan"), default="xnnpack",
+        help="Part4b partitioner: xnnpack (recommended, Ultralytics) or vulkan. Vulkan often OOM on large decoders; XNNPACK avoids UBO/memory issues.")
+    pa.add_argument("--part4b-tiled", action="store_true",
+        help="Export tiled Part4b (depth decoder in 2x2 windows) as _depth_tiled.pte + _gauss_tiled.pte for lower memory.")
+    pa.add_argument("--image-size", type=int, default=1536,
+        help="Input image size (default 1536). Lower values (e.g. 768) produce fewer Gaussians but run ~4x faster. Requires matching Android runtime IMAGE_SIZE.")
     return pa.parse_args()
 
 
 def main():
+    global IMAGE_SIZE
     args = parse_args()
     sharp_src = Path(args.sharp_src)
     weights_path = Path(args.weights)
     output_dir = Path(args.output_dir)
+    IMAGE_SIZE = args.image_size
 
     print("=" * 60)
     print("ExecuTorch INT8 Split 4-Part Export")
@@ -410,6 +425,7 @@ def main():
     print(f"  Backend: XNNPACK (INT8 NEON kernels)")
     print(f"  Memory planning: greedy AOT (all parts)")
     print(f"  Quantization: PT2E symmetric per-channel dynamic INT8")
+    print(f"  Image size: {IMAGE_SIZE}x{IMAGE_SIZE}")
 
     if not sharp_src.exists():
         print(f"ERROR: SHARP source not found at {sharp_src}")
@@ -448,11 +464,14 @@ def main():
     print("\nGenerating sample intermediate tensors (ONNX-validated shapes)...")
     with torch.no_grad():
         image_tokens = part3(sample_image)
-    latent0 = torch.rand(1, FEATURE_DIM, 96, 96)
-    latent1 = torch.rand(1, FEATURE_DIM, 96, 96)
-    x0_feat = torch.rand(1, FEATURE_DIM, 96, 96)
-    x1_feat = torch.rand(1, FEATURE_DIM, 48, 48)
-    x2_feat = torch.rand(1, FEATURE_DIM, SPATIAL_SIZE, SPATIAL_SIZE)
+    merge_1x = IMAGE_SIZE // 16   # 96 at 1536, 48 at 768
+    merge_05x = IMAGE_SIZE // 32  # 48 at 1536, 24 at 768
+    spatial = IMAGE_SIZE // 64    # 24 at 1536, 12 at 768
+    latent0 = torch.rand(1, FEATURE_DIM, merge_1x, merge_1x)
+    latent1 = torch.rand(1, FEATURE_DIM, merge_1x, merge_1x)
+    x0_feat = torch.rand(1, FEATURE_DIM, merge_1x, merge_1x)
+    x1_feat = torch.rand(1, FEATURE_DIM, merge_05x, merge_05x)
+    x2_feat = torch.rand(1, FEATURE_DIM, spatial, spatial)
     print(f"  image_tokens: {image_tokens.shape}")
     print(f"  latent0: {latent0.shape}, x1_feat: {x1_feat.shape}, x2_feat: {x2_feat.shape}")
 
@@ -481,19 +500,175 @@ def main():
         output_dir / "sharp_split_part3_int8.pte",
     )
 
-    # Part 4 decoder: export FP32 (not INT8). PT2E quantization breaks the decoder's
-    # skip connections because quantized FloatFunctional.add(x, res) fails when x and res
-    # have different spatial sizes after ConvTranspose upsampling. Same limitation as FP16
-    # export (F.interpolate upcasts). Parts 1-3 (the 35-patch encoder loop) get the INT8 win.
-    from export_sharp_executorch_split4 import export_pte
-    sizes["part4"] = export_pte(
-        "Part 4: Decoder + Gaussians (FP32, greedy planning)",
-        part4, (image_tokens, sample_image, latent0, latent1, x0_feat, x1_feat, x2_feat),
-        output_dir / "sharp_split_part4_int8.pte",
-        use_fp16=False,
-        backend="xnnpack",
-        use_greedy_memory_planning=True,
-    )
+    from export_sharp_executorch_split4 import export_pte, ImageEncoderPartBChunk, ImageEncoderPartBFromTokens
+
+    chunked_part4 = getattr(args, "chunked_part4", False) or getattr(args, "part4b_fp16", False)
+    part4b_fp16 = getattr(args, "part4b_fp16", False)
+    part4b_backend = getattr(args, "part4b_backend", "xnnpack")
+
+    if chunked_part4:
+        # Chunked Part 4: Part4a INT8 (512 + 65 tokens), Part4b FP16 or FP32 (recommended FP16 for quality).
+        # See android/docs/PART4B_DEPLOYMENT.md (Ultralytics: keep decoder heads FP16).
+        CHUNK_LEN_FIRST = 512
+        CHUNK_LEN_LAST = 577 - CHUNK_LEN_FIRST  # 65
+        part4a_512 = ImageEncoderPartBChunk(predictor, CHUNK_LEN_FIRST).eval()
+        part4a_65 = ImageEncoderPartBChunk(predictor, CHUNK_LEN_LAST).eval()
+        part4b = ImageEncoderPartBFromTokens(predictor).eval()
+        sample_tokens_512 = torch.rand(1, CHUNK_LEN_FIRST, 1024)
+        sample_tokens_65 = torch.rand(1, CHUNK_LEN_LAST, 1024)
+        with torch.no_grad():
+            tokens_after_blocks = torch.cat([
+                part4a_512(image_tokens[:, :CHUNK_LEN_FIRST]),
+                part4a_65(image_tokens[:, CHUNK_LEN_FIRST:]),
+            ], dim=1)
+        sizes["part4a_chunk_512"] = quantize_and_export_pte(
+            "Part 4a chunk (512 tokens) INT8",
+            part4a_512, (sample_tokens_512,),
+            output_dir / "sharp_split_part4a_chunk_512.pte",
+        )
+        sizes["part4a_chunk_65"] = quantize_and_export_pte(
+            "Part 4a chunk (65 tokens) INT8",
+            part4a_65, (sample_tokens_65,),
+            output_dir / "sharp_split_part4a_chunk_65.pte",
+        )
+        part4b_name = "Part4b (FP16)" if part4b_fp16 else "Part4b (FP32)"
+        part4b_path = output_dir / "sharp_split_part4b_fp16.pte" if part4b_fp16 else output_dir / "sharp_split_part4b.pte"
+        sizes["part4b"] = export_pte(
+            f"{part4b_name} + {part4b_backend}",
+            part4b, (tokens_after_blocks, sample_image, latent0, latent1, x0_feat, x1_feat, x2_feat),
+            part4b_path,
+            use_fp16=part4b_fp16,
+            backend=part4b_backend,
+            use_greedy_memory_planning=True,
+        )
+        print(f"  Chunked Part 4: Part4a INT8, Part4b {'FP16' if part4b_fp16 else 'FP32'} ({part4b_backend})")
+
+        # Further split Part4b into depth decoder (stage 1) + Gaussian generator (stage 2)
+        if getattr(args, "chunked_part4b", False):
+            from export_sharp_executorch_split4 import Part4bDepthDecoder, Part4bGaussGenerator
+            depth_decoder = Part4bDepthDecoder(predictor).eval()
+            gauss_generator = Part4bGaussGenerator(predictor).eval()
+            # Validation forward in float32 so dtypes match (part4b_fp16 export uses half in .pte only).
+            with torch.no_grad():
+                d_f32 = depth_decoder.float()
+                t_f32 = tokens_after_blocks.float() if tokens_after_blocks.is_floating_point() else tokens_after_blocks
+                inter_inputs = (latent0.float(), latent1.float(), x0_feat.float(), x1_feat.float(), x2_feat.float())
+                intermediates = d_f32(t_f32, *inter_inputs)
+            monodepth_sample, f0, f1, f2, f3, f4, df = intermediates
+            print(f"\n  Part4b depth decoder outputs: monodepth={monodepth_sample.shape}")
+            print(f"    feat0={f0.shape} feat1={f1.shape} feat2={f2.shape} feat3={f3.shape} feat4={f4.shape} decoder={df.shape}")
+
+            sizes["part4b_depth"] = export_pte(
+                f"Part4b stage 1 (depth decoder) + {part4b_backend}",
+                depth_decoder,
+                (tokens_after_blocks, latent0, latent1, x0_feat, x1_feat, x2_feat),
+                output_dir / "sharp_split_part4b_depth.pte",
+                use_fp16=part4b_fp16,
+                backend=part4b_backend,
+            )
+            sizes["part4b_gauss"] = export_pte(
+                f"Part4b stage 2 (Gaussian generator) + {part4b_backend}",
+                gauss_generator,
+                (sample_image, monodepth_sample, f0, f1, f2, f3, f4, df),
+                output_dir / "sharp_split_part4b_gauss.pte",
+                use_fp16=part4b_fp16,
+                backend=part4b_backend,
+                use_greedy_memory_planning=True,
+            )
+            with torch.no_grad():
+                # Validation in float32 (exported .pte may be FP16)
+                g_f32 = gauss_generator.float()
+                packed_staged = g_f32(
+                    sample_image.float(), monodepth_sample.float(),
+                    f0.float(), f1.float(), f2.float(), f3.float(), f4.float(), df.float(),
+                )
+                packed_single = part4b.float()(
+                    t_f32, sample_image.float(), *[x.float() for x in (latent0, latent1, x0_feat, x1_feat, x2_feat)]
+                )
+            assert packed_staged.shape == packed_single.shape, f"Staged {packed_staged.shape} vs single {packed_single.shape}"
+            print(f"  Chunked Part4b validated: {packed_staged.shape[1]:,} Gaussians")
+
+            # Tiled Part4b: fused upsample+decode+gauss per tile (no full-res tensors in Java)
+            if getattr(args, "part4b_tiled", False):
+                from export_sharp_executorch_split4 import (
+                    Part4bTileFull,
+                    Part4bUpsample,
+                    _window_partition_nxn,
+                    PART4B_TILED_GRID,
+                )
+                n_tiles = PART4B_TILED_GRID
+                num_tiles = n_tiles * n_tiles  # 16
+
+                tile_full_model = Part4bTileFull(predictor).eval()
+                print(f"  Part4b tile full (upsample+decode+gauss fused): {sum(p.numel() for p in tile_full_model.parameters())/1e6:.1f}M params")
+
+                # Compute x_lowres from tokens via upsample model's reshape
+                upsample_model = Part4bUpsample(predictor).eval()
+                with torch.no_grad():
+                    x_lowres = upsample_model._reshape_feature(t_f32)
+                print(f"  x_lowres shape: {x_lowres.shape}")
+
+                # Tile the LOW-RES inputs (tiny: latent0/1/x0 [1,1024,24,24], x1 [1,1024,12,12], x2/x_lowres [1,1024,6,6])
+                latent0_tiles = _window_partition_nxn(latent0.float(), n_tiles)
+                latent1_tiles = _window_partition_nxn(latent1.float(), n_tiles)
+                x0_tiles = _window_partition_nxn(x0_feat.float(), n_tiles)
+                x1_tiles = _window_partition_nxn(x1_feat.float(), n_tiles)
+                x2_tiles = _window_partition_nxn(x2_feat.float(), n_tiles)
+                x_lowres_tiles = _window_partition_nxn(x_lowres.float(), n_tiles)
+                image_tiles = _window_partition_nxn(sample_image.float(), n_tiles)
+
+                tile_sample_inputs = (
+                    image_tiles[0], latent0_tiles[0], latent1_tiles[0],
+                    x0_tiles[0], x1_tiles[0], x2_tiles[0], x_lowres_tiles[0],
+                )
+                print(f"  Tile full sample input shapes: image={image_tiles[0].shape} latent0={latent0_tiles[0].shape} "
+                      f"x1={x1_tiles[0].shape} x2={x2_tiles[0].shape} x_lowres={x_lowres_tiles[0].shape}")
+
+                # Export tile full model
+                tile_full_path = output_dir / "sharp_split_part4b_tile_full.pte"
+                sizes["part4b_tile_full"] = export_pte(
+                    f"Part4b tile full (upsample+decode+gauss, run 16x) + {part4b_backend}",
+                    tile_full_model,
+                    tile_sample_inputs,
+                    tile_full_path,
+                    use_fp16=False,
+                    backend=part4b_backend,
+                    use_greedy_memory_planning=True,
+                )
+                # Copy to 16 tile files for load/unload per tile
+                tile_full_mb = sizes["part4b_tile_full"]
+                for i in range(num_tiles):
+                    dest = output_dir / f"sharp_split_part4b_tile_{i:02d}.pte"
+                    shutil.copy2(tile_full_path, dest)
+                    sizes[f"part4b_tile_{i:02d}"] = tile_full_mb
+                print(f"  Part4b: 16 tile files (fused, XNNPACK) written: sharp_split_part4b_tile_00.pte .. tile_15.pte")
+
+                # Validate: run tile full on all 16 tiles
+                with torch.no_grad():
+                    tf_f32 = tile_full_model.float()
+                    tile_gaussians = []
+                    for i in range(num_tiles):
+                        packed_tile = tf_f32(
+                            image_tiles[i].float(),
+                            latent0_tiles[i].float(), latent1_tiles[i].float(),
+                            x0_tiles[i].float(), x1_tiles[i].float(),
+                            x2_tiles[i].float(), x_lowres_tiles[i].float(),
+                        )
+                        tile_gaussians.append(packed_tile.float())
+                        print(f"    Tile {i}: {packed_tile.shape[1]:,} Gaussians")
+                total_tiled = sum(t.shape[1] for t in tile_gaussians)
+                print(f"  Part4b tiled validated: {total_tiled:,} Gaussians across 16 tiles")
+    else:
+        # Part 4 decoder (full): export FP32. PT2E quantization breaks the decoder's
+        # skip connections. Parts 1-3 get the INT8 win.
+        sizes["part4"] = export_pte(
+            "Part 4: Decoder + Gaussians (FP32, greedy planning)",
+            part4, (image_tokens, sample_image, latent0, latent1, x0_feat, x1_feat, x2_feat),
+            output_dir / "sharp_split_part4_int8.pte",
+            use_fp16=False,
+            backend="xnnpack",
+            use_greedy_memory_planning=True,
+        )
 
     total_time = time.time() - total_start
     total_size = sum(sizes.values())
@@ -505,9 +680,9 @@ def main():
         print(f"  {name}: {size:.0f} MB")
     print(f"  Total: {total_size:.0f} MB (vs ~2.4GB FP32, ~1.2GB FP16)")
     print(f"  Export time: {total_time:.0f}s")
-    print(f"\nPush to device:")
-    print(f"  for f in {output_dir}/sharp_split_part*_int8.pte; do")
-    print(f"    adb push $f /storage/emulated/0/Android/data/com.furnit.android/files/models/")
+    print(f"\nPush to device (16-piece: upsample + 16 tile files + gauss_tiled):")
+    print(f"  for f in {output_dir}/sharp_split_part*_int8.pte {output_dir}/sharp_split_part4b_upsample.pte {output_dir}/sharp_split_part4b_tile_*.pte {output_dir}/sharp_split_part4b_gauss_tiled.pte; do")
+    print(f"    [ -f \"$f\" ] && adb push \"$f\" /storage/emulated/0/Android/data/com.furnit.android/files/models/")
     print(f"  done")
     return 0
 

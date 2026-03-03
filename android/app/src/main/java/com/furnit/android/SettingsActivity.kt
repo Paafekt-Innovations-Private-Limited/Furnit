@@ -503,6 +503,64 @@ class SettingsActivity : AppCompatActivity() {
 
         developerSection.addView(backendRadioGroup)
 
+        // Stable mode: use single Part4b only (avoids OOM/black screen with chunked Part4b on some devices)
+        val stablePart4bLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 16, 0, 8)
+        }
+        val stablePart4bLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val stablePart4bTitle = TextView(this).apply {
+            text = getString(R.string.settings_stable_part4b)
+            textSize = 16f
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val stablePart4bDesc = TextView(this).apply {
+            text = getString(R.string.settings_stable_part4b_description)
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        stablePart4bLabel.addView(stablePart4bTitle)
+        stablePart4bLabel.addView(stablePart4bDesc)
+        val stablePart4bSwitch = createStyledSwitch(prefs.getBoolean("executorch_int8_prefer_single_part4b", false)) { isChecked ->
+            prefs.edit().putBoolean("executorch_int8_prefer_single_part4b", isChecked).apply()
+        }
+        stablePart4bLayout.addView(stablePart4bLabel)
+        stablePart4bLayout.addView(stablePart4bSwitch)
+        developerSection.addView(stablePart4bLayout)
+
+        // Part4b tiled (experimental): use window-tiled Part4b when tiled .pte files exist
+        val part4bTiledLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 8, 0, 8)
+        }
+        val part4bTiledLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val part4bTiledTitle = TextView(this).apply {
+            text = getString(R.string.settings_part4b_tiled)
+            textSize = 16f
+            setTextColor(Color.parseColor("#333333"))
+        }
+        val part4bTiledDesc = TextView(this).apply {
+            text = getString(R.string.settings_part4b_tiled_description)
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        part4bTiledLabel.addView(part4bTiledTitle)
+        part4bTiledLabel.addView(part4bTiledDesc)
+        val part4bTiledSwitch = createStyledSwitch(prefs.getBoolean("executorch_int8_use_part4b_tiled", false)) { isChecked ->
+            prefs.edit().putBoolean("executorch_int8_use_part4b_tiled", isChecked).apply()
+        }
+        part4bTiledLayout.addView(part4bTiledLabel)
+        part4bTiledLayout.addView(part4bTiledSwitch)
+        developerSection.addView(part4bTiledLayout)
+
         // Developer section footer
         val developerFooter = TextView(this).apply {
             text = getString(R.string.settings_developer_footer)

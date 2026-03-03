@@ -149,9 +149,11 @@ class MultiLayerInitializer(nn.Module):
             depth, depth_factor = _rescale_depth(depth)
             global_scale = 1.0 / depth_factor
 
+        dtype = depth.dtype
+
         def _create_disparity_layers(num_layers: int = 1) -> torch.Tensor:
             """Create multiple disparity layers."""
-            disparity = torch.linspace(1.0 / self.base_depth, 0.0, num_layers + 1, device=device)
+            disparity = torch.linspace(1.0 / self.base_depth, 0.0, num_layers + 1, device=device, dtype=dtype)
             return disparity[None, None, :-1, None, None].repeat(
                 batch_size, 1, 1, base_height, base_width
             )
@@ -210,7 +212,7 @@ class MultiLayerInitializer(nn.Module):
         disparity_scale_factor = 2 * self.scale_factor * self.stride / float(image_width)
         base_scales = _create_base_scale(disparity, disparity_scale_factor)
 
-        base_quaternions = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device)
+        base_quaternions = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         base_quaternions = base_quaternions[None, :, None, None, None]
 
         # Initializing the opacitiy this way ensures that the initial transmittance
@@ -220,9 +222,9 @@ class MultiLayerInitializer(nn.Module):
         #
         # and hence independent of the number of layers.
         #
-        base_opacities = torch.tensor([min(1.0 / self.num_layers, 0.5)], device=device)
+        base_opacities = torch.tensor([min(1.0 / self.num_layers, 0.5)], device=device, dtype=dtype)
         base_colors = torch.empty(
-            batch_size, 3, self.num_layers, base_height, base_width, device=device
+            batch_size, 3, self.num_layers, base_height, base_width, device=device, dtype=dtype
         ).fill_(0.5)
         # Dimensions: (batch_size, num_channels, num_layers, height, width)
         if self.color_option == "none":
@@ -258,9 +260,10 @@ def _create_base_xy(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Create base x and y coordinates for the gaussians in NDC space."""
     device = depth.device
+    dtype = depth.dtype
     batch_size, _, image_height, image_width = depth.shape
-    xx = torch.arange(0.5 * stride, image_width, stride, device=device)
-    yy = torch.arange(0.5 * stride, image_height, stride, device=device)
+    xx = torch.arange(0.5 * stride, image_width, stride, device=device, dtype=dtype)
+    yy = torch.arange(0.5 * stride, image_height, stride, device=device, dtype=dtype)
     xx = 2 * xx / image_width - 1.0
     yy = 2 * yy / image_height - 1.0
 

@@ -11,6 +11,8 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import com.furnit.android.utils.LogUtil
 import android.view.Gravity
@@ -647,11 +649,15 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         methodPickerView.visibility = View.VISIBLE
     }
 
+    /** Prevents the race between onComplete's Handler.post and onAIRoomSelected's cached-result path from opening the viewer twice. */
+    private var aiRoomResultOpened = false
+
     /** Start AI generation in background when photo is selected. Cancel on Manual/Back/Change. */
     private fun startAIGenerationInBackground(bitmap: Bitmap) {
         cancelAndReleaseAI()
         aiGenerationResult = null
         aiGenerationRunning = true
+        aiRoomResultOpened = false
         val sharpService = SharpService.getInstance(this)
         aiGenerationHandle = sharpService.startGenerationInBackground(bitmap, object : SharpService.ProgressCallback {
             override fun onProgress(progress: Float, message: String) {
@@ -673,9 +679,10 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     aiGenerationHandle = null
                     updateAIOptionProgress(1f, "Ready")
                     hideProgressOverlay()
-                    if (aiRoomOverlayRequested) {
+                    if (aiRoomOverlayRequested && !aiRoomResultOpened) {
                         aiRoomOverlayRequested = false
-                        openSharpRoomWithResult(result)
+                        aiRoomResultOpened = true
+                        Handler(Looper.getMainLooper()).post { openSharpRoomWithResult(result) }
                     }
                     LogUtil.d("SinglePhotoRoom", "AI generation completed in background")
                 }
@@ -701,11 +708,22 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiGenerationHandle = null
         aiGenerationRunning = false
         aiGenerationResult = null
+        aiRoomResultOpened = false
         SharpService.getInstance(this).release()
         LogUtil.d("SinglePhotoRoom", "AI cancelled and memory released")
     }
 
     private var aiOptionSubtitleView: TextView? = null
+
+    companion object {
+        private const val VIEWER_OPEN_DEBOUNCE_MS = 3000L
+        /** App-wide debounce so recreated SinglePhotoRoomActivity also skips duplicate open. */
+        @Volatile
+        private var lastOpenedPlyPath: String? = null
+        @Volatile
+        private var lastOpenedViewerTimeMs: Long = 0L
+        private val viewerOpenLock = Object()
+    }
 
     /** Last progress from generation callback — used when showing overlay for already-running gen. */
     private var lastAIGenerationProgress: Float = 0f
@@ -725,11 +743,15 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             return
         }
 
-        // Use result from background generation if already done
+        // Use result from background generation if already done (skip if viewer already opened for this result)
         val result = aiGenerationResult
-        if (result != null) {
+        if (result != null && !aiRoomResultOpened) {
             LogUtil.d("SinglePhotoRoom", "Using cached AI result")
+            aiRoomResultOpened = true
             openSharpRoomWithResult(result)
+            return
+        } else if (result != null && aiRoomResultOpened) {
+            LogUtil.d("SinglePhotoRoom", "Viewer already opened for this result, skipping duplicate")
             return
         }
 
@@ -753,8 +775,27 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun openSharpRoomWithResult(result: SharpService.GenerationResult) {
+        val plyPath = result.classicPlyFile.absolutePath
+        val now = System.currentTimeMillis()
+        val shouldOpen = synchronized(viewerOpenLock) {
+            val lastPath = lastOpenedPlyPath
+            val lastTime = lastOpenedViewerTimeMs
+            if (plyPath == lastPath && (now - lastTime) < VIEWER_OPEN_DEBOUNCE_MS) {
+                LogUtil.d("SinglePhotoRoom", "openSharpRoomWithResult: skip duplicate open for same path (debounce ${now - lastTime}ms)")
+                android.util.Log.d("SharpService", "Viewer open debounced: skip duplicate (same path, ${now - lastTime}ms ago)")
+                false
+            } else {
+                lastOpenedPlyPath = plyPath
+                lastOpenedViewerTimeMs = now
+                true
+            }
+        }
+        if (!shouldOpen) return
+        android.util.Log.d("SharpService", "startActivity(SharpRoomActivity) caller=SinglePhotoRoomActivity path=$plyPath")
+
         val intent = Intent(this, SharpRoomActivity::class.java).apply {
-            putExtra(SharpRoomActivity.EXTRA_PLY_PATH, result.classicPlyFile.absolutePath)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(SharpRoomActivity.EXTRA_PLY_PATH, plyPath)
             putExtra(SharpRoomActivity.EXTRA_ROOM_FOLDER, result.plyFile.parentFile?.absolutePath)
             putExtra(SharpRoomActivity.EXTRA_ROOM_WIDTH, result.roomWidth)
             putExtra(SharpRoomActivity.EXTRA_ROOM_HEIGHT, result.roomHeight)
