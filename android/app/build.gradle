@@ -34,28 +34,26 @@ android {
         //     pip { install "numpy"; install "Pillow" }
         // }
 
-        if (enableNative) {
-            // NCNN native library support — ABI is controlled by splits.abi below (arm64-v8a only)
-            // CMake configuration for NCNN
-            externalNativeBuild {
-                cmake {
-                    cppFlags "-std=c++17 -frtti -fexceptions"
-                    arguments "-DANDROID_STL=c++_shared"
-                }
+        // CMake always builds ExecuTorch C++ tiles; NCNN is opt-in via furnit.enableNative
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -frtti -fexceptions"
+                def cmakeArgs = ["-DANDROID_STL=c++_shared"]
+                if (enableNative) cmakeArgs.add("-DENABLE_NCNN=ON")
+                arguments(*cmakeArgs)
             }
         }
     }
 
-    if (enableNative) {
-        // CMake build configuration
-        externalNativeBuild {
-            cmake {
-                path "src/main/cpp/CMakeLists.txt"
-                version "3.22.1"
-            }
+    // CMake build configuration (always enabled for ExecuTorch tiles)
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
         }
+    }
 
-        // Include native libraries from jniLibs
+    if (enableNative) {
         sourceSets {
             main {
                 jniLibs.srcDirs = ['src/main/jniLibs']
@@ -77,18 +75,14 @@ android {
         jvmTarget = '11'
     }
 
-    if (enableNative) {
-        packagingOptions {
-            jniLibs {
-                useLegacyPackaging = true
-            }
-        }
-    }
-
-    // Resolve duplicate native libs between ExecuTorch and PyTorch Mobile
     packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
         pickFirst '**/libfbjni.so'
         pickFirst '**/libc++_shared.so'
+        pickFirst '**/libexecutorch.so'
+        pickFirst '**/libexecutorch_jni.so'
     }
 
     // 16 KB page alignment: our native libs (NCNN) are built with -Wl,-z,max-page-size=16384 in CMake.
@@ -127,6 +121,19 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
     onlyIf { !skipExecutorchAssets && execInt8Dir.exists() && execChunkedDir.exists() }
 }
 if (!skipExecutorchAssets) preBuild.dependsOn copyExecutorchModelsIntoAssets
+
+// libsharp_executorch_tiles.so links against the AAR's lib; that lib has SONAME libexecutorch_jni.so.
+// Package a copy under that name so the loader finds it at runtime.
+def executorchLibDir = project.file("src/main/cpp/executorch_lib")
+def jniLibsArm64 = project.file("src/main/jniLibs/arm64-v8a")
+tasks.register("copyExecutorchJniAsSoname", Copy) {
+    description = "Copy libexecutorch.so as libexecutorch_jni.so so loader finds it by SONAME"
+    from(executorchLibDir) { include "libexecutorch.so" }
+    into jniLibsArm64
+    rename "libexecutorch.so", "libexecutorch_jni.so"
+    onlyIf { executorchLibDir.exists() && project.file("${executorchLibDir}/libexecutorch.so").exists() }
+}
+preBuild.dependsOn copyExecutorchJniAsSoname
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.10"

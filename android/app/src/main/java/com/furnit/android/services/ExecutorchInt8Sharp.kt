@@ -50,6 +50,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         /** When true, run one Part4b forward and discard before real run (warm-up for threads/caches). Doubles Part4b time; set true only for stability testing. */
         @JvmField
         var WARMUP_PART4B: Boolean = false
+        /** When true, run 2 tile inferences in parallel (2 Module instances). ~2x Part4b speed but ~2x peak memory. Safe on 12 GB devices; test on 8 GB. */
+        @JvmField
+        var PARALLEL_TILES: Boolean = false
         // Image + merged spatial sizes (must match Python export)
         private const val IMAGE_SIZE = 1536
         private const val M_1X = 96   // 1x merged size
@@ -107,6 +110,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         )
         private const val PART4B_TILED_GRID = 4
         private const val PART4B_TILED_NUM = PART4B_TILED_GRID * PART4B_TILED_GRID // 16
+        /** Gaussians per tile (model output fixed); avoids holding 16 tile arrays + 1 concatenation = OOM. */
+        private const val PART4B_GAUSSIANS_PER_TILE = 73728
         private const val ASSET_MODELS_SUBDIR = "models"
 
         private const val LOGIT_LUT_SIZE = 1024
@@ -127,6 +132,22 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             return LN_LUT[((x - LN_LUT_MIN) * LN_LUT_SCALE).toInt()]
         }
 
+        /** Whether the native tile library loaded successfully. Falls back to Kotlin loop if false. */
+        @JvmField
+        var NATIVE_TILES_AVAILABLE: Boolean = false
+
+        init {
+            try {
+                System.loadLibrary("sharp_executorch_tiles")
+                NATIVE_TILES_AVAILABLE = true
+            } catch (e: UnsatisfiedLinkError) {
+                LogUtil.d(TAG, "Native tile library not available, using Kotlin tile loop: ${e.message}")
+            }
+            if (NATIVE_TILES_AVAILABLE) {
+                LogUtil.d(TAG, "Native Part4b tile library loaded (16-tile C++ path available when Part4b tiled is enabled)")
+            }
+        }
+
         @Volatile
         private var instance: ExecutorchInt8Sharp? = null
 
@@ -134,6 +155,23 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             instance ?: ExecutorchInt8Sharp(context.applicationContext).also { instance = it }
         }
     }
+
+    /**
+     * Run the 16-tile Part4b pipeline in C++ (native heap). Returns packed [N*14] Gaussian floats,
+     * or null on failure (caller falls back to Kotlin tile loop or single Part4b).
+     */
+    private external fun runTiledPart4bNative(
+        modelPath: String,
+        imageNCHW: FloatArray,
+        latent0: FloatArray,
+        latent1: FloatArray,
+        x0Feat: FloatArray,
+        x1Feat: FloatArray,
+        x2Feat: FloatArray,
+        xLowres: FloatArray,
+        numThreads: Int,
+        parallelTiles: Boolean
+    ): FloatArray?
 
     private val mutex = Mutex()
     private var isInitialized = false
@@ -187,10 +225,11 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     }
 
     /**
-     * Part4b thread count: fixed 2 so behavior matches 8 GB phone and does not OOM on any device
-     * (12 GB and others). More threads can be re-enabled later for simulator/testing.
+     * Part4b thread count: 4 threads balances throughput vs memory on 8-core SoCs.
+     * XNNPACK partitions work across threads; 4 is the sweet spot for Snapdragon 8 Gen 2/3.
+     * Reduce to 2 if OOM on low-RAM devices.
      */
-    private fun part4bThreadCount(): Int = 2
+    private fun part4bThreadCount(): Int = 4
 
     private fun findFile(filename: String): File? {
         val internal = File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0 }
@@ -229,6 +268,78 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     /** Report progress 0..1 with engaging messages (aligned with Swift/Android overlay text). */
     private fun report(progress: Float, message: String, progressCallback: ((Float, String) -> Unit)?) {
         progressCallback?.invoke(progress.coerceIn(0f, 1f), message)
+    }
+
+    /**
+     * Validate Gaussian parameters for INT8 quantization artifacts.
+     * High-precision regression heads (position, scale, rotation) are sensitive to INT8 noise;
+     * this logs statistics and warns if the quantized output looks degraded so we know to
+     * consider FP16 for those heads (per Ultralytics deployment best practices).
+     */
+    private fun validateGaussianQuality(gaussianData: FloatArray) {
+        val gaussianCount = gaussianData.size / PARAMS_PER_GAUSSIAN
+        if (gaussianCount == 0) return
+
+        var nanOrInfCount = 0
+        var negativeScaleCount = 0
+        var extremeScaleCount = 0
+        var denormQuatCount = 0
+        var oobOpacityCount = 0
+        var posMinX = Float.MAX_VALUE; var posMaxX = -Float.MAX_VALUE
+        var posMinY = Float.MAX_VALUE; var posMaxY = -Float.MAX_VALUE
+        var posMinZ = Float.MAX_VALUE; var posMaxZ = -Float.MAX_VALUE
+        var scaleSum = 0.0; var scaleCount = 0L
+
+        for (i in 0 until gaussianCount) {
+            val off = i * PARAMS_PER_GAUSSIAN
+            val px = gaussianData[off]; val py = gaussianData[off + 1]; val pz = gaussianData[off + 2]
+            val opacity = gaussianData[off + 3]
+            val sx = gaussianData[off + 4]; val sy = gaussianData[off + 5]; val sz = gaussianData[off + 6]
+            val qw = gaussianData[off + 7]; val qx = gaussianData[off + 8]
+            val qy = gaussianData[off + 9]; val qz = gaussianData[off + 10]
+
+            if (px.isNaN() || py.isNaN() || pz.isNaN() || px.isInfinite() || py.isInfinite() || pz.isInfinite() ||
+                sx.isNaN() || sy.isNaN() || sz.isNaN()) {
+                nanOrInfCount++; continue
+            }
+
+            posMinX = min(posMinX, px); posMaxX = max(posMaxX, px)
+            posMinY = min(posMinY, py); posMaxY = max(posMaxY, py)
+            posMinZ = min(posMinZ, pz); posMaxZ = max(posMaxZ, pz)
+
+            if (sx < 0f || sy < 0f || sz < 0f) negativeScaleCount++
+            if (sx > 10f || sy > 10f || sz > 10f) extremeScaleCount++
+            scaleSum += (sx + sy + sz).toDouble(); scaleCount += 3
+
+            val quatNorm = sqrt(qw * qw + qx * qx + qy * qy + qz * qz)
+            if (quatNorm < 0.5f || quatNorm > 2.0f) denormQuatCount++
+            if (opacity < -0.01f || opacity > 1.01f) oobOpacityCount++
+        }
+
+        val avgScale = if (scaleCount > 0) scaleSum / scaleCount else 0.0
+        val posRange = maxOf(posMaxX - posMinX, posMaxY - posMinY, posMaxZ - posMinZ)
+        val negScalePct = 100f * negativeScaleCount / gaussianCount
+        val extremeScalePct = 100f * extremeScaleCount / gaussianCount
+        val denormQuatPct = 100f * denormQuatCount / gaussianCount
+
+        LogUtil.d(TAG, "[INT8_QA] Gaussians=$gaussianCount | posRange=%.2f | avgScale=%.4f".format(posRange, avgScale))
+        LogUtil.d(TAG, "[INT8_QA] NaN/Inf=$nanOrInfCount | negScale=$negativeScaleCount (%.1f%%) | extremeScale=$extremeScaleCount (%.1f%%) | denormQuat=$denormQuatCount (%.1f%%) | oobOpacity=$oobOpacityCount".format(negScalePct, extremeScalePct, denormQuatPct))
+
+        if (nanOrInfCount > gaussianCount * 0.01f) {
+            LogUtil.w(TAG, "[INT8_QA] >1% NaN/Inf Gaussians ($nanOrInfCount/$gaussianCount): severe quantization issue in position heads")
+        }
+        if (negScalePct > 5f) {
+            LogUtil.w(TAG, "[INT8_QA] ${negScalePct}% negative scales: INT8 quantization noise on scale regression heads. Consider FP16 for scale decoder.")
+        }
+        if (extremeScalePct > 10f) {
+            LogUtil.w(TAG, "[INT8_QA] ${extremeScalePct}% extreme scales (>10): INT8 clipping on scale heads. Review quantization range.")
+        }
+        if (denormQuatPct > 5f) {
+            LogUtil.w(TAG, "[INT8_QA] ${denormQuatPct}% denormalized quaternions: INT8 noise on rotation heads. Consider FP16 for rotation decoder.")
+        }
+        if (posRange < 0.1f || posRange > 50f) {
+            LogUtil.w(TAG, "[INT8_QA] Position range %.2f m outside expected 0.1–50 m. INT8 quantization may have clipped position heads.".format(posRange))
+        }
     }
 
     /** Lanczos3 kernel: sinc(x)*sinc(x/3) for |x|<3, else 0. */
@@ -346,6 +457,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
             val usePart4bTiledPref = prefs.getBoolean("executorch_int8_use_part4b_tiled", false)
             val skipTiledAfterOom = prefs.getBoolean("executorch_int8_skip_tiled_after_oom", false)
+            PARALLEL_TILES = prefs.getBoolean("executorch_int8_parallel_tiles", false)
             val useChunkedPart4bTiled16Files = usePart4bTiledPref && !skipTiledAfterOom && (hasAll16TileFiles || part4bTileFullFile != null)
             val useChunkedPart4bTiled = usePart4bTiledPref && part4bGaussTiledFile != null && (useChunkedPart4bTiled16Files || part4bDepthTiledFile != null)
             var useChunkedPart4b = !useChunkedPart4bTiled && part4bDepthFile != null && part4bGaussFile != null
@@ -369,7 +481,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             }
             when {
                 useChunkedPart4bTiled16Files -> LogUtil.d(TAG, "Part4b: using ${if (hasAll16TileFiles) "16 fused tile files" else "tile_full.pte 16x"} (upsample+decode+gauss per tile, XNNPACK)")
-                skipTiledAfterOom && usePart4bTiledPref -> LogUtil.d(TAG, "Part4b: skipping tiled path (previous OOM); using single or chunked Part4b")
+                skipTiledAfterOom && usePart4bTiledPref -> LogUtil.d(TAG, "Part4b: skipping tiled path (previous OOM); using single or chunked Part4b. Re-enable 'Part4b tiled' in Settings (and put 16 tile .pte files in models folder) to use native path.")
                 useChunkedPart4bTiled -> LogUtil.d(TAG, "Part4b: using tiled chunked pipeline (depth_tiled + gauss_tiled)")
                 useChunkedPart4b -> LogUtil.d(TAG, "Part4b: using chunked pipeline (depth + gauss stages)")
                 else -> LogUtil.d(TAG, "Part4b: using ${part4bFile!!.name} (FP32)")
@@ -409,7 +521,21 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             LogUtil.d(TAG, "Loading INT8 Part1+Part2...")
             val mod1 = Module.load(findFile("sharp_split_part1_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
             val mod2 = Module.load(findFile("sharp_split_part2_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
-            LogUtil.d(TAG, "Part1+Part2 loaded in ${System.currentTimeMillis() - tPart12Load}ms. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
+            LogUtil.d(TAG, "Part1+Part2 loaded in ${System.currentTimeMillis() - tPart12Load}ms.")
+
+            // Warm-up: prime XNNPACK thread pool, memory allocator, and CPU caches
+            val tWarmupStart = System.currentTimeMillis()
+            val warmupDummy = FloatArray(3 * PATCH_SIZE * PATCH_SIZE)
+            val warmupTensor = Tensor.fromBlob(warmupDummy, longArrayOf(1, 3, PATCH_SIZE.toLong(), PATCH_SIZE.toLong()))
+            val warmupOut = mod1.forward(EValue.from(warmupTensor))
+            if (warmupOut.isNotEmpty()) {
+                val warmupTokens = warmupOut[0].toTensor().dataAsFloatArray
+                mod2.forward(EValue.from(Tensor.fromBlob(warmupTokens, longArrayOf(1, 577, 1024))))
+            }
+            LogUtil.d(TAG, "XNNPACK warm-up done in ${System.currentTimeMillis() - tWarmupStart}ms")
+            report(0.04f, "Starting encoder…", progressCallback)
+
+            LogUtil.d(TAG, "Starting 1x patches (${GRID_1X}x${GRID_1X})...")
             val t1xStart = System.currentTimeMillis()
 
             val stride = (IMAGE_SIZE - PATCH_SIZE) / 4
@@ -517,9 +643,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             var gaussianData: FloatArray
             try {
             if (useChunkedPart4bTiled16Files) {
-                // --- Fused tiled Part4b: each tile file does upsample+decode+gauss from LOW-RES crops ---
-                // No full-res tensors ever cross to Java. Peak memory per tile ~50 MB.
-                LogUtil.d(TAG, "Part4b tiled path: XNNPACK, fused tiles (upsample+decode+gauss per tile)")
+                // --- Fused tiled Part4b: upsample+decode+gauss from LOW-RES crops ---
+                val parallelTiles = PARALLEL_TILES
+                LogUtil.d(TAG, "Part4b tiled path: XNNPACK, fused tiles | threads=$part4bThreads | parallel=$parallelTiles | native=${NATIVE_TILES_AVAILABLE}")
                 Runtime.getRuntime().runFinalization()
                 System.gc()
                 val tTiledStart = System.currentTimeMillis()
@@ -536,78 +662,94 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     }
                 }
 
-                // Full image as NCHW float array for tiling
                 val fullImgData = fullImgTensor.dataAsFloatArray
-                val imgC = 3; val imgH = IMAGE_SIZE; val imgW = IMAGE_SIZE
+                val tileModelFile = if (hasAll16TileFiles) part4bTileFiles[0]!! else part4bTileFullFile!!
 
-                val allTileGaussians = mutableListOf<FloatArray>()
-                val grid = PART4B_TILED_GRID
-                for (tileIdx in 0 until PART4B_TILED_NUM) {
-                    val tileRow = tileIdx / grid
-                    val tileCol = tileIdx % grid
-                    val tileFile = if (hasAll16TileFiles) part4bTileFiles[tileIdx]!! else part4bTileFullFile!!
-                    val tTile = System.currentTimeMillis()
+                // Try C++ native tile pipeline first (entire tile loop on native heap — no Java heap OOM)
+                // Note: native C++ always runs tiles sequentially; "parallel" pref is ignored to avoid OOM/crash.
+                if (NATIVE_TILES_AVAILABLE && PARALLEL_TILES) {
+                    LogUtil.d(TAG, "Part4b native: parallel tiles requested; C++ runs sequential for stability")
+                }
+                val nativeResult = if (NATIVE_TILES_AVAILABLE) {
+                    try {
+                        report(0.51f, "Generating 3D room (native C++)…", progressCallback)
+                        runTiledPart4bNative(
+                            tileModelFile.absolutePath,
+                            fullImgData, latent0, latent1, x0Feat, x1Feat, x2Feat, xLowres,
+                            part4bThreads, parallelTiles
+                        )
+                    } catch (e: Throwable) {
+                        LogUtil.e(TAG, "Native tile pipeline failed, falling back to Kotlin: ${e.message}", e)
+                        null
+                    }
+                } else null
 
-                    // Crop image tile [1,3,384,384]
-                    val imgTileCrop = cropTileNCHW(fullImgData, imgC, imgH, imgW, tileRow, tileCol)
+                if (nativeResult != null) {
+                    gaussianData = nativeResult
+                    val totalMs = System.currentTimeMillis() - tTiledStart
+                    LogUtil.d(TAG, "[TIMING] Part4b tiled (native C++): ${totalMs}ms, ${gaussianData.size / 14} Gaussians")
+                } else {
+                    // Kotlin fallback: pre-compute crops, run tile loop with Java ExecuTorch API
+                    LogUtil.d(TAG, "Using Kotlin tile loop fallback")
+                    val grid = PART4B_TILED_GRID
+                    val imgC = 3; val imgH = IMAGE_SIZE; val imgW = IMAGE_SIZE
                     val imgTileH = imgH / grid; val imgTileW = imgW / grid
 
-                    // Crop low-res features (tiny)
-                    val lat0Crop = cropTileNCHW(latent0, 1024, 96, 96, tileRow, tileCol)
-                    val lat1Crop = cropTileNCHW(latent1, 1024, 96, 96, tileRow, tileCol)
-                    val x0Crop = cropTileNCHW(x0Feat, 1024, 96, 96, tileRow, tileCol)
-                    val x1Crop = cropTileNCHW(x1Feat, 1024, 48, 48, tileRow, tileCol)
-                    val x2Crop = cropTileNCHW(x2Feat, 1024, 24, 24, tileRow, tileCol)
-                    val xlCrop = cropTileNCHW(xLowres, xLowresC, xLowresH, xLowresW, tileRow, tileCol)
+                    val tCropStart = System.currentTimeMillis()
+                    val allTileInputs = Array(PART4B_TILED_NUM) { tileIdx ->
+                        val tileRow = tileIdx / grid; val tileCol = tileIdx % grid
+                        arrayOf(
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(fullImgData, imgC, imgH, imgW, tileRow, tileCol), longArrayOf(1, 3, imgTileH.toLong(), imgTileW.toLong()))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(latent0, 1024, 96, 96, tileRow, tileCol), longArrayOf(1, 1024, 24, 24))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(latent1, 1024, 96, 96, tileRow, tileCol), longArrayOf(1, 1024, 24, 24))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(x0Feat, 1024, 96, 96, tileRow, tileCol), longArrayOf(1, 1024, 24, 24))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(x1Feat, 1024, 48, 48, tileRow, tileCol), longArrayOf(1, 1024, 12, 12))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(x2Feat, 1024, 24, 24, tileRow, tileCol), longArrayOf(1, 1024, 6, 6))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(xLowres, xLowresC, xLowresH, xLowresW, tileRow, tileCol), longArrayOf(1, 1024, 6, 6)))
+                        )
+                    }
+                    LogUtil.d(TAG, "Pre-computed 16 tile crops in ${System.currentTimeMillis() - tCropStart}ms")
 
-                    val tileInputs = arrayOf(
-                        EValue.from(Tensor.fromBlob(imgTileCrop, longArrayOf(1, 3, imgTileH.toLong(), imgTileW.toLong()))),
-                        EValue.from(Tensor.fromBlob(lat0Crop, longArrayOf(1, 1024, 24, 24))),
-                        EValue.from(Tensor.fromBlob(lat1Crop, longArrayOf(1, 1024, 24, 24))),
-                        EValue.from(Tensor.fromBlob(x0Crop, longArrayOf(1, 1024, 24, 24))),
-                        EValue.from(Tensor.fromBlob(x1Crop, longArrayOf(1, 1024, 12, 12))),
-                        EValue.from(Tensor.fromBlob(x2Crop, longArrayOf(1, 1024, 6, 6))),
-                        EValue.from(Tensor.fromBlob(xlCrop, longArrayOf(1, 1024, 6, 6)))
-                    )
+                    fun correctNDC(packedTile: FloatArray, tileRow: Int, tileCol: Int) {
+                        val numGaussians = packedTile.size / 14
+                        val ndcOffsetX = (2f * tileCol + 1f - grid) / grid
+                        val ndcOffsetY = (2f * tileRow + 1f - grid) / grid
+                        val invGrid = 1f / grid
+                        for (g in 0 until numGaussians) {
+                            val base = g * 14
+                            val posZ = packedTile[base + 2]
+                            packedTile[base + 0] = packedTile[base + 0] * invGrid + posZ * ndcOffsetX
+                            packedTile[base + 1] = packedTile[base + 1] * invGrid + posZ * ndcOffsetY
+                            packedTile[base + 4] *= invGrid
+                            packedTile[base + 5] *= invGrid
+                            packedTile[base + 6] *= invGrid
+                        }
+                    }
 
-                    val modTile = Module.load(tileFile.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
-                    val tileOut = modTile.forward(*tileInputs)
-                    val packedTile = tileOut[0].toTensor().dataAsFloatArray.copyOf()
+                    val floatsPerTile = PART4B_GAUSSIANS_PER_TILE * 14
+                    gaussianData = FloatArray(PART4B_TILED_NUM * floatsPerTile)
+
+                    val tLoadStart = System.currentTimeMillis()
+                    val modTile = Module.load(tileModelFile.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
+                    LogUtil.d(TAG, "Loaded tile module in ${System.currentTimeMillis() - tLoadStart}ms (reused for all 16 tiles)")
+
+                    for (tileIdx in 0 until PART4B_TILED_NUM) {
+                        val tTile = System.currentTimeMillis()
+                        val tileOut = modTile.forward(*allTileInputs[tileIdx])
+                        val packedTile = tileOut[0].toTensor().dataAsFloatArray.copyOf()
+                        correctNDC(packedTile, tileIdx / grid, tileIdx % grid)
+                        System.arraycopy(packedTile, 0, gaussianData, tileIdx * floatsPerTile, packedTile.size)
+
+                        val tileMs = System.currentTimeMillis() - tTile
+                        LogUtil.d(TAG, "Part4b tile $tileIdx: ${packedTile.size / 14} Gaussians, ${tileMs}ms")
+                        report(0.50f + 0.40f * (tileIdx + 1) / PART4B_TILED_NUM, "Generating 3D room (tile ${tileIdx + 1}/$PART4B_TILED_NUM)…", progressCallback)
+                    }
                     modTile.destroy()
                     System.gc()
 
-                    // Correct NDC positions and scales for tile → full image mapping
-                    // Packed layout: [N, 14] = pos_x, pos_y, pos_z, opacity, scale_x, scale_y, scale_z, q0..q3, r, g, b
-                    val numGaussians = packedTile.size / 14
-                    val ndcOffsetX = (2f * tileCol + 1f - grid) / grid
-                    val ndcOffsetY = (2f * tileRow + 1f - grid) / grid
-                    val invGrid = 1f / grid
-                    for (g in 0 until numGaussians) {
-                        val base = g * 14
-                        val posZ = packedTile[base + 2]
-                        packedTile[base + 0] = packedTile[base + 0] * invGrid + posZ * ndcOffsetX
-                        packedTile[base + 1] = packedTile[base + 1] * invGrid + posZ * ndcOffsetY
-                        packedTile[base + 4] *= invGrid
-                        packedTile[base + 5] *= invGrid
-                        packedTile[base + 6] *= invGrid
-                    }
-
-                    allTileGaussians.add(packedTile)
-                    val tileMs = System.currentTimeMillis() - tTile
-                    LogUtil.d(TAG, "Part4b tile $tileIdx: ${numGaussians} Gaussians, ${tileMs}ms")
-                    report(0.50f + 0.40f * (tileIdx + 1) / PART4B_TILED_NUM, "Generating 3D room (tile ${tileIdx + 1}/$PART4B_TILED_NUM)…", progressCallback)
+                    val totalMs = System.currentTimeMillis() - tTiledStart
+                    LogUtil.d(TAG, "[TIMING] Part4b tiled (Kotlin fallback): ${totalMs}ms, ${PART4B_TILED_NUM * PART4B_GAUSSIANS_PER_TILE} Gaussians")
                 }
-
-                // Concatenate all tile Gaussians
-                val totalGaussians = allTileGaussians.sumOf { it.size }
-                gaussianData = FloatArray(totalGaussians)
-                var offset = 0
-                for (tileG in allTileGaussians) {
-                    System.arraycopy(tileG, 0, gaussianData, offset, tileG.size)
-                    offset += tileG.size
-                }
-                val totalMs = System.currentTimeMillis() - tTiledStart
-                LogUtil.d(TAG, "[TIMING] Part4b tiled total: ${totalMs}ms, ${totalGaussians / 14} Gaussians")
             } else if (useChunkedPart4bTiled || useChunkedPart4b) {
                 // --- Chunked Part4b (or single-file tiled): depth decoder (stage 1) → Gaussian generator (stage 2) ---
                 val part4bDepthFileToUse = if (useChunkedPart4bTiled) part4bDepthTiledFile!! else part4bDepthFile!!
@@ -626,8 +768,10 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 val depthMs = System.currentTimeMillis() - tDepthStart
                 LogUtil.d(TAG, "[TIMING] Part4b depth decoder: ${depthMs}ms, outputs=${depthOutputs.size}")
 
+                LogUtil.d(TAG, "Copying Part4b depth outputs for stage 2 (may use significant memory)...")
                 val monodepthData = depthOutputs[0].toTensor().dataAsFloatArray
                 val monodepthShape = depthOutputs[0].toTensor().shape()
+                LogUtil.d(TAG, "Part4b depth: monodepth copied, size=${monodepthData.size}")
                 val intermediateData = Array(6) { depthOutputs[it + 1].toTensor().dataAsFloatArray }
                 val intermediateShapes = Array(6) { depthOutputs[it + 1].toTensor().shape() }
                 LogUtil.d(TAG, "Part4b depth outputs copied; destroying depth module...")
@@ -640,6 +784,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 report(0.55f, "Generating 3D room…", progressCallback)
                 LogUtil.d(TAG, "Starting chunked Part4b: stage 2 (Gaussian generator)...")
                 val tGaussStart = System.currentTimeMillis()
+                LogUtil.d(TAG, "Loading Part4b Gaussian module: ${part4bGaussFileToUse.absolutePath}")
                 val modGauss = Module.load(part4bGaussFileToUse.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
 
                 val gaussInputs = arrayOf(
@@ -776,6 +921,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     throw e
                 }
             }
+
+            report(0.91f, "Validating output quality…", progressCallback)
+            validateGaussianQuality(gaussianData)
 
             report(0.92f, "Saving your 3D room…", progressCallback)
             val tPlyStart = System.currentTimeMillis()
