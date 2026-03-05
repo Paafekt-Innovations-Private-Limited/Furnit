@@ -1519,15 +1519,16 @@ struct AntimatterSplatView: UIViewRepresentable {
                             if (roomHeight > maxRealisticHeight) roomHeight = maxRealisticHeight;
 
                             // Benchmark camera pose from CamBench logs.
+                            // Camera starts at norm (0.05, 0.0477, -0.1914) of room dimensions from center.
+                            // Target is placed 10% of room depth further into the room (-Z) so camera.lookAt works.
                             const N_CAM_X = 0.0500, N_CAM_Y = 0.0477, N_CAM_Z = -0.1914;
-                            const N_TGT_X = 0.0500, N_TGT_Y = 0.0477, N_TGT_Z = -0.1914;
 
                             const ex = center.x + N_CAM_X * roomWidth;
                             const ey = center.y + N_CAM_Y * roomHeight;
                             const ez = center.z + N_CAM_Z * roomDepth;
-                            const tx = center.x + N_TGT_X * roomWidth;
-                            const ty = center.y + N_TGT_Y * roomHeight;
-                            const tz = center.z + N_TGT_Z * roomDepth;
+                            const tx = ex;
+                            const ty = ey;
+                            const tz = ez - 0.1 * roomDepth;
 
                             camera.position.set(ex, ey, ez);
                             lookAtTarget.set(tx, ty, tz);
@@ -1723,7 +1724,9 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                     const dir = new THREE.Vector3();
                     camera.getWorldDirection(dir);
-                    if (dir.lengthSq() < 1e-10) return;
+                    if (dir.lengthSq() < 1e-10) {
+                        dir.set(0, 0, -1);
+                    }
                     dir.normalize();
 
                     const rb = roomBoundsForClamping || {};
