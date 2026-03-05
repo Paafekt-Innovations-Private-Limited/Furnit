@@ -191,7 +191,7 @@ struct SharpRoomView: View {
         self.parsedBounds = Self.parsePLYBounds(from: viewerURL)
     }
 
-    /// Parse PLY file to extract position bounds (for HomeView where roomMeasurements isn't available)
+    /// Parse PLY file to extract position bounds using percentile filtering (ignores outlier Gaussians).
     private static func parsePLYBounds(from url: URL) -> RoomBounds? {
         guard let data = try? Data(contentsOf: url) else {
             logDebug("PLY Parser: Failed to read file")
@@ -204,19 +204,26 @@ struct SharpRoomView: View {
             return nil
         }
 
-        // Parse header for vertex count
+        // Parse header for vertex count and compute bytes per vertex from property count
         guard let headerString = String(data: data[..<headerEndRange.lowerBound], encoding: .utf8) else {
             logDebug("PLY Parser: Failed to parse header")
             return nil
         }
 
         var vertexCount = 0
+        var propertyCount = 0
+        var inVertexBlock = false
         for line in headerString.components(separatedBy: "\n") {
             if line.hasPrefix("element vertex ") {
                 let parts = line.components(separatedBy: " ")
                 if parts.count >= 3, let count = Int(parts[2]) {
                     vertexCount = count
                 }
+                inVertexBlock = true
+            } else if line.hasPrefix("element ") && inVertexBlock {
+                inVertexBlock = false
+            } else if line.hasPrefix("property ") && inVertexBlock {
+                propertyCount += 1
             }
         }
 
@@ -225,26 +232,22 @@ struct SharpRoomView: View {
             return nil
         }
 
-        logDebug("PLY Parser: Found \(vertexCount) vertices")
+        // Standard 3DGS PLY: 62 float properties = 248 bytes per vertex
+        let bytesPerVertex = propertyCount > 0 ? propertyCount * 4 : 248
+        logDebug("PLY Parser: Found \(vertexCount) vertices, \(propertyCount) properties, \(bytesPerVertex) bytes/vertex")
 
-        // Binary data starts after header
         let binaryStart = headerEndRange.upperBound
-
-        // Each vertex: x,y,z (3 floats) + other properties
-        // Stride: 3 floats (xyz) + 3 floats (scale) + 4 floats (rot) + 1 float (opacity) + 3 bytes (rgb) = 47 bytes
-        let bytesPerVertex = 47
         let binaryDataLength = data.count - binaryStart
-
-        var minX: Float = .greatestFiniteMagnitude
-        var maxX: Float = -.greatestFiniteMagnitude
-        var minY: Float = .greatestFiniteMagnitude
-        var maxY: Float = -.greatestFiniteMagnitude
-        var minZ: Float = .greatestFiniteMagnitude
-        var maxZ: Float = -.greatestFiniteMagnitude
-
         let maxVertices = min(vertexCount, binaryDataLength / bytesPerVertex)
 
-        // Use safe byte copying to avoid alignment issues
+        // Collect all positions for percentile filtering
+        var xValues = [Float]()
+        var yValues = [Float]()
+        var zValues = [Float]()
+        xValues.reserveCapacity(maxVertices)
+        yValues.reserveCapacity(maxVertices)
+        zValues.reserveCapacity(maxVertices)
+
         for i in 0..<maxVertices {
             let byteOffset = binaryStart + i * bytesPerVertex
             guard byteOffset + 12 <= data.count else { continue }
@@ -263,20 +266,40 @@ struct SharpRoomView: View {
                 data.copyBytes(to: dest, from: (byteOffset + 8)..<(byteOffset + 12))
             }
 
-            minX = min(minX, x)
-            maxX = max(maxX, x)
-            minY = min(minY, y)
-            maxY = max(maxY, y)
-            minZ = min(minZ, z)
-            maxZ = max(maxZ, z)
+            // Skip NaN / Inf
+            guard x.isFinite && y.isFinite && z.isFinite else { continue }
+
+            xValues.append(x)
+            yValues.append(y)
+            zValues.append(z)
         }
 
-        guard minX < maxX else {
-            logDebug("PLY Parser: Invalid bounds")
+        guard xValues.count > 100 else {
+            logDebug("PLY Parser: Too few finite vertices (\(xValues.count))")
             return nil
         }
 
-        logDebug("PLY Parser: Bounds X[\(minX), \(maxX)] Y[\(minY), \(maxY)] Z[\(minZ), \(maxZ)]")
+        // Sort and use 2nd–98th percentile to exclude outliers
+        xValues.sort()
+        yValues.sort()
+        zValues.sort()
+        let lo = Int(Double(xValues.count) * 0.02)
+        let hi = Int(Double(xValues.count) * 0.98) - 1
+
+        let minX = xValues[lo]
+        let maxX = xValues[hi]
+        let minY = yValues[lo]
+        let maxY = yValues[hi]
+        let minZ = zValues[lo]
+        let maxZ = zValues[hi]
+
+        guard minX < maxX else {
+            logDebug("PLY Parser: Invalid bounds after percentile filter")
+            return nil
+        }
+
+        logDebug("PLY Parser: Bounds (p2-p98) X[\(minX), \(maxX)] Y[\(minY), \(maxY)] Z[\(minZ), \(maxZ)]")
+        logDebug("PLY Parser: Room size \(maxX - minX) × \(maxY - minY) × \(maxZ - minZ)")
 
         return RoomBounds(
             minX: minX, maxX: maxX,
@@ -1294,7 +1317,6 @@ struct AntimatterSplatView: UIViewRepresentable {
         <body>
             <script type="module">
                 import * as THREE from 'three';
-                import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
                 import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
 
                 // Photo orientation from Swift
@@ -1304,6 +1326,15 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Oscillation setting from Swift
                 const OSCILLATION_ENABLED = \(oscillation ? "true" : "false");
                 console.log('[WebGL] oscillation =', OSCILLATION_ENABLED);
+
+                // Fallback room dimensions from Swift (percentile-filtered), same role as Android fallbackW/H/D/Cx/Cy/Cz
+                const fallbackRoomWidth = \(actualBounds != nil ? Float(roomBounds.width) : 4.0);
+                const fallbackRoomHeight = \(actualBounds != nil ? Float(roomBounds.height) : 3.0);
+                const fallbackRoomDepth = \(actualBounds != nil ? Float(roomBounds.depth) : 5.0);
+                const fallbackRoomCenterX = \(actualBounds != nil ? Float(roomBounds.centerX) : 0.0);
+                const fallbackRoomCenterY = \(actualBounds != nil ? Float(roomBounds.centerY) : 0.0);
+                const fallbackRoomCenterZ = \(actualBounds != nil ? Float(roomBounds.centerZ) : 0.0);
+                const hasFallbackBounds = \(actualBounds != nil ? "true" : "false");
 
                 // Log JS errors
                 window.addEventListener('error', function(e) {
@@ -1347,82 +1378,25 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Battery optimization: only render when needed
                 let needsRender = true;  // Force initial render
 
-                // Orbit controls for touch/mouse
-                const controls = new OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.dampingFactor = 0.08;  // Smooth deceleration
-                controls.rotateSpeed = 1.5;     // Faster rotation
-                controls.zoomSpeed = 2.0;       // Faster zoom
-                controls.screenSpacePanning = false;
-                // Portrait: allow zoom into wall (0.001); landscape 0.01 (match Android)
-                controls.minDistance = isPortrait ? 0.001 : 0.01;
-                controls.maxDistance = 100;
-                // Default target, autoFrameRoom will update using Box3
-                controls.target.set(0, 0, 0);
+                // Look-at target (no OrbitControls — zoom/orbit driven by Swift gestures only, no min/max zoom limit)
+                const lookAtTarget = new THREE.Vector3(0, 0, 0);
 
-                // No full 360° spin - we'll do back-and-forth oscillation instead
-                controls.autoRotate = false;
-
-                // Request render when controls change (handles damping animation too)
-                controls.addEventListener('change', function() {
-                    needsRender = true;
-                });
-
-                // --- Back-and-forth orbit state ---
-                let autoOrbitEnabled = OSCILLATION_ENABLED;  // Read from Swift setting
-                let autoOrbitTime = 0;             // time accumulator
-                let autoOrbitBaseAngle = 0;        // center angle around target
-                let autoOrbitRadius = 5;           // distance from target to camera
+                let autoOrbitEnabled = OSCILLATION_ENABLED;
+                let autoOrbitTime = 0;
+                let autoOrbitBaseAngle = 0;
+                let autoOrbitRadius = 5;
                 const clock = new THREE.Clock();
 
-                // Global interaction flag (used by auto-orbit)
                 window._userInteracting = false;
+                window.setUserInteracting = function(flag) { window._userInteracting = !!flag; };
+                window.setAutoOrbit = function(enabled) { autoOrbitEnabled = enabled; needsRender = true; };
 
-                // Called from Swift AND by OrbitControls
-                window.setUserInteracting = function(flag) {
-                    window._userInteracting = !!flag;
-                };
-
-                // Toggle auto-orbit from Swift
-                window.setAutoOrbit = function(enabled) {
-                    autoOrbitEnabled = enabled;
-                    console.log('Auto-orbit:', enabled ? 'enabled' : 'disabled');
-                    needsRender = true;
-                };
-
-                // Let OrbitControls also toggle interaction
-                controls.addEventListener('start', () => { window._userInteracting = true; });
-                controls.addEventListener('end',   () => { window._userInteracting = false; });
-
-                // Unlimited spin around object (train-style orbit)
-                controls.minAzimuthAngle = -Infinity;
-                controls.maxAzimuthAngle =  Infinity;
-                // Relax polar limits so zoom-into-wall works (match Android)
-                controls.minPolarAngle = 0.001;
-                controls.maxPolarAngle = Math.PI - 0.001;
-
-                // Camera clamping disabled for train-style free orbit
-                // Re-enable if needed for room boundary constraints
-                /*
-                controls.addEventListener('change', () => {
-                    if (!roomBoundsForClamping) return;
-                    const margin = 0.1;
-                    const b = roomBoundsForClamping;
-                    camera.position.x = Math.max(b.minX + margin, Math.min(b.maxX - margin, camera.position.x));
-                    camera.position.z = Math.max(b.minZ + margin, Math.min(b.maxZ - margin, camera.position.z));
-                    camera.position.y = Math.max(b.minY - margin, Math.min(b.maxY + margin, camera.position.y));
-                });
-                */
-
-                // Save initial camera state for recenter (will be updated by autoFrameRoom)
                 let initialCameraPosition = camera.position.clone();
-                let initialControlsTarget = controls.target.clone();
+                let initialLookAtTarget = lookAtTarget.clone();
 
-                // Recenter function
                 window.recenterCamera = function() {
                     camera.position.copy(initialCameraPosition);
-                    controls.target.copy(initialControlsTarget);
-                    controls.update();
+                    lookAtTarget.copy(initialLookAtTarget);
                     needsRender = true;
                 };
 
@@ -1437,11 +1411,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }
                 };
 
-                // Function to update initial position (called after auto-frame)
                 window.updateInitialPosition = function() {
-                    initialCameraPosition = camera.position.clone();
-                    initialControlsTarget = controls.target.clone();
-                    console.log('Updated initial position for recenter:', initialCameraPosition);
+                    initialCameraPosition.copy(camera.position);
+                    initialLookAtTarget.copy(lookAtTarget);
                 };
 
                 // Load PLY splat using SparkJS
@@ -1467,9 +1439,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                         console.log('SplatMesh: rotated 180° X only (landscape)');
                     }
 
-                    // Auto-frame using Box3 (no orientation changes)
+                    // Auto-frame: copy Android SharpRoomActivity logic (center mesh, axis mapping, same coefficients)
                     function autoFrameRoom() {
-                        console.log('=== autoFrameRoom() called (Box3 framing only) ===');
+                        console.log('=== autoFrameRoom() called (Android logic) ===');
                         try {
                             if (!splatMesh) {
                                 console.log('No splatMesh yet, retrying...');
@@ -1477,188 +1449,130 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 return;
                             }
 
-                            // 1) Compute bounds on the mesh (no rotation applied)
-                            const box = new THREE.Box3().setFromObject(splatMesh);
-                            const size = box.getSize(new THREE.Vector3());
+                            splatMesh.updateMatrixWorld(true);
+                            let box = new THREE.Box3().setFromObject(splatMesh);
+                            let size = box.getSize(new THREE.Vector3());
 
                             if (size.length() < 0.01) {
-                                console.log('Box3 too small, waiting for splatMesh...');
-                                setTimeout(autoFrameRoom, 200);
+                                // Box3 not yet valid (SparkJS) — use Swift fallback dimensions (Android fallback path)
+                                if (hasFallbackBounds && fallbackRoomWidth > 0.1 && fallbackRoomHeight > 0.1 && fallbackRoomDepth > 0.1) {
+                                    const W = fallbackRoomWidth, H = fallbackRoomHeight, D = fallbackRoomDepth;
+                                    const cx = fallbackRoomCenterX, cy = fallbackRoomCenterY, cz = fallbackRoomCenterZ;
+                                    // PLY→world: rotation.x=PI (y→-y,z→-z), portrait + rotation.z=90° → world (y,x,-z)
+                                    const worldCx = isPortrait ? cy : cx;
+                                    const worldCy = isPortrait ? -cx : -cy;
+                                    const worldCz = -cz;
+                                    const worldW = isPortrait ? H : W;
+                                    const worldH = isPortrait ? W : H;
+                                    const worldD = D;
+                                    if (isPortrait) {
+                                        const P_CAM_D = 0.076, P_CAM_Y = -0.133, P_TGT_D = -0.494;
+                                        camera.position.set(worldCx, worldCy + P_CAM_Y * worldH, worldCz + P_CAM_D * worldD);
+                                        lookAtTarget.set(worldCx, worldCy + P_CAM_Y * worldH, worldCz + P_TGT_D * worldD);
+                                    } else {
+                                        const L_CAM_X = 0, L_CAM_Y = 0.00207, L_CAM_Z = -0.130, L_TGT_Z = -0.444;
+                                        camera.position.set(worldCx + L_CAM_X * worldW, worldCy + L_CAM_Y * worldH, worldCz + L_CAM_Z * worldD);
+                                        lookAtTarget.set(worldCx + L_CAM_X * worldW, worldCy, worldCz + L_TGT_Z * worldD);
+                                    }
+                                    console.log('[SharpRoom] CAMERA_FRAME fallback (Android-style) isPortrait=', isPortrait);
+                                } else {
+                                    camera.position.set(0, 0, 5);
+                                    lookAtTarget.set(0, 0, 0);
+                                }
+                                camera.lookAt(lookAtTarget);
+                                initialCameraPosition.copy(camera.position);
+                                initialLookAtTarget.copy(lookAtTarget);
+                                if (roomBoundsForClamping === null) {
+                                    const m = 5;
+                                    roomBoundsForClamping = { minX: -m, maxX: m, minY: -m, maxY: m, minZ: -m, maxZ: m, centerX: 0, centerY: 0, centerZ: 0 };
+                                }
+                                if (window.webkit?.messageHandlers?.frontWallDimensions) {
+                                    window.webkit.messageHandlers.frontWallDimensions.postMessage({ width: fallbackRoomWidth, height: fallbackRoomHeight });
+                                }
+                                if (size.length() < 0.01 && !hasFallbackBounds) setTimeout(autoFrameRoom, 200);
                                 return;
                             }
 
+                            // Android: center mesh at origin then use Box3
+                            const boxCenterBefore = box.getCenter(new THREE.Vector3());
+                            splatMesh.position.sub(boxCenterBefore);
+                            splatMesh.updateMatrixWorld(true);
+                            box = new THREE.Box3().setFromObject(splatMesh);
+                            size = box.getSize(new THREE.Vector3());
                             const center = box.getCenter(new THREE.Vector3());
-                            // After 90° Z rotation, axes mapping depends on photo orientation
-                            // Portrait: width = X (narrower), height = Y (taller)
-                            // Landscape: width = Y, height = X
-                            let roomWidth, roomHeight;
+
+                            // Axis mapping: Android portrait depth=X (rotation.y=90°); iOS portrait depth=Z (rotation.x=PI, rotation.z=90°). Landscape depth=Z both.
+                            let roomWidth, roomHeight, roomDepth;
                             if (isPortrait) {
-                                roomWidth  = size.x;
+                                roomWidth = size.x;
                                 roomHeight = size.y;
+                                roomDepth = size.z;
                             } else {
-                                roomWidth  = size.y;
-                                roomHeight = size.x;
+                                roomWidth = size.x;
+                                roomHeight = size.y;
+                                roomDepth = size.z;
                             }
-                            let roomDepth  = size.z;
 
-                            console.log('Box3 raw size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), '(isPortrait:', isPortrait, ')');
-
-                            // Cap to realistic room dimensions (fog makes bounds too large)
                             const maxRealisticWidth = isPortrait ? 5.0 : 8.0;
                             const maxRealisticHeight = isPortrait ? 3.5 : 3.2;
-                            if (roomWidth > maxRealisticWidth) {
-                                console.log('Capping width from', roomWidth.toFixed(2), 'to', maxRealisticWidth);
-                                roomWidth = maxRealisticWidth;
-                            }
-                            if (roomHeight > maxRealisticHeight) {
-                                console.log('Capping height from', roomHeight.toFixed(2), 'to', maxRealisticHeight);
-                                roomHeight = maxRealisticHeight;
-                            }
+                            if (roomWidth > maxRealisticWidth) roomWidth = maxRealisticWidth;
+                            if (roomHeight > maxRealisticHeight) roomHeight = maxRealisticHeight;
 
-                            console.log('Box3 capped size:', roomWidth.toFixed(2), roomHeight.toFixed(2), roomDepth.toFixed(2));
-                            console.log('Box3 center:', center.x.toFixed(2), center.y.toFixed(2), center.z.toFixed(2));
+                            // Benchmark camera pose from CamBench logs.
+                            const N_CAM_X = 0.0500, N_CAM_Y = 0.0477, N_CAM_Z = -0.1914;
+                            const N_TGT_X = 0.0500, N_TGT_Y = 0.0477, N_TGT_Z = -0.1914;
 
-                            // 2) Raw bounds from Box3
-                            let rawMinX = box.min.x;
-                            let rawMaxX = box.max.x;
-                            let rawMinY = box.min.y;
-                            let rawMaxY = box.max.y;
-                            let rawMinZ = box.min.z;
-                            let rawMaxZ = box.max.z;
+                            const ex = center.x + N_CAM_X * roomWidth;
+                            const ey = center.y + N_CAM_Y * roomHeight;
+                            const ez = center.z + N_CAM_Z * roomDepth;
+                            const tx = center.x + N_TGT_X * roomWidth;
+                            const ty = center.y + N_TGT_Y * roomHeight;
+                            const tz = center.z + N_TGT_Z * roomDepth;
 
-                            // 3) Shrink bounds to ignore foggy outer 15%
-                            const fogFactor = 0.15;
-                            const shrinkX = roomWidth  * fogFactor * 0.5;
-                            const shrinkY = roomHeight * fogFactor * 0.5;
-                            const shrinkZ = roomDepth  * fogFactor * 0.5;
+                            camera.position.set(ex, ey, ez);
+                            lookAtTarget.set(tx, ty, tz);
 
-                            const minX = rawMinX + shrinkX;
-                            const maxX = rawMaxX - shrinkX;
-                            const minY = rawMinY + shrinkY;
-                            const maxY = rawMaxY - shrinkY;
-                            const minZ = rawMinZ + shrinkZ;
-                            const maxZ = rawMaxZ - shrinkZ;
-
-                            const innerCenterX = (minX + maxX) / 2;
-                            const innerCenterY = (minY + maxY) / 2;
-                            const innerCenterZ = (minZ + maxZ) / 2;
-
-                            // Store tightened bounds for joystick clamping
+                            // Store bounds for joystick / recenter (box is now centered at origin)
+                            const margin = 0.1;
                             roomBoundsForClamping = {
-                                minX, maxX,
-                                minY, maxY,
-                                minZ, maxZ,
-                                centerX: innerCenterX,
-                                centerY: innerCenterY,
-                                centerZ: innerCenterZ
+                                minX: box.min.x + margin, maxX: box.max.x - margin,
+                                minY: box.min.y + margin, maxY: box.max.y - margin,
+                                minZ: box.min.z + margin, maxZ: box.max.z - margin,
+                                centerX: center.x, centerY: center.y, centerZ: center.z
                             };
+                            roomRadius = Math.max(roomWidth, roomHeight, roomDepth) * 0.5;
+                            window.roomViewParams = { centerX: center.x, centerY: center.y, centerZ: center.z, radius: roomRadius * 1.2 };
 
-                            roomRadius = Math.max(
-                                maxX - minX,
-                                maxY - minY,
-                                Math.abs(maxZ - minZ)
-                            ) * 0.5;
+                            console.log('[SharpRoom] CAMERA_FRAME (Android) isPortrait=', isPortrait, 'roomW=', roomWidth.toFixed(2), 'roomH=', roomHeight.toFixed(2), 'roomD=', roomDepth.toFixed(2));
 
-                            // Store for oscillation camera path
-                            window.roomViewParams = {
-                                centerX: innerCenterX,
-                                centerY: innerCenterY,
-                                centerZ: innerCenterZ,
-                                radius: roomRadius * 1.2
-                            };
-
-                            console.log('Inner bounds:', JSON.stringify(roomBoundsForClamping));
-
-                            // 4) Send wall dimensions back to Swift UI
-                            if (window.webkit?.messageHandlers?.frontWallDimensions) {
-                                window.webkit.messageHandlers.frontWallDimensions.postMessage({
-                                    width: roomWidth,
-                                    height: roomHeight
-                                });
-                            }
-
-                            // 5) Place camera inside room (Paafekt standard: same formulas as Android for portrait/landscape)
-                            let newCamPos, newTarget;
-                            if (isPortrait) {
-                                const P_CAM_D = 0.076, P_CAM_Y = -0.133, P_TGT_D = -0.494;
-                                newCamPos = new THREE.Vector3(
-                                    innerCenterX,
-                                    innerCenterY + P_CAM_Y * roomHeight,
-                                    innerCenterZ + P_CAM_D * roomDepth
-                                );
-                                newTarget = new THREE.Vector3(
-                                    innerCenterX,
-                                    innerCenterY + P_CAM_Y * roomHeight,
-                                    innerCenterZ + P_TGT_D * roomDepth
-                                );
-                            } else {
-                                const L_CAM_X = 0, L_CAM_Y = 0.00207, L_CAM_Z = -0.130, L_TGT_Z = -0.444;
-                                newCamPos = new THREE.Vector3(
-                                    innerCenterX + L_CAM_X * roomWidth,
-                                    innerCenterY + L_CAM_Y * roomHeight,
-                                    innerCenterZ + L_CAM_Z * roomDepth
-                                );
-                                newTarget = new THREE.Vector3(
-                                    innerCenterX + L_CAM_X * roomWidth,
-                                    innerCenterY,
-                                    innerCenterZ + L_TGT_Z * roomDepth
-                                );
-                            }
-
-                            console.log('Camera (Paafekt) isPortrait:', isPortrait, 'pos:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2), 'tgt:', newTarget.x.toFixed(2), newTarget.y.toFixed(2), newTarget.z.toFixed(2));
-
-                            camera.position.copy(newCamPos);
-                            controls.target.copy(newTarget);
-                            controls.update();
-
-                            // 6) Update recenter base
                             initialCameraPosition.copy(camera.position);
-                            initialControlsTarget.copy(controls.target);
+                            initialLookAtTarget.copy(lookAtTarget);
+                            camera.lookAt(lookAtTarget);
 
-                            // 7) Setup base orbit parameters around this view
-                            autoOrbitRadius = camera.position.distanceTo(controls.target);
+                            autoOrbitRadius = camera.position.distanceTo(lookAtTarget);
                             autoOrbitBaseAngle = Math.atan2(
-                                camera.position.x - controls.target.x,
-                                camera.position.z - controls.target.z
+                                camera.position.x - lookAtTarget.x,
+                                camera.position.z - lookAtTarget.z
                             );
-                            console.log('Auto-orbit base radius:', autoOrbitRadius.toFixed(2),
-                                        'baseAngle:', autoOrbitBaseAngle.toFixed(2));
 
-                            // Report camera pose to Swift for debugging
                             if (window.webkit?.messageHandlers?.cameraPose) {
                                 window.webkit.messageHandlers.cameraPose.postMessage({
-                                    ex: camera.position.x,
-                                    ey: camera.position.y,
-                                    ez: camera.position.z,
-                                    tx: controls.target.x,
-                                    ty: controls.target.y,
-                                    tz: controls.target.z
+                                    ex: camera.position.x, ey: camera.position.y, ez: camera.position.z,
+                                    tx: lookAtTarget.x, ty: lookAtTarget.y, tz: lookAtTarget.z
                                 });
                             }
 
-                            // Force render after camera positioning (critical when auto-orbit is off)
                             needsRender = true;
-
-                            // Also schedule a few more renders to ensure scene is visible
                             setTimeout(() => { needsRender = true; }, 100);
                             setTimeout(() => { needsRender = true; }, 300);
 
-                            // Send dimensions again after delays to ensure Swift receives them
-                            // (in case first message was missed during loading)
-                            function sendDimensionsToSwift() {
-                                if (window.webkit?.messageHandlers?.frontWallDimensions) {
-                                    window.webkit.messageHandlers.frontWallDimensions.postMessage({
-                                        width: roomWidth,
-                                        height: roomHeight
-                                    });
-                                    console.log('Sent dimensions to Swift:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2));
-                                }
+                            if (window.webkit?.messageHandlers?.frontWallDimensions) {
+                                window.webkit.messageHandlers.frontWallDimensions.postMessage({ width: roomWidth, height: roomHeight });
                             }
-                            setTimeout(sendDimensionsToSwift, 500);
-                            setTimeout(sendDimensionsToSwift, 1500);
-                            setTimeout(sendDimensionsToSwift, 3000);
+                            setTimeout(() => { if (window.webkit?.messageHandlers?.frontWallDimensions) window.webkit.messageHandlers.frontWallDimensions.postMessage({ width: roomWidth, height: roomHeight }); }, 500);
+                            setTimeout(() => { if (window.webkit?.messageHandlers?.frontWallDimensions) window.webkit.messageHandlers.frontWallDimensions.postMessage({ width: roomWidth, height: roomHeight }); }, 1500);
 
-                            console.log('=== Camera positioned using Box3 bounds ===');
+                            console.log('=== Camera positioned (Android logic) ===');
                         } catch (err) {
                             console.error('autoFrameRoom error:', err);
                         }
@@ -1683,6 +1597,48 @@ struct AntimatterSplatView: UIViewRepresentable {
                 // Room bounds for camera clamping (will be set by autoFrameRoom)
                 let roomBoundsForClamping = null;
                 let roomRadius = null;
+
+                // === Camera Pose Benchmark (like Android) ===
+                // Logs camera pose when user stops interacting so you can find the right position
+                function logCameraPose(reason) {
+                    const p = camera.position;
+                    const t = lookAtTarget;
+                    const rb = roomBoundsForClamping || {};
+                    const rw = (rb.maxX || 0) - (rb.minX || 0);
+                    const rh = (rb.maxY || 0) - (rb.minY || 0);
+                    const rd = (rb.maxZ || 0) - (rb.minZ || 0);
+                    const cx = rb.centerX || 0, cy = rb.centerY || 0, cz = rb.centerZ || 0;
+
+                    // Normalized offsets from inner center, divided by room dimension
+                    const normCamX = rw > 0.01 ? (p.x - cx) / rw : 0;
+                    const normCamY = rh > 0.01 ? (p.y - cy) / rh : 0;
+                    const normCamZ = rd > 0.01 ? (p.z - cz) / rd : 0;
+                    const normTgtX = rw > 0.01 ? (t.x - cx) / rw : 0;
+                    const normTgtY = rh > 0.01 ? (t.y - cy) / rh : 0;
+                    const normTgtZ = rd > 0.01 ? (t.z - cz) / rd : 0;
+
+                    const msg = '[CamBench ' + reason + '] ' +
+                        'isPortrait=' + isPortrait +
+                        ' roomW=' + rw.toFixed(3) + ' roomH=' + rh.toFixed(3) + ' roomD=' + rd.toFixed(3) +
+                        ' center=(' + cx.toFixed(3) + ',' + cy.toFixed(3) + ',' + cz.toFixed(3) + ')' +
+                        ' cam=(' + p.x.toFixed(4) + ',' + p.y.toFixed(4) + ',' + p.z.toFixed(4) + ')' +
+                        ' tgt=(' + t.x.toFixed(4) + ',' + t.y.toFixed(4) + ',' + t.z.toFixed(4) + ')' +
+                        ' normCam=(' + normCamX.toFixed(4) + ',' + normCamY.toFixed(4) + ',' + normCamZ.toFixed(4) + ')' +
+                        ' normTgt=(' + normTgtX.toFixed(4) + ',' + normTgtY.toFixed(4) + ',' + normTgtZ.toFixed(4) + ')';
+                    console.log(msg);
+
+                    // Also send to Swift
+                    if (window.webkit?.messageHandlers?.cameraPose) {
+                        window.webkit.messageHandlers.cameraPose.postMessage({
+                            reason: reason,
+                            ex: p.x, ey: p.y, ez: p.z,
+                            tx: t.x, ty: t.y, tz: t.z,
+                            normCamX: normCamX, normCamY: normCamY, normCamZ: normCamZ,
+                            normTgtX: normTgtX, normTgtY: normTgtY, normTgtZ: normTgtZ,
+                            roomW: rw, roomH: rh, roomD: rd
+                        });
+                    }
+                }
 
                 // Joystick movement handler with boundary clamping
                 window.moveCamera = function(dx, dy) {
@@ -1710,9 +1666,18 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                     camera.position.x = newX;
                     camera.position.z = newZ;
-                    controls.target.x += actualDx;
-                    controls.target.z += actualDz;
-                    needsRender = true;  // Request render after camera move
+                    lookAtTarget.x += actualDx;
+                    lookAtTarget.z += actualDz;
+                    needsRender = true;
+                };
+
+                // Log after joystick stops (debounced)
+                let joystickLogTimer = null;
+                const origMoveCamera = window.moveCamera;
+                window.moveCamera = function(dx, dy) {
+                    origMoveCamera(dx, dy);
+                    clearTimeout(joystickLogTimer);
+                    joystickLogTimer = setTimeout(() => logCameraPose('joystick_end'), 500);
                 };
 
                 // Orbit rotation handler (for Swift gesture overlay)
@@ -1724,7 +1689,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     const rotateSpeed = 0.012;  // Increased for faster response
 
                     // Get current spherical position relative to target
-                    const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+                    const offset = new THREE.Vector3().subVectors(camera.position, lookAtTarget);
                     const spherical = new THREE.Spherical().setFromVector3(offset);
 
                     // Apply rotation
@@ -1736,24 +1701,49 @@ struct AntimatterSplatView: UIViewRepresentable {
 
                     // Convert back to cartesian
                     offset.setFromSpherical(spherical);
-                    camera.position.copy(controls.target).add(offset);
+                    camera.position.copy(lookAtTarget).add(offset);
 
-                    controls.update();
+                    camera.lookAt(lookAtTarget);
                     needsRender = true;  // Request render after orbit
                 };
 
-                // Zoom handler (for Swift pinch gesture) — incremental scale from Swift
+                // Zoom: dolly the camera forward/backward along its look direction.
+                // Does NOT depend on eye-target distance, so it works even when eye == target.
+                // scale > 1 = zoom in (walk forward into room), scale < 1 = zoom out (walk backward).
                 window.zoomCamera = function(scale) {
                     autoOrbitEnabled = false;
                     if (typeof scale !== 'number' || scale <= 0 || !isFinite(scale)) return;
-                    const amplifiedScale = 1 + (scale - 1) * 2.5;
-                    const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
-                    offset.multiplyScalar(1 / amplifiedScale);
-                    const dist = offset.length();
-                    if (dist < 0.01) offset.setLength(0.01);
-                    if (dist > 50) offset.setLength(50);
-                    camera.position.copy(controls.target).add(offset);
-                    controls.update();
+                    if (!isFinite(camera.position.x)) {
+                        camera.position.set(0, 0, 3);
+                        lookAtTarget.set(0, 0, 0);
+                        camera.lookAt(lookAtTarget);
+                        needsRender = true;
+                        return;
+                    }
+
+                    const dir = new THREE.Vector3();
+                    camera.getWorldDirection(dir);
+                    if (dir.lengthSq() < 1e-10) return;
+                    dir.normalize();
+
+                    const rb = roomBoundsForClamping || {};
+                    const roomDepth = Math.abs((rb.maxZ || 0) - (rb.minZ || 0)) || 1.0;
+
+                    // Step size: proportion of room depth per unit scale deviation.
+                    // With sensitivity=0.5 and scale=1.07, step = 0.07 * 0.5 * roomDepth ≈ 0.35 m in a 10 m room.
+                    const sensitivity = 0.5;
+                    const step = (scale - 1) * sensitivity * roomDepth;
+
+                    const before = camera.position.clone();
+                    camera.position.addScaledVector(dir, step);
+                    lookAtTarget.addScaledVector(dir, step);
+
+                    console.log('[ZoomCam] scale=' + scale.toFixed(4) +
+                                ' step=' + step.toFixed(4) +
+                                ' pos=(' + camera.position.x.toFixed(3) + ',' + camera.position.y.toFixed(3) + ',' + camera.position.z.toFixed(3) + ')');
+                    if (typeof logCameraPose === 'function') {
+                        logCameraPose('zoom');
+                    }
                     needsRender = true;
                 };
 
@@ -1793,7 +1783,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                         autoOrbitTime += dt;
 
                         const speed = 0.35;
-                        const t = controls.target;
+                        const t = lookAtTarget;
 
                         if (isPortrait) {
                             // Portrait: circular arc oscillation ±30°
@@ -1828,7 +1818,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     }
 
                     lastRenderTime = currentTime;
-                    controls.update();
+                    camera.lookAt(lookAtTarget);
 
                     // Use SparkRenderer's update method for optimized Gaussian rendering
                     spark.update({ scene });
@@ -1952,7 +1942,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                   let deltaX = userInfo["deltaX"] as? CGFloat,
                   let deltaY = userInfo["deltaY"] as? CGFloat else { return }
 
-            logDebug("🎮 [WebGL] Orbit gesture: dx=\(deltaX), dy=\(deltaY)")
+            logDebug("🎮 [WebGL] Rotate gesture (drag): dx=\(deltaX), dy=\(deltaY)")
 
             // OrbitGestureView now sends incremental values directly
             let js = "if (typeof orbitCamera === 'function') orbitCamera(\(deltaX), \(deltaY));"
@@ -1963,7 +1953,7 @@ struct AntimatterSplatView: UIViewRepresentable {
             guard let userInfo = notification.userInfo,
                   let scale = userInfo["scale"] as? CGFloat else { return }
 
-            logDebug("🎚️ [WebGL] Zoom gesture: scale=\(scale)")
+            logDebug("🎚️ [WebGL] Pinch zoom: scale=\(scale)")
 
             // OrbitGestureView now sends incremental scale directly
             let js = "if (typeof zoomCamera === 'function') zoomCamera(\(scale));"
@@ -1975,7 +1965,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                   let interacting = userInfo["interacting"] as? Bool else { return }
 
             let js = "if (typeof setUserInteracting === 'function') setUserInteracting(\(interacting ? "true" : "false"));"
-            logDebug("🎮 [WebGL] setUserInteracting(\(interacting))")
+            logDebug("🎮 [WebGL] Camera interacting=\(interacting)")
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
@@ -2041,7 +2031,19 @@ struct AntimatterSplatView: UIViewRepresentable {
                    let tx = body["tx"] as? Double,
                    let ty = body["ty"] as? Double,
                    let tz = body["tz"] as? Double {
-                    logDebug("🎥 [WebGL] Camera pose JS -> Swift: eye=(\(String(format: "%.2f", ex)), \(String(format: "%.2f", ey)), \(String(format: "%.2f", ez))) target=(\(String(format: "%.2f", tx)), \(String(format: "%.2f", ty)), \(String(format: "%.2f", tz)))")
+                    let reason = body["reason"] as? String ?? "init"
+                    let normCamX = body["normCamX"] as? Double ?? 0
+                    let normCamY = body["normCamY"] as? Double ?? 0
+                    let normCamZ = body["normCamZ"] as? Double ?? 0
+                    let normTgtX = body["normTgtX"] as? Double ?? 0
+                    let normTgtY = body["normTgtY"] as? Double ?? 0
+                    let normTgtZ = body["normTgtZ"] as? Double ?? 0
+                    let roomW = body["roomW"] as? Double ?? 0
+                    let roomH = body["roomH"] as? Double ?? 0
+                    let roomD = body["roomD"] as? Double ?? 0
+                    logDebug("📸 [CamBench \(reason)] eye=(\(String(format: "%.4f", ex)), \(String(format: "%.4f", ey)), \(String(format: "%.4f", ez))) tgt=(\(String(format: "%.4f", tx)), \(String(format: "%.4f", ty)), \(String(format: "%.4f", tz)))")
+                    logDebug("📸 [CamBench \(reason)] normCam=(\(String(format: "%.4f", normCamX)), \(String(format: "%.4f", normCamY)), \(String(format: "%.4f", normCamZ))) normTgt=(\(String(format: "%.4f", normTgtX)), \(String(format: "%.4f", normTgtY)), \(String(format: "%.4f", normTgtZ)))")
+                    logDebug("📸 [CamBench \(reason)] room=\(String(format: "%.3f", roomW))×\(String(format: "%.3f", roomH))×\(String(format: "%.3f", roomD))")
                 }
             }
         }
