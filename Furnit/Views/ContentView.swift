@@ -68,7 +68,7 @@ struct HomeTab: View {
     @State private var showingHelp = false
     @State private var showingFileInfoSnackbar = false
     @State private var selectedModelForInfo: USDZModel?
-    
+
     var body: some View {
         NavigationStack {
             VStack {
@@ -354,7 +354,6 @@ struct HomeTab: View {
                 }
 
                 // Handle PLY files - navigate to SharpRoomView (Gaussian splat viewer)
-                // Use LazyView to ensure PLY files are only parsed when actually opened
                 if model.fileType == .ply {
                     NavigationLink {
                         LazyView {
@@ -363,6 +362,7 @@ struct HomeTab: View {
                     } label: {
                         HomeViewModelRow(model: model)
                     }
+                    .buttonStyle(.plain)
                     .onAppear {
                         if debugMode {
                             let _ = logDebug("👁️ [HomeTab.modelRow] PLY row appeared for: \(model.displayName)")

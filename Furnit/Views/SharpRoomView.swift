@@ -187,7 +187,7 @@ struct SharpRoomView: View {
             viewerURL = plyURL
         }
 
-        // Always parse bounds from the PLY we're actually displaying
+        // Parse bounds from the PLY we'll use for framing (3dgs > classic > base)
         self.parsedBounds = Self.parsePLYBounds(from: viewerURL)
     }
 
@@ -826,6 +826,15 @@ struct SharpRoomView: View {
                     Image(systemName: "viewfinder")
                 }
                 .disabled(isLoading)
+
+                // Use current view as start position (saved formula applies next time you open a room)
+                Button(action: {
+                    NotificationCenter.default.post(name: NSNotification.Name("WebGLSetAsStartPosition"), object: nil)
+                }) {
+                    Image(systemName: "camera.viewfinder")
+                }
+                .accessibilityLabel("Use this view as start position")
+                .disabled(isLoading)
             }
         }
         .sheet(isPresented: $showShareSheet) {
@@ -1117,12 +1126,12 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
 
-        // Serve the PLY file
+        // Serve the PLY file (stream to avoid loading 50+ MB into memory and killing Web process)
         if path == "/room.ply", let plyURL = plyURL {
+            logDebug("📂 [Scheme] Serving room.ply from: \(plyURL.path)")
             do {
+                let fileSize = try FileManager.default.attributesOfItem(atPath: plyURL.path)[.size] as? Int64 ?? 0
                 let readStart = CFAbsoluteTimeGetCurrent()
-                let data = try Data(contentsOf: plyURL)
-                let readTime = (CFAbsoluteTimeGetCurrent() - readStart) * 1000
 
                 let response = HTTPURLResponse(
                     url: requestURL,
@@ -1130,16 +1139,36 @@ class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
                     httpVersion: "HTTP/1.1",
                     headerFields: [
                         "Content-Type": "application/octet-stream",
-                        "Content-Length": "\(data.count)",
+                        "Content-Length": "\(fileSize)",
                         "Access-Control-Allow-Origin": "*"
                     ]
                 )!
                 urlSchemeTask.didReceive(response)
-                urlSchemeTask.didReceive(data)
-                urlSchemeTask.didFinish()
 
-                let sizeMB = Double(data.count) / (1024 * 1024)
-                logDebug("⏱️ [WebGL] PLY file read: \(String(format: "%.0f", readTime))ms (\(String(format: "%.1f", sizeMB)) MB)")
+                let chunkSize = 512 * 1024  // 512 KB
+                guard let stream = InputStream(url: plyURL) else {
+                    urlSchemeTask.didFailWithError(NSError(domain: "LocalFileSchemeHandler", code: -2, userInfo: [NSLocalizedDescriptionKey: "Could not open PLY stream"]))
+                    return
+                }
+                stream.open()
+                defer { stream.close() }
+                var buffer = [UInt8](repeating: 0, count: chunkSize)
+                var totalSent: Int64 = 0
+                while stream.hasBytesAvailable {
+                    let read = stream.read(&buffer, maxLength: chunkSize)
+                    if read > 0 {
+                        let chunk = Data(bytes: buffer, count: read)
+                        urlSchemeTask.didReceive(chunk)
+                        totalSent += Int64(read)
+                    } else if read < 0 {
+                        logDebug("LocalFileSchemeHandler: Stream read error")
+                        break
+                    } else { break }
+                }
+                urlSchemeTask.didFinish()
+                let readTime = (CFAbsoluteTimeGetCurrent() - readStart) * 1000
+                let sizeMB = Double(totalSent) / (1024 * 1024)
+                logDebug("⏱️ [WebGL] PLY streamed: \(String(format: "%.0f", readTime))ms (\(String(format: "%.1f", sizeMB)) MB)")
             } catch {
                 logDebug("LocalFileSchemeHandler: Failed to read PLY: \(error)")
                 urlSchemeTask.didFailWithError(error)
@@ -1207,23 +1236,20 @@ struct AntimatterSplatView: UIViewRepresentable {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
 
-        // Enable JavaScript
         let prefs = WKWebpagePreferences()
         prefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = prefs
 
-        // Register custom URL scheme handler
         let schemeHandler = LocalFileSchemeHandler()
         schemeHandler.plyURL = plyURL
         schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation, oscillation: oscillationEnabled)
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "splat")
 
-        // Add message handlers for communication from JS
         config.userContentController.add(context.coordinator, name: "splatLoaded")
         config.userContentController.add(context.coordinator, name: "frontWallDimensions")
         config.userContentController.add(context.coordinator, name: "cameraPose")
 
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = WKWebView(frame: UIScreen.main.bounds, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.scrollView.isScrollEnabled = false
         webView.scrollView.bounces = false
@@ -1231,35 +1257,46 @@ struct AntimatterSplatView: UIViewRepresentable {
         webView.scrollView.minimumZoomScale = 1.0
         webView.scrollView.maximumZoomScale = 1.0
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-
-        // Disable all scroll view gesture recognizers to let Three.js handle touches
         for gestureRecognizer in webView.scrollView.gestureRecognizers ?? [] {
             gestureRecognizer.isEnabled = false
         }
-
         webView.isOpaque = false
         webView.backgroundColor = .gray
         webView.isUserInteractionEnabled = true
         webView.isMultipleTouchEnabled = true
 
-        // Store reference
         context.coordinator.schemeHandler = schemeHandler
         context.coordinator.webView = webView
+        context.coordinator.loadStartTime = CFAbsoluteTimeGetCurrent()
 
-        // Load from custom scheme (HTML will auto-load room.ply)
         if let url = URL(string: "splat://local/") {
             webView.load(URLRequest(url: url))
             logDebug("AntimatterSplatView: Loading from custom scheme")
         }
-
         return webView
     }
 
-    func updateUIView(_ uiView: WKWebView, context: Context) {
-        // No updates needed
-    }
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+    private static let startNormKeys = (
+        camX: "sharpRoom.startNormCamX", camY: "sharpRoom.startNormCamY", camZ: "sharpRoom.startNormCamZ",
+        tgtX: "sharpRoom.startNormTgtX", tgtY: "sharpRoom.startNormTgtY", tgtZ: "sharpRoom.startNormTgtZ"
+    )
 
     private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?, orientation: PhotoOrientation, oscillation: Bool) -> String {
+        // Saved start position from "Set as start" (normalized); nil = use defaults
+        let ud = UserDefaults.standard
+        let nCamX = ud.object(forKey: Self.startNormKeys.camX) as? Double
+        let nCamY = ud.object(forKey: Self.startNormKeys.camY) as? Double
+        let nCamZ = ud.object(forKey: Self.startNormKeys.camZ) as? Double
+        let nTgtX = ud.object(forKey: Self.startNormKeys.tgtX) as? Double
+        let nTgtY = ud.object(forKey: Self.startNormKeys.tgtY) as? Double
+        let nTgtZ = ud.object(forKey: Self.startNormKeys.tgtZ) as? Double
+        let defaultNCamX = 0.0311, defaultNCamY = -0.0541, defaultNCamZ = -0.2861
+        let defaultNTgtX = 0.0311, defaultNTgtY = -0.0541, defaultNTgtZ = -0.3861  // 10% depth in front of cam
+        let N_CAM_X = nCamX ?? defaultNCamX, N_CAM_Y = nCamY ?? defaultNCamY, N_CAM_Z = nCamZ ?? defaultNCamZ
+        let N_TGT_X = nTgtX ?? defaultNTgtX, N_TGT_Y = nTgtY ?? defaultNTgtY, N_TGT_Z = nTgtZ ?? defaultNTgtZ
+
         // Use RoomBoundaryManager to calculate camera position
         let roomBounds = actualBounds ?? RoomBoundaryManager.defaultBounds
         let boundaryManager = RoomBoundaryManager(bounds: roomBounds)
@@ -1336,6 +1373,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const fallbackRoomCenterZ = \(actualBounds != nil ? Float(roomBounds.centerZ) : 0.0);
                 const hasFallbackBounds = \(actualBounds != nil ? "true" : "false");
 
+                // Start position formula: from saved "Set as start" or defaults
+                const N_CAM_X = \(N_CAM_X), N_CAM_Y = \(N_CAM_Y), N_CAM_Z = \(N_CAM_Z);
+                const N_TGT_X = \(N_TGT_X), N_TGT_Y = \(N_TGT_Y), N_TGT_Z = \(N_TGT_Z);
+
                 // Log JS errors
                 window.addEventListener('error', function(e) {
                     console.log('[JS Error] ' + e.message + ' at ' + e.filename + ':' + e.lineno);
@@ -1349,15 +1390,17 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x808080);
 
-                // Camera - start facing origin, autoFrameRoom will reposition using Box3
-                const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-                camera.position.set(0, 0, 3);  // Closer initial position
-                camera.lookAt(0, 0, 0);        // Explicitly look at origin
-                camera.up.set(0, 1, 0);        // Normal Y-up
+                // Guard against zero-size viewport (WKWebView may start with frame .zero)
+                const initW = window.innerWidth || 390;
+                const initH = window.innerHeight || 844;
 
-                // THREE.js Renderer (for SparkRenderer)
-                const renderer = new THREE.WebGLRenderer({ antialias: false });  // antialias: false per SparkJS docs
-                renderer.setSize(window.innerWidth, window.innerHeight);
+                const camera = new THREE.PerspectiveCamera(60, initW / initH, 0.1, 1000);
+                camera.position.set(0, 0, 3);
+                camera.lookAt(0, 0, 0);
+                camera.up.set(0, 1, 0);
+
+                const renderer = new THREE.WebGLRenderer({ antialias: false });
+                renderer.setSize(initW, initH);
                 renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(renderer.domElement);
 
@@ -1454,7 +1497,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                             let size = box.getSize(new THREE.Vector3());
 
                             if (size.length() < 0.01) {
-                                // Box3 not yet valid (SparkJS) — use Swift fallback dimensions (Android fallback path)
+                                // Box3 not yet valid (SparkJS) — use Swift fallback dimensions and same benchmark start position as Box3 path
                                 if (hasFallbackBounds && fallbackRoomWidth > 0.1 && fallbackRoomHeight > 0.1 && fallbackRoomDepth > 0.1) {
                                     const W = fallbackRoomWidth, H = fallbackRoomHeight, D = fallbackRoomDepth;
                                     const cx = fallbackRoomCenterX, cy = fallbackRoomCenterY, cz = fallbackRoomCenterZ;
@@ -1465,19 +1508,32 @@ struct AntimatterSplatView: UIViewRepresentable {
                                     const worldW = isPortrait ? H : W;
                                     const worldH = isPortrait ? W : H;
                                     const worldD = D;
-                                    if (isPortrait) {
-                                        const P_CAM_D = 0.076, P_CAM_Y = -0.133, P_TGT_D = -0.494;
-                                        camera.position.set(worldCx, worldCy + P_CAM_Y * worldH, worldCz + P_CAM_D * worldD);
-                                        lookAtTarget.set(worldCx, worldCy + P_CAM_Y * worldH, worldCz + P_TGT_D * worldD);
-                                    } else {
-                                        const L_CAM_X = 0, L_CAM_Y = 0.00207, L_CAM_Z = -0.130, L_TGT_Z = -0.444;
-                                        camera.position.set(worldCx + L_CAM_X * worldW, worldCy + L_CAM_Y * worldH, worldCz + L_CAM_Z * worldD);
-                                        lookAtTarget.set(worldCx + L_CAM_X * worldW, worldCy, worldCz + L_TGT_Z * worldD);
-                                    }
-                                    console.log('[SharpRoom] CAMERA_FRAME fallback (Android-style) isPortrait=', isPortrait);
+                                    // Start position from saved formula or defaults (N_CAM_*, N_TGT_* from Swift)
+                                    const ex = worldCx + N_CAM_X * worldW;
+                                    const ey = worldCy + N_CAM_Y * worldH;
+                                    const ez = worldCz + N_CAM_Z * worldD;
+                                    const tx = worldCx + N_TGT_X * worldW;
+                                    const ty = worldCy + N_TGT_Y * worldH;
+                                    const tz = worldCz + N_TGT_Z * worldD;
+                                    camera.position.set(ex, ey, ez);
+                                    lookAtTarget.set(tx, ty, tz);
+                                    console.log('[SharpRoom] CAMERA_FRAME fallback (benchmark start) isPortrait=', isPortrait, 'roomW=', worldW.toFixed(2), 'roomH=', worldH.toFixed(2), 'roomD=', worldD.toFixed(2));
+                                    // Bounds from fallback dimensions (centered) so CamBench and clamping use correct room size
+                                    const hw = worldW * 0.5, hh = worldH * 0.5, hd = worldD * 0.5;
+                                    const margin = 0.1;
+                                    roomBoundsForClamping = {
+                                        minX: worldCx - hw + margin, maxX: worldCx + hw - margin,
+                                        minY: worldCy - hh + margin, maxY: worldCy + hh - margin,
+                                        minZ: worldCz - hd + margin, maxZ: worldCz + hd - margin,
+                                        centerX: worldCx, centerY: worldCy, centerZ: worldCz
+                                    };
                                 } else {
                                     camera.position.set(0, 0, 5);
                                     lookAtTarget.set(0, 0, 0);
+                                    if (roomBoundsForClamping === null) {
+                                        const m = 5;
+                                        roomBoundsForClamping = { minX: -m, maxX: m, minY: -m, maxY: m, minZ: -m, maxZ: m, centerX: 0, centerY: 0, centerZ: 0 };
+                                    }
                                 }
                                 camera.lookAt(lookAtTarget);
                                 initialCameraPosition.copy(camera.position);
@@ -1518,16 +1574,13 @@ struct AntimatterSplatView: UIViewRepresentable {
                             if (roomWidth > maxRealisticWidth) roomWidth = maxRealisticWidth;
                             if (roomHeight > maxRealisticHeight) roomHeight = maxRealisticHeight;
 
-                            // Benchmark camera pose from CamBench logs.
-                            // Target is placed 10% of room depth further into the room (-Z) so camera.lookAt works.
-                            const N_CAM_X = 0.0311, N_CAM_Y = -0.0541, N_CAM_Z = -0.2861;
-
+                            // Start position from saved formula or defaults (N_CAM_*, N_TGT_* from Swift)
                             const ex = center.x + N_CAM_X * roomWidth;
                             const ey = center.y + N_CAM_Y * roomHeight;
                             const ez = center.z + N_CAM_Z * roomDepth;
-                            const tx = ex;
-                            const ty = ey;
-                            const tz = ez - 0.1 * roomDepth;
+                            const tx = center.x + N_TGT_X * roomWidth;
+                            const ty = center.y + N_TGT_Y * roomHeight;
+                            const tz = center.z + N_TGT_Z * roomDepth;
 
                             camera.position.set(ex, ey, ez);
                             lookAtTarget.set(tx, ty, tz);
@@ -1587,11 +1640,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                     console.error('Failed to load splat:', err);
                 }
 
-                // Handle resize
+                // Handle resize (also recovers from zero-size initial frame)
                 window.addEventListener('resize', () => {
-                    camera.aspect = window.innerWidth / window.innerHeight;
+                    const w = window.innerWidth || 1;
+                    const h = window.innerHeight || 1;
+                    camera.aspect = w / h;
                     camera.updateProjectionMatrix();
-                    renderer.setSize(window.innerWidth, window.innerHeight);
+                    renderer.setSize(w, h);
+                    needsRender = true;
                 });
 
                 // Room bounds for camera clamping (will be set by autoFrameRoom)
@@ -1639,6 +1695,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                         });
                     }
                 }
+
+                // Call from Swift when user taps "Use as start position" — sends current pose so formula can be saved
+                window.setAsStartPosition = function() { logCameraPose('set_as_start'); };
 
                 // Joystick movement handler with boundary clamping
                 window.moveCamera = function(dx, dy) {
@@ -1846,10 +1905,11 @@ struct AntimatterSplatView: UIViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var webView: WKWebView?
         var schemeHandler: LocalFileSchemeHandler?
+        var didStartLoad = false
+        var loadStartTime: CFAbsoluteTime = 0
         let onLoaded: () -> Void
         let onFrontWallDimensions: ((Double, Double) -> Void)?
         private var hasNotifiedLoaded = false
-        private var loadStartTime: CFAbsoluteTime = 0
 
         private var joystickTimer: Timer?
 
@@ -1907,6 +1967,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                 name: NSNotification.Name("WebGLScaleRoom"),
                 object: nil
             )
+
+            // Listen for "Use as start position" — capture current camera and save as formula
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(setAsStartPosition),
+                name: NSNotification.Name("WebGLSetAsStartPosition"),
+                object: nil
+            )
         }
 
         deinit {
@@ -1922,6 +1990,12 @@ struct AntimatterSplatView: UIViewRepresentable {
                     logDebug("❌ [WebGL] Recenter JS error: \(error)")
                 }
             }
+        }
+
+        @objc private func setAsStartPosition() {
+            logDebug("🎯 [WebGL] Set as start position (capturing current view)")
+            let js = "if (typeof window.setAsStartPosition === 'function') window.setAsStartPosition();"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
         @objc private func handleJoystickMove(_ notification: Notification) {
@@ -2003,6 +2077,15 @@ struct AntimatterSplatView: UIViewRepresentable {
             logDebug("❌ [WebGL] Provisional navigation failed: \(error)")
         }
 
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            logDebug("💀 [WebGL] WebProcess terminated — reloading page")
+            hasNotifiedLoaded = false
+            loadStartTime = CFAbsoluteTimeGetCurrent()
+            if let url = URL(string: "splat://local/") {
+                webView.load(URLRequest(url: url))
+            }
+        }
+
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "splatLoaded" {
                 if let body = message.body as? [String: Any], body["loaded"] != nil {
@@ -2046,6 +2129,16 @@ struct AntimatterSplatView: UIViewRepresentable {
                     logDebug("📸 [CamBench \(reason)] eye=(\(String(format: "%.4f", ex)), \(String(format: "%.4f", ey)), \(String(format: "%.4f", ez))) tgt=(\(String(format: "%.4f", tx)), \(String(format: "%.4f", ty)), \(String(format: "%.4f", tz)))")
                     logDebug("📸 [CamBench \(reason)] normCam=(\(String(format: "%.4f", normCamX)), \(String(format: "%.4f", normCamY)), \(String(format: "%.4f", normCamZ))) normTgt=(\(String(format: "%.4f", normTgtX)), \(String(format: "%.4f", normTgtY)), \(String(format: "%.4f", normTgtZ)))")
                     logDebug("📸 [CamBench \(reason)] room=\(String(format: "%.3f", roomW))×\(String(format: "%.3f", roomH))×\(String(format: "%.3f", roomD))")
+                    if reason == "set_as_start" {
+                        let ud = UserDefaults.standard
+                        ud.set(normCamX, forKey: AntimatterSplatView.startNormKeys.camX)
+                        ud.set(normCamY, forKey: AntimatterSplatView.startNormKeys.camY)
+                        ud.set(normCamZ, forKey: AntimatterSplatView.startNormKeys.camZ)
+                        ud.set(normTgtX, forKey: AntimatterSplatView.startNormKeys.tgtX)
+                        ud.set(normTgtY, forKey: AntimatterSplatView.startNormKeys.tgtY)
+                        ud.set(normTgtZ, forKey: AntimatterSplatView.startNormKeys.tgtZ)
+                        logDebug("✅ [WebGL] Start position saved (applies next time you open a room)")
+                    }
                 }
             }
         }
