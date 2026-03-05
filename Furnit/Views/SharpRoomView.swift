@@ -1519,9 +1519,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                             if (roomHeight > maxRealisticHeight) roomHeight = maxRealisticHeight;
 
                             // Benchmark camera pose from CamBench logs.
-                            // Camera starts at norm (0.05, 0.0477, -0.1914) of room dimensions from center.
                             // Target is placed 10% of room depth further into the room (-Z) so camera.lookAt works.
-                            const N_CAM_X = 0.0500, N_CAM_Y = 0.0477, N_CAM_Z = -0.1914;
+                            const N_CAM_X = 0.0311, N_CAM_Y = -0.0541, N_CAM_Z = -0.2861;
 
                             const ex = center.x + N_CAM_X * roomWidth;
                             const ey = center.y + N_CAM_Y * roomHeight;
