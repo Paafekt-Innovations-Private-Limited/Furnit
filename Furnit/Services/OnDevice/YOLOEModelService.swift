@@ -187,7 +187,12 @@ class YOLOEModelService: ObservableObject {
                     logDebug("YOLOE: ODR download returned false — will try bundle load anyway")
                 }
             } catch {
-                logDebug("YOLOE: ODR download failed (\(error)) — model may be in app bundle, proceeding…")
+                let ns = error as NSError
+                if ns.domain == "NSCocoaErrorDomain", ns.code == 4994 {
+                    logDebug("YOLOE: ODR not configured for this bundle, using app bundle")
+                } else {
+                    logDebug("YOLOE: ODR download failed (\(error)) — using app bundle")
+                }
             }
         }
 
