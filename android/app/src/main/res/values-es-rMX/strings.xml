@@ -133,6 +133,8 @@
     <string name="help_copy_email">Copiar dirección de correo</string>
     <string name="help_email_copied">Correo copiado</string>
     <string name="help_email_copied_message">support@paafekt.com se ha copiado al portapapeles.</string>
+    <string name="help_email_subject">Soporte de la app Paafekt</string>
+    <string name="help_email_body">Hola equipo de soporte Paafekt,\n\nNecesito ayuda con:\n\n</string>
     <string name="faq_room_creation">Creación de cuartos</string>
     <string name="faq_how_to_create">¿Cómo creo un cuarto 3D?</string>
     <string name="faq_how_to_create_answer">Toca el ícono de foto en la esquina superior izquierda de la pantalla de inicio, luego toma o selecciona una foto de tu cuarto. Verás dos opciones para elegir cómo crear tu cuarto 3D.</string>
@@ -224,23 +226,23 @@
     <string name="faq_how_to_navigate_answer">Usa el joystick en la parte inferior central de la pantalla para moverte. Arrástralo en cualquier dirección para volar por el cuarto. Usa el botón de recentrar (ícono del visor) para restablecer la posición de la cámara.</string>
     <string name="faq_what_is_memory_display">¿Qué significa el número MB?</string>
     <string name="faq_what_is_memory_display_answer">El MB (megabytes) mostrado en los cuartos indica el tamaño del archivo. Esto te ayuda a administrar el almacenamiento. El almacenamiento total usado por todos los cuartos se muestra en la parte superior de la pantalla de inicio.</string>
-    <string name="photo_room_how_to_create">How do you want to create your 3D room?</string>
-    <string name="photo_room_tap_option">Tap an option below to continue</string>
-    <string name="photo_room_ai_powered">AI-powered 3D construction</string>
-    <string name="photo_room_manual_setup">Manual Setup</string>
-    <string name="photo_room_manual_setup_desc">Drag to adjust room walls</string>
-    <string name="photo_room_select_photo">Select Photo</string>
-    <string name="photo_room_from_library">From your photo library</string>
-    <string name="photo_room_loading">Loading 3D room…</string>
-    <string name="photo_room_download_success">Successfully downloaded %s. View it in your models list.</string>
-    <string name="photo_room_save_success">Your 3D model has been saved successfully.</string>
+    <string name="photo_room_how_to_create">¿Cómo quieres crear tu cuarto 3D?</string>
+    <string name="photo_room_tap_option">Toca una opción abajo para continuar</string>
+    <string name="photo_room_ai_powered">Construcción 3D con IA</string>
+    <string name="photo_room_manual_setup">Configuración manual</string>
+    <string name="photo_room_manual_setup_desc">Arrastra para ajustar las paredes</string>
+    <string name="photo_room_select_photo">Seleccionar foto</string>
+    <string name="photo_room_from_library">Desde tu biblioteca de fotos</string>
+    <string name="photo_room_loading">Cargando cuarto 3D…</string>
+    <string name="photo_room_download_success">%s descargado correctamente. Ver en la lista de modelos.</string>
+    <string name="photo_room_save_success">Tu modelo 3D se ha guardado correctamente.</string>
     <string name="photo_room_error">Ocurrió un error al generar tu modelo 3D.</string>
     <string name="photo_room_building_room">Construyendo tu cuarto 3D…</string>
-    <string name="orientation_portrait">Portrait</string>
-    <string name="orientation_landscape">Landscape</string>
-    <string name="orientation_held_vertically">held vertically</string>
-    <string name="orientation_held_horizontally">held horizontally</string>
-    <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+    <string name="orientation_portrait">Vertical</string>
+    <string name="orientation_landscape">Horizontal</string>
+    <string name="orientation_held_vertically">sostenido verticalmente</string>
+    <string name="orientation_held_horizontally">sostenido horizontalmente</string>
+    <string name="photo_room_screenshot_warning">No selecciones capturas de pantalla; pueden causar manchas negras</string>
 
     <!-- SharpRoom / PLY viewer -->
     <string name="sharp_room_no_ply">No se proporcionó archivo PLY</string>

@@ -133,6 +133,8 @@
     <string name="help_copy_email">ईमेल पता कॉपी करें</string>
     <string name="help_email_copied">ईमेल कॉपी हो गया</string>
     <string name="help_email_copied_message">support@paafekt.com आपके क्लिपबोर्ड पर कॉपी हो गया है।</string>
+    <string name="help_email_subject">Paafekt ऐप सहायता</string>
+    <string name="help_email_body">नमस्ते Paafekt सहायता टीम,\n\nमुझे इनके बारे में मदद चाहिए:\n\n</string>
     <string name="faq_room_creation">कमरा निर्माण</string>
     <string name="faq_how_to_create">3D कमरा कैसे बनाएं?</string>
     <string name="faq_how_to_create_answer">होम स्क्रीन के ऊपरी-बाएं कोने में फोटो आइकन टैप करें, फिर अपने कमरे की फोटो लें या चुनें। आपको अपना 3D कमरा बनाने के लिए दो विकल्प दिखाई देंगे।</string>
@@ -224,23 +226,23 @@
     <string name="faq_how_to_navigate_answer">स्क्रीन के नीचे बीच में जॉयस्टिक का उपयोग करें। रूम में उड़ने के लिए किसी भी दिशा में खींचें। कैमरा पोजीशन रीसेट करने के लिए रीसेंटर बटन (व्यूफाइंडर आइकन) पर टैप करें।</string>
     <string name="faq_what_is_memory_display">MB नंबर का क्या मतलब है?</string>
     <string name="faq_what_is_memory_display_answer">रूम में दिखाया गया MB (मेगाबाइट्स) फाइल साइज इंगित करता है। यह आपको स्टोरेज मैनेज करने में मदद करता है। सभी रूम द्वारा उपयोग किया गया कुल स्टोरेज होम स्क्रीन के शीर्ष पर दिखाया जाता है।</string>
-    <string name="photo_room_how_to_create">How do you want to create your 3D room?</string>
-    <string name="photo_room_tap_option">Tap an option below to continue</string>
-    <string name="photo_room_ai_powered">AI-powered 3D construction</string>
-    <string name="photo_room_manual_setup">Manual Setup</string>
-    <string name="photo_room_manual_setup_desc">Drag to adjust room walls</string>
-    <string name="photo_room_select_photo">Select Photo</string>
-    <string name="photo_room_from_library">From your photo library</string>
-    <string name="photo_room_loading">Loading 3D room…</string>
-    <string name="photo_room_download_success">Successfully downloaded %s. View it in your models list.</string>
-    <string name="photo_room_save_success">Your 3D model has been saved successfully.</string>
+    <string name="photo_room_how_to_create">आप अपना 3D रूम कैसे बनाना चाहेंगे?</string>
+    <string name="photo_room_tap_option">जारी रखने के लिए नीचे एक विकल्प टैप करें</string>
+    <string name="photo_room_ai_powered">AI-संचालित 3D निर्माण</string>
+    <string name="photo_room_manual_setup">मैनुअल सेटअप</string>
+    <string name="photo_room_manual_setup_desc">दीवारों को समायोजित करने के लिए खींचें</string>
+    <string name="photo_room_select_photo">फ़ोटो चुनें</string>
+    <string name="photo_room_from_library">अपनी फ़ोटो लाइब्रेरी से</string>
+    <string name="photo_room_loading">3D रूम लोड हो रहा है…</string>
+    <string name="photo_room_download_success">%s सफलतापूर्वक डाउनलोड हुआ। मॉडल सूची में देखें।</string>
+    <string name="photo_room_save_success">आपका 3D मॉडल सफलतापूर्वक सेव हो गया।</string>
     <string name="photo_room_error">आपका 3D मॉडल बनाते समय एक त्रुटि हुई।</string>
     <string name="photo_room_building_room">आपका 3D कमरा बनाया जा रहा है…</string>
-    <string name="orientation_portrait">Portrait</string>
-    <string name="orientation_landscape">Landscape</string>
-    <string name="orientation_held_vertically">held vertically</string>
-    <string name="orientation_held_horizontally">held horizontally</string>
-    <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+    <string name="orientation_portrait">पोर्ट्रेट</string>
+    <string name="orientation_landscape">लैंडस्केप</string>
+    <string name="orientation_held_vertically">ऊर्ध्वाधर पकड़ा</string>
+    <string name="orientation_held_horizontally">क्षैतिज पकड़ा</string>
+    <string name="photo_room_screenshot_warning">स्क्रीनशॉट न चुनें - उनसे काले धब्बे पड़ सकते हैं</string>
 
     <!-- SharpRoom / PLY viewer -->
     <string name="sharp_room_no_ply">कोई PLY फ़ाइल प्रदान नहीं की गई</string>

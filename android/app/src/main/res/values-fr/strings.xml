@@ -133,6 +133,8 @@
     <string name="help_copy_email">Copier l\'adresse e-mail</string>
     <string name="help_email_copied">E-mail copié</string>
     <string name="help_email_copied_message">support@paafekt.com a été copié dans votre presse-papiers.</string>
+    <string name="help_email_subject">Support appli Paafekt</string>
+    <string name="help_email_body">Bonjour l\'équipe Paafekt,\n\nJ\'ai besoin d\'aide concernant :\n\n</string>
     <string name="faq_room_creation">Création de pièce</string>
     <string name="faq_how_to_create">Comment créer une pièce 3D ?</string>
     <string name="faq_how_to_create_answer">Appuyez sur l\'icône photo dans le coin supérieur gauche de l\'écran d\'accueil, puis prenez ou sélectionnez une photo de votre pièce. Vous verrez deux options pour créer votre pièce 3D.</string>
@@ -224,23 +226,23 @@
     <string name="faq_how_to_navigate_answer">Utilisez le joystick en bas au centre de l\'écran pour vous déplacer. Faites-le glisser dans n\'importe quelle direction pour voler à travers la pièce. Utilisez le bouton de recentrage (icône du viseur) pour réinitialiser la position de la caméra.</string>
     <string name="faq_what_is_memory_display">Que signifie le nombre MB ?</string>
     <string name="faq_what_is_memory_display_answer">Le MB (mégaoctets) affiché dans les pièces indique la taille du fichier. Cela vous aide à gérer le stockage. Le stockage total utilisé par toutes les pièces est affiché en haut de l\'écran d\'accueil.</string>
-    <string name="photo_room_how_to_create">How do you want to create your 3D room?</string>
-    <string name="photo_room_tap_option">Tap an option below to continue</string>
-    <string name="photo_room_ai_powered">AI-powered 3D construction</string>
-    <string name="photo_room_manual_setup">Manual Setup</string>
-    <string name="photo_room_manual_setup_desc">Drag to adjust room walls</string>
-    <string name="photo_room_select_photo">Select Photo</string>
-    <string name="photo_room_from_library">From your photo library</string>
-    <string name="photo_room_loading">Loading 3D room…</string>
-    <string name="photo_room_download_success">Successfully downloaded %s. View it in your models list.</string>
-    <string name="photo_room_save_success">Your 3D model has been saved successfully.</string>
+    <string name="photo_room_how_to_create">Comment souhaitez-vous créer votre pièce 3D ?</string>
+    <string name="photo_room_tap_option">Appuyez sur une option ci-dessous pour continuer</string>
+    <string name="photo_room_ai_powered">Construction 3D par IA</string>
+    <string name="photo_room_manual_setup">Configuration manuelle</string>
+    <string name="photo_room_manual_setup_desc">Glissez pour ajuster les murs</string>
+    <string name="photo_room_select_photo">Choisir une photo</string>
+    <string name="photo_room_from_library">Depuis votre photothèque</string>
+    <string name="photo_room_loading">Chargement de la pièce 3D…</string>
+    <string name="photo_room_download_success">%s téléchargé. Consultez la liste des modèles.</string>
+    <string name="photo_room_save_success">Votre modèle 3D a été enregistré avec succès.</string>
     <string name="photo_room_error">Une erreur s\'est produite lors de la génération de votre modèle 3D.</string>
     <string name="photo_room_building_room">Construction de votre pièce 3D…</string>
     <string name="orientation_portrait">Portrait</string>
-    <string name="orientation_landscape">Landscape</string>
-    <string name="orientation_held_vertically">held vertically</string>
-    <string name="orientation_held_horizontally">held horizontally</string>
-    <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+    <string name="orientation_landscape">Paysage</string>
+    <string name="orientation_held_vertically">tenu verticalement</string>
+    <string name="orientation_held_horizontally">tenu horizontalement</string>
+    <string name="photo_room_screenshot_warning">Ne choisissez pas de captures d\'écran – elles peuvent causer des taches noires</string>
 
     <!-- SharpRoom / PLY viewer -->
     <string name="sharp_room_no_ply">Aucun fichier PLY fourni</string>
