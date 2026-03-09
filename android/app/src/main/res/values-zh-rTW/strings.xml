@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">自動旋轉</string>
     <string name="settings_auto_orbit_description">閒置時緩慢旋轉相機</string>
     <string name="settings_licenses">授權條款</string>
+    <string name="licenses_title">授權與歸屬</string>
+    <string name="licenses_phase1_notice">第一階段發布：本應用目前僅供非商業使用。未來商業版本可能適用不同條款。</string>
+    <string name="licenses_open_source_section">開源授權</string>
+    <string name="licenses_open_source_intro">本應用使用以下開源軟體。</string>
+    <string name="licenses_view_full_license">檢視完整授權</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">版權所有 (c) Ultralytics。依 GNU Affero GPL v3.0 授權。本第一階段發布為非商業。商業使用請見 Ultralytics。</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">版權所有 (c) SharpML 貢獻者。依 MIT 授權條款授權。</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">版權所有 (c) Google LLC。依 Apache 2.0 授權條款授權。</string>
     <string name="settings_room_viewer">房間檢視器</string>
     <string name="settings_rendering_quality">渲染品質</string>
     <string name="settings_sign_out">登出</string>

@@ -134,10 +134,15 @@
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";
 "licenses.phase1Notice" = "Phase 1 release: This app is currently offered for non-commercial use only. A future commercial release may be subject to different terms.";
-"licenses.yoloeTitle" = "Furniture detection (YOLO-E)";
-"licenses.yoloe" = "This app uses models based on YOLO (e.g. Ultralytics YOLO). YOLO is licensed under AGPL-3.0. This Phase 1 release is non-commercial. For commercial use, see https://www.ultralytics.com/license";
-"licenses.sharpTitle" = "3D room reconstruction (SHARP)";
-"licenses.sharp" = "3D room generation from a single photo uses technology based on SHARP (Apple ml-sharp). SHARP is used in accordance with its applicable terms. This Phase 1 release is non-commercial.";
+"licenses.openSourceSection" = "Open Source Licenses";
+"licenses.openSourceIntro" = "This app uses the following open source software.";
+"licenses.viewFullLicense" = "View full license";
+"licenses.yoloeTitle" = "YOLO11";
+"licenses.yoloe" = "Copyright (c) Ultralytics. Licensed under the GNU Affero General Public License v3.0. This Phase 1 release is non-commercial. For commercial use, see Ultralytics.";
+"licenses.sharpTitle" = "Sharp ML";
+"licenses.sharp" = "Copyright (c) SharpML contributors. Licensed under the MIT License.";
+"licenses.firebaseTitle" = "Firebase";
+"licenses.firebase" = "Copyright (c) Google LLC. Licensed under the Apache License 2.0.";
 
 // MARK: - Quality Options
 "quality.standard" = "Standard";

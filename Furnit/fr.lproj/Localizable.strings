@@ -130,6 +130,19 @@
 "settings.infiniteZoom" = "Zoom infini";
 "settings.infiniteZoomDescription" = "Zoom avant/arrière sans limite ; peut traverser les murs vers le vide gris";
 
+// Licenses & Attributions (About)
+"licenses.title" = "Licences et attributions";
+"licenses.phase1Notice" = "Version Phase 1 : Cette application est actuellement proposée pour un usage non commercial uniquement. Une future version commerciale pourra être soumise à des conditions différentes.";
+"licenses.openSourceSection" = "Licences open source";
+"licenses.openSourceIntro" = "Cette application utilise les logiciels open source suivants.";
+"licenses.viewFullLicense" = "Voir la licence complète";
+"licenses.yoloeTitle" = "YOLO11";
+"licenses.yoloe" = "Cette app utilise des modèles basés sur YOLO (ex. Ultralytics YOLO). YOLO est sous licence AGPL-3.0. Cette version Phase 1 est non commerciale. Pour un usage commercial, voir https://www.ultralytics.com/license";
+"licenses.sharpTitle" = "Reconstruction 3D de pièce (SHARP)";
+"licenses.sharp" = "Copyright (c) contributeurs SharpML. Sous licence MIT.";
+"licenses.firebaseTitle" = "Firebase";
+"licenses.firebase" = "Copyright (c) Google LLC. Sous licence Apache 2.0.";
+
 // MARK: - Quality Options
 "quality.standard" = "Standard";
 "quality.standard.description" = "Qualité de base pour des performances plus rapides";

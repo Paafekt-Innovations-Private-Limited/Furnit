@@ -907,8 +907,14 @@ struct AboutView: View {
     }
 }
 
-/// Licenses & Attributions (same content as in AboutView, for Settings > Legal > Licenses).
+/// Licenses & Attributions (Settings → Open Source Licenses). Non-commercial Phase 1; includes YOLO11 (AGPL), Sharp ML (MIT), Firebase (Apache-2.0).
 struct LicensesView: View {
+    private enum LicenseURL {
+        static let agpl3 = URL(string: "https://www.gnu.org/licenses/agpl-3.0.html")!
+        static let mit = URL(string: "https://opensource.org/licenses/MIT")!
+        static let apache2 = URL(string: "https://www.apache.org/licenses/LICENSE-2.0")!
+    }
+
     var body: some View {
         Form {
             Section {
@@ -918,6 +924,15 @@ struct LicensesView: View {
             } header: {
                 Text(L10n.Licenses.title)
             }
+
+            Section {
+                Text(L10n.Licenses.openSourceIntro)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } header: {
+                Text(L10n.Licenses.openSourceSection)
+            }
+
             Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.Licenses.yoloeTitle)
@@ -926,9 +941,12 @@ struct LicensesView: View {
                     Text(L10n.Licenses.yoloe)
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.agpl3)
+                        .font(.caption)
                 }
                 .padding(.vertical, 4)
             }
+
             Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.Licenses.sharpTitle)
@@ -937,6 +955,22 @@ struct LicensesView: View {
                     Text(L10n.Licenses.sharp)
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.mit)
+                        .font(.caption)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.Licenses.firebaseTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(L10n.Licenses.firebase)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Link(L10n.Licenses.viewFullLicense, destination: LicenseURL.apache2)
+                        .font(.caption)
                 }
                 .padding(.vertical, 4)
             }

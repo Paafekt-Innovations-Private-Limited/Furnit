@@ -130,6 +130,19 @@
 "settings.infiniteZoom" = "Infinite Zoom";
 "settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
 
+// Licenses & Attributions (About)
+"licenses.title" = "ലൈസൻസുകളും അടിസ്ഥാനകാരണങ്ങളും";
+"licenses.phase1Notice" = "ഘട്ടം 1 റിലീസ്: ഈ ആപ്പ് നിലവിൽ വാണിജ്യേതര ഉപയോഗത്തിന് മാത്രമേ വാഗ്ദാനം ചെയ്യപ്പെടുന്നുള്ളൂ. ഭാവി വാണിജ്യ റിലീസ് വ്യത്യസ്ത നിബന്ധനകൾക്ക് വിധേയമായേക്കാം.";
+"licenses.openSourceSection" = "ഓപ്പൺ സോഴ്‌സ് ലൈസൻസുകൾ";
+"licenses.openSourceIntro" = "ഈ ആപ്പ് ഇനിപ്പറയുന്ന ഓപ്പൺ സോഴ്‌സ് സോഫ്റ്റ്വെയർ ഉപയോഗിക്കുന്നു.";
+"licenses.viewFullLicense" = "പൂർണ്ണ ലൈസൻസ് കാണുക";
+"licenses.yoloeTitle" = "YOLO11";
+"licenses.yoloe" = "ഈ ആപ്പ് YOLO (ഉദാ. Ultralytics YOLO) അടിസ്ഥാനമാക്കിയ മോഡലുകൾ ഉപയോഗിക്കുന്നു. YOLO AGPL-3.0 അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു. ഈ ഘട്ടം 1 റിലീസ് വാണിജ്യേതരമാണ്. വാണിജ്യ ഉപയോഗത്തിന് https://www.ultralytics.com/license കാണുക.";
+"licenses.sharpTitle" = "3D റൂം റീകൺസ്ട്രക്ഷൻ (SHARP)";
+"licenses.sharp" = "കൃതിസ്വാമ്യം (c) SharpML സംഭാവനക്കാർ. MIT ലൈസൻസ് അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.";
+"licenses.firebaseTitle" = "Firebase";
+"licenses.firebase" = "കൃതിസ്വാമ്യം (c) Google LLC. Apache ലൈസൻസ് 2.0 അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.";
+
 // MARK: - Quality Options
 "quality.standard" = "സ്റ്റാൻഡേർഡ്";
 "quality.standard.description" = "വേഗതയേറിയ പ്രകടനത്തിനുള്ള അടിസ്ഥാന ഗുണനിലവാരം";

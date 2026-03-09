@@ -130,6 +130,19 @@
 "settings.infiniteZoom" = "無限縮放";
 "settings.infiniteZoomDescription" = "無限制縮放；可穿過牆壁進入灰色虛空";
 
+// Licenses & Attributions (About)
+"licenses.title" = "授權與歸屬";
+"licenses.phase1Notice" = "第一階段發布：本應用目前僅供非商業使用。未來商業版本可能適用不同條款。";
+"licenses.openSourceSection" = "開源授權";
+"licenses.openSourceIntro" = "本應用使用以下開源軟體。";
+"licenses.viewFullLicense" = "檢視完整授權";
+"licenses.yoloeTitle" = "YOLO11";
+"licenses.yoloe" = "本應用使用基於 YOLO（如 Ultralytics YOLO）的模型。YOLO 依 AGPL-3.0 授權。本第一階段發布為非商業。商業使用請見 https://www.ultralytics.com/license";
+"licenses.sharpTitle" = "3D 房間重建 (SHARP)";
+"licenses.sharp" = "版權所有 (c) SharpML 貢獻者。依 MIT 授權條款授權。";
+"licenses.firebaseTitle" = "Firebase";
+"licenses.firebase" = "版權所有 (c) Google LLC。依 Apache 2.0 授權條款授權。";
+
 // MARK: - Quality Options
 "quality.standard" = "標準";
 "quality.standard.description" = "基礎品質，效能更快";

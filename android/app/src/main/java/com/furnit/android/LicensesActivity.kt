@@ -13,9 +13,13 @@ import androidx.appcompat.app.AppCompatActivity
 
 /**
  * In-app Licenses & Attributions screen.
- * Shows Phase 1 non-commercial notice and ML attributions (YOLO-E, SHARP).
+ * Shows Phase 1 non-commercial notice and Open Source Licenses (YOLO11, Sharp ML, Firebase).
  */
 class LicensesActivity : AppCompatActivity() {
+
+    private val urlAgpl = "https://www.gnu.org/licenses/agpl-3.0.html"
+    private val urlMit = "https://opensource.org/licenses/MIT"
+    private val urlApache2 = "https://www.apache.org/licenses/LICENSE-2.0"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,21 +50,11 @@ class LicensesActivity : AppCompatActivity() {
         layout.addView(titleView)
 
         addSection(layout, getString(R.string.licenses_phase1_notice), isBold = true)
-        addSection(layout, getString(R.string.licenses_yoloe_title), getString(R.string.licenses_yoloe))
-        addSection(layout, getString(R.string.licenses_sharp_title), getString(R.string.licenses_sharp))
 
-        val linkView = TextView(this).apply {
-            text = getString(R.string.licenses_full_online)
-            textSize = 14f
-            setTextColor(android.graphics.Color.parseColor("#007AFF"))
-            setPadding(0, 24, 0, 0)
-            setOnClickListener {
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://paafekt.com/licenses")))
-                } catch (_: Exception) { }
-            }
-        }
-        layout.addView(linkView)
+        addSection(layout, getString(R.string.licenses_open_source_section), getString(R.string.licenses_open_source_intro))
+        addSection(layout, getString(R.string.licenses_yoloe_title), getString(R.string.licenses_yoloe), licenseUrl = urlAgpl)
+        addSection(layout, getString(R.string.licenses_sharp_title), getString(R.string.licenses_sharp), licenseUrl = urlMit)
+        addSection(layout, getString(R.string.licenses_firebase_title), getString(R.string.licenses_firebase), licenseUrl = urlApache2)
 
         scrollView.addView(layout)
         setContentView(scrollView)
@@ -77,7 +71,8 @@ class LicensesActivity : AppCompatActivity() {
         parent: LinearLayout,
         title: String,
         body: String? = null,
-        isBold: Boolean = false
+        isBold: Boolean = false,
+        licenseUrl: String? = null
     ) {
         val section = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -99,6 +94,20 @@ class LicensesActivity : AppCompatActivity() {
                 setPadding(0, 0, 0, 0)
             }
             section.addView(bodyView)
+        }
+        if (!licenseUrl.isNullOrEmpty()) {
+            val linkView = TextView(this).apply {
+                text = getString(R.string.licenses_view_full_license)
+                textSize = 14f
+                setTextColor(android.graphics.Color.parseColor("#007AFF"))
+                setPadding(0, 6, 0, 0)
+                setOnClickListener {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(licenseUrl)))
+                    } catch (_: Exception) { }
+                }
+            }
+            section.addView(linkView)
         }
         parent.addView(section)
     }

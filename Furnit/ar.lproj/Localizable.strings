@@ -130,6 +130,19 @@
 "settings.infiniteZoom" = "تكبير غير محدود";
 "settings.infiniteZoomDescription" = "تكبير/تصغير دون حد؛ يمكن المرور عبر الجدران إلى الفراغ الرمادي";
 
+// Licenses & Attributions (About)
+"licenses.title" = "التراخيص والإسناد";
+"licenses.phase1Notice" = "إصدار المرحلة 1: يُقدّم هذا التطبيق حالياً للاستخدام غير التجاري فقط. قد يخضع الإصدار التجاري المستقبلي لشروط مختلفة.";
+"licenses.openSourceSection" = "تراخيص المصدر المفتوح";
+"licenses.openSourceIntro" = "يستخدم هذا التطبيق البرمجيات مفتوحة المصدر التالية.";
+"licenses.viewFullLicense" = "عرض الترخيص الكامل";
+"licenses.yoloeTitle" = "YOLO11";
+"licenses.yoloe" = "يستخدم هذا التطبيق نماذجاً قائمة على YOLO (مثل Ultralytics YOLO). YOLO مرخّص بموجب AGPL-3.0. إصدار المرحلة 1 غير تجاري. للاستخدام التجاري، راجع https://www.ultralytics.com/license";
+"licenses.sharpTitle" = "إعادة بناء الغرفة ثلاثية الأبعاد (SHARP)";
+"licenses.sharp" = "حقوق النشر (c) مساهمون SharpML. مرخّص بموجب رخصة MIT.";
+"licenses.firebaseTitle" = "Firebase";
+"licenses.firebase" = "حقوق النشر (c) Google LLC. مرخّص بموجب رخصة Apache 2.0.";
+
 // MARK: - Quality Options
 "quality.standard" = "قياسي";
 "quality.standard.description" = "جودة أساسية لأداء أسرع";

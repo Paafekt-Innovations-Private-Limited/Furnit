@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">Auto-Rotation</string>
     <string name="settings_auto_orbit_description">Kamera langsam drehen, wenn inaktiv</string>
     <string name="settings_licenses">Lizenzen</string>
+    <string name="licenses_title">Lizenzen &amp; Zuschreibungen</string>
+    <string name="licenses_phase1_notice">Phase-1-Release: Diese App wird derzeit nur für die nichtkommerzielle Nutzung angeboten. Eine künftige kommerzielle Version kann anderen Bedingungen unterliegen.</string>
+    <string name="licenses_open_source_section">Open-Source-Lizenzen</string>
+    <string name="licenses_open_source_intro">Diese App verwendet die folgende Open-Source-Software.</string>
+    <string name="licenses_view_full_license">Vollständige Lizenz anzeigen</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">Copyright (c) Ultralytics. Lizenziert unter der GNU Affero General Public License v3.0. Dieses Phase-1-Release ist nichtkommerziell. Für kommerzielle Nutzung siehe Ultralytics.</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">Copyright (c) SharpML-Mitwirkende. Lizenziert unter der MIT-Lizenz.</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">Copyright (c) Google LLC. Lizenziert unter der Apache-Lizenz 2.0.</string>
     <string name="settings_room_viewer">Raum-Viewer</string>
     <string name="settings_rendering_quality">Rendering-Qualität</string>
     <string name="settings_sign_out">Abmelden</string>

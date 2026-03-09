@@ -144,10 +144,15 @@ enum L10n {
     enum Licenses {
         static let title = "licenses.title".localized
         static let phase1Notice = "licenses.phase1Notice".localized
+        static let openSourceSection = "licenses.openSourceSection".localized
+        static let openSourceIntro = "licenses.openSourceIntro".localized
+        static let viewFullLicense = "licenses.viewFullLicense".localized
         static let yoloeTitle = "licenses.yoloeTitle".localized
         static let yoloe = "licenses.yoloe".localized
         static let sharpTitle = "licenses.sharpTitle".localized
         static let sharp = "licenses.sharp".localized
+        static let firebaseTitle = "licenses.firebaseTitle".localized
+        static let firebase = "licenses.firebase".localized
     }
 
     // MARK: Help & Support

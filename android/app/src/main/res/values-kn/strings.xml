@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">ಆಟೋ ಆರ್ಬಿಟ್</string>
     <string name="settings_auto_orbit_description">ನಿಷ್ಕ್ರಿಯವಾಗಿರುವಾಗ ಕ್ಯಾಮೆರಾವನ್ನು ನಿಧಾನವಾಗಿ ತಿರುಗಿಸು</string>
     <string name="settings_licenses">ಪರವಾನಗಿಗಳು</string>
+    <string name="licenses_title">ಲೈಸೆನ್ಸ್‌ಗಳು ಮತ್ತು ಆಕೃತಿಗಳು</string>
+    <string name="licenses_phase1_notice">ಘಟ್ಟ 1 ಬಿಡುಗಡೆ: ಈ ಅಪ್ಲಿಕೇಶನ್ ಪ್ರಸ್ತುತ ಲಾಭರಹಿತ ಬಳಕೆಗೆ ಮಾತ್ರ ನೀಡಲಾಗಿದೆ. ಭವಿಷ್ಯದ ವಾಣಿಜ್ಯ ಬಿಡುಗಡೆ ವಿಭಿನ್ನ ನಿಯಮಗಳಿಗೆ ಒಳಪಡಬಹುದು.</string>
+    <string name="licenses_open_source_section">ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು</string>
+    <string name="licenses_open_source_intro">ಈ ಅಪ್ಲಿಕೇಶನ್ ಈ ಕೆಳಗಿನ ಓಪನ್ ಸೋರ್ಸ್ ಸಾಫ್ಟ್‌ವೇರ್ ಬಳಸುತ್ತದೆ.</string>
+    <string name="licenses_view_full_license">ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">ಕೃತಿಸ್ವಾಮ್ಯ (c) Ultralytics. GNU Affero GPL v3.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ. ಈ ಘಟ್ಟ 1 ಬಿಡುಗಡೆ ಲಾಭರಹಿತ. ವಾಣಿಜ್ಯ ಬಳಕೆಗಾಗಿ Ultralytics ನೋಡಿ.</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">ಕೃತಿಸ್ವಾಮ್ಯ (c) SharpML ಕೊಡುಗೆದಾರರು. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">ಕೃತಿಸ್ವಾಮ್ಯ (c) Google LLC. Apache ಲೈಸೆನ್ಸ್ 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.</string>
     <string name="settings_room_viewer">ಕೊಠಡಿ ವೀಕ್ಷಕ</string>
     <string name="settings_rendering_quality">ರೆಂಡರಿಂಗ್ ಗುಣಮಟ್ಟ</string>
     <string name="settings_sign_out">ಸೈನ್ ಔಟ್</string>
