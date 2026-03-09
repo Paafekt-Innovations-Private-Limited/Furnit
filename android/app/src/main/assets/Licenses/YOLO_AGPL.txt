@@ -1,0 +1,11 @@
+YOLO11 (Ultralytics)
+====================
+
+This app uses models based on YOLO (e.g. Ultralytics YOLO11) for furniture detection.
+
+Copyright (c) Ultralytics
+Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+
+Full license text: https://www.gnu.org/licenses/agpl-3.0.html
+
+This Phase 1 release is non-commercial only. For commercial use of YOLO, see https://www.ultralytics.com/license

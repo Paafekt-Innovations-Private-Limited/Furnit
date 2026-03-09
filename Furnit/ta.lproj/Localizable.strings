@@ -130,6 +130,19 @@
 "settings.infiniteZoom" = "Infinite Zoom";
 "settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
 
+// Licenses & Attributions (About)
+"licenses.title" = "உரிமங்கள் மற்றும் அடிப்படைகள்";
+"licenses.phase1Notice" = "கட்டம் 1 வெளியீடு: இந்த ஆப் தற்போது வணிகரீதியற்ற பயன்பாட்டிற்கு மட்டுமே வழங்கப்படுகிறது. எதிர்கால வணிக வெளியீடு வெவ்வேறு விதிமுறைகளுக்கு உட்பட்டிருக்கலாம்.";
+"licenses.openSourceSection" = "திறந்த மூல உரிமங்கள்";
+"licenses.openSourceIntro" = "இந்த ஆப் பின்வரும் திறந்த மூல மென்பொருளைப் பயன்படுத்துகிறது.";
+"licenses.viewFullLicense" = "முழு உரிமத்தைக் காண்க";
+"licenses.yoloeTitle" = "YOLO11";
+"licenses.yoloe" = "இந்த ஆப் YOLO (எ.கா. Ultralytics YOLO) அடிப்படையிலான மாதிரிகளைப் பயன்படுத்துகிறது. YOLO AGPL-3.0 கீழ் உரிமம் பெற்றது. இந்த கட்டம் 1 வெளியீடு வணிகரீதியற்றது. வணிக பயன்பாட்டிற்கு https://www.ultralytics.com/license பார்க்கவும்.";
+"licenses.sharpTitle" = "3D அறை மறுகட்டமைப்பு (SHARP)";
+"licenses.sharp" = "பதிப்புரிமை (c) SharpML பங்களிப்பாளர்கள். MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.";
+"licenses.firebaseTitle" = "Firebase";
+"licenses.firebase" = "பதிப்புரிமை (c) Google LLC. Apache உரிமம் 2.0 இன் கீழ் உரிமம் வழங்கப்பட்டது.";
+
 // MARK: - Quality Options
 "quality.standard" = "நிலையான";
 "quality.standard.description" = "வேகமான செயல்திறனுக்கான அடிப்படை தரம்";

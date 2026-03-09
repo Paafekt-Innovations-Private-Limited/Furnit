@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">ఆటో ఆర్బిట్</string>
     <string name="settings_auto_orbit_description">నిష్క్రియంగా ఉన్నప్పుడు కెమెరాను నెమ్మదిగా తిప్పండి</string>
     <string name="settings_licenses">లైసెన్సులు</string>
+    <string name="licenses_title">లైసెన్స్‌లు మరియు ఆకృతులు</string>
+    <string name="licenses_phase1_notice">ఫేజ్ 1 రిలీజ్: ఈ యాప్ ప్రస్తుతం వాణిజ్యేతర వాడకానికి మాత్రమే అందించబడుతోంది. భవిష్యత్ వాణిజ్య రిలీజ్ విభిన్న నిబంధనలకు లోబడి ఉండవచ్చు.</string>
+    <string name="licenses_open_source_section">ఓపెన్ సోర్స్ లైసెన్స్‌లు</string>
+    <string name="licenses_open_source_intro">ఈ యాప్ ఈ క్రింది ఓపెన్ సోర్స్ సాఫ్ట్‌వేర్ ఉపయోగిస్తుంది.</string>
+    <string name="licenses_view_full_license">పూర్తి లైసెన్స్ చూడండి</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">కాపీరైట్ (c) Ultralytics. GNU Affero GPL v3.0 క్రింద లైసెన్స్ పొందింది. ఈ ఫేజ్ 1 రిలీజ్ వాణిజ్యేతరం. వాణిజ్య వాడకానికి Ultralytics చూడండి.</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">కాపీరైట్ (c) SharpML సహాయకులు. MIT లైసెన్స్ క్రింద లైసెన్స్ పొందింది.</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">కాపీరైట్ (c) Google LLC. Apache లైసెన్స్ 2.0 క్రింద లైసెన్స్ పొందింది.</string>
     <string name="settings_room_viewer">రూమ్ వ్యూయర్</string>
     <string name="settings_rendering_quality">రెండరింగ్ నాణ్యత</string>
     <string name="settings_sign_out">సైన్ అవుట్</string>

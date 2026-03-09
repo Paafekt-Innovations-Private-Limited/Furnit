@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">தானியங்கி சுழற்சி</string>
     <string name="settings_auto_orbit_description">செயலற்றிருக்கும்போது கேமராவை மெதுவாக சுழற்று</string>
     <string name="settings_licenses">உரிமங்கள்</string>
+    <string name="licenses_title">உரிமங்கள் மற்றும் அடிப்படைகள்</string>
+    <string name="licenses_phase1_notice">கட்டம் 1 வெளியீடு: இந்த ஆப் தற்போது வணிகரீதியற்ற பயன்பாட்டிற்கு மட்டுமே வழங்கப்படுகிறது. எதிர்கால வணிக வெளியீடு வெவ்வேறு விதிமுறைகளுக்கு உட்பட்டிருக்கலாம்.</string>
+    <string name="licenses_open_source_section">திறந்த மூல உரிமங்கள்</string>
+    <string name="licenses_open_source_intro">இந்த ஆப் பின்வரும் திறந்த மூல மென்பொருளைப் பயன்படுத்துகிறது.</string>
+    <string name="licenses_view_full_license">முழு உரிமத்தைக் காண்க</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">பதிப்புரிமை (c) Ultralytics. GNU Affero GPL v3.0 கீழ் உரிமம் பெற்றது. இந்த கட்டம் 1 வெளியீடு வணிகரீதியற்றது. வணிக பயன்பாட்டிற்கு Ultralytics பார்க்கவும்.</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">பதிப்புரிமை (c) SharpML பங்களிப்பாளர்கள். MIT உரிமத்தின் கீழ் உரிமம் வழங்கப்பட்டது.</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">பதிப்புரிமை (c) Google LLC. Apache உரிமம் 2.0 இன் கீழ் உரிமம் வழங்கப்பட்டது.</string>
     <string name="settings_room_viewer">அறை பார்வையாளர்</string>
     <string name="settings_rendering_quality">ரெண்டரிங் தரம்</string>
     <string name="settings_sign_out">வெளியேறு</string>

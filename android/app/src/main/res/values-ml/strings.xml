@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">ഓട്ടോ ഓർബിറ്റ്</string>
     <string name="settings_auto_orbit_description">നിഷ്ക്രിയമായിരിക്കുമ്പോൾ ക്യാമറ സാവധാനം തിരിക്കുക</string>
     <string name="settings_licenses">ലൈസൻസുകൾ</string>
+    <string name="licenses_title">ലൈസൻസുകളും അടിസ്ഥാനകാരണങ്ങളും</string>
+    <string name="licenses_phase1_notice">ഘട്ടം 1 റിലീസ്: ഈ ആപ്പ് നിലവിൽ വാണിജ്യേതര ഉപയോഗത്തിന് മാത്രമേ വാഗ്ദാനം ചെയ്യപ്പെടുന്നുള്ളൂ. ഭാവി വാണിജ്യ റിലീസ് വ്യത്യസ്ത നിബന്ധനകൾക്ക് വിധേയമായേക്കാം.</string>
+    <string name="licenses_open_source_section">ഓപ്പൺ സോഴ്‌സ് ലൈസൻസുകൾ</string>
+    <string name="licenses_open_source_intro">ഈ ആപ്പ് ഇനിപ്പറയുന്ന ഓപ്പൺ സോഴ്‌സ് സോഫ്റ്റ്വെയർ ഉപയോഗിക്കുന്നു.</string>
+    <string name="licenses_view_full_license">പൂർണ്ണ ലൈസൻസ് കാണുക</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">കൃതിസ്വാമ്യം (c) Ultralytics. GNU Affero GPL v3.0 അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു. ഈ ഘട്ടം 1 റിലീസ് വാണിജ്യേതരമാണ്. വാണിജ്യ ഉപയോഗത്തിന് Ultralytics കാണുക.</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">കൃതിസ്വാമ്യം (c) SharpML സംഭാവനക്കാർ. MIT ലൈസൻസ് അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">കൃതിസ്വാമ്യം (c) Google LLC. Apache ലൈസൻസ് 2.0 അനുസരിച്ച് ലൈസൻസ് ചെയ്യപ്പെട്ടിരിക്കുന്നു.</string>
     <string name="settings_room_viewer">റൂം വ്യൂവർ</string>
     <string name="settings_rendering_quality">റെൻഡറിംഗ് ഗുണനിലവാരം</string>
     <string name="settings_sign_out">സൈൻ ഔട്ട്</string>

@@ -130,6 +130,19 @@
 "settings.infiniteZoom" = "असीम ज़ूम";
 "settings.infiniteZoomDescription" = "बिना सीमा ज़ूम; दीवारों से ग्रे void में जा सकता है";
 
+// Licenses & Attributions (About)
+"licenses.title" = "लाइसेंस और अट्रिब्यूशन";
+"licenses.phase1Notice" = "चरण 1 रिलीज़: यह ऐप वर्तमान में केवल गैर-वाणिज्यिक उपयोग के लिए पेश किया जाता है। भविष्य की वाणिज्यिक रिलीज़ अलग शर्तों के अधीन हो सकती है।";
+"licenses.openSourceSection" = "ओपन सोर्स लाइसेंस";
+"licenses.openSourceIntro" = "यह ऐप निम्नलिखित ओपन सोर्स सॉफ्टवेयर का उपयोग करता है।";
+"licenses.viewFullLicense" = "पूर्ण लाइसेंस देखें";
+"licenses.yoloeTitle" = "YOLO11";
+"licenses.yoloe" = "यह ऐप YOLO (जैसे Ultralytics YOLO) आधारित मॉडल इस्तेमाल करता है। YOLO AGPL-3.0 के तहत लाइसेंस प्राप्त है। यह चरण 1 रिलीज़ गैर-वाणिज्यिक है। वाणिज्यिक उपयोग के लिए https://www.ultralytics.com/license देखें।";
+"licenses.sharpTitle" = "3D कमरा पुनर्निर्माण (SHARP)";
+"licenses.sharp" = "कॉपीराइट (c) SharpML योगदानकर्ता। MIT लाइसेंस के तहत लाइसेंस प्राप्त।";
+"licenses.firebaseTitle" = "Firebase";
+"licenses.firebase" = "कॉपीराइट (c) Google LLC। Apache लाइसेंस 2.0 के तहत लाइसेंस प्राप्त।";
+
 // MARK: - Quality Options
 "quality.standard" = "मानक";
 "quality.standard.description" = "तेज़ प्रदर्शन के लिए बुनियादी गुणवत्ता";

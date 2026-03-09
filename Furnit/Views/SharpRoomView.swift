@@ -337,6 +337,7 @@ struct SharpRoomView: View {
     @State private var showRoomNameInput = false
     @State private var roomName = ""
     @State private var showShareSheet = false
+    @State private var isCapturingSnapshot = false
     @EnvironmentObject var authManager: AuthenticationManager
 
     /// Compute classic PLY URL (pre-rotated for antimatter15/splat)
@@ -450,6 +451,7 @@ struct SharpRoomView: View {
                     }
                     .padding(12)
                 }
+                .opacity(isCapturingSnapshot ? 0 : 1)
                 .zIndex(12)
             }
 
@@ -742,6 +744,7 @@ struct SharpRoomView: View {
                     .padding(.horizontal, 30)
                     .padding(.bottom, 20)
                 }
+                .opacity(isCapturingSnapshot ? 0 : 1)
                 .zIndex(99997)
             } else {
                 // Portrait layout: standard bottom controls
@@ -836,10 +839,12 @@ struct SharpRoomView: View {
                     }
                     .padding(.bottom, 20)
                 }
+                .opacity(isCapturingSnapshot ? 0 : 1)
                 .zIndex(99998)  // Higher than joystick (99997) to allow button taps
             }
         }
         .background(Color.gray)
+        .navigationBarHidden(isCapturingSnapshot)
         .navigationTitle(navigationTitleWithDimensions)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -969,27 +974,28 @@ struct SharpRoomView: View {
 
     private func takeScreenshot() {
         logDebug("📸 Taking screenshot...")
-
-        // Capture the window
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let windows = scenes.flatMap { $0.windows }
-        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else {
-            logDebug("❌ No window found")
-            return
+        isCapturingSnapshot = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            let windows = scenes.flatMap { $0.windows }
+            guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else {
+                isCapturingSnapshot = false
+                logDebug("❌ No window found")
+                return
+            }
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = UIScreen.main.scale
+            let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+            let image = renderer.image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            logDebug("📸 Screenshot captured, saving to Photos...")
+            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+            logDebug("✅ Screenshot saved to Photos")
+            DispatchQueue.main.async {
+                isCapturingSnapshot = false
+            }
         }
-
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
-        let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
-        let image = renderer.image { _ in
-            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
-        }
-
-        logDebug("📸 Screenshot captured, saving to Photos...")
-
-        // Save to photos
-        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-        logDebug("✅ Screenshot saved to Photos")
     }
 
     // MARK: - YOLOE model loaded via YOLOEModelService (ODR)

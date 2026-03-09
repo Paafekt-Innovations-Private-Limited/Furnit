@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">دوران تلقائي</string>
     <string name="settings_auto_orbit_description">تدوير الكاميرا ببطء عند الخمول</string>
     <string name="settings_licenses">التراخيص</string>
+    <string name="licenses_title">التراخيص والإسناد</string>
+    <string name="licenses_phase1_notice">إصدار المرحلة 1: يُقدّم هذا التطبيق حالياً للاستخدام غير التجاري فقط. قد يخضع الإصدار التجاري المستقبلي لشروط مختلفة.</string>
+    <string name="licenses_open_source_section">تراخيص المصدر المفتوح</string>
+    <string name="licenses_open_source_intro">يستخدم هذا التطبيق البرمجيات مفتوحة المصدر التالية.</string>
+    <string name="licenses_view_full_license">عرض الترخيص الكامل</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">حقوق النشر (c) Ultralytics. مرخّص بموجب رخصة جنو أفيرو العمومية v3.0. إصدار المرحلة 1 غير تجاري. للاستخدام التجاري راجع Ultralytics.</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">حقوق النشر (c) مساهمون SharpML. مرخّص بموجب رخصة MIT.</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">حقوق النشر (c) Google LLC. مرخّص بموجب رخصة Apache 2.0.</string>
     <string name="settings_room_viewer">عارض الغرفة</string>
     <string name="settings_rendering_quality">جودة العرض</string>
     <string name="settings_sign_out">تسجيل الخروج</string>

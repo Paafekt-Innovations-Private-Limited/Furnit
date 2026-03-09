@@ -124,11 +124,24 @@
 "settings.termsOfService" = "ಸೇವಾ ನಿಯಮಗಳು";
 "settings.support" = "ಬೆಂಬಲ";
 "settings.licenses" = "ಲೈಸೆನ್ಸ್‌ಗಳು";
-"settings.roomViewerSection" = "Room Viewer";
-"settings.autoOrbit" = "Auto Orbit";
-"settings.autoOrbitDescription" = "Slowly rotate camera when idle";
-"settings.infiniteZoom" = "Infinite Zoom";
-"settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
+"settings.roomViewerSection" = "ಕೊಠಡಿ ವೀಕ್ಷಕ";
+"settings.autoOrbit" = "ಆಟೋ ಓರ್ಬಿಟ್";
+"settings.autoOrbitDescription" = "ನಿಷ್ಕ್ರಿಯವಾಗಿದ್ದಾಗ ಕ್ಯಾಮೆರಾವನ್ನು ನಿಧಾನವಾಗಿ ತಿರುಗಿಸಿ";
+"settings.infiniteZoom" = "ಅನಂತ ಜೂಮ್";
+"settings.infiniteZoomDescription" = "ಮಿತಿ ಇಲ್ಲದೆ ಜೂಮ್ ಇನ್/ಔಟ್; ಗೋಡೆಗಳ ಮೂಲಕ ಬೂದು ಶೂನ್ಯಕ್ಕೆ ಹೋಗಬಹುದು";
+
+// Licenses & Attributions (About)
+"licenses.title" = "ಲೈಸೆನ್ಸ್‌ಗಳು ಮತ್ತು ಆಕೃತಿಗಳು";
+"licenses.phase1Notice" = "ಘಟ್ಟ 1 ಬಿಡುಗಡೆ: ಈ ಅಪ್ಲಿಕೇಶನ್ ಪ್ರಸ್ತುತ ಲಾಭರಹಿತ ಬಳಕೆಗೆ ಮಾತ್ರ ನೀಡಲಾಗಿದೆ. ಭವಿಷ್ಯದ ವಾಣಿಜ್ಯ ಬಿಡುಗಡೆ ವಿಭಿನ್ನ ನಿಯಮಗಳಿಗೆ ಒಳಪಡಬಹುದು.";
+"licenses.openSourceSection" = "ಓಪನ್ ಸೋರ್ಸ್ ಲೈಸೆನ್ಸ್‌ಗಳು";
+"licenses.openSourceIntro" = "ಈ ಅಪ್ಲಿಕೇಶನ್ ಈ ಕೆಳಗಿನ ಓಪನ್ ಸೋರ್ಸ್ ಸಾಫ್ಟ್‌ವೇರ್ ಬಳಸುತ್ತದೆ.";
+"licenses.viewFullLicense" = "ಪೂರ್ಣ ಲೈಸೆನ್ಸ್ ನೋಡಿ";
+"licenses.yoloeTitle" = "YOLO11";
+"licenses.yoloe" = "ಈ ಅಪ್ಲಿಕೇಶನ್ YOLO (ಉದಾ. Ultralytics YOLO) ಆಧಾರಿತ ಮಾದರಿಗಳನ್ನು ಬಳಸುತ್ತದೆ. YOLO AGPL-3.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ. ಈ ಘಟ್ಟ 1 ಬಿಡುಗಡೆ ಲಾಭರಹಿತ. ವಾಣಿಜ್ಯ ಬಳಕೆಗಾಗಿ https://www.ultralytics.com/license ನೋಡಿ.";
+"licenses.sharpTitle" = "3D ಕೊಠಡಿ ಪುನರ್ನಿರ್ಮಾಣ (SHARP)";
+"licenses.sharp" = "ಕೃತಿಸ್ವಾಮ್ಯ (c) SharpML ಕೊಡುಗೆದಾರರು. MIT ಲೈಸೆನ್ಸ್ ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
+"licenses.firebaseTitle" = "Firebase";
+"licenses.firebase" = "ಕೃತಿಸ್ವಾಮ್ಯ (c) Google LLC. Apache ಲೈಸೆನ್ಸ್ 2.0 ಅಡಿಯಲ್ಲಿ ಲೈಸೆನ್ಸ್ ಪಡೆದಿದೆ.";
 
 // MARK: - Quality Options
 "quality.standard" = "ಸ್ಟ್ಯಾಂಡರ್ಡ್";
@@ -165,14 +178,14 @@
 "faq.howToCreateAnswer" = "ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನ ಮೇಲಿನ-ಎಡ ಮೂಲೆಯಲ್ಲಿ ಫೋಟೋ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ, ನಂತರ ನಿಮ್ಮ ಕೊಠಡಿಯ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಿ ಅಥವಾ ಆಯ್ಕೆಮಾಡಿ. ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಎರಡು ಆಯ್ಕೆಗಳನ್ನು ನೀವು ನೋಡುತ್ತೀರಿ.";
 "faq.howToTakePhoto" = "ಕೊಠಡಿ ರಚಿಸಲು ಫೋಟೋ ಹೇಗೆ ತೆಗೆದುಕೊಳ್ಳುವುದು?";
 "faq.howToTakePhotoAnswer" = "ನೇರವಾಗಿ ಫೋಟೋ ತೆಗೆದುಕೊಳ್ಳಲು ಹೋಮ್ ಸ್ಕ್ರೀನ್‌ನಲ್ಲಿ ಕ್ಯಾಮೆರಾ ಐಕಾನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ನೀವು ಸ್ಟ್ಯಾಂಡರ್ಡ್ (1x) ಅಥವಾ ವೈಡ್ ಆಂಗಲ್ (0.5x ಅಲ್ಟ್ರಾ-ವೈಡ್) ಲೆನ್ಸ್ ಆಯ್ಕೆಮಾಡಬಹುದು. ನಿಮ್ಮ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಕ್ಯಾಪ್ಚರ್ ಬಟನ್ ಟ್ಯಾಪ್ ಮಾಡಿ. ಫೋಟೋವನ್ನು ನಿಮ್ಮ 3D ಕೊಠಡಿ ರಚಿಸಲು ಬಳಸಲಾಗುತ್ತದೆ.";
-"faq.twoMethods" = "What are the two room creation options?";
-"faq.twoMethodsAnswer" = "When you select a photo, you can choose between: 1) AI-Powered 3D Room - automatically creates a realistic 3D room using artificial intelligence, or 2) Manual Setup - lets you draw the room boundaries yourself for more control.";
-"faq.whatIsAIRoom" = "What is AI-Powered 3D Room?";
-"faq.whatIsAIRoomAnswer" = "This option uses smart technology to automatically turn your photo into a 3D room you can walk through. Just pick a photo and the app does the rest - no drawing or adjusting needed. It works like magic!";
-"faq.whatIsManualRoom" = "What is Manual Setup?";
-"faq.whatIsManualRoomAnswer" = "With Manual Setup, you draw the outline of your room's walls on the photo. This gives you more control over exactly how the 3D room looks. It's great when you want to fine-tune the room shape yourself.";
-"faq.whichMethodBetter" = "Which method should I choose?";
-"faq.whichMethodBetterAnswer" = "Try AI-Powered first - it's faster and works great for most rooms. If the result doesn't look quite right, use Manual Setup to draw the walls exactly where you want them. You can always try both and see which one you prefer!";
+"faq.twoMethods" = "ಎರಡು ಕೊಠಡಿ ರಚನಾ ಆಯ್ಕೆಗಳು ಯಾವುವು?";
+"faq.twoMethodsAnswer" = "ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿದಾಗ ನೀವು ಆಯ್ಕೆಮಾಡಬಹುದು: 1) AI-ಚಾಲಿತ 3D ಕೊಠಡಿ - ಕೃತಕ ಬುದ್ಧಿಮತ್ತೆಯನ್ನು ಬಳಸಿ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ವಾಸ್ತವಿಕ 3D ಕೊಠಡಿಯನ್ನು ರಚಿಸುತ್ತದೆ, ಅಥವಾ 2) ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ - ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣಕ್ಕಾಗಿ ಕೊಠಡಿ ಗಡಿಗಳನ್ನು ನೀವೇ ಬರೆಯಲು ಅನುಮತಿಸುತ್ತದೆ.";
+"faq.whatIsAIRoom" = "AI-ಚಾಲಿತ 3D ಕೊಠಡಿ ಎಂದರೇನು?";
+"faq.whatIsAIRoomAnswer" = "ಈ ಆಯ್ಕೆಯು ನಿಮ್ಮ ಫೋಟೋವನ್ನು ನೀವು ನಡೆಯಬಹುದಾದ 3D ಕೊಠಡಿಗೆ ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಪರಿವರ್ತಿಸಲು ಸ್ಮಾರ್ಟ್ ತಂತ್ರಜ್ಞಾನವನ್ನು ಬಳಸುತ್ತದೆ. ಫೋಟೋ ಆಯ್ಕೆಮಾಡಿ ಅಪ್ಲಿಕೇಶನ್ ಉಳಿದದ್ದನ್ನು ಮಾಡುತ್ತದೆ - ಚಿತ್ರಿಸುವ ಅಥವಾ ಹೊಂದಾಣಿಕೆ ಅಗತ್ಯವಿಲ್ಲ. ಮ್ಯಾಜಿಕ್‌ನಂತೆ ಕೆಲಸ ಮಾಡುತ್ತದೆ!";
+"faq.whatIsManualRoom" = "ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ ಎಂದರೇನು?";
+"faq.whatIsManualRoomAnswer" = "ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್‌ನೊಂದಿಗೆ, ಫೋಟೋದಲ್ಲಿ ನಿಮ್ಮ ಕೊಠಡಿಯ ಗೋಡೆಗಳ ರೂಪರೇಖೆಯನ್ನು ನೀವು ಬರೆಯಿರಿ. 3D ಕೊಠಡಿ ನಿಖರವಾಗಿ ಹೇಗೆ ಕಾಣುತ್ತದೆ ಎಂಬುದರ ಮೇಲೆ ಹೆಚ್ಚಿನ ನಿಯಂತ್ರಣ ನೀಡುತ್ತದೆ. ಕೊಠಡಿ ಆಕಾರವನ್ನು ನೀವೇ ಸೂಕ್ಷ್ಮವಾಗಿ ಹೊಂದಿಸಲು ಬಯಸಿದಾಗ ಉತ್ತಮ.";
+"faq.whichMethodBetter" = "ನಾನು ಯಾವ ವಿಧಾನವನ್ನು ಆಯ್ಕೆಮಾಡಬೇಕು?";
+"faq.whichMethodBetterAnswer" = "ಮೊದಲು AI-ಚಾಲಿತ ಪ್ರಯತ್ನಿಸಿ - ಅದು ವೇಗವಾಗಿದೆ ಮತ್ತು ಬಹುತೇಕ ಕೊಠಡಿಗಳಿಗೆ ಉತ್ತಮವಾಗಿ ಕೆಲಸ ಮಾಡುತ್ತದೆ. ಫಲಿತಾಂಶ ಸರಿಯಾಗಿ ಕಾಣದಿದ್ದರೆ, ಗೋಡೆಗಳನ್ನು ನಿಮಗೆ ಬೇಕಾದ ನಿಖರ ಸ್ಥಳದಲ್ಲಿ ಬರೆಯಲು ಮ್ಯಾನುಯಲ್ ಸೆಟಪ್ ಬಳಸಿ. ನೀವು ಎರಡನ್ನೂ ಪ್ರಯತ್ನಿಸಿ ಯಾವುದನ್ನು ಆದ್ಯತೆ ನೀಡುತ್ತೀರಿ ನೋಡಬಹುದು!";
 "faq.bestPhotos" = "ಯಾವ ರೀತಿಯ ಫೋಟೋಗಳು ಉತ್ತಮವಾಗಿ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತವೆ?";
 "faq.bestPhotosAnswer" = "ಉತ್ತಮ ಫಲಿತಾಂಶಗಳಿಗಾಗಿ, ಉತ್ತಮ ಬೆಳಕಿನಲ್ಲಿ ಸಾಧನವನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿದು ಫೋಟೋಗಳನ್ನು ತೆಗೆದುಕೊಳ್ಳಿ. ನೆಲ, ಗೋಡೆಗಳು ಮತ್ತು ಸೀಲಿಂಗ್ ಅಂಚುಗಳನ್ನು ಒಳಗೊಂಡಂತೆ ಸಂಪೂರ್ಣ ಕೊಠಡಿಯನ್ನು ಸೆರೆಹಿಡಿಯಲು ಪ್ರಯತ್ನಿಸಿ. ಮಸುಕಾದ ಅಥವಾ ಕತ್ತಲೆಯ ಫೋಟೋಗಳನ್ನು ತಪ್ಪಿಸಿ.";
 "faq.generationFailing" = "ನನ್ನ ಕೊಠಡಿ ರಚನೆ ಏಕೆ ವಿಫಲವಾಗುತ್ತಿದೆ?";

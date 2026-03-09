@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">自动旋转</string>
     <string name="settings_auto_orbit_description">空闲时缓慢旋转相机</string>
     <string name="settings_licenses">许可证</string>
+    <string name="licenses_title">许可与归属</string>
+    <string name="licenses_phase1_notice">第一阶段发布：本应用目前仅供非商业使用。未来商业版本可能适用不同条款。</string>
+    <string name="licenses_open_source_section">开源许可</string>
+    <string name="licenses_open_source_intro">本应用使用以下开源软件。</string>
+    <string name="licenses_view_full_license">查看完整许可</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">版权所有 (c) Ultralytics。依据 GNU Affero GPL v3.0 授权。本第一阶段发布为非商业。商业使用请见 Ultralytics。</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">版权所有 (c) SharpML 贡献者。依据 MIT 许可授权。</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">版权所有 (c) Google LLC。依据 Apache 2.0 许可授权。</string>
     <string name="settings_room_viewer">房间查看器</string>
     <string name="settings_rendering_quality">渲染质量</string>
     <string name="settings_sign_out">退出登录</string>

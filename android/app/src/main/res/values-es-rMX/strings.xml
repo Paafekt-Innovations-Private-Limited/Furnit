@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">Órbita automática</string>
     <string name="settings_auto_orbit_description">Girar la cámara lentamente cuando está inactiva</string>
     <string name="settings_licenses">Licencias</string>
+    <string name="licenses_title">Licencias y atribuciones</string>
+    <string name="licenses_phase1_notice">Lanzamiento Fase 1: Esta app se ofrece actualmente solo para uso no comercial. Una versión comercial futura puede tener términos diferentes.</string>
+    <string name="licenses_open_source_section">Licencias de código abierto</string>
+    <string name="licenses_open_source_intro">Esta app utiliza el siguiente software de código abierto.</string>
+    <string name="licenses_view_full_license">Ver licencia completa</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">Copyright (c) Ultralytics. Bajo licencia GNU Affero GPL v3.0. Este lanzamiento Fase 1 es no comercial. Para uso comercial, consulta Ultralytics.</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">Copyright (c) colaboradores de SharpML. Bajo licencia MIT.</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">Copyright (c) Google LLC. Bajo licencia Apache 2.0.</string>
     <string name="settings_room_viewer">Visor de cuarto</string>
     <string name="settings_rendering_quality">Calidad de renderizado</string>
     <string name="settings_sign_out">Cerrar sesión</string>

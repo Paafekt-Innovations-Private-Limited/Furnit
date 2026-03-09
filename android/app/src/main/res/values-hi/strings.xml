@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">ऑटो ऑर्बिट</string>
     <string name="settings_auto_orbit_description">निष्क्रिय होने पर कैमरा धीरे-धीरे घुमाएं</string>
     <string name="settings_licenses">लाइसेंस</string>
+    <string name="licenses_title">लाइसेंस और अट्रिब्यूशन</string>
+    <string name="licenses_phase1_notice">चरण 1 रिलीज़: यह ऐप वर्तमान में केवल गैर-वाणिज्यिक उपयोग के लिए पेश किया जाता है। भविष्य की वाणिज्यिक रिलीज़ अलग शर्तों के अधीन हो सकती है।</string>
+    <string name="licenses_open_source_section">ओपन सोर्स लाइसेंस</string>
+    <string name="licenses_open_source_intro">यह ऐप निम्नलिखित ओपन सोर्स सॉफ्टवेयर का उपयोग करता है।</string>
+    <string name="licenses_view_full_license">पूर्ण लाइसेंस देखें</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">कॉपीराइट (c) Ultralytics। GNU Affero GPL v3.0 के तहत लाइसेंस प्राप्त। यह चरण 1 रिलीज़ गैर-वाणिज्यिक है। वाणिज्यिक उपयोग के लिए Ultralytics देखें।</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">कॉपीराइट (c) SharpML योगदानकर्ता। MIT लाइसेंस के तहत लाइसेंस प्राप्त।</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">कॉपीराइट (c) Google LLC। Apache लाइसेंस 2.0 के तहत लाइसेंस प्राप्त।</string>
     <string name="settings_room_viewer">रूम व्यूअर</string>
     <string name="settings_rendering_quality">रेंडरिंग गुणवत्ता</string>
     <string name="settings_sign_out">साइन आउट</string>

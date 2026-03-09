@@ -92,6 +92,17 @@
     <string name="settings_auto_orbit">Rotation automatique</string>
     <string name="settings_auto_orbit_description">Faire pivoter lentement la caméra en veille</string>
     <string name="settings_licenses">Licences</string>
+    <string name="licenses_title">Licences et attributions</string>
+    <string name="licenses_phase1_notice">Version Phase 1 : Cette application est actuellement proposée pour un usage non commercial uniquement. Une future version commerciale pourra être soumise à des conditions différentes.</string>
+    <string name="licenses_open_source_section">Licences open source</string>
+    <string name="licenses_open_source_intro">Cette application utilise les logiciels open source suivants.</string>
+    <string name="licenses_view_full_license">Voir la licence complète</string>
+    <string name="licenses_yoloe_title">YOLO11</string>
+    <string name="licenses_yoloe">Copyright (c) Ultralytics. Sous licence GNU Affero GPL v3.0. Cette version Phase 1 est non commerciale. Pour un usage commercial, voir Ultralytics.</string>
+    <string name="licenses_sharp_title">Sharp ML</string>
+    <string name="licenses_sharp">Copyright (c) contributeurs SharpML. Sous licence MIT.</string>
+    <string name="licenses_firebase_title">Firebase</string>
+    <string name="licenses_firebase">Copyright (c) Google LLC. Sous licence Apache 2.0.</string>
     <string name="settings_room_viewer">Visionneuse de pièce</string>
     <string name="settings_rendering_quality">Qualité de rendu</string>
     <string name="settings_sign_out">Déconnexion</string>
