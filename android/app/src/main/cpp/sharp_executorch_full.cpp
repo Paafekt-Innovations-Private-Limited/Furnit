@@ -308,6 +308,181 @@ static std::string pathJoin(const std::string& dir, const std::string& name) {
     return dir + "/" + name;
 }
 
+// ── Helper: tiled Part4b inside full pipeline (uses same export as Kotlin path) ───
+// Build 24x24x1024 low-res feature map from combinedTokens (CLS + 576 spatial),
+// then run a 4x4 grid of tiles, correcting NDC per tile and concatenating outputs.
+static bool runPart4bTiledFullPipeline(
+        const std::string& modelDir,
+        const float* __restrict imageData,   // [3,1536,1536] NCHW
+        const float* __restrict latent0,     // [1024,96,96]
+        const float* __restrict latent1,     // [1024,96,96]
+        const float* __restrict x0Feat,      // [1024,96,96]
+        const float* __restrict x1Feat,      // [1024,48,48]
+        const float* __restrict x2Feat,      // [1024,24,24]
+        const float* __restrict combinedTokens, size_t tokensNumel,
+        std::vector<float>& outGaussians) {
+
+    const int GRID = 4;
+    const int NUM_TILES = GRID * GRID;
+    const int imgH = IMAGE_SIZE, imgW = IMAGE_SIZE, imgC = 3;
+    const int imgTileH = imgH / GRID, imgTileW = imgW / GRID;
+    const int lat96H = 96, lat96W = 96;
+    const int x1H = 48, x1W = 48;
+    const int x2H = 24, x2W = 24;
+    const int xLowH = 24, xLowW = 24, xLowC = 1024;
+
+    // Choose tile model file: prefer tile_full.pte; if missing, fall back to tile_00.pte
+    std::string tileFull = pathJoin(modelDir, "sharp_split_part4b_tile_full.pte");
+    std::ifstream fFull(tileFull);
+    std::string modelPath;
+    if (fFull.good()) {
+        modelPath = tileFull;
+        fFull.close();
+    } else {
+        fFull.close();
+        std::string tile00 = pathJoin(modelDir, "sharp_split_part4b_tile_00.pte");
+        std::ifstream f0(tile00);
+        if (!f0.good()) {
+            LOGD("runPart4bTiledFullPipeline: no tile_full or tile_00 model found, skipping tiled path");
+            return false;
+        }
+        f0.close();
+        modelPath = tile00;
+    }
+
+    // Build xLowres from combinedTokens: [CLS + 576 tokens, 1024] -> [1024,24,24] NCHW.
+    if (tokensNumel < (size_t)((SPATIAL_HW + 1) * FEATURE_DIM)) {
+        LOGE("runPart4bTiledFullPipeline: combinedTokens too small for xLowres");
+        return false;
+    }
+    std::vector<float> xLowres(xLowC * xLowH * xLowW);
+    for (int row = 0; row < xLowH; ++row) {
+        for (int col = 0; col < xLowW; ++col) {
+            const int srcTokenIdx = 1 + row * xLowW + col; // skip CLS
+            const size_t srcBase = (size_t)srcTokenIdx * FEATURE_DIM;
+            const int dstIndexBase = row * xLowW + col;
+            for (int ch = 0; ch < xLowC; ++ch) {
+                xLowres[ch * xLowH * xLowW + dstIndexBase] = combinedTokens[srcBase + ch];
+            }
+        }
+    }
+
+    // Local crop helper: tile (tileRow,tileCol) from [C,H,W]
+    auto cropTileNCHWLocal = [GRID](const float* __restrict src, int C, int H, int W,
+                                    int tileRow, int tileCol, float* __restrict dst) {
+        const int tileH = H / GRID;
+        const int tileW = W / GRID;
+        const int srcHW = H * W;
+        const int dstHW = tileH * tileW;
+        const size_t rowBytes = tileW * sizeof(float);
+        for (int c = 0; c < C; ++c) {
+            const float* srcPlane = src + c * srcHW + tileRow * tileH * W + tileCol * tileW;
+            float* dstPlane = dst + c * dstHW;
+            for (int y = 0; y < tileH; ++y) {
+                std::memcpy(dstPlane + y * tileW, srcPlane + y * W, rowBytes);
+            }
+        }
+    };
+
+    // NDC correction (same as tiles path), swapXY currently false.
+    auto correctNDC = [GRID](float* data, int numGaussians, int tileRow, int tileCol, bool swapXY) {
+        const float ndcOffsetX = (2.0f * tileCol + 1.0f - GRID) / GRID;
+        const float ndcOffsetY = (2.0f * tileRow + 1.0f - GRID) / GRID;
+        const float invGrid = 1.0f / GRID;
+        const float offX = swapXY ? ndcOffsetY : ndcOffsetX;
+        const float offY = swapXY ? ndcOffsetX : ndcOffsetY;
+        for (int g = 0; g < numGaussians; ++g) {
+            float* base = data + g * PARAMS_PER_GAUSSIAN;
+            const float posZ = base[2];
+            base[0] = base[0] * invGrid + posZ * offX;
+            base[1] = base[1] * invGrid + posZ * offY;
+            base[4] *= invGrid;
+            base[5] *= invGrid;
+            base[6] *= invGrid;
+        }
+    };
+
+    ensureRuntimeInit();
+    auto module = std::make_unique<ETModule>(modelPath, ETModule::LoadMode::Mmap);
+    if (module->load() != Error::Ok) {
+        LOGE("runPart4bTiledFullPipeline: failed to load tile model: %s", modelPath.c_str());
+        return false;
+    }
+
+    // Per-tile scratch buffers
+    const int imgCropSize  = imgC * imgTileH * imgTileW;
+    const int lat96CropSz  = 1024 * 24 * 24;
+    const int x1CropSz     = 1024 * 12 * 12;
+    const int x2CropSz     = 1024 * 6 * 6;
+    std::vector<float> imgCrop(imgCropSize);
+    std::vector<float> lat0Crop(lat96CropSz), lat1Crop(lat96CropSz), x0Crop(lat96CropSz);
+    std::vector<float> x1Crop(x1CropSz), x2Crop(x2CropSz), xlCrop(x2CropSz);
+
+    outGaussians.clear();
+    int floatsPerTile = 0;
+
+    auto tStart = std::chrono::steady_clock::now();
+    for (int t = 0; t < NUM_TILES; ++t) {
+        const int tileRow = t / GRID;
+        const int tileCol = t % GRID;
+
+        cropTileNCHWLocal(imageData, imgC, imgH, imgW, tileRow, tileCol, imgCrop.data());
+        cropTileNCHWLocal(latent0, 1024, lat96H, lat96W, tileRow, tileCol, lat0Crop.data());
+        cropTileNCHWLocal(latent1, 1024, lat96H, lat96W, tileRow, tileCol, lat1Crop.data());
+        cropTileNCHWLocal(x0Feat,  1024, lat96H, lat96W, tileRow, tileCol, x0Crop.data());
+        cropTileNCHWLocal(x1Feat,  1024, x1H,    x1W,    tileRow, tileCol, x1Crop.data());
+        cropTileNCHWLocal(x2Feat,  1024, x2H,    x2W,    tileRow, tileCol, x2Crop.data());
+        cropTileNCHWLocal(xLowres.data(), 1024, xLowH, xLowW, tileRow, tileCol, xlCrop.data());
+
+        auto imgTensor  = from_blob(imgCrop.data(),  {1, 3, imgTileH, imgTileW});
+        auto lat0Tensor = from_blob(lat0Crop.data(), {1, 1024, 24, 24});
+        auto lat1Tensor = from_blob(lat1Crop.data(), {1, 1024, 24, 24});
+        auto x0Tensor   = from_blob(x0Crop.data(),   {1, 1024, 24, 24});
+        auto x1Tensor   = from_blob(x1Crop.data(),   {1, 1024, 12, 12});
+        auto x2Tensor   = from_blob(x2Crop.data(),   {1, 1024, 6, 6});
+        auto xlTensor   = from_blob(xlCrop.data(),   {1, 1024, 6, 6});
+
+        std::vector<EValue> inputs;
+        inputs.reserve(7);
+        inputs.emplace_back(*imgTensor);
+        inputs.emplace_back(*lat0Tensor);
+        inputs.emplace_back(*lat1Tensor);
+        inputs.emplace_back(*x0Tensor);
+        inputs.emplace_back(*x1Tensor);
+        inputs.emplace_back(*x2Tensor);
+        inputs.emplace_back(*xlTensor);
+
+        auto result = module->forward(inputs);
+        if (!result.ok() || result->empty() || !(*result)[0].isTensor()) {
+            LOGE("runPart4bTiledFullPipeline: tile %d forward failed", t);
+            return false;
+        }
+
+        const auto& outTensor = (*result)[0].toTensor();
+        const float* outData = outTensor.const_data_ptr<float>();
+        const int numFloats = static_cast<int>(outTensor.numel());
+        const int numGaussians = numFloats / PARAMS_PER_GAUSSIAN;
+
+        if (t == 0) {
+            floatsPerTile = numFloats;
+            outGaussians.resize(NUM_TILES * floatsPerTile);
+        } else if (numFloats != floatsPerTile) {
+            LOGE("runPart4bTiledFullPipeline: inconsistent tile output size");
+            return false;
+        }
+
+        float* dst = outGaussians.data() + t * floatsPerTile;
+        std::memcpy(dst, outData, numFloats * sizeof(float));
+        correctNDC(dst, numGaussians, tileRow, tileCol, /*swapXY=*/false);
+    }
+
+    auto tEnd = std::chrono::steady_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - tStart).count();
+    LOGD("[TIMING] Part4b tiled (full pipeline C++): %lldms, %d Gaussians", (long long)ms,
+         (int)(outGaussians.size() / PARAMS_PER_GAUSSIAN));
+    return true;
+}
+
 // ── Timing helper ────────────────────────────────────────────────────────────
 static long long nowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -578,11 +753,39 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     mod4a65.reset();
     LOGD("Part4a/65: %lldms. Part4a total: %lldms", nowMs() - tP4a65, nowMs() - tP4a);
 
-    // ── Part4b (single, load + run + release) ────────────────────────────────
-    // Release Part1+Part2 cache before Part4b to free ~1GB RSS; re-cached on next pipeline call
+    // ── Part4b: try tiled first, fall back to single ─────────────────────────
+    // Release Part1+Part2 cache before Part4b to free ~1GB RSS; cache will be re-created on next call.
     g_moduleCache.release();
     LOGD("Released Part1+Part2 cache before Part4b to free memory");
 
+    // 4b(a): tiled path using tile_full (or tile_00) if present.
+    std::vector<float> tiledGaussians;
+    if (runPart4bTiledFullPipeline(modelDir,
+                                   imageData,
+                                   g_workspace.latent0,
+                                   g_workspace.latent1,
+                                   g_workspace.x0Feat,
+                                   g_workspace.x1Feat,
+                                   g_workspace.x2Feat,
+                                   combinedTokens.data(),
+                                   imgTokensNumel,
+                                   tiledGaussians)) {
+        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+        const int numFloats = static_cast<int>(tiledGaussians.size());
+        if (numFloats <= 0 || (numFloats % PARAMS_PER_GAUSSIAN) != 0) {
+            LOGE("Tiled Part4b output invalid: %d", numFloats);
+            return nullptr;
+        }
+        jfloatArray jResult = env->NewFloatArray(numFloats);
+        if (!jResult) { LOGE("result array alloc fail (tiled)"); return nullptr; }
+        env->SetFloatArrayRegion(jResult, 0, numFloats, tiledGaussians.data());
+        long long tTotal = nowMs() - t0;
+        LOGD("TOTAL pipeline (tiled Part4b): %lldms. Gaussians=%d",
+             tTotal, numFloats / PARAMS_PER_GAUSSIAN);
+        return jResult;
+    }
+
+    // 4b(b): single full Part4b as fallback.
     long long tP4b = nowMs();
     std::string path4b = pathJoin(modelDir, "sharp_split_part4b.pte");
     auto mod4b = std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap);
@@ -610,7 +813,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     in4b.push_back(*x1_4b);
     in4b.push_back(*x2_4b);
 
-    LOGD("Part4b forward starting...");
+    LOGD("Part4b forward starting (single fallback)...");
     auto out4b = mod4b->forward(in4b);
 
     if (!out4b.ok() || out4b->empty()) {
@@ -631,7 +834,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     }
 
     long long tTotal = nowMs() - t0;
-    LOGD("Part4b: %lldms. TOTAL pipeline: %lldms. Gaussians=%d",
+    LOGD("Part4b (single): %lldms. TOTAL pipeline: %lldms. Gaussians=%d",
          nowMs() - tP4b, tTotal, numFloats / PARAMS_PER_GAUSSIAN);
 
     jfloatArray jResult = env->NewFloatArray(numFloats);
