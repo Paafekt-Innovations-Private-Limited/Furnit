@@ -1745,12 +1745,21 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         cmdBuf.commit()
                         cmdBuf.waitUntilCompleted()
 
-                        // Read back as CGImage
+                        // Read back as CGImage — use context-owned buffer to avoid CGBitmapContextCreateImage crash on iPhone 12 (alignment)
                         let bytesPerRow = origW * 4
                         var rgba = [UInt8](repeating: 0, count: origH * bytesPerRow)
                         out.getBytes(&rgba, bytesPerRow: bytesPerRow, from: MTLRegionMake2D(0, 0, origW, origH), mipmapLevel: 0)
-                        if let ctx = CGContext(data: &rgba, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue), let img = ctx.makeImage() {
-                            composedImage = img
+                        if let ctx = CGContext(data: nil, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                            let dst = ctx.data!.assumingMemoryBound(to: UInt8.self)
+                            rgba.withUnsafeBytes { srcBuf in
+                                guard let src = srcBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+                                for y in 0..<origH {
+                                    dst.advanced(by: y * bytesPerRow).update(from: src.advanced(by: y * bytesPerRow), count: bytesPerRow)
+                                }
+                            }
+                            if let img = ctx.makeImage() {
+                                composedImage = img
+                            }
                         }
                     }
                 } else if let pipeline = compositePipeline {
@@ -1780,8 +1789,17 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         let bytesPerRow = origW * 4
                         var rgba = [UInt8](repeating: 0, count: origH * bytesPerRow)
                         out.getBytes(&rgba, bytesPerRow: bytesPerRow, from: MTLRegionMake2D(0, 0, origW, origH), mipmapLevel: 0)
-                        if let ctx = CGContext(data: &rgba, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue), let img = ctx.makeImage() {
-                            composedImage = img
+                        if let ctx = CGContext(data: nil, width: origW, height: origH, bitsPerComponent: 8, bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                            let dst = ctx.data!.assumingMemoryBound(to: UInt8.self)
+                            rgba.withUnsafeBytes { srcBuf in
+                                guard let src = srcBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+                                for y in 0..<origH {
+                                    dst.advanced(by: y * bytesPerRow).update(from: src.advanced(by: y * bytesPerRow), count: bytesPerRow)
+                                }
+                            }
+                            if let img = ctx.makeImage() {
+                                composedImage = img
+                            }
                         }
                     }
                 }
