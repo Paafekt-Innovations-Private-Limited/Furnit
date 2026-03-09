@@ -13,6 +13,7 @@ struct SettingsView: View {
 
     // Room Viewer Settings
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
 
     var body: some View {
         NavigationView {
@@ -138,6 +139,21 @@ struct SettingsView: View {
                         }
                     }
                     .tint(.cyan)
+
+                    Toggle(isOn: $infiniteZoomEnabled) {
+                        HStack {
+                            Image(systemName: "plus.magnifyingglass")
+                                .foregroundColor(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Infinite Zoom")
+                                    .font(.headline)
+                                Text("Zoom in/out without limit; can pass through walls into grey void")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.orange)
                 } header: {
                     Text("Room Viewer")
                 }

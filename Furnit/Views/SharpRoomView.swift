@@ -66,87 +66,78 @@ struct RoomBoundaryManager {
 
 // MARK: - Orbit Gesture View (like antimatter15/splat)
 
-/// Gesture overlay that captures drag/pinch and sends to WebGL for orbit control
+/// Gesture overlay: one-finger orbit, two-finger pan, pinch zoom. Uses UIKit so we can distinguish 1- vs 2-finger pan.
 struct OrbitGestureView: View {
-    @State private var lastDragLocation: CGPoint? = nil
-    @State private var lastScale: CGFloat = 1.0
-
     var body: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        let currentLocation = value.location
+        WebGLGestureOverlayView()
+    }
+}
 
-                        // First movement in this drag → tell JS "user started interacting"
-                        if lastDragLocation == nil {
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("WebGLOrbitGestureState"),
-                                object: nil,
-                                userInfo: ["interacting": true]
-                            )
-                        }
+private struct WebGLGestureOverlayView: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = true
+        view.isMultipleTouchEnabled = true
 
-                        if let lastLocation = lastDragLocation {
-                            // Calculate delta from last position (not from start)
-                            let deltaX = currentLocation.x - lastLocation.x
-                            let deltaY = currentLocation.y - lastLocation.y
+        let oneFingerPan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleOneFingerPan(_:)))
+        oneFingerPan.minimumNumberOfTouches = 1
+        oneFingerPan.maximumNumberOfTouches = 1
+        view.addGestureRecognizer(oneFingerPan)
 
-                            // Send incremental delta to JS
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("WebGLOrbitGesture"),
-                                object: nil,
-                                userInfo: ["deltaX": deltaX, "deltaY": deltaY, "incremental": true]
-                            )
-                        }
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
+        view.addGestureRecognizer(pinch)
 
-                        lastDragLocation = currentLocation
-                    }
-                    .onEnded { _ in
-                        // Reset for next gesture
-                        lastDragLocation = nil
+        return view
+    }
 
-                        // Tell JS "user stopped interacting"
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("WebGLOrbitGestureState"),
-                            object: nil,
-                            userInfo: ["interacting": false]
-                        )
-                    }
-            )
-            .simultaneousGesture(
-                MagnificationGesture()
-                    .onChanged { scale in
-                        // First pinch → tell JS "user started interacting"
-                        if lastScale == 1.0 {
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("WebGLOrbitGestureState"),
-                                object: nil,
-                                userInfo: ["interacting": true]
-                            )
-                        }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 
-                        let incrementalScale = scale / lastScale
-                        lastScale = scale
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
 
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("WebGLZoomGesture"),
-                            object: nil,
-                            userInfo: ["scale": incrementalScale, "incremental": true]
-                        )
-                    }
-                    .onEnded { _ in
-                        lastScale = 1.0
+    final class Coordinator: NSObject {
+        private var lastOneFingerLocation: CGPoint?
+        private var lastPinchScale: CGFloat = 1.0
 
-                        // Tell JS "user stopped interacting"
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("WebGLOrbitGestureState"),
-                            object: nil,
-                            userInfo: ["interacting": false]
-                        )
-                    }
-            )
+        @objc func handleOneFingerPan(_ recognizer: UIPanGestureRecognizer) {
+            let location = recognizer.location(in: recognizer.view)
+            switch recognizer.state {
+            case .began:
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGestureState"), object: nil, userInfo: ["interacting": true])
+                lastOneFingerLocation = location
+            case .changed:
+                if let last = lastOneFingerLocation {
+                    let deltaX = location.x - last.x
+                    let deltaY = location.y - last.y
+                    NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGesture"), object: nil, userInfo: ["deltaX": deltaX, "deltaY": deltaY, "incremental": true])
+                }
+                lastOneFingerLocation = location
+            case .ended, .cancelled:
+                lastOneFingerLocation = nil
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGestureState"), object: nil, userInfo: ["interacting": false])
+            default:
+                break
+            }
+        }
+
+        @objc func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGestureState"), object: nil, userInfo: ["interacting": true])
+                lastPinchScale = recognizer.scale
+            case .changed:
+                let incrementalScale = recognizer.scale / lastPinchScale
+                lastPinchScale = recognizer.scale
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLZoomGesture"), object: nil, userInfo: ["scale": incrementalScale, "incremental": true])
+            case .ended, .cancelled:
+                lastPinchScale = 1.0
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGestureState"), object: nil, userInfo: ["interacting": false])
+            default:
+                break
+            }
+        }
     }
 }
 
@@ -263,6 +254,10 @@ struct SharpRoomView: View {
                 data.copyBytes(to: dest, from: (byteOffset + 8)..<(byteOffset + 12))
             }
 
+            guard x.isFinite, y.isFinite, z.isFinite else { continue }
+            let maxSane: Float = 1_000
+            guard abs(x) <= maxSane, abs(y) <= maxSane, abs(z) <= maxSane else { continue }
+
             minX = min(minX, x)
             maxX = max(maxX, x)
             minY = min(minY, y)
@@ -273,6 +268,19 @@ struct SharpRoomView: View {
 
         guard minX < maxX else {
             logDebug("PLY Parser: Invalid bounds")
+            return nil
+        }
+        let maxSane: Float = 1_000
+        guard abs(minX) <= maxSane, abs(maxX) <= maxSane,
+              abs(minY) <= maxSane, abs(maxY) <= maxSane,
+              abs(minZ) <= maxSane, abs(maxZ) <= maxSane else {
+            logDebug("PLY Parser: Rejecting bounds (abs > \(maxSane)) X[\(minX), \(maxX)] Y[\(minY), \(maxY)] Z[\(minZ), \(maxZ)]")
+            return nil
+        }
+        let maxRoomSize: Float = 50
+        let spanX = maxX - minX, spanY = maxY - minY, spanZ = maxZ - minZ
+        guard spanX <= maxRoomSize, spanY <= maxRoomSize, spanZ <= maxRoomSize else {
+            logDebug("PLY Parser: Rejecting bounds (room size > \(maxRoomSize)m) span X=\(spanX) Y=\(spanY) Z=\(spanZ)")
             return nil
         }
 
@@ -315,6 +323,7 @@ struct SharpRoomView: View {
 
     // Room viewer settings
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
 
     // Save room state
     @StateObject private var modelManager = USDZModelManager()
@@ -351,13 +360,11 @@ struct SharpRoomView: View {
             return URL(fileURLWithPath: threeDGSPath)
         }
 
-        // Fallback: classic antimatter-oriented PLY
         let classicPath = basePath.replacingOccurrences(of: ".ply", with: "_classic.ply")
         if FileManager.default.fileExists(atPath: classicPath) {
             return URL(fileURLWithPath: classicPath)
         }
 
-        // Last resort: original .ply
         return plyURL
     }
 
@@ -367,9 +374,10 @@ struct SharpRoomView: View {
             AntimatterSplatView(
                 plyURL: classicPlyURL,
                 roomBounds: roomMeasurements?.boundingBox,
-                actualBounds: effectiveBounds,
+                actualBounds: nil,
                 photoOrientation: photoOrientation,
                 oscillationEnabled: oscillationEnabled,
+                infiniteZoom: infiniteZoomEnabled,
                 onLoaded: {
                     isLoading = false
                 },
@@ -387,6 +395,39 @@ struct SharpRoomView: View {
                 .ignoresSafeArea()  // Cover full screen including safe areas
                 .allowsHitTesting(!isLoading)  // Keep enabled even with FurnitureFit - touches outside bbox pass through
                 .zIndex(10)  // Above WebGL view, below other overlays
+
+            // Camera up/down buttons — move virtual camera up or down (tap to shift view)
+            if !isLoading {
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .allowsHitTesting(false)
+                    VStack(spacing: 8) {
+                        Button(action: {
+                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil)
+                        }) {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .buttonStyle(.plain)
+                        Button(action: {
+                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil)
+                        }) {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(12)
+                }
+                .zIndex(12)
+            }
 
             // Loading overlay
             if isLoading {
@@ -615,7 +656,7 @@ struct SharpRoomView: View {
                         }
                         .disabled(isLoading)
 
-                        // Orientation label
+                        // Orientation label — allow pinch/drag to pass through to OrbitGestureView
                         HStack(spacing: 6) {
                             Image(systemName: "iphone.landscape")
                                 .font(.caption)
@@ -632,6 +673,7 @@ struct SharpRoomView: View {
                         .padding(.vertical, 8)
                         .background(Color.black.opacity(0.5))
                         .cornerRadius(8)
+                        .allowsHitTesting(false)
 
                         // Furniture calibration (if active)
                         if showingFurnitureFit, let h = detectedFurnitureHeight {
@@ -659,6 +701,7 @@ struct SharpRoomView: View {
                         }
 
                         Spacer()
+                            .allowsHitTesting(false)
 
                         // Screenshot button (right)
                         Button(action: {
@@ -687,7 +730,7 @@ struct SharpRoomView: View {
                     Spacer()
                         .allowsHitTesting(false)
 
-                    // Orientation label (center, above buttons)
+                    // Orientation label (center, above buttons) — allow pinch/drag to pass through
                     VStack(spacing: 1) {
                         Text(NSLocalizedString("orientation.heldVertically", comment: ""))
                             .font(.caption2)
@@ -701,6 +744,7 @@ struct SharpRoomView: View {
                     .background(Color.black.opacity(0.4))
                     .cornerRadius(6)
                     .padding(.bottom, 12)
+                    .allowsHitTesting(false)
 
                     HStack {
                         // Brain button (bottom-left)
@@ -725,7 +769,7 @@ struct SharpRoomView: View {
                         Spacer()
                             .allowsHitTesting(false)
 
-                        // Furniture size display + Screenshot button (bottom-right)
+                        // Furniture size display + Screenshot button (bottom-right) — buttons remain tappable
                         VStack(spacing: 8) {
                             // Show detected furniture size - tap to input real size for calibration
                             if showingFurnitureFit, let h = detectedFurnitureHeight {
@@ -1006,9 +1050,8 @@ struct SharpRoomView: View {
 
             if self.saveProgress >= 0.6 && !saveStarted {
                 saveStarted = true
-                // Get room dimensions (prefer JS-measured, fallback to roomMeasurements)
-                let width = self.jsFrontWallWidth ?? self.roomMeasurements?.frontWallWidth
-                let height = self.jsFrontWallHeight ?? self.roomMeasurements?.frontWallHeight
+                let width = self.jsFrontWallWidth
+                let height = self.jsFrontWallHeight
                 // Save the classic PLY file (pre-transformed for correct viewing)
                 self.modelManager.savePLY(from: self.classicPlyURL, name: savedName, photoOrientation: self.photoOrientation, roomWidth: width, roomHeight: height) { success, error in
                     DispatchQueue.main.async {
@@ -1173,6 +1216,7 @@ struct AntimatterSplatView: UIViewRepresentable {
     let actualBounds: RoomBounds?  // Actual min/max bounds for precise framing
     let photoOrientation: PhotoOrientation  // For orientation-based room rotation
     let oscillationEnabled: Bool  // Auto-orbit setting from user preferences
+    let infiniteZoom: Bool  // If true, no zoom/distance limits; can pass through walls
     let onLoaded: () -> Void
     var onFrontWallDimensions: ((Double, Double) -> Void)? = nil
 
@@ -1192,13 +1236,14 @@ struct AntimatterSplatView: UIViewRepresentable {
         // Register custom URL scheme handler
         let schemeHandler = LocalFileSchemeHandler()
         schemeHandler.plyURL = plyURL
-        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation, oscillation: oscillationEnabled)
+        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation, oscillation: oscillationEnabled, infiniteZoom: infiniteZoom)
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "splat")
 
         // Add message handlers for communication from JS
         config.userContentController.add(context.coordinator, name: "splatLoaded")
         config.userContentController.add(context.coordinator, name: "frontWallDimensions")
         config.userContentController.add(context.coordinator, name: "cameraPose")
+        config.userContentController.add(context.coordinator, name: "jsLog")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -1222,6 +1267,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         // Store reference
         context.coordinator.schemeHandler = schemeHandler
         context.coordinator.webView = webView
+        context.coordinator.lastInfiniteZoom = infiniteZoom
 
         // Load from custom scheme (HTML will auto-load room.ply)
         if let url = URL(string: "splat://local/") {
@@ -1233,27 +1279,17 @@ struct AntimatterSplatView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        // No updates needed
+        // Reload viewer when Infinite Zoom changes so the setting takes effect without leaving the room
+        if context.coordinator.lastInfiniteZoom != infiniteZoom {
+            context.coordinator.lastInfiniteZoom = infiniteZoom
+            context.coordinator.schemeHandler?.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: photoOrientation, oscillation: oscillationEnabled, infiniteZoom: infiniteZoom)
+            uiView.reload()
+        }
     }
 
-    private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?, orientation: PhotoOrientation, oscillation: Bool) -> String {
-        // Use RoomBoundaryManager to calculate camera position
-        let roomBounds = actualBounds ?? RoomBoundaryManager.defaultBounds
-        let boundaryManager = RoomBoundaryManager(bounds: roomBounds)
-        let cameraSetup = boundaryManager.getCameraAtBackWall()
-
-        let eyeX = cameraSetup.eye.x
-        let eyeY = cameraSetup.eye.y
-        let eyeZ = cameraSetup.eye.z
-
-        let targetX = cameraSetup.target.x
-        let targetY = cameraSetup.target.y
-        let targetZ = cameraSetup.target.z
-
-        logDebug("📐 [WebGL] Room: \(boundaryManager.width) × \(boundaryManager.height) × \(boundaryManager.depth)")
-        logDebug("📐 [WebGL] Center: (\(boundaryManager.centerX), \(boundaryManager.centerY), \(boundaryManager.centerZ))")
-        logDebug("📐 [WebGL] Front wall Z: \(boundaryManager.frontWallZ), Back wall Z: \(boundaryManager.backWallZ)")
-        logDebug("📷 [WebGL] Camera: eye=(\(eyeX), \(eyeY), \(eyeZ)) target=(\(targetX), \(targetY), \(targetZ))")
+    private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?, orientation: PhotoOrientation, oscillation: Bool, infiniteZoom: Bool) -> String {
+        // Camera and framing come from Box3 in the viewer only. No Swift bounds injection.
+        logDebug("📐 [WebGL] Framing from Box3 only (no Swift bounds)")
 
         // SparkJS + THREE.js based Gaussian Splat viewer
         return """
@@ -1305,6 +1341,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const OSCILLATION_ENABLED = \(oscillation ? "true" : "false");
                 console.log('[WebGL] oscillation =', OSCILLATION_ENABLED);
 
+                // Infinite zoom: no distance/room bounds clamping (can pass through walls into void)
+                const INFINITE_ZOOM = \(infiniteZoom ? "true" : "false");
+                console.log('[WebGL] infiniteZoom =', INFINITE_ZOOM);
+
                 // Log JS errors
                 window.addEventListener('error', function(e) {
                     console.log('[JS Error] ' + e.message + ' at ' + e.filename + ':' + e.lineno);
@@ -1318,8 +1358,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x808080);
 
-                // Camera - start facing origin, autoFrameRoom will reposition using Box3
-                const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                // Camera - start facing origin, autoFrameRoom will reposition using Box3. Infinite zoom: smaller near for close-up.
+                const cameraNear = INFINITE_ZOOM ? 0.001 : 0.1;
+                const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, cameraNear, 1000);
                 camera.position.set(0, 0, 3);  // Closer initial position
                 camera.lookAt(0, 0, 0);        // Explicitly look at origin
                 camera.up.set(0, 1, 0);        // Normal Y-up
@@ -1354,9 +1395,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                 controls.rotateSpeed = 1.5;     // Faster rotation
                 controls.zoomSpeed = 2.0;       // Faster zoom
                 controls.screenSpacePanning = false;
-                // Portrait: allow zoom into wall (0.001); landscape 0.01 (match Android)
-                controls.minDistance = isPortrait ? 0.001 : 0.01;
-                controls.maxDistance = 100;
+                // Portrait: allow zoom into wall (0.001); landscape 0.01 (match Android). Infinite zoom: 0 = no minimum, can pass through target.
+                controls.minDistance = INFINITE_ZOOM ? 0 : (isPortrait ? 0.001 : 0.01);
+                controls.maxDistance = INFINITE_ZOOM ? 1e6 : 100;
                 // Default target, autoFrameRoom will update using Box3
                 controls.target.set(0, 0, 0);
 
@@ -1467,26 +1508,79 @@ struct AntimatterSplatView: UIViewRepresentable {
                         console.log('SplatMesh: rotated 180° X only (landscape)');
                     }
 
-                    // Auto-frame using Box3 (no orientation changes)
+                    let autoFrameRoomRetryCount = 0;
+                    const AUTO_FRAME_MAX_RETRIES = 60;
+
                     function autoFrameRoom() {
-                        console.log('=== autoFrameRoom() called (Box3 framing only) ===');
+                        const jsLog = function(msg) { if (window.webkit?.messageHandlers?.jsLog) window.webkit.messageHandlers.jsLog.postMessage(msg); };
                         try {
                             if (!splatMesh) {
-                                console.log('No splatMesh yet, retrying...');
-                                setTimeout(autoFrameRoom, 200);
+                                autoFrameRoomRetryCount++;
+                                if (autoFrameRoomRetryCount <= 3) {
+                                    jsLog('No splatMesh yet, retry ' + autoFrameRoomRetryCount);
+                                    setTimeout(autoFrameRoom, 300);
+                                } else {
+                                    jsLog('Giving up: no splatMesh after ' + autoFrameRoomRetryCount + ' retries — using default camera');
+                                    camera.position.set(0, 0, 4);
+                                    controls.target.set(0, 0, 0);
+                                    controls.update();
+                                    needsRender = true;
+                                }
                                 return;
                             }
-
-                            // 1) Compute bounds on the mesh (no rotation applied)
-                            const box = new THREE.Box3().setFromObject(splatMesh);
+                            // SplatMesh is not a standard Three.js Mesh — setFromObject() sees no geometry and returns (0,0,0).
+                            // Use SparkJS getBoundingBox() which uses actual splat positions. Must wait until initialized.
+                            if (!splatMesh.isInitialized) {
+                                autoFrameRoomRetryCount++;
+                                if (autoFrameRoomRetryCount <= 3 || autoFrameRoomRetryCount % 15 === 0) {
+                                    jsLog('SplatMesh not initialized yet, retry ' + autoFrameRoomRetryCount);
+                                }
+                                if (autoFrameRoomRetryCount < AUTO_FRAME_MAX_RETRIES) {
+                                    setTimeout(autoFrameRoom, 200);
+                                } else {
+                                    jsLog('Giving up: SplatMesh never initialized — using default camera');
+                                    camera.position.set(0, 0, 4);
+                                    controls.target.set(0, 0, 0);
+                                    controls.update();
+                                    needsRender = true;
+                                }
+                                return;
+                            }
+                            splatMesh.updateMatrixWorld(true);
+                            let box;
+                            try {
+                                const localBox = splatMesh.getBoundingBox(true);
+                                box = localBox.clone().applyMatrix4(splatMesh.matrixWorld);
+                            } catch (e) {
+                                jsLog('getBoundingBox failed: ' + e.message);
+                                autoFrameRoomRetryCount++;
+                                if (autoFrameRoomRetryCount < AUTO_FRAME_MAX_RETRIES) {
+                                    setTimeout(autoFrameRoom, 300);
+                                } else {
+                                    camera.position.set(0, 0, 4);
+                                    controls.target.set(0, 0, 0);
+                                    controls.update();
+                                    needsRender = true;
+                                }
+                                return;
+                            }
                             const size = box.getSize(new THREE.Vector3());
-
                             if (size.length() < 0.01) {
-                                console.log('Box3 too small, waiting for splatMesh...');
-                                setTimeout(autoFrameRoom, 200);
+                                autoFrameRoomRetryCount++;
+                                if (autoFrameRoomRetryCount < AUTO_FRAME_MAX_RETRIES) {
+                                    jsLog('Box3 size still zero after getBoundingBox, retry ' + autoFrameRoomRetryCount);
+                                    setTimeout(autoFrameRoom, 300);
+                                } else {
+                                    jsLog('Giving up: Box3 stayed zero — using default camera');
+                                    camera.position.set(0, 0, 4);
+                                    controls.target.set(0, 0, 0);
+                                    controls.update();
+                                    needsRender = true;
+                                }
                                 return;
                             }
 
+                            autoFrameRoomRetryCount = 0;
                             const center = box.getCenter(new THREE.Vector3());
                             // After 90° Z rotation, axes mapping depends on photo orientation
                             // Portrait: width = X (narrower), height = Y (taller)
@@ -1501,7 +1595,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                             }
                             let roomDepth  = size.z;
 
-                            console.log('Box3 raw size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), '(isPortrait:', isPortrait, ')');
+                            const box3Msg = 'Box3 raw size: ' + roomWidth.toFixed(2) + ' x ' + roomHeight.toFixed(2) + ' (isPortrait: ' + isPortrait + ')';
+                            console.log(box3Msg);
+                            if (window.webkit?.messageHandlers?.jsLog) window.webkit.messageHandlers.jsLog.postMessage(box3Msg);
 
                             // Cap to realistic room dimensions (fog makes bounds too large)
                             const maxRealisticWidth = isPortrait ? 5.0 : 8.0;
@@ -1526,18 +1622,19 @@ struct AntimatterSplatView: UIViewRepresentable {
                             let rawMinZ = box.min.z;
                             let rawMaxZ = box.max.z;
 
-                            // 3) Shrink bounds to ignore foggy outer 15%
+                            // 3) Shrink bounds to ignore foggy outer 15% on front/sides; allow camera right up to back wall
                             const fogFactor = 0.15;
                             const shrinkX = roomWidth  * fogFactor * 0.5;
                             const shrinkY = roomHeight * fogFactor * 0.5;
                             const shrinkZ = roomDepth  * fogFactor * 0.5;
+                            const backWallInset = 0.02;
 
                             const minX = rawMinX + shrinkX;
                             const maxX = rawMaxX - shrinkX;
                             const minY = rawMinY + shrinkY;
                             const maxY = rawMaxY - shrinkY;
                             const minZ = rawMinZ + shrinkZ;
-                            const maxZ = rawMaxZ - shrinkZ;
+                            const maxZ = rawMaxZ - backWallInset;
 
                             const innerCenterX = (minX + maxX) / 2;
                             const innerCenterY = (minY + maxY) / 2;
@@ -1577,35 +1674,30 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 });
                             }
 
-                            // 5) Place camera inside room (Paafekt standard: same formulas as Android for portrait/landscape)
-                            let newCamPos, newTarget;
-                            if (isPortrait) {
-                                const P_CAM_D = 0.076, P_CAM_Y = -0.133, P_TGT_D = -0.494;
-                                newCamPos = new THREE.Vector3(
-                                    innerCenterX,
-                                    innerCenterY + P_CAM_Y * roomHeight,
-                                    innerCenterZ + P_CAM_D * roomDepth
-                                );
-                                newTarget = new THREE.Vector3(
-                                    innerCenterX,
-                                    innerCenterY + P_CAM_Y * roomHeight,
-                                    innerCenterZ + P_TGT_D * roomDepth
-                                );
-                            } else {
-                                const L_CAM_X = 0, L_CAM_Y = 0.00207, L_CAM_Z = -0.130, L_TGT_Z = -0.444;
-                                newCamPos = new THREE.Vector3(
-                                    innerCenterX + L_CAM_X * roomWidth,
-                                    innerCenterY + L_CAM_Y * roomHeight,
-                                    innerCenterZ + L_CAM_Z * roomDepth
-                                );
-                                newTarget = new THREE.Vector3(
-                                    innerCenterX + L_CAM_X * roomWidth,
-                                    innerCenterY,
-                                    innerCenterZ + L_TGT_Z * roomDepth
-                                );
-                            }
+                            // 5) Start: right in front of FRONT WALL (the wall at far distance), looking up at it.
+                            // Front wall = far wall = maxZ in scene. Camera just in front of it (maxZ + dist), looking up at it.
+                            const frontWallZ = maxZ;
+                            const distInFront = 0.025;
+                            // Look straight at wall (eye level): target at same height as camera
+                            const newCamPos = new THREE.Vector3(
+                                innerCenterX,
+                                innerCenterY,
+                                frontWallZ + distInFront
+                            );
+                            const newTarget = new THREE.Vector3(
+                                innerCenterX,
+                                innerCenterY,
+                                frontWallZ
+                            );
 
-                            console.log('Camera (Paafekt) isPortrait:', isPortrait, 'pos:', newCamPos.x.toFixed(2), newCamPos.y.toFixed(2), newCamPos.z.toFixed(2), 'tgt:', newTarget.x.toFixed(2), newTarget.y.toFixed(2), newTarget.z.toFixed(2));
+                            const msg1 = '[StartPos] Camera close to curtain, looking straight — distInFront=' + distInFront + ' minZ=' + minZ.toFixed(3) + ' maxZ=' + maxZ.toFixed(3) + ' isPortrait=' + isPortrait;
+                            const msg2 = '[StartPos] pos=(' + newCamPos.x.toFixed(3) + ',' + newCamPos.y.toFixed(3) + ',' + newCamPos.z.toFixed(3) + ') tgt=(' + newTarget.x.toFixed(3) + ',' + newTarget.y.toFixed(3) + ',' + newTarget.z.toFixed(3) + ')';
+                            console.log(msg1);
+                            console.log(msg2);
+                            if (window.webkit?.messageHandlers?.jsLog) {
+                                window.webkit.messageHandlers.jsLog.postMessage(msg1);
+                                window.webkit.messageHandlers.jsLog.postMessage(msg2);
+                            }
 
                             camera.position.copy(newCamPos);
                             controls.target.copy(newTarget);
@@ -1695,13 +1787,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                     let newX = camera.position.x + dx * moveSpeed;
                     let newZ = camera.position.z + dy * moveSpeed;
 
-                    // Clamp to room bounds if available (minimal margin so user can reach wall)
+                    // Clamp to room bounds; tiny margin at back wall so user can get right in front of it
                     if (roomBoundsForClamping) {
-                        const margin = 0.05;
-                        newX = Math.max(roomBoundsForClamping.minX + margin,
-                               Math.min(roomBoundsForClamping.maxX - margin, newX));
-                        newZ = Math.max(roomBoundsForClamping.minZ + margin,
-                               Math.min(roomBoundsForClamping.maxZ - margin, newZ));
+                        const marginSide = 0.05;
+                        const marginBack = 0.02;
+                        newX = Math.max(roomBoundsForClamping.minX + marginSide,
+                               Math.min(roomBoundsForClamping.maxX - marginSide, newX));
+                        newZ = Math.max(roomBoundsForClamping.minZ + marginSide,
+                               Math.min(roomBoundsForClamping.maxZ - marginBack, newZ));
                     }
 
                     // Apply clamped movement
@@ -1713,6 +1806,48 @@ struct AntimatterSplatView: UIViewRepresentable {
                     controls.target.x += actualDx;
                     controls.target.z += actualDz;
                     needsRender = true;  // Request render after camera move
+                };
+
+                // Move camera (and target) up/down in world Y — called from Swift "camera up" button
+                window.moveCameraUp = function(dy) {
+                    autoOrbitEnabled = false;
+                    if (typeof dy !== 'number' || !isFinite(dy)) return;
+                    camera.position.y += dy;
+                    controls.target.y += dy;
+                    if (!INFINITE_ZOOM && roomBoundsForClamping) {
+                        const m = 0.05;
+                        camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                        controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
+                    }
+                    controls.update();
+                    needsRender = true;
+                };
+
+                // Two-finger pan / pan pad: shift room in screen direction (camera and target move together)
+                // Swift sends screen deltas: +X = right, +Y = down. Axes swapped so drag-up = room-up when view/camera is rotated.
+                window.panCamera = function(deltaX, deltaY) {
+                    if (typeof deltaX !== 'number' || typeof deltaY !== 'number' || !isFinite(deltaX) || !isFinite(deltaY)) return;
+                    autoOrbitEnabled = false;
+                    const panSpeed = 0.06;
+                    const forward = new THREE.Vector3();
+                    camera.getWorldDirection(forward);
+                    const right = new THREE.Vector3().crossVectors(camera.up, forward).normalize();
+                    const upNorm = camera.up.clone().normalize();
+                    // Map screen dx -> world up, screen dy -> world right (fixes perpendicular pan when camera/view rotated)
+                    const move = right.multiplyScalar(-deltaY * panSpeed).add(upNorm.multiplyScalar(deltaX * panSpeed));
+                    camera.position.add(move);
+                    controls.target.add(move);
+                    if (!INFINITE_ZOOM && roomBoundsForClamping) {
+                        const m = 0.05;
+                        camera.position.x = Math.max(roomBoundsForClamping.minX + m, Math.min(roomBoundsForClamping.maxX - m, camera.position.x));
+                        camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                        camera.position.z = Math.max(roomBoundsForClamping.minZ + m, Math.min(roomBoundsForClamping.maxZ - m, camera.position.z));
+                        controls.target.x = Math.max(roomBoundsForClamping.minX + m, Math.min(roomBoundsForClamping.maxX - m, controls.target.x));
+                        controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
+                        controls.target.z = Math.max(roomBoundsForClamping.minZ + m, Math.min(roomBoundsForClamping.maxZ - m, controls.target.z));
+                    }
+                    controls.update();
+                    needsRender = true;
                 };
 
                 // Orbit rotation handler (for Swift gesture overlay)
@@ -1743,16 +1878,47 @@ struct AntimatterSplatView: UIViewRepresentable {
                 };
 
                 // Zoom handler (for Swift pinch gesture) — incremental scale from Swift
+                // Pinch out (scale > 1) = zoom in (closer). Pinch in (scale < 1) = zoom out (further).
                 window.zoomCamera = function(scale) {
                     autoOrbitEnabled = false;
                     if (typeof scale !== 'number' || scale <= 0 || !isFinite(scale)) return;
-                    const amplifiedScale = 1 + (scale - 1) * 2.5;
-                    const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
-                    offset.multiplyScalar(1 / amplifiedScale);
-                    const dist = offset.length();
-                    if (dist < 0.01) offset.setLength(0.01);
-                    if (dist > 50) offset.setLength(50);
-                    camera.position.copy(controls.target).add(offset);
+                    const zoomSensitivity = 4.0;
+
+                    if (INFINITE_ZOOM) {
+                        // Dolly: move camera and target along view direction so we can pass through curtain
+                        const forward = new THREE.Vector3().subVectors(controls.target, camera.position).normalize();
+                        const step = (scale - 1) * 0.22 * zoomSensitivity;  // scale>1 -> move forward, scale<1 -> move back
+                        camera.position.addScaledVector(forward, step);
+                        controls.target.addScaledVector(forward, step);
+                    } else {
+                        const amplifiedScale = 1 + (scale - 1) * zoomSensitivity;
+                        const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+                        offset.multiplyScalar(1 / amplifiedScale);
+                        let dist = offset.length();
+                        if (dist < 0.01) offset.setLength(0.01);
+                        if (dist > 50) offset.setLength(50);
+                        camera.position.copy(controls.target).add(offset);
+                    }
+
+                    if (!INFINITE_ZOOM && roomBoundsForClamping) {
+                        const marginSide = 0.05;
+                        const marginBack = 0.02;
+                        const minX = roomBoundsForClamping.minX + marginSide;
+                        const maxX = roomBoundsForClamping.maxX - marginSide;
+                        const minY = roomBoundsForClamping.minY + marginSide;
+                        const maxY = roomBoundsForClamping.maxY - marginSide;
+                        const minZ = roomBoundsForClamping.minZ + marginSide;
+                        const maxZInside = roomBoundsForClamping.maxZ - marginBack;
+                        camera.position.x = Math.max(minX, Math.min(maxX, camera.position.x));
+                        camera.position.y = Math.max(minY, Math.min(maxY, camera.position.y));
+                        // If camera is in front of the front wall (z > maxZ), don't clamp z from above — otherwise
+                        // zoom-out would snap the camera through the wall and we'd see the back of the wall.
+                        if (camera.position.z <= roomBoundsForClamping.maxZ) {
+                            camera.position.z = Math.max(minZ, Math.min(maxZInside, camera.position.z));
+                        } else {
+                            camera.position.z = Math.max(minZ, camera.position.z);
+                        }
+                    }
                     controls.update();
                     needsRender = true;
                 };
@@ -1854,6 +2020,7 @@ struct AntimatterSplatView: UIViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var webView: WKWebView?
         var schemeHandler: LocalFileSchemeHandler?
+        var lastInfiniteZoom: Bool?
         let onLoaded: () -> Void
         let onFrontWallDimensions: ((Double, Double) -> Void)?
         private var hasNotifiedLoaded = false
@@ -1915,6 +2082,20 @@ struct AntimatterSplatView: UIViewRepresentable {
                 name: NSNotification.Name("WebGLScaleRoom"),
                 object: nil
             )
+
+            // Listen for camera move up/down (from overlay buttons)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleCameraMoveUp(_:)),
+                name: NSNotification.Name("WebGLCameraMoveUp"),
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleCameraMoveDown(_:)),
+                name: NSNotification.Name("WebGLCameraMoveDown"),
+                object: nil
+            )
         }
 
         deinit {
@@ -1963,9 +2144,7 @@ struct AntimatterSplatView: UIViewRepresentable {
             guard let userInfo = notification.userInfo,
                   let scale = userInfo["scale"] as? CGFloat else { return }
 
-            logDebug("🎚️ [WebGL] Zoom gesture: scale=\(scale)")
-
-            // OrbitGestureView now sends incremental scale directly
+            // OrbitGestureView sends incremental scale; zoom strength is controlled in JS (amplifiedScale multiplier)
             let js = "if (typeof zoomCamera === 'function') zoomCamera(\(scale));"
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
@@ -1976,6 +2155,18 @@ struct AntimatterSplatView: UIViewRepresentable {
 
             let js = "if (typeof setUserInteracting === 'function') setUserInteracting(\(interacting ? "true" : "false"));"
             logDebug("🎮 [WebGL] setUserInteracting(\(interacting))")
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        @objc private func handleCameraMoveUp(_ notification: Notification) {
+            let step = 0.2
+            let js = "if (typeof moveCameraUp === 'function') moveCameraUp(\(step));"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        @objc private func handleCameraMoveDown(_ notification: Notification) {
+            let step = -0.2
+            let js = "if (typeof moveCameraUp === 'function') moveCameraUp(\(step));"
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
@@ -1992,12 +2183,11 @@ struct AntimatterSplatView: UIViewRepresentable {
             let elapsed = (CFAbsoluteTimeGetCurrent() - loadStartTime) * 1000
             logDebug("⏱️ [WebGL] HTML page loaded: \(String(format: "%.0f", elapsed))ms")
 
-            // Fallback: notify loaded after delay if JS doesn't report
             DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
                 if !self.hasNotifiedLoaded {
                     self.hasNotifiedLoaded = true
                     let total = (CFAbsoluteTimeGetCurrent() - self.loadStartTime) * 1000
-                    logDebug("⏱️ [WebGL] Total load (fallback): \(String(format: "%.0f", total))ms")
+                    logDebug("⏱️ [WebGL] Total load (timeout): \(String(format: "%.0f", total))ms")
                     self.onLoaded()
                 }
             }
@@ -2043,6 +2233,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                    let tz = body["tz"] as? Double {
                     logDebug("🎥 [WebGL] Camera pose JS -> Swift: eye=(\(String(format: "%.2f", ex)), \(String(format: "%.2f", ey)), \(String(format: "%.2f", ez))) target=(\(String(format: "%.2f", tx)), \(String(format: "%.2f", ty)), \(String(format: "%.2f", tz)))")
                 }
+            } else if message.name == "jsLog", let text = message.body as? String {
+                logDebug("📜 [JS] \(text)")
             }
         }
     }
