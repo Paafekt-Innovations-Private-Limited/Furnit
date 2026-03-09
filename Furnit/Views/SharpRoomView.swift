@@ -66,87 +66,78 @@ struct RoomBoundaryManager {
 
 // MARK: - Orbit Gesture View (like antimatter15/splat)
 
-/// Gesture overlay that captures drag/pinch and sends to WebGL for orbit control
+/// Gesture overlay: one-finger orbit, two-finger pan, pinch zoom. Uses UIKit so we can distinguish 1- vs 2-finger pan.
 struct OrbitGestureView: View {
-    @State private var lastDragLocation: CGPoint? = nil
-    @State private var lastScale: CGFloat = 1.0
-
     var body: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        let currentLocation = value.location
+        WebGLGestureOverlayView()
+    }
+}
 
-                        // First movement in this drag → tell JS "user started interacting"
-                        if lastDragLocation == nil {
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("WebGLOrbitGestureState"),
-                                object: nil,
-                                userInfo: ["interacting": true]
-                            )
-                        }
+private struct WebGLGestureOverlayView: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = true
+        view.isMultipleTouchEnabled = true
 
-                        if let lastLocation = lastDragLocation {
-                            // Calculate delta from last position (not from start)
-                            let deltaX = currentLocation.x - lastLocation.x
-                            let deltaY = currentLocation.y - lastLocation.y
+        let oneFingerPan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleOneFingerPan(_:)))
+        oneFingerPan.minimumNumberOfTouches = 1
+        oneFingerPan.maximumNumberOfTouches = 1
+        view.addGestureRecognizer(oneFingerPan)
 
-                            // Send incremental delta to JS
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("WebGLOrbitGesture"),
-                                object: nil,
-                                userInfo: ["deltaX": deltaX, "deltaY": deltaY, "incremental": true]
-                            )
-                        }
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
+        view.addGestureRecognizer(pinch)
 
-                        lastDragLocation = currentLocation
-                    }
-                    .onEnded { _ in
-                        // Reset for next gesture
-                        lastDragLocation = nil
+        return view
+    }
 
-                        // Tell JS "user stopped interacting"
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("WebGLOrbitGestureState"),
-                            object: nil,
-                            userInfo: ["interacting": false]
-                        )
-                    }
-            )
-            .simultaneousGesture(
-                MagnificationGesture()
-                    .onChanged { scale in
-                        // First pinch → tell JS "user started interacting"
-                        if lastScale == 1.0 {
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("WebGLOrbitGestureState"),
-                                object: nil,
-                                userInfo: ["interacting": true]
-                            )
-                        }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 
-                        let incrementalScale = scale / lastScale
-                        lastScale = scale
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
 
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("WebGLZoomGesture"),
-                            object: nil,
-                            userInfo: ["scale": incrementalScale, "incremental": true]
-                        )
-                    }
-                    .onEnded { _ in
-                        lastScale = 1.0
+    final class Coordinator: NSObject {
+        private var lastOneFingerLocation: CGPoint?
+        private var lastPinchScale: CGFloat = 1.0
 
-                        // Tell JS "user stopped interacting"
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("WebGLOrbitGestureState"),
-                            object: nil,
-                            userInfo: ["interacting": false]
-                        )
-                    }
-            )
+        @objc func handleOneFingerPan(_ recognizer: UIPanGestureRecognizer) {
+            let location = recognizer.location(in: recognizer.view)
+            switch recognizer.state {
+            case .began:
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGestureState"), object: nil, userInfo: ["interacting": true])
+                lastOneFingerLocation = location
+            case .changed:
+                if let last = lastOneFingerLocation {
+                    let deltaX = location.x - last.x
+                    let deltaY = location.y - last.y
+                    NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGesture"), object: nil, userInfo: ["deltaX": deltaX, "deltaY": deltaY, "incremental": true])
+                }
+                lastOneFingerLocation = location
+            case .ended, .cancelled:
+                lastOneFingerLocation = nil
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGestureState"), object: nil, userInfo: ["interacting": false])
+            default:
+                break
+            }
+        }
+
+        @objc func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGestureState"), object: nil, userInfo: ["interacting": true])
+                lastPinchScale = recognizer.scale
+            case .changed:
+                let incrementalScale = recognizer.scale / lastPinchScale
+                lastPinchScale = recognizer.scale
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLZoomGesture"), object: nil, userInfo: ["scale": incrementalScale, "incremental": true])
+            case .ended, .cancelled:
+                lastPinchScale = 1.0
+                NotificationCenter.default.post(name: NSNotification.Name("WebGLOrbitGestureState"), object: nil, userInfo: ["interacting": false])
+            default:
+                break
+            }
+        }
     }
 }
 
@@ -332,6 +323,7 @@ struct SharpRoomView: View {
 
     // Room viewer settings
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
 
     // Save room state
     @StateObject private var modelManager = USDZModelManager()
@@ -385,6 +377,7 @@ struct SharpRoomView: View {
                 actualBounds: nil,
                 photoOrientation: photoOrientation,
                 oscillationEnabled: oscillationEnabled,
+                infiniteZoom: infiniteZoomEnabled,
                 onLoaded: {
                     isLoading = false
                 },
@@ -630,7 +623,7 @@ struct SharpRoomView: View {
                         }
                         .disabled(isLoading)
 
-                        // Orientation label
+                        // Orientation label — allow pinch/drag to pass through to OrbitGestureView
                         HStack(spacing: 6) {
                             Image(systemName: "iphone.landscape")
                                 .font(.caption)
@@ -647,6 +640,7 @@ struct SharpRoomView: View {
                         .padding(.vertical, 8)
                         .background(Color.black.opacity(0.5))
                         .cornerRadius(8)
+                        .allowsHitTesting(false)
 
                         // Furniture calibration (if active)
                         if showingFurnitureFit, let h = detectedFurnitureHeight {
@@ -674,6 +668,7 @@ struct SharpRoomView: View {
                         }
 
                         Spacer()
+                            .allowsHitTesting(false)
 
                         // Screenshot button (right)
                         Button(action: {
@@ -702,7 +697,7 @@ struct SharpRoomView: View {
                     Spacer()
                         .allowsHitTesting(false)
 
-                    // Orientation label (center, above buttons)
+                    // Orientation label (center, above buttons) — allow pinch/drag to pass through
                     VStack(spacing: 1) {
                         Text(NSLocalizedString("orientation.heldVertically", comment: ""))
                             .font(.caption2)
@@ -716,6 +711,7 @@ struct SharpRoomView: View {
                     .background(Color.black.opacity(0.4))
                     .cornerRadius(6)
                     .padding(.bottom, 12)
+                    .allowsHitTesting(false)
 
                     HStack {
                         // Brain button (bottom-left)
@@ -740,7 +736,7 @@ struct SharpRoomView: View {
                         Spacer()
                             .allowsHitTesting(false)
 
-                        // Furniture size display + Screenshot button (bottom-right)
+                        // Furniture size display + Screenshot button (bottom-right) — buttons remain tappable
                         VStack(spacing: 8) {
                             // Show detected furniture size - tap to input real size for calibration
                             if showingFurnitureFit, let h = detectedFurnitureHeight {
@@ -1187,6 +1183,7 @@ struct AntimatterSplatView: UIViewRepresentable {
     let actualBounds: RoomBounds?  // Actual min/max bounds for precise framing
     let photoOrientation: PhotoOrientation  // For orientation-based room rotation
     let oscillationEnabled: Bool  // Auto-orbit setting from user preferences
+    let infiniteZoom: Bool  // If true, no zoom/distance limits; can pass through walls
     let onLoaded: () -> Void
     var onFrontWallDimensions: ((Double, Double) -> Void)? = nil
 
@@ -1206,7 +1203,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         // Register custom URL scheme handler
         let schemeHandler = LocalFileSchemeHandler()
         schemeHandler.plyURL = plyURL
-        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation, oscillation: oscillationEnabled)
+        schemeHandler.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: self.photoOrientation, oscillation: oscillationEnabled, infiniteZoom: infiniteZoom)
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "splat")
 
         // Add message handlers for communication from JS
@@ -1237,6 +1234,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         // Store reference
         context.coordinator.schemeHandler = schemeHandler
         context.coordinator.webView = webView
+        context.coordinator.lastInfiniteZoom = infiniteZoom
 
         // Load from custom scheme (HTML will auto-load room.ply)
         if let url = URL(string: "splat://local/") {
@@ -1248,10 +1246,15 @@ struct AntimatterSplatView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        // No updates needed
+        // Reload viewer when Infinite Zoom changes so the setting takes effect without leaving the room
+        if context.coordinator.lastInfiniteZoom != infiniteZoom {
+            context.coordinator.lastInfiniteZoom = infiniteZoom
+            context.coordinator.schemeHandler?.htmlContent = generateSplatViewerHTML(bounds: roomBounds, actualBounds: actualBounds, orientation: photoOrientation, oscillation: oscillationEnabled, infiniteZoom: infiniteZoom)
+            uiView.reload()
+        }
     }
 
-    private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?, orientation: PhotoOrientation, oscillation: Bool) -> String {
+    private func generateSplatViewerHTML(bounds: SIMD3<Float>?, actualBounds: RoomBounds?, orientation: PhotoOrientation, oscillation: Bool, infiniteZoom: Bool) -> String {
         // Camera and framing come from Box3 in the viewer only. No Swift bounds injection.
         logDebug("📐 [WebGL] Framing from Box3 only (no Swift bounds)")
 
@@ -1305,6 +1308,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const OSCILLATION_ENABLED = \(oscillation ? "true" : "false");
                 console.log('[WebGL] oscillation =', OSCILLATION_ENABLED);
 
+                // Infinite zoom: no distance/room bounds clamping (can pass through walls into void)
+                const INFINITE_ZOOM = \(infiniteZoom ? "true" : "false");
+                console.log('[WebGL] infiniteZoom =', INFINITE_ZOOM);
+
                 // Log JS errors
                 window.addEventListener('error', function(e) {
                     console.log('[JS Error] ' + e.message + ' at ' + e.filename + ':' + e.lineno);
@@ -1318,8 +1325,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                 const scene = new THREE.Scene();
                 scene.background = new THREE.Color(0x808080);
 
-                // Camera - start facing origin, autoFrameRoom will reposition using Box3
-                const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                // Camera - start facing origin, autoFrameRoom will reposition using Box3. Infinite zoom: smaller near for close-up.
+                const cameraNear = INFINITE_ZOOM ? 0.001 : 0.1;
+                const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, cameraNear, 1000);
                 camera.position.set(0, 0, 3);  // Closer initial position
                 camera.lookAt(0, 0, 0);        // Explicitly look at origin
                 camera.up.set(0, 1, 0);        // Normal Y-up
@@ -1354,9 +1362,9 @@ struct AntimatterSplatView: UIViewRepresentable {
                 controls.rotateSpeed = 1.5;     // Faster rotation
                 controls.zoomSpeed = 2.0;       // Faster zoom
                 controls.screenSpacePanning = false;
-                // Portrait: allow zoom into wall (0.001); landscape 0.01 (match Android)
-                controls.minDistance = isPortrait ? 0.001 : 0.01;
-                controls.maxDistance = 100;
+                // Portrait: allow zoom into wall (0.001); landscape 0.01 (match Android). Infinite zoom: 0 = no minimum, can pass through target.
+                controls.minDistance = INFINITE_ZOOM ? 0 : (isPortrait ? 0.001 : 0.01);
+                controls.maxDistance = INFINITE_ZOOM ? 1e6 : 100;
                 // Default target, autoFrameRoom will update using Box3
                 controls.target.set(0, 0, 0);
 
@@ -1767,6 +1775,33 @@ struct AntimatterSplatView: UIViewRepresentable {
                     needsRender = true;  // Request render after camera move
                 };
 
+                // Two-finger pan / pan pad: shift room in screen direction (camera and target move together)
+                // Swift sends screen deltas: +X = right, +Y = down. Axes swapped so drag-up = room-up when view/camera is rotated.
+                window.panCamera = function(deltaX, deltaY) {
+                    if (typeof deltaX !== 'number' || typeof deltaY !== 'number' || !isFinite(deltaX) || !isFinite(deltaY)) return;
+                    autoOrbitEnabled = false;
+                    const panSpeed = 0.06;
+                    const forward = new THREE.Vector3();
+                    camera.getWorldDirection(forward);
+                    const right = new THREE.Vector3().crossVectors(camera.up, forward).normalize();
+                    const upNorm = camera.up.clone().normalize();
+                    // Map screen dx -> world up, screen dy -> world right (fixes perpendicular pan when camera/view rotated)
+                    const move = right.multiplyScalar(-deltaY * panSpeed).add(upNorm.multiplyScalar(deltaX * panSpeed));
+                    camera.position.add(move);
+                    controls.target.add(move);
+                    if (!INFINITE_ZOOM && roomBoundsForClamping) {
+                        const m = 0.05;
+                        camera.position.x = Math.max(roomBoundsForClamping.minX + m, Math.min(roomBoundsForClamping.maxX - m, camera.position.x));
+                        camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                        camera.position.z = Math.max(roomBoundsForClamping.minZ + m, Math.min(roomBoundsForClamping.maxZ - m, camera.position.z));
+                        controls.target.x = Math.max(roomBoundsForClamping.minX + m, Math.min(roomBoundsForClamping.maxX - m, controls.target.x));
+                        controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
+                        controls.target.z = Math.max(roomBoundsForClamping.minZ + m, Math.min(roomBoundsForClamping.maxZ - m, controls.target.z));
+                    }
+                    controls.update();
+                    needsRender = true;
+                };
+
                 // Orbit rotation handler (for Swift gesture overlay)
                 window.orbitCamera = function(deltaX, deltaY) {
                     // Stop auto orbit when user drags
@@ -1795,19 +1830,29 @@ struct AntimatterSplatView: UIViewRepresentable {
                 };
 
                 // Zoom handler (for Swift pinch gesture) — incremental scale from Swift
-                // Pinch out (scale > 1) = zoom in (closer). Pinch in (scale < 1) = zoom out (further). Same line, no flip.
+                // Pinch out (scale > 1) = zoom in (closer). Pinch in (scale < 1) = zoom out (further).
                 window.zoomCamera = function(scale) {
                     autoOrbitEnabled = false;
                     if (typeof scale !== 'number' || scale <= 0 || !isFinite(scale)) return;
-                    const zoomSensitivity = 1.0;  // 1.0 = 1:1 with gesture (was 2.5, caused jumpy zoom)
-                    const amplifiedScale = 1 + (scale - 1) * zoomSensitivity;
-                    const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
-                    offset.multiplyScalar(1 / amplifiedScale);
-                    const dist = offset.length();
-                    if (dist < 0.01) offset.setLength(0.01);
-                    if (dist > 50) offset.setLength(50);
-                    camera.position.copy(controls.target).add(offset);
-                    if (roomBoundsForClamping) {
+                    const zoomSensitivity = 2.0;
+
+                    if (INFINITE_ZOOM) {
+                        // Dolly: move camera and target along view direction so we can pass through curtain
+                        const forward = new THREE.Vector3().subVectors(controls.target, camera.position).normalize();
+                        const step = (scale - 1) * 0.12 * zoomSensitivity;  // scale>1 -> move forward, scale<1 -> move back
+                        camera.position.addScaledVector(forward, step);
+                        controls.target.addScaledVector(forward, step);
+                    } else {
+                        const amplifiedScale = 1 + (scale - 1) * zoomSensitivity;
+                        const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+                        offset.multiplyScalar(1 / amplifiedScale);
+                        let dist = offset.length();
+                        if (dist < 0.01) offset.setLength(0.01);
+                        if (dist > 50) offset.setLength(50);
+                        camera.position.copy(controls.target).add(offset);
+                    }
+
+                    if (!INFINITE_ZOOM && roomBoundsForClamping) {
                         const marginSide = 0.05;
                         const marginBack = 0.02;
                         const minX = roomBoundsForClamping.minX + marginSide;
@@ -1927,6 +1972,7 @@ struct AntimatterSplatView: UIViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var webView: WKWebView?
         var schemeHandler: LocalFileSchemeHandler?
+        var lastInfiniteZoom: Bool?
         let onLoaded: () -> Void
         let onFrontWallDimensions: ((Double, Double) -> Void)?
         private var hasNotifiedLoaded = false
