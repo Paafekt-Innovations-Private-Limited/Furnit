@@ -284,6 +284,8 @@
 "faq.roomControls" = "3D 房間控制";
 "faq.howToNavigate" = "如何在房間內導航？";
 "faq.howToNavigateAnswer" = "使用螢幕底部中央的搖桿移動。向任意方向拖動可在房間內飛行。點擊重新置中按鈕（取景器圖標）可重置相機位置。";
+"faq.whatDoArrowsDo" = "箭頭按鈕有什麼作用？";
+"faq.whatDoArrowsDoAnswer" = "3D 視圖側邊的箭頭按鈕可移動相機：上下改變視角高度，左右平移相機。您也可以拖動螢幕來環繞房間，並使用重新置中按鈕（取景器圖標）重置視圖。";
 "faq.whatIsMemoryDisplay" = "MB 數字是什麼意思？";
 "faq.whatIsMemoryDisplayAnswer" = "房間中顯示的 MB（兆位元組）表示檔案大小。這有助於您管理儲存空間。所有房間使用的總儲存空間顯示在主畫面頂部。";
 

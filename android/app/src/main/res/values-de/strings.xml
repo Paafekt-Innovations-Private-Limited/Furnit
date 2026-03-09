@@ -166,6 +166,12 @@
     <string name="faq_room_fitment">3D-Raum &amp; Anpassung</string>
     <string name="faq_how_to_view">Wie betrachte ich meinen 3D-Raum?</string>
     <string name="faq_how_to_view_answer">Tippen Sie auf einen beliebigen Raum auf Ihrem Startbildschirm, um den 3D-Viewer zu öffnen. Sie können mit Touch-Gesten drehen, zoomen und schwenken.</string>
+    <string name="faq_how_to_navigate">Wie bewege ich mich im Raum?</string>
+    <string name="faq_how_to_navigate_answer">Nutzen Sie den Joystick unten in der Bildschirmmitte zur Bewegung. Ziehen Sie ihn in eine beliebige Richtung, um durch den Raum zu fliegen. Mit der Schaltfläche „Zentrieren“ (Sucher-Symbol) setzen Sie die Kameraposition zurück.</string>
+    <string name="faq_what_do_arrows_do">Wofür sind die Pfeiltasten?</string>
+    <string name="faq_what_do_arrows_do_answer">Die Pfeiltasten an der Seite der 3D-Ansicht bewegen die Kamera: oben und unten ändern die Blickhöhe; links und rechts schwenken die Kamera. Sie können auch auf dem Bildschirm ziehen, um den Raum zu umkreisen, und die Zentrieren-Taste (Sucher-Symbol) nutzen, um die Ansicht zurückzusetzen.</string>
+    <string name="faq_what_is_memory_display">Was bedeutet die MB-Zahl?</string>
+    <string name="faq_what_is_memory_display_answer">Die in Räumen angezeigte MB (Megabyte) gibt die Dateigröße an. So verwalten Sie den Speicher. Der von allen Räumen genutzte Speicher wird oben auf dem Startbildschirm angezeigt.</string>
     <string name="faq_how_to_place">Wie platziere ich Möbel in meinem Raum?</string>
     <string name="faq_how_to_place_answer">Nach der Segmentierung von Möbeln tippen Sie auf das Möbelstück, um es Ihrem Raum hinzuzufügen. Sie können es dann ziehen, um es zu positionieren, zusammenziehen, um die Größe zu ändern, und drehen, um seine Ausrichtung anzupassen.</string>
     <string name="faq_sample_room">Kann ich einen Beispielraum anstelle meines eigenen verwenden?</string>

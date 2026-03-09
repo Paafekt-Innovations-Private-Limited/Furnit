@@ -74,6 +74,7 @@ class HelpActivity : AppCompatActivity() {
                 items = listOf(
                     FAQItem(R.string.faq_how_to_view, R.string.faq_how_to_view_answer),
                     FAQItem(R.string.faq_how_to_navigate, R.string.faq_how_to_navigate_answer),
+                    FAQItem(R.string.faq_what_do_arrows_do, R.string.faq_what_do_arrows_do_answer),
                     FAQItem(R.string.faq_what_is_memory_display, R.string.faq_what_is_memory_display_answer),
                     FAQItem(R.string.faq_sample_room, R.string.faq_sample_room_answer),
                     FAQItem(R.string.faq_accuracy, R.string.faq_accuracy_answer),

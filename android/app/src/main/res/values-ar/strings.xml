@@ -173,6 +173,8 @@
     <string name="faq_room_controls">التحكم بالغرفة ثلاثية الأبعاد</string>
     <string name="faq_how_to_navigate">كيف أتنقل داخل الغرفة؟</string>
     <string name="faq_how_to_navigate_answer">استخدم عصا التحكم في أسفل وسط الشاشة للتنقل. اسحبها في أي اتجاه للطيران عبر الغرفة. استخدم زر إعادة التمركز (أيقونة محدد المنظر) لإعادة ضبط موضع الكاميرا.</string>
+    <string name="faq_what_do_arrows_do">ماذا تفعل أزرار الأسهم؟</string>
+    <string name="faq_what_do_arrows_do_answer">أزرار الأسهم على جانب العرض ثلاثي الأبعاد تحرك الكاميرا: الأعلى والأسفل يغيران ارتفاع المنظر؛ اليسار واليمين يحركان الكاميرا أفقياً. يمكنك أيضاً السحب على الشاشة لتدوير الغرفة وزر إعادة التمركز (أيقونة محدد المنظر) لإعادة ضبط المنظر.</string>
     <string name="faq_what_is_memory_display">ماذا يعني رقم MB؟</string>
     <string name="faq_what_is_memory_display_answer">يشير MB (ميجابايت) المعروض في الغرف إلى حجم الملف. يساعدك هذا على إدارة التخزين. يُعرض إجمالي التخزين المستخدم في أعلى الشاشة الرئيسية.</string>
     <string name="faq_room_fitment">الغرفة ثلاثية الأبعاد والتركيب</string>

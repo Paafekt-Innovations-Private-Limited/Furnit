@@ -284,6 +284,8 @@
 "faq.roomControls" = "Contrôles de Pièce 3D";
 "faq.howToNavigate" = "Comment naviguer dans la pièce ?";
 "faq.howToNavigateAnswer" = "Utilisez le joystick en bas au centre de l'écran pour vous déplacer. Faites-le glisser dans n'importe quelle direction pour voler à travers la pièce. Utilisez le bouton de recentrage (icône du viseur) pour réinitialiser la position de la caméra.";
+"faq.whatDoArrowsDo" = "À quoi servent les boutons fléchés ?";
+"faq.whatDoArrowsDoAnswer" = "Les boutons fléchés sur le côté de la vue 3D déplacent la caméra : haut et bas changent la hauteur de la vue ; gauche et droite font un panoramique. Vous pouvez aussi faire glisser l'écran pour orbiter la pièce et utiliser le bouton recentrer (icône viseur) pour réinitialiser la vue.";
 "faq.whatIsMemoryDisplay" = "Que signifie le nombre MB ?";
 "faq.whatIsMemoryDisplayAnswer" = "Le MB (mégaoctets) affiché dans les pièces indique la taille du fichier. Cela vous aide à gérer le stockage. Le stockage total utilisé par toutes les pièces est affiché en haut de l'écran d'accueil.";
 
