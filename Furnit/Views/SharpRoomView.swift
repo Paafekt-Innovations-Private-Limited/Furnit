@@ -396,27 +396,51 @@ struct SharpRoomView: View {
                 .allowsHitTesting(!isLoading)  // Keep enabled even with FurnitureFit - touches outside bbox pass through
                 .zIndex(10)  // Above WebGL view, below other overlays
 
-            // Camera up/down buttons — move virtual camera up or down (tap to shift view)
+            // Camera move buttons — up/down and left/right (tap to shift view)
             if !isLoading {
                 ZStack(alignment: .topLeading) {
                     Color.clear
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
-                    VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        // Left arrow — move camera left
                         Button(action: {
-                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil)
+                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil)
                         }) {
-                            Image(systemName: "arrow.up")
+                            Image(systemName: "arrow.left")
                                 .font(.system(size: 20, weight: .semibold))
                                 .foregroundColor(.white)
                                 .frame(width: 44, height: 44)
                                 .background(Circle().fill(Color.black.opacity(0.5)))
                         }
                         .buttonStyle(.plain)
+                        VStack(spacing: 8) {
+                            Button(action: {
+                                NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil)
+                            }) {
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Circle().fill(Color.black.opacity(0.5)))
+                            }
+                            .buttonStyle(.plain)
+                            Button(action: {
+                                NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil)
+                            }) {
+                                Image(systemName: "arrow.down")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Circle().fill(Color.black.opacity(0.5)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        // Right arrow — move camera right
                         Button(action: {
-                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil)
+                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil)
                         }) {
-                            Image(systemName: "arrow.down")
+                            Image(systemName: "arrow.right")
                                 .font(.system(size: 20, weight: .semibold))
                                 .foregroundColor(.white)
                                 .frame(width: 44, height: 44)
@@ -2096,6 +2120,18 @@ struct AntimatterSplatView: UIViewRepresentable {
                 name: NSNotification.Name("WebGLCameraMoveDown"),
                 object: nil
             )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleCameraMoveLeft(_:)),
+                name: NSNotification.Name("WebGLCameraMoveLeft"),
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleCameraMoveRight(_:)),
+                name: NSNotification.Name("WebGLCameraMoveRight"),
+                object: nil
+            )
         }
 
         deinit {
@@ -2165,6 +2201,18 @@ struct AntimatterSplatView: UIViewRepresentable {
         @objc private func handleCameraMoveDown(_ notification: Notification) {
             let step = -0.2
             let js = "if (typeof moveCameraUp === 'function') moveCameraUp(\(step));"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        @objc private func handleCameraMoveLeft(_ notification: Notification) {
+            let step: Float = -8
+            let js = "if (typeof moveCamera === 'function') moveCamera(\(step), 0);"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        @objc private func handleCameraMoveRight(_ notification: Notification) {
+            let step: Float = 8
+            let js = "if (typeof moveCamera === 'function') moveCamera(\(step), 0);"
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
