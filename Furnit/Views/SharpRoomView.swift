@@ -396,22 +396,34 @@ struct SharpRoomView: View {
                 .allowsHitTesting(!isLoading)  // Keep enabled even with FurnitureFit - touches outside bbox pass through
                 .zIndex(10)  // Above WebGL view, below other overlays
 
-            // Camera up button — move virtual camera up (tap to shift view higher)
+            // Camera up/down buttons — move virtual camera up or down (tap to shift view)
             if !isLoading {
                 ZStack(alignment: .topLeading) {
                     Color.clear
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
-                    Button(action: {
-                        NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil)
-                    }) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    VStack(spacing: 8) {
+                        Button(action: {
+                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil)
+                        }) {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .buttonStyle(.plain)
+                        Button(action: {
+                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil)
+                        }) {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Circle().fill(Color.black.opacity(0.5)))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                     .padding(12)
                 }
                 .zIndex(12)
@@ -2071,11 +2083,17 @@ struct AntimatterSplatView: UIViewRepresentable {
                 object: nil
             )
 
-            // Listen for camera move up (from overlay button)
+            // Listen for camera move up/down (from overlay buttons)
             NotificationCenter.default.addObserver(
                 self,
                 selector: #selector(handleCameraMoveUp(_:)),
                 name: NSNotification.Name("WebGLCameraMoveUp"),
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleCameraMoveDown(_:)),
+                name: NSNotification.Name("WebGLCameraMoveDown"),
                 object: nil
             )
         }
@@ -2142,6 +2160,12 @@ struct AntimatterSplatView: UIViewRepresentable {
 
         @objc private func handleCameraMoveUp(_ notification: Notification) {
             let step = 0.2
+            let js = "if (typeof moveCameraUp === 'function') moveCameraUp(\(step));"
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        @objc private func handleCameraMoveDown(_ notification: Notification) {
+            let step = -0.2
             let js = "if (typeof moveCameraUp === 'function') moveCameraUp(\(step));"
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
