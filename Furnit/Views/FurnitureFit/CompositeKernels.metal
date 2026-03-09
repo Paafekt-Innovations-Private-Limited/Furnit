@@ -2,22 +2,19 @@
 using namespace metal;
 
 // Composite mask over camera texture, output to output texture
-// Note: Source is BGRA (s.r=B, s.g=G, s.b=R), output needs RGBA for CGContext
+// Note: Source is BGRA (s.r=B, s.g=G, s.b=R), output texture is bgra8Unorm (memory order B,G,R,A)
 kernel void sp_compositeMask(texture2d<float, access::read>  src   [[texture(0)]],
                           texture2d<float, access::read>  mask  [[texture(1)]],
                           texture2d<float, access::write> out   [[texture(2)]],
                           uint2 gid [[thread_position_in_grid]]) {
     if (gid.x >= out.get_width() || gid.y >= out.get_height()) return;
     float  m = mask.read(gid).r; // R8Unorm -> normalized float in [0,1]
-    // For premultiplied alpha: when mask=0, RGB must also be 0
     if (m <= 0.0f) {
         out.write(float4(0.0, 0.0, 0.0, 0.0), gid);
         return;
     }
     float4 s = src.read(gid);  // BGRA: s.r=Blue, s.g=Green, s.b=Red
-    // Swap B and R for correct RGB output
-    float4 outCol = float4(s.b, s.g, s.r, 1.0);  // R, G, B, A=1 (fully opaque)
-    out.write(outCol, gid);
+    out.write(float4(s.b, s.g, s.r, 1.0), gid);
 }
 
 // Build maskSmall in prototype space: max over detections of dot(A[pixel], coeffs[j]) then threshold > 0
@@ -117,12 +114,11 @@ kernel void sp_maxMaskAndComposite(texture2d<float, access::read>  src   [[textu
         if (dotv > maxLogit) maxLogit = dotv;
     }
 
-    // Threshold at 0 and composite
-    // Note: Source is BGRA (s.r=B, s.g=G, s.b=R), output needs RGBA
+    // Threshold at 0 and composite. Output bgra8Unorm (memory B,G,R,A); Swift copies to RGBA for CGContext.
     float4 out = float4(0.0, 0.0, 0.0, 0.0);
     if (maxLogit > 0.0f) {
         float4 s = src.read(uint2(gid.x, gid.y));
-        out = float4(s.b, s.g, s.r, 1.0);  // Swap B and R for correct RGB output
+        out = float4(s.b, s.g, s.r, 1.0);
     }
     outTex.write(out, gid);
 }

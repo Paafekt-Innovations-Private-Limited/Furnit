@@ -6,7 +6,7 @@
 */
 
 // MARK: - App General
-"app.name" = "Paafekt Beta";
+"app.name" = "Paafekt";
 "app.tagline" = "3D房間探索器";
 "app.version" = "版本";
 "app.developer" = "Furnit團隊";
@@ -92,6 +92,12 @@
 "profile.logout" = "登出";
 "profile.logoutConfirmTitle" = "登出";
 "profile.logoutConfirmMessage" = "確定要登出嗎？";
+"profile.sectionAccount" = "帳戶";
+"profile.sectionSettings" = "設定";
+"profile.sectionAbout" = "關於";
+"profile.notificationSettings" = "通知設定";
+"profile.privacySettings" = "隱私設定";
+"profile.generalSettings" = "一般設定";
 
 // MARK: - Settings View
 "settings.title" = "設定";
@@ -117,6 +123,12 @@
 "settings.privacyPolicy" = "隱私政策";
 "settings.termsOfService" = "服務條款";
 "settings.support" = "支援";
+"settings.licenses" = "授權";
+"settings.roomViewerSection" = "房間檢視器";
+"settings.autoOrbit" = "自動環繞";
+"settings.autoOrbitDescription" = "閒置時緩慢旋轉相機";
+"settings.infiniteZoom" = "無限縮放";
+"settings.infiniteZoomDescription" = "無限制縮放；可穿過牆壁進入灰色虛空";
 
 // MARK: - Quality Options
 "quality.standard" = "標準";
@@ -144,6 +156,8 @@
 "help.copyEmail" = "複製電子郵件地址";
 "help.emailCopied" = "電子郵件已複製";
 "help.emailCopiedMessage" = "support@paafekt.com 已複製到剪貼簿。";
+"help.emailSubject" = "Paafekt 應用程式支援";
+"help.emailBody" = "您好 Paafekt 支援團隊，\n\n我需要協助：\n\n";
 
 // FAQ - Room Creation
 "faq.roomCreation" = "房間建立";

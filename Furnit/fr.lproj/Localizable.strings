@@ -6,7 +6,7 @@
 */
 
 // MARK: - App General
-"app.name" = "Paafekt Beta";
+"app.name" = "Paafekt";
 "app.tagline" = "Explorateur de pièces 3D";
 "app.version" = "Version";
 "app.developer" = "Équipe Furnit";
@@ -92,6 +92,12 @@
 "profile.logout" = "Déconnexion";
 "profile.logoutConfirmTitle" = "Déconnexion";
 "profile.logoutConfirmMessage" = "Êtes-vous sûr de vouloir vous déconnecter ?";
+"profile.sectionAccount" = "Compte";
+"profile.sectionSettings" = "Paramètres";
+"profile.sectionAbout" = "À propos";
+"profile.notificationSettings" = "Paramètres de notifications";
+"profile.privacySettings" = "Paramètres de confidentialité";
+"profile.generalSettings" = "Paramètres généraux";
 
 // MARK: - Settings View
 "settings.title" = "Paramètres";
@@ -117,6 +123,12 @@
 "settings.privacyPolicy" = "Politique de Confidentialité";
 "settings.termsOfService" = "Conditions d'Utilisation";
 "settings.support" = "Assistance";
+"settings.licenses" = "Licences";
+"settings.roomViewerSection" = "Visionneuse de pièce";
+"settings.autoOrbit" = "Orbite automatique";
+"settings.autoOrbitDescription" = "Faire pivoter la caméra lentement au repos";
+"settings.infiniteZoom" = "Zoom infini";
+"settings.infiniteZoomDescription" = "Zoom avant/arrière sans limite ; peut traverser les murs vers le vide gris";
 
 // MARK: - Quality Options
 "quality.standard" = "Standard";
@@ -144,6 +156,8 @@
 "help.copyEmail" = "Copier l'adresse e-mail";
 "help.emailCopied" = "E-mail copié";
 "help.emailCopiedMessage" = "support@paafekt.com a été copié dans votre presse-papiers.";
+"help.emailSubject" = "Support application Paafekt";
+"help.emailBody" = "Bonjour l'équipe Paafekt,\n\nJ'ai besoin d'aide pour :\n\n";
 
 // FAQ - Room Creation
 "faq.roomCreation" = "Création de pièce";

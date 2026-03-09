@@ -6,7 +6,7 @@
 */
 
 // MARK: - App General
-"app.name" = "Paafekt Beta";
+"app.name" = "Paafekt";
 "app.tagline" = "3D রুম এক্সপ্লোরার";
 "app.version" = "সংস্করণ";
 "app.developer" = "Furnit টিম";
@@ -92,6 +92,12 @@
 "profile.logout" = "লগ আউট";
 "profile.logoutConfirmTitle" = "লগ আউট";
 "profile.logoutConfirmMessage" = "লগ আউট করতে নিশ্চিত?";
+"profile.sectionAccount" = "অ্যাকাউন্ট";
+"profile.sectionSettings" = "সেটিংস";
+"profile.sectionAbout" = "সম্পর্কে";
+"profile.notificationSettings" = "বিজ্ঞপ্তি সেটিংস";
+"profile.privacySettings" = "গোপনীয়তা সেটিংস";
+"profile.generalSettings" = "সাধারণ সেটিংস";
 
 // MARK: - Settings View
 "settings.title" = "সেটিংস";
@@ -117,6 +123,12 @@
 "settings.privacyPolicy" = "গোপনীয়তা নীতি";
 "settings.termsOfService" = "সেবার শর্তাবলী";
 "settings.support" = "সাপোর্ট";
+"settings.licenses" = "লাইসেন্স";
+"settings.roomViewerSection" = "রুম ভিউয়ার";
+"settings.autoOrbit" = "অটো অরবিট";
+"settings.autoOrbitDescription" = "নিষ্ক্রিয় থাকলে ক্যামেরা ধীরে ধীরে ঘোরান";
+"settings.infiniteZoom" = "অসীম জুম";
+"settings.infiniteZoomDescription" = "সীমা ছাড়াই জুম; দেয়াল ভেদ করে ধূসর শূন্যে যেতে পারে";
 
 // MARK: - Quality Options
 "quality.standard" = "স্ট্যান্ডার্ড";
@@ -144,6 +156,8 @@
 "help.copyEmail" = "ইমেইল ঠিকানা কপি করুন";
 "help.emailCopied" = "ইমেইল কপি হয়েছে";
 "help.emailCopiedMessage" = "support@paafekt.com আপনার ক্লিপবোর্ডে কপি করা হয়েছে।";
+"help.emailSubject" = "Paafekt অ্যাপ সাপোর্ট";
+"help.emailBody" = "হ্যালো Paafekt সাপোর্ট টিম,\n\nআমার সাহায্য দরকার:\n\n";
 
 // FAQ - Room Creation
 "faq.roomCreation" = "রুম তৈরি";

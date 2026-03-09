@@ -6,7 +6,7 @@
 */
 
 // MARK: - App General
-"app.name" = "Paafekt Beta";
+"app.name" = "Paafekt";
 "app.tagline" = "3D அறை ஆய்வாளர்";
 "app.version" = "பதிப்பு";
 "app.developer" = "Furnit குழு";
@@ -92,6 +92,12 @@
 "profile.logout" = "வெளியேறு";
 "profile.logoutConfirmTitle" = "வெளியேறு";
 "profile.logoutConfirmMessage" = "வெளியேற விரும்புகிறீர்களா?";
+"profile.sectionAccount" = "கணக்கு";
+"profile.sectionSettings" = "அமைப்புகள்";
+"profile.sectionAbout" = "பற்றி";
+"profile.notificationSettings" = "அறிவிப்பு அமைப்புகள்";
+"profile.privacySettings" = "தனியுரிமை அமைப்புகள்";
+"profile.generalSettings" = "பொது அமைப்புகள்";
 
 // MARK: - Settings View
 "settings.title" = "அமைப்புகள்";
@@ -117,6 +123,12 @@
 "settings.privacyPolicy" = "தனியுரிமைக் கொள்கை";
 "settings.termsOfService" = "சேவை விதிமுறைகள்";
 "settings.support" = "ஆதரவு";
+"settings.licenses" = "உரிமங்கள்";
+"settings.roomViewerSection" = "Room Viewer";
+"settings.autoOrbit" = "Auto Orbit";
+"settings.autoOrbitDescription" = "Slowly rotate camera when idle";
+"settings.infiniteZoom" = "Infinite Zoom";
+"settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
 
 // MARK: - Quality Options
 "quality.standard" = "நிலையான";
@@ -144,6 +156,8 @@
 "help.copyEmail" = "மின்னஞ்சல் முகவரியை நகலெடு";
 "help.emailCopied" = "மின்னஞ்சல் நகலெடுக்கப்பட்டது";
 "help.emailCopiedMessage" = "support@paafekt.com உங்கள் கிளிப்போர்டில் நகலெடுக்கப்பட்டது.";
+"help.emailSubject" = "Paafekt App Support";
+"help.emailBody" = "Hi Paafekt Support Team,\n\nI need help with:\n\n";
 
 // FAQ - Room Creation
 "faq.roomCreation" = "அறை உருவாக்கம்";

@@ -601,48 +601,48 @@ struct ProfileTab: View {
                 }
                 
                 // Account Section
-                Section("Account") {
+                Section(L10n.Profile.sectionAccount) {
                     NavigationLink(destination: EditProfileView()) {
-                        Label("Edit Profile", systemImage: "person.fill")
+                        Label(L10n.Profile.editProfile, systemImage: "person.fill")
                     }
                     
                     NavigationLink(destination: NotificationSettingsView()) {
-                        Label("Notifications", systemImage: "bell.fill")
+                        Label(L10n.Profile.notifications, systemImage: "bell.fill")
                     }
                     
                     NavigationLink(destination: PrivacySettingsView()) {
-                        Label("Privacy", systemImage: "lock.fill")
+                        Label(L10n.Profile.privacy, systemImage: "lock.fill")
                     }
                 }
                 
                 // App Settings
-                Section("Settings") {
+                Section(L10n.Profile.sectionSettings) {
                     NavigationLink(destination: GeneralSettingsView()) {
-                        Label("General", systemImage: "gearshape.fill")
+                        Label(L10n.Profile.general, systemImage: "gearshape.fill")
                     }
                     
                     NavigationLink(destination: AboutView()) {
-                        Label("About", systemImage: "info.circle.fill")
+                        Label(L10n.Profile.about, systemImage: "info.circle.fill")
                     }
                     
                     NavigationLink(destination: SupportView()) {
-                        Label("Help & Support", systemImage: "questionmark.circle.fill")
+                        Label(L10n.Profile.helpSupport, systemImage: "questionmark.circle.fill")
                     }
                 }
                 
                 // App Info
-                Section("About") {
+                Section(L10n.Profile.sectionAbout) {
                     HStack {
-                        Label("Version", systemImage: "info.circle")
+                        Label(L10n.App.version, systemImage: "info.circle")
                         Spacer()
                         Text("1.0.0")
                             .foregroundColor(.secondary)
                     }
                     
                     HStack {
-                        Label("Developer", systemImage: "person.2")
+                        Label(L10n.App.developer, systemImage: "person.2")
                         Spacer()
-                        Text("Paafekt Team")
+                        Text(L10n.App.developer)
                             .foregroundColor(.secondary)
                     }
                 }
@@ -824,24 +824,24 @@ struct EditProfileView: View {
 
 struct NotificationSettingsView: View {
     var body: some View {
-        Text("Notification Settings")
-            .navigationTitle("Notifications")
+        Text(L10n.Profile.notificationSettings)
+            .navigationTitle(L10n.Profile.notifications)
             .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 struct PrivacySettingsView: View {
     var body: some View {
-        Text("Privacy Settings")
-            .navigationTitle("Privacy")
+        Text(L10n.Profile.privacySettings)
+            .navigationTitle(L10n.Profile.privacy)
             .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 struct GeneralSettingsView: View {
     var body: some View {
-        Text("General Settings")
-            .navigationTitle("General")
+        Text(L10n.Profile.generalSettings)
+            .navigationTitle(L10n.Profile.general)
             .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -863,11 +863,11 @@ struct AboutView: View {
                 HStack {
                     Text(L10n.App.developer)
                     Spacer()
-                    Text("Paafekt Team")
+                    Text(L10n.App.developer)
                         .foregroundColor(.secondary)
                 }
             } header: {
-                Text("About")
+                Text(L10n.Profile.about)
             }
 
             Section {
@@ -902,7 +902,7 @@ struct AboutView: View {
                 .padding(.vertical, 4)
             }
         }
-        .navigationTitle("About")
+        .navigationTitle(L10n.Profile.about)
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -1105,8 +1105,8 @@ struct SupportView: View {
 
     private func openMailComposer() {
         let email = "support@paafekt.com"
-        let subject = "Paafekt App Support"
-        let body = "Hi Paafekt Support Team,\n\nI need help with:\n\n"
+        let subject = L10n.Help.emailSubject
+        let body = L10n.Help.emailBody
 
         let urlString = "mailto:\(email)?subject=\(subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&body=\(body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
 

@@ -6,7 +6,7 @@
 */
 
 // MARK: - App General
-"app.name" = "Paafekt Beta";
+"app.name" = "Paafekt";
 "app.tagline" = "مستكشف الغرف ثلاثي الأبعاد";
 "app.version" = "الإصدار";
 "app.developer" = "فريق Furnit";
@@ -92,6 +92,12 @@
 "profile.logout" = "تسجيل الخروج";
 "profile.logoutConfirmTitle" = "تسجيل الخروج";
 "profile.logoutConfirmMessage" = "هل أنت متأكد من تسجيل الخروج؟";
+"profile.sectionAccount" = "الحساب";
+"profile.sectionSettings" = "الإعدادات";
+"profile.sectionAbout" = "حول";
+"profile.notificationSettings" = "إعدادات الإشعارات";
+"profile.privacySettings" = "إعدادات الخصوصية";
+"profile.generalSettings" = "الإعدادات العامة";
 
 // MARK: - Settings View
 "settings.title" = "الإعدادات";
@@ -117,6 +123,12 @@
 "settings.privacyPolicy" = "سياسة الخصوصية";
 "settings.termsOfService" = "شروط الخدمة";
 "settings.support" = "الدعم";
+"settings.licenses" = "التراخيص";
+"settings.roomViewerSection" = "عارض الغرفة";
+"settings.autoOrbit" = "دوران تلقائي";
+"settings.autoOrbitDescription" = "تدوير الكاميرا ببطء عند عدم النشاط";
+"settings.infiniteZoom" = "تكبير غير محدود";
+"settings.infiniteZoomDescription" = "تكبير/تصغير دون حد؛ يمكن المرور عبر الجدران إلى الفراغ الرمادي";
 
 // MARK: - Quality Options
 "quality.standard" = "قياسي";
@@ -144,6 +156,8 @@
 "help.copyEmail" = "نسخ عنوان البريد الإلكتروني";
 "help.emailCopied" = "تم نسخ البريد الإلكتروني";
 "help.emailCopiedMessage" = "تم نسخ support@paafekt.com إلى الحافظة.";
+"help.emailSubject" = "دعم تطبيق Paafekt";
+"help.emailBody" = "مرحباً فريق دعم Paafekt،\n\nأحتاج مساعدة في:\n\n";
 
 // FAQ - Room Creation
 "faq.roomCreation" = "إنشاء الغرفة";

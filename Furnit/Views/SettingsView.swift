@@ -130,9 +130,9 @@ struct SettingsView: View {
                             Image(systemName: "arrow.left.arrow.right")
                                 .foregroundColor(.cyan)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Auto Orbit")
+                                Text(L10n.Settings.autoOrbit)
                                     .font(.headline)
-                                Text("Slowly rotate camera when idle")
+                                Text(L10n.Settings.autoOrbitDescription)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -145,9 +145,9 @@ struct SettingsView: View {
                             Image(systemName: "plus.magnifyingglass")
                                 .foregroundColor(.orange)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Infinite Zoom")
+                                Text(L10n.Settings.infiniteZoom)
                                     .font(.headline)
-                                Text("Zoom in/out without limit; can pass through walls into grey void")
+                                Text(L10n.Settings.infiniteZoomDescription)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -155,7 +155,7 @@ struct SettingsView: View {
                     }
                     .tint(.orange)
                 } header: {
-                    Text("Room Viewer")
+                    Text(L10n.Settings.roomViewerSection)
                 }
 
                 // Developer Settings Section

@@ -6,7 +6,7 @@
 */
 
 // MARK: - App General
-"app.name" = "Paafekt Beta";
+"app.name" = "Paafekt";
 "app.tagline" = "3D Room Explorer";
 "app.version" = "Version";
 "app.developer" = "Paafekt Team";
@@ -87,12 +87,18 @@
 "profile.editProfile" = "Edit Profile";
 "profile.notifications" = "Notifications";
 "profile.privacy" = "Privacy";
+"profile.privacySettings" = "Privacy Settings";
 "profile.general" = "General";
+"profile.generalSettings" = "General Settings";
 "profile.about" = "About";
 "profile.helpSupport" = "Help & Support";
 "profile.logout" = "Logout";
 "profile.logoutConfirmTitle" = "Logout";
 "profile.logoutConfirmMessage" = "Are you sure you want to logout?";
+"profile.sectionAccount" = "Account";
+"profile.sectionSettings" = "Settings";
+"profile.sectionAbout" = "About";
+"profile.notificationSettings" = "Notification Settings";
 
 // MARK: - Settings View
 "settings.title" = "Settings";
@@ -119,6 +125,11 @@
 "settings.termsOfService" = "Terms of Service";
 "settings.support" = "Support";
 "settings.licenses" = "Licenses";
+"settings.roomViewerSection" = "Room Viewer";
+"settings.autoOrbit" = "Auto Orbit";
+"settings.autoOrbitDescription" = "Slowly rotate camera when idle";
+"settings.infiniteZoom" = "Infinite Zoom";
+"settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";
@@ -154,6 +165,8 @@
 "help.copyEmail" = "Copy Email Address";
 "help.emailCopied" = "Email Copied";
 "help.emailCopiedMessage" = "support@paafekt.com has been copied to your clipboard.";
+"help.emailSubject" = "Paafekt App Support";
+"help.emailBody" = "Hi Paafekt Support Team,\n\nI need help with:\n\n";
 
 // FAQ - Room Creation
 "faq.roomCreation" = "Room Creation";

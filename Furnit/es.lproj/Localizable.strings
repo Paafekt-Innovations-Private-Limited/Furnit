@@ -6,7 +6,7 @@
 */
 
 // MARK: - App General
-"app.name" = "Paafekt Beta";
+"app.name" = "Paafekt";
 "app.tagline" = "Explorador de habitaciones 3D";
 "app.version" = "Versión";
 "app.developer" = "Equipo Furnit";
@@ -92,6 +92,12 @@
 "profile.logout" = "Cerrar sesión";
 "profile.logoutConfirmTitle" = "Cerrar sesión";
 "profile.logoutConfirmMessage" = "¿Estás seguro de que quieres cerrar sesión?";
+"profile.sectionAccount" = "Cuenta";
+"profile.sectionSettings" = "Ajustes";
+"profile.sectionAbout" = "Acerca de";
+"profile.notificationSettings" = "Ajustes de notificaciones";
+"profile.privacySettings" = "Ajustes de privacidad";
+"profile.generalSettings" = "Ajustes generales";
 
 // MARK: - Settings View
 "settings.title" = "Ajustes";
@@ -117,6 +123,12 @@
 "settings.privacyPolicy" = "Política de Privacidad";
 "settings.termsOfService" = "Términos de Servicio";
 "settings.support" = "Soporte";
+"settings.licenses" = "Licencias";
+"settings.roomViewerSection" = "Visor de habitación";
+"settings.autoOrbit" = "Órbita automática";
+"settings.autoOrbitDescription" = "Rotar la cámara lentamente en reposo";
+"settings.infiniteZoom" = "Zoom infinito";
+"settings.infiniteZoomDescription" = "Zoom sin límite; puede atravesar paredes al vacío gris";
 
 // MARK: - Quality Options
 "quality.standard" = "Estándar";
@@ -144,6 +156,8 @@
 "help.copyEmail" = "Copiar dirección de email";
 "help.emailCopied" = "Email copiado";
 "help.emailCopiedMessage" = "support@paafekt.com se ha copiado al portapapeles.";
+"help.emailSubject" = "Soporte de la app Paafekt";
+"help.emailBody" = "Hola equipo Paafekt,\n\nNecesito ayuda con:\n\n";
 
 // FAQ - Room Creation
 "faq.roomCreation" = "Creación de habitaciones";

@@ -6,7 +6,7 @@
 */
 
 // MARK: - App General
-"app.name" = "Paafekt Beta";
+"app.name" = "Paafekt";
 "app.tagline" = "3D-Raum-Explorer";
 "app.version" = "Version";
 "app.developer" = "Paafekt Team";
@@ -92,6 +92,12 @@
 "profile.logout" = "Abmelden";
 "profile.logoutConfirmTitle" = "Abmelden";
 "profile.logoutConfirmMessage" = "Möchten Sie sich wirklich abmelden?";
+"profile.sectionAccount" = "Konto";
+"profile.sectionSettings" = "Einstellungen";
+"profile.sectionAbout" = "Über";
+"profile.notificationSettings" = "Benachrichtigungseinstellungen";
+"profile.privacySettings" = "Datenschutzeinstellungen";
+"profile.generalSettings" = "Allgemeine Einstellungen";
 
 // MARK: - Settings View
 "settings.title" = "Einstellungen";
@@ -117,6 +123,12 @@
 "settings.privacyPolicy" = "Datenschutzrichtlinie";
 "settings.termsOfService" = "Nutzungsbedingungen";
 "settings.support" = "Support";
+"settings.licenses" = "Lizenzen";
+"settings.roomViewerSection" = "Raum-Viewer";
+"settings.autoOrbit" = "Auto-Orbit";
+"settings.autoOrbitDescription" = "Kamera langsam drehen bei Inaktivität";
+"settings.infiniteZoom" = "Unbegrenzter Zoom";
+"settings.infiniteZoomDescription" = "Unbegrenzt zoomen; kann Wände in den grauen Bereich durchdringen";
 
 // MARK: - Quality Options
 "quality.standard" = "Standard";
@@ -144,6 +156,8 @@
 "help.copyEmail" = "E-Mail-Adresse kopieren";
 "help.emailCopied" = "E-Mail kopiert";
 "help.emailCopiedMessage" = "support@paafekt.com wurde in Ihre Zwischenablage kopiert.";
+"help.emailSubject" = "Paafekt App Support";
+"help.emailBody" = "Hallo Paafekt Support-Team,\n\nich benötige Hilfe bei:\n\n";
 
 // FAQ - Room Creation
 "faq.roomCreation" = "Raumerstellung";

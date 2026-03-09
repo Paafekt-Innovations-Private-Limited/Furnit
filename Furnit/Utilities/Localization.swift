@@ -133,6 +133,11 @@ enum L10n {
         static let termsOfService = "settings.termsOfService".localized
         static let support = "settings.support".localized
         static let licenses = "settings.licenses".localized
+        static let roomViewerSection = "settings.roomViewerSection".localized
+        static let autoOrbit = "settings.autoOrbit".localized
+        static let autoOrbitDescription = "settings.autoOrbitDescription".localized
+        static let infiniteZoom = "settings.infiniteZoom".localized
+        static let infiniteZoomDescription = "settings.infiniteZoomDescription".localized
     }
 
     // MARK: Licenses & Attributions
@@ -155,14 +160,28 @@ enum L10n {
         static let copyEmail = "help.copyEmail".localized
         static let emailCopied = "help.emailCopied".localized
         static let emailCopiedMessage = "help.emailCopiedMessage".localized
+        static let emailSubject = "help.emailSubject".localized
+        static let emailBody = "help.emailBody".localized
     }
 
     // MARK: Profile
     enum Profile {
         static let title = "profile.title".localized
+        static let editProfile = "profile.editProfile".localized
+        static let notifications = "profile.notifications".localized
+        static let privacy = "profile.privacy".localized
+        static let privacySettings = "profile.privacySettings".localized
+        static let general = "profile.general".localized
+        static let generalSettings = "profile.generalSettings".localized
+        static let about = "profile.about".localized
+        static let helpSupport = "profile.helpSupport".localized
         static let logout = "profile.logout".localized
         static let logoutConfirmTitle = "profile.logoutConfirmTitle".localized
         static let logoutConfirmMessage = "profile.logoutConfirmMessage".localized
+        static let sectionAccount = "profile.sectionAccount".localized
+        static let sectionSettings = "profile.sectionSettings".localized
+        static let sectionAbout = "profile.sectionAbout".localized
+        static let notificationSettings = "profile.notificationSettings".localized
     }
 
     // MARK: Boundary
