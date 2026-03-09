@@ -396,6 +396,27 @@ struct SharpRoomView: View {
                 .allowsHitTesting(!isLoading)  // Keep enabled even with FurnitureFit - touches outside bbox pass through
                 .zIndex(10)  // Above WebGL view, below other overlays
 
+            // Camera up button — move virtual camera up (tap to shift view higher)
+            if !isLoading {
+                ZStack(alignment: .topLeading) {
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .allowsHitTesting(false)
+                    Button(action: {
+                        NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil)
+                    }) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(12)
+                }
+                .zIndex(12)
+            }
+
             // Loading overlay
             if isLoading {
                 VStack(spacing: 16) {
@@ -1775,6 +1796,21 @@ struct AntimatterSplatView: UIViewRepresentable {
                     needsRender = true;  // Request render after camera move
                 };
 
+                // Move camera (and target) up/down in world Y — called from Swift "camera up" button
+                window.moveCameraUp = function(dy) {
+                    autoOrbitEnabled = false;
+                    if (typeof dy !== 'number' || !isFinite(dy)) return;
+                    camera.position.y += dy;
+                    controls.target.y += dy;
+                    if (!INFINITE_ZOOM && roomBoundsForClamping) {
+                        const m = 0.05;
+                        camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                        controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
+                    }
+                    controls.update();
+                    needsRender = true;
+                };
+
                 // Two-finger pan / pan pad: shift room in screen direction (camera and target move together)
                 // Swift sends screen deltas: +X = right, +Y = down. Axes swapped so drag-up = room-up when view/camera is rotated.
                 window.panCamera = function(deltaX, deltaY) {
@@ -2034,6 +2070,14 @@ struct AntimatterSplatView: UIViewRepresentable {
                 name: NSNotification.Name("WebGLScaleRoom"),
                 object: nil
             )
+
+            // Listen for camera move up (from overlay button)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleCameraMoveUp(_:)),
+                name: NSNotification.Name("WebGLCameraMoveUp"),
+                object: nil
+            )
         }
 
         deinit {
@@ -2093,6 +2137,12 @@ struct AntimatterSplatView: UIViewRepresentable {
 
             let js = "if (typeof setUserInteracting === 'function') setUserInteracting(\(interacting ? "true" : "false"));"
             logDebug("🎮 [WebGL] setUserInteracting(\(interacting))")
+            webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        @objc private func handleCameraMoveUp(_ notification: Notification) {
+            let step = 0.2
+            let js = "if (typeof moveCameraUp === 'function') moveCameraUp(\(step));"
             webView?.evaluateJavaScript(js, completionHandler: nil)
         }
 
