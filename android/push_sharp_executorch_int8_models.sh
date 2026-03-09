@@ -62,6 +62,23 @@ for f in "$CHUNKED_DIR"/sharp_split_part4a_chunk_512.pte "$CHUNKED_DIR"/sharp_sp
   fi
 done
 
+# Part4b 16-tile models (optional; for tiled path when Settings > Part4b tiled = ON)
+TILE_FILES=(
+  sharp_split_part4b_tile_full.pte
+  sharp_split_part4b_tile_00.pte sharp_split_part4b_tile_01.pte sharp_split_part4b_tile_02.pte sharp_split_part4b_tile_03.pte
+  sharp_split_part4b_tile_04.pte sharp_split_part4b_tile_05.pte sharp_split_part4b_tile_06.pte sharp_split_part4b_tile_07.pte
+  sharp_split_part4b_tile_08.pte sharp_split_part4b_tile_09.pte sharp_split_part4b_tile_10.pte sharp_split_part4b_tile_11.pte
+  sharp_split_part4b_tile_12.pte sharp_split_part4b_tile_13.pte sharp_split_part4b_tile_14.pte sharp_split_part4b_tile_15.pte
+)
+for f in "${TILE_FILES[@]}"; do
+  for dir in "$INT8_DIR" "$CHUNKED_DIR"; do
+    if [ -f "$dir/$f" ] && [ -s "$dir/$f" ]; then
+      FILES_TO_PUSH+=("$dir/$f")
+      break
+    fi
+  done
+done
+
 if [ ${#FILES_TO_PUSH[@]} -eq 0 ]; then
   echo "Error: No valid .pte files found."
   echo "Export INT8 parts:  python export_sharp_executorch_int8_split4.py"
@@ -79,4 +96,9 @@ done
 echo ""
 echo "Done! ExecuTorch INT8 model files pushed."
 echo "In the app: Settings > Developer > Inference Backend = ExecuTorch INT8"
+echo ""
+echo "For 16-tile Part4b (faster):"
+echo "  - Ensure tile .pte files were pushed (17 files: tile_full + tile_00..15)."
+echo "  - Settings > Developer > Part4b tiled (experimental) = ON, Stable mode = OFF."
+echo "  - Reinstall the app if logcat shows 'libsharp_executorch_tiles.so not found'."
 echo ""
