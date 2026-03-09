@@ -16,6 +16,7 @@ import com.furnit.android.utils.LogUtil
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.content.pm.ActivityInfo
 import android.view.WindowManager
 import android.webkit.*
@@ -29,7 +30,9 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
@@ -105,6 +108,8 @@ class SharpRoomActivity : AppCompatActivity() {
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     /** True while one frame is in inference; drop new frames so overlay shows current view when camera moves. */
     private val isBrainInferenceRunning = AtomicBoolean(false)
+    /** Status bar inset top (set from window insets) so arrow overlay can sit below top bar in portrait and landscape. */
+    private var statusBarInsetTop = 0
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -299,6 +304,13 @@ class SharpRoomActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.BOTTOM })
 
+        // Camera arrow overlay (up/down/left/right) — same as iOS
+        val cameraArrowOverlay = createCameraArrowOverlay()
+        rootLayout.addView(cameraArrowOverlay, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ).apply { gravity = Gravity.TOP or Gravity.START })
+
         // Loading overlay
         loadingOverlay = createLoadingOverlay()
         rootLayout.addView(loadingOverlay)
@@ -348,12 +360,39 @@ class SharpRoomActivity : AppCompatActivity() {
 
         setContentView(rootLayout)
 
+        // Apply status bar insets; position top bar below status bar and arrow overlay below top bar (portrait + landscape)
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
+            val statusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            statusBarInsetTop = statusBar.top
+            topBar.setPadding(
+                topBar.paddingLeft,
+                statusBarInsetTop,
+                topBar.paddingRight,
+                topBar.paddingBottom
+            )
+            updateCameraArrowOverlayTop(topBar, cameraArrowOverlay)
+            cameraArrowOverlay.post { updateCameraArrowOverlayTop(topBar, cameraArrowOverlay) }
+            topBar.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    updateCameraArrowOverlayTop(topBar, cameraArrowOverlay)
+                }
+            })
+            insets
+        }
+        ViewCompat.requestApplyInsets(rootLayout)
+
         // Load the WebGL viewer
         loadWebGLViewer()
     }
 
     private fun dpToPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    /** Position arrow overlay so it sits just below the top bar (works in portrait and landscape). */
+    private fun updateCameraArrowOverlayTop(topBar: View, arrowOverlay: View) {
+        val top = statusBarInsetTop + topBar.height
+        arrowOverlay.setPadding(0, top, 0, 0)
     }
 
     private fun createTopBar(): FrameLayout {
@@ -569,6 +608,67 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             addView(cameraBtn)
         }
+    }
+
+    /** Camera move arrows (up/down/left/right) — matches iOS SharpRoomView. */
+    private fun createCameraArrowOverlay(): FrameLayout {
+        val paddingPx = dpToPx(12)
+        val buttonSizePx = dpToPx(44)
+        val arrowColor = Color.WHITE
+        val circleBg = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.argb(128, 0, 0, 0))
+        }
+
+        fun makeArrowButton(arrowChar: String, onClick: () -> Unit): TextView {
+            return TextView(this).apply {
+                text = arrowChar
+                setTextColor(arrowColor)
+                textSize = 20f
+                setTypeface(null, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                background = circleBg
+                setPadding(0, 0, 0, 0)
+                layoutParams = FrameLayout.LayoutParams(buttonSizePx, buttonSizePx)
+                setOnClickListener { onClick() }
+            }
+        }
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        container.addView(makeArrowButton("\u2190") { runMoveCamera(-8.0, 0.0) }) // Left
+        val upDownColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(8), 0, dpToPx(8), 0)
+        }
+        upDownColumn.addView(makeArrowButton("\u2191") { runMoveCameraUp(0.2) })  // Up
+        val downBtn = makeArrowButton("\u2193") { runMoveCameraUp(-0.2) }  // Down
+        downBtn.layoutParams = LinearLayout.LayoutParams(buttonSizePx, buttonSizePx).apply { topMargin = dpToPx(8) }
+        upDownColumn.addView(downBtn)
+        container.addView(upDownColumn)
+        container.addView(makeArrowButton("\u2192") { runMoveCamera(8.0, 0.0) }) // Right
+
+        return FrameLayout(this).apply {
+            isClickable = false
+            addView(container, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.TOP or Gravity.START })
+        }
+    }
+
+    private fun runMoveCamera(dx: Double, dy: Double) {
+        val js = "if (typeof moveCamera === 'function') moveCamera($dx, $dy);"
+        webView.evaluateJavascript(js, null)
+    }
+
+    private fun runMoveCameraUp(dy: Double) {
+        val js = "if (typeof moveCameraUp === 'function') moveCameraUp($dy);"
+        webView.evaluateJavascript(js, null)
     }
 
     private fun takeScreenshot() {
@@ -1183,6 +1283,14 @@ class SharpRoomActivity : AppCompatActivity() {
             camera.position.z -= dy * moveSpeed;
             controls.target.x += dx * moveSpeed;
             controls.target.z -= dy * moveSpeed;
+            needsRender = true;
+        };
+
+        window.moveCameraUp = function(dy) {
+            if (typeof dy !== 'number' || !isFinite(dy)) return;
+            camera.position.y += dy;
+            controls.target.y += dy;
+            controls.update();
             needsRender = true;
         };
 
