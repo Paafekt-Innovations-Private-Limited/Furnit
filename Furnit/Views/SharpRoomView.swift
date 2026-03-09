@@ -323,7 +323,7 @@ struct SharpRoomView: View {
 
     // Room viewer settings
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
-    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = false
+    @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
 
     // Save room state
     @StateObject private var modelManager = USDZModelManager()
@@ -2132,8 +2132,6 @@ struct AntimatterSplatView: UIViewRepresentable {
             guard let userInfo = notification.userInfo,
                   let deltaX = userInfo["deltaX"] as? CGFloat,
                   let deltaY = userInfo["deltaY"] as? CGFloat else { return }
-
-            logDebug("🎮 [WebGL] Orbit gesture: dx=\(deltaX), dy=\(deltaY)")
 
             // OrbitGestureView now sends incremental values directly
             let js = "if (typeof orbitCamera === 'function') orbitCamera(\(deltaX), \(deltaY));"
