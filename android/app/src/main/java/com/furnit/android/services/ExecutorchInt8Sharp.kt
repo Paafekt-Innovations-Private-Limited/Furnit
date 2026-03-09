@@ -175,7 +175,23 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val roomCenterZ: Float
     )
 
-    fun initialize(): Boolean = runBlocking { mutex.withLock { isInitialized = true; true } }
+    fun initialize(): Boolean = runBlocking {
+        mutex.withLock {
+            isInitialized = true
+            if (NATIVE_FULL_AVAILABLE) {
+                val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+                if (prefs.getBoolean("executorch_int8_use_cpp_full_pipeline", false)) {
+                    val part1File = findFile("sharp_split_part1_int8.pte")
+                    val cppModelDir = part1File?.parent
+                    if (cppModelDir != null) {
+                        val preloaded = preloadCppModules(cppModelDir)
+                        LogUtil.d(TAG, "[C++ FULL] Preload Part1+Part2 cache: ${if (preloaded) "OK" else "failed"} (dir=$cppModelDir)")
+                    }
+                }
+            }
+            true
+        }
+    }
 
     /** Copy packaged .pte from assets/models/ to filesDir/models so Module.load can use them. Loads all 16 Part4b tiles from assets when present (ODR-style: packaged in APK, extracted on first use). */
     private fun ensureModelsFromAssets() {
@@ -257,6 +273,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
      * or null if not implemented or on error (caller falls back to Kotlin pipeline).
      */
     private external fun runFullPipelineInt8Native(modelDirPath: String, imageNCHW: FloatArray): FloatArray?
+
+    /** Warm-start: preload Part1+Part2 into native singleton cache (eliminates ~400ms mmap on first inference). */
+    private external fun preloadCppModules(modelDirPath: String): Boolean
+
+    /** Release native singleton Part1+Part2 cache and aligned workspace buffers. */
+    private external fun releaseCppModules()
 
     /**
      * Run the 16-tile Part4b pipeline in C++ (native heap). Returns packed [N*14] Gaussian floats,

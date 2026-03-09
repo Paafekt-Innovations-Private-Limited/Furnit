@@ -38,13 +38,14 @@ if(EXISTS "${EXECUTORCH_LIB_DIR}/libexecutorch.so" AND EXISTS "${EXECUTORCH_ROOT
     target_link_libraries(sharp_executorch_tiles executorch_prebuilt ${log-lib})
 
     # Full INT8 pipeline in C++ (Part1–4b single, no tiles)
+    # -O3 -ffast-math: aggressive auto-vectorization; NEON intrinsics used explicitly for downsample
     add_library(sharp_executorch_full SHARED sharp_executorch_full.cpp)
     target_include_directories(sharp_executorch_full PRIVATE
         ${EXECUTORCH_INCLUDE_DIR}
         ${EXECUTORCH_ROOT}/runtime/core/portable_type/c10
     )
     target_compile_definitions(sharp_executorch_full PRIVATE C10_USING_CUSTOM_GENERATED_MACROS)
-    set_target_properties(sharp_executorch_full PROPERTIES COMPILE_FLAGS "-frtti -fexceptions")
+    set_target_properties(sharp_executorch_full PROPERTIES COMPILE_FLAGS "-frtti -fexceptions -O3 -ffast-math")
     target_link_libraries(sharp_executorch_full executorch_prebuilt ${log-lib})
 endif()
 
