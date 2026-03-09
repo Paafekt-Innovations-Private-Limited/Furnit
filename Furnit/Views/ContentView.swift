@@ -1038,6 +1038,7 @@ struct SupportView: View {
                 items: [
                     FAQItem(question: "faq.howToView".localized, answer: "faq.howToViewAnswer".localized),
                     FAQItem(question: "faq.howToNavigate".localized, answer: "faq.howToNavigateAnswer".localized),
+                    FAQItem(question: "faq.whatDoArrowsDo".localized, answer: "faq.whatDoArrowsDoAnswer".localized),
                     FAQItem(question: "faq.whatIsMemoryDisplay".localized, answer: "faq.whatIsMemoryDisplayAnswer".localized),
                     FAQItem(question: "faq.sampleRoom".localized, answer: "faq.sampleRoomAnswer".localized),
                     FAQItem(question: "faq.accuracy".localized, answer: "faq.accuracyAnswer".localized),

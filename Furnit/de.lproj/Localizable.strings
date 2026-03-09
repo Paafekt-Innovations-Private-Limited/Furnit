@@ -217,6 +217,15 @@
 "faq.adjustDimensions" = "Kann ich die Raummaße anpassen?";
 "faq.adjustDimensionsAnswer" = "Ja, gehen Sie zu Einstellungen und suchen Sie nach Raummaße-Optionen, wo Sie die Größe und Proportionen Ihres generierten Raums feinabstimmen können.";
 
+// FAQ - 3D Room Controls
+"faq.roomControls" = "3D-Raum-Steuerung";
+"faq.howToNavigate" = "Wie bewege ich mich im Raum?";
+"faq.howToNavigateAnswer" = "Nutzen Sie den Joystick unten in der Bildschirmmitte zur Bewegung. Ziehen Sie ihn in eine beliebige Richtung, um durch den Raum zu fliegen. Mit der Schaltfläche „Zentrieren“ (Sucher-Symbol) setzen Sie die Kameraposition zurück.";
+"faq.whatDoArrowsDo" = "Wofür sind die Pfeiltasten?";
+"faq.whatDoArrowsDoAnswer" = "Die Pfeiltasten an der Seite der 3D-Ansicht bewegen die Kamera: oben und unten ändern die Blickhöhe; links und rechts schwenken die Kamera. Sie können auch auf dem Bildschirm ziehen, um den Raum zu umkreisen, und die Zentrieren-Taste (Sucher-Symbol) nutzen, um die Ansicht zurückzusetzen.";
+"faq.whatIsMemoryDisplay" = "Was bedeutet die MB-Zahl?";
+"faq.whatIsMemoryDisplayAnswer" = "Die in Räumen angezeigte MB (Megabyte) gibt die Dateigröße an. So verwalten Sie den Speicher. Der von allen Räumen genutzte Speicher wird oben auf dem Startbildschirm angezeigt.";
+
 // MARK: - Room Boundary Detection
 "boundary.title" = "Raumgrenzen";
 "boundary.instructions" = "Ziehen Sie die Kreise, um die Grenzen anzupassen";

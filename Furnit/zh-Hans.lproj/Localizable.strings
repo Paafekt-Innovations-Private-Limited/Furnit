@@ -284,6 +284,8 @@
 "faq.roomControls" = "3D 房间控制";
 "faq.howToNavigate" = "如何在房间内导航？";
 "faq.howToNavigateAnswer" = "使用屏幕底部中央的操纵杆移动。向任意方向拖动可在房间内飞行。点击重新居中按钮（取景器图标）可重置相机位置。";
+"faq.whatDoArrowsDo" = "箭头按钮有什么作用？";
+"faq.whatDoArrowsDoAnswer" = "3D 视图侧边的箭头按钮用于移动相机：上下改变视角高度，左右平移相机。您也可以拖动屏幕来环绕房间，并使用重新居中按钮（取景器图标）重置视图。";
 "faq.whatIsMemoryDisplay" = "MB 数字是什么意思？";
 "faq.whatIsMemoryDisplayAnswer" = "房间中显示的 MB（兆字节）表示文件大小。这有助于您管理存储空间。所有房间使用的总存储空间显示在主屏幕顶部。";
 

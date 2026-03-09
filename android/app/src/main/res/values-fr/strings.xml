@@ -224,6 +224,8 @@
     <string name="faq_room_controls">Contrôles de Pièce 3D</string>
     <string name="faq_how_to_navigate">Comment naviguer dans la pièce ?</string>
     <string name="faq_how_to_navigate_answer">Utilisez le joystick en bas au centre de l\'écran pour vous déplacer. Faites-le glisser dans n\'importe quelle direction pour voler à travers la pièce. Utilisez le bouton de recentrage (icône du viseur) pour réinitialiser la position de la caméra.</string>
+    <string name="faq_what_do_arrows_do">À quoi servent les boutons fléchés ?</string>
+    <string name="faq_what_do_arrows_do_answer">Les boutons fléchés sur le côté de la vue 3D déplacent la caméra : haut et bas changent la hauteur de la vue ; gauche et droite font un panoramique. Vous pouvez aussi faire glisser l\'écran pour orbiter la pièce et utiliser le bouton recentrer (icône viseur) pour réinitialiser la vue.</string>
     <string name="faq_what_is_memory_display">Que signifie le nombre MB ?</string>
     <string name="faq_what_is_memory_display_answer">Le MB (mégaoctets) affiché dans les pièces indique la taille du fichier. Cela vous aide à gérer le stockage. Le stockage total utilisé par toutes les pièces est affiché en haut de l\'écran d\'accueil.</string>
     <string name="photo_room_how_to_create">Comment souhaitez-vous créer votre pièce 3D ?</string>

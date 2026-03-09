@@ -284,6 +284,8 @@
 "faq.roomControls" = "Controles de Habitación 3D";
 "faq.howToNavigate" = "¿Cómo navego dentro de la habitación?";
 "faq.howToNavigateAnswer" = "Usa el joystick en la parte inferior central de la pantalla para moverte. Arrástralo en cualquier dirección para volar por la habitación. Usa el botón de recentrar (icono del visor) para restablecer la posición de la cámara.";
+"faq.whatDoArrowsDo" = "¿Qué hacen los botones de flechas?";
+"faq.whatDoArrowsDoAnswer" = "Los botones de flechas al lado de la vista 3D mueven la cámara: arriba y abajo cambian la altura de la vista; izquierda y derecha hacen paneo. También puedes arrastrar en la pantalla para orbitar la habitación y usar el botón de recentrar (icono del visor) para restablecer la vista.";
 "faq.whatIsMemoryDisplay" = "¿Qué significa el número MB?";
 "faq.whatIsMemoryDisplayAnswer" = "El MB (megabytes) mostrado en las habitaciones indica el tamaño del archivo. Esto te ayuda a administrar el almacenamiento. El almacenamiento total usado por todas las habitaciones se muestra en la parte superior de la pantalla de inicio.";
 

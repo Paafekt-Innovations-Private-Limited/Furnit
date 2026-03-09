@@ -215,6 +215,8 @@
 "faq.howToViewAnswer" = "Tap on any room in your home screen to open the 3D viewer. Use touch gestures to rotate and zoom, or use the joystick at the bottom to move around inside the room.";
 "faq.howToNavigate" = "How do I navigate inside the room?";
 "faq.howToNavigateAnswer" = "Use the joystick at the bottom center of the screen to move around. Drag it in any direction to fly through the room. Use the recenter button (viewfinder icon) to reset the camera position.";
+"faq.whatDoArrowsDo" = "What do the arrow buttons do?";
+"faq.whatDoArrowsDoAnswer" = "The arrow buttons on the side of the 3D view move the camera: up and down change the view height; left and right pan the camera. You can also drag on the screen to orbit the room and use the recenter button (viewfinder icon) to reset the view.";
 "faq.whatIsMemoryDisplay" = "What does the MB number mean?";
 "faq.whatIsMemoryDisplayAnswer" = "The MB (megabytes) shown in rooms indicates the file size. This helps you manage storage. The total storage used by all rooms is shown at the top of the home screen.";
 "faq.howToPlace" = "How do I place furniture in my room?";
