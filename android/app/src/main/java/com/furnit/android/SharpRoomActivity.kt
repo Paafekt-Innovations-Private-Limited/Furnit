@@ -1277,12 +1277,20 @@ class SharpRoomActivity : AppCompatActivity() {
             needsRender = true;
         };
 
+        // dx = horizontal (left/right), dy = forward/back. Portrait room has 90° Y rotation: depth=X, width=Z so left/right is Z.
         window.moveCamera = function(dx, dy) {
             const moveSpeed = 0.05;
-            camera.position.x += dx * moveSpeed;
-            camera.position.z -= dy * moveSpeed;
-            controls.target.x += dx * moveSpeed;
-            controls.target.z -= dy * moveSpeed;
+            if (isPortrait) {
+                camera.position.x += dy * moveSpeed;
+                camera.position.z += dx * moveSpeed;
+                controls.target.x += dy * moveSpeed;
+                controls.target.z += dx * moveSpeed;
+            } else {
+                camera.position.x += dx * moveSpeed;
+                camera.position.z -= dy * moveSpeed;
+                controls.target.x += dx * moveSpeed;
+                controls.target.z -= dy * moveSpeed;
+            }
             needsRender = true;
         };
 
