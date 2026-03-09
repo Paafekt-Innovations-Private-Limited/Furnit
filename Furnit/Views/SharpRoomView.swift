@@ -1882,12 +1882,12 @@ struct AntimatterSplatView: UIViewRepresentable {
                 window.zoomCamera = function(scale) {
                     autoOrbitEnabled = false;
                     if (typeof scale !== 'number' || scale <= 0 || !isFinite(scale)) return;
-                    const zoomSensitivity = 2.0;
+                    const zoomSensitivity = 4.0;
 
                     if (INFINITE_ZOOM) {
                         // Dolly: move camera and target along view direction so we can pass through curtain
                         const forward = new THREE.Vector3().subVectors(controls.target, camera.position).normalize();
-                        const step = (scale - 1) * 0.12 * zoomSensitivity;  // scale>1 -> move forward, scale<1 -> move back
+                        const step = (scale - 1) * 0.22 * zoomSensitivity;  // scale>1 -> move forward, scale<1 -> move back
                         camera.position.addScaledVector(forward, step);
                         controls.target.addScaledVector(forward, step);
                     } else {
