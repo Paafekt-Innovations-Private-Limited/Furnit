@@ -166,6 +166,8 @@
     <string name="help_copy_email">Copy Email Address</string>
     <string name="help_email_copied">Email Copied</string>
     <string name="help_email_copied_message">support@paafekt.com has been copied to your clipboard.</string>
+    <string name="help_email_subject">Paafekt App Support</string>
+    <string name="help_email_body">Hi Paafekt Support Team,\n\nI need help with:\n\n</string>
 
     <!-- FAQ - Room Creation -->
     <string name="faq_room_creation">Room Creation</string>

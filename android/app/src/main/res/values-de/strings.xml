@@ -133,6 +133,8 @@
     <string name="help_copy_email">E-Mail-Adresse kopieren</string>
     <string name="help_email_copied">E-Mail kopiert</string>
     <string name="help_email_copied_message">support@paafekt.com wurde in Ihre Zwischenablage kopiert.</string>
+    <string name="help_email_subject">Paafekt-App-Support</string>
+    <string name="help_email_body">Hallo Paafekt-Support-Team,\n\nich benötige Hilfe bei:\n\n</string>
     <string name="faq_room_creation">Raumerstellung</string>
     <string name="faq_how_to_create">Wie erstelle ich einen 3D-Raum?</string>
     <string name="faq_how_to_create_answer">Tippen Sie auf das Foto-Symbol in der oberen linken Ecke des Startbildschirms und nehmen Sie dann ein Foto Ihres Raums auf oder wählen Sie eines aus. Sie sehen zwei Optionen zur Auswahl für die Erstellung Ihres 3D-Raums.</string>
@@ -212,23 +214,23 @@
     <string name="accessibility_settings">Einstellungen</string>
     <string name="accessibility_help">Hilfe</string>
     <string name="accessibility_create_room">Raum aus Foto erstellen</string>
-    <string name="photo_room_how_to_create">How do you want to create your 3D room?</string>
-    <string name="photo_room_tap_option">Tap an option below to continue</string>
-    <string name="photo_room_ai_powered">AI-powered 3D construction</string>
-    <string name="photo_room_manual_setup">Manual Setup</string>
-    <string name="photo_room_manual_setup_desc">Drag to adjust room walls</string>
-    <string name="photo_room_select_photo">Select Photo</string>
-    <string name="photo_room_from_library">From your photo library</string>
-    <string name="photo_room_loading">Loading 3D room…</string>
-    <string name="photo_room_download_success">Successfully downloaded %s. View it in your models list.</string>
-    <string name="photo_room_save_success">Your 3D model has been saved successfully.</string>
+    <string name="photo_room_how_to_create">Wie möchten Sie Ihren 3D-Raum erstellen?</string>
+    <string name="photo_room_tap_option">Tippen Sie auf eine Option unten, um fortzufahren</string>
+    <string name="photo_room_ai_powered">KI-gestützte 3D-Erstellung</string>
+    <string name="photo_room_manual_setup">Manuelle Einrichtung</string>
+    <string name="photo_room_manual_setup_desc">Ziehen, um Wände anzupassen</string>
+    <string name="photo_room_select_photo">Foto auswählen</string>
+    <string name="photo_room_from_library">Aus Ihrer Fotobibliothek</string>
+    <string name="photo_room_loading">3D-Raum wird geladen…</string>
+    <string name="photo_room_download_success">%s erfolgreich heruntergeladen. In der Modellliste anzeigen.</string>
+    <string name="photo_room_save_success">Ihr 3D-Modell wurde erfolgreich gespeichert.</string>
     <string name="photo_room_error">Bei der Erstellung Ihres 3D-Modells ist ein Fehler aufgetreten.</string>
     <string name="photo_room_building_room">Ihr 3D-Raum wird erstellt…</string>
-    <string name="orientation_portrait">Portrait</string>
-    <string name="orientation_landscape">Landscape</string>
-    <string name="orientation_held_vertically">held vertically</string>
-    <string name="orientation_held_horizontally">held horizontally</string>
-    <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+    <string name="orientation_portrait">Hochformat</string>
+    <string name="orientation_landscape">Querformat</string>
+    <string name="orientation_held_vertically">vertikal gehalten</string>
+    <string name="orientation_held_horizontally">horizontal gehalten</string>
+    <string name="photo_room_screenshot_warning">Keine Screenshots wählen – sie können schwarze Flecken verursachen</string>
 
     <!-- SharpRoom / PLY viewer -->
     <string name="sharp_room_no_ply">Keine PLY-Datei angegeben</string>

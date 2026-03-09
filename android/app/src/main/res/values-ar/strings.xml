@@ -133,6 +133,8 @@
     <string name="help_copy_email">نسخ عنوان البريد الإلكتروني</string>
     <string name="help_email_copied">تم نسخ البريد الإلكتروني</string>
     <string name="help_email_copied_message">تم نسخ support@paafekt.com إلى الحافظة.</string>
+    <string name="help_email_subject">دعم تطبيق Paafekt</string>
+    <string name="help_email_body">مرحباً فريق دعم Paafekt،\n\nأحتاج مساعدة بخصوص:\n\n</string>
     <string name="faq_room_creation">إنشاء الغرفة</string>
     <string name="faq_how_to_create">كيف أنشئ غرفة ثلاثية الأبعاد؟</string>
     <string name="faq_how_to_create_answer">اضغط على أيقونة الصورة في الزاوية العلوية اليسرى من الشاشة الرئيسية، ثم التقط أو اختر صورة لغرفتك. سترى خيارين للاختيار من بينهما لإنشاء غرفتك ثلاثية الأبعاد.</string>
@@ -224,23 +226,23 @@
     <string name="accessibility_settings">الإعدادات</string>
     <string name="accessibility_help">المساعدة</string>
     <string name="accessibility_create_room">إنشاء غرفة من صورة</string>
-    <string name="photo_room_how_to_create">How do you want to create your 3D room?</string>
-    <string name="photo_room_tap_option">Tap an option below to continue</string>
-    <string name="photo_room_ai_powered">AI-powered 3D construction</string>
-    <string name="photo_room_manual_setup">Manual Setup</string>
-    <string name="photo_room_manual_setup_desc">Drag to adjust room walls</string>
-    <string name="photo_room_select_photo">Select Photo</string>
-    <string name="photo_room_from_library">From your photo library</string>
-    <string name="photo_room_loading">Loading 3D room…</string>
-    <string name="photo_room_download_success">Successfully downloaded %s. View it in your models list.</string>
-    <string name="photo_room_save_success">Your 3D model has been saved successfully.</string>
+    <string name="photo_room_how_to_create">كيف تريد إنشاء غرفتك ثلاثية الأبعاد؟</string>
+    <string name="photo_room_tap_option">انقر على خيار أدناه للمتابعة</string>
+    <string name="photo_room_ai_powered">إنشاء غرفة ثلاثية الأبعاد بالذكاء الاصطناعي</string>
+    <string name="photo_room_manual_setup">الإعداد اليدوي</string>
+    <string name="photo_room_manual_setup_desc">اسحب لضبط جدران الغرفة</string>
+    <string name="photo_room_select_photo">اختر صورة</string>
+    <string name="photo_room_from_library">من مكتبة الصور</string>
+    <string name="photo_room_loading">جاري تحميل الغرفة ثلاثية الأبعاد…</string>
+    <string name="photo_room_download_success">تم تنزيل %s بنجاح. اعرضه في قائمة النماذج.</string>
+    <string name="photo_room_save_success">تم حفظ النموذج ثلاثي الأبعاد بنجاح.</string>
     <string name="photo_room_error">حدث خطأ أثناء إنشاء النموذج ثلاثي الأبعاد.</string>
     <string name="photo_room_building_room">جاري بناء غرفتك ثلاثية الأبعاد…</string>
-    <string name="orientation_portrait">Portrait</string>
-    <string name="orientation_landscape">Landscape</string>
-    <string name="orientation_held_vertically">held vertically</string>
-    <string name="orientation_held_horizontally">held horizontally</string>
-    <string name="photo_room_screenshot_warning">Do not select screenshots - they may cause black patches</string>
+    <string name="orientation_portrait">عمودي</string>
+    <string name="orientation_landscape">أفقي</string>
+    <string name="orientation_held_vertically">مُمسوك عمودياً</string>
+    <string name="orientation_held_horizontally">مُمسوك أفقياً</string>
+    <string name="photo_room_screenshot_warning">لا تختر لقطات الشاشة - قد تسبب بقعاً سوداء</string>
 
     <!-- SharpRoom / PLY viewer -->
     <string name="sharp_room_no_ply">لم يتم توفير ملف PLY</string>
