@@ -26,7 +26,7 @@ func logDebug(_ items: Any..., separator: String = " ", terminator: String = "\n
 enum AppLogger {
 
     // MARK: - Log Categories
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.pafekt.Furnit"
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.paafektinnovations.Paafekt"
 
     static let auth = Logger(subsystem: subsystem, category: "Authentication")
     static let ui = Logger(subsystem: subsystem, category: "UI")
