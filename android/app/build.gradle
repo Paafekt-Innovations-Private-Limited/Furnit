@@ -34,28 +34,26 @@ android {
         //     pip { install "numpy"; install "Pillow" }
         // }
 
-        if (enableNative) {
-            // NCNN native library support — ABI is controlled by splits.abi below (arm64-v8a only)
-            // CMake configuration for NCNN
-            externalNativeBuild {
-                cmake {
-                    cppFlags "-std=c++17 -frtti -fexceptions"
-                    arguments "-DANDROID_STL=c++_shared"
-                }
+        // CMake: always build ExecuTorch C++ tiles (sharp_executorch_tiles); NCNN opt-in via furnit.enableNative
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -frtti -fexceptions"
+                def cmakeArgs = ["-DANDROID_STL=c++_shared"]
+                if (enableNative) cmakeArgs.add("-DENABLE_NCNN=ON")
+                arguments(*cmakeArgs)
             }
         }
     }
 
-    if (enableNative) {
-        // CMake build configuration
-        externalNativeBuild {
-            cmake {
-                path "src/main/cpp/CMakeLists.txt"
-                version "3.22.1"
-            }
+    // CMake build (always: ExecuTorch tiles; NCNN only when enableNative)
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
         }
+    }
 
-        // Include native libraries from jniLibs
+    if (enableNative) {
         sourceSets {
             main {
                 jniLibs.srcDirs = ['src/main/jniLibs']
@@ -77,18 +75,14 @@ android {
         jvmTarget = '11'
     }
 
-    if (enableNative) {
-        packagingOptions {
-            jniLibs {
-                useLegacyPackaging = true
-            }
-        }
-    }
-
-    // Resolve duplicate native libs between ExecuTorch and PyTorch Mobile
     packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
         pickFirst '**/libfbjni.so'
         pickFirst '**/libc++_shared.so'
+        pickFirst '**/libexecutorch.so'
+        pickFirst '**/libexecutorch_jni.so'
     }
 
     // 16 KB page alignment: our native libs (NCNN) are built with -Wl,-z,max-page-size=16384 in CMake.
@@ -112,18 +106,52 @@ def execInt8Dir = project.file("../executorch_int8_models")
 def execChunkedDir = project.file("../executorch_models")
 def assetsModelsDir = project.file("src/main/assets/models")
 def skipExecutorchAssets = project.hasProperty("skipExecutorchAssets")
+// Part4b 16 tiles are large; packing them in main assets can push APK over Zip32 4GB limit.
+// Use -PincludePart4bTilesInAssets to pack tiles (very large APK), or use on-demand: push to device or Play Asset Delivery.
+def includePart4bTilesInAssets = project.hasProperty("includePart4bTilesInAssets")
+
 tasks.register("copyExecutorchModelsIntoAssets", Copy) {
-    description = "Copy ExecuTorch INT8 .pte models into assets/models for packaging in APK"
+    description = "Copy ExecuTorch INT8 .pte models into assets/models. Add -PincludePart4bTilesInAssets to also pack 16 Part4b tiles (APK may exceed 4GB)."
     into assetsModelsDir
     from(execInt8Dir) {
         include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte"
+        if (includePart4bTilesInAssets) {
+            include "sharp_split_part4b_tile_full.pte"
+            include "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte"
+            include "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte"
+            include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
+            include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
+        }
     }
     from(execChunkedDir) {
         include "sharp_split_part4a_chunk_512.pte", "sharp_split_part4a_chunk_65.pte", "sharp_split_part4b.pte"
+        // Optional INT8 decoder for C++ full pipeline; when present next to sharp_split_part4b.pte,
+        // native code prefers this file for Part 4b and falls back to FP32 otherwise.
+        include "sharp_split_part4b_int8.pte"
+        if (includePart4bTilesInAssets) {
+            include "sharp_split_part4b_tile_full.pte"
+            include "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte"
+            include "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte"
+            include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
+            include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
+        }
     }
-    onlyIf { !skipExecutorchAssets && execInt8Dir.exists() && execChunkedDir.exists() }
+    onlyIf { !skipExecutorchAssets && (execInt8Dir.exists() || execChunkedDir.exists()) }
 }
 if (!skipExecutorchAssets) preBuild.dependsOn copyExecutorchModelsIntoAssets
+
+// libsharp_executorch_tiles.so links against libexecutorch; AAR may ship it as libexecutorch_jni.so by SONAME.
+// Copy from executorch_lib so loader finds it at runtime when native tiles are built.
+def executorchLibDir = project.file("src/main/cpp/executorch_lib")
+def jniLibsArm64 = project.file("src/main/jniLibs/arm64-v8a")
+tasks.register("copyExecutorchJniAsSoname", Copy) {
+    description = "Copy libexecutorch.so as libexecutorch_jni.so so loader finds it by SONAME"
+    from(executorchLibDir) { include "libexecutorch.so" }
+    into jniLibsArm64
+    rename "libexecutorch.so", "libexecutorch_jni.so"
+    onlyIf { executorchLibDir.exists() && project.file("${executorchLibDir}/libexecutorch.so").exists() }
+}
+preBuild.dependsOn copyExecutorchJniAsSoname
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.10"

@@ -18,6 +18,8 @@ The default build embeds **ExecuTorch SHARP .pte models** (~1.9 GB) in assets, s
    adb push executorch_models/sharp_split_part4a_chunk_512.pte /sdcard/Android/data/com.furnit.android/files/models/
    adb push executorch_models/sharp_split_part4a_chunk_65.pte /sdcard/Android/data/com.furnit.android/files/models/
    adb push executorch_models/sharp_split_part4b.pte /sdcard/Android/data/com.furnit.android/files/models/
+   # Optional: ExecuTorch INT8 Part 4b (C++ full pipeline prefers this when present)
+   adb push executorch_models/sharp_split_part4b_int8.pte /sdcard/Android/data/com.furnit.android/files/models/
    ```
    Or copy the same files onto the device into that path (e.g. via file manager). Without these, the app runs but “Create room from photo” (AI) will report missing models.
 
@@ -50,16 +52,16 @@ With the device connected (or emulator running), use `adb logcat`. If more than 
 
 **3D viewer (camera framing):** To see WebView camera/Box3 logs, include `SharpRoomActivity` in logcat (e.g. `adb logcat -s ExecutorchInt8Sharp:D SharpService:D SharpRoomActivity:D -v time`). Look for `[SharpRoom] CAMERA_FRAME` with isPortrait, boxMin/Max, center, roomW/H/D, inset, camPos, target. On open, Kotlin logs `SharpRoom intent roomWidth=... isPortrait=...`.
 
-**ExecuTorch INT8 pipeline timing:** Filter by `ExecutorchInt8Sharp` to see `[TIMING]` lines (Part4b forward, writePly, TOTAL). Example from a typical run (~3 min total):
+**ExecuTorch INT8 pipeline timing:** The C++ full pipeline logs under tag **`sharp_executorch_full`** (matches the .so name); include it or you won’t see patches/Part3/Part4a/Part4b/TOTAL. Example from a typical run (~3 min total):
 - 1x patches (25): ~36 s  
 - 0.5x patches (9): ~14 s  
 - 0.25x patch: ~1.5 s  
 - Part3 (image encoder): ~2 s  
 - Part4a (2 chunks): ~4 s  
-- **Part4b (decoder + Gaussian head): ~106 s** ← dominant  
+- **Part4b (decoder + Gaussian head): ~106 s** (single) or **Part4b tiled: ~86 s** (16 tiles) ← dominant  
 - writePly (1.18M Gaussians): ~14 s  
 ```bash
-adb logcat -s ExecutorchInt8Sharp:D SharpService:D -v time
+adb logcat -s sharp_executorch_full:D ExecutorchInt8Sharp:D SharpService:D -v time
 ```
 
 **Room list / 3D room view (camera position, model load):**

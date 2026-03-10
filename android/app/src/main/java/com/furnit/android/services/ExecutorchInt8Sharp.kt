@@ -81,8 +81,19 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             "sharp_split_part3_int8.pte",
             "sharp_split_part4a_chunk_512.pte",
             "sharp_split_part4a_chunk_65.pte",
-            "sharp_split_part4b.pte"
+            "sharp_split_part4b.pte",
+            "sharp_split_part4b_tile_full.pte",
+            "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte",
+            "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte",
+            "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte",
+            "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
         )
+        private const val PART4B_TILED_GRID = 4
+        private const val PART4B_TILED_NUM = PART4B_TILED_GRID * PART4B_TILED_GRID // 16
+        private const val PART4B_GAUSSIANS_PER_TILE = 73728
+        /** When true, native C++ may use 2 modules in parallel (ignored in C++ for stability); read from prefs in inferStreaming. */
+        @JvmField
+        var PARALLEL_TILES: Boolean = false
         private const val ASSET_MODELS_SUBDIR = "models"
 
         private const val LOGIT_LUT_SIZE = 1024
@@ -101,6 +112,35 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             if (x <= LN_LUT_MIN) return LN_LUT[0]
             if (x >= LN_LUT_MAX) return LN_LUT[LN_LUT_SIZE - 1]
             return LN_LUT[((x - LN_LUT_MIN) * LN_LUT_SCALE).toInt()]
+        }
+
+        /** Whether the native 16-tile Part4b library loaded successfully. When false, Kotlin/single path is used. */
+        @JvmField
+        var NATIVE_TILES_AVAILABLE: Boolean = false
+
+        /** Whether the native full INT8 pipeline library loaded (Part1–4b in C++, single Part4b). When true and pref on, inferStreaming tries C++ first. */
+        @JvmField
+        var NATIVE_FULL_AVAILABLE: Boolean = false
+
+        init {
+            try {
+                System.loadLibrary("sharp_executorch_tiles")
+                NATIVE_TILES_AVAILABLE = true
+            } catch (e: UnsatisfiedLinkError) {
+                LogUtil.d(TAG, "Native tile library not available: ${e.message}")
+            }
+            if (NATIVE_TILES_AVAILABLE) {
+                LogUtil.d(TAG, "Native Part4b tile library loaded (16-tile C++ path when Part4b tiled is enabled)")
+            }
+            try {
+                System.loadLibrary("sharp_executorch_full")
+                NATIVE_FULL_AVAILABLE = true
+            } catch (e: UnsatisfiedLinkError) {
+                LogUtil.d(TAG, "Native full pipeline library not available: ${e.message}")
+            }
+            if (NATIVE_FULL_AVAILABLE) {
+                LogUtil.d(TAG, "Native full INT8 pipeline loaded (C++ ExecuTorch INT8 option in Settings)")
+            }
         }
 
         @Volatile
@@ -135,24 +175,53 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val roomCenterZ: Float
     )
 
-    fun initialize(): Boolean = runBlocking { mutex.withLock { isInitialized = true; true } }
+    fun initialize(): Boolean = runBlocking {
+        mutex.withLock {
+            isInitialized = true
+            if (NATIVE_FULL_AVAILABLE) {
+                val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+                if (prefs.getBoolean("executorch_int8_use_cpp_full_pipeline", false)) {
+                    val part1File = findFile("sharp_split_part1_int8.pte")
+                    val cppModelDir = part1File?.parent
+                    if (cppModelDir != null) {
+                        val preloaded = preloadCppModules(cppModelDir)
+                        LogUtil.d(TAG, "[C++ FULL] Preload Part1+Part2 cache: ${if (preloaded) "OK" else "failed"} (dir=$cppModelDir)")
+                    }
+                }
+            }
+            true
+        }
+    }
 
-    /** Copy packaged .pte from assets/models/ to filesDir/models so Module.load can use them (for test APKs). */
+    /** Copy packaged .pte from assets/models/ to filesDir/models so Module.load can use them. Loads all 16 Part4b tiles from assets when present (ODR-style: packaged in APK, extracted on first use). */
     private fun ensureModelsFromAssets() {
+        var tilesCopied = 0
+        var tilesMissing = 0
         for (filename in ASSET_MODEL_FILENAMES) {
             val dest = File(internalModelsDir, filename)
-            if (dest.exists() && dest.length() > 0L) continue
+            if (dest.exists() && dest.length() > 0L) {
+                if (filename.startsWith("sharp_split_part4b_tile_")) tilesCopied++
+                continue
+            }
             val assetPath = "$ASSET_MODELS_SUBDIR/$filename"
+            val isTile = filename.startsWith("sharp_split_part4b_tile_")
             try {
                 context.assets.open(assetPath).use { input: InputStream ->
                     FileOutputStream(dest).use { output ->
                         input.copyTo(output)
                     }
                 }
+                if (isTile) tilesCopied++
                 LogUtil.d(TAG, "Copied $filename from assets to ${dest.absolutePath}")
             } catch (e: Exception) {
-                LogUtil.d(TAG, "Asset $assetPath not present or copy failed: ${e.message}")
+                if (isTile) tilesMissing++
+                else LogUtil.d(TAG, "Asset $assetPath not present or copy failed: ${e.message}")
             }
+        }
+        if (tilesMissing > 0) {
+            LogUtil.d(TAG, "Part4b tile models: ${tilesCopied}/17 from assets (add tile .pte to executorch_int8_models or executorch_models and rebuild for tiled path)")
+        } else if (tilesCopied == 17) {
+            LogUtil.d(TAG, "Part4b tile models ready from assets (16 tiles + tile_full)")
         }
     }
 
@@ -166,6 +235,68 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val internal = File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0 }
         return internal ?: File(modelsDir, filename).takeIf { it.exists() && it.length() > 0 }
     }
+
+    /** Crop tile (row,col) from NCHW flat array. shape=[1,C,H,W], output=[C*(H/n)*(W/n)]. */
+    private fun cropTileNCHW(data: FloatArray, channels: Int, fullH: Int, fullW: Int, tileRow: Int, tileCol: Int): FloatArray {
+        val tileH = fullH / PART4B_TILED_GRID
+        val tileW = fullW / PART4B_TILED_GRID
+        val out = FloatArray(channels * tileH * tileW)
+        for (c in 0 until channels) for (y in 0 until tileH) for (x in 0 until tileW) {
+            out[c * tileH * tileW + y * tileW + x] =
+                data[c * fullH * fullW + (tileRow * tileH + y) * fullW + (tileCol * tileW + x)]
+        }
+        return out
+    }
+
+    /** NDC correction for a tile's packed [x,y,z,...] Gaussians so stitched tiles align. swapNdcXY: use tileRow for X and tileCol for Y (if export uses transposed tile layout). */
+    private fun correctNDC(packedTile: FloatArray, tileRow: Int, tileCol: Int, swapNdcXY: Boolean = false) {
+        val grid = PART4B_TILED_GRID
+        val numGaussians = packedTile.size / 14
+        val ndcOffsetX = (2f * tileCol + 1f - grid) / grid
+        val ndcOffsetY = (2f * tileRow + 1f - grid) / grid
+        val invGrid = 1f / grid
+        val offX = if (swapNdcXY) ndcOffsetY else ndcOffsetX
+        val offY = if (swapNdcXY) ndcOffsetX else ndcOffsetY
+        for (g in 0 until numGaussians) {
+            val base = g * 14
+            val posZ = packedTile[base + 2]
+            packedTile[base + 0] = packedTile[base + 0] * invGrid + posZ * offX
+            packedTile[base + 1] = packedTile[base + 1] * invGrid + posZ * offY
+            packedTile[base + 4] *= invGrid
+            packedTile[base + 5] *= invGrid
+            packedTile[base + 6] *= invGrid
+        }
+    }
+
+    /**
+     * Run full INT8 pipeline in C++ (Part1, Part2, Part3, Part4a, Part4b single). Returns packed [N*14] Gaussian floats,
+     * or null if not implemented or on error (caller falls back to Kotlin pipeline).
+     */
+    private external fun runFullPipelineInt8Native(modelDirPath: String, imageNCHW: FloatArray): FloatArray?
+
+    /** Warm-start: preload Part1+Part2 into native singleton cache (eliminates ~400ms mmap on first inference). */
+    private external fun preloadCppModules(modelDirPath: String): Boolean
+
+    /** Release native singleton Part1+Part2 cache and aligned workspace buffers. */
+    private external fun releaseCppModules()
+
+    /**
+     * Run the 16-tile Part4b pipeline in C++ (native heap). Returns packed [N*14] Gaussian floats,
+     * or null on failure (caller falls back to Kotlin tile loop or single Part4b).
+     */
+    private external fun runTiledPart4bNative(
+        modelPath: String,
+        imageNCHW: FloatArray,
+        latent0: FloatArray,
+        latent1: FloatArray,
+        x0Feat: FloatArray,
+        x1Feat: FloatArray,
+        x2Feat: FloatArray,
+        xLowres: FloatArray,
+        numThreads: Int,
+        parallelTiles: Boolean,
+        swapNdcXY: Boolean
+    ): FloatArray?
 
     /** Report progress 0..1 with engaging messages (aligned with Swift/Android overlay text). */
     private fun report(progress: Float, message: String, progressCallback: ((Float, String) -> Unit)?) {
@@ -265,19 +396,44 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             if (!isInitialized) return@withContext null
             ensureModelsFromAssets()
 
-            // Require all 6 .pte files (internal or external); avoid NPE and show clear error if missing
+            // Require Part1–3 and Part4a chunks; Part4b can be single .pte or chunked/tiled when those paths exist
             val required = listOf(
                 "sharp_split_part1_int8.pte",
                 "sharp_split_part2_int8.pte",
                 "sharp_split_part3_int8.pte",
                 "sharp_split_part4a_chunk_512.pte",
-                "sharp_split_part4a_chunk_65.pte",
-                "sharp_split_part4b.pte"
+                "sharp_split_part4a_chunk_65.pte"
             )
+            val part4bFile = findFile("sharp_split_part4b.pte")
+            val part4bTileFullFile = findFile("sharp_split_part4b_tile_full.pte")
+            val part4bTileFiles = (0 until PART4B_TILED_NUM).map { findFile("sharp_split_part4b_tile_%02d.pte".format(it)) }
+            val hasAll16TileFiles = part4bTileFiles.all { it != null }
+            val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+            val useCppFullPipeline = prefs.getBoolean("executorch_int8_use_cpp_full_pipeline", false)
+            val usePart4bTiledPref = prefs.getBoolean("executorch_int8_use_part4b_tiled", false)
+            val skipTiledAfterOom = prefs.getBoolean("executorch_int8_skip_tiled_after_oom", false)
+            val preferSinglePart4b = prefs.getBoolean("executorch_int8_prefer_single_part4b", false)
+            PARALLEL_TILES = prefs.getBoolean("executorch_int8_parallel_tiles", false)
+            val swapNdcXY = prefs.getBoolean("executorch_int8_swap_tile_ndc_xy", false)
+            val useChunkedPart4bTiled16Files = usePart4bTiledPref && !skipTiledAfterOom && (hasAll16TileFiles || part4bTileFullFile != null) && !preferSinglePart4b
+            val needPart4b = !useChunkedPart4bTiled16Files
             val missing = required.filter { findFile(it) == null }
-            if (missing.isNotEmpty()) {
-                LogUtil.e(TAG, "ExecuTorch INT8 models missing: $missing. Push to ${modelsDir.absolutePath} and retry.")
+            if (missing.isNotEmpty() || (needPart4b && part4bFile == null)) {
+                val missingPart4b = if (needPart4b && part4bFile == null)
+                    listOf("sharp_split_part4b.pte")
+                else emptyList()
+                LogUtil.e(TAG, "ExecuTorch INT8 models missing: ${missing + missingPart4b}. Push to ${modelsDir.absolutePath} and retry.")
                 return@withContext null
+            }
+            if (useChunkedPart4bTiled16Files && part4bFile == null) {
+                LogUtil.e(TAG, "Part4b tiled requested but sharp_split_part4b.pte missing (needed for fallback). Push part4b.pte to ${modelsDir.absolutePath}")
+                return@withContext null
+            }
+            when {
+                useChunkedPart4bTiled16Files -> LogUtil.d(TAG, "Part4b: using ${if (hasAll16TileFiles) "16 fused tile files" else "tile_full.pte 16x"} (${if (NATIVE_TILES_AVAILABLE) "native C++" else "Kotlin fallback"})")
+                preferSinglePart4b -> LogUtil.d(TAG, "Part4b: using single (Stable mode ON in Settings)")
+                usePart4bTiledPref && !skipTiledAfterOom -> LogUtil.d(TAG, "Part4b: tiled requested but tile models missing on device; using single Part4b")
+                else -> LogUtil.d(TAG, "Part4b: using single ${part4bFile!!.name} (FP32)")
             }
 
             val originalWidth = bitmap.width
@@ -289,6 +445,38 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             report(0f, "Preparing…", progressCallback)
             // 1. Stretch full image to 1536 (like Swift) or center-crop then resize; raw PLY coords
             val scaledBmp = if (USE_STRETCH_TO_SQUARE) getStretchToSquareBitmap(bitmap, IMAGE_SIZE) else getCenterCropBitmap(bitmap, IMAGE_SIZE)
+
+            // Optional: run full pipeline in C++ (Part1–4b single, no tiles). Use same model dir as Kotlin (internal or external).
+            if (useCppFullPipeline && NATIVE_FULL_AVAILABLE) {
+                val part1File = findFile("sharp_split_part1_int8.pte")
+                val tileFile = findFile("sharp_split_part4b_tile_00.pte")
+                val cppModelDir = tileFile?.parent ?: part1File?.parent ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
+                LogUtil.d(TAG, "[C++ FULL] Starting C++ full pipeline, modelDir=$cppModelDir (tile source: ${tileFile?.parent ?: "none"})")
+                preprocess(scaledBmp, false)
+                imageFloatBuffer.rewind()
+                val imageNCHW = FloatArray(3 * IMAGE_SIZE * IMAGE_SIZE)
+                imageFloatBuffer.get(imageNCHW)
+                LogUtil.d(TAG, "[C++ FULL] Image preprocessed, calling native (${imageNCHW.size} floats)")
+                try {
+                    val cppStartMs = System.currentTimeMillis()
+                    val cppResult = runFullPipelineInt8Native(cppModelDir, imageNCHW)
+                    val cppElapsedMs = System.currentTimeMillis() - cppStartMs
+                    if (cppResult != null && cppResult.isNotEmpty()) {
+                        LogUtil.d(TAG, "[C++ FULL] Native returned ${cppResult.size / 14} Gaussians in ${cppElapsedMs}ms")
+                        report(0.92f, "Saving your 3D room…", progressCallback)
+                        val result = writePly(cppResult, progressCallback, isPortrait)
+                        scaledBmp.recycle()
+                        report(1f, "Your room is ready!", progressCallback)
+                        LogUtil.d(TAG, "[TIMING] C++ full pipeline: Gaussians=${result.gaussianCount}, total=${cppElapsedMs}ms")
+                        return@withContext result
+                    } else {
+                        LogUtil.d(TAG, "[C++ FULL] Native returned null/empty after ${cppElapsedMs}ms, falling back to Kotlin")
+                    }
+                } catch (e: Throwable) {
+                    LogUtil.e(TAG, "[C++ FULL] C++ pipeline failed, falling back to Kotlin: ${e.message}", e)
+                }
+            }
+
             val halfSize = IMAGE_SIZE / 2
             val halfBitmap = Bitmap.createScaledBitmap(scaledBmp, halfSize, halfSize, true)
 
@@ -403,49 +591,127 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val tPart4bStart = System.currentTimeMillis()
 
             report(0.50f, "Adding the finishing touches…", progressCallback)
-            // Use 2 threads on low-RAM devices to avoid OOM; otherwise use more threads for ~2 min total (Part4b was ~4 min when forced to 2 on capable devices)
             val part4bThreads = part4bThreadCount()
-            val mod4b = Module.load(
-                findFile("sharp_split_part4b.pte")!!.absolutePath,
-                Module.LOAD_MODE_MMAP,
-                part4bThreads
-            )
-            LogUtil.d(TAG, "Part4b forward: 7 inputs tokens, img, latent0, latent1, x0Feat, x1Feat, x2Feat")
-            val part4bInputs = listOf(
-                EValue.from(Tensor.fromBlob(combinedTokens, longArrayOf(1, 577, 1024))),
-                EValue.from(fullImgTensor),
-                EValue.from(Tensor.fromBlob(latent0, longArrayOf(1, 1024, 96, 96))),
-                EValue.from(Tensor.fromBlob(latent1, longArrayOf(1, 1024, 96, 96))),
-                EValue.from(Tensor.fromBlob(x0Feat, longArrayOf(1, 1024, 96, 96))),
-                EValue.from(Tensor.fromBlob(x1Feat, longArrayOf(1, 1024, 48, 48))),
-                EValue.from(Tensor.fromBlob(x2Feat, longArrayOf(1, 1024, 24, 24)))
-            )
-            val part4bEstimatedSeconds = 80f
-            val part4bProgressStart = 0.55f
-            val part4bProgressSpan = 0.35f
-            val finalParams = coroutineScope {
-                val deferred = async(Dispatchers.IO) {
-                    mod4b.forward(*part4bInputs.toTypedArray())[0].toTensor()
+            var gaussianData: FloatArray? = null
+
+            if (useChunkedPart4bTiled16Files && (hasAll16TileFiles || part4bTileFullFile != null)) {
+                val tileModelFile = if (hasAll16TileFiles) part4bTileFiles[0]!! else part4bTileFullFile!!
+                val xLowresH = 24
+                val xLowresW = 24
+                val xLowresC = 1024
+                val xLowres = FloatArray(xLowresC * xLowresH * xLowresW)
+                for (row in 0 until xLowresH) {
+                    for (col in 0 until xLowresW) {
+                        val srcBase = (1 + row * xLowresW + col) * xLowresC
+                        for (ch in 0 until xLowresC) {
+                            xLowres[ch * xLowresH * xLowresW + row * xLowresW + col] = combinedTokens[srcBase + ch]
+                        }
+                    }
                 }
-                val startMs = System.currentTimeMillis()
-                while (!deferred.isCompleted) {
-                    delay(2000)
-                    if (deferred.isCompleted) break
-                    val elapsedSec = (System.currentTimeMillis() - startMs) / 1000f
-                    val p = part4bProgressStart + (elapsedSec / part4bEstimatedSeconds).coerceIn(0f, 1f) * part4bProgressSpan
-                    report(p, "Adding the finishing touches… This may take a minute.", progressCallback)
+                val fullImgData = fullImgTensor.dataAsFloatArray
+                if (NATIVE_TILES_AVAILABLE) {
+                    try {
+                        report(0.51f, "Generating 3D room (native C++)…", progressCallback)
+                        gaussianData = runTiledPart4bNative(
+                            tileModelFile.absolutePath,
+                            fullImgData, latent0, latent1, x0Feat, x1Feat, x2Feat, xLowres,
+                            part4bThreads, PARALLEL_TILES, swapNdcXY
+                        )
+                        if (gaussianData != null) {
+                            val tiledMs = System.currentTimeMillis() - tPart4bStart
+                            LogUtil.d(TAG, "[TIMING] Part4b tiled (native C++): ${tiledMs}ms, ${gaussianData.size / 14} Gaussians")
+                        }
+                    } catch (e: Throwable) {
+                        LogUtil.e(TAG, "Native tile pipeline failed, falling back to Kotlin tile loop: ${e.message}", e)
+                    }
                 }
-                deferred.await()
+                // When native didn't produce output (not loaded or threw), run 16-tile path in Kotlin
+                if (gaussianData == null) {
+                    LogUtil.d(TAG, "Using Kotlin tile loop fallback (native library not loaded or failed)")
+                    val grid = PART4B_TILED_GRID
+                    val imgC = 3
+                    val imgH = IMAGE_SIZE
+                    val imgW = IMAGE_SIZE
+                    val imgTileH = imgH / grid
+                    val imgTileW = imgW / grid
+                    val tCropStart = System.currentTimeMillis()
+                    val allTileInputs = Array(PART4B_TILED_NUM) { tileIdx ->
+                        val tileRow = tileIdx / grid
+                        val tileCol = tileIdx % grid
+                        arrayOf(
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(fullImgData, imgC, imgH, imgW, tileRow, tileCol), longArrayOf(1, 3, imgTileH.toLong(), imgTileW.toLong()))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(latent0, 1024, 96, 96, tileRow, tileCol), longArrayOf(1, 1024, 24, 24))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(latent1, 1024, 96, 96, tileRow, tileCol), longArrayOf(1, 1024, 24, 24))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(x0Feat, 1024, 96, 96, tileRow, tileCol), longArrayOf(1, 1024, 24, 24))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(x1Feat, 1024, 48, 48, tileRow, tileCol), longArrayOf(1, 1024, 12, 12))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(x2Feat, 1024, 24, 24, tileRow, tileCol), longArrayOf(1, 1024, 6, 6))),
+                            EValue.from(Tensor.fromBlob(cropTileNCHW(xLowres, xLowresC, xLowresH, xLowresW, tileRow, tileCol), longArrayOf(1, 1024, 6, 6)))
+                        )
+                    }
+                    LogUtil.d(TAG, "Pre-computed 16 tile crops in ${System.currentTimeMillis() - tCropStart}ms")
+                    val floatsPerTile = PART4B_GAUSSIANS_PER_TILE * 14
+                    gaussianData = FloatArray(PART4B_TILED_NUM * floatsPerTile)
+                    val modTile = Module.load(tileModelFile.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
+                    for (tileIdx in 0 until PART4B_TILED_NUM) {
+                        val tTile = System.currentTimeMillis()
+                        val tileOut = modTile.forward(*allTileInputs[tileIdx])
+                        val packedTile = tileOut[0].toTensor().dataAsFloatArray.copyOf()
+                        correctNDC(packedTile, tileIdx / grid, tileIdx % grid, swapNdcXY)
+                        System.arraycopy(packedTile, 0, gaussianData!!, tileIdx * floatsPerTile, packedTile.size)
+                        LogUtil.d(TAG, "Part4b tile $tileIdx: ${packedTile.size / 14} Gaussians, ${System.currentTimeMillis() - tTile}ms")
+                        report(0.50f + 0.40f * (tileIdx + 1) / PART4B_TILED_NUM, "Generating 3D room (tile ${tileIdx + 1}/$PART4B_TILED_NUM)…", progressCallback)
+                    }
+                    modTile.destroy()
+                    LogUtil.d(TAG, "[TIMING] Part4b tiled (Kotlin fallback): ${System.currentTimeMillis() - tPart4bStart}ms, ${PART4B_TILED_NUM * PART4B_GAUSSIANS_PER_TILE} Gaussians")
+                }
             }
-            val part4bMs = System.currentTimeMillis() - tPart4bStart
-            LogUtil.d(TAG, "[TIMING] Part4b forward: ${part4bMs}ms")
+
+            if (gaussianData == null) {
+                val mod4b = Module.load(
+                    part4bFile!!.absolutePath,
+                    Module.LOAD_MODE_MMAP,
+                    part4bThreads
+                )
+                LogUtil.d(TAG, "Part4b forward: 7 inputs tokens, img, latent0, latent1, x0Feat, x1Feat, x2Feat")
+                val part4bInputs = listOf(
+                    EValue.from(Tensor.fromBlob(combinedTokens, longArrayOf(1, 577, 1024))),
+                    EValue.from(fullImgTensor),
+                    EValue.from(Tensor.fromBlob(latent0, longArrayOf(1, 1024, 96, 96))),
+                    EValue.from(Tensor.fromBlob(latent1, longArrayOf(1, 1024, 96, 96))),
+                    EValue.from(Tensor.fromBlob(x0Feat, longArrayOf(1, 1024, 96, 96))),
+                    EValue.from(Tensor.fromBlob(x1Feat, longArrayOf(1, 1024, 48, 48))),
+                    EValue.from(Tensor.fromBlob(x2Feat, longArrayOf(1, 1024, 24, 24)))
+                )
+                val part4bEstimatedSeconds = 80f
+                val part4bProgressStart = 0.55f
+                val part4bProgressSpan = 0.35f
+                val finalParams = coroutineScope {
+                    val deferred = async(Dispatchers.IO) {
+                        mod4b.forward(*part4bInputs.toTypedArray())[0].toTensor()
+                    }
+                    val startMs = System.currentTimeMillis()
+                    while (!deferred.isCompleted) {
+                        delay(2000)
+                        if (deferred.isCompleted) break
+                        val elapsedSec = (System.currentTimeMillis() - startMs) / 1000f
+                        val p = part4bProgressStart + (elapsedSec / part4bEstimatedSeconds).coerceIn(0f, 1f) * part4bProgressSpan
+                        report(p, "Adding the finishing touches… This may take a minute.", progressCallback)
+                    }
+                    deferred.await()
+                }
+                gaussianData = finalParams.dataAsFloatArray.copyOf()
+                mod4b.destroy()
+                val part4bMs = System.currentTimeMillis() - tPart4bStart
+                LogUtil.d(TAG, "[TIMING] Part4b forward: ${part4bMs}ms")
+            }
+
             report(0.92f, "Saving your 3D room…", progressCallback)
             val tPlyStart = System.currentTimeMillis()
             LogUtil.d(TAG, "[PLY] Part4b done. Writing PLY with raw coordinates (center-crop input = 1:1, no aspect scale)")
-            val result = writePly(finalParams.dataAsFloatArray, progressCallback, isPortrait)
+            val result = writePly(gaussianData, progressCallback, isPortrait)
             val plyMs = System.currentTimeMillis() - tPlyStart
             LogUtil.d(TAG, "[TIMING] writePly: ${plyMs}ms")
-            mod4b.destroy(); scaledBmp.recycle()
+            scaledBmp.recycle()
             report(1f, "Your room is ready!", progressCallback)
             val totalMs = System.currentTimeMillis() - pipelineStartMs
             LogUtil.d(TAG, "[ASPECT] inference complete | Gaussians=${result.gaussianCount} | PLY bbox room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} m")

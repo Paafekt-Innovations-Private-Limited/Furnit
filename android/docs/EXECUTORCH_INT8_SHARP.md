@@ -10,10 +10,11 @@ The ExecuTorch INT8 backend expects the following files under the app’s `model
   - `sharp_split_part1_int8.pte`
   - `sharp_split_part2_int8.pte`
   - `sharp_split_part3_int8.pte`
-- **Decoder / ViT chunks (FP32) + final decoder (FP32):**
+- **Decoder / ViT chunks (FP32) + final decoder (FP32, optional INT8):**
   - `sharp_split_part4a_chunk_512.pte`
   - `sharp_split_part4a_chunk_65.pte`
-  - `sharp_split_part4b.pte`
+  - `sharp_split_part4b.pte` (FP32, required fallback)
+  - `sharp_split_part4b_int8.pte` (INT8, **optional**; when present, the C++ full pipeline prefers this over the FP32 file for Part 4b)
 
 The code searches first in the app’s **internal models dir** (`context.filesDir/models`) and then in the **external models dir** (`context.getExternalFilesDir("models")`).
 
@@ -98,11 +99,13 @@ The core implementation lives in `ExecutorchInt8Sharp`:
 
 1. **Export models** (from `android/`; ensure enough disk space):
    - INT8 parts 1–3:  
-     `python export_sharp_executorch_int8_split4.py`  
-     Output: `executorch_int8_models/sharp_split_part1_int8.pte`, `part2_int8.pte`, `part3_int8.pte`.
+   `python export_sharp_executorch_int8_split4.py`  
+   Output: `executorch_int8_models/sharp_split_part1_int8.pte`, `part2_int8.pte`, `part3_int8.pte`.
    - Chunked Part 4 (if not already present):  
-     `python export_sharp_executorch_split4.py --chunked-part4`  
-     Output in `executorch_models/`: `sharp_split_part4a_chunk_512.pte`, `sharp_split_part4a_chunk_65.pte`, `sharp_split_part4b.pte`.
+   `python export_sharp_executorch_split4.py --chunked-part4`  
+   Output in `executorch_models/`: `sharp_split_part4a_chunk_512.pte`, `sharp_split_part4a_chunk_65.pte`, `sharp_split_part4b.pte`.
+   - **Optional: ExecuTorch INT8 Part 4b for C++ full pipeline:**  
+   Export or place `sharp_split_part4b_int8.pte` into the same `executorch_models/` (or `executorch_int8_models/`) folder. On device, when this file is present next to `sharp_split_part4b.pte`, the C++ full INT8 pipeline will automatically run INT8 Part 4b; when it is absent, the FP32 `sharp_split_part4b.pte` is used as a safe fallback.
 
 2. **Push models to device** (optional if using packaged APK)  
    `./push_sharp_executorch_int8_models.sh`  
