@@ -308,6 +308,21 @@ static std::string pathJoin(const std::string& dir, const std::string& name) {
     return dir + "/" + name;
 }
 
+/** Prefer INT8 Part4b when present (e.g. sharp_split_part4b_int8.pte), else use FP32 (sharp_split_part4b.pte). */
+static std::string tryInt8ThenFp32(const std::string& modelDir, const std::string& fp32Name) {
+    size_t dot = fp32Name.rfind('.');
+    std::string int8Name = (dot != std::string::npos)
+        ? fp32Name.substr(0, dot) + "_int8" + fp32Name.substr(dot)
+        : fp32Name + "_int8";
+    std::string int8Path = pathJoin(modelDir, int8Name);
+    std::ifstream f(int8Path);
+    if (f.good()) {
+        f.close();
+        return int8Path;
+    }
+    return pathJoin(modelDir, fp32Name);
+}
+
 // ── Helper: tiled Part4b inside full pipeline (uses same export as Kotlin path) ───
 // Build 24x24x1024 low-res feature map from combinedTokens (CLS + 576 spatial),
 // then run a 4x4 grid of tiles, correcting NDC per tile and concatenating outputs.
@@ -331,23 +346,27 @@ static bool runPart4bTiledFullPipeline(
     const int x2H = 24, x2W = 24;
     const int xLowH = 24, xLowW = 24, xLowC = 1024;
 
-    // Choose tile model file: prefer tile_full.pte; if missing, fall back to tile_00.pte
-    std::string tileFull = pathJoin(modelDir, "sharp_split_part4b_tile_full.pte");
-    std::ifstream fFull(tileFull);
+    // Choose tile model: prefer INT8 then FP32; prefer tile_full then tile_00
     std::string modelPath;
-    if (fFull.good()) {
-        modelPath = tileFull;
-        fFull.close();
+    const std::string tileFullFp32 = "sharp_split_part4b_tile_full.pte";
+    const std::string tile00Fp32  = "sharp_split_part4b_tile_00.pte";
+    std::string candidate = tryInt8ThenFp32(modelDir, tileFullFp32);
+    std::ifstream f1(candidate);
+    if (f1.good()) {
+        f1.close();
+        modelPath = candidate;
+        LOGD("runPart4bTiledFullPipeline: using %s", modelPath.c_str());
     } else {
-        fFull.close();
-        std::string tile00 = pathJoin(modelDir, "sharp_split_part4b_tile_00.pte");
-        std::ifstream f0(tile00);
-        if (!f0.good()) {
-            LOGD("runPart4bTiledFullPipeline: no tile_full or tile_00 model found, skipping tiled path");
+        f1.close();
+        candidate = tryInt8ThenFp32(modelDir, tile00Fp32);
+        std::ifstream f2(candidate);
+        if (!f2.good()) {
+            LOGD("runPart4bTiledFullPipeline: no tile_full or tile_00 (INT8 or FP32) found, skipping tiled path");
             return false;
         }
-        f0.close();
-        modelPath = tile00;
+        f2.close();
+        modelPath = candidate;
+        LOGD("runPart4bTiledFullPipeline: using %s", modelPath.c_str());
     }
 
     // Build xLowres from combinedTokens: [CLS + 576 tokens, 1024] -> [1024,24,24] NCHW.
@@ -785,9 +804,11 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
         return jResult;
     }
 
-    // 4b(b): single full Part4b as fallback.
+    // 4b(b): single full Part4b as fallback. Prefer INT8 when present (sharp_split_part4b_int8.pte).
     long long tP4b = nowMs();
-    std::string path4b = pathJoin(modelDir, "sharp_split_part4b.pte");
+    std::string path4b = tryInt8ThenFp32(modelDir, "sharp_split_part4b.pte");
+    bool part4bIsInt8 = (path4b.find("_int8.pte") != std::string::npos);
+    LOGD("Part4b single: %s", part4bIsInt8 ? "INT8" : "FP32");
     auto mod4b = std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap);
     if (mod4b->load() != Error::Ok) {
         LOGE("Part4b load fail: %s", path4b.c_str());

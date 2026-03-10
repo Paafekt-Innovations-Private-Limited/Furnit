@@ -18,6 +18,8 @@ The default build embeds **ExecuTorch SHARP .pte models** (~1.9 GB) in assets, s
    adb push executorch_models/sharp_split_part4a_chunk_512.pte /sdcard/Android/data/com.furnit.android/files/models/
    adb push executorch_models/sharp_split_part4a_chunk_65.pte /sdcard/Android/data/com.furnit.android/files/models/
    adb push executorch_models/sharp_split_part4b.pte /sdcard/Android/data/com.furnit.android/files/models/
+   # Optional: ExecuTorch INT8 Part 4b (C++ full pipeline prefers this when present)
+   adb push executorch_models/sharp_split_part4b_int8.pte /sdcard/Android/data/com.furnit.android/files/models/
    ```
    Or copy the same files onto the device into that path (e.g. via file manager). Without these, the app runs but “Create room from photo” (AI) will report missing models.
 

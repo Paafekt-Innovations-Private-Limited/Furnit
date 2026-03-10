@@ -125,6 +125,9 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
     }
     from(execChunkedDir) {
         include "sharp_split_part4a_chunk_512.pte", "sharp_split_part4a_chunk_65.pte", "sharp_split_part4b.pte"
+        // Optional INT8 decoder for C++ full pipeline; when present next to sharp_split_part4b.pte,
+        // native code prefers this file for Part 4b and falls back to FP32 otherwise.
+        include "sharp_split_part4b_int8.pte"
         if (includePart4bTilesInAssets) {
             include "sharp_split_part4b_tile_full.pte"
             include "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte"

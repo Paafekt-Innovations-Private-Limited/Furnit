@@ -4,6 +4,7 @@
 # Expects:
 #   - executorch_int8_models/ : sharp_split_part1_int8.pte, part2_int8.pte, part3_int8.pte
 #   - executorch_models/       : sharp_split_part4a_chunk_512.pte, part4a_chunk_65.pte, sharp_split_part4b.pte
+#   - (optional)               : sharp_split_part4b_int8.pte (INT8 decoder; C++ full pipeline prefers this when present)
 #
 # Usage:
 #   ./push_sharp_executorch_int8_models.sh
@@ -59,6 +60,15 @@ for f in "$CHUNKED_DIR"/sharp_split_part4a_chunk_512.pte "$CHUNKED_DIR"/sharp_sp
     FILES_TO_PUSH+=("$f")
   else
     echo "Warning: Missing or empty $f"
+  fi
+done
+
+# Optional: INT8 Part 4b (C++ full pipeline prefers this when present)
+for dir in "$CHUNKED_DIR" "$INT8_DIR"; do
+  f="$dir/sharp_split_part4b_int8.pte"
+  if [ -f "$f" ] && [ -s "$f" ]; then
+    FILES_TO_PUSH+=("$f")
+    break
   fi
 done
 
