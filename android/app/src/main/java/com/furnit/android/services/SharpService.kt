@@ -564,10 +564,20 @@ class SharpService private constructor(private val context: Context) {
                     ))
                 } else if (useExecutorch) {
                     callback.onProgress(0.2f, "Running SHARP (ExecuTorch)...")
-                    val result = kotlinx.coroutines.runBlocking {
-                        executorchSharp.inferStreaming(image) { progress, message ->
-                            callback.onProgress(progress, message)
+                    val result = try {
+                        kotlinx.coroutines.runBlocking {
+                            executorchSharp.inferStreaming(image) { progress, message ->
+                                callback.onProgress(progress, message)
+                            }
                         }
+                    } catch (e: OutOfMemoryError) {
+                        LogUtil.e(TAG, "ExecuTorch full model OOM on inference: ${e.message}")
+                        callback.onError("Out of memory. Try closing other apps or use ExecuTorch INT8 (≤8GB).")
+                        return
+                    } catch (e: Throwable) {
+                        LogUtil.e(TAG, "ExecuTorch full model inference crashed: ${e.message}", e)
+                        callback.onError("SHARP ExecuTorch inference failed. Try again or use ExecuTorch INT8.")
+                        return
                     }
 
                     if (result == null) {

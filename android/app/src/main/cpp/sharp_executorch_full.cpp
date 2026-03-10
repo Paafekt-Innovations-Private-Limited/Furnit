@@ -11,12 +11,14 @@
  */
 
 #include <jni.h>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <string>
 #include <vector>
 #include <chrono>
@@ -57,10 +59,13 @@ static constexpr int PADDING_1X = 3;
 static constexpr int PADDING_05X = 6;
 static constexpr int PARAMS_PER_GAUSSIAN = 14;
 static constexpr int TOKENS_577 = 577;
+static constexpr int PATCH_BATCH = 4;  // batch-4 Part1/Part2 for ~35→~9 launches
 static constexpr int HALF_SIZE = IMAGE_SIZE / 2;   // 768
 static constexpr int STRIDE_1X = (IMAGE_SIZE - PATCH_SIZE) / 4;  // 288
 static constexpr int STRIDE_05X = (HALF_SIZE - PATCH_SIZE) / 2;  // 192
 static constexpr int SPATIAL_HW = SPATIAL_SIZE * SPATIAL_SIZE;    // 576
+
+static std::string pathJoin(const std::string& dir, const std::string& name);
 
 // ── Aligned allocation helper ────────────────────────────────────────────────
 static constexpr size_t ALIGN = 32;
@@ -84,7 +89,9 @@ struct Workspace {
     float* halfImg   = nullptr;  // 3 * HALF_SIZE * HALF_SIZE
     float* quarterImg = nullptr; // 3 * PATCH_SIZE * PATCH_SIZE
     float* patchBuf  = nullptr;  // 3 * PATCH_SIZE * PATCH_SIZE
-    float* tokensCopy = nullptr; // TOKENS_577 * FEATURE_DIM
+    float* patchBuf4 = nullptr;  // PATCH_BATCH * 3 * PATCH_SIZE * PATCH_SIZE
+    float* tokensCopy = nullptr;  // TOKENS_577 * FEATURE_DIM
+    float* tokensCopy4 = nullptr; // PATCH_BATCH * TOKENS_577 * FEATURE_DIM (for Part2_b4 input)
     bool allocated = false;
 
     bool allocate() {
@@ -93,8 +100,10 @@ struct Workspace {
         const size_t feat48 = FEATURE_DIM * M_05X * M_05X;
         const size_t feat24 = FEATURE_DIM * SPATIAL_HW;
         const size_t patchSz = 3 * PATCH_SIZE * PATCH_SIZE;
+        const size_t patchSz4 = (size_t)PATCH_BATCH * patchSz;
         const size_t halfSz = 3 * HALF_SIZE * HALF_SIZE;
         const size_t tokensSz = TOKENS_577 * FEATURE_DIM;
+        const size_t tokensSz4 = (size_t)PATCH_BATCH * tokensSz;
 
         latent0    = alignedAlloc(feat96);
         latent1    = alignedAlloc(feat96);
@@ -105,10 +114,13 @@ struct Workspace {
         halfImg    = alignedAlloc(halfSz);
         quarterImg = alignedAlloc(patchSz);
         patchBuf   = alignedAlloc(patchSz);
+        patchBuf4  = alignedAlloc(patchSz4);
         tokensCopy = alignedAlloc(tokensSz);
+        tokensCopy4 = alignedAlloc(tokensSz4);
 
         allocated = latent0 && latent1 && x0Feat && x1Feat && x2Feat &&
-                    tempSpatial && halfImg && quarterImg && patchBuf && tokensCopy;
+                    tempSpatial && halfImg && quarterImg && patchBuf && patchBuf4 &&
+                    tokensCopy && tokensCopy4;
         if (!allocated) release();
         return allocated;
     }
@@ -129,9 +141,9 @@ struct Workspace {
         alignedFree(latent0);   alignedFree(latent1);   alignedFree(x0Feat);
         alignedFree(x1Feat);    alignedFree(x2Feat);    alignedFree(tempSpatial);
         alignedFree(halfImg);   alignedFree(quarterImg); alignedFree(patchBuf);
-        alignedFree(tokensCopy);
+        alignedFree(patchBuf4); alignedFree(tokensCopy); alignedFree(tokensCopy4);
         latent0 = latent1 = x0Feat = x1Feat = x2Feat = tempSpatial = nullptr;
-        halfImg = quarterImg = patchBuf = tokensCopy = nullptr;
+        halfImg = quarterImg = patchBuf = patchBuf4 = tokensCopy = tokensCopy4 = nullptr;
         allocated = false;
     }
 };
@@ -139,27 +151,45 @@ struct Workspace {
 // ── Singleton module cache ───────────────────────────────────────────────────
 struct ModuleCache {
     std::unique_ptr<ETModule> mod1, mod2;
+    std::unique_ptr<ETModule> mod1_b4, mod2_b4;  // batch=4 for patch batching
     std::string modelDir;
     std::mutex mu;
 
     bool ensureLoaded(const std::string& dir) {
         std::lock_guard<std::mutex> lock(mu);
         if (mod1 && mod2 && modelDir == dir) return true;
-        mod1.reset(); mod2.reset();
+        mod1.reset(); mod2.reset(); mod1_b4.reset(); mod2_b4.reset();
         modelDir = dir;
-        std::string p1 = dir + "/sharp_split_part1_int8.pte";
-        std::string p2 = dir + "/sharp_split_part2_int8.pte";
+        std::string p1 = pathJoin(dir, "sharp_split_part1_int8.pte");
+        std::string p2 = pathJoin(dir, "sharp_split_part2_int8.pte");
         mod1 = std::make_unique<ETModule>(p1, ETModule::LoadMode::Mmap);
         if (mod1->load() != Error::Ok) { LOGE("Cache: Part1 load fail"); mod1.reset(); return false; }
         mod2 = std::make_unique<ETModule>(p2, ETModule::LoadMode::Mmap);
         if (mod2->load() != Error::Ok) { LOGE("Cache: Part2 load fail"); mod2.reset(); mod1.reset(); return false; }
         LOGD("ModuleCache: Part1+Part2 loaded (kept alive across calls)");
+
+        // Batch=4 Part1/Part2: load only when enabled (b4 forward can crash on some runtimes; fallback uses single-patch)
+        static const bool kEnableB4 = false;  // set true when b4 runtime crash is resolved
+        if (kEnableB4) {
+            std::string p1b4 = pathJoin(dir, "sharp_split_part1_b4_int8.pte");
+            std::string p2b4 = pathJoin(dir, "sharp_split_part2_b4_int8.pte");
+            std::ifstream f1(p1b4), f2(p2b4);
+            if (f1.good() && f2.good()) {
+                f1.close(); f2.close();
+                mod1_b4 = std::make_unique<ETModule>(p1b4, ETModule::LoadMode::Mmap);
+                mod2_b4 = std::make_unique<ETModule>(p2b4, ETModule::LoadMode::Mmap);
+                if (mod1_b4->load() == Error::Ok && mod2_b4->load() == Error::Ok)
+                    LOGD("ModuleCache: Part1+Part2 batch=4 loaded (patch batching enabled)");
+                else
+                    mod1_b4.reset(), mod2_b4.reset();
+            }
+        }
         return true;
     }
 
     void release() {
         std::lock_guard<std::mutex> lock(mu);
-        mod1.reset(); mod2.reset(); modelDir.clear();
+        mod1.reset(); mod2.reset(); mod1_b4.reset(); mod2_b4.reset(); modelDir.clear();
         LOGD("ModuleCache: released Part1+Part2");
     }
 };
@@ -688,6 +718,68 @@ static bool runPart4bTiledFullPipeline(
     return true;
 }
 
+// ── Gaussian pruning: keep top-N by opacity ─────────────────────────────────
+// Opacity is at offset 3 in [x,y,z,opacity,sx,sy,sz,rw,rx,ry,rz,c0,c1,c2].
+// Uses partial_sort to avoid full sort cost.
+static void pruneGaussiansByOpacity(std::vector<float>& gaussians, int maxGaussians) {
+    const int totalGaussians = static_cast<int>(gaussians.size()) / PARAMS_PER_GAUSSIAN;
+    if (maxGaussians <= 0 || totalGaussians <= maxGaussians) return;
+
+    auto tStart = std::chrono::steady_clock::now();
+
+    std::vector<int> indices(totalGaussians);
+    std::iota(indices.begin(), indices.end(), 0);
+
+    std::partial_sort(indices.begin(), indices.begin() + maxGaussians, indices.end(),
+        [&gaussians](int a, int b) {
+            return gaussians[a * PARAMS_PER_GAUSSIAN + 3] > gaussians[b * PARAMS_PER_GAUSSIAN + 3];
+        });
+
+    std::vector<float> pruned(maxGaussians * PARAMS_PER_GAUSSIAN);
+    for (int i = 0; i < maxGaussians; ++i) {
+        std::memcpy(pruned.data() + i * PARAMS_PER_GAUSSIAN,
+                     gaussians.data() + indices[i] * PARAMS_PER_GAUSSIAN,
+                     PARAMS_PER_GAUSSIAN * sizeof(float));
+    }
+    gaussians = std::move(pruned);
+
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - tStart).count();
+    LOGD("Pruned Gaussians: %d -> %d (top by opacity, %lldms)", totalGaussians, maxGaussians, (long long)ms);
+}
+
+// Prune a raw float pointer + count (for single Part4b path that doesn't use vector).
+// Returns new count. Caller must use prunedOut.
+static int pruneGaussiansFromPtr(const float* src, int totalGaussians, int maxGaussians,
+                                  std::vector<float>& prunedOut) {
+    if (maxGaussians <= 0 || totalGaussians <= maxGaussians) {
+        prunedOut.assign(src, src + totalGaussians * PARAMS_PER_GAUSSIAN);
+        return totalGaussians;
+    }
+
+    auto tStart = std::chrono::steady_clock::now();
+
+    std::vector<int> indices(totalGaussians);
+    std::iota(indices.begin(), indices.end(), 0);
+
+    std::partial_sort(indices.begin(), indices.begin() + maxGaussians, indices.end(),
+        [src](int a, int b) {
+            return src[a * PARAMS_PER_GAUSSIAN + 3] > src[b * PARAMS_PER_GAUSSIAN + 3];
+        });
+
+    prunedOut.resize(maxGaussians * PARAMS_PER_GAUSSIAN);
+    for (int i = 0; i < maxGaussians; ++i) {
+        std::memcpy(prunedOut.data() + i * PARAMS_PER_GAUSSIAN,
+                     src + indices[i] * PARAMS_PER_GAUSSIAN,
+                     PARAMS_PER_GAUSSIAN * sizeof(float));
+    }
+
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - tStart).count();
+    LOGD("Pruned Gaussians: %d -> %d (top by opacity, %lldms)", totalGaussians, maxGaussians, (long long)ms);
+    return maxGaussians;
+}
+
 // ── Timing helper ────────────────────────────────────────────────────────────
 static long long nowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -722,12 +814,16 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
         JNIEnv* env,
         jobject,
         jstring modelDirPath,
-        jfloatArray imageNCHW) {
+        jfloatArray imageNCHW,
+        jint maxGaussians,
+        jboolean preferSinglePart4b) {
 
     if (!modelDirPath || !imageNCHW) {
         LOGE("runFullPipelineInt8: null modelDir or image");
         return nullptr;
     }
+    const int maxG = static_cast<int>(maxGaussians);
+    const bool useSinglePart4bOnly = (preferSinglePart4b == JNI_TRUE);
 
     ensureRuntimeInit();
     const long long t0 = nowMs();
@@ -783,81 +879,181 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     float* ws_patch = g_workspace.patchBuf;
     float* ws_tokens = g_workspace.tokensCopy;
     float* ws_temp = g_workspace.tempSpatial;
+    const size_t patchSz = (size_t)(3 * PATCH_SIZE * PATCH_SIZE);
+    const size_t tokenSliceSz = (size_t)TOKENS_577 * FEATURE_DIM;
+    const size_t featSliceSz = (size_t)FEATURE_DIM * SPATIAL_HW;
 
-    // ── 1x patches (5x5 = 25) ───────────────────────────────────────────────
+    // ── 1x patches (5x5 = 25): batch-4 when mod1_b4/mod2_b4 available ─────────
     long long t1x = nowMs();
-    for (int i = 0; i < GRID_1X; ++i) {
-        for (int j = 0; j < GRID_1X; ++j) {
-            cropNCHW(imageData, IMAGE_SIZE, IMAGE_SIZE, 3,
-                     i * STRIDE_1X, j * STRIDE_1X, PATCH_SIZE, PATCH_SIZE,
-                     ws_patch);
-            auto pTensor = from_blob(ws_patch, {1, 3, PATCH_SIZE, PATCH_SIZE});
+    ETModule* m1 = g_moduleCache.mod1.get();
+    ETModule* m2 = g_moduleCache.mod2.get();
+    ETModule* m1_b4 = g_moduleCache.mod1_b4.get();
+    ETModule* m2_b4 = g_moduleCache.mod2_b4.get();
+
+    for (int start = 0; start < 25; start += PATCH_BATCH) {
+        const int n = std::min(PATCH_BATCH, 25 - start);
+        const bool useBatch = (n == PATCH_BATCH && m1_b4 && m2_b4);
+        bool batchOk = false;
+
+        if (useBatch) {
+            for (int b = 0; b < PATCH_BATCH; ++b) {
+                const int ii = (start + b) / GRID_1X;
+                const int jj = (start + b) % GRID_1X;
+                cropNCHW(imageData, IMAGE_SIZE, IMAGE_SIZE, 3,
+                         ii * STRIDE_1X, jj * STRIDE_1X, PATCH_SIZE, PATCH_SIZE,
+                         g_workspace.patchBuf4 + b * patchSz);
+            }
+            auto pTensor = from_blob(g_workspace.patchBuf4, {PATCH_BATCH, 3, PATCH_SIZE, PATCH_SIZE});
             std::vector<EValue> in1 = {*pTensor};
-            auto out1 = g_moduleCache.mod1->forward(in1);
-            if (!out1.ok() || out1->size() < 2) {
-                LOGE("Part1 fail 1x (%d,%d)", i, j);
-                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-                return nullptr;
+            auto out1 = m1_b4->forward(in1);
+            const size_t needTokenNumel = PATCH_BATCH * tokenSliceSz;
+            const size_t needFeatNumel = PATCH_BATCH * featSliceSz;
+            if (out1.ok() && out1->size() >= 2) {
+                const auto& tokT = (*out1)[0].toTensor();
+                const auto& spaT = (*out1)[1].toTensor();
+                const float* tokBase = tokT.const_data_ptr<float>();
+                const float* spaBase = spaT.const_data_ptr<float>();
+                if (tokBase && spaBase && tokT.numel() >= needTokenNumel && spaT.numel() >= needTokenNumel) {
+                    for (int b = 0; b < PATCH_BATCH; ++b) {
+                        const int ii = (start + b) / GRID_1X;
+                        const int jj = (start + b) % GRID_1X;
+                        reshapeToSpatial(spaBase + b * tokenSliceSz, tokenSliceSz, ws_temp);
+                        mergeCrop(g_workspace.latent0, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+                        reshapeToSpatial(tokBase + b * tokenSliceSz, tokenSliceSz, ws_temp);
+                        mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+                    }
+                    std::memcpy(g_workspace.tokensCopy4, tokBase, PATCH_BATCH * tokenSliceSz * sizeof(float));
+                    auto tokInput = from_blob(g_workspace.tokensCopy4, {PATCH_BATCH, TOKENS_577, FEATURE_DIM});
+                    std::vector<EValue> in2 = {*tokInput};
+                    auto out2 = m2_b4->forward(in2);
+                    if (out2.ok() && !out2->empty()) {
+                        const auto& featT = (*out2)[0].toTensor();
+                        const float* featBase = featT.const_data_ptr<float>();
+                        if (featBase && featT.numel() >= needFeatNumel) {
+                            for (int b = 0; b < PATCH_BATCH; ++b) {
+                                const int ii = (start + b) / GRID_1X;
+                                const int jj = (start + b) % GRID_1X;
+                                reshapeToSpatial(featBase + b * featSliceSz, featSliceSz, ws_temp);
+                                mergeCrop(g_workspace.x0Feat, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+                            }
+                            batchOk = true;
+                        }
+                    }
+                }
             }
-            const auto& tokT = (*out1)[0].toTensor();
-            const auto& spaT = (*out1)[1].toTensor();
-            const float* tokPtr = tokT.const_data_ptr<float>();
-            const float* spaPtr = spaT.const_data_ptr<float>();
-            size_t tokLen = tokT.numel();
-            size_t spaLen = spaT.numel();
-
-            reshapeToSpatial(spaPtr, spaLen, ws_temp);
-            mergeCrop(g_workspace.latent0, M_1X, ws_temp, j, i, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
-
-            reshapeToSpatial(tokPtr, tokLen, ws_temp);
-            mergeCrop(g_workspace.latent1, M_1X, ws_temp, j, i, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
-
-            std::memcpy(ws_tokens, tokPtr, tokLen * sizeof(float));
-            auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
-            std::vector<EValue> in2 = {*tokInput};
-            auto out2 = g_moduleCache.mod2->forward(in2);
-            if (!out2.ok() || out2->empty()) {
-                LOGE("Part2 fail 1x (%d,%d)", i, j);
-                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-                return nullptr;
+            if (!batchOk) {
+                LOGD("Part1_b4/Part2_b4 1x start=%d: forward failed or bad shape, using single-patch", start);
             }
-            const float* featPtr = (*out2)[0].toTensor().const_data_ptr<float>();
-            size_t featLen = (*out2)[0].toTensor().numel();
-            reshapeToSpatial(featPtr, featLen, ws_temp);
-            mergeCrop(g_workspace.x0Feat, M_1X, ws_temp, j, i, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+        }
+
+        if (!batchOk) {
+            for (int b = 0; b < n; ++b) {
+                const int ii = (start + b) / GRID_1X;
+                const int jj = (start + b) % GRID_1X;
+                cropNCHW(imageData, IMAGE_SIZE, IMAGE_SIZE, 3,
+                         ii * STRIDE_1X, jj * STRIDE_1X, PATCH_SIZE, PATCH_SIZE,
+                         ws_patch);
+                auto pTensor = from_blob(ws_patch, {1, 3, PATCH_SIZE, PATCH_SIZE});
+                std::vector<EValue> in1 = {*pTensor};
+                auto out1 = m1->forward(in1);
+                if (!out1.ok() || out1->size() < 2) {
+                    LOGE("Part1 fail 1x (%d,%d)", ii, jj);
+                    env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                    return nullptr;
+                }
+                const auto& tokT = (*out1)[0].toTensor();
+                const auto& spaT = (*out1)[1].toTensor();
+                const float* tokPtr = tokT.const_data_ptr<float>();
+                const float* spaPtr = spaT.const_data_ptr<float>();
+                reshapeToSpatial(spaPtr, spaT.numel(), ws_temp);
+                mergeCrop(g_workspace.latent0, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+                reshapeToSpatial(tokPtr, tokT.numel(), ws_temp);
+                mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+                std::memcpy(ws_tokens, tokPtr, tokenSliceSz * sizeof(float));
+                auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
+                std::vector<EValue> in2 = {*tokInput};
+                auto out2 = m2->forward(in2);
+                if (!out2.ok() || out2->empty()) {
+                    LOGE("Part2 fail 1x (%d,%d)", ii, jj);
+                    env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                    return nullptr;
+                }
+                const float* featPtr = (*out2)[0].toTensor().const_data_ptr<float>();
+                reshapeToSpatial(featPtr, (*out2)[0].toTensor().numel(), ws_temp);
+                mergeCrop(g_workspace.x0Feat, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+            }
         }
     }
     LOGD("1x patches (25): %lldms", nowMs() - t1x);
 
-    // ── 0.5x patches (3x3 = 9) ──────────────────────────────────────────────
+    // ── 0.5x patches (3x3 = 9): batch-4 when available ───────────────────────
     long long t05x = nowMs();
-    for (int i = 0; i < GRID_05X; ++i) {
-        for (int j = 0; j < GRID_05X; ++j) {
-            cropNCHW(g_workspace.halfImg, HALF_SIZE, HALF_SIZE, 3,
-                     i * STRIDE_05X, j * STRIDE_05X, PATCH_SIZE, PATCH_SIZE,
-                     ws_patch);
-            auto pTensor = from_blob(ws_patch, {1, 3, PATCH_SIZE, PATCH_SIZE});
+    for (int start = 0; start < 9; start += PATCH_BATCH) {
+        const int n = std::min(PATCH_BATCH, 9 - start);
+        const bool useBatch = (n == PATCH_BATCH && m1_b4 && m2_b4);
+
+        if (useBatch) {
+            for (int b = 0; b < PATCH_BATCH; ++b) {
+                const int ii = (start + b) / GRID_05X;
+                const int jj = (start + b) % GRID_05X;
+                cropNCHW(g_workspace.halfImg, HALF_SIZE, HALF_SIZE, 3,
+                         ii * STRIDE_05X, jj * STRIDE_05X, PATCH_SIZE, PATCH_SIZE,
+                         g_workspace.patchBuf4 + b * patchSz);
+            }
+            auto pTensor = from_blob(g_workspace.patchBuf4, {PATCH_BATCH, 3, PATCH_SIZE, PATCH_SIZE});
             std::vector<EValue> in1 = {*pTensor};
-            auto out1 = g_moduleCache.mod1->forward(in1);
-            if (!out1.ok() || out1->size() < 1) {
-                LOGE("Part1 fail 0.5x (%d,%d)", i, j);
+            auto out1 = m1_b4->forward(in1);
+            if (!out1.ok() || out1->empty()) {
+                LOGE("Part1_b4 fail 0.5x start=%d", start);
                 env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                 return nullptr;
             }
-            const float* tokPtr = (*out1)[0].toTensor().const_data_ptr<float>();
-            std::memcpy(ws_tokens, tokPtr, (size_t)TOKENS_577 * FEATURE_DIM * sizeof(float));
-            auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
+            const float* tokBase = (*out1)[0].toTensor().const_data_ptr<float>();
+            std::memcpy(g_workspace.tokensCopy4, tokBase, PATCH_BATCH * tokenSliceSz * sizeof(float));
+            auto tokInput = from_blob(g_workspace.tokensCopy4, {PATCH_BATCH, TOKENS_577, FEATURE_DIM});
             std::vector<EValue> in2 = {*tokInput};
-            auto out2 = g_moduleCache.mod2->forward(in2);
+            auto out2 = m2_b4->forward(in2);
             if (!out2.ok() || out2->empty()) {
-                LOGE("Part2 fail 0.5x (%d,%d)", i, j);
+                LOGE("Part2_b4 fail 0.5x start=%d", start);
                 env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                 return nullptr;
             }
-            const float* featPtr = (*out2)[0].toTensor().const_data_ptr<float>();
-            size_t featLen = (*out2)[0].toTensor().numel();
-            reshapeToSpatial(featPtr, featLen, ws_temp);
-            mergeCrop(g_workspace.x1Feat, M_05X, ws_temp, j, i, GRID_05X, PADDING_05X, ROW_OFFS_05X, COL_OFFS_05X);
+            const float* featBase = (*out2)[0].toTensor().const_data_ptr<float>();
+            for (int b = 0; b < PATCH_BATCH; ++b) {
+                const int ii = (start + b) / GRID_05X;
+                const int jj = (start + b) % GRID_05X;
+                reshapeToSpatial(featBase + b * featSliceSz, featSliceSz, ws_temp);
+                mergeCrop(g_workspace.x1Feat, M_05X, ws_temp, jj, ii, GRID_05X, PADDING_05X, ROW_OFFS_05X, COL_OFFS_05X);
+            }
+        } else {
+            for (int b = 0; b < n; ++b) {
+                const int ii = (start + b) / GRID_05X;
+                const int jj = (start + b) % GRID_05X;
+                cropNCHW(g_workspace.halfImg, HALF_SIZE, HALF_SIZE, 3,
+                         ii * STRIDE_05X, jj * STRIDE_05X, PATCH_SIZE, PATCH_SIZE,
+                         ws_patch);
+                auto pTensor = from_blob(ws_patch, {1, 3, PATCH_SIZE, PATCH_SIZE});
+                std::vector<EValue> in1 = {*pTensor};
+                auto out1 = m1->forward(in1);
+                if (!out1.ok() || out1->size() < 1) {
+                    LOGE("Part1 fail 0.5x (%d,%d)", ii, jj);
+                    env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                    return nullptr;
+                }
+                const float* tokPtr = (*out1)[0].toTensor().const_data_ptr<float>();
+                std::memcpy(ws_tokens, tokPtr, tokenSliceSz * sizeof(float));
+                auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
+                std::vector<EValue> in2 = {*tokInput};
+                auto out2 = m2->forward(in2);
+                if (!out2.ok() || out2->empty()) {
+                    LOGE("Part2 fail 0.5x (%d,%d)", ii, jj);
+                    env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                    return nullptr;
+                }
+                const float* featPtr = (*out2)[0].toTensor().const_data_ptr<float>();
+                reshapeToSpatial(featPtr, (*out2)[0].toTensor().numel(), ws_temp);
+                mergeCrop(g_workspace.x1Feat, M_05X, ws_temp, jj, ii, GRID_05X, PADDING_05X, ROW_OFFS_05X, COL_OFFS_05X);
+            }
         }
     }
     LOGD("0.5x patches (9): %lldms", nowMs() - t05x);
@@ -963,9 +1159,9 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     g_moduleCache.release();
     LOGD("Released Part1+Part2 cache before Part4b to free memory");
 
-    // 4b(a): BATCHED tiled path (batch=4, 4 forward calls for 16 tiles).
+    // When Stable mode (prefer single Part4b) is ON, skip tiled paths to avoid tile-boundary patches.
     std::vector<float> tiledGaussians;
-    if (runPart4bBatchedTiledPipeline(modelDir,
+    if (!useSinglePart4bOnly && runPart4bBatchedTiledPipeline(modelDir,
                                       imageData,
                                       g_workspace.latent0,
                                       g_workspace.latent1,
@@ -976,6 +1172,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
                                       imgTokensNumel,
                                       tiledGaussians)) {
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+        pruneGaussiansByOpacity(tiledGaussians, maxG);
         const int numFloats = static_cast<int>(tiledGaussians.size());
         if (numFloats <= 0 || (numFloats % PARAMS_PER_GAUSSIAN) != 0) {
             LOGE("Batched tiled Part4b output invalid: %d", numFloats);
@@ -990,8 +1187,8 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
         return jResult;
     }
 
-    // 4b(b): sequential tiled path using tile_full (or tile_00) if present.
-    if (runPart4bTiledFullPipeline(modelDir,
+    // 4b(b): sequential tiled path using tile_full (or tile_00) if present (skip when Stable mode).
+    if (!useSinglePart4bOnly && runPart4bTiledFullPipeline(modelDir,
                                    imageData,
                                    g_workspace.latent0,
                                    g_workspace.latent1,
@@ -1002,6 +1199,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
                                    imgTokensNumel,
                                    tiledGaussians)) {
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+        pruneGaussiansByOpacity(tiledGaussians, maxG);
         const int numFloats = static_cast<int>(tiledGaussians.size());
         if (numFloats <= 0 || (numFloats % PARAMS_PER_GAUSSIAN) != 0) {
             LOGE("Tiled Part4b output invalid: %d", numFloats);
@@ -1016,11 +1214,68 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
         return jResult;
     }
 
-    // 4b(b): single full Part4b as fallback. Prefer INT8 when present (sharp_split_part4b_int8.pte).
+    // 4b(c): single full Part4b as fallback.
+    // Prefer FP16, then FP32, then INT8 (INT8 single can crash on some runtimes).
     long long tP4b = nowMs();
-    std::string path4b = tryInt8ThenFp32(modelDir, "sharp_split_part4b.pte");
-    bool part4bIsInt8 = (path4b.find("_int8.pte") != std::string::npos);
-    LOGD("Part4b single: %s", part4bIsInt8 ? "INT8" : "FP32");
+    std::string path4b;
+    bool singleIsInt8Only = false;
+    {
+        std::string fp16Path = pathJoin(modelDir, "sharp_split_part4b_fp16.pte");
+        std::ifstream f(fp16Path);
+        if (f.good()) {
+            f.close();
+            path4b = fp16Path;
+            LOGD("Part4b single: FP16 (sharp_split_part4b_fp16.pte)");
+        }
+    }
+    if (path4b.empty()) {
+        std::string fp32Path = pathJoin(modelDir, "sharp_split_part4b.pte");
+        std::ifstream f(fp32Path);
+        if (f.good()) {
+            f.close();
+            path4b = fp32Path;
+            LOGD("Part4b single: FP32 (sharp_split_part4b.pte)");
+        }
+    }
+    if (path4b.empty()) {
+        std::string int8Path = pathJoin(modelDir, "sharp_split_part4b_int8.pte");
+        std::ifstream f(int8Path);
+        if (f.good()) {
+            f.close();
+            path4b = int8Path;
+            singleIsInt8Only = true;
+            LOGD("Part4b single: INT8 (sharp_split_part4b_int8.pte)");
+        }
+    }
+    // When Stable mode requested but only INT8 single is available, use tiled path instead to avoid crash.
+    if (useSinglePart4bOnly && singleIsInt8Only &&
+        (runPart4bBatchedTiledPipeline(modelDir, imageData,
+                                      g_workspace.latent0, g_workspace.latent1,
+                                      g_workspace.x0Feat, g_workspace.x1Feat, g_workspace.x2Feat,
+                                      combinedTokens.data(), imgTokensNumel, tiledGaussians) ||
+         runPart4bTiledFullPipeline(modelDir, imageData,
+                                   g_workspace.latent0, g_workspace.latent1,
+                                   g_workspace.x0Feat, g_workspace.x1Feat, g_workspace.x2Feat,
+                                   combinedTokens.data(), imgTokensNumel, tiledGaussians))) {
+        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+        pruneGaussiansByOpacity(tiledGaussians, maxG);
+        const int numFloats = static_cast<int>(tiledGaussians.size());
+        if (numFloats > 0 && (numFloats % PARAMS_PER_GAUSSIAN) == 0) {
+            jfloatArray jResult = env->NewFloatArray(numFloats);
+            if (jResult) {
+                env->SetFloatArrayRegion(jResult, 0, numFloats, tiledGaussians.data());
+                long long tTotal = nowMs() - t0;
+                LOGD("Part4b: Stable+INT8-only -> used tiled path. TOTAL: %lldms Gaussians=%d",
+                     tTotal, numFloats / PARAMS_PER_GAUSSIAN);
+                return jResult;
+            }
+        }
+    }
+    if (path4b.empty()) {
+        LOGE("Part4b single: no suitable .pte found in %s", modelDir.c_str());
+        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+        return nullptr;
+    }
     auto mod4b = std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap);
     if (mod4b->load() != Error::Ok) {
         LOGE("Part4b load fail: %s", path4b.c_str());
@@ -1057,14 +1312,19 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
 
     const auto& gaussianTensor = (*out4b)[0].toTensor();
     const float* gaussianPtr = gaussianTensor.const_data_ptr<float>();
-    const int numFloats = static_cast<int>(gaussianTensor.numel());
+    const int rawNumFloats = static_cast<int>(gaussianTensor.numel());
 
     env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
 
-    if (numFloats <= 0 || (numFloats % PARAMS_PER_GAUSSIAN) != 0) {
-        LOGE("Part4b output invalid: %d", numFloats);
+    if (rawNumFloats <= 0 || (rawNumFloats % PARAMS_PER_GAUSSIAN) != 0) {
+        LOGE("Part4b output invalid: %d", rawNumFloats);
         return nullptr;
     }
+
+    std::vector<float> prunedBuf;
+    const int finalGaussians = pruneGaussiansFromPtr(
+        gaussianPtr, rawNumFloats / PARAMS_PER_GAUSSIAN, maxG, prunedBuf);
+    const int numFloats = finalGaussians * PARAMS_PER_GAUSSIAN;
 
     long long tTotal = nowMs() - t0;
     LOGD("Part4b (single): %lldms. TOTAL pipeline: %lldms. Gaussians=%d",
@@ -1072,7 +1332,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
 
     jfloatArray jResult = env->NewFloatArray(numFloats);
     if (!jResult) { LOGE("result array alloc fail"); return nullptr; }
-    env->SetFloatArrayRegion(jResult, 0, numFloats, gaussianPtr);
+    env->SetFloatArrayRegion(jResult, 0, numFloats, prunedBuf.data());
     return jResult;
 }
 

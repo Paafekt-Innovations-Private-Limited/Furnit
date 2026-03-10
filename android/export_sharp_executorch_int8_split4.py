@@ -444,6 +444,27 @@ def main():
         output_dir / "sharp_split_part2_int8.pte",
     )
 
+    # Part1/Part2 batch=4 for native patch batching (35 → ~11 launches)
+    PATCH_BATCH = 4
+    sample_patch_b4 = torch.rand(PATCH_BATCH, 3, PATCH_SIZE, PATCH_SIZE)
+    sample_tokens_b4 = torch.rand(PATCH_BATCH, 577, FEATURE_DIM)
+    try:
+        sizes["part1_b4"] = quantize_and_export_pte(
+            f"Part 1 batch={PATCH_BATCH} (patch encoder)",
+            part1, (sample_patch_b4,),
+            output_dir / "sharp_split_part1_b4_int8.pte",
+        )
+        sizes["part2_b4"] = quantize_and_export_pte(
+            f"Part 2 batch={PATCH_BATCH} (patch encoder B)",
+            part2, (sample_tokens_b4,),
+            output_dir / "sharp_split_part2_b4_int8.pte",
+        )
+        print(f"  Part1/Part2 batch={PATCH_BATCH} export OK (for native patch batching)")
+    except Exception as e:
+        print(f"  Part1/Part2 b4 export failed: {e}")
+        sizes["part1_b4"] = sizes.get("part1_b4", 0.0)
+        sizes["part2_b4"] = sizes.get("part2_b4", 0.0)
+
     sizes["part3"] = quantize_and_export_pte(
         "Part 3: Image Encoder A (blocks 0-11)",
         part3, (sample_image,),

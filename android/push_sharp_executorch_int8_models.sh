@@ -63,6 +63,13 @@ for f in "$CHUNKED_DIR"/sharp_split_part4a_chunk_512.pte "$CHUNKED_DIR"/sharp_sp
   fi
 done
 
+# Optional: Part1/Part2 batch=4 (C++ patch batching: 35 → ~11 launches)
+for f in "$INT8_DIR"/sharp_split_part1_b4_int8.pte "$INT8_DIR"/sharp_split_part2_b4_int8.pte; do
+  if [ -f "$f" ] && [ -s "$f" ]; then
+    FILES_TO_PUSH+=("$f")
+  fi
+done
+
 # Optional: INT8 Part 4b (C++ full pipeline prefers this when present)
 for dir in "$CHUNKED_DIR" "$INT8_DIR"; do
   f="$dir/sharp_split_part4b_int8.pte"
