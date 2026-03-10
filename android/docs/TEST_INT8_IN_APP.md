@@ -49,12 +49,16 @@ So: **ExecuTorch INT8** backend, **C++ ExecuTorch INT8 = ON**, **Stable mode = O
 
 ## 5. Confirm in logs (on your machine)
 
+**Use tag `sharp_executorch_full`** for C++ pipeline logs (patches, Part3, Part4a, Part4b tiled/single, TOTAL). Without it you only see Kotlin and miss the flow.
+
 ```bash
 adb logcat -s sharp_executorch_full:D ExecutorchInt8Sharp:D SharpService:D -v time
 ```
 
 - You should see **no** `0x12` / InvalidArgument errors.
-- For C++ full pipeline single Part4b: look for `Part4b single: INT8` or `Part4b single: FP32` and a line like `Part4b (single): ...ms. TOTAL pipeline: ...ms. Gaussians=...`.
+- **Expected C++ flow (tiled Part4b):**  
+  `1x patches (25): ...ms` → `0.5x patches (9): ...ms` → `0.25x patch: ...ms. All 35 patches: ...ms` → `Part3: ...ms` → `Part4a/512: ...` → `Part4a/65: ...` → `Released Part1+Part2 cache...` → `runPart4bTiledFullPipeline: using .../sharp_split_part4b_tile_00.pte` → `Part4b tile 1/16` … `Part4b tile 16/16` → `[TIMING] Part4b tiled (full pipeline C++): ...ms, 1179648 Gaussians` → `TOTAL pipeline (tiled Part4b): ...ms. Gaussians=1179648`.
+- **Single Part4b:** look for `Part4b single: INT8` or `Part4b single: FP32` and `TOTAL pipeline: ...ms. Gaussians=...`.
 - PLY write should complete; any crash or “output invalid” means something failed.
 
 ---

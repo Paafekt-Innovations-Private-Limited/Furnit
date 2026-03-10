@@ -449,8 +449,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             // Optional: run full pipeline in C++ (Part1–4b single, no tiles). Use same model dir as Kotlin (internal or external).
             if (useCppFullPipeline && NATIVE_FULL_AVAILABLE) {
                 val part1File = findFile("sharp_split_part1_int8.pte")
-                val cppModelDir = part1File?.parent ?: internalModelsDir.absolutePath
-                LogUtil.d(TAG, "[C++ FULL] Starting C++ full pipeline, modelDir=$cppModelDir")
+                val tileFile = findFile("sharp_split_part4b_tile_00.pte")
+                val cppModelDir = tileFile?.parent ?: part1File?.parent ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
+                LogUtil.d(TAG, "[C++ FULL] Starting C++ full pipeline, modelDir=$cppModelDir (tile source: ${tileFile?.parent ?: "none"})")
                 preprocess(scaledBmp, false)
                 imageFloatBuffer.rewind()
                 val imageNCHW = FloatArray(3 * IMAGE_SIZE * IMAGE_SIZE)

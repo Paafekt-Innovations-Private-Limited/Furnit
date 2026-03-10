@@ -34,7 +34,7 @@
 #include <executorch/runtime/core/evalue.h>
 #include <executorch/runtime/platform/runtime.h>
 
-#define TAG "ExecTorchFull"
+#define TAG "sharp_executorch_full"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
@@ -444,6 +444,7 @@ static bool runPart4bTiledFullPipeline(
     for (int t = 0; t < NUM_TILES; ++t) {
         const int tileRow = t / GRID;
         const int tileCol = t % GRID;
+        auto tileStart = std::chrono::steady_clock::now();
 
         cropTileNCHWLocal(imageData, imgC, imgH, imgW, tileRow, tileCol, imgCrop.data());
         cropTileNCHWLocal(latent0, 1024, lat96H, lat96W, tileRow, tileCol, lat0Crop.data());
@@ -493,6 +494,10 @@ static bool runPart4bTiledFullPipeline(
         float* dst = outGaussians.data() + t * floatsPerTile;
         std::memcpy(dst, outData, numFloats * sizeof(float));
         correctNDC(dst, numGaussians, tileRow, tileCol, /*swapXY=*/false);
+
+        auto tileEnd = std::chrono::steady_clock::now();
+        long long tileMs = std::chrono::duration_cast<std::chrono::milliseconds>(tileEnd - tileStart).count();
+        LOGD("Part4b tile %d/%d: %lldms", t + 1, NUM_TILES, (long long)tileMs);
     }
 
     auto tEnd = std::chrono::steady_clock::now();
