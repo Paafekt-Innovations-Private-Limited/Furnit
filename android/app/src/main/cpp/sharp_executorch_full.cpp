@@ -323,6 +323,187 @@ static std::string tryInt8ThenFp32(const std::string& modelDir, const std::strin
     return pathJoin(modelDir, fp32Name);
 }
 
+// ── Helper: BATCHED tiled Part4b (batch=4, 4 forward calls for 16 tiles) ─────
+// Loads sharp_split_part4b_tile_b4.pte (exported with batch=4 static shape).
+// Crops 4 tiles at a time, stacks along batch dim, one forward, split output.
+static bool runPart4bBatchedTiledPipeline(
+        const std::string& modelDir,
+        const float* __restrict imageData,   // [3,1536,1536] NCHW
+        const float* __restrict latent0,     // [1024,96,96]
+        const float* __restrict latent1,     // [1024,96,96]
+        const float* __restrict x0Feat,      // [1024,96,96]
+        const float* __restrict x1Feat,      // [1024,48,48]
+        const float* __restrict x2Feat,      // [1024,24,24]
+        const float* __restrict combinedTokens, size_t tokensNumel,
+        std::vector<float>& outGaussians) {
+
+    const int GRID = 4;
+    const int NUM_TILES = GRID * GRID;
+    const int BATCH = 4;
+    const int NUM_BATCHES = NUM_TILES / BATCH;
+    const int imgH = IMAGE_SIZE, imgW = IMAGE_SIZE, imgC = 3;
+    const int imgTileH = imgH / GRID, imgTileW = imgW / GRID;
+    const int lat96H = 96, lat96W = 96;
+    const int x1H = 48, x1W = 48;
+    const int x2H = 24, x2W = 24;
+    const int xLowH = 24, xLowW = 24, xLowC = 1024;
+
+    std::string modelPath = modelDir + "/sharp_split_part4b_tile_b4.pte";
+    {
+        std::ifstream f(modelPath);
+        if (!f.good()) {
+            LOGD("runPart4bBatchedTiledPipeline: tile_b4.pte not found, skipping batched path");
+            return false;
+        }
+    }
+
+    if (tokensNumel < (size_t)((SPATIAL_HW + 1) * FEATURE_DIM)) {
+        LOGE("runPart4bBatchedTiledPipeline: combinedTokens too small");
+        return false;
+    }
+    std::vector<float> xLowres(xLowC * xLowH * xLowW);
+    for (int row = 0; row < xLowH; ++row) {
+        for (int col = 0; col < xLowW; ++col) {
+            const int srcTokenIdx = 1 + row * xLowW + col;
+            const size_t srcBase = (size_t)srcTokenIdx * FEATURE_DIM;
+            const int dstIndexBase = row * xLowW + col;
+            for (int ch = 0; ch < xLowC; ++ch) {
+                xLowres[ch * xLowH * xLowW + dstIndexBase] = combinedTokens[srcBase + ch];
+            }
+        }
+    }
+
+    auto cropTile = [GRID](const float* __restrict src, int C, int H, int W,
+                           int tileRow, int tileCol, float* __restrict dst) {
+        const int tileH = H / GRID;
+        const int tileW = W / GRID;
+        const int srcHW = H * W;
+        const int dstHW = tileH * tileW;
+        const size_t rowBytes = tileW * sizeof(float);
+        for (int c = 0; c < C; ++c) {
+            const float* srcPlane = src + c * srcHW + tileRow * tileH * W + tileCol * tileW;
+            float* dstPlane = dst + c * dstHW;
+            for (int y = 0; y < tileH; ++y) {
+                std::memcpy(dstPlane + y * tileW, srcPlane + y * W, rowBytes);
+            }
+        }
+    };
+
+    auto correctNDC = [GRID](float* data, int numGaussians, int tileRow, int tileCol) {
+        const float ndcOffsetX = (2.0f * tileCol + 1.0f - GRID) / GRID;
+        const float ndcOffsetY = (2.0f * tileRow + 1.0f - GRID) / GRID;
+        const float invGrid = 1.0f / GRID;
+        for (int g = 0; g < numGaussians; ++g) {
+            float* base = data + g * PARAMS_PER_GAUSSIAN;
+            const float posZ = base[2];
+            base[0] = base[0] * invGrid + posZ * ndcOffsetX;
+            base[1] = base[1] * invGrid + posZ * ndcOffsetY;
+            base[4] *= invGrid;
+            base[5] *= invGrid;
+            base[6] *= invGrid;
+        }
+    };
+
+    ensureRuntimeInit();
+    auto module = std::make_unique<ETModule>(modelPath, ETModule::LoadMode::Mmap);
+    if (module->load() != Error::Ok) {
+        LOGE("runPart4bBatchedTiledPipeline: failed to load %s", modelPath.c_str());
+        return false;
+    }
+    LOGD("runPart4bBatchedTiledPipeline: loaded %s (batch=%d)", modelPath.c_str(), BATCH);
+
+    const int imgCropSize  = imgC * imgTileH * imgTileW;
+    const int lat96CropSz  = 1024 * 24 * 24;
+    const int x1CropSz     = 1024 * 12 * 12;
+    const int x2CropSz     = 1024 * 6 * 6;
+
+    std::vector<float> batchImg(BATCH * imgCropSize);
+    std::vector<float> batchLat0(BATCH * lat96CropSz), batchLat1(BATCH * lat96CropSz), batchX0(BATCH * lat96CropSz);
+    std::vector<float> batchX1(BATCH * x1CropSz), batchX2(BATCH * x2CropSz), batchXl(BATCH * x2CropSz);
+
+    outGaussians.clear();
+    int floatsPerTile = 0;
+
+    auto tStart = std::chrono::steady_clock::now();
+    for (int b = 0; b < NUM_BATCHES; ++b) {
+        auto batchStart = std::chrono::steady_clock::now();
+
+        for (int i = 0; i < BATCH; ++i) {
+            const int t = b * BATCH + i;
+            const int tileRow = t / GRID;
+            const int tileCol = t % GRID;
+
+            cropTile(imageData, imgC, imgH, imgW, tileRow, tileCol, batchImg.data() + i * imgCropSize);
+            cropTile(latent0, 1024, lat96H, lat96W, tileRow, tileCol, batchLat0.data() + i * lat96CropSz);
+            cropTile(latent1, 1024, lat96H, lat96W, tileRow, tileCol, batchLat1.data() + i * lat96CropSz);
+            cropTile(x0Feat,  1024, lat96H, lat96W, tileRow, tileCol, batchX0.data() + i * lat96CropSz);
+            cropTile(x1Feat,  1024, x1H,    x1W,    tileRow, tileCol, batchX1.data() + i * x1CropSz);
+            cropTile(x2Feat,  1024, x2H,    x2W,    tileRow, tileCol, batchX2.data() + i * x2CropSz);
+            cropTile(xLowres.data(), 1024, xLowH, xLowW, tileRow, tileCol, batchXl.data() + i * x2CropSz);
+        }
+
+        auto imgT  = from_blob(batchImg.data(),  {BATCH, 3, imgTileH, imgTileW});
+        auto l0T   = from_blob(batchLat0.data(), {BATCH, 1024, 24, 24});
+        auto l1T   = from_blob(batchLat1.data(), {BATCH, 1024, 24, 24});
+        auto x0T   = from_blob(batchX0.data(),   {BATCH, 1024, 24, 24});
+        auto x1T   = from_blob(batchX1.data(),   {BATCH, 1024, 12, 12});
+        auto x2T   = from_blob(batchX2.data(),   {BATCH, 1024, 6, 6});
+        auto xlT   = from_blob(batchXl.data(),   {BATCH, 1024, 6, 6});
+
+        std::vector<EValue> inputs;
+        inputs.reserve(7);
+        inputs.emplace_back(*imgT);
+        inputs.emplace_back(*l0T);
+        inputs.emplace_back(*l1T);
+        inputs.emplace_back(*x0T);
+        inputs.emplace_back(*x1T);
+        inputs.emplace_back(*x2T);
+        inputs.emplace_back(*xlT);
+
+        auto result = module->forward(inputs);
+        if (!result.ok() || result->empty() || !(*result)[0].isTensor()) {
+            LOGE("runPart4bBatchedTiledPipeline: batch %d forward failed", b);
+            return false;
+        }
+
+        const auto& outTensor = (*result)[0].toTensor();
+        const float* outData = outTensor.const_data_ptr<float>();
+        const int totalFloats = static_cast<int>(outTensor.numel());
+        const int floatsPerBatchItem = totalFloats / BATCH;
+        const int gaussiansPerTile = floatsPerBatchItem / PARAMS_PER_GAUSSIAN;
+
+        if (b == 0) {
+            floatsPerTile = floatsPerBatchItem;
+            outGaussians.resize(NUM_TILES * floatsPerTile);
+        } else if (floatsPerBatchItem != floatsPerTile) {
+            LOGE("runPart4bBatchedTiledPipeline: inconsistent batch output size");
+            return false;
+        }
+
+        for (int i = 0; i < BATCH; ++i) {
+            const int t = b * BATCH + i;
+            const int tileRow = t / GRID;
+            const int tileCol = t % GRID;
+            float* dst = outGaussians.data() + t * floatsPerTile;
+            std::memcpy(dst, outData + i * floatsPerBatchItem, floatsPerTile * sizeof(float));
+            correctNDC(dst, gaussiansPerTile, tileRow, tileCol);
+        }
+
+        auto batchEnd = std::chrono::steady_clock::now();
+        long long batchMs = std::chrono::duration_cast<std::chrono::milliseconds>(batchEnd - batchStart).count();
+        LOGD("Part4b batch %d/%d (tiles %d-%d): %lldms", b + 1, NUM_BATCHES,
+             b * BATCH + 1, (b + 1) * BATCH, (long long)batchMs);
+    }
+
+    auto tEnd = std::chrono::steady_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(tEnd - tStart).count();
+    LOGD("[TIMING] Part4b batched tiled (batch=%d, %d calls): %lldms, %d Gaussians",
+         BATCH, NUM_BATCHES, (long long)ms,
+         (int)(outGaussians.size() / PARAMS_PER_GAUSSIAN));
+    return true;
+}
+
+
 // ── Helper: tiled Part4b inside full pipeline (uses same export as Kotlin path) ───
 // Build 24x24x1024 low-res feature map from combinedTokens (CLS + 576 spatial),
 // then run a 4x4 grid of tiles, correcting NDC per tile and concatenating outputs.
@@ -777,13 +958,39 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     mod4a65.reset();
     LOGD("Part4a/65: %lldms. Part4a total: %lldms", nowMs() - tP4a65, nowMs() - tP4a);
 
-    // ── Part4b: try tiled first, fall back to single ─────────────────────────
+    // ── Part4b: try batched tiled → sequential tiled → single ─────────────────
     // Release Part1+Part2 cache before Part4b to free ~1GB RSS; cache will be re-created on next call.
     g_moduleCache.release();
     LOGD("Released Part1+Part2 cache before Part4b to free memory");
 
-    // 4b(a): tiled path using tile_full (or tile_00) if present.
+    // 4b(a): BATCHED tiled path (batch=4, 4 forward calls for 16 tiles).
     std::vector<float> tiledGaussians;
+    if (runPart4bBatchedTiledPipeline(modelDir,
+                                      imageData,
+                                      g_workspace.latent0,
+                                      g_workspace.latent1,
+                                      g_workspace.x0Feat,
+                                      g_workspace.x1Feat,
+                                      g_workspace.x2Feat,
+                                      combinedTokens.data(),
+                                      imgTokensNumel,
+                                      tiledGaussians)) {
+        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+        const int numFloats = static_cast<int>(tiledGaussians.size());
+        if (numFloats <= 0 || (numFloats % PARAMS_PER_GAUSSIAN) != 0) {
+            LOGE("Batched tiled Part4b output invalid: %d", numFloats);
+            return nullptr;
+        }
+        jfloatArray jResult = env->NewFloatArray(numFloats);
+        if (!jResult) { LOGE("result array alloc fail (batched tiled)"); return nullptr; }
+        env->SetFloatArrayRegion(jResult, 0, numFloats, tiledGaussians.data());
+        long long tTotal = nowMs() - t0;
+        LOGD("TOTAL pipeline (batched tiled Part4b): %lldms. Gaussians=%d",
+             tTotal, numFloats / PARAMS_PER_GAUSSIAN);
+        return jResult;
+    }
+
+    // 4b(b): sequential tiled path using tile_full (or tile_00) if present.
     if (runPart4bTiledFullPipeline(modelDir,
                                    imageData,
                                    g_workspace.latent0,
