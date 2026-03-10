@@ -130,6 +130,9 @@
 "settings.autoOrbitDescription" = "Slowly rotate camera when idle";
 "settings.infiniteZoom" = "Infinite Zoom";
 "settings.infiniteZoomDescription" = "Zoom in/out without limit; can pass through walls into grey void";
+"settings.furnitureSegmentationSection" = "Furniture segmentation";
+"settings.multiFurniView" = "MultiFurniView";
+"settings.multiFurniViewDescription" = "When ON, segment multiple furniture. When OFF (default), one primary plus items in 10% margin (e.g. headboard).";
 
 // Licenses & Attributions (About)
 "licenses.title" = "Licenses & Attributions";

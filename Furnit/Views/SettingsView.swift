@@ -15,6 +15,9 @@ struct SettingsView: View {
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
 
+    // Furniture segmentation: OFF = one primary + 10% margin; ON = multiple furniture
+    @AppStorage("multiFurniView") private var multiFurniView: Bool = false
+
     var body: some View {
         NavigationView {
             Form {
@@ -156,6 +159,26 @@ struct SettingsView: View {
                     .tint(.orange)
                 } header: {
                     Text(L10n.Settings.roomViewerSection)
+                }
+
+                // Furniture segmentation (FurnitureFit)
+                Section {
+                    Toggle(isOn: $multiFurniView) {
+                        HStack {
+                            Image(systemName: "square.stack.3d.up")
+                                .foregroundColor(.green)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.Settings.multiFurniView)
+                                    .font(.headline)
+                                Text(L10n.Settings.multiFurniViewDescription)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.green)
+                } header: {
+                    Text(L10n.Settings.furnitureSegmentationSection)
                 }
 
                 // Developer Settings Section
