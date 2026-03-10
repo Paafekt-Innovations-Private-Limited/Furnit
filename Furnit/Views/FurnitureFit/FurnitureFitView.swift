@@ -1168,6 +1168,14 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let origPX2 = primary.x + primary.w * 0.5
         let origPY2 = primary.y + primary.h * 0.5
 
+        // Expanded primary bbox: 10% margin so headboard/attached parts are included
+        let primaryMarginW = primary.w * 0.10
+        let primaryMarginH = primary.h * 0.10
+        let expandedPX1 = origPX1 - primaryMarginW
+        let expandedPY1 = origPY1 - primaryMarginH
+        let expandedPX2 = origPX2 + primaryMarginW
+        let expandedPY2 = origPY2 + primaryMarginH
+
         // Helper: check if candidate bbox fully encompasses primary bbox
         // (indicates background/room detection that wraps the primary object)
         let encompassTolerance: Float = 2.0  // pixels tolerance for floating-point noise
@@ -1201,11 +1209,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 continue
             }
 
-            // Skip if candidate bbox doesn't intersect with primary bbox at all
-            let intersects = !(dx2 < origPX1 || dx1 > origPX2 || dy2 < origPY1 || dy1 > origPY2)
-            if !intersects {
+            // Skip if candidate bbox doesn't intersect expanded primary bbox (10% margin)
+            let intersectsExpanded = !(dx2 < expandedPX1 || dx1 > expandedPX2 || dy2 < expandedPY1 || dy1 > expandedPY2)
+            if !intersectsExpanded {
                 if debugMode {
-                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox doesn't intersect primary")
+                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox doesn't intersect primary (+10% margin)")
                 }
                 continue
             }
