@@ -365,6 +365,89 @@ class ImageEncoderPartBFull(nn.Module):
         return torch.cat([positions, opacities, scales, quaternions, colors], dim=-1)
 
 
+# Tile config: 4x4 grid, same input shapes as C++ runPart4bTiledFullPipeline.
+PART4B_TILE_GRID = 4
+PART4B_TILE_IMG_H = IMAGE_SIZE // PART4B_TILE_GRID   # 384
+PART4B_TILE_IMG_W = IMAGE_SIZE // PART4B_TILE_GRID   # 384
+PART4B_TILE_LAT_HW = 24   # 96/4
+PART4B_TILE_X1_HW = 12    # 48/4
+PART4B_TILE_X2_HW = 6     # 24/4
+
+
+class ImageEncoderPartBFromTileInputs(nn.Module):
+    """Part 4b tile: decoder + Gaussians from pre-cropped tile inputs (no tokens).
+    Same modules as ImageEncoderPartBFromTokens; input is already spatial per-tile.
+    Inputs: image [B,3,384,384], lat0, lat1, x0 [B,1024,24,24], x1 [B,1024,12,12], x2, x_lowres [B,1024,6,6].
+    Output: [B, N_tile, 14] packed Gaussians."""
+    def __init__(self, predictor):
+        super().__init__()
+        spn = predictor.monodepth_model.monodepth_predictor.encoder
+        mono = predictor.monodepth_model
+        self.upsample_latent0 = spn.upsample_latent0
+        self.upsample_latent1 = spn.upsample_latent1
+        self.upsample0 = spn.upsample0
+        self.upsample1 = spn.upsample1
+        self.upsample2 = spn.upsample2
+        self.upsample_lowres = spn.upsample_lowres
+        self.fuse_lowres = spn.fuse_lowres
+        self.decoder = mono.monodepth_predictor.decoder
+        self.head = mono.monodepth_predictor.head
+        self.return_encoder_features = mono.return_encoder_features
+        self.return_decoder_features = mono.return_decoder_features
+        self.num_monodepth_layers = mono.num_monodepth_layers
+        self.sorting_monodepth = mono.sorting_monodepth
+        self.init_model = predictor.init_model
+        self.feature_model = predictor.feature_model
+        self.prediction_head = predictor.prediction_head
+        self.gaussian_composer = predictor.gaussian_composer
+        self.register_buffer("disparity_factor", torch.ones(1, 1, 1, 1))
+
+    def forward(self, image, lat0, lat1, x0_feat, x1_feat, x2_feat, x_lowres):
+        latent0_up = self.upsample_latent0(lat0)
+        latent1_up = self.upsample_latent1(lat1)
+        x0_up = self.upsample0(x0_feat)
+        x1_up = self.upsample1(x1_feat)
+        x2_up = self.upsample2(x2_feat)
+        x_lowres_up = self.upsample_lowres(x_lowres)
+        x_fused = self.fuse_lowres(torch.cat((x2_up, x_lowres_up), dim=1))
+        encoder_features = [latent0_up, latent1_up, x0_up, x1_up, x_fused]
+        decoder_features = self.decoder(encoder_features)
+        disparity = self.head(decoder_features)
+        if self.num_monodepth_layers == 2 and self.sorting_monodepth:
+            first_layer = disparity.max(dim=1, keepdims=True).values
+            second_layer = disparity.min(dim=1, keepdims=True).values
+            disparity = torch.cat([first_layer, second_layer], dim=1)
+        output_features = []
+        if self.return_encoder_features:
+            output_features.extend(encoder_features)
+        if self.return_decoder_features:
+            output_features.append(decoder_features)
+        monodepth = self.disparity_factor / disparity.clamp(min=1e-4, max=1e4)
+        init_output = self.init_model(image, monodepth)
+        image_features = self.feature_model(init_output.feature_input, encodings=output_features)
+        delta_values = self.prediction_head(image_features)
+        gaussians = self.gaussian_composer(
+            delta=delta_values,
+            base_values=init_output.gaussian_base_values,
+            global_scale=init_output.global_scale,
+        )
+        positions = gaussians.mean_vectors
+        opacities = gaussians.opacities.unsqueeze(-1)
+        scales = gaussians.singular_values
+        quaternions = gaussians.quaternions
+        colors = gaussians.colors
+        return torch.cat([positions, opacities, scales, quaternions, colors], dim=-1)
+
+
+def get_part4b_tile_sample_inputs(batch_size=1):
+    """Sample inputs for Part4b tile export. batch_size=1 for sequential, 4 for batched."""
+    img_tile = torch.rand(batch_size, 3, PART4B_TILE_IMG_H, PART4B_TILE_IMG_W)
+    lat_tile = torch.rand(batch_size, 1024, PART4B_TILE_LAT_HW, PART4B_TILE_LAT_HW)
+    x1_tile = torch.rand(batch_size, 1024, PART4B_TILE_X1_HW, PART4B_TILE_X1_HW)
+    x2_tile = torch.rand(batch_size, 1024, PART4B_TILE_X2_HW, PART4B_TILE_X2_HW)
+    return (img_tile, lat_tile, lat_tile.clone(), lat_tile.clone(), x1_tile, x2_tile, x2_tile.clone())
+
+
 def split_patches_list(image, overlap_ratio, patch_size):
     patch_stride = int(patch_size * (1 - overlap_ratio))
     image_size = image.shape[-1]
@@ -403,6 +486,60 @@ def reshape_feature(embeddings, num_prefix_tokens=1, grid_size=(24, 24)):
     B, N, C = embeddings.shape
     h, w = grid_size
     return embeddings.reshape(B, h, w, C).permute(0, 3, 1, 2)
+
+
+def _apply_greedy_memory_planning(edge):
+    """Apply greedy AOT memory planning to an EdgeProgramManager.
+
+    greedy() returns MemoryAlgoResult; MemoryPlanningAlgorithmSuite wraps it and
+    writes offsets back to TensorSpecs. Pass None as memory_planning_algo so the
+    default Suite([greedy]) is used.
+    """
+    ExecutorchBackendConfig = None
+    MPPass = None
+    for api_idx in range(2):
+        try:
+            if api_idx == 0:
+                from executorch.exir.capture._config import ExecutorchBackendConfig as _Cfg
+                from executorch.exir.passes.memory_planning_pass import MemoryPlanningPass as _MP
+            else:
+                from executorch.exir import ExecutorchBackendConfig as _Cfg
+                from executorch.exir.passes import MemoryPlanningPass as _MP
+            ExecutorchBackendConfig = _Cfg
+            MPPass = _MP
+            break
+        except ImportError:
+            continue
+
+    if ExecutorchBackendConfig is None or MPPass is None:
+        print("  Greedy memory planning: imports unavailable, using default")
+        return edge.to_executorch()
+
+    try:
+        et_program = edge.to_executorch(
+            ExecutorchBackendConfig(memory_planning_pass=MPPass())
+        )
+        print("  Greedy memory planning applied (suite default)")
+        return et_program
+    except Exception as e1:
+        print(f"  Greedy suite (default alloc) failed: {e1}")
+
+    try:
+        et_program = edge.to_executorch(
+            ExecutorchBackendConfig(
+                memory_planning_pass=MPPass(
+                    alloc_graph_input=False,
+                    alloc_graph_output=False,
+                ),
+            )
+        )
+        print("  Greedy memory planning applied (caller-managed I/O)")
+        return et_program
+    except Exception as e2:
+        print(f"  Greedy suite (caller-managed) failed: {e2}")
+
+    print("  Greedy memory planning unavailable, using default planning")
+    return edge.to_executorch()
 
 
 def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend="xnnpack", use_greedy_memory_planning=False):

@@ -10,7 +10,10 @@ Output files:
   sharp_split_part1_int8.pte  (~145MB)  -- run 35x per patch
   sharp_split_part2_int8.pte  (~145MB)  -- run 35x per patch
   sharp_split_part3_int8.pte  (~145MB)  -- run 1x on full image
-  sharp_split_part4_int8.pte  (~190MB)  -- run 1x (decoder + Gaussians)
+  sharp_split_part4b_int8.pte (optional) -- Part4b decoder INT8; C++ uses if present
+  sharp_split_part4b_tile_00..15.pte -- Part4b INT8 tiles (C++ tiled path)
+  sharp_split_part4b_tile_b4.pte -- Batched tile (batch=4, 4 forward calls instead of 16)
+  sharp_split_part4_int8.pte  (~190MB)  -- full Part4 FP32 (app uses chunked Part4a+Part4b)
 
 Same 4-part pipeline as FP32/FP16 split:
   1. Part 1 on 35 patches -> tokens, block5
@@ -27,6 +30,7 @@ Usage:
 
 import argparse
 import math
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -83,20 +87,15 @@ def quantize_and_export_pte(name, wrapper, sample_inputs, output_path):
     print("  Exporting to ATen IR...")
     exported = torch.export.export(wrapper, sample_inputs, strict=False)
 
-    # Step 2: PT2E quantization
+    # Step 2: PT2E quantization — use matched pair from torch.ao (quantizer + prepare/convert
+    # must come from the same package; executorch's XNNPACKQuantizer produces QuantizationSpec
+    # objects incompatible with torch.ao.quantization.quantize_pt2e.prepare_pt2e).
     print("  Quantizing (PT2E INT8 symmetric per-channel dynamic)...")
-    try:
-        from torchao.quantization.pt2e import prepare_pt2e, convert_pt2e
-        from torchao.quantization.pt2e.quantizer.xnnpack_quantizer import (
-            XNNPACKQuantizer,
-            get_symmetric_quantization_config,
-        )
-    except ImportError:
-        from torch.ao.quantization.quantize_pt2e import prepare_pt2e, convert_pt2e
-        from torch.ao.quantization.quantizer.xnnpack_quantizer import (
-            XNNPACKQuantizer,
-            get_symmetric_quantization_config,
-        )
+    from torch.ao.quantization.quantize_pt2e import prepare_pt2e, convert_pt2e
+    from torch.ao.quantization.quantizer.xnnpack_quantizer import (
+        XNNPACKQuantizer,
+        get_symmetric_quantization_config,
+    )
 
     quantizer = XNNPACKQuantizer().set_global(
         get_symmetric_quantization_config(is_per_channel=True, is_dynamic=True)
@@ -136,39 +135,9 @@ def quantize_and_export_pte(name, wrapper, sample_inputs, output_path):
         except Exception:
             pass
 
-    # Step 5: Greedy memory planning
-    try:
-        from executorch.exir.capture._config import ExecutorchBackendConfig
-        from executorch.exir.memory_planning import greedy
-        from executorch.exir.passes.memory_planning_pass import MemoryPlanningPass
-        et_program = edge.to_executorch(
-            ExecutorchBackendConfig(
-                memory_planning_pass=MemoryPlanningPass(
-                    memory_planning_algo=greedy,
-                    alloc_graph_input=False,
-                    alloc_graph_output=False,
-                ),
-            )
-        )
-        print("  Greedy memory planning applied")
-    except Exception:
-        try:
-            from executorch.exir import ExecutorchBackendConfig
-            from executorch.exir.memory_planning import greedy
-            from executorch.exir.passes import MemoryPlanningPass
-            et_program = edge.to_executorch(
-                ExecutorchBackendConfig(
-                    memory_planning_pass=MemoryPlanningPass(
-                        memory_planning_algo=greedy,
-                        alloc_graph_input=False,
-                        alloc_graph_output=False,
-                    ),
-                )
-            )
-            print("  Greedy memory planning applied (alt API)")
-        except Exception as e2:
-            print(f"  Greedy planning unavailable ({e2}), using default")
-            et_program = edge.to_executorch()
+    # Step 5: Greedy memory planning (reuse shared helper from FP32 export)
+    from export_sharp_executorch_split4 import _apply_greedy_memory_planning
+    et_program = _apply_greedy_memory_planning(edge)
 
     export_time = time.time() - start
 
@@ -296,6 +265,7 @@ class ImageEncoderPartBFull(nn.Module):
         self.feature_model = predictor.feature_model
         self.prediction_head = predictor.prediction_head
         self.gaussian_composer = predictor.gaussian_composer
+        self.register_buffer("disparity_factor", torch.ones(1, 1, 1, 1))
 
     def _reshape_feature(self, embeddings):
         batch, seq_len, channel = embeddings.shape
@@ -329,8 +299,7 @@ class ImageEncoderPartBFull(nn.Module):
             output_features.extend(encoder_features)
         if self.return_decoder_features:
             output_features.append(decoder_features)
-        disparity_factor = torch.ones(1, 1, 1, 1, device=image.device)
-        monodepth = disparity_factor / disparity.clamp(min=1e-4, max=1e4)
+        monodepth = self.disparity_factor / disparity.clamp(min=1e-4, max=1e4)
         init_output = self.init_model(image, monodepth)
         image_features = self.feature_model(init_output.feature_input, encodings=output_features)
         delta_values = self.prediction_head(image_features)
@@ -481,11 +450,64 @@ def main():
         output_dir / "sharp_split_part3_int8.pte",
     )
 
-    # Part 4 decoder: export FP32 (not INT8). PT2E quantization breaks the decoder's
-    # skip connections because quantized FloatFunctional.add(x, res) fails when x and res
-    # have different spatial sizes after ConvTranspose upsampling. Same limitation as FP16
-    # export (F.interpolate upcasts). Parts 1-3 (the 35-patch encoder loop) get the INT8 win.
-    from export_sharp_executorch_split4 import export_pte
+    # Part 4b (decoder + Gaussians): try INT8 first.
+    from export_sharp_executorch_split4 import (
+        export_pte,
+        ImageEncoderPartBFromTokens,
+        ImageEncoderPartBFromTileInputs,
+        get_part4b_tile_sample_inputs,
+    )
+    part4b = ImageEncoderPartBFromTokens(predictor).eval()
+    tokens_after_blocks = torch.rand(1, 577, FEATURE_DIM)
+    part4b_inputs = (tokens_after_blocks, sample_image, latent0, latent1, x0_feat, x1_feat, x2_feat)
+    try:
+        sizes["part4b_int8"] = quantize_and_export_pte(
+            "Part 4b: Decoder + Gaussians (INT8)",
+            part4b, part4b_inputs,
+            output_dir / "sharp_split_part4b_int8.pte",
+        )
+        print("  Part4b INT8 export OK")
+    except Exception as e:
+        print(f"  Part4b INT8 export failed: {e}")
+        sizes["part4b_int8"] = 0.0
+
+    # Part 4b INT8 tiles (batch=1): export one, copy to tile_00..tile_15.
+    NUM_PART4B_TILES = 16
+    part4b_tile = ImageEncoderPartBFromTileInputs(predictor).eval()
+    part4b_tile_inputs = get_part4b_tile_sample_inputs(batch_size=1)
+    tile_00_path = output_dir / "sharp_split_part4b_tile_00.pte"
+    try:
+        size_tile = quantize_and_export_pte(
+            "Part 4b tile (INT8, batch=1)",
+            part4b_tile, part4b_tile_inputs,
+            tile_00_path,
+        )
+        sizes["part4b_tiles_int8"] = size_tile * NUM_PART4B_TILES
+        for i in range(1, NUM_PART4B_TILES):
+            dest = output_dir / f"sharp_split_part4b_tile_{i:02d}.pte"
+            shutil.copy2(tile_00_path, dest)
+        print(f"  Part4b INT8 tiles: 16 files, {size_tile:.0f} MB each")
+    except Exception as e:
+        print(f"  Part4b INT8 tile export failed: {e}")
+        sizes["part4b_tiles_int8"] = 0.0
+
+    # Part 4b INT8 batched tile (batch=4): 4 tiles per forward call = 4 calls for 16 tiles.
+    BATCH_SIZE = 4
+    part4b_tile_b4 = ImageEncoderPartBFromTileInputs(predictor).eval()
+    part4b_tile_b4_inputs = get_part4b_tile_sample_inputs(batch_size=BATCH_SIZE)
+    tile_b4_path = output_dir / "sharp_split_part4b_tile_b4.pte"
+    try:
+        sizes["part4b_tile_b4"] = quantize_and_export_pte(
+            f"Part 4b tile (INT8, batch={BATCH_SIZE})",
+            part4b_tile_b4, part4b_tile_b4_inputs,
+            tile_b4_path,
+        )
+        print(f"  Part4b INT8 batched tile (batch={BATCH_SIZE}): {sizes['part4b_tile_b4']:.0f} MB")
+    except Exception as e:
+        print(f"  Part4b INT8 batched tile export failed: {e}")
+        sizes["part4b_tile_b4"] = 0.0
+
+    # Part 4 full (single .pte): export FP32 for compatibility.
     sizes["part4"] = export_pte(
         "Part 4: Decoder + Gaussians (FP32, greedy planning)",
         part4, (image_tokens, sample_image, latent0, latent1, x0_feat, x1_feat, x2_feat),
@@ -506,9 +528,11 @@ def main():
     print(f"  Total: {total_size:.0f} MB (vs ~2.4GB FP32, ~1.2GB FP16)")
     print(f"  Export time: {total_time:.0f}s")
     print(f"\nPush to device:")
-    print(f"  for f in {output_dir}/sharp_split_part*_int8.pte; do")
-    print(f"    adb push $f /storage/emulated/0/Android/data/com.furnit.android/files/models/")
-    print(f"  done")
+    print(f"  ./push_sharp_executorch_int8_models.sh")
+    if tile_b4_path.exists():
+        print(f"  (sharp_split_part4b_tile_b4.pte present – C++ batched tile path: 4 forward calls)")
+    if tile_00_path.exists():
+        print(f"  (tile_00..15.pte present – C++ sequential tile path: 16 forward calls)")
     return 0
 
 
