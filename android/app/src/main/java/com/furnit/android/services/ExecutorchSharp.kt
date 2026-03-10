@@ -1105,11 +1105,23 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
         LogUtil.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"progress 0.10","data":{"progress":0.1,"msg":"Loading model"},"timestamp":${System.currentTimeMillis()}}""")
         // #endregion
         progressCallback?.invoke(0.10f, "Loading full SHARP model...")
-        val modelFile = findFullModel()!!
+        val modelFile = findFullModel()
+        if (modelFile == null) {
+            LogUtil.e(TAG, "Full model not found (findFullModel returned null)")
+            return null
+        }
+        // Encourage reclaim after a previous run to reduce OOM on second load
+        System.gc()
         val loadStart = System.currentTimeMillis()
-        // LOAD_MODE_MMAP: OS pages in only used weights; cold pages evicted under pressure.
-        // Peak RSS ~80-150 MB instead of 1.3 GB, avoids LMK.
-        val module = Module.load(modelFile.absolutePath, Module.LOAD_MODE_MMAP)
+        val module = try {
+            Module.load(modelFile.absolutePath, Module.LOAD_MODE_MMAP)
+        } catch (e: OutOfMemoryError) {
+            LogUtil.e(TAG, "Full model load OOM: ${e.message}")
+            return null
+        } catch (e: Throwable) {
+            LogUtil.e(TAG, "Full model load failed: ${e.message}", e)
+            return null
+        }
         val loadTime = System.currentTimeMillis() - loadStart
         LogUtil.d(TAG, "Full model loaded (mmap): ${modelFile.name} in ${loadTime}ms")
 
@@ -1135,7 +1147,17 @@ val module1 = Module.load(part1File.absolutePath, Module.LOAD_MODE_MMAP)
         // #endregion
         progressCallback?.invoke(0.20f, "Running SHARP inference...")
         val inferStart = System.currentTimeMillis()
-        val outputs = module.forward(EValue.from(inputTensor))
+        val outputs = try {
+            module.forward(EValue.from(inputTensor))
+        } catch (e: OutOfMemoryError) {
+            LogUtil.e(TAG, "Full model forward OOM: ${e.message}")
+            module.destroy()
+            return null
+        } catch (e: Throwable) {
+            LogUtil.e(TAG, "Full model forward failed: ${e.message}", e)
+            module.destroy()
+            return null
+        }
         val inferTime = System.currentTimeMillis() - inferStart
         // #region agent log
         LogUtil.d("Progress0", """{"location":"ExecutorchSharp.kt:inferFullModel","message":"AFTER forward (inference done)","data":{"inferTimeMs":$inferTime},"timestamp":${System.currentTimeMillis()}}""")

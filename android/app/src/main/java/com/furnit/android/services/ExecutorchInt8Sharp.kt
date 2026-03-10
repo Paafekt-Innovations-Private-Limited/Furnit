@@ -272,7 +272,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
      * Run full INT8 pipeline in C++ (Part1, Part2, Part3, Part4a, Part4b single). Returns packed [N*14] Gaussian floats,
      * or null if not implemented or on error (caller falls back to Kotlin pipeline).
      */
-    private external fun runFullPipelineInt8Native(modelDirPath: String, imageNCHW: FloatArray): FloatArray?
+    private external fun runFullPipelineInt8Native(modelDirPath: String, imageNCHW: FloatArray, maxGaussians: Int, preferSinglePart4b: Boolean): FloatArray?
 
     /** Warm-start: preload Part1+Part2 into native singleton cache (eliminates ~400ms mmap on first inference). */
     private external fun preloadCppModules(modelDirPath: String): Boolean
@@ -446,7 +446,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             // 1. Stretch full image to 1536 (like Swift) or center-crop then resize; raw PLY coords
             val scaledBmp = if (USE_STRETCH_TO_SQUARE) getStretchToSquareBitmap(bitmap, IMAGE_SIZE) else getCenterCropBitmap(bitmap, IMAGE_SIZE)
 
-            // Optional: run full pipeline in C++ (Part1–4b single, no tiles). Use same model dir as Kotlin (internal or external).
+            // Optional: run full pipeline in C++ (Part1–4b). Stable mode flag is passed to C++ so it
+            // can skip tiled Part4b when preferSinglePart4b=true.
             if (useCppFullPipeline && NATIVE_FULL_AVAILABLE) {
                 val part1File = findFile("sharp_split_part1_int8.pte")
                 val tileFile = findFile("sharp_split_part4b_tile_00.pte")
@@ -459,7 +460,10 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 LogUtil.d(TAG, "[C++ FULL] Image preprocessed, calling native (${imageNCHW.size} floats)")
                 try {
                     val cppStartMs = System.currentTimeMillis()
-                    val cppResult = runFullPipelineInt8Native(cppModelDir, imageNCHW)
+                    val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+                    val maxGaussians = prefs.getInt("executorch_int8_max_gaussians", 0)
+                    LogUtil.d(TAG, "[C++ FULL] maxGaussians=$maxGaussians (0=unlimited)")
+                    val cppResult = runFullPipelineInt8Native(cppModelDir, imageNCHW, maxGaussians, preferSinglePart4b)
                     val cppElapsedMs = System.currentTimeMillis() - cppStartMs
                     if (cppResult != null && cppResult.isNotEmpty()) {
                         LogUtil.d(TAG, "[C++ FULL] Native returned ${cppResult.size / 14} Gaussians in ${cppElapsedMs}ms")
@@ -565,7 +569,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             reshapeToSpatial(qFeat, x2Feat)
             quarterBmp.recycle()
             LogUtil.d(TAG, "0.25x patch done in ${System.currentTimeMillis() - t025Start}ms. Destroying Part1+Part2...")
-            mod1.destroy(); mod2.destroy(); System.gc()
+            mod1.destroy(); mod2.destroy()
 
             report(0.44f, "Understanding the full picture…", progressCallback)
             val tPart3Start = System.currentTimeMillis()
@@ -576,7 +580,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val fullImgTensor = Tensor.fromBlob(preprocess(scaledBmp, false), longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong()))
             val imgTokens = mod3.forward(EValue.from(fullImgTensor))[0].toTensor().dataAsFloatArray
             LogUtil.d(TAG, "Part3 done in ${System.currentTimeMillis() - tPart3Start}ms. imgTokens size=${imgTokens.size}")
-            mod3.destroy(); System.gc()
+            mod3.destroy()
             report(0.46f, "Understanding the full picture…", progressCallback)
 
             report(0.48f, "Adding depth and shape…", progressCallback)
@@ -734,7 +738,6 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         val out = output[0].toTensor().dataAsFloatArray
         LogUtil.d(TAG, "runDecoderChunk: $name outputLen=${out.size}")
         mod.destroy()
-        System.gc()
         return out
     }
 

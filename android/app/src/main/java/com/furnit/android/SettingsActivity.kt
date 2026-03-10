@@ -318,7 +318,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         val executorchRadioDesc = TextView(this).apply {
             text = if (BackendConfig.ENABLE_EXECUTORCH) {
-                "PyTorch on-device inference (ExecuTorch)"
+                "ExecuTorch full model (recommended for >8GB RAM devices)"
             } else {
                 "Disabled in this build (wrappers kept, ONNX only)"
             }
@@ -356,7 +356,7 @@ class SettingsActivity : AppCompatActivity() {
         }
         val executorchInt8RadioDesc = TextView(this).apply {
             text = if (BackendConfig.ENABLE_EXECUTORCH_INT8) {
-                "INT8 quantized, single model (~600MB, XNNPACK)"
+                "ExecuTorch INT8 split pipeline (recommended for ≤8GB RAM devices)"
             } else {
                 "Disabled in this build"
             }
@@ -503,63 +503,59 @@ class SettingsActivity : AppCompatActivity() {
 
         developerSection.addView(backendRadioGroup)
 
-        // Stable mode: use single Part4b only (avoids OOM/black screen with chunked Part4b on some devices)
-        val stablePart4bLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 16, 0, 8)
-        }
-        val stablePart4bLabel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val stablePart4bTitle = TextView(this).apply {
+        // Decoder mode: Stable (single Part4b) vs Split/tiled decoder
+        val preferSinglePart4b = prefs.getBoolean("executorch_int8_prefer_single_part4b", false)
+        val usePart4bTiledPref = prefs.getBoolean("executorch_int8_use_part4b_tiled", false)
+        // Decoder mode: Stable (single Part4b) vs Split/tiled decoder
+        val decoderModeLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
+        val decoderModeTitle = TextView(this).apply {
             text = getString(R.string.settings_stable_part4b)
             textSize = 16f
             setTextColor(Color.parseColor("#333333"))
         }
-        val stablePart4bDesc = TextView(this).apply {
+        val decoderModeDesc = TextView(this).apply {
             text = getString(R.string.settings_stable_part4b_description)
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
         }
-        stablePart4bLabel.addView(stablePart4bTitle)
-        stablePart4bLabel.addView(stablePart4bDesc)
-        val stablePart4bSwitch = createStyledSwitch(prefs.getBoolean("executorch_int8_prefer_single_part4b", false)) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_prefer_single_part4b", isChecked).apply()
-        }
-        stablePart4bLayout.addView(stablePart4bLabel)
-        stablePart4bLayout.addView(stablePart4bSwitch)
-        developerSection.addView(stablePart4bLayout)
+        decoderModeLayout.addView(decoderModeTitle)
+        decoderModeLayout.addView(decoderModeDesc)
 
-        // Part4b tiled (experimental): use window-tiled Part4b when tiled .pte files exist
-        val part4bTiledLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 8, 0, 8)
-        }
-        val part4bTiledLabel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val part4bTiledTitle = TextView(this).apply {
-            text = getString(R.string.settings_part4b_tiled)
-            textSize = 16f
+        val decoderModeRg = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL; setPadding(0, 8, 0, 0) }
+        val stableDecoderId = View.generateViewId()
+        val splitDecoderId = View.generateViewId()
+        val stableDecoderRb = RadioButton(this).apply {
+            id = stableDecoderId
+            text = "Stable (single Part4b)"
             setTextColor(Color.parseColor("#333333"))
         }
-        val part4bTiledDesc = TextView(this).apply {
-            text = getString(R.string.settings_part4b_tiled_description)
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
+        val splitDecoderRb = RadioButton(this).apply {
+            id = splitDecoderId
+            text = "Split / tiled Part4b"
+            setTextColor(Color.parseColor("#333333"))
         }
-        part4bTiledLabel.addView(part4bTiledTitle)
-        part4bTiledLabel.addView(part4bTiledDesc)
-        val part4bTiledSwitch = createStyledSwitch(prefs.getBoolean("executorch_int8_use_part4b_tiled", false)) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_use_part4b_tiled", isChecked).apply()
+        decoderModeRg.addView(stableDecoderRb)
+        decoderModeRg.addView(splitDecoderRb)
+
+        when {
+            preferSinglePart4b -> decoderModeRg.check(stableDecoderId)
+            usePart4bTiledPref -> decoderModeRg.check(splitDecoderId)
+            else -> decoderModeRg.clearCheck()
         }
-        part4bTiledLayout.addView(part4bTiledLabel)
-        part4bTiledLayout.addView(part4bTiledSwitch)
-        developerSection.addView(part4bTiledLayout)
+        decoderModeRg.setOnCheckedChangeListener { _, checkedId ->
+            when (checkedId) {
+                stableDecoderId -> prefs.edit()
+                    .putBoolean("executorch_int8_prefer_single_part4b", true)
+                    .putBoolean("executorch_int8_use_part4b_tiled", false)
+                    .apply()
+                splitDecoderId -> prefs.edit()
+                    .putBoolean("executorch_int8_prefer_single_part4b", false)
+                    .putBoolean("executorch_int8_use_part4b_tiled", true)
+                    .apply()
+            }
+        }
+        decoderModeLayout.addView(decoderModeRg)
+        developerSection.addView(decoderModeLayout)
 
         val swapNdcLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
         val swapNdcLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
@@ -574,18 +570,69 @@ class SettingsActivity : AppCompatActivity() {
         swapNdcLayout.addView(swapNdcSwitch)
         developerSection.addView(swapNdcLayout)
 
-        val cppFullLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val cppFullLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        val cppFullTitle = TextView(this).apply { text = getString(R.string.settings_cpp_executorch_int8); textSize = 14f; setTextColor(Color.parseColor("#222222")) }
-        val cppFullDesc = TextView(this).apply { text = getString(R.string.settings_cpp_executorch_int8_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) }
-        cppFullLabel.addView(cppFullTitle)
-        cppFullLabel.addView(cppFullDesc)
-        val cppFullSwitch = createStyledSwitch(prefs.getBoolean("executorch_int8_use_cpp_full_pipeline", false)) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_use_cpp_full_pipeline", isChecked).apply()
+        // Max Gaussians (splat count limit)
+        val maxGaussLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
+        val maxGaussTitle = TextView(this).apply { text = getString(R.string.settings_max_gaussians); textSize = 14f; setTextColor(Color.parseColor("#222222")) }
+        val maxGaussDesc = TextView(this).apply { text = getString(R.string.settings_max_gaussians_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) }
+        maxGaussLayout.addView(maxGaussTitle)
+        maxGaussLayout.addView(maxGaussDesc)
+
+        val maxGaussRg = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL; setPadding(0, 8, 0, 0) }
+        val mgUnlimitedId = View.generateViewId()
+        val mg300kId = View.generateViewId()
+        val mg500kId = View.generateViewId()
+        val mgUnlimited = RadioButton(this).apply { id = mgUnlimitedId; text = "All"; setTextColor(Color.parseColor("#333333")) }
+        val mg300k = RadioButton(this).apply { id = mg300kId; text = "300k"; setTextColor(Color.parseColor("#333333")) }
+        val mg500k = RadioButton(this).apply { id = mg500kId; text = "500k"; setTextColor(Color.parseColor("#333333")) }
+        maxGaussRg.addView(mgUnlimited)
+        maxGaussRg.addView(mg300k)
+        maxGaussRg.addView(mg500k)
+
+        val currentMaxG = prefs.getInt("executorch_int8_max_gaussians", 0)
+        when (currentMaxG) {
+            300000 -> maxGaussRg.check(mg300kId)
+            500000 -> maxGaussRg.check(mg500kId)
+            else -> maxGaussRg.check(mgUnlimitedId)
         }
-        cppFullLayout.addView(cppFullLabel)
-        cppFullLayout.addView(cppFullSwitch)
-        developerSection.addView(cppFullLayout)
+        maxGaussRg.setOnCheckedChangeListener { _, checkedId ->
+            val v = when (checkedId) {
+                mg300kId -> 300000
+                mg500kId -> 500000
+                else -> 0
+            }
+            prefs.edit().putInt("executorch_int8_max_gaussians", v).apply()
+        }
+        maxGaussLayout.addView(maxGaussRg)
+        developerSection.addView(maxGaussLayout)
+
+        // Implementation: Kotlin vs C++ full pipeline
+        val useCppFullPipeline = prefs.getBoolean("executorch_int8_use_cpp_full_pipeline", false)
+        val implLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
+        val implTitle = TextView(this).apply { text = getString(R.string.settings_cpp_executorch_int8); textSize = 14f; setTextColor(Color.parseColor("#222222")) }
+        val implDesc = TextView(this).apply {
+            text = getString(R.string.settings_cpp_executorch_int8_description)
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        implLayout.addView(implTitle)
+        implLayout.addView(implDesc)
+
+        val implRg = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL; setPadding(0, 8, 0, 0) }
+        val implKotlinId = View.generateViewId()
+        val implCppId = View.generateViewId()
+        val implKotlinRb = RadioButton(this).apply { id = implKotlinId; text = "Kotlin"; setTextColor(Color.parseColor("#333333")) }
+        val implCppRb = RadioButton(this).apply { id = implCppId; text = "C++"; setTextColor(Color.parseColor("#333333")) }
+        implRg.addView(implKotlinRb)
+        implRg.addView(implCppRb)
+
+        if (useCppFullPipeline) implRg.check(implCppId) else implRg.check(implKotlinId)
+        implRg.setOnCheckedChangeListener { _, checkedId ->
+            val useCpp = (checkedId == implCppId)
+            prefs.edit().putBoolean("executorch_int8_use_cpp_full_pipeline", useCpp).apply()
+        }
+
+        implLayout.addView(implRg)
+        developerSection.addView(implLayout)
 
         // Developer section footer
         val developerFooter = TextView(this).apply {
