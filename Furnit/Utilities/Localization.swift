@@ -138,6 +138,9 @@ enum L10n {
         static let autoOrbitDescription = "settings.autoOrbitDescription".localized
         static let infiniteZoom = "settings.infiniteZoom".localized
         static let infiniteZoomDescription = "settings.infiniteZoomDescription".localized
+        static let multiFurniView = "settings.multiFurniView".localized
+        static let multiFurniViewDescription = "settings.multiFurniViewDescription".localized
+        static let furnitureSegmentationSection = "settings.furnitureSegmentationSection".localized
     }
 
     // MARK: Licenses & Attributions

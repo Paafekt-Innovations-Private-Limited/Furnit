@@ -1209,11 +1209,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 continue
             }
 
-            // Skip if candidate bbox doesn't intersect expanded primary bbox (10% margin)
-            let intersectsExpanded = !(dx2 < expandedPX1 || dx1 > expandedPX2 || dy2 < expandedPY1 || dy1 > expandedPY2)
-            if !intersectsExpanded {
+            // Intersect check: when MultiFurniView OFF use 10% margin; when ON use primary bbox only (allow multiple furniture)
+            let useExpandedMargin = !UserDefaults.standard.bool(forKey: "multiFurniView")
+            let px1 = useExpandedMargin ? expandedPX1 : origPX1
+            let py1 = useExpandedMargin ? expandedPY1 : origPY1
+            let px2 = useExpandedMargin ? expandedPX2 : origPX2
+            let py2 = useExpandedMargin ? expandedPY2 : origPY2
+            let intersects = !(dx2 < px1 || dx1 > px2 || dy2 < py1 || dy1 > py2)
+            if !intersects {
                 if debugMode {
-                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox doesn't intersect primary (+10% margin)")
+                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox doesn't intersect primary\(useExpandedMargin ? " (+10% margin)" : "")")
                 }
                 continue
             }
