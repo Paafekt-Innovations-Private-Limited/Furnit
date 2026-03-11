@@ -1097,16 +1097,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let areaNorm = (d.w * d.h) / frameArea
             if d.confidence < minConf || areaNorm < minAreaNorm { continue }
 
-            // Center score: 1 at center, ~0 at corners
+            // Center score: 1 at center, ~0 at corners (center takes precedence over area)
             let dx = (d.x - frameCx) / frameCx
             let dy = (d.y - frameCy) / frameCy
             let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
             let centerScore = 1.0 - centerDist
 
-            // Fast composite score (no mask computation)
+            // Composite: center weighted higher than area (center exponent 1.5, area 0.8)
             let confTerm = pow(d.confidence, 1.5)
-            let areaTerm = pow(areaNorm, 1.2)
-            let centerTerm = 0.5 + 0.5 * Float(centerScore)
+            let areaTerm = pow(areaNorm, 0.8)
+            let centerTerm = pow(max(0, centerScore), 1.5)
 
             let score = confTerm * areaTerm * centerTerm
 
