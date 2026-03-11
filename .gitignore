@@ -257,3 +257,23 @@ android/third_party/executorch/
 KishoreS_CV_Updated.html
 
 test_images/
+
+# Podfile (local CocoaPods config)
+Podfile
+
+# Android libs / Executorch / JNI (binary or generated)
+android/app/libs/
+android/app/src/main/cpp/executorch_lib/
+android/app/src/main/jniLibs/
+
+# Android logs
+android/logcat_crash.txt
+
+# NDA and PDF/letterhead tooling (private)
+docs/NDA_ABAP_AI_Toolkit_Jayamma.pdf
+docs/NDA_Paafekt_Jayamma.pdf
+docs/create_nda_abap_pdf_with_letterhead.py
+docs/create_nda_pdf_with_letterhead.py
+docs/letterhead/
+docs/requirements_nda_pdf.txt
+update_profile_pdf.py
