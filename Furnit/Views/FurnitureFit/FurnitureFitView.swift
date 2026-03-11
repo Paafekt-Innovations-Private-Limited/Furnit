@@ -185,6 +185,9 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     // Callback for reporting estimated furniture size (width, height in meters)
     var onFurnitureSizeEstimated: ((Float, Float) -> Void)?
 
+    /// When true (blue icon): one furniture only — union uses primary detection only, no other candidates. When false (brain): use UserDefaults "multiFurniView" for containment and zero-out.
+    var useMultiFurnitureForSession: Bool = false
+
     // Sizing calculator (created when room dimensions are set)
     private var sizingCalculator: FurnitureSizingCalculator?
 
@@ -1086,37 +1089,42 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let frameCx = frameW / 2
         let frameCy = frameH / 2
 
-        var primaryIdx = -1
-        var maxScore: Float = -1
-        let minConf: Float = 0.15
-        let minAreaNorm: Float = 0.02
-
-        // Select primary using composite scoring: conf * area * center
-        for (i, d) in candidates.enumerated() {
-            // Light filters
-            let areaNorm = (d.w * d.h) / frameArea
-            if d.confidence < minConf || areaNorm < minAreaNorm { continue }
-
-            // Center score: 1 at center, ~0 at corners
-            let dx = (d.x - frameCx) / frameCx
-            let dy = (d.y - frameCy) / frameCy
-            let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
-            let centerScore = 1.0 - centerDist
-
-            // Fast composite score (no mask computation)
-            let confTerm = pow(d.confidence, 1.5)
-            let areaTerm = pow(areaNorm, 1.2)
-            let centerTerm = 0.5 + 0.5 * Float(centerScore)
-
-            let score = confTerm * areaTerm * centerTerm
-
-            if debugMode && score > 0.001 {
-                logDebug("   [\(i)] \(className(d.classIdx)): conf=\(String(format: "%.2f", d.confidence)) area=\(String(format: "%.1f", areaNorm * 100))% center=\(String(format: "%.2f", centerScore)) → score=\(String(format: "%.4f", score))")
+        var primaryIdx: Int
+        if useMultiFurnitureForSession {
+            // New blue icon: Android-style primary = highest confidence (first after NMS by conf desc)
+            primaryIdx = AndroidStylePrimarySelection.primaryIndex(candidates: candidates) ?? -1
+            if debugMode && primaryIdx >= 0 {
+                let primary = candidates[primaryIdx]
+                logDebug("   🎯 PRIMARY (Android-style): idx=\(primaryIdx) \(className(primary.classIdx)) conf=\(String(format: "%.2f", primary.confidence))")
             }
+        } else {
+            // Brain icon: composite scoring (confidence × area × center)
+            primaryIdx = -1
+            var maxScore: Float = -1
+            let minConf: Float = 0.15
+            let minAreaNorm: Float = 0.02
+            for (i, d) in candidates.enumerated() {
+                let areaNorm = (d.w * d.h) / frameArea
+                if d.confidence < minConf || areaNorm < minAreaNorm { continue }
 
-            if score > maxScore {
-                maxScore = score
-                primaryIdx = i
+                let dx = (d.x - frameCx) / frameCx
+                let dy = (d.y - frameCy) / frameCy
+                let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
+                let centerScore = 1.0 - centerDist
+
+                let confTerm = pow(d.confidence, 1.5)
+                let areaTerm = pow(areaNorm, 1.2)
+                let centerTerm = 0.5 + 0.5 * Float(centerScore)
+                let score = confTerm * areaTerm * centerTerm
+
+                if debugMode && score > 0.001 {
+                    logDebug("   [\(i)] \(className(d.classIdx)): conf=\(String(format: "%.2f", d.confidence)) area=\(String(format: "%.1f", areaNorm * 100))% center=\(String(format: "%.2f", centerScore)) → score=\(String(format: "%.4f", score))")
+                }
+
+                if score > maxScore {
+                    maxScore = score
+                    primaryIdx = i
+                }
             }
         }
 
@@ -1168,14 +1176,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let origPX2 = primary.x + primary.w * 0.5
         let origPY2 = primary.y + primary.h * 0.5
 
-        // Expanded primary bbox: 10% margin so headboard/attached parts are included
-        let primaryMarginW = primary.w * 0.10
-        let primaryMarginH = primary.h * 0.10
-        let expandedPX1 = origPX1 - primaryMarginW
-        let expandedPY1 = origPY1 - primaryMarginH
-        let expandedPX2 = origPX2 + primaryMarginW
-        let expandedPY2 = origPY2 + primaryMarginH
-
         // Helper: check if candidate bbox fully encompasses primary bbox
         // (indicates background/room detection that wraps the primary object)
         let encompassTolerance: Float = 2.0  // pixels tolerance for floating-point noise
@@ -1186,7 +1186,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                    candY2 >= origPY2 - encompassTolerance
         }
 
-        var prunedCandidates: [(idx: Int, det: UnionDet)] = []
+        var prunedCandidates: [(idx: Int, det: UnionDet, fullInside: Bool)] = []
         let minCandConf: Float = 0.1
 
         for (i, d) in candidates.enumerated() {
@@ -1209,21 +1209,34 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 continue
             }
 
-            // Intersect check: when MultiFurniView OFF use 10% margin; when ON use primary bbox only (allow multiple furniture)
-            let useExpandedMargin = !UserDefaults.standard.bool(forKey: "multiFurniView")
-            let px1 = useExpandedMargin ? expandedPX1 : origPX1
-            let py1 = useExpandedMargin ? expandedPY1 : origPY1
-            let px2 = useExpandedMargin ? expandedPX2 : origPX2
-            let py2 = useExpandedMargin ? expandedPY2 : origPY2
-            let intersects = !(dx2 < px1 || dx1 > px2 || dy2 < py1 || dy1 > py2)
-            if !intersects {
-                if debugMode {
-                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox doesn't intersect primary\(useExpandedMargin ? " (+10% margin)" : "")")
-                }
+            // Containment: (1) whole candidate bbox inside primary → no intersection check needed
+            let fullInside = (dx1 >= origPX1 && dy1 >= origPY1 && dx2 <= origPX2 && dy2 <= origPY2)
+            if fullInside {
+                prunedCandidates.append((i, d, fullInside: true))
                 continue
             }
+            // (2) Not full inside: require ≥70% of candidate bbox to overlap and fall inside primary — commented out
+            // let ix1 = max(dx1, origPX1)
+            // let iy1 = max(dy1, origPY1)
+            // let ix2 = min(dx2, origPX2)
+            // let iy2 = min(dy2, origPY2)
+            // let interW = max(0, ix2 - ix1)
+            // let interH = max(0, iy2 - iy1)
+            // let interArea = interW * interH
+            // let candArea = d.w * d.h
+            // let overlapRatio = candArea > 0 ? (interArea / candArea) : Float(0)
+            // if overlapRatio < 0.70 {
+            //     if debugMode {
+            //         logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox overlap \(String(format: "%.0f", overlapRatio * 100))% < 70%")
+            //     }
+            //     continue
+            // }
+            prunedCandidates.append((i, d, fullInside: false))
+        }
 
-            prunedCandidates.append((i, d))
+        // Blue icon (one furniture only): use only primary, no other detections in union
+        if useMultiFurnitureForSession {
+            prunedCandidates = []
         }
 
         let t5a = Date()
@@ -1291,6 +1304,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                     for (_, candPair) in prunedCandidates.enumerated() {
                         let origIdx = candPair.idx
                         let d = candPair.det
+                        let fullInside = candPair.fullInside
 
                         // 1. Compute candidate logits: tmp = planes^T * coeffs
                         scratchCandidateLogits.withUnsafeMutableBufferPointer { yPtr in
@@ -1302,28 +1316,30 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                             }
                         }
 
-                        // 2. Compute area & intersection with primary in a single pass
+                        // 2. For intersection-path only: area & overlap with primary (full-inside skip this)
+                        // The 80% mask overlap in 5b is separate and uses mask pixels — commented out
                         var area = 0
                         var inter = 0
-
-                        scratchCandidateLogits.withUnsafeBufferPointer { cPtr in
-                            for px in 0..<planeSize {
-                                if cPtr[px] > 0 {
-                                    area &+= 1
-                                    if pPtr[px] > 0 { inter &+= 1 }
-                                }
-                            }
-                        }
-
-                        if area == 0 {
-                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) area=0") }
-                            continue
-                        }
-
-                        if inter == 0 {
-                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) no mask overlap") }
-                            continue
-                        }
+                        // if !fullInside {
+                        //     scratchCandidateLogits.withUnsafeBufferPointer { cPtr in
+                        //         for px in 0..<planeSize {
+                        //             if cPtr[px] > 0 {
+                        //                 area &+= 1
+                        //                 if pPtr[px] > 0 { inter &+= 1 }
+                        //             }
+                        //         }
+                        //     }
+                        //     if area == 0 {
+                        //         if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) area=0") }
+                        //         continue
+                        //     }
+                        //     // At least 80% of candidate mask must overlap primary mask (contained-on-primary)
+                        //     let overlapRatio = Float(inter) / Float(area)
+                        //     if overlapRatio < 0.80 {
+                        //         if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) mask overlap \(String(format: "%.0f", overlapRatio * 100))% < 80%") }
+                        //         continue
+                        //     }
+                        // }
 
                         // Reject if candidate is too large compared to primary
                         let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
@@ -1588,8 +1604,25 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logMemory("AFTER BUILD MASK")
         }
 
+        // Zero out mask in bboxes of detections that did NOT pass containment (when MultiFurniView is OFF: keep primary + contained only)
+        if !UserDefaults.standard.bool(forKey: "multiFurniView") {
+            let keptIndices = Set([primaryIdx] + prunedCandidates.map(\.idx))
+            for (i, d) in candidates.enumerated() {
+                if keptIndices.contains(i) { continue }
+                let zbx1 = max(0, Int(round((d.x - d.w * 0.5 - padXf) / resizeGain)))
+                let zby1 = max(0, Int(round((d.y - d.h * 0.5 - padYf) / resizeGain)))
+                let zbx2 = min(origW, Int(round((d.x + d.w * 0.5 - padXf) / resizeGain)))
+                let zby2 = min(origH, Int(round((d.y + d.h * 0.5 - padYf) / resizeGain)))
+                if zbx1 >= zbx2 || zby1 >= zby2 { continue }
+                maskFull.withUnsafeMutableBufferPointer { ptr in
+                    for y in zby1..<zby2 {
+                        memset(ptr.baseAddress!.advanced(by: y * origW + zbx1), 0, zbx2 - zbx1)
+                    }
+                }
+            }
+        }
+
         // STAGE 15c: Clip mask to bbox (zero out pixels outside bbox)
-        // OPTIMIZED: Use memset for entire rows/regions instead of per-pixel checks
         let t15c = Date()
         let clipBx1 = bx1
         let clipBy1 = by1

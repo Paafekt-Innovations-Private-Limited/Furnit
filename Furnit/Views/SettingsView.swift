@@ -15,7 +15,7 @@ struct SettingsView: View {
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
 
-    // Furniture segmentation: OFF = one primary + 10% margin; ON = multiple furniture
+    // Furniture segmentation: when ON, zero out mask in bboxes of detections that did not pass containment (keep primary + contained only)
     @AppStorage("multiFurniView") private var multiFurniView: Bool = false
 
     var body: some View {
