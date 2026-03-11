@@ -302,6 +302,7 @@ struct SharpRoomView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var showingFurnitureFit = false
+    @State private var fullSegmentationMode = false  // true = blue icon (multi-furniture), false = brain (one primary + margin)
     @ObservedObject private var yoloeService = YOLOEModelService.shared
 
     // JS-measured front wall dimensions (from actual splat bounds)
@@ -495,6 +496,7 @@ struct SharpRoomView: View {
                     processInterval: 0.07,
                     active: true,
                     lockedOrientation: photoOrientation,
+                    fullSegmentationMode: fullSegmentationMode,
                     roomWidthMeters: roomMeasurements?.frontWallWidth ?? jsFrontWallWidth ?? 4.0,
                     roomHeightMeters: roomMeasurements?.frontWallHeight ?? jsFrontWallHeight ?? 3.0,
                     onFurnitureSizeEstimated: { width, height in
@@ -665,11 +667,30 @@ struct SharpRoomView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
                     HStack(spacing: 20) {
-                        // Brain button (left)
+                        // Full segmentation (blue) – multi-furniture
                         Button(action: {
                             if showingFurnitureFit {
                                 showingFurnitureFit = false
                             } else {
+                                fullSegmentationMode = true
+                                SHARPService.shared.releaseResources()
+                                showingFurnitureFit = true
+                            }
+                        }) {
+                            Image(systemName: "square.on.square.dashed")
+                                .font(.system(size: 26))
+                                .foregroundColor(.white)
+                                .frame(width: 56, height: 56)
+                                .background(Circle().fill(showingFurnitureFit && fullSegmentationMode ? Color.cyan : Color.blue).shadow(radius: 5))
+                        }
+                        .disabled(isLoading)
+
+                        // Brain button (one primary + 10% margin)
+                        Button(action: {
+                            if showingFurnitureFit {
+                                showingFurnitureFit = false
+                            } else {
+                                fullSegmentationMode = false
                                 SHARPService.shared.releaseResources()
                                 showingFurnitureFit = true
                             }
@@ -678,7 +699,7 @@ struct SharpRoomView: View {
                                 .font(.system(size: 28))
                                 .foregroundColor(.white)
                                 .frame(width: 60, height: 60)
-                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+                                .background(Circle().fill(showingFurnitureFit && !fullSegmentationMode ? Color.green : Color.blue).shadow(radius: 5))
                         }
                         .disabled(isLoading)
 
@@ -773,13 +794,31 @@ struct SharpRoomView: View {
                     .padding(.bottom, 12)
                     .allowsHitTesting(false)
 
-                    HStack {
-                        // Brain button (bottom-left)
+                    HStack(spacing: 12) {
+                        // Full segmentation (blue) – multi-furniture
                         Button(action: {
                             if showingFurnitureFit {
                                 showingFurnitureFit = false
                             } else {
-                                // Release SHARP model to free memory for YOLO segmentation
+                                fullSegmentationMode = true
+                                SHARPService.shared.releaseResources()
+                                showingFurnitureFit = true
+                            }
+                        }) {
+                            Image(systemName: "square.on.square.dashed")
+                                .font(.system(size: 26))
+                                .foregroundColor(.white)
+                                .frame(width: 56, height: 56)
+                                .background(Circle().fill(showingFurnitureFit && fullSegmentationMode ? Color.cyan : Color.blue).shadow(radius: 5))
+                        }
+                        .disabled(isLoading)
+
+                        // Brain button (one primary + 10% margin)
+                        Button(action: {
+                            if showingFurnitureFit {
+                                showingFurnitureFit = false
+                            } else {
+                                fullSegmentationMode = false
                                 SHARPService.shared.releaseResources()
                                 showingFurnitureFit = true
                             }
@@ -788,10 +827,9 @@ struct SharpRoomView: View {
                                 .font(.system(size: 28))
                                 .foregroundColor(.white)
                                 .frame(width: 60, height: 60)
-                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+                                .background(Circle().fill(showingFurnitureFit && !fullSegmentationMode ? Color.green : Color.blue).shadow(radius: 5))
                         }
                         .disabled(isLoading)
-                        .padding(.leading, 16)
 
                         Spacer()
                             .allowsHitTesting(false)
@@ -837,6 +875,7 @@ struct SharpRoomView: View {
                         }
                         .padding(.trailing, 16)
                     }
+                    .padding(.leading, 16)
                     .padding(.bottom, 20)
                 }
                 .opacity(isCapturingSnapshot ? 0 : 1)

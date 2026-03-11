@@ -29,6 +29,7 @@ struct ModelViewerView: View {
     @State private var showingSegmentForeground = false
     @State private var showingSegmentFurniture = false
     @State private var showingFurnitureFit = false  // FurnitureFit: YOLOE segmentation
+    @State private var fullSegmentationMode = false  // true = blue icon (multi-furniture), false = brain (one primary + margin)
     @State private var capturedImage: UIImage? = nil
     @State private var roomSnapshot: UIImage? = nil
     
@@ -39,6 +40,7 @@ struct ModelViewerView: View {
     @State private var showFurnitureHint = true
 
     @State private var isCapturingSnapshot = false
+    @State private var isPreparingSegmentation = false  // Progress overlay while snapshot + overlay load (mimic Android)
 
     init(model: USDZModel) {
         self.model = model
@@ -64,7 +66,7 @@ struct ModelViewerView: View {
                     )
                     .allowsHitTesting(!(showingCameraPreview || showingSegmentExamine || showingSegmentForeground || showingSegmentFurniture || showingFurnitureFit))
                     .ignoresSafeArea(.all)
-                    // FurnitureFit overlay (yoloe-11l 1280)
+                    // FurnitureFit overlay (yoloe-11l 1280); fullSegmentationMode = multi-furniture (like Android)
                     if showingFurnitureFit {
                         FurnitureFitUIView(
                             capturedImage: $capturedImage,
@@ -72,7 +74,8 @@ struct ModelViewerView: View {
                             mlModel: yoloeService.model,
                             processInterval: 0.07,
                             active: true,
-                            lockedOrientation: model.photoOrientation
+                            lockedOrientation: model.photoOrientation,
+                            fullSegmentationMode: fullSegmentationMode
                         )
                         .zIndex(9000)
                     }
@@ -118,54 +121,88 @@ struct ModelViewerView: View {
                     .zIndex(99998)
                 }
                 
-                // TOPMOST BRAIN ICON - ALWAYS ON TOP
+                // TOPMOST: Full segmentation (blue) + Brain icons, side by side bottom-left
                 VStack {
                     Spacer()
-                    HStack {
-                        VStack(spacing: 16) {
-                            // Brain button
-                            Button(action: {
-                                logDebug("BRAIN FLOW: tap received")
-                                // Dismiss hint on first touch
-                                showFurnitureHint = false
-                                
-                                if showingFurnitureFit {
-                                    showingFurnitureFit = false
-                                } else {
-                                    logDebug("BRAIN FLOW: requesting snapshot")
-                                    // Trigger ARView snapshot
-                                    shouldCaptureARViewSnapshot = true
-                                    
-                                    // Hide other overlays
-                                    showingCameraPreview = false
-                                    showingSegmentExamine = false
-                                    showingSegmentForeground = false
-                                    showingSegmentFurniture = false
-                                    
-                                    // Wait briefly for snapshot to complete
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                        logDebug("BRAIN FLOW: showing FurnitureFit overlay")
-                                        self.showingFurnitureFit = true
-                                    }
+                    HStack(spacing: 12) {
+                        // Full segmentation (blue) – multi-furniture, like Android ONNX/YOLO
+                        Button(action: {
+                            showFurnitureHint = false
+                            if showingFurnitureFit {
+                                showingFurnitureFit = false
+                            } else {
+                                fullSegmentationMode = true
+                                shouldCaptureARViewSnapshot = true
+                                showingCameraPreview = false
+                                showingSegmentExamine = false
+                                showingSegmentForeground = false
+                                showingSegmentFurniture = false
+                                isPreparingSegmentation = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    self.showingFurnitureFit = true
+                                    self.isPreparingSegmentation = false
                                 }
-                            }) {
-                                Image(systemName: "brain.head.profile")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(.white)
-                                    .frame(width: 60, height: 60)
-                                    .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
                             }
-                            .contentShape(Circle())
-                            .frame(width: 76, height: 76)
+                        }) {
+                            Image(systemName: "square.on.square.dashed")
+                                .font(.system(size: 26))
+                                .foregroundColor(.white)
+                                .frame(width: 56, height: 56)
+                                .background(Circle().fill(showingFurnitureFit && fullSegmentationMode ? Color.cyan : Color.blue).shadow(radius: 5))
                         }
-                        .padding(.leading, 16)
-                        .padding(.bottom, 20)
+                        .contentShape(Circle())
+                        // Brain button (one primary + 10% margin)
+                        Button(action: {
+                            logDebug("BRAIN FLOW: tap received")
+                            showFurnitureHint = false
+                            if showingFurnitureFit {
+                                showingFurnitureFit = false
+                            } else {
+                                fullSegmentationMode = false
+                                logDebug("BRAIN FLOW: requesting snapshot")
+                                shouldCaptureARViewSnapshot = true
+                                showingCameraPreview = false
+                                showingSegmentExamine = false
+                                showingSegmentForeground = false
+                                showingSegmentFurniture = false
+                                isPreparingSegmentation = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                    logDebug("BRAIN FLOW: showing FurnitureFit overlay")
+                                    self.showingFurnitureFit = true
+                                    self.isPreparingSegmentation = false
+                                }
+                            }
+                        }) {
+                            Image(systemName: "brain.head.profile")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(showingFurnitureFit && !fullSegmentationMode ? Color.green : Color.blue).shadow(radius: 5))
+                        }
+                        .contentShape(Circle())
                         Spacer()
                     }
+                    .padding(.leading, 16)
+                    .padding(.bottom, 20)
                 }
                 .opacity(isCapturingSnapshot ? 0 : 1)
                 .zIndex(99998) // SECOND HIGHEST Z-INDEX
                 .allowsHitTesting(true)
+
+                // Progress overlay when opening segmentation (mimic Android: progress until overlay ready)
+                if isPreparingSegmentation {
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(.white)
+                        Text("Preparing segmentation…")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.6))
+                    .zIndex(99997)
+                }
                 
                 // Camera controls handled by RealityKitGestureHandlers in RealityKitView
 
@@ -613,6 +650,8 @@ struct FurnitureFitUIView: UIViewRepresentable {
     var scoreThreshold: Float = 0.25
     var active: Bool = true
     var lockedOrientation: PhotoOrientation = .portrait  // Room's photo orientation
+    /// When true (blue icon): one furniture only (primary mask only, like Android single-object). When false (brain): one primary + 10% margin.
+    var fullSegmentationMode: Bool = false
 
     // Room dimensions from SHARP (in meters) for furniture sizing
     var roomWidthMeters: Float = 4.0
@@ -628,6 +667,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         view.roomWidthMeters = roomWidthMeters
         view.roomHeightMeters = roomHeightMeters
         view.onFurnitureSizeEstimated = onFurnitureSizeEstimated
+        view.useMultiFurnitureForSession = fullSegmentationMode
         return view
     }
 
@@ -638,6 +678,7 @@ struct FurnitureFitUIView: UIViewRepresentable {
         uiView.roomWidthMeters = roomWidthMeters
         uiView.roomHeightMeters = roomHeightMeters
         uiView.onFurnitureSizeEstimated = onFurnitureSizeEstimated
+        uiView.useMultiFurnitureForSession = fullSegmentationMode
         if active { uiView.startIfNeeded() } else { uiView.stop() }
     }
 }
