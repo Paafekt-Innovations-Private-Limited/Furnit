@@ -1168,13 +1168,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         let origPX2 = primary.x + primary.w * 0.5
         let origPY2 = primary.y + primary.h * 0.5
 
-        // Expanded primary bbox: 10% margin so headboard/attached parts are included
-        let primaryMarginW = primary.w * 0.10
-        let primaryMarginH = primary.h * 0.10
-        let expandedPX1 = origPX1 - primaryMarginW
-        let expandedPY1 = origPY1 - primaryMarginH
-        let expandedPX2 = origPX2 + primaryMarginW
-        let expandedPY2 = origPY2 + primaryMarginH
+        // 10% margin commented out: use primary bbox only for intersect check
+        // let primaryMarginW = primary.w * 0.10
+        // let primaryMarginH = primary.h * 0.10
+        // let expandedPX1 = origPX1 - primaryMarginW
+        // let expandedPY1 = origPY1 - primaryMarginH
+        // let expandedPX2 = origPX2 + primaryMarginW
+        // let expandedPY2 = origPY2 + primaryMarginH
 
         // Helper: check if candidate bbox fully encompasses primary bbox
         // (indicates background/room detection that wraps the primary object)
@@ -1209,16 +1209,15 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 continue
             }
 
-            // Intersect check: when MultiFurniView OFF use 10% margin; when ON use primary bbox only (allow multiple furniture)
-            let useExpandedMargin = !UserDefaults.standard.bool(forKey: "multiFurniView")
-            let px1 = useExpandedMargin ? expandedPX1 : origPX1
-            let py1 = useExpandedMargin ? expandedPY1 : origPY1
-            let px2 = useExpandedMargin ? expandedPX2 : origPX2
-            let py2 = useExpandedMargin ? expandedPY2 : origPY2
+            // Intersect check: primary bbox only (10% margin commented out)
+            let px1 = origPX1
+            let py1 = origPY1
+            let px2 = origPX2
+            let py2 = origPY2
             let intersects = !(dx2 < px1 || dx1 > px2 || dy2 < py1 || dy1 > py2)
             if !intersects {
                 if debugMode {
-                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox doesn't intersect primary\(useExpandedMargin ? " (+10% margin)" : "")")
+                    logDebug("   ⏭️ [\(i)]: \(className(d.classIdx)) skipped - bbox doesn't intersect primary")
                 }
                 continue
             }
@@ -1232,7 +1231,81 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ STAGE 5a - Prune: \(pruneMs) ms, \(candidates.count - 1) → \(prunedCandidates.count) candidates")
         }
 
-        // STAGE 5b: Per-candidate SGEMV (memory-efficient: O(planeSize) not O(planeSize*N))
+        // STAGE 5b: Bbox-only dedupe to get a small set of non-duplicate candidates
+
+        // Bbox IoU helper for cheap deduplication gate
+        func bboxIoU(_ a: UnionDet, _ b: UnionDet) -> Float {
+            let ax1 = a.x - a.w * 0.5, ay1 = a.y - a.h * 0.5
+            let ax2 = a.x + a.w * 0.5, ay2 = a.y + a.h * 0.5
+            let bx1 = b.x - b.w * 0.5, by1 = b.y - b.h * 0.5
+            let bx2 = b.x + b.w * 0.5, by2 = b.y + b.h * 0.5
+            let ix1 = max(ax1, bx1), iy1 = max(ay1, by1)
+            let ix2 = min(ax2, bx2), iy2 = min(ay2, by2)
+            let iw = max(0, ix2 - ix1), ih = max(0, iy2 - iy1)
+            let inter = iw * ih
+            let aArea = a.w * a.h, bArea = b.w * b.h
+            let uni = aArea + bArea - inter
+            return uni > 0 ? inter / uni : 0
+        }
+
+        let bboxDupeThreshold: Float = 0.7
+        var bboxKept: [(idx: Int, det: UnionDet)] = []
+
+        if prunedCandidates.isEmpty {
+            if debugMode { logDebug("   No candidates to check after pruning") }
+        } else {
+            for candPair in prunedCandidates {
+                let origIdx = candPair.idx
+                let d = candPair.det
+
+                // Reject if candidate is too large compared to primary (likely background/room)
+                let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
+                if tooLarge {
+                    if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) TOO LARGE (bbox)") }
+                    continue
+                }
+
+                var shouldSkip = false
+                var replaceIndex: Int? = nil
+
+                // Compare against primary first (never replace primary)
+                let iouWithPrimary = bboxIoU(d, primary)
+                if iouWithPrimary > bboxDupeThreshold {
+                    if debugMode {
+                        let iouPct = String(format: "%.1f", iouWithPrimary * 100)
+                        logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) DUPLICATE OF PRIMARY (bbox IoU=\(iouPct)%)")
+                    }
+                    shouldSkip = true
+                } else {
+                    // Compare with already kept non-primary candidates
+                    for (idx, keptPair) in bboxKept.enumerated() {
+                        let iou = bboxIoU(d, keptPair.det)
+                        if iou > bboxDupeThreshold {
+                            // Keep the higher-confidence box within this IoU cluster
+                            if d.confidence > keptPair.det.confidence {
+                                replaceIndex = idx
+                            } else {
+                                shouldSkip = true
+                            }
+                            if debugMode {
+                                let iouPct = String(format: "%.1f", iou * 100)
+                                logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) DUPLICATE (bbox IoU=\(iouPct)%)")
+                            }
+                            break
+                        }
+                    }
+                }
+
+                if shouldSkip { continue }
+                if let idx = replaceIndex {
+                    bboxKept[idx] = candPair
+                } else {
+                    bboxKept.append(candPair)
+                }
+            }
+        }
+
+        // STAGE 5c: Apply mask-overlap gate only on the small bboxKept set (final remaining detections)
 
         // Build primary logits into scratch buffer (reused every frame)
         ensureFloatCapacity(&scratchPrimaryLogits, count: planeSize)
@@ -1259,36 +1332,20 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("      mask pixels: \(primaryMaskArea)")
         }
 
-        // Bbox IoU helper for cheap deduplication gate
-        func bboxIoU(_ a: UnionDet, _ b: UnionDet) -> Float {
-            let ax1 = a.x - a.w * 0.5, ay1 = a.y - a.h * 0.5
-            let ax2 = a.x + a.w * 0.5, ay2 = a.y + a.h * 0.5
-            let bx1 = b.x - b.w * 0.5, by1 = b.y - b.h * 0.5
-            let bx2 = b.x + b.w * 0.5, by2 = b.y + b.h * 0.5
-            let ix1 = max(ax1, bx1), iy1 = max(ay1, by1)
-            let ix2 = min(ax2, bx2), iy2 = min(ay2, by2)
-            let iw = max(0, ix2 - ix1), ih = max(0, iy2 - iy1)
-            let inter = iw * ih
-            let aArea = a.w * a.h, bArea = b.w * b.h
-            let uni = aArea + bArea - inter
-            return uni > 0 ? inter / uni : 0
-        }
-
-        let bboxDupeThreshold: Float = 0.7
-
-        // Result container: start with primary already selected
+        // Final result container: always include primary; add candidates that pass mask-overlap gate
         var kept2: [UnionDet] = [primary]
 
-        if prunedCandidates.isEmpty {
-            if debugMode { logDebug("   No candidates to check after pruning") }
-        } else {
+        if !bboxKept.isEmpty {
             // Scratch buffer for candidate logits (reused per candidate)
             ensureFloatCapacity(&scratchCandidateLogits, count: planeSize)
+
+            // Keep detection if at least 5% of candidate mask lies on primary mask
+            let minMaskOverlap: Float = 0.05
 
             planes.withUnsafeBufferPointer { planesPtr in
                 scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
 
-                    for (_, candPair) in prunedCandidates.enumerated() {
+                    for candPair in bboxKept {
                         let origIdx = candPair.idx
                         let d = candPair.det
 
@@ -1325,42 +1382,91 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                             continue
                         }
 
-                        // Reject if candidate is too large compared to primary
-                        let tooLarge = d.w > primary.w * 1.5 && d.h > primary.h * 1.5
-                        if tooLarge {
-                            if debugMode { logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) TOO LARGE") }
+                        // Require mask-of-object to lie mostly on primary (e.g. ≥ 80% of candidate mask pixels on primary mask)
+                        let overlapFrac = Float(inter) / Float(area)
+                        if overlapFrac < minMaskOverlap {
+                            if debugMode {
+                                let pct = String(format: "%.1f", overlapFrac * 100)
+                                let minPct = Int(minMaskOverlap * 100)
+                                logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) mask overlap=\(pct)% (<\(minPct)%)")
+                            }
                             continue
                         }
 
-                        // 3. Bbox IoU dedupe gate
-                        var isDuplicate = false
-                        for keptDet in kept2 {
-                            let iou = bboxIoU(d, keptDet)
-                            if iou > bboxDupeThreshold {
-                                isDuplicate = true
-                                if debugMode {
-                                    logDebug("   ❌ [\(origIdx)]: \(className(d.classIdx)) DUPLICATE (bbox IoU=\(String(format: "%.1f", iou * 100))%)")
-                                }
-                                break
-                            }
-                        }
-
-                        if !isDuplicate {
-                            kept2.append(d)
-                            if debugMode {
-                                logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(inter)px bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
-                            }
+                        kept2.append(d)
+                        if debugMode {
+                            let pct = String(format: "%.1f", overlapFrac * 100)
+                            logDebug("   ✅ [\(origIdx)]: \(className(d.classIdx)) overlap=\(pct)% bbox=(\(Int(d.x)),\(Int(d.y))) \(Int(d.w))x\(Int(d.h))")
                         }
                     }
                 }
             }
+        } else {
+            if debugMode { logDebug("   No non-primary candidates after bbox dedupe") }
         }
 
         let t5End = Date()
         if debugMode {
             let filterMs = String(format: "%.2f", t5End.timeIntervalSince(t5a) * 1000)
-            logDebug("⏱️ STAGE 5b - Filter (SGEMV): \(filterMs) ms, kept=\(kept2.count)")
-            logMemory("AFTER STAGE 5b")
+            logDebug("⏱️ STAGE 5b/5c - Filter (bbox+mask): \(filterMs) ms, kept=\(kept2.count)")
+            logMemory("AFTER STAGE 5b/5c")
+        }
+
+        // Final containment (mask-based, not bbox): exclude detections not inside primary by mask (≥10% of candidate mask on primary)
+        let containmentOverlapMin: Float = 0.10
+        if kept2.count > 1 {
+            if debugMode {
+                logDebug("📌 Final containment: checking \(kept2.count - 1) candidates, min mask overlap=\(Int(containmentOverlapMin * 100))%")
+            }
+            ensureFloatCapacity(&scratchCandidateLogits, count: planeSize)
+            var contained: [UnionDet] = [kept2[0]]
+            planes.withUnsafeBufferPointer { planesPtr in
+                scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
+                    for d in kept2.dropFirst() {
+                        scratchCandidateLogits.withUnsafeMutableBufferPointer { yPtr in
+                            d.coeffs.withUnsafeBufferPointer { xPtr in
+                                blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0,
+                                                          A: planesPtr.baseAddress!, lda: BLASInt(planeSize),
+                                                          x: xPtr.baseAddress!, incx: 1,
+                                                          beta: 0.0, y: yPtr.baseAddress!, incy: 1)
+                            }
+                        }
+                        var area = 0
+                        var inter = 0
+                        scratchCandidateLogits.withUnsafeBufferPointer { cPtr in
+                            for px in 0..<planeSize {
+                                if cPtr[px] > 0 {
+                                    area &+= 1
+                                    if pPtr[px] > 0 { inter &+= 1 }
+                                }
+                            }
+                        }
+                        let objName = className(d.classIdx)
+                        let confStr = String(format: "%.3f", d.confidence)
+                        if area == 0 {
+                            if debugMode {
+                                logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=0 → excluded")
+                            }
+                            continue
+                        }
+                        let overlapFrac = Float(inter) / Float(area)
+                        let overlapPct = String(format: "%.1f", overlapFrac * 100)
+                        let minPct = Int(containmentOverlapMin * 100)
+                        if overlapFrac >= containmentOverlapMin {
+                            contained.append(d)
+                            if debugMode {
+                                logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) overlap=\(overlapPct)% (≥\(minPct)%) → kept")
+                            }
+                        } else if debugMode {
+                            logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) overlap=\(overlapPct)% (<\(minPct)%) → excluded")
+                        }
+                    }
+                }
+            }
+            kept2 = contained
+        }
+        if debugMode {
+            logDebug("⏱️ Final containment (mask ≥10%): kept=\(kept2.count)")
         }
 
         if kept2.isEmpty {
