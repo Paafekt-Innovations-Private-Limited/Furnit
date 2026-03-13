@@ -1,0 +1,18 @@
+# ShanjeevRAG - Insurance domain RAG
+# Python 3.10+
+
+# Vector store and embeddings (runs fully on laptop, no API key required)
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+
+# Document loading
+pypdf>=3.0.0
+python-docx>=1.0.0
+unstructured>=0.10.0
+
+# Utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# Optional: LLM for generated answers (set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env)
+openai>=1.0.0
