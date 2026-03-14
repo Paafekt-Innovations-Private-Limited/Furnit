@@ -1,0 +1,3 @@
+# For create_nda_pdf_with_letterhead.py
+pypdf>=3.0
+reportlab>=4.0
