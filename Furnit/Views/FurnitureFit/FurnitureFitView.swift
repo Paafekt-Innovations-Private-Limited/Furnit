@@ -269,7 +269,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
 
     /// Containment: when true, keep candidate if IoU (inter/union) ≥ 20%.
     private var useContainmentIoU = true
-    /// Containment: when true, keep candidate if intersection/candidate_area ≥ 10%. Needed for "bag on chair": bag is 100% on chair but IoU is tiny (bag_area/chair_area), so keep by frac.
+    /// Containment: when true, keep candidate if intersection/candidate_area ≥ 10%, and only when candidate is small vs primary (avoids keeping background/cabinet). Bag on chair, bedsheet/pillow on bed pass.
     private var useContainmentIntersectionFrac = true
     /// Containment: when true, do only union (IoU) check at 20%. Off.
     private var useContainmentUnionOnly20 = false
@@ -1463,9 +1463,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
             ensureFloatCapacity(&scratchCandidateLogits, count: planeSize)
             var contained: [UnionDet] = [kept2[0]]
-            let unionCheckThreshold: Float = 0.10  // 20% for union (IoU) check
+            let unionCheckThreshold: Float = 0.20  // for union-only path
             let containmentIoUMin: Float = 0.20
-            let containmentIntersectionMin: Float = 0.10
+            let containmentIntersectionMin: Float = 0.10  // 10%; use only for small-on-large (see below)
             planes.withUnsafeBufferPointer { planesPtr in
                 scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
                     for d in kept2.dropFirst() {
@@ -1500,7 +1500,9 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         let intersectionFrac: Float = Float(inter) / Float(area)
                         let keepByUnionOnly = useContainmentUnionOnly20 && iou >= unionCheckThreshold
                         let keepByIou = useContainmentIoU && iou >= containmentIoUMin
-                        let keepByIntersection = useContainmentIntersectionFrac && intersectionFrac >= containmentIntersectionMin
+                        // Intersection-frac only when candidate is strictly smaller than primary (area < primary). Bag/pillow/bedsheet pass; cabinet/background (often >= primary size) must pass IoU.
+                        let isSmallOnPrimary = primaryMaskArea > 0 && area < primaryMaskArea
+                        let keepByIntersection = useContainmentIntersectionFrac && isSmallOnPrimary && intersectionFrac >= containmentIntersectionMin
                         if keepByUnionOnly || keepByIou || keepByIntersection {
                             contained.append(d)
                             if debugMode {
