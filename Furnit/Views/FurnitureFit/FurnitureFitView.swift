@@ -267,6 +267,13 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// When true, at the very end exclude any detection whose bbox center is outside primary bbox extended by 15%. Set to false to skip.
     private var usePrimaryBboxExtensionFilter = true
 
+    /// Containment: when true, keep candidate if IoU (inter/union) ≥ 20%.
+    private var useContainmentIoU = true
+    /// Containment: when true, keep candidate if intersection/candidate_area ≥ 10%. Needed for "bag on chair": bag is 100% on chair but IoU is tiny (bag_area/chair_area), so keep by frac.
+    private var useContainmentIntersectionFrac = true
+    /// Containment: when true, do only union (IoU) check at 20%. Off.
+    private var useContainmentUnionOnly20 = false
+
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
     private var metalCommandQueue: MTLCommandQueue?  // FIXED: was computed property creating new queue on every access
@@ -1443,7 +1450,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
         }
 
-        // 2) Mask overlap containment (runs after 15% extension): intersection-only check. Toggle via useMaskOverlapContainment.
+        // 2) Mask overlap containment (runs after 15% extension). Flags: useContainmentIoU (off), useContainmentIntersectionFrac (off), useContainmentUnionOnly20 (on) = only union check 20%.
         if useMaskOverlapContainment, kept2.count > 1 {
             var primaryMaskArea = 0
             scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
@@ -1452,10 +1459,13 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 }
             }
             if debugMode {
-                logDebug("📌 Final containment (intersection-only): checking \(kept2.count - 1) candidates, primary_mask=\(primaryMaskArea)")
+                logDebug("📌 Final containment: checking \(kept2.count - 1) candidates, primary_mask=\(primaryMaskArea). Union-only 20%=\(useContainmentUnionOnly20), IoU flag=\(useContainmentIoU), intersection flag=\(useContainmentIntersectionFrac)")
             }
             ensureFloatCapacity(&scratchCandidateLogits, count: planeSize)
             var contained: [UnionDet] = [kept2[0]]
+            let unionCheckThreshold: Float = 0.10  // 20% for union (IoU) check
+            let containmentIoUMin: Float = 0.20
+            let containmentIntersectionMin: Float = 0.10
             planes.withUnsafeBufferPointer { planesPtr in
                 scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
                     for d in kept2.dropFirst() {
@@ -1485,17 +1495,24 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                             }
                             continue
                         }
+                        let union = area + primaryMaskArea - inter
+                        let iou: Float = union > 0 ? Float(inter) / Float(union) : 0
                         let intersectionFrac: Float = Float(inter) / Float(area)
-                        let containmentIntersectionMin: Float = 0.1
-                        if intersectionFrac >= containmentIntersectionMin {
+                        let keepByUnionOnly = useContainmentUnionOnly20 && iou >= unionCheckThreshold
+                        let keepByIou = useContainmentIoU && iou >= containmentIoUMin
+                        let keepByIntersection = useContainmentIntersectionFrac && intersectionFrac >= containmentIntersectionMin
+                        if keepByUnionOnly || keepByIou || keepByIntersection {
                             contained.append(d)
                             if debugMode {
-                                let pct = String(format: "%.1f", intersectionFrac * 100)
-                                logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) intersection_frac=\(pct)% (≥\(Int(containmentIntersectionMin * 100))%) → kept")
+                                let iouPct = String(format: "%.1f", iou * 100)
+                                let fracPct = String(format: "%.1f", intersectionFrac * 100)
+                                let reason = keepByUnionOnly ? "union20" : (keepByIou ? "IoU" : "frac")
+                                logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) union=\(union) IoU=\(iouPct)% frac=\(fracPct)% (\(reason)) → kept")
                             }
                         } else if debugMode {
-                            let pct = String(format: "%.1f", intersectionFrac * 100)
-                            logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) intersection_frac=\(pct)% (<\(Int(containmentIntersectionMin * 100))%) → excluded")
+                            let iouPct = String(format: "%.1f", iou * 100)
+                            let fracPct = String(format: "%.1f", intersectionFrac * 100)
+                            logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) IoU=\(iouPct)% frac=\(fracPct)% → excluded")
                         }
                     }
                 }
@@ -1503,7 +1520,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             kept2 = contained
         }
         if debugMode, useMaskOverlapContainment {
-            logDebug("⏱️ Final containment (intersection-only): kept=\(kept2.count)")
+            logDebug("⏱️ Final containment: kept=\(kept2.count)")
         }
 
         if kept2.isEmpty {
