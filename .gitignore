@@ -257,3 +257,9 @@ android/third_party/executorch/
 KishoreS_CV_Updated.html
 
 test_images/
+
+# Large files (backup to external HD only; see scripts/backup_large_files_to_external.sh)
+android/app/libs/
+android/app/src/main/cpp/executorch_lib/
+android/app/src/main/jniLibs/
+android/logcat_crash.txt

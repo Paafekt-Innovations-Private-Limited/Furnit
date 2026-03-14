@@ -1,0 +1,15 @@
+# Conda env for YOLOe export (avoids coremltools/torch 2.10 incompatibility)
+name: furnit-yoloe
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy>=1.24,<2
+  - pip:
+    - torch>=2.4,<2.8
+    - "coremltools>=7.0,<8"
+    - "numpy>=1.24,<2.4"
+    - ultralytics>=8.0
+    - opencv-python
