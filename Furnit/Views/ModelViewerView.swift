@@ -174,25 +174,7 @@ struct ModelViewerView: View {
                     Spacer()
                     HStack {
                         Spacer()
-                        // Share button (only when FurnitureFit active and user can share)
-                        if showingFurnitureFit && authManager.canShare {
-                            Button(action: {
-                                let screen = UIScreen.main.bounds.size
-                                shareFurnitureFitSnapshot(screen)
-                            }) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 28, weight: .regular))
-                                    .foregroundColor(.white)
-                                    .frame(width: 48, height: 48)
-                                    .background(
-                                        Circle()
-                                            .fill(Color.green)
-                                    )
-                            }
-                            .disabled(isCapturingSnapshot)
-                            .padding(.trailing, 12)
-                        }
-                        // Snapshot button - always visible
+                        // Snapshot button - always visible (green share button removed; retain blue camera only)
                         Button(action: {
                             let screen = UIScreen.main.bounds.size
                             saveFurnitureFitSnapshot(screen)

@@ -261,6 +261,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
 
+    /// When true, apply final mask overlap containment (intersection-only check). Set to false to skip this filter.
+    private var useMaskOverlapContainment = false
+
+    /// When true, at the very end exclude any detection whose bbox center is outside primary bbox extended by 15%. Set to false to skip.
+    private var usePrimaryBboxExtensionFilter = true
+
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
     private var metalCommandQueue: MTLCommandQueue?  // FIXED: was computed property creating new queue on every access
@@ -1097,16 +1103,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let areaNorm = (d.w * d.h) / frameArea
             if d.confidence < minConf || areaNorm < minAreaNorm { continue }
 
-            // Center score: 1 at center, ~0 at corners (center takes precedence over area)
+            // Center score: 1 at center, ~0 at corners (reduced weight so conf/area matter more)
             let dx = (d.x - frameCx) / frameCx
             let dy = (d.y - frameCy) / frameCy
             let centerDist = min(1.0, sqrt(dx * dx + dy * dy))
             let centerScore = 1.0 - centerDist
 
-            // Composite: center weighted higher than area (center exponent 1.5, area 0.8)
+            // Composite: conf and area dominate; center has reduced influence (exponent 0.5)
             let confTerm = pow(d.confidence, 1.5)
             let areaTerm = pow(areaNorm, 0.8)
-            let centerTerm = pow(max(0, centerScore), 1.5)
+            let centerTerm = pow(max(0, centerScore), 0.5)
 
             let score = confTerm * areaTerm * centerTerm
 
@@ -1412,11 +1418,17 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logMemory("AFTER STAGE 5b/5c")
         }
 
-        // Final containment (mask-based, not bbox): exclude detections not inside primary by mask (≥10% of candidate mask on primary)
-        let containmentOverlapMin: Float = 0.10
-        if kept2.count > 1 {
+        // Final mask overlap containment (optional): intersection-only check. Union/IoU check is commented out.
+        // Toggle via useMaskOverlapContainment.
+        if useMaskOverlapContainment, kept2.count > 1 {
+            var primaryMaskArea = 0
+            scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
+                for px in 0..<planeSize {
+                    if pPtr[px] > 0 { primaryMaskArea += 1 }
+                }
+            }
             if debugMode {
-                logDebug("📌 Final containment: checking \(kept2.count - 1) candidates, min mask overlap=\(Int(containmentOverlapMin * 100))%")
+                logDebug("📌 Final containment (intersection-only): checking \(kept2.count - 1) candidates, primary_mask=\(primaryMaskArea)")
             }
             ensureFloatCapacity(&scratchCandidateLogits, count: planeSize)
             var contained: [UnionDet] = [kept2[0]]
@@ -1449,28 +1461,69 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                             }
                             continue
                         }
-                        let overlapFrac = Float(inter) / Float(area)
-                        let overlapPct = String(format: "%.1f", overlapFrac * 100)
-                        let minPct = Int(containmentOverlapMin * 100)
-                        if overlapFrac >= containmentOverlapMin {
+                        // Intersection-only: keep if fraction of candidate mask overlapping primary >= threshold.
+                        // Use a low threshold (e.g. 0.20): the same chair is often multiple overlapping detections;
+                        // at 50%+ we drop those and get holes in the final mask where background shows through.
+                        let intersectionFrac: Float = Float(inter) / Float(area)
+                        let containmentIntersectionMin: Float = 0.20
+                        // Union check (commented out): IoU = inter / (area + primaryMaskArea - inter)
+                        // let union = area + primaryMaskArea - inter
+                        // let iou: Float = union > 0 ? Float(inter) / Float(union) : 0
+                        // if iou >= containmentIoUMin { ... }
+
+                        if intersectionFrac >= containmentIntersectionMin {
                             contained.append(d)
                             if debugMode {
-                                logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) overlap=\(overlapPct)% (≥\(minPct)%) → kept")
+                                let pct = String(format: "%.1f", intersectionFrac * 100)
+                                logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) intersection_frac=\(pct)% (≥\(Int(containmentIntersectionMin * 100))%) → kept")
                             }
                         } else if debugMode {
-                            logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) overlap=\(overlapPct)% (<\(minPct)%) → excluded")
+                            let pct = String(format: "%.1f", intersectionFrac * 100)
+                            logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) intersection_frac=\(pct)% (<\(Int(containmentIntersectionMin * 100))%) → excluded")
                         }
                     }
                 }
             }
             kept2 = contained
         }
-        if debugMode {
-            logDebug("⏱️ Final containment (mask ≥10%): kept=\(kept2.count)")
+        if debugMode, useMaskOverlapContainment {
+            logDebug("⏱️ Final containment (intersection-only): kept=\(kept2.count)")
         }
 
         if kept2.isEmpty {
             if debugMode { logDebug("⚠️ No detections after filter") }
+            DispatchQueue.main.async { self.maskImageView.image = nil }
+            resetProcessingFlag()
+            return
+        }
+
+        // Final filter (optional): exclude anything whose bbox center is outside primary bbox extended by 15%
+        if usePrimaryBboxExtensionFilter, kept2.count > 1 {
+            let countBefore = kept2.count
+            let primary = kept2[0]
+            let px1 = primary.x - primary.w * 0.5
+            let py1 = primary.y - primary.h * 0.5
+            let px2 = primary.x + primary.w * 0.5
+            let py2 = primary.y + primary.h * 0.5
+            let marginW = primary.w * 0.15
+            let marginH = primary.h * 0.15
+            let extPx1 = px1 - marginW
+            let extPy1 = py1 - marginH
+            let extPx2 = px2 + marginW
+            let extPy2 = py2 + marginH
+            let rest = kept2.dropFirst().filter { d in
+                let inX = d.x >= extPx1 && d.x <= extPx2
+                let inY = d.y >= extPy1 && d.y <= extPy2
+                return inX && inY
+            }
+            kept2 = [primary] + rest
+            if debugMode, kept2.count < countBefore {
+                logDebug("📌 Primary bbox +15%% extension filter: kept \(kept2.count)/\(countBefore) (excluded \(countBefore - kept2.count) outside extended primary)")
+            }
+        }
+
+        if kept2.isEmpty {
+            if debugMode { logDebug("⚠️ No detections after primary bbox extension filter") }
             DispatchQueue.main.async { self.maskImageView.image = nil }
             resetProcessingFlag()
             return
