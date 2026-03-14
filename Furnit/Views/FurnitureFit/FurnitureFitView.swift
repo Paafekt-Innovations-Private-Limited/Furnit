@@ -262,7 +262,7 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var primaryBboxInView: CGRect = .zero
 
     /// When true, apply final mask overlap containment (intersection-only check). Set to false to skip this filter.
-    private var useMaskOverlapContainment = false
+    private var useMaskOverlapContainment = true
 
     /// When true, at the very end exclude any detection whose bbox center is outside primary bbox extended by 15%. Set to false to skip.
     private var usePrimaryBboxExtensionFilter = true
@@ -1418,8 +1418,32 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logMemory("AFTER STAGE 5b/5c")
         }
 
-        // Final mask overlap containment (optional): intersection-only check. Union/IoU check is commented out.
-        // Toggle via useMaskOverlapContainment.
+        // 1) Primary bbox +15% extension filter (runs first): exclude anything whose bbox center is outside
+        if usePrimaryBboxExtensionFilter, kept2.count > 1 {
+            let countBefore = kept2.count
+            let primary = kept2[0]
+            let px1 = primary.x - primary.w * 0.5
+            let py1 = primary.y - primary.h * 0.5
+            let px2 = primary.x + primary.w * 0.5
+            let py2 = primary.y + primary.h * 0.5
+            let marginW = primary.w * 0.15
+            let marginH = primary.h * 0.15
+            let extPx1 = px1 - marginW
+            let extPy1 = py1 - marginH
+            let extPx2 = px2 + marginW
+            let extPy2 = py2 + marginH
+            let rest = kept2.dropFirst().filter { d in
+                let inX = d.x >= extPx1 && d.x <= extPx2
+                let inY = d.y >= extPy1 && d.y <= extPy2
+                return inX && inY
+            }
+            kept2 = [primary] + rest
+            if debugMode, kept2.count < countBefore {
+                logDebug("📌 Primary bbox +15%% extension filter: kept \(kept2.count)/\(countBefore) (excluded \(countBefore - kept2.count) outside extended primary)")
+            }
+        }
+
+        // 2) Mask overlap containment (runs after 15% extension): intersection-only check. Toggle via useMaskOverlapContainment.
         if useMaskOverlapContainment, kept2.count > 1 {
             var primaryMaskArea = 0
             scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
@@ -1461,16 +1485,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                             }
                             continue
                         }
-                        // Intersection-only: keep if fraction of candidate mask overlapping primary >= threshold.
-                        // Use a low threshold (e.g. 0.20): the same chair is often multiple overlapping detections;
-                        // at 50%+ we drop those and get holes in the final mask where background shows through.
                         let intersectionFrac: Float = Float(inter) / Float(area)
-                        let containmentIntersectionMin: Float = 0.20
-                        // Union check (commented out): IoU = inter / (area + primaryMaskArea - inter)
-                        // let union = area + primaryMaskArea - inter
-                        // let iou: Float = union > 0 ? Float(inter) / Float(union) : 0
-                        // if iou >= containmentIoUMin { ... }
-
+                        let containmentIntersectionMin: Float = 0.1
                         if intersectionFrac >= containmentIntersectionMin {
                             contained.append(d)
                             if debugMode {
@@ -1491,39 +1507,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         if kept2.isEmpty {
-            if debugMode { logDebug("⚠️ No detections after filter") }
-            DispatchQueue.main.async { self.maskImageView.image = nil }
-            resetProcessingFlag()
-            return
-        }
-
-        // Final filter (optional): exclude anything whose bbox center is outside primary bbox extended by 15%
-        if usePrimaryBboxExtensionFilter, kept2.count > 1 {
-            let countBefore = kept2.count
-            let primary = kept2[0]
-            let px1 = primary.x - primary.w * 0.5
-            let py1 = primary.y - primary.h * 0.5
-            let px2 = primary.x + primary.w * 0.5
-            let py2 = primary.y + primary.h * 0.5
-            let marginW = primary.w * 0.15
-            let marginH = primary.h * 0.15
-            let extPx1 = px1 - marginW
-            let extPy1 = py1 - marginH
-            let extPx2 = px2 + marginW
-            let extPy2 = py2 + marginH
-            let rest = kept2.dropFirst().filter { d in
-                let inX = d.x >= extPx1 && d.x <= extPx2
-                let inY = d.y >= extPy1 && d.y <= extPy2
-                return inX && inY
-            }
-            kept2 = [primary] + rest
-            if debugMode, kept2.count < countBefore {
-                logDebug("📌 Primary bbox +15%% extension filter: kept \(kept2.count)/\(countBefore) (excluded \(countBefore - kept2.count) outside extended primary)")
-            }
-        }
-
-        if kept2.isEmpty {
-            if debugMode { logDebug("⚠️ No detections after primary bbox extension filter") }
+            if debugMode { logDebug("⚠️ No detections after containment") }
             DispatchQueue.main.async { self.maskImageView.image = nil }
             resetProcessingFlag()
             return
