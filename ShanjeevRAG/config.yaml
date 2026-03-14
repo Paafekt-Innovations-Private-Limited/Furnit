@@ -1,0 +1,22 @@
+# ShanjeevRAG - Insurance RAG config
+
+# Paths (relative to project root)
+data_dir: data
+vector_db_path: vector_db
+
+# Chunking
+chunk_size: 500
+chunk_overlap: 50
+
+# Embedding model (runs locally via sentence-transformers)
+embedding_model: all-MiniLM-L6-v2
+
+# Retrieval
+top_k: 5
+collection_name: insurance
+
+# Optional LLM for answer generation
+# llm: openai  # or anthropic, or null for retrieval-only
+
+# Perplexity model when using --llm perplexity (sonar, sonar-pro, sonar-deep-research, sonar-reasoning-pro)
+perplexity_model: sonar
