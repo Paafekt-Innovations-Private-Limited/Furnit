@@ -1147,24 +1147,26 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("   🎯 PRIMARY[\(primaryIdx)]: \(className(primary.classIdx)) conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
         }
 
-        // Estimate real-world furniture size using simple pixel ratio
-        // furniture_size = (bbox_pixels / image_pixels) × room_size
+        // Estimate real-world furniture size: same scale on both axes to avoid aspect-ratio distortion.
+        // Camera buffer aspect (bufW/bufH) often differs from room aspect (roomW/roomH); using
+        // different metersPerPixelX/Y would stretch the bbox and make calibration wrong.
         let imgWidthPx = primary.w / resizeGain
         let imgHeightPx = primary.h / resizeGain
 
         let metersPerPixelX = roomWidthMeters / Float(bufW)
         let metersPerPixelY = roomHeightMeters / Float(bufH)
+        let metersPerPixel = min(metersPerPixelX, metersPerPixelY)
 
-        var estimatedWidth = imgWidthPx * metersPerPixelX
-        var estimatedHeight = imgHeightPx * metersPerPixelY
+        var estimatedWidth = imgWidthPx * metersPerPixel
+        var estimatedHeight = imgHeightPx * metersPerPixel
 
-        // Ensure height > width for most furniture
+        // Ensure height > width for display (most furniture: height is the larger dimension)
         if estimatedWidth > estimatedHeight {
             swap(&estimatedWidth, &estimatedHeight)
         }
 
         if debugMode {
-            logDebug("📏 [Sizing] Room: \(String(format: "%.2f", roomWidthMeters))×\(String(format: "%.2f", roomHeightMeters))m, Buffer: \(bufW)×\(bufH)px")
+            logDebug("📏 [Sizing] Room: \(String(format: "%.2f", roomWidthMeters))×\(String(format: "%.2f", roomHeightMeters))m, Buffer: \(bufW)×\(bufH)px, m/px: \(String(format: "%.6f", metersPerPixel))")
             logDebug("📏 [Sizing] Furniture: \(Int(imgWidthPx))×\(Int(imgHeightPx))px → \(String(format: "%.2f", estimatedWidth))×\(String(format: "%.2f", estimatedHeight))m")
         }
 

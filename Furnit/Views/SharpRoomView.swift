@@ -321,6 +321,15 @@ struct SharpRoomView: View {
     @State private var calibratedRoomHeight: Float?
     @State private var calibratedRoomWidth: Float?
 
+    // Reject calibration when result would be unrealistically small (wrong input or wrong detected size)
+    @State private var showCalibrationRejectAlert = false
+    @State private var calibrationRejectMessage = ""
+
+    // Wall-based calibration (tape-measured front wall)
+    @State private var showWallCalibration = false
+    @State private var inputWallWidth: String = ""
+    @State private var inputWallHeight: String = ""
+
     // Room viewer settings
     @AppStorage("roomViewer.oscillation") private var oscillationEnabled: Bool = false
     @AppStorage("roomViewer.infiniteZoom") private var infiniteZoomEnabled: Bool = true
@@ -370,478 +379,13 @@ struct SharpRoomView: View {
     }
 
     var body: some View {
+        sharpRoomBody
+    }
+
+    private var sharpRoomBody: some View {
         ZStack {
-            // WebGL view using SparkJS (use classic PLY - pre-rotated for antimatter viewer)
-            AntimatterSplatView(
-                plyURL: classicPlyURL,
-                roomBounds: roomMeasurements?.boundingBox,
-                actualBounds: nil,
-                photoOrientation: photoOrientation,
-                oscillationEnabled: oscillationEnabled,
-                infiniteZoom: infiniteZoomEnabled,
-                onLoaded: {
-                    isLoading = false
-                },
-                onFrontWallDimensions: { w, h in
-                    // Store JS-measured dimensions for nav title
-                    jsFrontWallWidth = Float(w)
-                    jsFrontWallHeight = Float(h)
-                }
-            )
-            .ignoresSafeArea()
-            .allowsHitTesting(false)  // Route all touches to SwiftUI overlays, not WKWebView
-
-            // Gesture overlay for orbit control (captures drags and sends to WebGL)
-            OrbitGestureView()
-                .ignoresSafeArea()  // Cover full screen including safe areas
-                .allowsHitTesting(!isLoading)  // Keep enabled even with FurnitureFit - touches outside bbox pass through
-                .zIndex(10)  // Above WebGL view, below other overlays
-
-            // Camera move buttons — up/down and left/right (tap to shift view)
-            if !isLoading {
-                ZStack(alignment: .topLeading) {
-                    Color.clear
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .allowsHitTesting(false)
-                    HStack(spacing: 8) {
-                        // Left arrow — move camera left
-                        Button(action: {
-                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil)
-                        }) {
-                            Image(systemName: "arrow.left")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Circle().fill(Color.black.opacity(0.5)))
-                        }
-                        .buttonStyle(.plain)
-                        VStack(spacing: 8) {
-                            Button(action: {
-                                NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil)
-                            }) {
-                                Image(systemName: "arrow.up")
-                                    .font(.system(size: 20, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Circle().fill(Color.black.opacity(0.5)))
-                            }
-                            .buttonStyle(.plain)
-                            Button(action: {
-                                NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil)
-                            }) {
-                                Image(systemName: "arrow.down")
-                                    .font(.system(size: 20, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Circle().fill(Color.black.opacity(0.5)))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        // Right arrow — move camera right
-                        Button(action: {
-                            NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil)
-                        }) {
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Circle().fill(Color.black.opacity(0.5)))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(12)
-                }
-                .opacity(isCapturingSnapshot ? 0 : 1)
-                .zIndex(12)
-            }
-
-            // Loading overlay
-            if isLoading {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .tint(.white)
-
-                    Text(NSLocalizedString("photoRoom.loading", comment: ""))
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                }
-                .padding(24)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(12)
-            }
-
-            // Error overlay
-            if let error = error {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
-                    Text(error)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(24)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(12)
-            }
-
-            // FurnitureFit overlay (when active) - full screen
-            if showingFurnitureFit {
-                FurnitureFitUIView(
-                    capturedImage: .constant(nil),
-                    roomImage: nil,
-                    mlModel: yoloeService.model,
-                    processInterval: 0.07,
-                    active: true,
-                    lockedOrientation: photoOrientation,
-                    roomWidthMeters: roomMeasurements?.frontWallWidth ?? jsFrontWallWidth ?? 4.0,
-                    roomHeightMeters: roomMeasurements?.frontWallHeight ?? jsFrontWallHeight ?? 3.0,
-                    onFurnitureSizeEstimated: { width, height in
-                        detectedFurnitureWidth = width
-                        detectedFurnitureHeight = height
-                    }
-                )
-                .ignoresSafeArea()
-                .zIndex(100)
-            }
-
-
-            // Save progress overlay
-            if isSavingRoom {
-                saveRoomProgressOverlay
-            }
-
-            // Calibration input overlay (custom instead of sheet for landscape rotation)
-            if showFurnitureDimensionsInput {
-                ZStack {
-                    // Dimmed background
-                    Color.black.opacity(0.6)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            showFurnitureDimensionsInput = false
-                        }
-
-                    // Input card with custom number pad - rotated for landscape
-                    VStack(spacing: 16) {
-                        Text("Calibrate Room")
-                            .font(.headline)
-                            .foregroundColor(.white)
-
-                        Text("Enter real furniture height (meters)")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-
-                        if let h = detectedFurnitureHeight {
-                            Text(String(format: "Detected: %.2fm", h))
-                                .font(.caption2)
-                                .foregroundColor(.orange)
-                        }
-
-                        // Display current input
-                        Text(inputFurnitureHeight.isEmpty ? "0.00" : inputFurnitureHeight)
-                            .font(.system(size: 32, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                            .frame(width: 120, height: 44)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(8)
-
-                        // Custom number pad
-                        VStack(spacing: 8) {
-                            ForEach(0..<3) { row in
-                                HStack(spacing: 8) {
-                                    ForEach(1...3, id: \.self) { col in
-                                        let digit = row * 3 + col
-                                        Button(action: {
-                                            appendDigit("\(digit)")
-                                        }) {
-                                            Text("\(digit)")
-                                                .font(.title2.bold())
-                                                .foregroundColor(.white)
-                                                .frame(width: 50, height: 44)
-                                                .background(Color.gray.opacity(0.3))
-                                                .cornerRadius(8)
-                                        }
-                                    }
-                                }
-                            }
-                            // Bottom row: "." 0 "⌫"
-                            HStack(spacing: 8) {
-                                Button(action: {
-                                    if !inputFurnitureHeight.contains(".") {
-                                        inputFurnitureHeight += inputFurnitureHeight.isEmpty ? "0." : "."
-                                    }
-                                }) {
-                                    Text(".")
-                                        .font(.title2.bold())
-                                        .foregroundColor(.white)
-                                        .frame(width: 50, height: 44)
-                                        .background(Color.gray.opacity(0.3))
-                                        .cornerRadius(8)
-                                }
-                                Button(action: {
-                                    appendDigit("0")
-                                }) {
-                                    Text("0")
-                                        .font(.title2.bold())
-                                        .foregroundColor(.white)
-                                        .frame(width: 50, height: 44)
-                                        .background(Color.gray.opacity(0.3))
-                                        .cornerRadius(8)
-                                }
-                                Button(action: {
-                                    if !inputFurnitureHeight.isEmpty {
-                                        inputFurnitureHeight.removeLast()
-                                    }
-                                }) {
-                                    Image(systemName: "delete.left")
-                                        .font(.title3)
-                                        .foregroundColor(.white)
-                                        .frame(width: 50, height: 44)
-                                        .background(Color.gray.opacity(0.3))
-                                        .cornerRadius(8)
-                                }
-                            }
-                        }
-
-                        HStack(spacing: 16) {
-                            Button("Cancel") {
-                                inputFurnitureHeight = ""
-                                showFurnitureDimensionsInput = false
-                            }
-                            .font(.body.bold())
-                            .foregroundColor(.red)
-                            .frame(width: 80, height: 40)
-                            .background(Color.red.opacity(0.2))
-                            .cornerRadius(8)
-
-                            Button("Apply") {
-                                if let realHeight = Float(inputFurnitureHeight),
-                                   let detectedHeight = detectedFurnitureHeight,
-                                   detectedHeight > 0 {
-                                    realFurnitureHeight = realHeight
-                                    let scaleFactor = realHeight / detectedHeight
-
-                                    // Scale the room to match real furniture size
-                                    NotificationCenter.default.post(
-                                        name: NSNotification.Name("WebGLScaleRoom"),
-                                        object: nil,
-                                        userInfo: ["factor": Double(scaleFactor)]
-                                    )
-
-                                    // Update calibrated room dimensions
-                                    if let roomH = roomMeasurements?.frontWallHeight ?? jsFrontWallHeight {
-                                        calibratedRoomHeight = roomH * scaleFactor
-                                    }
-                                    if let roomW = roomMeasurements?.frontWallWidth ?? jsFrontWallWidth {
-                                        calibratedRoomWidth = roomW * scaleFactor
-                                    }
-
-                                    logDebug("📐 [Calibration] Real height: \(realHeight)m, Scale factor: \(scaleFactor)")
-                                }
-                                inputFurnitureHeight = ""
-                                showFurnitureDimensionsInput = false
-                            }
-                            .font(.body.bold())
-                            .foregroundColor(.green)
-                            .frame(width: 80, height: 40)
-                            .background(Color.green.opacity(0.2))
-                            .cornerRadius(8)
-                            .disabled(Float(inputFurnitureHeight) == nil || inputFurnitureHeight.isEmpty)
-                        }
-                    }
-                    .padding(20)
-                    .background(Color.black.opacity(0.95))
-                    .cornerRadius(16)
-                }
-                .zIndex(99999)  // Above everything
-            }
-
-            // Landscape layout: normal bottom bar (device actually in landscape mode)
-            // Use ZStack so only the bar receives touches; rest pass through to OrbitGestureView
-            if photoOrientation == .landscape {
-                ZStack(alignment: .bottom) {
-                    Color.clear
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .allowsHitTesting(false)
-                    HStack(spacing: 20) {
-                        // Brain button (left)
-                        Button(action: {
-                            if showingFurnitureFit {
-                                showingFurnitureFit = false
-                            } else {
-                                SHARPService.shared.releaseResources()
-                                showingFurnitureFit = true
-                            }
-                        }) {
-                            Image(systemName: "brain.head.profile")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                        }
-                        .disabled(isLoading)
-
-                        // Orientation label — allow pinch/drag to pass through to OrbitGestureView
-                        HStack(spacing: 6) {
-                            Image(systemName: "iphone.landscape")
-                                .font(.caption)
-                            Text(NSLocalizedString("orientation.heldHorizontally", comment: ""))
-                                .font(.caption2)
-                            Text("-")
-                                .font(.caption2)
-                            Text(NSLocalizedString("orientation.landscape", comment: ""))
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                        }
-                        .foregroundColor(.white.opacity(0.9))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.5))
-                        .cornerRadius(8)
-                        .allowsHitTesting(false)
-
-                        // Furniture calibration (if active)
-                        if showingFurnitureFit, let h = detectedFurnitureHeight {
-                            Button(action: {
-                                showFurnitureDimensionsInput = true
-                            }) {
-                                VStack(spacing: 2) {
-                                    if let calibH = calibratedRoomHeight {
-                                        Text(String(format: "Room: %.2fm", calibH))
-                                            .font(.caption2)
-                                            .foregroundColor(.green)
-                                    }
-                                    Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
-                                        .font(.caption.bold())
-                                        .foregroundColor(realFurnitureHeight != nil ? .green : .white)
-                                    Text("Tap to calibrate")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(.gray)
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.black.opacity(0.6))
-                                .cornerRadius(6)
-                            }
-                        }
-
-                        Spacer()
-                            .allowsHitTesting(false)
-
-                        // Screenshot button (right)
-                        Button(action: {
-                            takeScreenshot()
-                        }) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(Color.blue).shadow(radius: 5))
-                        }
-                        .disabled(isLoading)
-                    }
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 20)
-                }
-                .opacity(isCapturingSnapshot ? 0 : 1)
-                .zIndex(99997)
-            } else {
-                // Portrait layout: standard bottom controls
-                // NOTE: OrbitGestureView (zIndex 10) handles all camera gestures for WebGL
-                // Do NOT add SimpleJoystickOverlay here - it sends to GlobalCameraController
-                // which has no camera registered for WebGL rooms
-
-                // Buttons at bottom row
-                VStack {
-                    Spacer()
-                        .allowsHitTesting(false)
-
-                    // Orientation label (center, above buttons) — allow pinch/drag to pass through
-                    VStack(spacing: 1) {
-                        Text(NSLocalizedString("orientation.heldVertically", comment: ""))
-                            .font(.caption2)
-                        Text(NSLocalizedString("orientation.portrait", comment: ""))
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                    }
-                    .foregroundColor(.white.opacity(0.8))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.black.opacity(0.4))
-                    .cornerRadius(6)
-                    .padding(.bottom, 12)
-                    .allowsHitTesting(false)
-
-                    HStack {
-                        // Brain button (bottom-left)
-                        Button(action: {
-                            if showingFurnitureFit {
-                                showingFurnitureFit = false
-                            } else {
-                                // Release SHARP model to free memory for YOLO segmentation
-                                SHARPService.shared.releaseResources()
-                                showingFurnitureFit = true
-                            }
-                        }) {
-                            Image(systemName: "brain.head.profile")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
-                        }
-                        .disabled(isLoading)
-                        .padding(.leading, 16)
-
-                        Spacer()
-                            .allowsHitTesting(false)
-
-                        // Furniture size display + Screenshot button (bottom-right) — buttons remain tappable
-                        VStack(spacing: 8) {
-                            // Show detected furniture size - tap to input real size for calibration
-                            if showingFurnitureFit, let h = detectedFurnitureHeight {
-                                Button(action: {
-                                    showFurnitureDimensionsInput = true
-                                }) {
-                                    VStack(spacing: 2) {
-                                        if let calibH = calibratedRoomHeight {
-                                            // Show calibrated room dimensions
-                                            Text(String(format: "Room: %.2fm", calibH))
-                                                .font(.caption2)
-                                                .foregroundColor(.green)
-                                        }
-                                        Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
-                                            .font(.caption.bold())
-                                            .foregroundColor(realFurnitureHeight != nil ? .green : .white)
-                                        Text("Tap to calibrate")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.gray)
-                                    }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.black.opacity(0.6))
-                                    .cornerRadius(6)
-                                }
-                            }
-
-                            Button(action: {
-                                takeScreenshot()
-                            }) {
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 28))
-                                    .foregroundColor(.white)
-                                    .frame(width: 60, height: 60)
-                                    .background(Circle().fill(Color.blue).shadow(radius: 5))
-                            }
-                            .disabled(isLoading)
-                        }
-                        .padding(.trailing, 16)
-                    }
-                    .padding(.bottom, 20)
-                }
-                .opacity(isCapturingSnapshot ? 0 : 1)
-                .zIndex(99998)  // Higher than joystick (99997) to allow button taps
-            }
+            webGLAndGestureLayer
+            allOverlaysLayer
         }
         .background(Color.gray)
         .navigationBarHidden(isCapturingSnapshot)
@@ -849,112 +393,484 @@ struct SharpRoomView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
-                // Share button - only for authorized users
                 if authManager.canShare {
-                    Button(action: {
-                        showShareSheet = true
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .disabled(isLoading)
+                    Button(action: { showShareSheet = true }) { Image(systemName: "square.and.arrow.up") }
+                        .disabled(isLoading)
                 }
-
-                // Save button (only for new rooms, not when viewing from home)
                 if allowSave {
-                    Button(action: {
-                        showRoomNameInput = true
-                    }) {
-                        Image(systemName: "square.and.arrow.down")
-                    }
+                    Button(action: { showRoomNameInput = true }) { Image(systemName: "square.and.arrow.down") }
+                        .disabled(isLoading)
+                }
+                Button(action: { showWallCalibration = true }) { Image(systemName: "ruler") }
                     .disabled(isLoading)
-                }
-
-                // Recenter button
-                Button(action: {
-                    NotificationCenter.default.post(name: NSNotification.Name("RecenterWebGLCamera"), object: nil)
-                }) {
-                    Image(systemName: "viewfinder")
-                }
-                .disabled(isLoading)
+                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("RecenterWebGLCamera"), object: nil) }) { Image(systemName: "viewfinder") }
+                    .disabled(isLoading)
             }
         }
         .sheet(isPresented: $showShareSheet) {
-            // Share the 3DGS format (SuperSplat compatible)
             let threeDGSPath = plyURL.path.replacingOccurrences(of: ".ply", with: "_3dgs.ply")
-            let shareURL = FileManager.default.fileExists(atPath: threeDGSPath)
-                ? URL(fileURLWithPath: threeDGSPath)
-                : plyURL
+            let shareURL = FileManager.default.fileExists(atPath: threeDGSPath) ? URL(fileURLWithPath: threeDGSPath) : plyURL
             ShareSheet(activityItems: [shareURL])
         }
         .onAppear {
             yoloeService.ensureModelLoaded()
-            // Lock orientation based on photo orientation
-            if photoOrientation == .landscape {
-                OrientationLockManager.shared.lockToLandscape()
-            } else {
-                OrientationLockManager.shared.lockToPortrait()
-            }
+            if photoOrientation == .landscape { OrientationLockManager.shared.lockToLandscape() } else { OrientationLockManager.shared.lockToPortrait() }
             logDebug("📐 [SharpRoomView] photoOrientation = \(photoOrientation)")
         }
-        .onDisappear {
-            // Unlock orientation when leaving the view
-            OrientationLockManager.shared.unlock()
-        }
-        // Room name input alert
+        .onDisappear { OrientationLockManager.shared.unlock() }
         .alert("Save Room", isPresented: $showRoomNameInput) {
             TextField("Room name", text: $roomName)
-            Button("Cancel", role: .cancel) {
-                roomName = ""
-            }
-            Button("Save") {
-                startSavingRoom()
-            }
-            .disabled(roomName.isEmpty)
-        } message: {
-            Text(NSLocalizedString("roomViewer.enterName", comment: ""))
-        }
-        // Save result alert
+            Button("Cancel", role: .cancel) { }
+            Button("Save") { startSavingRoom() }.disabled(roomName.isEmpty)
+        } message: { Text(NSLocalizedString("roomViewer.enterName", comment: "")) }
         .alert("Room Save", isPresented: $showSaveAlert) {
             Button("OK", role: .cancel) {
                 if saveWasSuccessful {
-                    // Show dismissing indicator
                     isDismissing = true
-                    // Release resources in background, then dismiss
                     DispatchQueue.global(qos: .userInitiated).async {
-                        // Release SHARP model memory
-                        DispatchQueue.main.async {
-                            SHARPService.shared.releaseResources()
-                        }
-                        // Small delay to let cleanup complete
+                        DispatchQueue.main.async { SHARPService.shared.releaseResources() }
                         Thread.sleep(forTimeInterval: 0.1)
-                        DispatchQueue.main.async {
-                            // Dismiss entire sheet and go back to home view
-                            NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil)
-                        }
+                        DispatchQueue.main.async { NotificationCenter.default.post(name: NSNotification.Name("DismissPhotoRoomSheet"), object: nil) }
                     }
                 }
             }
-        } message: {
-            Text(saveAlertMessage)
-        }
-        // Dismissing overlay
+        } message: { Text(saveAlertMessage) }
+        .alert("Check measurement", isPresented: $showCalibrationRejectAlert) { Button("OK", role: .cancel) { } } message: { Text(calibrationRejectMessage) }
         .overlay {
             if isDismissing {
                 ZStack {
-                    Color.black.opacity(0.7)
-                        .ignoresSafeArea()
+                    Color.black.opacity(0.7).ignoresSafeArea()
                     VStack(spacing: 16) {
-                        ProgressView()
-                            .scaleEffect(1.5)
-                            .tint(.white)
-                        Text("Going back...")
-                            .foregroundColor(.white)
-                            .font(.headline)
+                        ProgressView().scaleEffect(1.5).tint(.white)
+                        Text("Going back...").foregroundColor(.white).font(.headline)
                     }
                 }
             }
         }
         .defersSystemGestures(on: .all)
+    }
+
+    private var webGLAndGestureLayer: some View {
+        ZStack {
+            AntimatterSplatView(
+                plyURL: classicPlyURL,
+                roomBounds: roomMeasurements?.boundingBox,
+                actualBounds: nil,
+                photoOrientation: photoOrientation,
+                oscillationEnabled: oscillationEnabled,
+                infiniteZoom: infiniteZoomEnabled,
+                onLoaded: { isLoading = false },
+                onFrontWallDimensions: { w, h in
+                    jsFrontWallWidth = Float(w)
+                    jsFrontWallHeight = Float(h)
+                }
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            OrbitGestureView()
+                .ignoresSafeArea()
+                .allowsHitTesting(!isLoading)
+                .zIndex(10)
+        }
+    }
+
+    private var cameraButtonsOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(false)
+            HStack(spacing: 8) {
+                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveLeft"), object: nil) }) {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.black.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+                VStack(spacing: 8) {
+                    Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveUp"), object: nil) }) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .buttonStyle(.plain)
+                    Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveDown"), object: nil) }) {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("WebGLCameraMoveRight"), object: nil) }) {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.black.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(12)
+        }
+        .opacity(isCapturingSnapshot ? 0 : 1)
+        .zIndex(12)
+    }
+
+    private var loadingOverlayView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .scaleEffect(1.5)
+                .tint(.white)
+            Text(NSLocalizedString("photoRoom.loading", comment: ""))
+                .font(.subheadline)
+                .foregroundColor(.white)
+        }
+        .padding(24)
+        .background(Color.black.opacity(0.7))
+        .cornerRadius(12)
+    }
+
+    @ViewBuilder private var errorOverlayView: some View {
+        if let err = error {
+            VStack(spacing: 16) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                    .foregroundColor(.orange)
+                Text(err)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(24)
+            .background(Color.black.opacity(0.7))
+            .cornerRadius(12)
+        }
+    }
+
+    /// Room dimensions for FurnitureFit — same as virtual room so real furniture and room stay in sync.
+    private var furnitureFitRoomWidth: Float {
+        calibratedRoomWidth ?? roomMeasurements?.frontWallWidth ?? jsFrontWallWidth ?? 4.0
+    }
+
+    private var furnitureFitRoomHeight: Float {
+        calibratedRoomHeight ?? roomMeasurements?.frontWallHeight ?? jsFrontWallHeight ?? 3.0
+    }
+
+    private var furnitureFitOverlayView: some View {
+        FurnitureFitUIView(
+            capturedImage: .constant(nil),
+            roomImage: nil,
+            mlModel: yoloeService.model,
+            processInterval: 0.07,
+            active: true,
+            lockedOrientation: photoOrientation,
+            roomWidthMeters: furnitureFitRoomWidth,
+            roomHeightMeters: furnitureFitRoomHeight,
+            onFurnitureSizeEstimated: { width, height in
+                detectedFurnitureWidth = width
+                detectedFurnitureHeight = height
+            }
+        )
+        .ignoresSafeArea()
+        .zIndex(100)
+    }
+
+    private var calibrationOverlayView: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .onTapGesture { showFurnitureDimensionsInput = false }
+            VStack(spacing: 16) {
+                Text("Calibrate Room").font(.headline).foregroundColor(.white)
+                Text("Enter real furniture height (meters)").font(.caption).foregroundColor(.gray)
+                Text("Full height: floor to top (e.g. 0.9 m for a chair)").font(.caption2).foregroundColor(.gray.opacity(0.9))
+                if let h = detectedFurnitureHeight {
+                    Text(String(format: "Detected: %.2fm", h)).font(.caption2).foregroundColor(.orange)
+                }
+                Text(inputFurnitureHeight.isEmpty ? "0.00" : inputFurnitureHeight)
+                    .font(.system(size: 32, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .frame(width: 120, height: 44)
+                    .background(Color.white.opacity(0.1))
+                    .cornerRadius(8)
+                calibrationNumberPadView
+                HStack(spacing: 16) {
+                    Button("Cancel") {
+                        inputFurnitureHeight = ""
+                        showFurnitureDimensionsInput = false
+                    }
+                    .font(.body.bold()).foregroundColor(.red)
+                    .frame(width: 80, height: 40).background(Color.red.opacity(0.2)).cornerRadius(8)
+                    Button("Apply") { applyCalibration() }
+                    .font(.body.bold()).foregroundColor(.green)
+                    .frame(width: 80, height: 40).background(Color.green.opacity(0.2)).cornerRadius(8)
+                    .disabled(Float(inputFurnitureHeight) == nil || inputFurnitureHeight.isEmpty)
+                }
+            }
+            .padding(20)
+            .background(Color.black.opacity(0.95))
+            .cornerRadius(16)
+        }
+        .zIndex(99999)
+    }
+
+    private var calibrationNumberPadView: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<3, id: \.self) { row in
+                HStack(spacing: 8) {
+                    ForEach(1...3, id: \.self) { col in
+                        let digit = row * 3 + col
+                        Button(action: { appendDigit("\(digit)") }) {
+                            Text("\(digit)")
+                                .font(.title2.bold()).foregroundColor(.white)
+                                .frame(width: 50, height: 44)
+                                .background(Color.gray.opacity(0.3)).cornerRadius(8)
+                        }
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                Button(action: {
+                    if !inputFurnitureHeight.contains(".") {
+                        inputFurnitureHeight += inputFurnitureHeight.isEmpty ? "0." : "."
+                    }
+                }) {
+                    Text(".").font(.title2.bold()).foregroundColor(.white)
+                        .frame(width: 50, height: 44).background(Color.gray.opacity(0.3)).cornerRadius(8)
+                }
+                Button(action: { appendDigit("0") }) {
+                    Text("0").font(.title2.bold()).foregroundColor(.white)
+                        .frame(width: 50, height: 44).background(Color.gray.opacity(0.3)).cornerRadius(8)
+                }
+                Button(action: { if !inputFurnitureHeight.isEmpty { inputFurnitureHeight.removeLast() } }) {
+                    Image(systemName: "delete.left").font(.title3).foregroundColor(.white)
+                        .frame(width: 50, height: 44).background(Color.gray.opacity(0.3)).cornerRadius(8)
+                }
+            }
+        }
+    }
+
+    private func applyCalibration() {
+        guard let realHeight = Float(inputFurnitureHeight),
+              let detectedHeight = detectedFurnitureHeight,
+              detectedHeight > 0 else {
+            inputFurnitureHeight = ""
+            showFurnitureDimensionsInput = false
+            return
+        }
+        let scaleFactor = realHeight / detectedHeight
+        let roomH = roomMeasurements?.frontWallHeight ?? jsFrontWallHeight ?? 3.0
+        let roomW = roomMeasurements?.frontWallWidth ?? jsFrontWallWidth ?? 4.0
+        realFurnitureHeight = realHeight
+        NotificationCenter.default.post(
+            name: NSNotification.Name("WebGLScaleRoom"),
+            object: nil,
+            userInfo: ["factor": Double(scaleFactor)]
+        )
+        if roomMeasurements?.frontWallHeight != nil || jsFrontWallHeight != nil {
+            calibratedRoomHeight = roomH * scaleFactor
+        }
+        if roomMeasurements?.frontWallWidth != nil || jsFrontWallWidth != nil {
+            calibratedRoomWidth = roomW * scaleFactor
+        }
+        logDebug("📐 [Calibration] Real height: \(realHeight)m, Scale factor: \(scaleFactor)")
+        inputFurnitureHeight = ""
+        showFurnitureDimensionsInput = false
+    }
+
+    private func applyWallCalibration() {
+        guard let realW = Float(inputWallWidth), realW > 0,
+              let realH = Float(inputWallHeight), realH > 0 else {
+            return
+        }
+        let roomW = roomMeasurements?.frontWallWidth ?? jsFrontWallWidth ?? 4.0
+        let roomH = roomMeasurements?.frontWallHeight ?? jsFrontWallHeight ?? 3.0
+        let scaleX = Double(realW / roomW)
+        let scaleY = Double(realH / roomH)
+        calibratedRoomWidth = realW
+        calibratedRoomHeight = realH
+        NotificationCenter.default.post(
+            name: NSNotification.Name("WebGLScaleRoom"),
+            object: nil,
+            userInfo: ["scaleX": scaleX, "scaleY": scaleY]
+        )
+        logDebug("📐 [Wall calibration] Real wall: \(realW)×\(realH)m, scale XY: \(scaleX), \(scaleY)")
+        inputWallWidth = ""
+        inputWallHeight = ""
+        showWallCalibration = false
+    }
+
+    private var wallCalibrationOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .onTapGesture { showWallCalibration = false }
+            VStack(spacing: 16) {
+                Text("Calibrate by wall")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Text("Enter front wall dimensions (meters)")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                HStack(spacing: 12) {
+                    TextField("Width", text: $inputWallWidth)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                    Text("×")
+                    TextField("Height", text: $inputWallHeight)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                }
+                HStack(spacing: 16) {
+                    Button("Cancel") {
+                        inputWallWidth = ""
+                        inputWallHeight = ""
+                        showWallCalibration = false
+                    }
+                    .foregroundColor(.red)
+                    Button("Apply") { applyWallCalibration() }
+                        .foregroundColor(.green)
+                        .disabled((Float(inputWallWidth) ?? 0) <= 0 || (Float(inputWallHeight) ?? 0) <= 0)
+                }
+            }
+            .padding(24)
+            .background(Color.black.opacity(0.9))
+            .cornerRadius(16)
+        }
+        .zIndex(99999)
+    }
+
+    @ViewBuilder private var bottomBarsOverlayView: some View {
+        if photoOrientation == .landscape {
+            ZStack(alignment: .bottom) {
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+                HStack(spacing: 20) {
+                    Button(action: {
+                        if showingFurnitureFit { showingFurnitureFit = false }
+                        else { SHARPService.shared.releaseResources(); showingFurnitureFit = true }
+                    }) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+                    }
+                    .disabled(isLoading)
+                    HStack(spacing: 6) {
+                        Image(systemName: "iphone.landscape").font(.caption)
+                        Text(NSLocalizedString("orientation.heldHorizontally", comment: "")).font(.caption2)
+                        Text("-").font(.caption2)
+                        Text(NSLocalizedString("orientation.landscape", comment: "")).font(.caption2).fontWeight(.medium)
+                    }
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(Color.black.opacity(0.5)).cornerRadius(8)
+                    .allowsHitTesting(false)
+                    if showingFurnitureFit, let h = detectedFurnitureHeight {
+                        Button(action: { showFurnitureDimensionsInput = true }) {
+                            VStack(spacing: 2) {
+                                if let calibH = calibratedRoomHeight {
+                                    Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
+                                }
+                                Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
+                                    .font(.caption.bold())
+                                    .foregroundColor(realFurnitureHeight != nil ? .green : .white)
+                                Text("Tap to calibrate").font(.system(size: 9)).foregroundColor(.gray)
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.black.opacity(0.6)).cornerRadius(6)
+                        }
+                    }
+                    Spacer().allowsHitTesting(false)
+                    Button(action: { takeScreenshot() }) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 28)).foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(Color.blue).shadow(radius: 5))
+                    }
+                    .disabled(isLoading)
+                }
+                .padding(.horizontal, 30).padding(.bottom, 20)
+            }
+            .opacity(isCapturingSnapshot ? 0 : 1)
+            .zIndex(99997)
+        } else {
+            VStack {
+                Spacer().allowsHitTesting(false)
+                VStack(spacing: 1) {
+                    Text(NSLocalizedString("orientation.heldVertically", comment: "")).font(.caption2)
+                    Text(NSLocalizedString("orientation.portrait", comment: "")).font(.caption2).fontWeight(.medium)
+                }
+                .foregroundColor(.white.opacity(0.8))
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Color.black.opacity(0.4)).cornerRadius(6)
+                .padding(.bottom, 12)
+                .allowsHitTesting(false)
+                HStack {
+                    Button(action: {
+                        if showingFurnitureFit { showingFurnitureFit = false }
+                        else { SHARPService.shared.releaseResources(); showingFurnitureFit = true }
+                    }) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.system(size: 28)).foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Circle().fill(showingFurnitureFit ? Color.green : Color.blue).shadow(radius: 5))
+                    }
+                    .disabled(isLoading)
+                    .padding(.leading, 16)
+                    Spacer().allowsHitTesting(false)
+                    VStack(spacing: 8) {
+                        if showingFurnitureFit, let h = detectedFurnitureHeight {
+                            Button(action: { showFurnitureDimensionsInput = true }) {
+                                VStack(spacing: 2) {
+                                    if let calibH = calibratedRoomHeight {
+                                        Text(String(format: "Room: %.2fm", calibH)).font(.caption2).foregroundColor(.green)
+                                    }
+                                    Text(String(format: "Furn: %.2fm", realFurnitureHeight ?? h))
+                                        .font(.caption.bold())
+                                        .foregroundColor(realFurnitureHeight != nil ? .green : .white)
+                                    Text("Tap to calibrate").font(.system(size: 9)).foregroundColor(.gray)
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.black.opacity(0.6)).cornerRadius(6)
+                            }
+                        }
+                        Button(action: { takeScreenshot() }) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 28)).foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Circle().fill(Color.blue).shadow(radius: 5))
+                        }
+                        .disabled(isLoading)
+                    }
+                    .padding(.trailing, 16)
+                }
+                .padding(.bottom, 20)
+            }
+            .opacity(isCapturingSnapshot ? 0 : 1)
+            .zIndex(99998)
+        }
+    }
+
+    @ViewBuilder private var allOverlaysLayer: some View {
+        ZStack {
+            if !isLoading { cameraButtonsOverlay }
+            if isLoading { loadingOverlayView }
+            errorOverlayView
+            if showingFurnitureFit { furnitureFitOverlayView }
+            if isSavingRoom { saveRoomProgressOverlay }
+            if showFurnitureDimensionsInput { calibrationOverlayView }
+            if showWallCalibration { wallCalibrationOverlay }
+            bottomBarsOverlayView
+        }
     }
 
     // MARK: - Number Pad Helper
@@ -1002,14 +918,15 @@ struct SharpRoomView: View {
 
     // MARK: - Navigation Title with Dimensions
     private var navigationTitleWithDimensions: String {
-        // Show front wall dimensions (width × height)
-        // Priority: roomMeasurements -> saved metadata -> JS-measured -> default
-        // Use saved dimensions first since they're available immediately
-        let wallWidth = roomMeasurements?.frontWallWidth
+        // Show front wall dimensions (width × height). After user enters real furniture measurement
+        // and taps Apply, prefer calibrated values so the title matches the scaled scene.
+        let wallWidth = calibratedRoomWidth
+            ?? roomMeasurements?.frontWallWidth
             ?? savedRoomWidth
             ?? jsFrontWallWidth
             ?? 4.0
-        let wallHeight = roomMeasurements?.frontWallHeight
+        let wallHeight = calibratedRoomHeight
+            ?? roomMeasurements?.frontWallHeight
             ?? savedRoomHeight
             ?? jsFrontWallHeight
             ?? 3.0
@@ -1080,8 +997,9 @@ struct SharpRoomView: View {
 
             if self.saveProgress >= 0.6 && !saveStarted {
                 saveStarted = true
-                let width = self.jsFrontWallWidth
-                let height = self.jsFrontWallHeight
+                // Prefer calibrated dimensions so saved room shows correct size when reopened
+                let width = self.calibratedRoomWidth ?? self.jsFrontWallWidth
+                let height = self.calibratedRoomHeight ?? self.jsFrontWallHeight
                 // Save the classic PLY file (pre-transformed for correct viewing)
                 self.modelManager.savePLY(from: self.classicPlyURL, name: savedName, photoOrientation: self.photoOrientation, roomWidth: width, roomHeight: height) { success, error in
                     DispatchQueue.main.async {
@@ -1509,18 +1427,27 @@ struct AntimatterSplatView: UIViewRepresentable {
                     setTimeout(function() { needsRender = true; }, 50);
                 };
 
-                // Scale room function - called from Swift when user calibrates with real furniture
+                // Scale room in place — camera stays where it is (no re-frame)
                 window.scaleRoom = function(factor) {
                     if (splatMesh) {
                         splatMesh.scale.set(factor, factor, factor);
                         console.log('Room scaled by factor:', factor);
                         needsRender = true;
-                        // Re-frame after scaling
-                        setTimeout(autoFrameRoom, 100);
-                        // After reframe, sync recenter base so recenter works after segment/apply (autoFrameRoom may skip update on retry paths)
                         setTimeout(function() {
                             if (typeof window.updateInitialPosition === 'function') window.updateInitialPosition();
-                        }, 450);
+                        }, 100);
+                    }
+                };
+                // Non-uniform scale for wall-based calibration; camera stays where it is
+                window.scaleRoomXY = function(scaleX, scaleY) {
+                    if (splatMesh) {
+                        var scaleZ = (scaleX + scaleY) / 2;
+                        splatMesh.scale.set(scaleX, scaleY, scaleZ);
+                        console.log('Room scaled by XY:', scaleX, scaleY, scaleZ);
+                        needsRender = true;
+                        setTimeout(function() {
+                            if (typeof window.updateInitialPosition === 'function') window.updateInitialPosition();
+                        }, 100);
                     }
                 };
 
@@ -1722,10 +1649,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 });
                             }
 
-                            // 5) Start: right in front of FRONT WALL (the wall at far distance), looking at it.
-                            // Closer distInFront = more zoomed in (was 0.025, now 0.012).
+                            // 5) Camera in front of FRONT WALL. Distance scales with room size so after user
+                            // enters measurement and we scale the room, the view zooms out to show the scaled room.
                             const frontWallZ = maxZ;
-                            const distInFront = 0.012;
+                            const distInFront = Math.max(0.012, Math.min(roomDepth * 0.28, 1.2));
                             // Look straight at wall (eye level): target at same height as camera
                             const newCamPos = new THREE.Vector3(
                                 innerCenterX,
@@ -1738,7 +1665,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 frontWallZ
                             );
 
-                            const msg1 = '[StartPos] Camera close to curtain, looking straight — distInFront=' + distInFront + ' minZ=' + minZ.toFixed(3) + ' maxZ=' + maxZ.toFixed(3) + ' isPortrait=' + isPortrait;
+                            const msg1 = '[StartPos] Camera in front of wall — distInFront=' + distInFront.toFixed(3) + ' (roomDepth=' + roomDepth.toFixed(2) + ') minZ=' + minZ.toFixed(3) + ' maxZ=' + maxZ.toFixed(3) + ' isPortrait=' + isPortrait;
                             const msg2 = '[StartPos] pos=(' + newCamPos.x.toFixed(3) + ',' + newCamPos.y.toFixed(3) + ',' + newCamPos.z.toFixed(3) + ') tgt=(' + newTarget.x.toFixed(3) + ',' + newTarget.y.toFixed(3) + ',' + newTarget.z.toFixed(3) + ')';
                             console.log(msg1);
                             console.log(msg2);
@@ -1854,6 +1781,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                     camera.position.z = newZ;
                     controls.target.x += actualDx;
                     controls.target.z += actualDz;
+                    controls.update();  // Sync OrbitControls internal state so next frame doesn't overwrite
                     needsRender = true;  // Request render after camera move
                 };
 
@@ -1868,7 +1796,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                         camera.position.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
                         controls.target.y = Math.max(roomBoundsForClamping.minY + m, Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
                     }
-                    controls.update();
+                    controls.update();  // Sync OrbitControls so next frame doesn't overwrite
                     needsRender = true;
                 };
 
@@ -2255,6 +2183,19 @@ struct AntimatterSplatView: UIViewRepresentable {
 
         @objc private func handleScaleRoom(_ notification: Notification) {
             guard let userInfo = notification.userInfo else { return }
+            let scaleX: Double? = (userInfo["scaleX"] as? NSNumber)?.doubleValue ?? userInfo["scaleX"] as? Double
+            let scaleY: Double? = (userInfo["scaleY"] as? NSNumber)?.doubleValue ?? userInfo["scaleY"] as? Double
+            if let sx = scaleX, let sy = scaleY {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    let js = "if (typeof window.scaleRoomXY === 'function') { window.scaleRoomXY(\(sx), \(sy)); }"
+                    logDebug("📐 [WebGL] scaleRoomXY(\(sx), \(sy))")
+                    self.webView?.evaluateJavaScript(js) { _, error in
+                        if let error = error { logDebug("❌ [WebGL] scaleRoomXY JS error: \(error)") }
+                    }
+                }
+                return
+            }
             let factor: Double
             if let d = userInfo["factor"] as? Double {
                 factor = d
