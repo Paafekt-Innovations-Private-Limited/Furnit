@@ -572,23 +572,13 @@ def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend
             partitioner=[XnnpackPartitioner()],
         )
     elif backend == "vulkan":
-        try:
-            from executorch.backends.vulkan.partition.vulkan_partitioner import VulkanPartitioner
-            from executorch.exir import to_edge_transform_and_lower
-            edge = to_edge_transform_and_lower(
-                exported,
-                compile_config=EdgeCompileConfig(_check_ir_validity=False),
-                partitioner=[VulkanPartitioner()],
-            )
-        except Exception as e:
-            print(f"Vulkan export failed: {e}, falling back to XNNPACK")
-            from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
-            from executorch.exir import to_edge_transform_and_lower
-            edge = to_edge_transform_and_lower(
-                exported,
-                compile_config=EdgeCompileConfig(_check_ir_validity=False),
-                partitioner=[XnnpackPartitioner()],
-            )
+        from executorch.backends.vulkan.partitioner.vulkan_partitioner import VulkanPartitioner
+        from executorch.exir import to_edge_transform_and_lower
+        edge = to_edge_transform_and_lower(
+            exported,
+            compile_config=EdgeCompileConfig(_check_ir_validity=False),
+            partitioner=[VulkanPartitioner()],
+        )
     else:
         from executorch.exir import to_edge
         edge = to_edge(exported, compile_config=EdgeCompileConfig(_check_ir_validity=False))
@@ -596,7 +586,9 @@ def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend
     # Greedy memory planning: use alloc_graph_input=False, alloc_graph_output=False so I/O
     # buffers are caller-managed and don't inflate the plan (fixes "Misallocate graph input: False v.s. True").
     # Export must use static shapes (no torch.export.Dim).
-    if use_greedy_memory_planning:
+    # Skip greedy for Vulkan: VulkanPartitioner does its own AOT memory planning; our greedy pass
+    # can fail with "TensorSpec(...) should have specified memory offset" on Vulkan-partitioned graphs.
+    if use_greedy_memory_planning and backend != "vulkan":
         try:
             from executorch.exir.capture._config import ExecutorchBackendConfig
             from executorch.exir.memory_planning import greedy
@@ -630,6 +622,8 @@ def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend
                 print(f"  Greedy memory planning not available: {e2}, using default planning")
                 et_program = edge.to_executorch()
     else:
+        if backend == "vulkan":
+            print("  Vulkan: using default planning (VulkanPartitioner AOT handles memory)")
         et_program = edge.to_executorch()
     export_time = time.time() - start
 

@@ -67,6 +67,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         private const val PADDING_1X = 3
         private const val PADDING_05X = 6
 
+        // Recommended default splat limit for ExecuTorch INT8 full pipeline
+        private const val MAX_GAUSSIANS_LIMIT = 500_000
+
         private const val MODEL_FILENAME = "sharp_int8.pte"
         private val SPLIT_FILENAMES = arrayOf(
             "sharp_split_part1_int8.pte",
@@ -271,8 +274,19 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     /**
      * Run full INT8 pipeline in C++ (Part1, Part2, Part3, Part4a, Part4b single). Returns packed [N*14] Gaussian floats,
      * or null if not implemented or on error (caller falls back to Kotlin pipeline).
+     *
+     * @param maxGaussians Upper bound on number of Gaussians to keep (0 = unlimited).
+     * @param preferSinglePart4b When true, forces single Part4b decoder instead of tiled paths for stability.
+     * @param useVulkan When true, allows C++ pipeline to prefer Vulkan-backed ExecuTorch load modes when available.
      */
-    private external fun runFullPipelineInt8Native(modelDirPath: String, imageNCHW: FloatArray, maxGaussians: Int, preferSinglePart4b: Boolean): FloatArray?
+    private external fun runFullPipelineInt8Native(
+        modelDirPath: String,
+        imageNCHW: FloatArray,
+        maxGaussians: Int,
+        preferSinglePart4b: Boolean,
+        useVulkan: Boolean,
+        useB4: Boolean
+    ): FloatArray?
 
     /** Warm-start: preload Part1+Part2 into native singleton cache (eliminates ~400ms mmap on first inference). */
     private external fun preloadCppModules(modelDirPath: String): Boolean
@@ -391,7 +405,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         return result
     }
 
-    suspend fun inferStreaming(bitmap: Bitmap, progressCallback: ((Float, String) -> Unit)? = null): StreamingResult? = withContext(Dispatchers.IO) {
+    suspend fun inferStreaming(
+        bitmap: Bitmap,
+        progressCallback: ((Float, String) -> Unit)? = null,
+        useVulkan: Boolean = true,
+        maxGaussians: Int = MAX_GAUSSIANS_LIMIT
+    ): StreamingResult? = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (!isInitialized) return@withContext null
             ensureModelsFromAssets()
@@ -410,11 +429,17 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val hasAll16TileFiles = part4bTileFiles.all { it != null }
             val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
             val useCppFullPipeline = prefs.getBoolean("executorch_int8_use_cpp_full_pipeline", false)
+            val useB4 = prefs.getBoolean("executorch_int8_use_b4", true)
             val usePart4bTiledPref = prefs.getBoolean("executorch_int8_use_part4b_tiled", false)
             val skipTiledAfterOom = prefs.getBoolean("executorch_int8_skip_tiled_after_oom", false)
             val preferSinglePart4b = prefs.getBoolean("executorch_int8_prefer_single_part4b", false)
             PARALLEL_TILES = prefs.getBoolean("executorch_int8_parallel_tiles", false)
             val swapNdcXY = prefs.getBoolean("executorch_int8_swap_tile_ndc_xy", false)
+            // Effective Gaussian cap for full C++ pipeline. When pref is 0 (All), fall back to our default.
+            var effectiveMaxGaussians = prefs.getInt("executorch_int8_max_gaussians", 0)
+            if (effectiveMaxGaussians <= 0 && maxGaussians > 0) {
+                effectiveMaxGaussians = maxGaussians
+            }
             val useChunkedPart4bTiled16Files = usePart4bTiledPref && !skipTiledAfterOom && (hasAll16TileFiles || part4bTileFullFile != null) && !preferSinglePart4b
             val needPart4b = !useChunkedPart4bTiled16Files
             val missing = required.filter { findFile(it) == null }
@@ -460,10 +485,18 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 LogUtil.d(TAG, "[C++ FULL] Image preprocessed, calling native (${imageNCHW.size} floats)")
                 try {
                     val cppStartMs = System.currentTimeMillis()
-                    val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
-                    val maxGaussians = prefs.getInt("executorch_int8_max_gaussians", 0)
-                    LogUtil.d(TAG, "[C++ FULL] maxGaussians=$maxGaussians (0=unlimited)")
-                    val cppResult = runFullPipelineInt8Native(cppModelDir, imageNCHW, maxGaussians, preferSinglePart4b)
+                    LogUtil.d(
+                        TAG,
+                        "[C++ FULL] maxGaussians=$effectiveMaxGaussians (0=unlimited) useVulkan=true"
+                    )
+                    val cppResult = runFullPipelineInt8Native(
+                        cppModelDir,
+                        imageNCHW,
+                        effectiveMaxGaussians,
+                        preferSinglePart4b,
+                        true,
+                        useB4
+                    )
                     val cppElapsedMs = System.currentTimeMillis() - cppStartMs
                     if (cppResult != null && cppResult.isNotEmpty()) {
                         LogUtil.d(TAG, "[C++ FULL] Native returned ${cppResult.size / 14} Gaussians in ${cppElapsedMs}ms")

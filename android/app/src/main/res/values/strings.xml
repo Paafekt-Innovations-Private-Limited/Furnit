@@ -115,6 +115,8 @@
     <string name="settings_swap_tile_ndc_xy_description">If tiled output shows misaligned patches, try this to fix tile layout (transposed export).</string>
     <string name="settings_cpp_executorch_int8">C++ ExecuTorch INT8</string>
     <string name="settings_cpp_executorch_int8_description">Run the full SHARP pipeline (Part1–4b) in C++. Single Part4b only, no tiles. May reduce overhead.</string>
+    <string name="settings_executorch_int8_use_b4">Part1/Part2 batch=4</string>
+    <string name="settings_executorch_int8_use_b4_description">Use batch-4 models for faster 1x patches. Disable if app crashes after "Part1+Part2 ready".</string>
     <string name="settings_max_gaussians">Max Gaussians</string>
     <string name="settings_max_gaussians_description">Limit splat count (0 = unlimited). 300k saves ~10s PLY write + faster viewer. 1.18M = full quality.</string>
     <string name="settings_debug_mode">Debug Mode</string>

@@ -168,8 +168,8 @@ struct ModuleCache {
         if (mod2->load() != Error::Ok) { LOGE("Cache: Part2 load fail"); mod2.reset(); mod1.reset(); return false; }
         LOGD("ModuleCache: Part1+Part2 loaded (kept alive across calls)");
 
-        // Batch=4 Part1/Part2: load only when enabled (b4 forward can crash on some runtimes; fallback uses single-patch)
-        static const bool kEnableB4 = false;  // set true when b4 runtime crash is resolved
+        // Batch=4 Part1/Part2: enable when B4 models are present; fallback uses single-patch when missing.
+        static const bool kEnableB4 = true;
         if (kEnableB4) {
             std::string p1b4 = pathJoin(dir, "sharp_split_part1_b4_int8.pte");
             std::string p2b4 = pathJoin(dir, "sharp_split_part2_b4_int8.pte");
@@ -816,7 +816,9 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
         jstring modelDirPath,
         jfloatArray imageNCHW,
         jint maxGaussians,
-        jboolean preferSinglePart4b) {
+        jboolean preferSinglePart4b,
+        jboolean useVulkan,
+        jboolean useB4Param) {
 
     if (!modelDirPath || !imageNCHW) {
         LOGE("runFullPipelineInt8: null modelDir or image");
@@ -824,6 +826,8 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     }
     const int maxG = static_cast<int>(maxGaussians);
     const bool useSinglePart4bOnly = (preferSinglePart4b == JNI_TRUE);
+    const bool useVulkanBackend = (useVulkan == JNI_TRUE);
+    const bool useB4 = (useB4Param == JNI_TRUE);
 
     ensureRuntimeInit();
     const long long t0 = nowMs();
@@ -833,7 +837,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     env->ReleaseStringUTFChars(modelDirPath, dirC);
     if (modelDir.empty()) { LOGE("empty model dir"); return nullptr; }
 
-    LOGD("runFullPipelineInt8: modelDir=%s", modelDir.c_str());
+    LOGD("runFullPipelineInt8: modelDir=%s useVulkan=%d", modelDir.c_str(), useVulkanBackend ? 1 : 0);
 
     jsize imageLen = env->GetArrayLength(imageNCHW);
     if (imageLen != 3 * IMAGE_SIZE * IMAGE_SIZE) {
@@ -892,7 +896,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
 
     for (int start = 0; start < 25; start += PATCH_BATCH) {
         const int n = std::min(PATCH_BATCH, 25 - start);
-        const bool useBatch = (n == PATCH_BATCH && m1_b4 && m2_b4);
+        const bool useBatch = (n == PATCH_BATCH && m1_b4 && m2_b4 && useB4);
         bool batchOk = false;
 
         if (useBatch) {
@@ -905,6 +909,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
             }
             auto pTensor = from_blob(g_workspace.patchBuf4, {PATCH_BATCH, 3, PATCH_SIZE, PATCH_SIZE});
             std::vector<EValue> in1 = {*pTensor};
+            if (start == 0) LOGD("1x batch-4: Part1_b4 forward (start=0)");
             auto out1 = m1_b4->forward(in1);
             const size_t needTokenNumel = PATCH_BATCH * tokenSliceSz;
             const size_t needFeatNumel = PATCH_BATCH * featSliceSz;
@@ -990,7 +995,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     long long t05x = nowMs();
     for (int start = 0; start < 9; start += PATCH_BATCH) {
         const int n = std::min(PATCH_BATCH, 9 - start);
-        const bool useBatch = (n == PATCH_BATCH && m1_b4 && m2_b4);
+        const bool useBatch = (n == PATCH_BATCH && m1_b4 && m2_b4 && useB4);
 
         if (useBatch) {
             for (int b = 0; b < PATCH_BATCH; ++b) {

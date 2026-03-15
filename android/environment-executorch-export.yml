@@ -1,0 +1,27 @@
+# Conda env for SHARP ExecuTorch export (Vulkan, XNNPACK, greedy memory planning).
+# Use when "Greedy memory planning not available: TensorSpec(...)" occurs with newer executorch.
+#
+# Create:  conda env create -f android/environment-executorch-export.yml
+# Activate: conda activate furnit-executorch-export
+# Export:   cd android && ./export_sharp_executorch_vulkan_full.sh
+#
+# Note: Do NOT pip install sharp. The export scripts add android/third_party/ml-sharp/src
+# to sys.path at runtime (--sharp-src). Just run the export from android/.
+#
+name: furnit-executorch-export
+channels:
+  - conda-forge
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - scipy
+  - pip:
+    # setuptools>=82 removed pkg_resources; executorch exir still imports it → pin <82
+    - "setuptools>=60,<82"
+    - numpy==1.23.2
+    - torch>=2.4,<2.6
+    - "executorch>=0.2,<0.6"
+    - timm
+    - plyfile
