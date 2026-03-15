@@ -264,12 +264,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// When true, apply final mask overlap containment (intersection-only check). Set to false to skip this filter.
     private var useMaskOverlapContainment = true
 
-    /// When true, at the very end exclude any detection whose bbox center is outside primary bbox extended by 15%. Set to false to skip.
+    /// When true, exclude detections whose bbox center is outside primary bbox extended by 30% (bag on chair edge survives). Set to false to skip.
     private var usePrimaryBboxExtensionFilter = true
 
     /// Containment: when true, keep candidate if IoU (inter/union) ≥ 20%.
     private var useContainmentIoU = true
-    /// Containment: when true, keep candidate if intersection/candidate_area ≥ 10%, and only when candidate is small vs primary (avoids keeping background/cabinet). Bag on chair, bedsheet/pillow on bed pass.
+    /// Containment: when true, keep by intersection-frac: small (area<primary) ≥7%; similar size (area≤primary×1.5) ≥12% so handbag stable, cabinet/bottle excluded.
     private var useContainmentIntersectionFrac = true
     /// Containment: when true, do only union (IoU) check at 20%. Off.
     private var useContainmentUnionOnly20 = false
@@ -1147,24 +1147,26 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("   🎯 PRIMARY[\(primaryIdx)]: \(className(primary.classIdx)) conf=\(String(format: "%.2f", primary.confidence)) size=\(Int(primary.w))x\(Int(primary.h))")
         }
 
-        // Estimate real-world furniture size using simple pixel ratio
-        // furniture_size = (bbox_pixels / image_pixels) × room_size
+        // Estimate real-world furniture size: same scale on both axes to avoid aspect-ratio distortion.
+        // Camera buffer aspect (bufW/bufH) often differs from room aspect (roomW/roomH); using
+        // different metersPerPixelX/Y would stretch the bbox and make calibration wrong.
         let imgWidthPx = primary.w / resizeGain
         let imgHeightPx = primary.h / resizeGain
 
         let metersPerPixelX = roomWidthMeters / Float(bufW)
         let metersPerPixelY = roomHeightMeters / Float(bufH)
+        let metersPerPixel = min(metersPerPixelX, metersPerPixelY)
 
-        var estimatedWidth = imgWidthPx * metersPerPixelX
-        var estimatedHeight = imgHeightPx * metersPerPixelY
+        var estimatedWidth = imgWidthPx * metersPerPixel
+        var estimatedHeight = imgHeightPx * metersPerPixel
 
-        // Ensure height > width for most furniture
+        // Ensure height > width for display (most furniture: height is the larger dimension)
         if estimatedWidth > estimatedHeight {
             swap(&estimatedWidth, &estimatedHeight)
         }
 
         if debugMode {
-            logDebug("📏 [Sizing] Room: \(String(format: "%.2f", roomWidthMeters))×\(String(format: "%.2f", roomHeightMeters))m, Buffer: \(bufW)×\(bufH)px")
+            logDebug("📏 [Sizing] Room: \(String(format: "%.2f", roomWidthMeters))×\(String(format: "%.2f", roomHeightMeters))m, Buffer: \(bufW)×\(bufH)px, m/px: \(String(format: "%.6f", metersPerPixel))")
             logDebug("📏 [Sizing] Furniture: \(Int(imgWidthPx))×\(Int(imgHeightPx))px → \(String(format: "%.2f", estimatedWidth))×\(String(format: "%.2f", estimatedHeight))m")
         }
 
@@ -1425,7 +1427,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logMemory("AFTER STAGE 5b/5c")
         }
 
-        // 1) Primary bbox +15% extension filter (runs first): exclude anything whose bbox center is outside
+        // 1) Primary bbox extension filter (runs first): exclude anything whose bbox center is outside primary bbox + margin. 30% so bag on chair edge survives.
         if usePrimaryBboxExtensionFilter, kept2.count > 1 {
             let countBefore = kept2.count
             let primary = kept2[0]
@@ -1433,8 +1435,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             let py1 = primary.y - primary.h * 0.5
             let px2 = primary.x + primary.w * 0.5
             let py2 = primary.y + primary.h * 0.5
-            let marginW = primary.w * 0.15
-            let marginH = primary.h * 0.15
+            let marginW = primary.w * 0.30
+            let marginH = primary.h * 0.30
             let extPx1 = px1 - marginW
             let extPy1 = py1 - marginH
             let extPx2 = px2 + marginW
@@ -1446,11 +1448,11 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
             kept2 = [primary] + rest
             if debugMode, kept2.count < countBefore {
-                logDebug("📌 Primary bbox +15%% extension filter: kept \(kept2.count)/\(countBefore) (excluded \(countBefore - kept2.count) outside extended primary)")
+                logDebug("📌 Primary bbox +30%% extension filter: kept \(kept2.count)/\(countBefore) (excluded \(countBefore - kept2.count) outside extended primary)")
             }
         }
 
-        // 2) Mask overlap containment (runs after 15% extension). Flags: useContainmentIoU (off), useContainmentIntersectionFrac (off), useContainmentUnionOnly20 (on) = only union check 20%.
+        // 2) Mask overlap containment (runs after primary bbox extension). Flags: useContainmentIoU, useContainmentIntersectionFrac (small-on-primary), useContainmentUnionOnly20.
         if useMaskOverlapContainment, kept2.count > 1 {
             var primaryMaskArea = 0
             scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
@@ -1465,7 +1467,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             var contained: [UnionDet] = [kept2[0]]
             let unionCheckThreshold: Float = 0.20  // for union-only path
             let containmentIoUMin: Float = 0.20
-            let containmentIntersectionMin: Float = 0.10  // 10%; use only for small-on-large (see below)
+            let containmentIntersectionMin: Float = 0.07   // 7%; strictly small-on-primary (pillow, handkerchief)
+            let containmentIntersectionMinSimilar: Float = 0.12  // 12%; similar/larger than primary (handbag on chair). Avoid 15%—caused intermittent hole; cabinet/bottle typically <10%.
             planes.withUnsafeBufferPointer { planesPtr in
                 scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
                     for d in kept2.dropFirst() {
@@ -1499,16 +1502,23 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         let iou: Float = union > 0 ? Float(inter) / Float(union) : 0
                         let intersectionFrac: Float = Float(inter) / Float(area)
                         let keepByUnionOnly = useContainmentUnionOnly20 && iou >= unionCheckThreshold
-                        let keepByIou = useContainmentIoU && iou >= containmentIoUMin
-                        // Intersection-frac only when candidate is strictly smaller than primary (area < primary). Bag/pillow/bedsheet pass; cabinet/background (often >= primary size) must pass IoU.
+                        // Large candidates (area > primary×1.5) need higher IoU so cabinet/bottle/doormat don’t slip in with ~20% overlap.
+                        let isLargeVsPrimary = primaryMaskArea > 0 && area > Int(Float(primaryMaskArea) * 1.5)
+                        let iouMinRequired: Float = isLargeVsPrimary ? 0.35 : containmentIoUMin
+                        let keepByIou = useContainmentIoU && iou >= iouMinRequired
+                        // Tiered intersection-frac: (1) strictly small (area < primary) → 7% min. (2) similar size (area <= primary*1.5) → 15% min so cabinet/bottle/doormat (low overlap) excluded, handbag (high overlap) kept.
+                        let maxAreaForFrac = primaryMaskArea > 0 ? Int(Float(primaryMaskArea) * 1.5) : 0
                         let isSmallOnPrimary = primaryMaskArea > 0 && area < primaryMaskArea
-                        let keepByIntersection = useContainmentIntersectionFrac && isSmallOnPrimary && intersectionFrac >= containmentIntersectionMin
+                        let isSimilarSizeOnPrimary = primaryMaskArea > 0 && area >= primaryMaskArea && area <= maxAreaForFrac
+                        let keepByFracSmall = useContainmentIntersectionFrac && isSmallOnPrimary && intersectionFrac >= containmentIntersectionMin
+                        let keepByFracSimilar = useContainmentIntersectionFrac && isSimilarSizeOnPrimary && intersectionFrac >= containmentIntersectionMinSimilar
+                        let keepByIntersection = keepByFracSmall || keepByFracSimilar
                         if keepByUnionOnly || keepByIou || keepByIntersection {
                             contained.append(d)
                             if debugMode {
                                 let iouPct = String(format: "%.1f", iou * 100)
                                 let fracPct = String(format: "%.1f", intersectionFrac * 100)
-                                let reason = keepByUnionOnly ? "union20" : (keepByIou ? "IoU" : "frac")
+                                let reason = keepByUnionOnly ? "union20" : (keepByIou ? "IoU" : (keepByFracSimilar ? "frac_similar" : "frac"))
                                 logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) union=\(union) IoU=\(iouPct)% frac=\(fracPct)% (\(reason)) → kept")
                             }
                         } else if debugMode {

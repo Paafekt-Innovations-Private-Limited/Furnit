@@ -629,10 +629,13 @@ class SharpService private constructor(private val context: Context) {
                     LogUtil.d(TAG, "generateGaussians: invoking ExecuTorch INT8 inferStreaming")
                     callback.onProgress(0.2f, "Running SHARP (ExecuTorch INT8)...")
                     val result = kotlinx.coroutines.runBlocking {
-                        executorchInt8Sharp.inferStreaming(image) { progress, message ->
-                            val mapped = (0.2f + 0.79f * progress).coerceIn(0.2f, 0.99f)
-                            callback.onProgress(mapped, message)
-                        }
+                        executorchInt8Sharp.inferStreaming(
+                            bitmap = image,
+                            progressCallback = { progress: Float, message: String ->
+                                val mapped = (0.2f + 0.79f * progress).coerceIn(0.2f, 0.99f)
+                                callback.onProgress(mapped, message)
+                            }
+                        )
                     }
 
                     if (result == null) {

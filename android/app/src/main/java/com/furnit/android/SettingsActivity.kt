@@ -632,6 +632,21 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         implLayout.addView(implRg)
+
+        // Part1/Part2 batch=4 (C++ only): disable if B4 causes crash
+        val useB4 = prefs.getBoolean("executorch_int8_use_b4", true)
+        val b4Layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val b4Label = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        val b4Title = TextView(this).apply { text = getString(R.string.settings_executorch_int8_use_b4); textSize = 14f; setTextColor(Color.parseColor("#222222")) }
+        val b4Desc = TextView(this).apply { text = getString(R.string.settings_executorch_int8_use_b4_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) }
+        b4Label.addView(b4Title)
+        b4Label.addView(b4Desc)
+        val b4Switch = createStyledSwitch(useB4) { isChecked ->
+            prefs.edit().putBoolean("executorch_int8_use_b4", isChecked).apply()
+        }
+        b4Layout.addView(b4Label)
+        b4Layout.addView(b4Switch)
+        implLayout.addView(b4Layout)
         developerSection.addView(implLayout)
 
         // Developer section footer

@@ -358,7 +358,7 @@ struct MeshRoomView: View {
         }
 
         let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
+        format.scale = window.traitCollection.displayScale
         let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
         let image = renderer.image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)

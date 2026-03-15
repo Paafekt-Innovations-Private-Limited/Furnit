@@ -3,9 +3,7 @@
 #
 # Uses skills learnt for memory optimization:
 #  - Backend: Vulkan (GPU) for speed
-#  - Part1+Part2 combined: one .pte so Vulkan AOT memory planning can share token buffer with Part1/Part2 intermediates
 #  - Chunked Part 4: 4a_chunk_512 + 4a_chunk_65 + 4b to avoid single 755MB Part 4 (reduces LMK risk)
-#  - Runtime: GC+sleep between parts; uses combined Part1+2 when present, else two-phase with tokens in RAM
 #
 # Prereqs: Python env with torch, executorch, sharp source and weights.
 #
@@ -42,7 +40,6 @@ echo ""
 
 python3 "${SCRIPT_DIR}/export_sharp_executorch_split4.py" \
   --backend vulkan \
-  --combined-part1-part2 \
   --chunked-part4 \
   --sharp-src "${SHARP_SRC}" \
   --weights "${WEIGHTS}" \

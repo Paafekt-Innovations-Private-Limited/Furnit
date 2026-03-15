@@ -53,7 +53,24 @@ class OrientationLockManager {
     }
 }
 
+// MARK: - Scene delegate for open URL (iOS 26+ prefers UIScene lifecycle over OpenURLOptionsKey)
+class SceneDelegate: NSObject, UIWindowSceneDelegate {
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        for context in URLContexts {
+            if Auth.auth().canHandle(context.url) {
+                return
+            }
+        }
+    }
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
+
+    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        config.delegateClass = SceneDelegate.self
+        return config
+    }
 
     // MARK: - Orientation Support
 
@@ -103,25 +120,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    // Handle URL schemes for phone auth (reCAPTCHA callback)
-    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        let debugMode = AppStateManager.shared.qualitySettings.debugMode
-        
-        if debugMode {
-            print("🔥 [AppDelegate] open URL called: \(url.absoluteString)")
-        }
-        
-        let canHandle = Auth.auth().canHandle(url)
-        
-        if debugMode {
-            print("🔥 [AppDelegate] Auth.canHandle(url) = \(canHandle)")
-        }
-        
-        if canHandle {
-            return true
-        }
-        return false
-    }
+    // URL handling for phone auth (reCAPTCHA) is done in SceneDelegate.scene(_:openURLContexts:)
+    // to avoid OpenURLOptionsKey deprecation in iOS 26.
 
     // Required by Firebase Auth - forward APNs token
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {

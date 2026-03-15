@@ -140,10 +140,65 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
 }
 if (!skipExecutorchAssets) preBuild.dependsOn copyExecutorchModelsIntoAssets
 
-// libsharp_executorch_tiles.so links against libexecutorch; AAR may ship it as libexecutorch_jni.so by SONAME.
-// Copy from executorch_lib so loader finds it at runtime when native tiles are built.
+// libsharp_executorch_tiles.so and libsharp_executorch_full.so link against libexecutorch.
+// Extract libexecutorch.so from executorch-android AAR into executorch_lib so CMake can build the native libs.
 def executorchLibDir = project.file("src/main/cpp/executorch_lib")
 def jniLibsArm64 = project.file("src/main/jniLibs/arm64-v8a")
+
+tasks.register("extractExecutorchSoFromAar") {
+    description = "Extract libexecutorch.so from executorch-android AAR into executorch_lib for CMake"
+    doLast {
+        executorchLibDir.mkdirs()
+        def soFile = project.file("${executorchLibDir}/libexecutorch.so")
+        def executorchHeaders = project.file("../third_party/executorch/extension/module/module.h")
+        if (soFile.exists()) {
+            logger.lifecycle("extractExecutorchSoFromAar: libexecutorch.so already present")
+            // If we have both lib and headers but CMake cache may be stale (built before setup),
+            // invalidate cache so sharp_executorch_full/tiles get built
+            if (executorchHeaders.exists()) {
+                def cxxDir = project.file(".cxx")
+                def mergedLibs = project.file("build/intermediates/merged_native_libs/debug/mergeDebugNativeLibs/out/lib/arm64-v8a")
+                def sharpFullExists = mergedLibs.exists() && project.file("${mergedLibs}/libsharp_executorch_full.so").exists()
+                if (cxxDir.exists() && !sharpFullExists) {
+                    cxxDir.deleteDir()
+                    logger.lifecycle("extractExecutorchSoFromAar: invalidated .cxx (stale cache); CMake will reconfigure")
+                }
+            }
+            return
+        }
+        def aar = null
+        for (String configName : ["debugRuntimeClasspath", "releaseRuntimeClasspath"]) {
+            def conf = configurations.findByName(configName)
+            if (conf != null) {
+                aar = conf.files.find { it.name.endsWith(".aar") && it.name.contains("executorch") }
+                if (aar != null) break
+            }
+        }
+        if (aar == null) {
+            logger.warn("extractExecutorchSoFromAar: executorch-android AAR not found on runtime classpath; run :app:dependencies to verify")
+            return
+        }
+        def aarZip = zipTree(aar)
+        def arm64So = aarZip.matching { include "jni/arm64-v8a/*.so" }.files
+        def src = arm64So.find { it.name == "libexecutorch.so" } ?: arm64So.find { it.name == "libexecutorch_jni.so" }
+        if (src != null) {
+            copy {
+                from src
+                into executorchLibDir
+                rename ".*", "libexecutorch.so"
+            }
+            logger.lifecycle("extractExecutorchSoFromAar: extracted ${src.name} -> executorch_lib/libexecutorch.so")
+            def cxxDir = project.file(".cxx")
+            if (cxxDir.exists()) {
+                cxxDir.deleteDir()
+                logger.lifecycle("extractExecutorchSoFromAar: deleted .cxx to force CMake reconfigure")
+            }
+        } else {
+            logger.warn("extractExecutorchSoFromAar: no .so in AAR jni/arm64-v8a/ (found: ${arm64So*.name})")
+        }
+    }
+}
+
 tasks.register("copyExecutorchJniAsSoname", Copy) {
     description = "Copy libexecutorch.so as libexecutorch_jni.so so loader finds it by SONAME"
     from(executorchLibDir) { include "libexecutorch.so" }
@@ -151,7 +206,15 @@ tasks.register("copyExecutorchJniAsSoname", Copy) {
     rename "libexecutorch.so", "libexecutorch_jni.so"
     onlyIf { executorchLibDir.exists() && project.file("${executorchLibDir}/libexecutorch.so").exists() }
 }
+
+preBuild.dependsOn extractExecutorchSoFromAar
 preBuild.dependsOn copyExecutorchJniAsSoname
+// Ensure CMake configures after extract so it sees executorch_lib
+tasks.configureEach { task ->
+    if (task.name.startsWith("configure") && task.name.contains("CMake")) {
+        task.mustRunAfter extractExecutorchSoFromAar
+    }
+}
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.10"
