@@ -984,7 +984,7 @@ struct SharpRoomView: View {
                 return
             }
             let format = UIGraphicsImageRendererFormat()
-            format.scale = UIScreen.main.scale
+            format.scale = window.traitCollection.displayScale
             let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
             let image = renderer.image { _ in
                 window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
@@ -1274,6 +1274,7 @@ struct AntimatterSplatView: UIViewRepresentable {
         config.userContentController.add(context.coordinator, name: "frontWallDimensions")
         config.userContentController.add(context.coordinator, name: "cameraPose")
         config.userContentController.add(context.coordinator, name: "jsLog")
+        config.userContentController.add(context.coordinator, name: "box3Size")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -1628,6 +1629,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                             const box3Msg = 'Box3 raw size: ' + roomWidth.toFixed(2) + ' x ' + roomHeight.toFixed(2) + ' (isPortrait: ' + isPortrait + ')';
                             console.log(box3Msg);
                             if (window.webkit?.messageHandlers?.jsLog) window.webkit.messageHandlers.jsLog.postMessage(box3Msg);
+                            if (window.webkit?.messageHandlers?.box3Size) window.webkit.messageHandlers.box3Size.postMessage({ width: roomWidth, height: roomHeight });
 
                             // Cap to realistic room dimensions (fog makes bounds too large)
                             const maxRealisticWidth = isPortrait ? 5.0 : 8.0;
@@ -2146,11 +2148,14 @@ struct AntimatterSplatView: UIViewRepresentable {
         }
 
         @objc private func recenterCamera() {
-            logDebug("🎯 [WebGL] Recentering camera")
-            let js = "if (typeof recenterCamera === 'function') recenterCamera();"
-            webView?.evaluateJavaScript(js) { _, error in
-                if let error = error {
-                    logDebug("❌ [WebGL] Recenter JS error: \(error)")
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                logDebug("🎯 [WebGL] Recentering camera")
+                let js = "if (typeof window.recenterCamera === 'function') { window.recenterCamera(); } else if (typeof recenterCamera === 'function') { recenterCamera(); }"
+                self.webView?.evaluateJavaScript(js) { _, error in
+                    if let error = error {
+                        logDebug("❌ [WebGL] Recenter JS error: \(error)")
+                    }
                 }
             }
         }
@@ -2284,6 +2289,12 @@ struct AntimatterSplatView: UIViewRepresentable {
                    let ty = body["ty"] as? Double,
                    let tz = body["tz"] as? Double {
                     logDebug("🎥 [WebGL] Camera pose JS -> Swift: eye=(\(String(format: "%.2f", ex)), \(String(format: "%.2f", ey)), \(String(format: "%.2f", ez))) target=(\(String(format: "%.2f", tx)), \(String(format: "%.2f", ty)), \(String(format: "%.2f", tz)))")
+                }
+            } else if message.name == "box3Size" {
+                if let body = message.body as? [String: Any],
+                   let w = body["width"] as? Double,
+                   let h = body["height"] as? Double {
+                    print("Box3 width: \(String(format: "%.2f", w)) height: \(String(format: "%.2f", h))")
                 }
             } else if message.name == "jsLog", let text = message.body as? String {
                 logDebug("📜 [JS] \(text)")

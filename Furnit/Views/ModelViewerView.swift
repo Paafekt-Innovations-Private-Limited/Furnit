@@ -176,7 +176,7 @@ struct ModelViewerView: View {
                         Spacer()
                         // Snapshot button - always visible (green share button removed; retain blue camera only)
                         Button(action: {
-                            let screen = UIScreen.main.bounds.size
+                            let screen = screenSizeFromContext()
                             saveFurnitureFitSnapshot(screen)
                         }) {
                             Image(systemName: "camera.fill")
@@ -497,6 +497,13 @@ struct ModelViewerView: View {
         }
     }
     
+    /// Screen size from window scene context (avoids UIScreen.main deprecated in iOS 26).
+    private func screenSizeFromContext() -> CGSize {
+        let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+        let window = scene?.windows.first(where: { $0.isKeyWindow }) ?? scene?.windows.first
+        return window?.windowScene?.screen.bounds.size ?? window?.bounds.size ?? CGSize(width: 393, height: 852)
+    }
+
     private func saveFurnitureFitSnapshot(_ size: CGSize) {
         // Hide UI chrome briefly so it doesn't appear in the snapshot
         isCapturingSnapshot = true
@@ -573,7 +580,7 @@ struct ModelViewerView: View {
             return nil
         }
         let format = UIGraphicsImageRendererFormat()
-        format.scale = UIScreen.main.scale
+        format.scale = window.traitCollection.displayScale
         let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
         let image = renderer.image { _ in
             // Using drawHierarchy provides a rendered snapshot with effects
