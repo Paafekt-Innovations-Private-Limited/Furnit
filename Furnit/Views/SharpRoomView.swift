@@ -1490,12 +1490,23 @@ struct AntimatterSplatView: UIViewRepresentable {
                 let initialCameraPosition = camera.position.clone();
                 let initialControlsTarget = controls.target.clone();
 
-                // Recenter function
+                // Recenter = re-frame room (always works; fixes zoom and works after segment/apply)
                 window.recenterCamera = function() {
-                    camera.position.copy(initialCameraPosition);
-                    controls.target.copy(initialControlsTarget);
-                    controls.update();
+                    if (typeof autoFrameRoom === 'function') {
+                        autoFrameRoom(true);
+                    } else {
+                        camera.position.copy(initialCameraPosition);
+                        controls.target.copy(initialControlsTarget);
+                        var prevDamping = controls.enableDamping;
+                        var prevFactor = controls.dampingFactor;
+                        controls.enableDamping = false;
+                        controls.update();
+                        controls.enableDamping = prevDamping;
+                        controls.dampingFactor = prevFactor;
+                    }
                     needsRender = true;
+                    setTimeout(function() { needsRender = true; }, 0);
+                    setTimeout(function() { needsRender = true; }, 50);
                 };
 
                 // Scale room function - called from Swift when user calibrates with real furniture
@@ -1506,6 +1517,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                         needsRender = true;
                         // Re-frame after scaling
                         setTimeout(autoFrameRoom, 100);
+                        // After reframe, sync recenter base so recenter works after segment/apply (autoFrameRoom may skip update on retry paths)
+                        setTimeout(function() {
+                            if (typeof window.updateInitialPosition === 'function') window.updateInitialPosition();
+                        }, 450);
                     }
                 };
 
@@ -1542,7 +1557,8 @@ struct AntimatterSplatView: UIViewRepresentable {
                     let autoFrameRoomRetryCount = 0;
                     const AUTO_FRAME_MAX_RETRIES = 60;
 
-                    function autoFrameRoom() {
+                    function autoFrameRoom(fromRecenter) {
+                        if (fromRecenter) autoFrameRoomRetryCount = 0;
                         const jsLog = function(msg) { if (window.webkit?.messageHandlers?.jsLog) window.webkit.messageHandlers.jsLog.postMessage(msg); };
                         try {
                             if (!splatMesh) {
@@ -1706,10 +1722,10 @@ struct AntimatterSplatView: UIViewRepresentable {
                                 });
                             }
 
-                            // 5) Start: right in front of FRONT WALL (the wall at far distance), looking up at it.
-                            // Front wall = far wall = maxZ in scene. Camera just in front of it (maxZ + dist), looking up at it.
+                            // 5) Start: right in front of FRONT WALL (the wall at far distance), looking at it.
+                            // Closer distInFront = more zoomed in (was 0.025, now 0.012).
                             const frontWallZ = maxZ;
-                            const distInFront = 0.025;
+                            const distInFront = 0.012;
                             // Look straight at wall (eye level): target at same height as camera
                             const newCamPos = new THREE.Vector3(
                                 innerCenterX,
@@ -1787,6 +1803,7 @@ struct AntimatterSplatView: UIViewRepresentable {
                             console.error('autoFrameRoom error:', err);
                         }
                     }
+                    window.autoFrameRoom = autoFrameRoom;
                     console.log('Scheduling autoFrameRoom in 500ms...');
                     setTimeout(autoFrameRoom, 500);
 
@@ -2148,12 +2165,21 @@ struct AntimatterSplatView: UIViewRepresentable {
         }
 
         @objc private func recenterCamera() {
+            runRecenter(retryOnFailure: true)
+        }
+
+        private func runRecenter(retryOnFailure: Bool) {
             DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
+                guard let self = self, let wv = self.webView else { return }
                 logDebug("🎯 [WebGL] Recentering camera")
-                let js = "if (typeof window.recenterCamera === 'function') { window.recenterCamera(); } else if (typeof recenterCamera === 'function') { recenterCamera(); }"
-                self.webView?.evaluateJavaScript(js) { _, error in
-                    if let error = error {
+                let js = "if (typeof window.recenterCamera === 'function') { window.recenterCamera(); } else if (typeof window.autoFrameRoom === 'function') { window.autoFrameRoom(true); } else if (typeof recenterCamera === 'function') { recenterCamera(); }"
+                wv.evaluateJavaScript(js) { [weak self] _, error in
+                    if let error = error, retryOnFailure {
+                        logDebug("❌ [WebGL] Recenter JS error: \(error) — retrying once")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                            self?.runRecenter(retryOnFailure: false)
+                        }
+                    } else if let error = error {
                         logDebug("❌ [WebGL] Recenter JS error: \(error)")
                     }
                 }
@@ -2228,12 +2254,25 @@ struct AntimatterSplatView: UIViewRepresentable {
         }
 
         @objc private func handleScaleRoom(_ notification: Notification) {
-            guard let userInfo = notification.userInfo,
-                  let factor = userInfo["factor"] as? Double else { return }
-
-            let js = "if (typeof scaleRoom === 'function') scaleRoom(\(factor));"
-            logDebug("📐 [WebGL] scaleRoom(\(factor))")
-            webView?.evaluateJavaScript(js, completionHandler: nil)
+            guard let userInfo = notification.userInfo else { return }
+            let factor: Double
+            if let d = userInfo["factor"] as? Double {
+                factor = d
+            } else if let n = userInfo["factor"] as? NSNumber {
+                factor = n.doubleValue
+            } else {
+                return
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                let js = "if (typeof window.scaleRoom === 'function') { window.scaleRoom(\(factor)); } else if (typeof scaleRoom === 'function') { scaleRoom(\(factor)); }"
+                logDebug("📐 [WebGL] scaleRoom(\(factor))")
+                self.webView?.evaluateJavaScript(js) { _, error in
+                    if let error = error {
+                        logDebug("❌ [WebGL] scaleRoom JS error: \(error)")
+                    }
+                }
+            }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
