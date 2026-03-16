@@ -248,8 +248,8 @@ dependencies {
     // 1.24.2 fixes EXTENDED_OPT crash (shape merging on Concat, #24340); 1.18.0 was 18mo behind
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.2'
 
-    // ExecuTorch for on-device inference (MobileNetV3 classification + SHARP room gen)
-    implementation 'org.pytorch:executorch-android:1.1.0'
+    // ExecuTorch for on-device inference (MobileNetV3 + SHARP). Use Vulkan AAR (includes base runtime + Vulkan delegate).
+    implementation 'org.pytorch:executorch-android-vulkan:1.1.0'
 
     // PyTorch Mobile Lite - loads .ptl files directly (no model conversion)
     implementation('org.pytorch:pytorch_android_lite:2.1.0') {

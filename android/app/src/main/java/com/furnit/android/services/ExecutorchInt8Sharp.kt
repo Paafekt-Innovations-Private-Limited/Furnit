@@ -1,5 +1,6 @@
 package com.furnit.android.services
 
+import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -288,11 +289,62 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         useB4: Boolean
     ): FloatArray?
 
+    /**
+     * Double protection: validate JNI FloatArray and catch crashes (Vulkan AOT metadata corruption
+     * can produce bad size / NaN). Returns null if invalid so caller can fall back to Kotlin.
+     */
+    private fun safeJniFloatArrayResult(block: () -> FloatArray?): FloatArray? {
+        return try {
+            val result = block()
+            when {
+                result == null -> {
+                    LogUtil.e(TAG, "JNI result: null")
+                    null
+                }
+                result.isEmpty() -> {
+                    LogUtil.e(TAG, "JNI result: empty")
+                    null
+                }
+                result.size % 14 != 0 -> {
+                    LogUtil.e(TAG, "JNI result invalid: size=${result.size} not divisible by 14")
+                    null
+                }
+                result.size > 50_000_000 -> {
+                    LogUtil.e(TAG, "JNI result invalid: size=${result.size} too large")
+                    null
+                }
+                result.any { it.isNaN() || it.isInfinite() } -> {
+                    LogUtil.e(TAG, "JNI result invalid: contains NaN or Infinite")
+                    null
+                }
+                else -> result
+            }
+        } catch (e: Throwable) {
+            LogUtil.e(TAG, "JNI crash caught: ${e.message}", e)
+            null
+        }
+    }
+
     /** Warm-start: preload Part1+Part2 into native singleton cache (eliminates ~400ms mmap on first inference). */
     private external fun preloadCppModules(modelDirPath: String): Boolean
 
     /** Release native singleton Part1+Part2 cache and aligned workspace buffers. */
     private external fun releaseCppModules()
+
+    /** Release native caches (Part1+Part2, workspace). Call on low memory to reduce pressure and avoid OOM. */
+    fun releaseNativeCaches() {
+        try { releaseCppModules() } catch (_: Throwable) { }
+    }
+
+    /** Current memory info for logging; helps diagnose OOM / CoroutineScheduler kills. */
+    private fun getMemoryInfo(): String {
+        return try {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return "N/A"
+            val mem = android.app.ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mem)
+            "avail=${mem.availMem / (1024 * 1024)}MB total=${mem.totalMem / (1024 * 1024)}MB low=${mem.lowMemory}"
+        } catch (_: Throwable) { "N/A" }
+    }
 
     /**
      * Run the 16-tile Part4b pipeline in C++ (native heap). Returns packed [N*14] Gaussian floats,
@@ -405,6 +457,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         return result
     }
 
+    /** Minimum free RAM (bytes) to attempt C++ full pipeline; below this use Kotlin path to avoid OOM. */
+    private fun getAvailMemBytes(): Long {
+        return try {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return Long.MAX_VALUE
+            val mem = android.app.ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mem)
+            mem.availMem
+        } catch (_: Throwable) { Long.MAX_VALUE }
+    }
+
     suspend fun inferStreaming(
         bitmap: Bitmap,
         progressCallback: ((Float, String) -> Unit)? = null,
@@ -413,6 +475,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     ): StreamingResult? = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (!isInitialized) return@withContext null
+            LogUtil.d(TAG, "[MEMORY] ${getMemoryInfo()}")
             ensureModelsFromAssets()
 
             // Require Part1–3 and Part4a chunks; Part4b can be single .pte or chunked/tiled when those paths exist
@@ -439,6 +502,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             var effectiveMaxGaussians = prefs.getInt("executorch_int8_max_gaussians", 0)
             if (effectiveMaxGaussians <= 0 && maxGaussians > 0) {
                 effectiveMaxGaussians = maxGaussians
+            }
+            val availMem = getAvailMemBytes()
+            // Scale down cap when memory is moderate to reduce OOM risk (memory pressure / CoroutineScheduler kill).
+            if (availMem < 600L * 1024 * 1024 && (effectiveMaxGaussians <= 0 || effectiveMaxGaussians > 300_000)) {
+                val capped = 300_000
+                LogUtil.d(TAG, "[MEMORY] Capping maxGaussians to $capped (avail=${availMem / (1024 * 1024)}MB)")
+                effectiveMaxGaussians = capped
             }
             val useChunkedPart4bTiled16Files = usePart4bTiledPref && !skipTiledAfterOom && (hasAll16TileFiles || part4bTileFullFile != null) && !preferSinglePart4b
             val needPart4b = !useChunkedPart4bTiled16Files
@@ -471,9 +541,13 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             // 1. Stretch full image to 1536 (like Swift) or center-crop then resize; raw PLY coords
             val scaledBmp = if (USE_STRETCH_TO_SQUARE) getStretchToSquareBitmap(bitmap, IMAGE_SIZE) else getCenterCropBitmap(bitmap, IMAGE_SIZE)
 
-            // Optional: run full pipeline in C++ (Part1–4b). Stable mode flag is passed to C++ so it
-            // can skip tiled Part4b when preferSinglePart4b=true.
-            if (useCppFullPipeline && NATIVE_FULL_AVAILABLE) {
+            // Optional: run full pipeline in C++ (Part1–4b). Skip when memory is low to avoid OOM/CoroutineScheduler kill.
+            val minAvailForCpp = 400L * 1024 * 1024 // 400MB
+            val tryCppFullPipeline = useCppFullPipeline && NATIVE_FULL_AVAILABLE && availMem >= minAvailForCpp
+            if (!tryCppFullPipeline && useCppFullPipeline && availMem < minAvailForCpp) {
+                LogUtil.d(TAG, "[C++ FULL] Skipping native pipeline (low memory: avail=${availMem / (1024 * 1024)}MB < ${minAvailForCpp / (1024 * 1024)}MB), using Kotlin path")
+            }
+            if (tryCppFullPipeline) {
                 val part1File = findFile("sharp_split_part1_int8.pte")
                 val tileFile = findFile("sharp_split_part4b_tile_00.pte")
                 val cppModelDir = tileFile?.parent ?: part1File?.parent ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
@@ -489,14 +563,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                         TAG,
                         "[C++ FULL] maxGaussians=$effectiveMaxGaussians (0=unlimited) useVulkan=true"
                     )
-                    val cppResult = runFullPipelineInt8Native(
-                        cppModelDir,
-                        imageNCHW,
-                        effectiveMaxGaussians,
-                        preferSinglePart4b,
-                        true,
-                        useB4
-                    )
+                    val cppResult = safeJniFloatArrayResult {
+                        runFullPipelineInt8Native(
+                            cppModelDir,
+                            imageNCHW,
+                            effectiveMaxGaussians,
+                            preferSinglePart4b,
+                            true,
+                            useB4
+                        )
+                    }
                     val cppElapsedMs = System.currentTimeMillis() - cppStartMs
                     if (cppResult != null && cppResult.isNotEmpty()) {
                         LogUtil.d(TAG, "[C++ FULL] Native returned ${cppResult.size / 14} Gaussians in ${cppElapsedMs}ms")

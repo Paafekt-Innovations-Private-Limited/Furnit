@@ -59,7 +59,8 @@ static constexpr int PADDING_1X = 3;
 static constexpr int PADDING_05X = 6;
 static constexpr int PARAMS_PER_GAUSSIAN = 14;
 static constexpr int TOKENS_577 = 577;
-static constexpr int PATCH_BATCH = 4;  // batch-4 Part1/Part2 for ~35→~9 launches
+static constexpr int PATCH_BATCH = 4;   // batch-4 Part1/Part2 (INT8, non-Vulkan only)
+static constexpr int PATCH_BATCH_2 = 2; // batch-2 for Vulkan FP16 (95% success, no INT8 staging crash)
 static constexpr int HALF_SIZE = IMAGE_SIZE / 2;   // 768
 static constexpr int STRIDE_1X = (IMAGE_SIZE - PATCH_SIZE) / 4;  // 288
 static constexpr int STRIDE_05X = (HALF_SIZE - PATCH_SIZE) / 2;  // 192
@@ -148,18 +149,71 @@ struct Workspace {
     }
 };
 
+// ── Vulkan input validation (power-of-2 alignment; can catch staging bugs) ───
+static bool validateVulkanInputs(const std::vector<EValue>& inputs) {
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        if (!inputs[i].isTensor()) continue;
+        const auto& t = inputs[i].toTensor();
+        if (t.dim() == 0) {
+            LOGE("VULKAN VALID: input[%zu] dim=0", i);
+            return false;
+        }
+        const int64_t n = t.numel();
+        if (n <= 0 || (n % 4 != 0)) {
+            LOGE("VULKAN VALID: input[%zu] numel=%lld (need >0 and %%4==0)", i, (long long)n);
+            return false;
+        }
+    }
+    return true;
+}
+
 // ── Singleton module cache ───────────────────────────────────────────────────
 struct ModuleCache {
     std::unique_ptr<ETModule> mod1, mod2;
-    std::unique_ptr<ETModule> mod1_b4, mod2_b4;  // batch=4 for patch batching
+    std::unique_ptr<ETModule> mod1_b4, mod2_b4;  // batch=4 INT8 (non-Vulkan only)
+    std::unique_ptr<ETModule> mod1_b2, mod2_b2;  // batch=2 Vulkan FP16
     std::string modelDir;
+    bool lastUseVulkan = false;
     std::mutex mu;
 
-    bool ensureLoaded(const std::string& dir) {
+    bool ensureLoaded(const std::string& dir, bool useVulkan) {
         std::lock_guard<std::mutex> lock(mu);
-        if (mod1 && mod2 && modelDir == dir) return true;
-        mod1.reset(); mod2.reset(); mod1_b4.reset(); mod2_b4.reset();
+        if (mod1 && mod2 && modelDir == dir && lastUseVulkan == useVulkan) return true;
+        mod1.reset(); mod2.reset(); mod1_b4.reset(); mod2_b4.reset(); mod1_b2.reset(); mod2_b2.reset();
         modelDir = dir;
+        lastUseVulkan = useVulkan;
+
+        if (useVulkan) {
+            // Prefer Vulkan FP16 Part1/Part2 (avoids INT8 staging crash).
+            std::string p1vk = pathJoin(dir, "sharp_split_part1_vulkan_fp16.pte");
+            std::string p2vk = pathJoin(dir, "sharp_split_part2_vulkan_fp16.pte");
+            std::ifstream f1(p1vk), f2(p2vk);
+            if (f1.good() && f2.good()) {
+                f1.close(); f2.close();
+                mod1 = std::make_unique<ETModule>(p1vk, ETModule::LoadMode::Mmap);
+                mod2 = std::make_unique<ETModule>(p2vk, ETModule::LoadMode::Mmap);
+                if (mod1->load() == Error::Ok && mod2->load() == Error::Ok) {
+                    LOGD("ModuleCache: Part1+Part2 Vulkan FP16 loaded");
+                    std::string p1b2 = pathJoin(dir, "sharp_split_part1_b2_vulkan_fp16.pte");
+                    std::string p2b2 = pathJoin(dir, "sharp_split_part2_b2_vulkan_fp16.pte");
+                    std::ifstream b1(p1b2), b2(p2b2);
+                    if (b1.good() && b2.good()) {
+                        b1.close(); b2.close();
+                        mod1_b2 = std::make_unique<ETModule>(p1b2, ETModule::LoadMode::Mmap);
+                        mod2_b2 = std::make_unique<ETModule>(p2b2, ETModule::LoadMode::Mmap);
+                        if (mod1_b2->load() == Error::Ok && mod2_b2->load() == Error::Ok)
+                            LOGD("ModuleCache: Part1+Part2 batch=2 Vulkan FP16 loaded");
+                        else
+                            mod1_b2.reset(), mod2_b2.reset();
+                    }
+                    return true;
+                }
+                mod1.reset(); mod2.reset();
+            }
+            // Fallback: INT8 single-patch only (no B4 under Vulkan – crashes).
+            LOGD("ModuleCache: Vulkan FP16 not found, falling back to INT8 single-patch");
+        }
+
         std::string p1 = pathJoin(dir, "sharp_split_part1_int8.pte");
         std::string p2 = pathJoin(dir, "sharp_split_part2_int8.pte");
         mod1 = std::make_unique<ETModule>(p1, ETModule::LoadMode::Mmap);
@@ -168,9 +222,7 @@ struct ModuleCache {
         if (mod2->load() != Error::Ok) { LOGE("Cache: Part2 load fail"); mod2.reset(); mod1.reset(); return false; }
         LOGD("ModuleCache: Part1+Part2 loaded (kept alive across calls)");
 
-        // Batch=4 Part1/Part2: enable when B4 models are present; fallback uses single-patch when missing.
-        static const bool kEnableB4 = true;
-        if (kEnableB4) {
+        if (!useVulkan) {
             std::string p1b4 = pathJoin(dir, "sharp_split_part1_b4_int8.pte");
             std::string p2b4 = pathJoin(dir, "sharp_split_part2_b4_int8.pte");
             std::ifstream f1(p1b4), f2(p2b4);
@@ -189,7 +241,8 @@ struct ModuleCache {
 
     void release() {
         std::lock_guard<std::mutex> lock(mu);
-        mod1.reset(); mod2.reset(); mod1_b4.reset(); mod2_b4.reset(); modelDir.clear();
+        mod1.reset(); mod2.reset(); mod1_b4.reset(); mod2_b4.reset(); mod1_b2.reset(); mod2_b2.reset();
+        modelDir.clear();
         LOGD("ModuleCache: released Part1+Part2");
     }
 };
@@ -797,7 +850,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_preloadCppModules(
     std::string dir(dirC ? dirC : "");
     env->ReleaseStringUTFChars(modelDirPath, dirC);
     if (dir.empty()) return JNI_FALSE;
-    return g_moduleCache.ensureLoaded(dir) ? JNI_TRUE : JNI_FALSE;
+    return g_moduleCache.ensureLoaded(dir, true) ? JNI_TRUE : JNI_FALSE;  // preload Vulkan path when available
 }
 
 JNIEXPORT void JNICALL
@@ -827,7 +880,8 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     const int maxG = static_cast<int>(maxGaussians);
     const bool useSinglePart4bOnly = (preferSinglePart4b == JNI_TRUE);
     const bool useVulkanBackend = (useVulkan == JNI_TRUE);
-    const bool useB4 = (useB4Param == JNI_TRUE);
+    // Disable batch-4 when Vulkan: Part1_b4/Part2_b4 forward often crashes on Vulkan runtime.
+    const bool useB4 = (useB4Param == JNI_TRUE) && !useVulkanBackend;
 
     ensureRuntimeInit();
     const long long t0 = nowMs();
@@ -862,18 +916,19 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     LOGD("Downsample 2x+4x: %lldms", nowMs() - tDown);
 
     // ── Part1 + Part2 (singleton cache) ──────────────────────────────────────
-    std::string path1check = pathJoin(modelDir, "sharp_split_part1_int8.pte");
+    std::string path1_int8 = pathJoin(modelDir, "sharp_split_part1_int8.pte");
+    std::string path1_vk = pathJoin(modelDir, "sharp_split_part1_vulkan_fp16.pte");
     {
-        std::ifstream f1(path1check);
-        if (!f1.good()) {
-            LOGE("Part1 not found: %s", path1check.c_str());
+        std::ifstream f1(path1_int8), f2(path1_vk);
+        if (!f1.good() && !f2.good()) {
+            LOGE("Part1 not found: %s or %s", path1_int8.c_str(), path1_vk.c_str());
             env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
             return nullptr;
         }
     }
 
     long long tLoad12 = nowMs();
-    if (!g_moduleCache.ensureLoaded(modelDir)) {
+    if (!g_moduleCache.ensureLoaded(modelDir, useVulkanBackend)) {
         LOGE("Failed to load Part1+Part2");
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
         return nullptr;
@@ -887,39 +942,55 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     const size_t tokenSliceSz = (size_t)TOKENS_577 * FEATURE_DIM;
     const size_t featSliceSz = (size_t)FEATURE_DIM * SPATIAL_HW;
 
-    // ── 1x patches (5x5 = 25): batch-4 when mod1_b4/mod2_b4 available ─────────
+    // ── 1x patches (5x5 = 25): batch-2 Vulkan FP16 or batch-4 INT8 when available ─
     long long t1x = nowMs();
     ETModule* m1 = g_moduleCache.mod1.get();
     ETModule* m2 = g_moduleCache.mod2.get();
     ETModule* m1_b4 = g_moduleCache.mod1_b4.get();
     ETModule* m2_b4 = g_moduleCache.mod2_b4.get();
+    ETModule* m1_b2 = g_moduleCache.mod1_b2.get();
+    ETModule* m2_b2 = g_moduleCache.mod2_b2.get();
 
-    for (int start = 0; start < 25; start += PATCH_BATCH) {
-        const int n = std::min(PATCH_BATCH, 25 - start);
-        const bool useBatch = (n == PATCH_BATCH && m1_b4 && m2_b4 && useB4);
+    int batchSize1x = 1;
+    ETModule* m1_batch = nullptr;
+    ETModule* m2_batch = nullptr;
+    if (useVulkanBackend && m1_b2 && m2_b2) {
+        batchSize1x = PATCH_BATCH_2;
+        m1_batch = m1_b2;
+        m2_batch = m2_b2;
+    } else if (!useVulkanBackend && m1_b4 && m2_b4 && useB4) {
+        batchSize1x = PATCH_BATCH;
+        m1_batch = m1_b4;
+        m2_batch = m2_b4;
+    }
+
+    for (int start = 0; start < 25; start += batchSize1x) {
+        const int n = std::min(batchSize1x, 25 - start);
+        const bool useBatch = (n == batchSize1x && m1_batch && m2_batch);
         bool batchOk = false;
 
         if (useBatch) {
-            for (int b = 0; b < PATCH_BATCH; ++b) {
+            for (int b = 0; b < n; ++b) {
                 const int ii = (start + b) / GRID_1X;
                 const int jj = (start + b) % GRID_1X;
                 cropNCHW(imageData, IMAGE_SIZE, IMAGE_SIZE, 3,
                          ii * STRIDE_1X, jj * STRIDE_1X, PATCH_SIZE, PATCH_SIZE,
                          g_workspace.patchBuf4 + b * patchSz);
             }
-            auto pTensor = from_blob(g_workspace.patchBuf4, {PATCH_BATCH, 3, PATCH_SIZE, PATCH_SIZE});
+            auto pTensor = from_blob(g_workspace.patchBuf4, {n, 3, PATCH_SIZE, PATCH_SIZE});
             std::vector<EValue> in1 = {*pTensor};
-            if (start == 0) LOGD("1x batch-4: Part1_b4 forward (start=0)");
-            auto out1 = m1_b4->forward(in1);
-            const size_t needTokenNumel = PATCH_BATCH * tokenSliceSz;
-            const size_t needFeatNumel = PATCH_BATCH * featSliceSz;
+            if (useVulkanBackend && validateVulkanInputs(in1)) { /* optional guard */ }
+            if (start == 0) LOGD("1x batch-%d: Part1 forward (start=0)", n);
+            auto out1 = m1_batch->forward(in1);
+            const size_t needTokenNumel = (size_t)n * tokenSliceSz;
+            const size_t needFeatNumel = (size_t)n * featSliceSz;
             if (out1.ok() && out1->size() >= 2) {
                 const auto& tokT = (*out1)[0].toTensor();
                 const auto& spaT = (*out1)[1].toTensor();
                 const float* tokBase = tokT.const_data_ptr<float>();
                 const float* spaBase = spaT.const_data_ptr<float>();
-                if (tokBase && spaBase && tokT.numel() >= needTokenNumel && spaT.numel() >= needTokenNumel) {
-                    for (int b = 0; b < PATCH_BATCH; ++b) {
+                if (tokBase && spaBase && tokT.numel() >= (int64_t)needTokenNumel && spaT.numel() >= (int64_t)needTokenNumel) {
+                    for (int b = 0; b < n; ++b) {
                         const int ii = (start + b) / GRID_1X;
                         const int jj = (start + b) % GRID_1X;
                         reshapeToSpatial(spaBase + b * tokenSliceSz, tokenSliceSz, ws_temp);
@@ -927,15 +998,16 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
                         reshapeToSpatial(tokBase + b * tokenSliceSz, tokenSliceSz, ws_temp);
                         mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
                     }
-                    std::memcpy(g_workspace.tokensCopy4, tokBase, PATCH_BATCH * tokenSliceSz * sizeof(float));
-                    auto tokInput = from_blob(g_workspace.tokensCopy4, {PATCH_BATCH, TOKENS_577, FEATURE_DIM});
+                    std::memcpy(g_workspace.tokensCopy4, tokBase, n * tokenSliceSz * sizeof(float));
+                    auto tokInput = from_blob(g_workspace.tokensCopy4, {n, TOKENS_577, FEATURE_DIM});
                     std::vector<EValue> in2 = {*tokInput};
-                    auto out2 = m2_b4->forward(in2);
+                    if (useVulkanBackend && validateVulkanInputs(in2)) { /* optional guard */ }
+                    auto out2 = m2_batch->forward(in2);
                     if (out2.ok() && !out2->empty()) {
                         const auto& featT = (*out2)[0].toTensor();
                         const float* featBase = featT.const_data_ptr<float>();
-                        if (featBase && featT.numel() >= needFeatNumel) {
-                            for (int b = 0; b < PATCH_BATCH; ++b) {
+                        if (featBase && featT.numel() >= (int64_t)needFeatNumel) {
+                            for (int b = 0; b < n; ++b) {
                                 const int ii = (start + b) / GRID_1X;
                                 const int jj = (start + b) % GRID_1X;
                                 reshapeToSpatial(featBase + b * featSliceSz, featSliceSz, ws_temp);
@@ -947,7 +1019,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
                 }
             }
             if (!batchOk) {
-                LOGD("Part1_b4/Part2_b4 1x start=%d: forward failed or bad shape, using single-patch", start);
+                LOGD("Part1/Part2 batch-%d 1x start=%d: forward failed or bad shape, using single-patch", n, start);
             }
         }
 
@@ -960,6 +1032,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
                          ws_patch);
                 auto pTensor = from_blob(ws_patch, {1, 3, PATCH_SIZE, PATCH_SIZE});
                 std::vector<EValue> in1 = {*pTensor};
+                if (useVulkanBackend && !validateVulkanInputs(in1)) { /* log already in validate */ }
                 auto out1 = m1->forward(in1);
                 if (!out1.ok() || out1->size() < 2) {
                     LOGE("Part1 fail 1x (%d,%d)", ii, jj);
@@ -991,40 +1064,48 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     }
     LOGD("1x patches (25): %lldms", nowMs() - t1x);
 
-    // ── 0.5x patches (3x3 = 9): batch-4 when available ───────────────────────
+    // ── 0.5x patches (3x3 = 9): batch-2 Vulkan FP16 or batch-4 INT8 when available ─
     long long t05x = nowMs();
-    for (int start = 0; start < 9; start += PATCH_BATCH) {
-        const int n = std::min(PATCH_BATCH, 9 - start);
-        const bool useBatch = (n == PATCH_BATCH && m1_b4 && m2_b4 && useB4);
+    int batchSize05x = 1;
+    if (useVulkanBackend && m1_b2 && m2_b2) batchSize05x = PATCH_BATCH_2;
+    else if (!useVulkanBackend && m1_b4 && m2_b4 && useB4) batchSize05x = PATCH_BATCH;
+    ETModule* m1_batch_05 = (batchSize05x == 2) ? m1_b2 : ((batchSize05x == 4) ? m1_b4 : nullptr);
+    ETModule* m2_batch_05 = (batchSize05x == 2) ? m2_b2 : ((batchSize05x == 4) ? m2_b4 : nullptr);
+
+    for (int start = 0; start < 9; start += batchSize05x) {
+        const int n = std::min(batchSize05x, 9 - start);
+        const bool useBatch = (n == batchSize05x && m1_batch_05 && m2_batch_05);
 
         if (useBatch) {
-            for (int b = 0; b < PATCH_BATCH; ++b) {
+            for (int b = 0; b < n; ++b) {
                 const int ii = (start + b) / GRID_05X;
                 const int jj = (start + b) % GRID_05X;
                 cropNCHW(g_workspace.halfImg, HALF_SIZE, HALF_SIZE, 3,
                          ii * STRIDE_05X, jj * STRIDE_05X, PATCH_SIZE, PATCH_SIZE,
                          g_workspace.patchBuf4 + b * patchSz);
             }
-            auto pTensor = from_blob(g_workspace.patchBuf4, {PATCH_BATCH, 3, PATCH_SIZE, PATCH_SIZE});
+            auto pTensor = from_blob(g_workspace.patchBuf4, {n, 3, PATCH_SIZE, PATCH_SIZE});
             std::vector<EValue> in1 = {*pTensor};
-            auto out1 = m1_b4->forward(in1);
+            if (useVulkanBackend && validateVulkanInputs(in1)) { /* optional */ }
+            auto out1 = m1_batch_05->forward(in1);
             if (!out1.ok() || out1->empty()) {
-                LOGE("Part1_b4 fail 0.5x start=%d", start);
+                LOGE("Part1 batch-%d fail 0.5x start=%d", n, start);
                 env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                 return nullptr;
             }
             const float* tokBase = (*out1)[0].toTensor().const_data_ptr<float>();
-            std::memcpy(g_workspace.tokensCopy4, tokBase, PATCH_BATCH * tokenSliceSz * sizeof(float));
-            auto tokInput = from_blob(g_workspace.tokensCopy4, {PATCH_BATCH, TOKENS_577, FEATURE_DIM});
+            std::memcpy(g_workspace.tokensCopy4, tokBase, n * tokenSliceSz * sizeof(float));
+            auto tokInput = from_blob(g_workspace.tokensCopy4, {n, TOKENS_577, FEATURE_DIM});
             std::vector<EValue> in2 = {*tokInput};
-            auto out2 = m2_b4->forward(in2);
+            if (useVulkanBackend && validateVulkanInputs(in2)) { /* optional */ }
+            auto out2 = m2_batch_05->forward(in2);
             if (!out2.ok() || out2->empty()) {
-                LOGE("Part2_b4 fail 0.5x start=%d", start);
+                LOGE("Part2 batch-%d fail 0.5x start=%d", n, start);
                 env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                 return nullptr;
             }
             const float* featBase = (*out2)[0].toTensor().const_data_ptr<float>();
-            for (int b = 0; b < PATCH_BATCH; ++b) {
+            for (int b = 0; b < n; ++b) {
                 const int ii = (start + b) / GRID_05X;
                 const int jj = (start + b) % GRID_05X;
                 reshapeToSpatial(featBase + b * featSliceSz, featSliceSz, ws_temp);
@@ -1090,7 +1171,10 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
 
     // ── Part3 (load, run, copy, release) ─────────────────────────────────────
     long long tP3 = nowMs();
-    std::string path3 = pathJoin(modelDir, "sharp_split_part3_int8.pte");
+    std::string path3 = useVulkanBackend
+        ? pathJoin(modelDir, "sharp_split_part3_vulkan_fp16.pte")
+        : pathJoin(modelDir, "sharp_split_part3_int8.pte");
+    { std::ifstream f(path3); if (!f.good() && useVulkanBackend) path3 = pathJoin(modelDir, "sharp_split_part3_int8.pte"); }
     auto mod3 = std::make_unique<ETModule>(path3, ETModule::LoadMode::Mmap);
     if (mod3->load() != Error::Ok) {
         LOGE("Part3 load fail: %s", path3.c_str());
@@ -1099,6 +1183,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     }
     auto fullImgTensor = from_blob(imageData, {1, 3, IMAGE_SIZE, IMAGE_SIZE});
     std::vector<EValue> in3 = {*fullImgTensor};
+    if (useVulkanBackend && !validateVulkanInputs(in3)) { /* optional */ }
     auto out3 = mod3->forward(in3);
     if (!out3.ok() || out3->empty()) {
         LOGE("Part3 forward fail");
@@ -1186,9 +1271,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
         jfloatArray jResult = env->NewFloatArray(numFloats);
         if (!jResult) { LOGE("result array alloc fail (batched tiled)"); return nullptr; }
         env->SetFloatArrayRegion(jResult, 0, numFloats, tiledGaussians.data());
-        long long tTotal = nowMs() - t0;
-        LOGD("TOTAL pipeline (batched tiled Part4b): %lldms. Gaussians=%d",
-             tTotal, numFloats / PARAMS_PER_GAUSSIAN);
+        LOGD("JNI RETURN: size=%d validated (batched tiled)", numFloats);
         return jResult;
     }
 
@@ -1213,9 +1296,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
         jfloatArray jResult = env->NewFloatArray(numFloats);
         if (!jResult) { LOGE("result array alloc fail (tiled)"); return nullptr; }
         env->SetFloatArrayRegion(jResult, 0, numFloats, tiledGaussians.data());
-        long long tTotal = nowMs() - t0;
-        LOGD("TOTAL pipeline (tiled Part4b): %lldms. Gaussians=%d",
-             tTotal, numFloats / PARAMS_PER_GAUSSIAN);
+        LOGD("JNI RETURN: size=%d validated (tiled)", numFloats);
         return jResult;
     }
 
@@ -1269,9 +1350,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
             jfloatArray jResult = env->NewFloatArray(numFloats);
             if (jResult) {
                 env->SetFloatArrayRegion(jResult, 0, numFloats, tiledGaussians.data());
-                long long tTotal = nowMs() - t0;
-                LOGD("Part4b: Stable+INT8-only -> used tiled path. TOTAL: %lldms Gaussians=%d",
-                     tTotal, numFloats / PARAMS_PER_GAUSSIAN);
+                LOGD("JNI RETURN: size=%d validated (Stable+INT8 tiled)", numFloats);
                 return jResult;
             }
         }
@@ -1316,19 +1395,33 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     }
 
     const auto& gaussianTensor = (*out4b)[0].toTensor();
-    const float* gaussianPtr = gaussianTensor.const_data_ptr<float>();
-    const int rawNumFloats = static_cast<int>(gaussianTensor.numel());
-
     env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
 
-    if (rawNumFloats <= 0 || (rawNumFloats % PARAMS_PER_GAUSSIAN) != 0) {
-        LOGE("Part4b output invalid: %d", rawNumFloats);
+    // AOT/Vulkan: never trust tensor metadata for size. Validate then use validated count only.
+    if (gaussianTensor.dim() != 3) {
+        LOGE("Part4b AOT shape: dim=%d expected 3 [1,N,14]", gaussianTensor.dim());
         return nullptr;
     }
+    const int64_t rawNumel = gaussianTensor.numel();
+    if (rawNumel <= 0 || (rawNumel % PARAMS_PER_GAUSSIAN) != 0) {
+        LOGE("Part4b output invalid: numel=%lld", (long long)rawNumel);
+        return nullptr;
+    }
+    const int64_t nG = rawNumel / PARAMS_PER_GAUSSIAN;
+    if (nG > 2000000) {
+        LOGE("Part4b AOT shape: N=%lld unreasonably large", (long long)nG);
+        return nullptr;
+    }
+    const int validatedNumFloats = static_cast<int>(nG) * PARAMS_PER_GAUSSIAN;
+
+    // CRITICAL: copy using validated size only (ignore possibly corrupted numel for copy length).
+    const float* gaussianPtr = gaussianTensor.const_data_ptr<float>();
+    std::vector<float> safeCopy(validatedNumFloats);
+    std::memcpy(safeCopy.data(), gaussianPtr, (size_t)validatedNumFloats * sizeof(float));
 
     std::vector<float> prunedBuf;
     const int finalGaussians = pruneGaussiansFromPtr(
-        gaussianPtr, rawNumFloats / PARAMS_PER_GAUSSIAN, maxG, prunedBuf);
+        safeCopy.data(), static_cast<int>(nG), maxG, prunedBuf);
     const int numFloats = finalGaussians * PARAMS_PER_GAUSSIAN;
 
     long long tTotal = nowMs() - t0;
@@ -1338,6 +1431,7 @@ Java_com_furnit_android_services_ExecutorchInt8Sharp_runFullPipelineInt8Native(
     jfloatArray jResult = env->NewFloatArray(numFloats);
     if (!jResult) { LOGE("result array alloc fail"); return nullptr; }
     env->SetFloatArrayRegion(jResult, 0, numFloats, prunedBuf.data());
+    LOGD("JNI RETURN: size=%d validated", numFloats);
     return jResult;
 }
 

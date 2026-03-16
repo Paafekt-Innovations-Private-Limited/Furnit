@@ -73,12 +73,14 @@ def fuse_conv_bn(model):
     return model
 
 
-def quantize_and_export_pte(name, wrapper, sample_inputs, output_path):
-    """Quantize a part with PT2E INT8 and export to .pte with XNNPACK + greedy memory planning."""
+def quantize_and_export_pte(name, wrapper, sample_inputs, output_path, backend="xnnpack"):
+    """Quantize a part with PT2E INT8 and export to .pte.
+    backend: 'xnnpack' (INT8 CPU) or 'vulkan' (INT8 quantized graph lowered to Vulkan GPU when supported)."""
     from executorch.exir import EdgeCompileConfig
 
+    backend_label = "Vulkan GPU" if backend == "vulkan" else "XNNPACK"
     print(f"\n{'='*60}")
-    print(f"Exporting {name} (INT8 + XNNPACK + greedy)")
+    print(f"Exporting {name} (INT8 + {backend_label})")
     print(f"{'='*60}")
 
     start = time.time()
@@ -116,28 +118,44 @@ def quantize_and_export_pte(name, wrapper, sample_inputs, output_path):
     print("  Re-exporting quantized model...")
     quantized_exported = torch.export.export(quantized, sample_inputs, strict=False)
 
-    # Step 4: XNNPACK partitioning
-    try:
-        from executorch.exir import to_edge_transform_and_lower
-        from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
-        edge = to_edge_transform_and_lower(
-            quantized_exported,
-            partitioner=[XnnpackPartitioner()],
-        )
-        print("  XNNPACK delegate applied")
-    except Exception as e:
-        print(f"  to_edge_transform_and_lower failed ({e}), using legacy API")
-        from executorch.exir import to_edge
-        edge = to_edge(quantized_exported, compile_config=EdgeCompileConfig(_check_ir_validity=False))
+    # Step 4: Backend partitioning (XNNPACK or Vulkan)
+    if backend == "vulkan":
         try:
+            from executorch.exir import to_edge_transform_and_lower
+            from executorch.backends.vulkan.partitioner.vulkan_partitioner import VulkanPartitioner
+            edge = to_edge_transform_and_lower(
+                quantized_exported,
+                compile_config=EdgeCompileConfig(_check_ir_validity=False),
+                partitioner=[VulkanPartitioner()],
+            )
+            print("  Vulkan delegate applied (INT8 quantized graph)")
+        except Exception as e:
+            print(f"  Vulkan partition failed: {e}")
+            raise
+        # Vulkan does its own AOT memory planning; skip greedy to avoid "TensorSpec memory offset" errors
+        et_program = edge.to_executorch()
+    else:
+        try:
+            from executorch.exir import to_edge_transform_and_lower
             from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
-            edge = edge.to_backend(XnnpackPartitioner())
-        except Exception:
-            pass
+            edge = to_edge_transform_and_lower(
+                quantized_exported,
+                partitioner=[XnnpackPartitioner()],
+            )
+            print("  XNNPACK delegate applied")
+        except Exception as e:
+            print(f"  to_edge_transform_and_lower failed ({e}), using legacy API")
+            from executorch.exir import to_edge
+            edge = to_edge(quantized_exported, compile_config=EdgeCompileConfig(_check_ir_validity=False))
+            try:
+                from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
+                edge = edge.to_backend(XnnpackPartitioner())
+            except Exception:
+                pass
 
-    # Step 5: Greedy memory planning (reuse shared helper from FP32 export)
-    from export_sharp_executorch_split4 import _apply_greedy_memory_planning
-    et_program = _apply_greedy_memory_planning(edge)
+        # Step 5: Greedy memory planning (reuse shared helper from FP32 export)
+        from export_sharp_executorch_split4 import _apply_greedy_memory_planning
+        et_program = _apply_greedy_memory_planning(edge)
 
     export_time = time.time() - start
 
@@ -364,6 +382,8 @@ def parse_args():
     pa.add_argument("--output-dir",
         default=str(Path(__file__).resolve().parent / "executorch_int8_models"),
         help="Output directory")
+    pa.add_argument("--backend", choices=("xnnpack", "vulkan"), default="xnnpack",
+        help="Backend: xnnpack (CPU INT8), vulkan (GPU; app must have executorch-android-vulkan)")
     return pa.parse_args()
 
 
@@ -373,11 +393,12 @@ def main():
     weights_path = Path(args.weights)
     output_dir = Path(args.output_dir)
 
+    backend = args.backend
     print("=" * 60)
     print("ExecuTorch INT8 Split 4-Part Export")
     print("=" * 60)
-    print(f"  Backend: XNNPACK (INT8 NEON kernels)")
-    print(f"  Memory planning: greedy AOT (all parts)")
+    print(f"  Backend: {backend.upper()} ({'Vulkan GPU' if backend == 'vulkan' else 'XNNPACK CPU'})")
+    print(f"  Memory planning: greedy AOT (XNNPACK); Vulkan default (vulkan)")
     print(f"  Quantization: PT2E symmetric per-channel dynamic INT8")
 
     if not sharp_src.exists():
@@ -435,6 +456,7 @@ def main():
         "Part 1: Patch Encoder A (blocks 0-11)",
         part1, (sample_patch,),
         output_dir / "sharp_split_part1_int8.pte",
+        backend=backend,
     )
 
     sample_tokens = torch.rand(1, 577, 1024)
@@ -442,6 +464,7 @@ def main():
         "Part 2: Patch Encoder B (blocks 12-23)",
         part2, (sample_tokens,),
         output_dir / "sharp_split_part2_int8.pte",
+        backend=backend,
     )
 
     # Part1/Part2 batch=4 for native patch batching (35 → ~11 launches)
@@ -453,11 +476,13 @@ def main():
             f"Part 1 batch={PATCH_BATCH} (patch encoder)",
             part1, (sample_patch_b4,),
             output_dir / "sharp_split_part1_b4_int8.pte",
+            backend=backend,
         )
         sizes["part2_b4"] = quantize_and_export_pte(
             f"Part 2 batch={PATCH_BATCH} (patch encoder B)",
             part2, (sample_tokens_b4,),
             output_dir / "sharp_split_part2_b4_int8.pte",
+            backend=backend,
         )
         print(f"  Part1/Part2 batch={PATCH_BATCH} export OK (for native patch batching)")
     except Exception as e:
@@ -469,6 +494,7 @@ def main():
         "Part 3: Image Encoder A (blocks 0-11)",
         part3, (sample_image,),
         output_dir / "sharp_split_part3_int8.pte",
+        backend=backend,
     )
 
     # Part 4b (decoder + Gaussians): try INT8 first.
@@ -486,6 +512,7 @@ def main():
             "Part 4b: Decoder + Gaussians (INT8)",
             part4b, part4b_inputs,
             output_dir / "sharp_split_part4b_int8.pte",
+            backend=backend,
         )
         print("  Part4b INT8 export OK")
     except Exception as e:
@@ -502,6 +529,7 @@ def main():
             "Part 4b tile (INT8, batch=1)",
             part4b_tile, part4b_tile_inputs,
             tile_00_path,
+            backend=backend,
         )
         sizes["part4b_tiles_int8"] = size_tile * NUM_PART4B_TILES
         for i in range(1, NUM_PART4B_TILES):
@@ -522,6 +550,7 @@ def main():
             f"Part 4b tile (INT8, batch={BATCH_SIZE})",
             part4b_tile_b4, part4b_tile_b4_inputs,
             tile_b4_path,
+            backend=backend,
         )
         print(f"  Part4b INT8 batched tile (batch={BATCH_SIZE}): {sizes['part4b_tile_b4']:.0f} MB")
     except Exception as e:
@@ -534,8 +563,8 @@ def main():
         part4, (image_tokens, sample_image, latent0, latent1, x0_feat, x1_feat, x2_feat),
         output_dir / "sharp_split_part4_int8.pte",
         use_fp16=False,
-        backend="xnnpack",
-        use_greedy_memory_planning=True,
+        backend=backend,
+        use_greedy_memory_planning=(backend != "vulkan"),
     )
 
     total_time = time.time() - total_start

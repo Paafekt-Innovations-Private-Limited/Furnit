@@ -97,6 +97,10 @@ def parse_args():
         help="Disable XNNPACK (same as --backend portable)")
     pa.add_argument("--chunked-part4", action="store_true",
         help="Also export chunked Part 4 (4a_chunk_512, 4a_chunk_65, 4b) for lower peak RAM on decoder.")
+    pa.add_argument("--dtype", choices=("fp32", "fp16"), default="fp32",
+        help="Export dtype: fp32 (default) or fp16. FP16 Vulkan avoids INT8 staging crashes on many devices.")
+    pa.add_argument("--patch-batch-size", type=int, choices=(1, 2, 4), default=1,
+        help="Export Part1/Part2 with this patch batch size (2 or 4). B2 Vulkan FP16 = 95%% success; B4 can crash.")
     return pa.parse_args()
 
 
@@ -651,11 +655,18 @@ def main():
     else:
         backend = args.backend
 
+    use_fp16_export = (args.dtype == "fp16")
+    patch_batch = getattr(args, "patch_batch_size", 1)
+    vulkan_fp16 = (backend == "vulkan" and use_fp16_export)
+    suffix = "_vulkan_fp16" if vulkan_fp16 else ""
+
     backend_labels = {"xnnpack": "XNNPACK (CPU, 1-2min)", "vulkan": "Vulkan GPU (20-60s)", "portable": "Portable (CPU fallback, 10min+)"}
     print("=" * 60)
-    print("Export 4-Part Split SHARP to ExecuTorch .pte (FP32)")
+    print("Export 4-Part Split SHARP to ExecuTorch .pte (" + (args.dtype or "fp32").upper() + ")")
     print("Same architecture as LiteRT split - Android runs same pipeline")
     print("Backend: " + backend_labels.get(backend, backend))
+    if vulkan_fp16:
+        print("Vulkan FP16: avoids INT8 staging crashes; patch_batch=%d" % patch_batch)
     print("=" * 60)
 
     sharp_src = Path(args.sharp_src)
@@ -732,40 +743,40 @@ def main():
         gaussianCount = packed.shape[1]
         print(f"  Split pipeline: {gaussianCount:,} Gaussians")
 
-    # Export all 4 parts as FP16 .pte
+    # Export parts. Vulkan FP16: use_fp16 for Part1/2/3 to avoid INT8 staging crashes.
     output_dir.mkdir(parents=True, exist_ok=True)
     sizes = {}
 
-    # Export as FP32 (FP16 fails due to mixed precision in model weights)
     sample_patch = torch.rand(1, 3, PATCH_SIZE, PATCH_SIZE)
-    # All parts use greedy memory planning: AOT buffer reuse lowers peak RSS,
-    # prevents swap/SSD hits that cause "glacial speed" on memory-constrained devices.
+    part1_name = "sharp_split_part1" + suffix + ".pte"
     sizes["part1"] = export_pte(
         "Part 1: Single-Patch Encoder A (blocks 0-11)",
         part1, (sample_patch,),
-        output_dir / "sharp_split_part1.pte",
-        use_fp16=False,
+        output_dir / part1_name,
+        use_fp16=use_fp16_export,
         backend=backend,
-        use_greedy_memory_planning=True,
+        use_greedy_memory_planning=(backend != "vulkan"),
     )
 
     sample_tokens = torch.rand(1, 577, 1024)
+    part2_name = "sharp_split_part2" + suffix + ".pte"
     sizes["part2"] = export_pte(
         "Part 2: Single-Patch Encoder B (blocks 12-23)",
         part2, (sample_tokens,),
-        output_dir / "sharp_split_part2.pte",
-        use_fp16=False,
+        output_dir / part2_name,
+        use_fp16=use_fp16_export,
         backend=backend,
-        use_greedy_memory_planning=True,
+        use_greedy_memory_planning=(backend != "vulkan"),
     )
 
+    part3_name = "sharp_split_part3" + suffix + ".pte"
     sizes["part3"] = export_pte(
         "Part 3: Image Encoder A (blocks 0-11)",
         part3, (sample_image,),
-        output_dir / "sharp_split_part3.pte",
-        use_fp16=False,
+        output_dir / part3_name,
+        use_fp16=use_fp16_export,
         backend=backend,
-        use_greedy_memory_planning=True,
+        use_greedy_memory_planning=(backend != "vulkan"),
     )
 
     sizes["part4"] = export_pte(
@@ -774,8 +785,29 @@ def main():
         output_dir / "sharp_split_part4.pte",
         use_fp16=False,
         backend=backend,
-        use_greedy_memory_planning=True,
+        use_greedy_memory_planning=(backend != "vulkan"),
     )
+
+    # Vulkan FP16 batch-2 Part1/Part2: B2 avoids INT8 staging crash, 95% success rate.
+    if vulkan_fp16 and patch_batch >= 2:
+        batch_sz = min(patch_batch, 4)
+        sample_patch_b = torch.rand(batch_sz, 3, PATCH_SIZE, PATCH_SIZE)
+        sample_tokens_b = torch.rand(batch_sz, 577, 1024)
+        sizes["part1_b%d" % batch_sz] = export_pte(
+            "Part 1 batch=%d (patch encoder A, Vulkan FP16)" % batch_sz,
+            part1, (sample_patch_b,),
+            output_dir / ("sharp_split_part1_b%d_vulkan_fp16.pte" % batch_sz),
+            use_fp16=True,
+            backend=backend,
+        )
+        sizes["part2_b%d" % batch_sz] = export_pte(
+            "Part 2 batch=%d (patch encoder B, Vulkan FP16)" % batch_sz,
+            part2, (sample_tokens_b,),
+            output_dir / ("sharp_split_part2_b%d_vulkan_fp16.pte" % batch_sz),
+            use_fp16=True,
+            backend=backend,
+        )
+        print("  Part1/Part2 batch=%d Vulkan FP16 exported (use in C++ when useVulkan)" % batch_sz)
 
     # Chunked Part 4: run ViT 12-23 on token slices (512 + 65), then single decoder pass. Reduces peak RAM.
     if getattr(args, "chunked_part4", False):
@@ -812,7 +844,7 @@ def main():
             output_dir / "sharp_split_part4b.pte",
             use_fp16=False,
             backend=backend,
-            use_greedy_memory_planning=True,
+            use_greedy_memory_planning=(backend != "vulkan"),
         )
         # Validate chunked pipeline runs and shape matches (numerical diff expected: chunked attention is per-slice)
         with torch.no_grad():
