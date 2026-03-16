@@ -964,13 +964,23 @@ class SharpService private constructor(private val context: Context) {
     /**
      * Release resources
      */
+    /**
+     * Release native caches only (e.g. ExecuTorch INT8 Part1+Part2 cache). Call on trim memory to reduce pressure.
+     * Does not clear backend state; next inference will reload as needed.
+     */
+    fun releaseNativeCaches() {
+        try {
+            executorchInt8Sharp.releaseNativeCaches()
+        } catch (_: Throwable) { }
+    }
+
     fun release() {
         when {
             useNativePt -> nativePtSharp.release()
             useLiteRT -> litertSharp.release()
             useExecutorch -> executorchSharp.release()
             useExecutorchFp16 -> executorchFp16Sharp.release()
-            useExecutorchInt8 -> { /* ExecuTorch INT8 drop-in holds no long-lived native session to release */ }
+            useExecutorchInt8 -> executorchInt8Sharp.releaseNativeCaches()
             useOnnx -> onnxSharp.release()
             useSplitOnnx -> { /* Do not close preloaded sessions while inference may be running */ }
             useOnnxFp16 -> { /* FP16 sessions created/closed per-part during inference */ }
