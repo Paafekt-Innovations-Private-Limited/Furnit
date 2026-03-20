@@ -13,6 +13,10 @@ android {
     compileSdk 34
     ndkVersion "26.3.11579264"
 
+    buildFeatures {
+        buildConfig true
+    }
+
     // Keep ExecuTorch .pte models uncompressed (smaller heap during build, faster load at runtime)
     aaptOptions {
         noCompress 'pte'
@@ -41,6 +45,33 @@ android {
                 def cmakeArgs = ["-DANDROID_STL=c++_shared"]
                 if (enableNative) cmakeArgs.add("-DENABLE_NCNN=ON")
                 arguments(*cmakeArgs)
+            }
+        }
+    }
+
+    // ExecuTorch native AAR: explicit Gradle variants (no -P needed). See android/docs/TEST_INT8_IN_APP.md.
+    flavorDimensions "executorch"
+    productFlavors {
+        etVulkan {
+            dimension "executorch"
+            buildConfigField "boolean", "EXECUTORCH_USE_VULKAN_AAR", "true"
+            manifestPlaceholders += [executorchVulkanAar: "true"]
+            externalNativeBuild {
+                cmake {
+                    def libDir = file("src/main/cpp/executorch_lib_etVulkan").absolutePath.replace('\\', '/')
+                    arguments "-DEXECUTORCH_LIB_DIR=${libDir}"
+                }
+            }
+        }
+        etCpu {
+            dimension "executorch"
+            buildConfigField "boolean", "EXECUTORCH_USE_VULKAN_AAR", "false"
+            manifestPlaceholders += [executorchVulkanAar: "false"]
+            externalNativeBuild {
+                cmake {
+                    def libDir = file("src/main/cpp/executorch_lib_etCpu").absolutePath.replace('\\', '/')
+                    arguments "-DEXECUTORCH_LIB_DIR=${libDir}"
+                }
             }
         }
     }
@@ -141,74 +172,67 @@ tasks.register("copyExecutorchModelsIntoAssets", Copy) {
 if (!skipExecutorchAssets) preBuild.dependsOn copyExecutorchModelsIntoAssets
 
 // libsharp_executorch_tiles.so and libsharp_executorch_full.so link against libexecutorch.
-// Extract libexecutorch.so from executorch-android AAR into executorch_lib so CMake can build the native libs.
-def executorchLibDir = project.file("src/main/cpp/executorch_lib")
-def jniLibsArm64 = project.file("src/main/jniLibs/arm64-v8a")
+// Two extract dirs so etVulkan and etCpu variants never overwrite each other's libexecutorch.so.
+def executorchLibDirEtVulkan = project.file("src/main/cpp/executorch_lib_etVulkan")
+def executorchLibDirEtCpu = project.file("src/main/cpp/executorch_lib_etCpu")
 
-tasks.register("extractExecutorchSoFromAar") {
-    description = "Extract libexecutorch.so from executorch-android AAR into executorch_lib for CMake"
-    doLast {
-        executorchLibDir.mkdirs()
-        def soFile = project.file("${executorchLibDir}/libexecutorch.so")
-        def executorchHeaders = project.file("../third_party/executorch/extension/module/module.h")
-        if (soFile.exists()) {
-            logger.lifecycle("extractExecutorchSoFromAar: libexecutorch.so already present")
-            // If we have both lib and headers but CMake cache may be stale (built before setup),
-            // invalidate cache so sharp_executorch_full/tiles get built
-            if (executorchHeaders.exists()) {
-                def cxxDir = project.file(".cxx")
-                def mergedLibs = project.file("build/intermediates/merged_native_libs/debug/mergeDebugNativeLibs/out/lib/arm64-v8a")
-                def sharpFullExists = mergedLibs.exists() && project.file("${mergedLibs}/libsharp_executorch_full.so").exists()
-                if (cxxDir.exists() && !sharpFullExists) {
-                    cxxDir.deleteDir()
-                    logger.lifecycle("extractExecutorchSoFromAar: invalidated .cxx (stale cache); CMake will reconfigure")
-                }
-            }
-            return
+configurations {
+    executorchVulkanExtract
+    executorchXnnpackExtract
+}
+
+def extractExecutorchRuntimeSoIntoDir = { File intoDir, Object aarFile, String taskLabel ->
+    intoDir.mkdirs()
+    def soFile = new File(intoDir, "libexecutorch.so")
+    if (project.hasProperty("executorchUseLocalLib") && soFile.exists()) {
+        logger.lifecycle("${taskLabel}: executorchUseLocalLib set, keeping existing ${soFile.name}")
+        return
+    }
+    if (aarFile == null) {
+        logger.warn("${taskLabel}: AAR not found; run :app:dependencies to verify")
+        return
+    }
+    def aarZip = zipTree(aarFile)
+    def arm64So = aarZip.matching { include "jni/arm64-v8a/*.so" }.files
+    def src = arm64So.find { it.name == "libexecutorch.so" } ?: arm64So.find { it.name == "libexecutorch_jni.so" }
+    if (src != null) {
+        copy {
+            from src
+            into intoDir
+            rename ".*", "libexecutorch.so"
         }
-        def aar = null
-        for (String configName : ["debugRuntimeClasspath", "releaseRuntimeClasspath"]) {
-            def conf = configurations.findByName(configName)
-            if (conf != null) {
-                aar = conf.files.find { it.name.endsWith(".aar") && it.name.contains("executorch") }
-                if (aar != null) break
-            }
-        }
-        if (aar == null) {
-            logger.warn("extractExecutorchSoFromAar: executorch-android AAR not found on runtime classpath; run :app:dependencies to verify")
-            return
-        }
-        def aarZip = zipTree(aar)
-        def arm64So = aarZip.matching { include "jni/arm64-v8a/*.so" }.files
-        def src = arm64So.find { it.name == "libexecutorch.so" } ?: arm64So.find { it.name == "libexecutorch_jni.so" }
-        if (src != null) {
-            copy {
-                from src
-                into executorchLibDir
-                rename ".*", "libexecutorch.so"
-            }
-            logger.lifecycle("extractExecutorchSoFromAar: extracted ${src.name} -> executorch_lib/libexecutorch.so")
-            def cxxDir = project.file(".cxx")
-            if (cxxDir.exists()) {
-                cxxDir.deleteDir()
-                logger.lifecycle("extractExecutorchSoFromAar: deleted .cxx to force CMake reconfigure")
-            }
-        } else {
-            logger.warn("extractExecutorchSoFromAar: no .so in AAR jni/arm64-v8a/ (found: ${arm64So*.name})")
-        }
+        logger.lifecycle("${taskLabel}: extracted ${src.name} -> ${intoDir.name}/libexecutorch.so")
+    } else {
+        logger.warn("${taskLabel}: no .so in AAR jni/arm64-v8a/ (found: ${arm64So*.name})")
     }
 }
 
-tasks.register("copyExecutorchJniAsSoname", Copy) {
-    description = "Copy libexecutorch.so as libexecutorch_jni.so so loader finds it by SONAME"
-    from(executorchLibDir) { include "libexecutorch.so" }
-    into jniLibsArm64
-    rename "libexecutorch.so", "libexecutorch_jni.so"
-    onlyIf { executorchLibDir.exists() && project.file("${executorchLibDir}/libexecutorch.so").exists() }
+tasks.register("extractExecutorchSoEtVulkan") {
+    description = "Extract libexecutorch.so from executorch-android-vulkan into executorch_lib_etVulkan (etVulkan CMake link)"
+    doLast {
+        def aar = configurations.executorchVulkanExtract.files.find { it.name.endsWith(".aar") }
+        extractExecutorchRuntimeSoIntoDir(executorchLibDirEtVulkan, aar, "extractExecutorchSoEtVulkan")
+    }
 }
 
+tasks.register("extractExecutorchSoEtCpu") {
+    description = "Extract libexecutorch.so from executorch-android (XNNPACK) into executorch_lib_etCpu (etCpu CMake link)"
+    doLast {
+        def aar = configurations.executorchXnnpackExtract.files.find { it.name.endsWith(".aar") }
+        extractExecutorchRuntimeSoIntoDir(executorchLibDirEtCpu, aar, "extractExecutorchSoEtCpu")
+    }
+}
+
+tasks.register("extractExecutorchSoFromAar") {
+    description = "Extract libexecutorch.so from both ExecuTorch AARs into per-flavor dirs for CMake"
+    dependsOn extractExecutorchSoEtVulkan, extractExecutorchSoEtCpu
+}
+
+// Do NOT copy executorch_lib/libexecutorch.so as libexecutorch_jni.so: that .so is the runtime.
+// The AAR ships libexecutorch_jni.so (JNI bridge with initHybrid). Overwriting it with the runtime causes UnsatisfiedLinkError.
+// tasks.register("copyExecutorchJniAsSoname", ...) removed so the AAR's libexecutorch_jni.so is used.
+
 preBuild.dependsOn extractExecutorchSoFromAar
-preBuild.dependsOn copyExecutorchJniAsSoname
 // Ensure CMake configures after extract so it sees executorch_lib
 tasks.configureEach { task ->
     if (task.name.startsWith("configure") && task.name.contains("CMake")) {
@@ -236,6 +260,7 @@ dependencies {
     implementation 'androidx.camera:camera-extensions:1.2.3'
 
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 
     // ARCore
     implementation 'com.google.ar:core:1.37.0'
@@ -248,8 +273,11 @@ dependencies {
     // 1.24.2 fixes EXTENDED_OPT crash (shape merging on Concat, #24340); 1.18.0 was 18mo behind
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.24.2'
 
-    // ExecuTorch for on-device inference (MobileNetV3 classification + SHARP room gen)
-    implementation 'org.pytorch:executorch-android:1.1.0'
+    // ExecuTorch: product flavors pick the AAR (etVulkan vs etCpu). Extract tasks populate matching CMake lib dirs.
+    etVulkanImplementation 'org.pytorch:executorch-android-vulkan:1.1.0'
+    etCpuImplementation 'org.pytorch:executorch-android:1.1.0'
+    executorchVulkanExtract 'org.pytorch:executorch-android-vulkan:1.1.0'
+    executorchXnnpackExtract 'org.pytorch:executorch-android:1.1.0'
 
     // PyTorch Mobile Lite - loads .ptl files directly (no model conversion)
     implementation('org.pytorch:pytorch_android_lite:2.1.0') {

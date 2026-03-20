@@ -11,6 +11,7 @@ set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size
 find_library(log-lib log)
 find_library(android-lib android)
 find_library(jnigraphics-lib jnigraphics)
+find_library(vulkan-lib vulkan)
 
 # ============================================================================
 # ExecuTorch C++ tile inference (SHARP 16-tile Part4b)
@@ -21,11 +22,39 @@ find_library(jnigraphics-lib jnigraphics)
 set(EXECUTORCH_BASE ${CMAKE_SOURCE_DIR}/../../../../third_party)
 set(EXECUTORCH_ROOT ${EXECUTORCH_BASE}/executorch)
 set(EXECUTORCH_INCLUDE_DIR ${EXECUTORCH_BASE})
-set(EXECUTORCH_LIB_DIR ${CMAKE_SOURCE_DIR}/executorch_lib)
+# Gradle passes -DEXECUTORCH_LIB_DIR per product flavor (executorch_lib_etVulkan vs executorch_lib_etCpu).
+if(NOT EXECUTORCH_LIB_DIR)
+    set(EXECUTORCH_LIB_DIR "${CMAKE_SOURCE_DIR}/executorch_lib")
+endif()
 
+# When using a split ExecuTorch build (libexecutorch.so + libexecutorch_core.so), both must be
+# linked so runtime/extension symbols (e.g. _get_log_timestamp, make_tensor_ptr) resolve.
 if(EXISTS "${EXECUTORCH_LIB_DIR}/libexecutorch.so" AND EXISTS "${EXECUTORCH_ROOT}/extension/module/module.h")
     add_library(executorch_prebuilt SHARED IMPORTED)
     set_target_properties(executorch_prebuilt PROPERTIES IMPORTED_LOCATION ${EXECUTORCH_LIB_DIR}/libexecutorch.so)
+
+    set(EXECUTORCH_CORE_SO "${EXECUTORCH_LIB_DIR}/libexecutorch_core.so")
+    if(EXISTS "${EXECUTORCH_CORE_SO}")
+      add_library(executorch_core_prebuilt SHARED IMPORTED)
+      set_target_properties(executorch_core_prebuilt PROPERTIES IMPORTED_LOCATION ${EXECUTORCH_CORE_SO})
+      set(EXECUTORCH_LIBS executorch_prebuilt executorch_core_prebuilt)
+    else()
+      set(EXECUTORCH_LIBS executorch_prebuilt)
+    endif()
+
+    # Extension .so files (Module, make_tensor_ptr) when using ExecuTorch shared build with extension.
+    set(EXECUTORCH_EXTENSION_LIBS "")
+    foreach(ext_lib extension_data_loader extension_flat_tensor extension_named_data_map extension_tensor extension_module_shared)
+      set(ext_so "${EXECUTORCH_LIB_DIR}/lib${ext_lib}.so")
+      if(EXISTS "${ext_so}")
+        add_library(${ext_lib}_prebuilt SHARED IMPORTED)
+        set_target_properties(${ext_lib}_prebuilt PROPERTIES IMPORTED_LOCATION ${ext_so})
+        list(APPEND EXECUTORCH_EXTENSION_LIBS ${ext_lib}_prebuilt)
+      endif()
+    endforeach()
+    if(EXECUTORCH_EXTENSION_LIBS)
+      list(APPEND EXECUTORCH_LIBS ${EXECUTORCH_EXTENSION_LIBS})
+    endif()
 
     add_library(sharp_executorch_tiles SHARED sharp_executorch_tiles.cpp)
 
@@ -35,18 +64,21 @@ if(EXISTS "${EXECUTORCH_LIB_DIR}/libexecutorch.so" AND EXISTS "${EXECUTORCH_ROOT
     )
     target_compile_definitions(sharp_executorch_tiles PRIVATE C10_USING_CUSTOM_GENERATED_MACROS)
     set_target_properties(sharp_executorch_tiles PROPERTIES COMPILE_FLAGS "-frtti -fexceptions")
-    target_link_libraries(sharp_executorch_tiles executorch_prebuilt ${log-lib})
+    target_link_libraries(sharp_executorch_tiles ${EXECUTORCH_LIBS} ${log-lib})
 
     # Full INT8 pipeline in C++ (Part1–4b single, no tiles)
     # -O3 -ffast-math: aggressive auto-vectorization; NEON intrinsics used explicitly for downsample
-    add_library(sharp_executorch_full SHARED sharp_executorch_full.cpp)
+    add_library(sharp_executorch_full SHARED
+        sharp_executorch_full_common.cpp
+        sharp_executorch_full.cpp
+        sharp_executorch_full_vulkan.cpp)
     target_include_directories(sharp_executorch_full PRIVATE
         ${EXECUTORCH_INCLUDE_DIR}
         ${EXECUTORCH_ROOT}/runtime/core/portable_type/c10
     )
     target_compile_definitions(sharp_executorch_full PRIVATE C10_USING_CUSTOM_GENERATED_MACROS)
     set_target_properties(sharp_executorch_full PROPERTIES COMPILE_FLAGS "-frtti -fexceptions -O3 -ffast-math")
-    target_link_libraries(sharp_executorch_full executorch_prebuilt ${log-lib})
+    target_link_libraries(sharp_executorch_full ${EXECUTORCH_LIBS} ${log-lib})
 endif()
 
 # ============================================================================
@@ -86,4 +118,12 @@ if(ENABLE_NCNN)
     add_library(sharp_ncnn SHARED sharp_ncnn.cpp)
     target_link_libraries(sharp_ncnn ncnn glslang SPIRV glslang-default-resource-limits GenericCodeGen MachineIndependent OSDependent OpenMP::OpenMP_CXX ${log-lib} ${android-lib} ${jnigraphics-lib})
     target_include_directories(sharp_ncnn PRIVATE ${NCNN_DIR}/include)
+endif()
+
+# ============================================================================
+# Vulkan 1536x1536 support test (no ExecuTorch dependency)
+# ============================================================================
+if(vulkan-lib)
+    add_library(vulkan_1536_test SHARED vulkan_1536_test.cpp)
+    target_link_libraries(vulkan_1536_test ${vulkan-lib} ${log-lib})
 endif()

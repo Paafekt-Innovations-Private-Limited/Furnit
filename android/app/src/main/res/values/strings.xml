@@ -107,12 +107,8 @@
     <string name="settings_height">Height: %.1fm</string>
     <string name="settings_developer">Developer</string>
     <string name="settings_developer_footer">Enable debug mode to see detailed detection information and performance metrics. Adjust thresholds to control detection sensitivity and filtering behavior.</string>
-    <string name="settings_stable_part4b">Stable mode (single Part4b only)</string>
-    <string name="settings_stable_part4b_description">Use single decoder to avoid OOM or black screen on some devices. Slower but more reliable.</string>
     <string name="settings_part4b_tiled">Part4b tiled (experimental)</string>
     <string name="settings_part4b_tiled_description">Use window-tiled Part4b to reduce memory. Requires tiled .pte models on device.</string>
-    <string name="settings_swap_tile_ndc_xy">Swap tile NDC X/Y</string>
-    <string name="settings_swap_tile_ndc_xy_description">If tiled output shows misaligned patches, try this to fix tile layout (transposed export).</string>
     <string name="settings_cpp_executorch_int8">C++ ExecuTorch INT8</string>
     <string name="settings_cpp_executorch_int8_description">Run the full SHARP pipeline (Part1–4b) in C++. Single Part4b only, no tiles. May reduce overhead.</string>
     <string name="settings_executorch_int8_use_b4">Part1/Part2 batch=4</string>

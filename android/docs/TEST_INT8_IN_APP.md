@@ -2,6 +2,32 @@
 
 Do this **after** you have built and installed the app and (if not using packaged assets) pushed models to the device.
 
+**Which ExecuTorch native AAR is in this APK?**
+
+- **`BuildConfig.EXECUTORCH_USE_VULKAN_AAR`** (Kotlin) and manifest meta-data **`com.furnit.executorch.USE_VULKAN_AAR`** match the **Gradle product flavor** (`etVulkan` vs `etCpu`), not a Settings toggle.
+- **Vulkan / GPU path:** build and install the **etVulkan** variant, e.g.  
+  `./gradlew :app:assembleEtVulkanDebug`  
+  APK under `app/build/outputs/apk/etVulkan/debug/` → **`EXECUTORCH_USE_VULKAN_AAR=true`**.
+- **CPU / XNNPACK (no Vulkan delegate in the AAR):**  
+  `./gradlew :app:assembleEtCpuDebug`  
+  APK under `app/build/outputs/apk/etCpu/debug/` → **`EXECUTORCH_USE_VULKAN_AAR=false`**. Use this when you rely on CPU-only portable graphs; Vulkan-delegated `.pte` on an etCpu APK often fails at runtime.
+- **`./gradlew assembleDebug`** builds **both** flavors (two APKs). For a single APK, call **`assembleEtVulkanDebug`** or **`assembleEtCpuDebug`** explicitly.
+
+Logcat on init: `BUILD_CONFIG EXECUTORCH_USE_VULKAN_AAR=…` under tag `ExecutorchInt8Sharp`.
+
+**Where to push `.pte` on the device (separate folders):**
+
+| APK flavor | External app folder (adb push) |
+|------------|--------------------------------|
+| **etCpu** | `/sdcard/Android/data/com.furnit.android/files/models_cpu/` |
+| **etVulkan** | `/sdcard/Android/data/com.furnit.android/files/models_vulkan/` |
+
+The app also mirrors into internal storage under the same subdir name (`files/models_cpu` or `files/models_vulkan`). Logcat prints both paths: `ExecuTorch model roots: internal=… external=…`.  
+Legacy pushes to `files/models/` still work as a **fallback** `findFile()` search.
+
+Helper scripts: `push_sharp_executorch_cpu_models.sh` → `models_cpu`; `push_sharp_vulkan_only.sh` / `push_sharp_vulkan_aar_compat.sh` → `models_vulkan`.  
+To split an old `files/models/` tree in place on a device: `android/migrate_legacy_models_to_cpu_vulkan.sh` (copies `sharp_split*.pte` by `*vulkan*` in the filename).
+
 ---
 
 ## Yes — we're trying INT8 for the full pipeline
@@ -15,13 +41,16 @@ Do this **after** you have built and installed the app and (if not using package
 | Setting | Value | Notes |
 |--------|--------|--------|
 | **Inference backend** | **ExecuTorch INT8** | Radio under Developer (required). |
-| **C++ ExecuTorch INT8** | **ON** | Full pipeline Part1–4b in C++; Part4b is INT8 when the file exists, else FP32. |
-| **Stable mode (single Part4b only)** | **ON** | One decoder run (not 16 tiles); that run is INT8 or FP32 as above. |
-| **Part4b tiled (experimental)** | **OFF** | Use single Part4b path. |
-| **Swap tile NDC X/Y** | **OFF** | Only if tiled layout is wrong. |
-| **Debug mode** | Optional (ON for logs) | For logcat timing/debug. |
+| **CPU ExecuTorch INT8** vs Vulkan | Either | CPU path uses portable Part4b / tiles as on disk. |
+| **Stable mode (prefer single Part4b)** | **ON (default)** | If `sharp_split_part4b_int8.pte` or `sharp_split_part4b.pte` exists, **skips 16-tile path** even when `tile_00` is present — reduces INT8 “foggy square” tiles. |
+| **Swap tile NDC X/Y** | **OFF** unless misaligned | Passed into C++ tiled path only; fixes transposed tile layout. |
+| **Debug mode** | Optional | For logcat (`PART4B_ROUTING`, `runPart4bTiledFullPipeline`). |
 
-So: **ExecuTorch INT8** backend, **C++ ExecuTorch INT8 = ON**, **Stable mode = ON** to run the full INT8 pipeline with single Part4b (INT8 when `sharp_split_part4b_int8.pte` is present, FP32 otherwise).
+**Routing:** `adb logcat -s ExecutorchInt8Sharp:I | grep PART4B_ROUTING` — fields `prefer_single=`, `path=single_decoder|tiled_16x`. **Stable ON + single .pte present → single.** **Stable OFF + tile models present → tiled** (even if single .pte exists — use this to A/B test). **Stable ON + only tiles on disk → tiled** (no choice).
+
+Keep **Stable ON** and deploy a **single** Part4b `.pte` to avoid 16-tile INT8 fog when APK also ships `tile_00`.
+
+**etCpu + portable Part4a (chunk 512 / 65) and Part4b:** heavier than Part3; you may see **tens of seconds** without new DEBUG lines while `forward()` runs. A full room on a fast phone is often **~2–3 minutes** total; slower devices take longer. Use **`sharp_executorch_full:I`** for milestones: `Part4a/512: mmap+load OK`, `forward finished`, then 65 and Part4b.
 
 ---
 
@@ -36,10 +65,15 @@ So: **ExecuTorch INT8** backend, **C++ ExecuTorch INT8 = ON**, **Stable mode = O
 
 ## 3. Part4b mode (choose one)
 
-- **Single Part4b (stable):** Turn **Stable mode (single Part4b)** **ON**.  
-  Uses one decoder run; if `sharp_split_part4b_int8.pte` is on device, log will show `Part4b single: INT8`, otherwise `Part4b single: FP32`.
-- **Tiled Part4b (faster, experimental):** Turn **Part4b tiled (experimental)** **ON** and **Stable mode** **OFF**.  
-  Uses 16-tile Part4b when tile models are present.
+- **Single Part4b (recommended for quality):** **Stable mode ON** (default) and ensure **`sharp_split_part4b_int8.pte`** or **`sharp_split_part4b.pte`** is on device. Log: `Part4b single: INT8` or `Part4b single: portable`.
+- **Tiled Part4b (lower RAM, may show INT8 fog/seams):** Turn **Stable mode OFF**. C++ uses 16 tiles when `sharp_split_part4b_tile_00.pte` or `tile_full` exists. Compare **FP32 tile** vs **INT8 tile** exports if you see foggy 384×384 blocks.
+
+### If you see “foggy squares” (priority order)
+
+1. **Use single Part4b** (Stable ON + single `.pte` on device) — code default.
+2. **Compare** same scene with **FP32** tile vs INT8 tile (export).
+3. **Swap tile NDC X/Y** if patches are misaligned (not usually “fog”).
+4. **Re-calibrate** INT8 Part4b for **tile crops** (export/quant issue).
 
 ## 4. Run a room from a photo
 
@@ -64,6 +98,8 @@ adb logcat -s sharp_executorch_full:D ExecutorchInt8Sharp:D SharpService:D -v ti
 ---
 
 **If you have multiple devices:** use one target, e.g.  
-`adb -s <device_id> install -r app/build/outputs/apk/debug/app-debug.apk`  
+`adb -s <device_id> install -r app/build/outputs/apk/etVulkan/debug/app-etVulkan-arm64-v8a-debug.apk`  
+(or `.../etCpu/debug/app-etCpu-arm64-v8a-debug.apk` for CPU / XNNPACK)  
+Then push models to **`models_vulkan`** or **`models_cpu`** as in the table above (not the old single `models/` folder, unless you rely on legacy fallback).  
 and  
 `adb -s <device_id> push ...` or `adb -s <device_id> logcat ...`.

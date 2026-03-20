@@ -16,7 +16,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT_DIR="${SCRIPT_DIR}/executorch_models"
-WEIGHTS="${SCRIPT_DIR}/sharp_litert_models/sharp_2572gikvuh.pt"
+WEIGHTS="${WEIGHTS:-${SCRIPT_DIR}/sharp_litert_models/sharp_2572gikvuh.pt}"
 
 # Default: sharp source next to script
 SHARP_SRC="${SCRIPT_DIR}/third_party/ml-sharp/src"
@@ -31,9 +31,14 @@ if [ ! -f "$WEIGHTS" ]; then
   echo "Override with: export WEIGHTS=/path/to/sharp.pt"
 fi
 
+# Default to FP16 + B2 (95% Vulkan success). Override if needed:
+#   DTYPE=fp32 PATCH_BATCH=1 ./export_sharp_executorch_vulkan_full.sh
+DTYPE="${DTYPE:-fp16}"
+PATCH_BATCH="${PATCH_BATCH:-2}"
+
 echo "=============================================="
 echo "Export SHARP ExecuTorch — FULL VULKAN + memory optimization"
-echo "  Backend: Vulkan (GPU)"
+echo "  Backend: Vulkan (GPU)  dtype=${DTYPE}  patch_batch=${PATCH_BATCH}"
 echo "  Chunked Part 4: part4a_chunk_512, part4a_chunk_65, part4b (lower peak RAM)"
 echo "=============================================="
 echo ""
@@ -41,6 +46,8 @@ echo ""
 python3 "${SCRIPT_DIR}/export_sharp_executorch_split4.py" \
   --backend vulkan \
   --chunked-part4 \
+  --dtype "${DTYPE}" \
+  --patch-batch-size "${PATCH_BATCH}" \
   --sharp-src "${SHARP_SRC}" \
   --weights "${WEIGHTS}" \
   --output-dir "${OUTPUT_DIR}"

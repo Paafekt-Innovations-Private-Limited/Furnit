@@ -95,6 +95,17 @@ python export_sharp_executorch_split4.py --weights /path/to/sharp.pt --backend p
 ./push_sharp_executorch_models.sh executorch_models
 ```
 
+**INT8 split + native C++ full pipeline (etCpu):** push to `models_cpu` and avoid mixing Part4b with older parts:
+
+```bash
+cd android
+./clear_device_models_cpu.sh   # optional but recommended after changing exports
+./push_sharp_executorch_cpu_models.sh /path/to/export_dir
+# LaCie one-shot: ./fresh_sync_cpu_models_from_lacie.sh
+```
+
+See **`docs/EXECUTORCH_CPU_MODELS_SYNC.md`**.
+
 The script pushes models to:
 1. `/sdcard/Android/data/com.furnit.android/files/models/` (external app storage)
 2. `/data/local/tmp/furnit/` (fallback search dir, so split mode is found even if external path differs)

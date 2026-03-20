@@ -16,7 +16,8 @@
 set -euo pipefail
 
 MODEL_DIR="${1:-executorch_models}"
-DEST="/sdcard/Android/data/com.furnit.android/files/models"
+# Portable / CPU-oriented split models → use with etCpu APK (models_cpu).
+DEST="/sdcard/Android/data/com.furnit.android/files/models_cpu"
 
 if ! command -v adb &> /dev/null; then
   echo "Error: adb not found in PATH"
@@ -83,7 +84,7 @@ fi
 echo ""
 echo "Done! ExecuTorch model files pushed successfully."
 echo "In the app: Settings > Developer > Inference Backend = ExecuTorch"
-echo "The app copies models to internal storage (/data/.../files/models/) on first run for faster mmap."
+echo "The app syncs models_cpu → internal storage on first load (see logcat: ExecuTorch model roots)."
 echo ""
 echo "Verify export used XNNPACK (not Vulkan):"
 echo "  adb logcat | grep -i xnnpack"

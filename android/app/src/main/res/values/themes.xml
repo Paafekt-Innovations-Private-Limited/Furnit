@@ -35,6 +35,12 @@
         <item name="android:textColor">#0A84FF</item>
     </style>
 
+    <!-- Crash report activity: must extend AppCompat so AlertDialog works (process :crash). -->
+    <style name="Theme.Furnit.CrashDialog" parent="Theme.MaterialComponents.Dialog.Alert">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowBackground">#3A3A3C</item>
+    </style>
+
     <!-- Full-screen theme for 3D viewer activities (matching iOS ignoresSafeArea) -->
     <style name="Theme.Furnit.FullScreen" parent="Theme.Furnit">
         <item name="android:windowFullscreen">false</item>

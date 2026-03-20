@@ -33,3 +33,29 @@ cp android/*.pte android/*.onnx android/*.pt "$EXTERNAL/" 2>/dev/null || true
 ```
 
 This folder (`BACKUP_MODELS_EXTERNAL/`) is in git only to hold this README; the actual model files stay out of version control.
+
+## CPU ExecuTorch INT8 (portable models)
+
+If you use **Settings > Developer > "CPU ExecuTorch INT8"**, the app needs **portable** (non-Vulkan) .pte files:
+
+- `sharp_split_part1.pte` or `sharp_split_part1_fp16.pte`
+- `sharp_split_part2.pte` or `sharp_split_part2_fp16.pte`
+- `sharp_split_part3.pte` or `sharp_split_part3_fp16.pte`
+- `sharp_split_part4a_chunk_512.pte`
+- `sharp_split_part4a_chunk_65.pte`
+- `sharp_split_part4b.pte`
+
+**From external HD:** run the push script with the folder that contains these files:
+
+```bash
+cd android
+./push_sharp_executorch_cpu_models.sh /Volumes/YourDisk/Furnit_models_backup/executorch_models
+```
+
+**Export from repo** (if you have weights):
+
+```bash
+cd android
+python export_sharp_executorch_split4.py --backend portable --chunked-part4 --output-dir executorch_models
+./push_sharp_executorch_cpu_models.sh executorch_models
+```
