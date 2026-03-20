@@ -710,11 +710,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                     findFile(n.PART4B_TILE_FULL) != null
             }
             val part4bSatisfied = part4bFile != null || hasPart4bNonSingleDecoder()
-            val stablePart4bSingle = prefs.getBoolean("executorch_int8_stable_part4b", true)
-            val part4bSingleOnCpu = prefs.getBoolean("executorch_int8_part4b_single_on_cpu", true)
-            // On CPU (etCpu), single Part4b forward takes 5+ min — skip it and use tiled unless user opts in for clarity.
-            // part4bSingleOnCpu: use single (FP32) Part4b on CPU for clean output despite slower runtime.
-            val preferSinglePart4b = (stablePart4bSingle && !useCpuStable) || part4bSingleOnCpu
+            // CPU ExecuTorch INT8: fixed — always prefer single Part4b FP32 for clean output.
+            val preferSinglePart4b = true
             // Effective Gaussian cap for full C++ pipeline. 0 = All (unlimited, no pruning).
             var effectiveMaxGaussians = prefs.getInt("executorch_int8_max_gaussians", 500000)
             val availMem = getAvailMemBytes()
@@ -745,7 +742,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             }
             LogUtil.i(
                 TAG,
-                "PART4B_ROUTING prefer_single=$preferSinglePart4b stable_single_pref=$stablePart4bSingle " +
+                "PART4B_ROUTING prefer_single=$preferSinglePart4b " +
                     "has_single_pte=${part4bFile != null} has_alt_part4b=${hasPart4bNonSingleDecoder()} " +
                     "single_file=${part4bFile?.name ?: "none"} " +
                     "path=${if (preferSinglePart4b) "single_decoder" else "tiled_or_tile_b4"} " +
@@ -826,16 +823,15 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 currentProgressCallback = progressCallback
                 val cppStartMs = System.currentTimeMillis()
                 val part12OnCpuRun = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
-                // Part1+2 single-patch only: ON by default to avoid SIGSEGV in batch-4 on some devices.
-                val part12ForceSingle = prefs.getBoolean("executorch_int8_part12_single_only", true)
-                // part12_25_only: skip 0.5x (9) + 0.25x (1) to avoid SIGSEGV at patch 25/35 on some devices.
-                val part12_25Only = prefs.getBoolean("executorch_int8_part12_25_only", true)
-                val part1Max1x = if (part12_25Only) 25 else 0
-                val part1Max05x = if (part12_25Only) 0 else 0
+                // CPU ExecuTorch INT8: fixed — single-patch Part1+2, 25 patches only (skip 0.5x+0.25x).
+                val part12ForceSingle = true
+                val part12_25Only = true
+                val part1Max1x = 25
+                val part1Max05x = 0
                 val part12Chunk1x = 0
                 val part12Chunk05x = 0
                 val part12YieldMs = 0
-                val swapTileNdcXY = prefs.getBoolean("executorch_int8_swap_tile_ndc_xy", false)
+                val swapTileNdcXY = false
                 val cppResult = safeJniFloatArrayResult {
                     runFullPipelineInt8Native(
                         cppModelDir,

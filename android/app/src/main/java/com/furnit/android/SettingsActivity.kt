@@ -261,66 +261,7 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(0, 8, 0, 0)
         }
         executorchChoiceLayout.addView(executorchChoiceDesc)
-        // Part4b: when ON, prefer single decoder if sharp_split_part4b_int8/fp16/.pte is on device (with v2, also push tile_b4); avoids INT8 tiled "foggy squares". OFF = tiled tile_b4 / tile_00 first.
-        val stablePart4b = prefs.getBoolean("executorch_int8_stable_part4b", true)
-        val stablePart4bLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val stablePart4bLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        stablePart4bLabel.addView(TextView(this).apply { text = getString(R.string.settings_stable_part4b); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
-        stablePart4bLabel.addView(TextView(this).apply { text = getString(R.string.settings_stable_part4b_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
-        val stablePart4bSwitch = createStyledSwitch(stablePart4b) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_stable_part4b", isChecked).apply()
-        }
-        stablePart4bLayout.addView(stablePart4bLabel)
-        stablePart4bLayout.addView(stablePart4bSwitch)
-        executorchChoiceLayout.addView(stablePart4bLayout)
-        // Part4b single on CPU: use FP32 single decoder for clean output (slower).
-        val part4bSingleOnCpu = prefs.getBoolean("executorch_int8_part4b_single_on_cpu", true)
-        val part4bSingleOnCpuLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val part4bSingleOnCpuLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        part4bSingleOnCpuLabel.addView(TextView(this).apply { text = getString(R.string.settings_part4b_single_on_cpu); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
-        part4bSingleOnCpuLabel.addView(TextView(this).apply { text = getString(R.string.settings_part4b_single_on_cpu_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
-        val part4bSingleOnCpuSwitch = createStyledSwitch(part4bSingleOnCpu) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_part4b_single_on_cpu", isChecked).apply()
-        }
-        part4bSingleOnCpuLayout.addView(part4bSingleOnCpuLabel)
-        part4bSingleOnCpuLayout.addView(part4bSingleOnCpuSwitch)
-        executorchChoiceLayout.addView(part4bSingleOnCpuLayout)
-        // Part1+2: single-patch only avoids batch-4 SIGSEGV on some devices.
-        val part12SingleOnly = prefs.getBoolean("executorch_int8_part12_single_only", true)
-        val part12SingleLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val part12SingleLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        part12SingleLabel.addView(TextView(this).apply { text = getString(R.string.settings_part12_single_only); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
-        part12SingleLabel.addView(TextView(this).apply { text = getString(R.string.settings_part12_single_only_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
-        val part12SingleSwitch = createStyledSwitch(part12SingleOnly) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_part12_single_only", isChecked).apply()
-        }
-        part12SingleLayout.addView(part12SingleLabel)
-        part12SingleLayout.addView(part12SingleSwitch)
-        executorchChoiceLayout.addView(part12SingleLayout)
-        // Part1+2: 25 patches only skips 0.5x+0.25x to avoid SIGSEGV at patch 25/35.
-        val part12_25Only = prefs.getBoolean("executorch_int8_part12_25_only", true)
-        val part12_25Layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val part12_25Label = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        part12_25Label.addView(TextView(this).apply { text = getString(R.string.settings_part12_25_only); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
-        part12_25Label.addView(TextView(this).apply { text = getString(R.string.settings_part12_25_only_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
-        val part12_25Switch = createStyledSwitch(part12_25Only) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_part12_25_only", isChecked).apply()
-        }
-        part12_25Layout.addView(part12_25Label)
-        part12_25Layout.addView(part12_25Switch)
-        executorchChoiceLayout.addView(part12_25Layout)
-        // Tiled Part4b NDC: try ON if output shows misaligned 4×4 patches (transposed export).
-        val swapTileNdc = prefs.getBoolean("executorch_int8_swap_tile_ndc_xy", false)
-        val swapTileNdcLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, 12) }
-        val swapTileNdcLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        swapTileNdcLabel.addView(TextView(this).apply { text = getString(R.string.settings_swap_tile_ndc_xy); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
-        swapTileNdcLabel.addView(TextView(this).apply { text = getString(R.string.settings_swap_tile_ndc_xy_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
-        val swapTileNdcSwitch = createStyledSwitch(swapTileNdc) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_swap_tile_ndc_xy", isChecked).apply()
-        }
-        swapTileNdcLayout.addView(swapTileNdcLabel)
-        swapTileNdcLayout.addView(swapTileNdcSwitch)
-        executorchChoiceLayout.addView(swapTileNdcLayout)
+        // CPU ExecuTorch INT8: fixed behavior — single Part4b FP32, single-patch Part1+2, 25 patches only.
         developerSection.addView(executorchChoiceLayout)
 
         // Max Gaussians (splat count limit)
