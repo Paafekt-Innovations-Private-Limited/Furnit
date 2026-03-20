@@ -261,5 +261,17 @@ test_images/
 # Large files (backup to external HD only; see scripts/backup_large_files_to_external.sh)
 android/app/libs/
 android/app/src/main/cpp/executorch_lib/
+android/app/src/main/cpp/executorch_lib_etVulkan/
+android/app/src/main/cpp/executorch_lib_etCpu/
 android/app/src/main/jniLibs/
 android/logcat_crash.txt
+
+# ExecuTorch source tree, model dirs (backup to /Volumes/LaCie)
+executorch/
+android/models_cpu/
+ShanjeevRAG-new/
+
+# Export logs, test logs, backup files
+android/export_log*.txt
+android/part1_test_logcat.txt
+*.bak
