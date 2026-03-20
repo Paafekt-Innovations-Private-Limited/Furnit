@@ -15,6 +15,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Furnit">
 
+        <!-- ExecuTorch AAR at build time: true = etVulkan flavor (executorch-android-vulkan), false = etCpu (executorch-android / XNNPACK). -->
+        <meta-data
+            android:name="com.furnit.executorch.USE_VULKAN_AAR"
+            android:value="${executorchVulkanAar}" />
+
         <!-- Auth Activities -->
         <activity
             android:name=".auth.LoginActivity"
@@ -61,7 +66,7 @@
             android:name=".CrashReportActivity"
             android:exported="false"
             android:process=":crash"
-            android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar" />
+            android:theme="@style/Theme.Furnit.CrashDialog" />
 
         <!-- FileProvider for camera photos -->
         <provider

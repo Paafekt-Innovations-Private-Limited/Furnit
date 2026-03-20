@@ -6,13 +6,16 @@ import android.content.Intent
 import android.os.Process
 import com.furnit.android.services.SharpService
 import com.furnit.android.utils.DebugLogger
+import com.furnit.android.utils.ExecutorchNativeLoader
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.Part1OnlyTest
 import com.google.firebase.FirebaseApp
 
 /**
  * FurnitApplication - Application class for initializing Firebase and crash reporting.
  * Production: no logging; on crash, user can send report (email) or copy details.
  * Registers onTrimMemory to release ML native caches and reduce OOM / CoroutineScheduler kills.
+ * At startup: loads ExecuTorch native libs and schedules optional Part1 Vulkan warmup (logcat ExecuTorchWarmup).
  */
 class FurnitApplication : Application() {
 
@@ -25,6 +28,16 @@ class FurnitApplication : Application() {
 
         DebugLogger.init(this)
         LogUtil.init(this)
+
+        // ExecuTorch: register Vulkan/backend early; warmup Part1 forward in background if models exist (see ExecuTorchWarmup logcat).
+        try {
+            ExecutorchNativeLoader.loadForJavaModule()
+            LogUtil.d(TAG, "ExecuTorch native libs loaded at startup (core → executorch → executorch_jni)")
+        } catch (e: UnsatisfiedLinkError) {
+            LogUtil.w(TAG, "ExecuTorch startup native load failed (non-fatal): ${e.message}")
+        }
+        Part1OnlyTest.scheduleStartupWarmup(this)
+
         installCrashHandler()
         registerComponentCallbacks(componentCallbacks2)
 

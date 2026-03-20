@@ -1,21 +1,17 @@
 package com.furnit.android.services
 
+// BUILD_ID_TERMINAL_2025
 import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import com.furnit.android.BuildConfig
 import com.furnit.android.utils.LogUtil
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.pytorch.executorch.EValue
-import org.pytorch.executorch.Module
-import org.pytorch.executorch.Tensor
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -28,7 +24,11 @@ import kotlin.math.*
 
 /**
  * Optimized ExecuTorch INT8 implementation for SHARP models.
- * Handles 35-patch multi-scale merging and chunked decoding to prevent OOM.
+ *
+ * **Room generation (`inferStreaming`) runs the native C++ full pipeline only** (`runFullPipelineInt8Native` in
+ * `sharp_executorch_full.cpp`). There is intentionally no Kotlin Part1–Part4 fallback here—keep all graph work in C++.
+ * Part1+2 always use the full patch grid (25× + 9× + 0.25× = 35 encoder passes); Vulkan/GPU work happens inside native
+ * `forward()` on the IO dispatcher—Kotlin `async`/`delay` are not required for that path.
  *
  * Input: center-crop to square (min(w,h)) then resize to 1536x1536. We do not pad gray to make a bigger square
  * (e.g. 2x4 -> 4x4 with gray on sides): that was tried (114-gray letterbox) and caused jagged output—ViT sees
@@ -38,6 +38,16 @@ import kotlin.math.*
  * (see Ultralytics deployment practices; INT8 on scales/rotations can cause severe artifacts).
  */
 class ExecutorchInt8Sharp private constructor(private val context: Context) {
+
+    /** Set by inferStreaming before native call; cleared after. Used by reportProgressFromNative (JNI callback). */
+    @Volatile
+    private var currentProgressCallback: ((Float, String) -> Unit)? = null
+
+    /** Called from native (JNI) during runFullPipelineInt8Native to report progress so UI does not appear stuck at 20%. */
+    fun reportProgressFromNative(progress: Float, message: String) {
+        val cb = currentProgressCallback ?: return
+        android.os.Handler(android.os.Looper.getMainLooper()).post { cb.invoke(progress.coerceIn(0f, 1f), message) }
+    }
 
     companion object {
         private const val TAG = "ExecutorchInt8Sharp"
@@ -49,6 +59,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         var USE_STRETCH_TO_SQUARE: Boolean = true
         // Image + merged spatial sizes (must match Python export)
         private const val IMAGE_SIZE = 1536
+        private const val IMAGE_SIZE_1280 = 1280
         private const val M_1X = 96   // 1x merged size
         private const val M_05X = 48  // 0.5x merged size
         private const val INPUT_SIZE = IMAGE_SIZE
@@ -71,21 +82,21 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         // Recommended default splat limit for ExecuTorch INT8 full pipeline
         private const val MAX_GAUSSIANS_LIMIT = 500_000
 
-        private const val MODEL_FILENAME = "sharp_int8.pte"
+        private const val MODEL_FILENAME = "sharp_full_vulkan.pte"
         private val SPLIT_FILENAMES = arrayOf(
-            "sharp_split_part1_int8.pte",
-            "sharp_split_part2_int8.pte",
-            "sharp_split_part3_int8.pte",
-            "sharp_split_part4_int8.pte"
+            "sharp_split_part1_vulkan_fp16.pte",
+            "sharp_split_part2_vulkan_fp16.pte",
+            "sharp_split_part3_vulkan_fp16.pte",
+            "sharp_split_part4b_vulkan.pte"
         )
         /** Names of .pte files that may be packaged in assets/models/ for testing. */
         private val ASSET_MODEL_FILENAMES = arrayOf(
-            "sharp_split_part1_int8.pte",
-            "sharp_split_part2_int8.pte",
-            "sharp_split_part3_int8.pte",
-            "sharp_split_part4a_chunk_512.pte",
-            "sharp_split_part4a_chunk_65.pte",
-            "sharp_split_part4b.pte",
+            "sharp_split_part1_vulkan_fp16.pte",
+            "sharp_split_part2_vulkan_fp16.pte",
+            "sharp_split_part3_vulkan_fp16.pte",
+            "sharp_split_part4a_chunk_512_vulkan.pte",
+            "sharp_split_part4a_chunk_65_vulkan.pte",
+            "sharp_split_part4b_vulkan.pte",
             "sharp_split_part4b_tile_full.pte",
             "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte",
             "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte",
@@ -99,6 +110,11 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         @JvmField
         var PARALLEL_TILES: Boolean = false
         private const val ASSET_MODELS_SUBDIR = "models"
+        /** External + internal storage subdir per Gradle flavor: keeps CPU vs Vulkan .pte separate on device. */
+        const val MODELS_SUBDIR_CPU = "models_cpu"
+        const val MODELS_SUBDIR_VULKAN = "models_vulkan"
+        /** Legacy single folder (still searched as fallback). */
+        const val MODELS_SUBDIR_LEGACY = "models"
 
         private const val LOGIT_LUT_SIZE = 1024
         private val LOGIT_LUT = FloatArray(LOGIT_LUT_SIZE) { i ->
@@ -127,6 +143,12 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         var NATIVE_FULL_AVAILABLE: Boolean = false
 
         init {
+            // Load libexecutorch before JNI so Vulkan (and other) backends register; then sharp_* link same runtime.
+            try {
+                com.furnit.android.utils.ExecutorchNativeLoader.loadForJavaModule()
+            } catch (e: UnsatisfiedLinkError) {
+                LogUtil.d(TAG, "ExecuTorch native preload failed: ${e.message}")
+            }
             try {
                 System.loadLibrary("sharp_executorch_tiles")
                 NATIVE_TILES_AVAILABLE = true
@@ -157,8 +179,19 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
 
     private val mutex = Mutex()
     private var isInitialized = false
-    private val modelsDir by lazy { context.getExternalFilesDir("models") ?: File(context.filesDir, "models") }
-    private val internalModelsDir by lazy { File(context.filesDir, "models").also { it.mkdirs() } }
+    /** Matches etVulkan vs etCpu APK: `files/models_vulkan` or `files/models_cpu` (+ scoped external storage). */
+    private val executorchModelsSubdir: String =
+        if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) MODELS_SUBDIR_VULKAN else MODELS_SUBDIR_CPU
+    /** External dir for adb push: try type first, then base + subdir (some devices return null for type). */
+    private val externalModelsDir: File?
+        get() = context.getExternalFilesDir(executorchModelsSubdir)
+            ?: context.getExternalFilesDir(null)?.let { File(it, executorchModelsSubdir).takeIf { d -> d.exists() || d.mkdirs() } }
+    private val modelsDir by lazy {
+        externalModelsDir ?: File(context.filesDir, executorchModelsSubdir)
+    }
+    private val internalModelsDir by lazy {
+        File(context.filesDir, executorchModelsSubdir).also { it.mkdirs() }
+    }
 
     private val plyBatch = ByteBuffer.allocateDirect(BYTES_PER_VERTEX * PLY_BATCH_SIZE).apply { order(ByteOrder.LITTLE_ENDIAN) }
     private val zeroSHBuffer = ByteBuffer.allocateDirect(45 * 4).apply { order(ByteOrder.LITTLE_ENDIAN) }
@@ -166,6 +199,11 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
     private val patchFloatBuffer = ByteBuffer.allocateDirect(3 * PATCH_SIZE * PATCH_SIZE * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val imagePixelBuffer = ByteBuffer.allocateDirect(INPUT_SIZE * INPUT_SIZE * 4).order(ByteOrder.nativeOrder())
     private val imageFloatBuffer = ByteBuffer.allocateDirect(3 * INPUT_SIZE * INPUT_SIZE * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+
+    /** Pinned float[] for ExecuTorch: fromBlob(FloatBuffer) can cause native ptr abort; use float[] only. */
+    private val patchInputFloats = FloatArray(3 * PATCH_SIZE * PATCH_SIZE)
+    private val tokenInputFloats = FloatArray(577 * FEATURE_DIM)
+    private val fullImageInputFloats = FloatArray(3 * IMAGE_SIZE * IMAGE_SIZE)
 
     data class StreamingResult(
         val plyFile: File,
@@ -184,21 +222,50 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             isInitialized = true
             if (NATIVE_FULL_AVAILABLE) {
                 val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
-                if (prefs.getBoolean("executorch_int8_use_cpp_full_pipeline", false)) {
-                    val part1File = findFile("sharp_split_part1_int8.pte")
-                    val cppModelDir = part1File?.parent
-                    if (cppModelDir != null) {
-                        val preloaded = preloadCppModules(cppModelDir)
-                        LogUtil.d(TAG, "[C++ FULL] Preload Part1+Part2 cache: ${if (preloaded) "OK" else "failed"} (dir=$cppModelDir)")
-                    }
+                val useCpuStable = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
+                val cppModelDir = if (useCpuStable) {
+                    findSinglePart4bCpuPte()?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B4)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_FULL)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART1_INT8)?.parent
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART1_FP32)?.parent
+                } else {
+                    // Vulkan only: single dir for preload and runtime (no hybrid/fallback)
+                    findFile("sharp_split_part1_vulkan_fp16.pte")?.parent
+                        ?: findFile("sharp_split_part4b_vulkan.pte")?.parent
+                } ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
+                val part12OnCpu = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
+                val useVulkanForPart12 = !useCpuStable && !part12OnCpu
+                val preloaded = preloadCppModules(cppModelDir, useVulkanForPart12)
+                LogUtil.d(TAG, "[C++ FULL] Preload Part1+Part2 cache: ${if (preloaded) "OK" else "failed"} (dir=$cppModelDir useVulkan=${!useCpuStable} part12OnCpu=$part12OnCpu)")
+                LogUtil.i(
+                    TAG,
+                    "BUILD_CONFIG EXECUTORCH_USE_VULKAN_AAR=${BuildConfig.EXECUTORCH_USE_VULKAN_AAR} " +
+                        "(false = etCpu flavor / XNNPACK AAR; true = etVulkan). settings_cpu_stable=$useCpuStable"
+                )
+                LogUtil.i(
+                    TAG,
+                    "ExecuTorch model roots: internal=${internalModelsDir.absolutePath} external=${modelsDir.absolutePath} " +
+                        "(push CPU .pte to .../files/$MODELS_SUBDIR_CPU/, Vulkan to .../files/$MODELS_SUBDIR_VULKAN/)"
+                )
+                if (!BuildConfig.EXECUTORCH_USE_VULKAN_AAR && !useCpuStable) {
+                    LogUtil.w(
+                        TAG,
+                        "APK ExecuTorch is XNNPACK-only but Settings use Vulkan model layout — Vulkan .pte may fail. " +
+                            "Either enable CPU ExecuTorch INT8 in Settings or install the etVulkan APK: ./gradlew :app:assembleEtVulkanDebug"
+                    )
                 }
             }
+            // Sync external (adb push target) → internal so single Part4b etc. are available without running inference first.
+            syncExternalSharpSplitPteToInternal()
             true
         }
     }
 
     /** Copy packaged .pte from assets/models/ to filesDir/models so Module.load can use them. Loads all 16 Part4b tiles from assets when present (ODR-style: packaged in APK, extracted on first use). */
     private fun ensureModelsFromAssets() {
+
         var tilesCopied = 0
         var tilesMissing = 0
         for (filename in ASSET_MODEL_FILENAMES) {
@@ -223,9 +290,74 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             }
         }
         if (tilesMissing > 0) {
-            LogUtil.d(TAG, "Part4b tile models: ${tilesCopied}/17 from assets (add tile .pte to executorch_int8_models or executorch_models and rebuild for tiled path)")
+            LogUtil.d(TAG, "Part4b tile models: ${tilesCopied}/17 from assets (add tile .pte to executorch_models or sharp_vulkan_only and rebuild for tiled path)")
         } else if (tilesCopied == 17) {
             LogUtil.d(TAG, "Part4b tile models ready from assets (16 tiles + tile_full)")
+        }
+        syncExternalSharpSplitPteToInternal()
+    }
+
+    /**
+     * Copy `sharp_split*.pte` from external (adb push target) into internal storage.
+     * Call from preloadSharpModels() so opening the SHARP screen syncs without running inference.
+     */
+    fun syncModelsFromExternal() {
+        syncExternalSharpSplitPteToInternal()
+    }
+
+    /**
+     * Copy `sharp_split*.pte` from flavor-scoped external dir (adb push target) into internal storage
+     * so mmap loads are fast. etCpu: .../files/models_cpu/ ; etVulkan: .../files/models_vulkan/ .
+     */
+    private fun syncExternalSharpSplitPteToInternal() {
+        val externalDir = externalModelsDir ?: return
+        if (externalDir.absolutePath == internalModelsDir.absolutePath) return
+        val sources = externalDir.listFiles() ?: return
+        LogUtil.d(TAG, "sync: external=${externalDir.absolutePath} files=${sources.count { it.isFile && it.name.startsWith("sharp_split") && it.name.endsWith(".pte", ignoreCase = true) }}")
+        val externalSharpSplitNames = HashSet<String>()
+        for (src in sources) {
+            if (!src.isFile || !src.name.endsWith(".pte", ignoreCase = true)) continue
+            if (!src.name.startsWith("sharp_split")) continue
+            externalSharpSplitNames.add(src.name)
+        }
+        var anyCopied = false
+        for (src in sources) {
+            if (!src.isFile || !src.name.endsWith(".pte", ignoreCase = true)) continue
+            if (!src.name.startsWith("sharp_split")) continue
+            val dest = File(internalModelsDir, src.name)
+            if (dest.exists() && dest.length() == src.length()) continue
+            try {
+                src.copyTo(dest, overwrite = true)
+                LogUtil.d(TAG, "Synced ${src.name} from external to ${dest.absolutePath}")
+                anyCopied = true
+            } catch (e: Exception) {
+                LogUtil.e(TAG, "Sync ${src.name} from external failed: ${e.message}")
+            }
+        }
+        // After a v2-only push, external may have only 6 files — drop stale internal sharp_split*.pte (e.g. old part4b.pte).
+        var anyPruned = false
+        if (externalSharpSplitNames.isNotEmpty()) {
+            internalModelsDir.listFiles()?.forEach { internalFile ->
+                if (!internalFile.isFile || !internalFile.name.endsWith(".pte", ignoreCase = true)) return@forEach
+                if (!internalFile.name.startsWith("sharp_split")) return@forEach
+                if (externalSharpSplitNames.contains(internalFile.name)) return@forEach
+                try {
+                    if (internalFile.delete()) {
+                        LogUtil.i(TAG, "Pruned internal models_cpu (not on external): ${internalFile.name}")
+                        anyPruned = true
+                    }
+                } catch (e: Exception) {
+                    LogUtil.w(TAG, "Could not prune ${internalFile.name}: ${e.message}")
+                }
+            }
+        } else {
+            LogUtil.d(TAG, "sync: no sharp_split*.pte on external — skip internal prune")
+        }
+        if ((anyCopied || anyPruned) && NATIVE_FULL_AVAILABLE) {
+            try {
+                releaseCppModules()
+                LogUtil.d(TAG, "Released Part1+Part2 cache after external sync / prune")
+            } catch (_: Throwable) { }
         }
     }
 
@@ -235,10 +367,39 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
      */
     private fun part4bThreadCount(): Int = 2
 
+    /**
+     * Resolve a model file. Flavor dirs first: [internalModelsDir] / [modelsDir] (`models_cpu` or `models_vulkan`).
+     *
+     * **etCpu + `sharp_split*.pte`:** legacy `files/models` is **not** searched. Otherwise an old
+     * `sharp_split_part4b.pte` (e.g. Vulkan-delegated) wins over `models_cpu` and breaks XNNPACK (`NotFound` /
+     * "VulkanBackend is not registered"). Push split `.pte` only under `models_cpu`.
+     */
     private fun findFile(filename: String): File? {
-        val internal = File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0 }
-        return internal ?: File(modelsDir, filename).takeIf { it.exists() && it.length() > 0 }
+        File(internalModelsDir, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
+        File(modelsDir, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
+        val skipLegacySplitOnEtCpu =
+            filename.startsWith("sharp_split") && !BuildConfig.EXECUTORCH_USE_VULKAN_AAR
+        if (skipLegacySplitOnEtCpu) {
+            LogUtil.d(
+                TAG,
+                "findFile($filename): etCpu — skipping legacy ${MODELS_SUBDIR_LEGACY}/ " +
+                    "(use .../files/$MODELS_SUBDIR_CPU/ on device)"
+            )
+            return null
+        }
+        File(context.filesDir, MODELS_SUBDIR_LEGACY).resolve(filename)
+            .takeIf { it.exists() && it.length() > 0L }?.let { return it }
+        context.getExternalFilesDir(MODELS_SUBDIR_LEGACY)?.let { legacyExt ->
+            File(legacyExt, filename).takeIf { it.exists() && it.length() > 0L }?.let { return it }
+        }
+        return null
     }
+
+    /** Full-image Part4b single decoder: INT8, else FP16, else FP32. Null if only tiled `.pte` exist. */
+    private fun findSinglePart4bCpuPte(): File? =
+        findFile(SharpExecuTorchSplitModelNames.PART4B_INT8)
+            ?: findFile(SharpExecuTorchSplitModelNames.PART4B_FP16)
+            ?: findFile(SharpExecuTorchSplitModelNames.PART4B_FP32)
 
     /** Crop tile (row,col) from NCHW flat array. shape=[1,C,H,W], output=[C*(H/n)*(W/n)]. */
     private fun cropTileNCHW(data: FloatArray, channels: Int, fullH: Int, fullW: Int, tileRow: Int, tileCol: Int): FloatArray {
@@ -279,6 +440,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
      * @param maxGaussians Upper bound on number of Gaussians to keep (0 = unlimited).
      * @param preferSinglePart4b When true, forces single Part4b decoder instead of tiled paths for stability.
      * @param useVulkan When true, allows C++ pipeline to prefer Vulkan-backed ExecuTorch load modes when available.
+     * Part1 patch limits / chunking: native still takes ints; Kotlin always passes 0 = full 25+9 grid, no chunking.
      */
     private external fun runFullPipelineInt8Native(
         modelDirPath: String,
@@ -286,7 +448,16 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         maxGaussians: Int,
         preferSinglePart4b: Boolean,
         useVulkan: Boolean,
-        useB4: Boolean
+        part12OnCpu: Boolean,
+        part12ForceSinglePatch: Boolean,
+        part12_25Only: Boolean,
+        part1MaxPatches1x: Int,
+        part1MaxPatches05x: Int,
+        part12Chunk1x: Int,
+        part12Chunk05x: Int,
+        part12YieldMsBetweenChunks: Int,
+        swapTileNdcXY: Boolean,
+        progressReporter: ExecutorchInt8Sharp
     ): FloatArray?
 
     /**
@@ -325,8 +496,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         }
     }
 
-    /** Warm-start: preload Part1+Part2 into native singleton cache (eliminates ~400ms mmap on first inference). */
-    private external fun preloadCppModules(modelDirPath: String): Boolean
+    /** Warm-start: preload Part1+Part2. Vulkan path = Vulkan only (no CPU fallback). */
+    private external fun preloadCppModules(modelDirPath: String, useVulkanForPart12: Boolean): Boolean
 
     /** Release native singleton Part1+Part2 cache and aligned workspace buffers. */
     private external fun releaseCppModules()
@@ -478,58 +649,113 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             LogUtil.d(TAG, "[MEMORY] ${getMemoryInfo()}")
             ensureModelsFromAssets()
 
-            // Require Part1–3 and Part4a chunks; Part4b can be single .pte or chunked/tiled when those paths exist
-            val required = listOf(
-                "sharp_split_part1_int8.pte",
-                "sharp_split_part2_int8.pte",
-                "sharp_split_part3_int8.pte",
-                "sharp_split_part4a_chunk_512.pte",
-                "sharp_split_part4a_chunk_65.pte"
-            )
-            val part4bFile = findFile("sharp_split_part4b.pte")
-            val part4bTileFullFile = findFile("sharp_split_part4b_tile_full.pte")
-            val part4bTileFiles = (0 until PART4B_TILED_NUM).map { findFile("sharp_split_part4b_tile_%02d.pte".format(it)) }
-            val hasAll16TileFiles = part4bTileFiles.all { it != null }
             val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
-            val useCppFullPipeline = prefs.getBoolean("executorch_int8_use_cpp_full_pipeline", false)
-            val useB4 = prefs.getBoolean("executorch_int8_use_b4", true)
-            val usePart4bTiledPref = prefs.getBoolean("executorch_int8_use_part4b_tiled", false)
-            val skipTiledAfterOom = prefs.getBoolean("executorch_int8_skip_tiled_after_oom", false)
-            val preferSinglePart4b = prefs.getBoolean("executorch_int8_prefer_single_part4b", false)
-            PARALLEL_TILES = prefs.getBoolean("executorch_int8_parallel_tiles", false)
-            val swapNdcXY = prefs.getBoolean("executorch_int8_swap_tile_ndc_xy", false)
-            // Effective Gaussian cap for full C++ pipeline. When pref is 0 (All), fall back to our default.
-            var effectiveMaxGaussians = prefs.getInt("executorch_int8_max_gaussians", 0)
-            if (effectiveMaxGaussians <= 0 && maxGaussians > 0) {
-                effectiveMaxGaussians = maxGaussians
+            val useCpuStable = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
+            val part12OnCpu = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
+            // When Vulkan + part12OnCpu: Part1+2 run on CPU (portable); need portable Part1+2 in same dir as Vulkan Part4.
+            fun hasPart1() = if (useCpuStable) {
+                findFile(SharpExecuTorchSplitModelNames.PART1_INT8) != null ||
+                    findFile(SharpExecuTorchSplitModelNames.PART1_FP32) != null ||
+                    findFile(SharpExecuTorchSplitModelNames.PART1_FP16) != null
+            } else {
+                findFile("sharp_split_part1_vulkan_fp16.pte") != null ||
+                    (part12OnCpu && (
+                        findFile(SharpExecuTorchSplitModelNames.PART1_INT8) != null ||
+                            findFile(SharpExecuTorchSplitModelNames.PART1_FP32) != null ||
+                            findFile(SharpExecuTorchSplitModelNames.PART1_FP16) != null
+                        ))
             }
+            fun hasPart2() = if (useCpuStable) {
+                findFile(SharpExecuTorchSplitModelNames.PART2_INT8) != null ||
+                    findFile(SharpExecuTorchSplitModelNames.PART2_FP32) != null ||
+                    findFile(SharpExecuTorchSplitModelNames.PART2_FP16) != null
+            } else {
+                findFile("sharp_split_part2_vulkan_fp16.pte") != null ||
+                    (part12OnCpu && (
+                        findFile(SharpExecuTorchSplitModelNames.PART2_INT8) != null ||
+                            findFile(SharpExecuTorchSplitModelNames.PART2_FP32) != null ||
+                            findFile(SharpExecuTorchSplitModelNames.PART2_FP16) != null
+                        ))
+            }
+            // When part12OnCpu we run entire pipeline on CPU (no Vulkan) to avoid VK_ERROR_DEVICE_LOST.
+            val allCpu = useCpuStable || part12OnCpu
+            fun hasPart3() = if (useCpuStable) {
+                findFile(SharpExecuTorchSplitModelNames.PART3_INT8) != null ||
+                    findFile(SharpExecuTorchSplitModelNames.PART3_FP16) != null ||
+                    findFile(SharpExecuTorchSplitModelNames.PART3_FP32) != null
+            } else if (part12OnCpu) {
+                findFile(SharpExecuTorchSplitModelNames.PART3_INT8) != null ||
+                    findFile(SharpExecuTorchSplitModelNames.PART3_FP16) != null ||
+                    findFile(SharpExecuTorchSplitModelNames.PART3_FP32) != null
+            } else {
+                findFile("sharp_split_part3_vulkan_fp16.pte") != null
+            }
+            fun hasPart4a512() = if (allCpu) findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_512) != null
+            else findFile("sharp_split_part4a_chunk_512_vulkan.pte") != null
+            fun hasPart4a65() = if (allCpu) findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_65) != null
+            else findFile("sharp_split_part4a_chunk_65_vulkan.pte") != null
+            val part4bFile = if (useCpuStable) {
+                findSinglePart4bCpuPte()
+            } else if (part12OnCpu) {
+                findSinglePart4bCpuPte()
+            } else {
+                findFile("sharp_split_part4b_vulkan.pte")
+            }
+            // Non-single Part4b: batched tile_b4 (v2 set), sequential tile_full / tile_00, or 16× per-tile exports.
+            // C++ tries tile_b4 before tile_full/00 before single part4b — names must match [SharpExecuTorchSplitModelNames].
+            fun hasPart4bNonSingleDecoder(): Boolean {
+                val n = SharpExecuTorchSplitModelNames
+                return findFile(n.PART4B_TILE_B4) != null ||
+                    findFile(n.PART4B_TILE_00) != null ||
+                    findFile(n.PART4B_TILE_FULL) != null
+            }
+            val part4bSatisfied = part4bFile != null || hasPart4bNonSingleDecoder()
+            val stablePart4bSingle = prefs.getBoolean("executorch_int8_stable_part4b", true)
+            val part4bSingleOnCpu = prefs.getBoolean("executorch_int8_part4b_single_on_cpu", true)
+            // On CPU (etCpu), single Part4b forward takes 5+ min — skip it and use tiled unless user opts in for clarity.
+            // part4bSingleOnCpu: use single (FP32) Part4b on CPU for clean output despite slower runtime.
+            val preferSinglePart4b = (stablePart4bSingle && !useCpuStable) || part4bSingleOnCpu
+            // Effective Gaussian cap for full C++ pipeline. 0 = All (unlimited, no pruning).
+            var effectiveMaxGaussians = prefs.getInt("executorch_int8_max_gaussians", 500000)
             val availMem = getAvailMemBytes()
-            // Scale down cap when memory is moderate to reduce OOM risk (memory pressure / CoroutineScheduler kill).
             if (availMem < 600L * 1024 * 1024 && (effectiveMaxGaussians <= 0 || effectiveMaxGaussians > 300_000)) {
                 val capped = 300_000
                 LogUtil.d(TAG, "[MEMORY] Capping maxGaussians to $capped (avail=${availMem / (1024 * 1024)}MB)")
                 effectiveMaxGaussians = capped
             }
-            val useChunkedPart4bTiled16Files = usePart4bTiledPref && !skipTiledAfterOom && (hasAll16TileFiles || part4bTileFullFile != null) && !preferSinglePart4b
-            val needPart4b = !useChunkedPart4bTiled16Files
-            val missing = required.filter { findFile(it) == null }
-            if (missing.isNotEmpty() || (needPart4b && part4bFile == null)) {
-                val missingPart4b = if (needPart4b && part4bFile == null)
-                    listOf("sharp_split_part4b.pte")
-                else emptyList()
-                LogUtil.e(TAG, "ExecuTorch INT8 models missing: ${missing + missingPart4b}. Push to ${modelsDir.absolutePath} and retry.")
+            val requiredSatisfied = hasPart1() && hasPart2() && hasPart3() && hasPart4a512() && hasPart4a65() && part4bSatisfied
+            if (!requiredSatisfied) {
+                val missing = mutableListOf<String>()
+                if (!hasPart1()) missing.add(if (useCpuStable) "part1 portable" else "part1 vulkan")
+                if (!hasPart2()) missing.add(if (useCpuStable) "part2 portable" else "part2 vulkan")
+                if (!hasPart3()) missing.add(if (useCpuStable) "part3 portable" else "part3 vulkan")
+                if (!hasPart4a512()) missing.add(if (useCpuStable) "part4a_512" else "part4a_512_vulkan")
+                if (!hasPart4a65()) missing.add(if (useCpuStable) "part4a_65" else "part4a_65_vulkan")
+                if (!part4bSatisfied) {
+                    missing.add(
+                        if (useCpuStable) {
+                            "part4b_int8 / part4b_fp16 / part4b.pte / part4b_tile_b4 / tile_00 / tile_full"
+                        } else {
+                            "part4b_vulkan.pte"
+                        }
+                    )
+                }
+                LogUtil.e(TAG, "ExecuTorch INT8 models missing (${if (useCpuStable) "CPU" else "Vulkan"}): $missing. Push to ${modelsDir?.absolutePath ?: internalModelsDir.absolutePath}")
                 return@withContext null
             }
-            if (useChunkedPart4bTiled16Files && part4bFile == null) {
-                LogUtil.e(TAG, "Part4b tiled requested but sharp_split_part4b.pte missing (needed for fallback). Push part4b.pte to ${modelsDir.absolutePath}")
-                return@withContext null
-            }
-            when {
-                useChunkedPart4bTiled16Files -> LogUtil.d(TAG, "Part4b: using ${if (hasAll16TileFiles) "16 fused tile files" else "tile_full.pte 16x"} (${if (NATIVE_TILES_AVAILABLE) "native C++" else "Kotlin fallback"})")
-                preferSinglePart4b -> LogUtil.d(TAG, "Part4b: using single (Stable mode ON in Settings)")
-                usePart4bTiledPref && !skipTiledAfterOom -> LogUtil.d(TAG, "Part4b: tiled requested but tile models missing on device; using single Part4b")
-                else -> LogUtil.d(TAG, "Part4b: using single ${part4bFile!!.name} (FP32)")
-            }
+            LogUtil.i(
+                TAG,
+                "PART4B_ROUTING prefer_single=$preferSinglePart4b stable_single_pref=$stablePart4bSingle " +
+                    "has_single_pte=${part4bFile != null} has_alt_part4b=${hasPart4bNonSingleDecoder()} " +
+                    "single_file=${part4bFile?.name ?: "none"} " +
+                    "path=${if (preferSinglePart4b) "single_decoder" else "tiled_or_tile_b4"} " +
+                    "cpu_stable=$useCpuStable"
+            )
+            LogUtil.d(
+                TAG,
+                "Part4b: ${if (preferSinglePart4b) "single" else "tiled (tile_b4 batched → tile_full/00 → …)"} " +
+                    "(C++ only, ${if (useCpuStable) "CPU" else "Vulkan"}${if (!useCpuStable && part12OnCpu) ", Part1+2 on CPU" else ""})"
+            )
 
             val originalWidth = bitmap.width
             val originalHeight = bitmap.height
@@ -541,313 +767,116 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             // 1. Stretch full image to 1536 (like Swift) or center-crop then resize; raw PLY coords
             val scaledBmp = if (USE_STRETCH_TO_SQUARE) getStretchToSquareBitmap(bitmap, IMAGE_SIZE) else getCenterCropBitmap(bitmap, IMAGE_SIZE)
 
-            // Optional: run full pipeline in C++ (Part1–4b). Skip when memory is low to avoid OOM/CoroutineScheduler kill.
+            // Native-only: full SHARP graph in C++ (Part1–Part4b). Do not add a Kotlin inference path here.
             val minAvailForCpp = 400L * 1024 * 1024 // 400MB
-            val tryCppFullPipeline = useCppFullPipeline && NATIVE_FULL_AVAILABLE && availMem >= minAvailForCpp
-            if (!tryCppFullPipeline && useCppFullPipeline && availMem < minAvailForCpp) {
-                LogUtil.d(TAG, "[C++ FULL] Skipping native pipeline (low memory: avail=${availMem / (1024 * 1024)}MB < ${minAvailForCpp / (1024 * 1024)}MB), using Kotlin path")
-            }
-            if (tryCppFullPipeline) {
-                val part1File = findFile("sharp_split_part1_int8.pte")
-                val tileFile = findFile("sharp_split_part4b_tile_00.pte")
-                val cppModelDir = tileFile?.parent ?: part1File?.parent ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
-                LogUtil.d(TAG, "[C++ FULL] Starting C++ full pipeline, modelDir=$cppModelDir (tile source: ${tileFile?.parent ?: "none"})")
-                preprocess(scaledBmp, false)
-                imageFloatBuffer.rewind()
-                val imageNCHW = FloatArray(3 * IMAGE_SIZE * IMAGE_SIZE)
-                imageFloatBuffer.get(imageNCHW)
-                LogUtil.d(TAG, "[C++ FULL] Image preprocessed, calling native (${imageNCHW.size} floats)")
-                try {
-                    val cppStartMs = System.currentTimeMillis()
-                    LogUtil.d(
-                        TAG,
-                        "[C++ FULL] maxGaussians=$effectiveMaxGaussians (0=unlimited) useVulkan=true"
-                    )
-                    val cppResult = safeJniFloatArrayResult {
-                        runFullPipelineInt8Native(
-                            cppModelDir,
-                            imageNCHW,
-                            effectiveMaxGaussians,
-                            preferSinglePart4b,
-                            true,
-                            useB4
-                        )
-                    }
-                    val cppElapsedMs = System.currentTimeMillis() - cppStartMs
-                    if (cppResult != null && cppResult.isNotEmpty()) {
-                        LogUtil.d(TAG, "[C++ FULL] Native returned ${cppResult.size / 14} Gaussians in ${cppElapsedMs}ms")
-                        report(0.92f, "Saving your 3D room…", progressCallback)
-                        val result = writePly(cppResult, progressCallback, isPortrait)
-                        scaledBmp.recycle()
-                        report(1f, "Your room is ready!", progressCallback)
-                        LogUtil.d(TAG, "[TIMING] C++ full pipeline: Gaussians=${result.gaussianCount}, total=${cppElapsedMs}ms")
-                        return@withContext result
-                    } else {
-                        LogUtil.d(TAG, "[C++ FULL] Native returned null/empty after ${cppElapsedMs}ms, falling back to Kotlin")
-                    }
-                } catch (e: Throwable) {
-                    LogUtil.e(TAG, "[C++ FULL] C++ pipeline failed, falling back to Kotlin: ${e.message}", e)
-                }
-            }
-
-            val halfSize = IMAGE_SIZE / 2
-            val halfBitmap = Bitmap.createScaledBitmap(scaledBmp, halfSize, halfSize, true)
-
-            val mSize1x = M_1X
-            val mSize05x = M_05X
-            val latent0 = FloatArray(FEATURE_DIM * mSize1x * mSize1x)
-            val latent1 = FloatArray(FEATURE_DIM * mSize1x * mSize1x)
-            val x0Feat = FloatArray(FEATURE_DIM * mSize1x * mSize1x)
-            val x1Feat = FloatArray(FEATURE_DIM * mSize05x * mSize05x)
-            val x2Feat = FloatArray(FEATURE_DIM * SPATIAL_SIZE * SPATIAL_SIZE)
-            val tempSpatial = FloatArray(FEATURE_DIM * SPATIAL_SIZE * SPATIAL_SIZE)
-
-            val rowOffL0 = intArrayOf(0)
-            val rowOffL1 = intArrayOf(0)
-            val rowOffX0 = intArrayOf(0)
-            val rowOff05x = intArrayOf(0)
-            val colOffs1x = buildColumnOffsets(GRID_1X, PADDING_1X)
-            val colOffs05x = buildColumnOffsets(GRID_05X, PADDING_05X)
-
-            report(0.02f, "Warming up…", progressCallback)
-            val tPart12Load = System.currentTimeMillis()
-            // 2. Encoder Phase (Part 1 & 2)
-            LogUtil.d(TAG, "Loading INT8 Part1+Part2...")
-            val mod1 = Module.load(findFile("sharp_split_part1_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
-            val mod2 = Module.load(findFile("sharp_split_part2_int8.pte")!!.absolutePath, Module.LOAD_MODE_MMAP)
-            LogUtil.d(TAG, "Part1+Part2 loaded in ${System.currentTimeMillis() - tPart12Load}ms. Starting 1x patches (${GRID_1X}x${GRID_1X})...")
-            val t1xStart = System.currentTimeMillis()
-
-            val stride = (IMAGE_SIZE - PATCH_SIZE) / 4
-            val total1x = GRID_1X * GRID_1X
-            var patchIdx = 0
-            for (i in 0 until GRID_1X) for (j in 0 until GRID_1X) {
-                val patch = Bitmap.createBitmap(scaledBmp, j * stride, i * stride, PATCH_SIZE, PATCH_SIZE)
-                val out1 = mod1.forward(EValue.from(Tensor.fromBlob(preprocess(patch, true), longArrayOf(1, 3, 384, 384))))
-                val tokens = out1[0].toTensor().dataAsFloatArray
-
-                reshapeToSpatial(out1[1].toTensor().dataAsFloatArray, tempSpatial)
-                mergeCrop(latent0, mSize1x, tempSpatial, j, i, GRID_1X, PADDING_1X, rowOffL0, colOffs1x)
-
-                reshapeToSpatial(tokens, tempSpatial)
-                mergeCrop(latent1, mSize1x, tempSpatial, j, i, GRID_1X, PADDING_1X, rowOffL1, colOffs1x)
-
-                val feat = mod2.forward(EValue.from(Tensor.fromBlob(tokens, longArrayOf(1, 577, 1024))))[0].toTensor().dataAsFloatArray
-                mergeCrop(x0Feat, mSize1x, feat, j, i, GRID_1X, PADDING_1X, rowOffX0, colOffs1x)
-                patch.recycle()
-                patchIdx++
-                report(0.05f + 0.30f * (patchIdx.toFloat() / total1x), "Building your room… step $patchIdx of $total1x", progressCallback)
-            }
-
-            LogUtil.d(TAG, "1x patches done in ${System.currentTimeMillis() - t1xStart}ms. Starting 0.5x patches (${GRID_05X}x${GRID_05X})...")
-            val t05xStart = System.currentTimeMillis()
-            val total05x = GRID_05X * GRID_05X
-            var patch05Idx = 0
-            val stride05x = (halfSize - PATCH_SIZE) / 2
-            for (i in 0 until GRID_05X) {
-                for (j in 0 until GRID_05X) {
-                    val patch = Bitmap.createBitmap(halfBitmap, j * stride05x, i * stride05x, PATCH_SIZE, PATCH_SIZE)
-                    val out05 = mod1.forward(EValue.from(Tensor.fromBlob(preprocess(patch, true), longArrayOf(1, 3, PATCH_SIZE.toLong(), PATCH_SIZE.toLong()))))
-                    if (out05.isEmpty()) {
-                        LogUtil.e(TAG, "Part1 returned no outputs at 0.5x i=$i j=$j")
-                        patch.recycle(); halfBitmap.recycle(); mod1.destroy(); mod2.destroy()
-                        return@withContext null
-                    }
-                    val tokens = out05[0].toTensor().dataAsFloatArray
-                    val feat05 = mod2.forward(EValue.from(Tensor.fromBlob(tokens, longArrayOf(1, 577, 1024))))[0].toTensor().dataAsFloatArray
-                    mergeCrop(x1Feat, mSize05x, feat05, j, i, GRID_05X, PADDING_05X, rowOff05x, colOffs05x)
-                    patch.recycle()
-                    patch05Idx++
-                    report(0.36f + 0.06f * (patch05Idx.toFloat() / total05x), "Building your room…", progressCallback)
-                }
-            }
-            halfBitmap.recycle()
-            report(0.43f, "Building your room…", progressCallback)
-            LogUtil.d(TAG, "0.5x patches done in ${System.currentTimeMillis() - t05xStart}ms. Running 0.25x patch (35th) for x2Feat...")
-            val t025Start = System.currentTimeMillis()
-            val quarterBmp = Bitmap.createScaledBitmap(scaledBmp, 384, 384, true)
-            patchFloatBuffer.rewind()
-            val qOut = mod1.forward(EValue.from(Tensor.fromBlob(preprocess(quarterBmp, true), longArrayOf(1, 3, 384, 384))))
-            if (qOut.isEmpty()) {
-                LogUtil.e(TAG, "Part1 returned no outputs for 0.25x patch")
-                quarterBmp.recycle(); mod1.destroy(); mod2.destroy()
+            val tryCppFullPipeline = requiredSatisfied && NATIVE_FULL_AVAILABLE && availMem >= minAvailForCpp
+            if (!tryCppFullPipeline) {
+                if (!NATIVE_FULL_AVAILABLE) LogUtil.e(TAG, "[C++ FULL] Native full pipeline not available")
+                else if (availMem < minAvailForCpp) LogUtil.d(TAG, "[C++ FULL] Low memory: avail=${availMem / (1024 * 1024)}MB")
                 return@withContext null
             }
-            val qTokens = qOut[0].toTensor()
-            val qFeat = mod2.forward(EValue.from(qTokens))[0].toTensor().dataAsFloatArray
-            reshapeToSpatial(qFeat, x2Feat)
-            quarterBmp.recycle()
-            LogUtil.d(TAG, "0.25x patch done in ${System.currentTimeMillis() - t025Start}ms. Destroying Part1+Part2...")
-            mod1.destroy(); mod2.destroy()
-
-            report(0.44f, "Understanding the full picture…", progressCallback)
-            val tPart3Start = System.currentTimeMillis()
-            // 3. Image Encoder (Part 3)
-            LogUtil.d(TAG, "Loading Part3 (image encoder)...")
-            val mod3 = Module.load(findFile("sharp_split_part3_int8.pte")!!.absolutePath)
-            imageFloatBuffer.rewind()
-            val fullImgTensor = Tensor.fromBlob(preprocess(scaledBmp, false), longArrayOf(1, 3, IMAGE_SIZE.toLong(), IMAGE_SIZE.toLong()))
-            val imgTokens = mod3.forward(EValue.from(fullImgTensor))[0].toTensor().dataAsFloatArray
-            LogUtil.d(TAG, "Part3 done in ${System.currentTimeMillis() - tPart3Start}ms. imgTokens size=${imgTokens.size}")
-            mod3.destroy()
-            report(0.46f, "Understanding the full picture…", progressCallback)
-
-            report(0.48f, "Adding depth and shape…", progressCallback)
-            val tPart4aStart = System.currentTimeMillis()
-            // 4. Chunked Part 4a (tokens 512 + 65); sliceArray for buffer safety with Tensor.fromBlob
-            LogUtil.d(TAG, "Starting chunked Part4 decoder...")
-            val out512 = runDecoderChunk("sharp_split_part4a_chunk_512.pte", imgTokens.sliceArray(0 until 512 * 1024), 512)
-            report(0.49f, "Adding depth and shape…", progressCallback)
-            val out65 = runDecoderChunk("sharp_split_part4a_chunk_65.pte", imgTokens.sliceArray(512 * 1024 until 577 * 1024), 65)
-            val combinedTokens = out512 + out65
-            LogUtil.d(TAG, "Part4a chunks done in ${System.currentTimeMillis() - tPart4aStart}ms. combinedTokens size=${combinedTokens.size}. Loading Part4b...")
-            val tPart4bStart = System.currentTimeMillis()
-
-            report(0.50f, "Adding the finishing touches…", progressCallback)
-            val part4bThreads = part4bThreadCount()
-            var gaussianData: FloatArray? = null
-
-            if (useChunkedPart4bTiled16Files && (hasAll16TileFiles || part4bTileFullFile != null)) {
-                val tileModelFile = if (hasAll16TileFiles) part4bTileFiles[0]!! else part4bTileFullFile!!
-                val xLowresH = 24
-                val xLowresW = 24
-                val xLowresC = 1024
-                val xLowres = FloatArray(xLowresC * xLowresH * xLowresW)
-                for (row in 0 until xLowresH) {
-                    for (col in 0 until xLowresW) {
-                        val srcBase = (1 + row * xLowresW + col) * xLowresC
-                        for (ch in 0 until xLowresC) {
-                            xLowres[ch * xLowresH * xLowresW + row * xLowresW + col] = combinedTokens[srcBase + ch]
-                        }
-                    }
-                }
-                val fullImgData = fullImgTensor.dataAsFloatArray
-                if (NATIVE_TILES_AVAILABLE) {
-                    try {
-                        report(0.51f, "Generating 3D room (native C++)…", progressCallback)
-                        gaussianData = runTiledPart4bNative(
-                            tileModelFile.absolutePath,
-                            fullImgData, latent0, latent1, x0Feat, x1Feat, x2Feat, xLowres,
-                            part4bThreads, PARALLEL_TILES, swapNdcXY
-                        )
-                        if (gaussianData != null) {
-                            val tiledMs = System.currentTimeMillis() - tPart4bStart
-                            LogUtil.d(TAG, "[TIMING] Part4b tiled (native C++): ${tiledMs}ms, ${gaussianData.size / 14} Gaussians")
-                        }
-                    } catch (e: Throwable) {
-                        LogUtil.e(TAG, "Native tile pipeline failed, falling back to Kotlin tile loop: ${e.message}", e)
-                    }
-                }
-                // When native didn't produce output (not loaded or threw), run 16-tile path in Kotlin
-                if (gaussianData == null) {
-                    LogUtil.d(TAG, "Using Kotlin tile loop fallback (native library not loaded or failed)")
-                    val grid = PART4B_TILED_GRID
-                    val imgC = 3
-                    val imgH = IMAGE_SIZE
-                    val imgW = IMAGE_SIZE
-                    val imgTileH = imgH / grid
-                    val imgTileW = imgW / grid
-                    val tCropStart = System.currentTimeMillis()
-                    val allTileInputs = Array(PART4B_TILED_NUM) { tileIdx ->
-                        val tileRow = tileIdx / grid
-                        val tileCol = tileIdx % grid
-                        arrayOf(
-                            EValue.from(Tensor.fromBlob(cropTileNCHW(fullImgData, imgC, imgH, imgW, tileRow, tileCol), longArrayOf(1, 3, imgTileH.toLong(), imgTileW.toLong()))),
-                            EValue.from(Tensor.fromBlob(cropTileNCHW(latent0, 1024, 96, 96, tileRow, tileCol), longArrayOf(1, 1024, 24, 24))),
-                            EValue.from(Tensor.fromBlob(cropTileNCHW(latent1, 1024, 96, 96, tileRow, tileCol), longArrayOf(1, 1024, 24, 24))),
-                            EValue.from(Tensor.fromBlob(cropTileNCHW(x0Feat, 1024, 96, 96, tileRow, tileCol), longArrayOf(1, 1024, 24, 24))),
-                            EValue.from(Tensor.fromBlob(cropTileNCHW(x1Feat, 1024, 48, 48, tileRow, tileCol), longArrayOf(1, 1024, 12, 12))),
-                            EValue.from(Tensor.fromBlob(cropTileNCHW(x2Feat, 1024, 24, 24, tileRow, tileCol), longArrayOf(1, 1024, 6, 6))),
-                            EValue.from(Tensor.fromBlob(cropTileNCHW(xLowres, xLowresC, xLowresH, xLowresW, tileRow, tileCol), longArrayOf(1, 1024, 6, 6)))
-                        )
-                    }
-                    LogUtil.d(TAG, "Pre-computed 16 tile crops in ${System.currentTimeMillis() - tCropStart}ms")
-                    val floatsPerTile = PART4B_GAUSSIANS_PER_TILE * 14
-                    gaussianData = FloatArray(PART4B_TILED_NUM * floatsPerTile)
-                    val modTile = Module.load(tileModelFile.absolutePath, Module.LOAD_MODE_MMAP, part4bThreads)
-                    for (tileIdx in 0 until PART4B_TILED_NUM) {
-                        val tTile = System.currentTimeMillis()
-                        val tileOut = modTile.forward(*allTileInputs[tileIdx])
-                        val packedTile = tileOut[0].toTensor().dataAsFloatArray.copyOf()
-                        correctNDC(packedTile, tileIdx / grid, tileIdx % grid, swapNdcXY)
-                        System.arraycopy(packedTile, 0, gaussianData!!, tileIdx * floatsPerTile, packedTile.size)
-                        LogUtil.d(TAG, "Part4b tile $tileIdx: ${packedTile.size / 14} Gaussians, ${System.currentTimeMillis() - tTile}ms")
-                        report(0.50f + 0.40f * (tileIdx + 1) / PART4B_TILED_NUM, "Generating 3D room (tile ${tileIdx + 1}/$PART4B_TILED_NUM)…", progressCallback)
-                    }
-                    modTile.destroy()
-                    LogUtil.d(TAG, "[TIMING] Part4b tiled (Kotlin fallback): ${System.currentTimeMillis() - tPart4bStart}ms, ${PART4B_TILED_NUM * PART4B_GAUSSIANS_PER_TILE} Gaussians")
-                }
+            val use1280 = prefs.getBoolean("executorch_int8_use_1280", false)
+            // Same model dir as preload: Vulkan = Part1 vulkan dir; CPU = Part4b/tile dir
+            val cppModelDir = if (useCpuStable) {
+                val part4bOrTileFile = part4bFile
+                    ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B4)
+                    ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00)
+                    ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_FULL)
+                part4bOrTileFile?.parent ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
+            } else {
+                findFile("sharp_split_part1_vulkan_fp16.pte")?.parent
+                    ?: findFile("sharp_split_part4b_vulkan.pte")?.parent
+                    ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
             }
-
-            if (gaussianData == null) {
-                val mod4b = Module.load(
-                    part4bFile!!.absolutePath,
-                    Module.LOAD_MODE_MMAP,
-                    part4bThreads
-                )
-                LogUtil.d(TAG, "Part4b forward: 7 inputs tokens, img, latent0, latent1, x0Feat, x1Feat, x2Feat")
-                val part4bInputs = listOf(
-                    EValue.from(Tensor.fromBlob(combinedTokens, longArrayOf(1, 577, 1024))),
-                    EValue.from(fullImgTensor),
-                    EValue.from(Tensor.fromBlob(latent0, longArrayOf(1, 1024, 96, 96))),
-                    EValue.from(Tensor.fromBlob(latent1, longArrayOf(1, 1024, 96, 96))),
-                    EValue.from(Tensor.fromBlob(x0Feat, longArrayOf(1, 1024, 96, 96))),
-                    EValue.from(Tensor.fromBlob(x1Feat, longArrayOf(1, 1024, 48, 48))),
-                    EValue.from(Tensor.fromBlob(x2Feat, longArrayOf(1, 1024, 24, 24)))
-                )
-                val part4bEstimatedSeconds = 80f
-                val part4bProgressStart = 0.55f
-                val part4bProgressSpan = 0.35f
-                val finalParams = coroutineScope {
-                    val deferred = async(Dispatchers.IO) {
-                        mod4b.forward(*part4bInputs.toTypedArray())[0].toTensor()
-                    }
-                    val startMs = System.currentTimeMillis()
-                    while (!deferred.isCompleted) {
-                        delay(2000)
-                        if (deferred.isCompleted) break
-                        val elapsedSec = (System.currentTimeMillis() - startMs) / 1000f
-                        val p = part4bProgressStart + (elapsedSec / part4bEstimatedSeconds).coerceIn(0f, 1f) * part4bProgressSpan
-                        report(p, "Adding the finishing touches… This may take a minute.", progressCallback)
-                    }
-                    deferred.await()
+            LogUtil.d(TAG, "[C++ FULL] modelDir=$cppModelDir useVulkan=${!useCpuStable} part12OnCpu=$part12OnCpu use1280=$use1280")
+            run {
+                val vk = !useCpuStable && !part12OnCpu
+                val p3 = if (vk) findFile("sharp_split_part3_vulkan_fp16.pte")
+                else {
+                    findFile(SharpExecuTorchSplitModelNames.PART3_INT8)
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART3_FP16)
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART3_FP32)
                 }
-                gaussianData = finalParams.dataAsFloatArray.copyOf()
-                mod4b.destroy()
-                val part4bMs = System.currentTimeMillis() - tPart4bStart
-                LogUtil.d(TAG, "[TIMING] Part4b forward: ${part4bMs}ms")
+                val a512 = if (vk) findFile("sharp_split_part4a_chunk_512_vulkan.pte") else findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_512)
+                val a65 = if (vk) findFile("sharp_split_part4a_chunk_65_vulkan.pte") else findFile(SharpExecuTorchSplitModelNames.PART4A_CHUNK_65)
+                val b4 = if (vk) findFile("sharp_split_part4b_vulkan.pte")
+                else {
+                    findSinglePart4bCpuPte()
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_B4)
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_00)
+                        ?: findFile(SharpExecuTorchSplitModelNames.PART4B_TILE_FULL)
+                }
+                LogUtil.i(
+                    TAG,
+                    "[C++ FULL] PTE (Kotlin findFile → absolute): P3=${p3?.absolutePath} P4a512=${a512?.absolutePath} " +
+                        "P4a65=${a65?.absolutePath} P4b=${b4?.absolutePath} | cppModelDir=$cppModelDir"
+                )
             }
-
-            report(0.92f, "Saving your 3D room…", progressCallback)
-            val tPlyStart = System.currentTimeMillis()
-            LogUtil.d(TAG, "[PLY] Part4b done. Writing PLY with raw coordinates (center-crop input = 1:1, no aspect scale)")
-            val result = writePly(gaussianData, progressCallback, isPortrait)
-            val plyMs = System.currentTimeMillis() - tPlyStart
-            LogUtil.d(TAG, "[TIMING] writePly: ${plyMs}ms")
-            scaledBmp.recycle()
-            report(1f, "Your room is ready!", progressCallback)
-            val totalMs = System.currentTimeMillis() - pipelineStartMs
-            LogUtil.d(TAG, "[ASPECT] inference complete | Gaussians=${result.gaussianCount} | PLY bbox room=${result.roomWidth}x${result.roomHeight}x${result.roomDepth} m")
-            LogUtil.d(TAG, "[TIMING] TOTAL pipeline: ${totalMs}ms (${totalMs / 1000f}s)")
-            return@withContext result
+            val imageNCHW = if (use1280) {
+                val bmp1280 = Bitmap.createScaledBitmap(scaledBmp, IMAGE_SIZE_1280, IMAGE_SIZE_1280, true)
+                val bmp1536 = Bitmap.createScaledBitmap(bmp1280, IMAGE_SIZE, IMAGE_SIZE, true)
+                bmp1280.recycle()
+                preprocessToFloatArray(bmp1536, IMAGE_SIZE).also { bmp1536.recycle() }
+            } else {
+                preprocess(scaledBmp, false)
+                imageFloatBuffer.rewind()
+                FloatArray(3 * IMAGE_SIZE * IMAGE_SIZE).also { imageFloatBuffer.get(it) }
+            }
+            try {
+                currentProgressCallback = progressCallback
+                val cppStartMs = System.currentTimeMillis()
+                val part12OnCpuRun = prefs.getBoolean("executorch_int8_part12_on_cpu", false)
+                // Part1+2 single-patch only: ON by default to avoid SIGSEGV in batch-4 on some devices.
+                val part12ForceSingle = prefs.getBoolean("executorch_int8_part12_single_only", true)
+                // part12_25_only: skip 0.5x (9) + 0.25x (1) to avoid SIGSEGV at patch 25/35 on some devices.
+                val part12_25Only = prefs.getBoolean("executorch_int8_part12_25_only", true)
+                val part1Max1x = if (part12_25Only) 25 else 0
+                val part1Max05x = if (part12_25Only) 0 else 0
+                val part12Chunk1x = 0
+                val part12Chunk05x = 0
+                val part12YieldMs = 0
+                val swapTileNdcXY = prefs.getBoolean("executorch_int8_swap_tile_ndc_xy", false)
+                val cppResult = safeJniFloatArrayResult {
+                    runFullPipelineInt8Native(
+                        cppModelDir,
+                        imageNCHW,
+                        effectiveMaxGaussians,
+                        preferSinglePart4b,  // mirrors Settings Stable Part4b; native tries single on disk first
+                        !useCpuStable,       // useVulkan (Part4 on Vulkan)
+                        part12OnCpuRun,      // Part1+2 on CPU when true to avoid VK_ERROR_DEVICE_LOST
+                        part12ForceSingle,   // Part1+2 single-patch only; avoids batch-4 SIGSEGV on some devices
+                        part12_25Only,       // Skip 0.5x+0.25x to avoid SIGSEGV at patch 25/35 on some devices
+                        part1Max1x,
+                        part1Max05x,
+                        part12Chunk1x,
+                        part12Chunk05x,
+                        part12YieldMs,
+                        swapTileNdcXY,
+                        this@ExecutorchInt8Sharp  // progress reporter (reportProgressFromNative called from C++)
+                    )
+                }
+                val cppElapsedMs = System.currentTimeMillis() - cppStartMs
+                if (cppResult != null && cppResult.isNotEmpty()) {
+                    LogUtil.d(TAG, "[C++ FULL] ${cppResult.size / 14} Gaussians in ${cppElapsedMs}ms")
+                    report(0.92f, "Saving your 3D room…", progressCallback)
+                    val result = writePly(cppResult, progressCallback, isPortrait)
+                    scaledBmp.recycle()
+                    report(1f, "Your room is ready!", progressCallback)
+                    return@withContext result
+                }
+                LogUtil.e(
+                    TAG,
+                    "[C++ FULL] Native returned null (no fallback). See native errors: " +
+                        "adb logcat -d -s sharp_executorch_full:E sharp_executorch_full:W | tail -80"
+                )
+                return@withContext null
+            } catch (e: Throwable) {
+                LogUtil.e(TAG, "[C++ FULL] C++ failed: ${e.message}", e)
+                return@withContext null
+            } finally {
+                currentProgressCallback = null
+            }
         }
-    }
-
-    private fun runDecoderChunk(name: String, data: FloatArray, count: Int): FloatArray {
-        LogUtil.d(TAG, "runDecoderChunk: $name count=$count dataLen=${data.size}")
-        val mod = Module.load(findFile(name)!!.absolutePath)
-        patchFloatBuffer.rewind()
-        val inputTensor = Tensor.fromBlob(data, longArrayOf(1, count.toLong(), 1024))
-        val output = mod.forward(EValue.from(inputTensor))
-        if (output.isEmpty()) {
-            LogUtil.e(TAG, "runDecoderChunk: $name returned no outputs")
-            mod.destroy()
-            return FloatArray(0)
-        }
-        val out = output[0].toTensor().dataAsFloatArray
-        LogUtil.d(TAG, "runDecoderChunk: $name outputLen=${out.size}")
-        mod.destroy()
-        return out
     }
 
     private fun preprocess(bmp: Bitmap, isPatch: Boolean): FloatBuffer {
@@ -863,6 +892,21 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             buf.put(2 * total + i, (argb and 0xFF) / 255f)
         }
         return buf.rewind() as FloatBuffer
+    }
+
+    /** Preprocess bitmap to NCHW float array [0,1] for a given size (e.g. 1280 for reduced memory). */
+    private fun preprocessToFloatArray(bmp: Bitmap, size: Int): FloatArray {
+        val total = size * size
+        val out = FloatArray(3 * total)
+        val pixels = IntArray(total)
+        bmp.getPixels(pixels, 0, size, 0, 0, size, size)
+        for (i in 0 until total) {
+            val argb = pixels[i]
+            out[i] = (argb shr 16 and 0xFF) / 255f
+            out[total + i] = (argb shr 8 and 0xFF) / 255f
+            out[2 * total + i] = (argb and 0xFF) / 255f
+        }
+        return out
     }
 
     private fun mergeCrop(out: FloatArray, outW: Int, patch: FloatArray, gI: Int, gJ: Int, gS: Int, pad: Int, offY: IntArray, offX: IntArray) {

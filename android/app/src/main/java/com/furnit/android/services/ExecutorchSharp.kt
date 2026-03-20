@@ -366,12 +366,8 @@ class ExecutorchSharp private constructor(private val context: Context) {
     }
 
     fun isModelReady(): Boolean {
-        val splitReady = isSplitModelReady()
-        val fullReady = findFullModel() != null
-        val legacyReady = findPatchEncoder() != null && findFile(GAUSSIAN_HEAD_FILENAME) != null
-        val ready = splitReady || fullReady || legacyReady
-        LogUtil.d(TAG, "isModelReady: split=$splitReady full=$fullReady legacy=$legacyReady => $ready")
-        return ready
+        // Disabled: XNNPACK models cause SIGSEGV. Use ExecutorchInt8Sharp (Vulkan-only) instead.
+        return false
     }
 
     /**

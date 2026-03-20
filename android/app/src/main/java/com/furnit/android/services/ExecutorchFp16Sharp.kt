@@ -145,9 +145,8 @@ class ExecutorchFp16Sharp private constructor(private val context: Context) {
     }
 
     fun isModelReady(): Boolean {
-        val ready = SPLIT_FILENAMES.all { findFile(it) != null }
-        LogUtil.d(TAG, "isModelReady: $ready")
-        return ready
+        // Disabled: XNNPACK models cause SIGSEGV. Use ExecutorchInt8Sharp (Vulkan-only) instead.
+        return false
     }
 
     fun getMissingFiles(): List<String> = SPLIT_FILENAMES.filter { findFile(it) == null }

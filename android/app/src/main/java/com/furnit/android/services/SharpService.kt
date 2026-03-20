@@ -135,18 +135,9 @@ class SharpService private constructor(private val context: Context) {
         val backend = prefs.getString("inference_backend", "executorch_int8") ?: "executorch_int8"
         val effective = BackendConfig.normalize(backend)
         when {
-            effective == "executorch" && BackendConfig.ENABLE_EXECUTORCH && executorchSharp.isModelReady() -> {
-                LogUtil.d(TAG, "Preloading ExecuTorch Part1...")
-                executorchSharp.preloadAndWarmup()
-                LogUtil.d(TAG, "ExecuTorch preload done")
-            }
-            effective == "executorch_fp16" && BackendConfig.ENABLE_EXECUTORCH_FP16 && executorchFp16Sharp.isModelReady() -> {
-                LogUtil.d(TAG, "Preloading ExecuTorch FP16 Part1...")
-                executorchFp16Sharp.preloadAndWarmup()
-                LogUtil.d(TAG, "ExecuTorch FP16 preload done")
-            }
-            effective == "executorch_int8" && BackendConfig.ENABLE_EXECUTORCH_INT8 -> {
-                LogUtil.d(TAG, "ExecuTorch INT8 backend selected – no explicit preload step")
+            (effective == "executorch" || effective == "executorch_fp16" || effective == "executorch_int8") && BackendConfig.ENABLE_EXECUTORCH_INT8 -> {
+                LogUtil.d(TAG, "ExecuTorch INT8 – preload is optional (see ExecutorchInt8Sharp / Part1 warmup)")
+                executorchInt8Sharp.syncModelsFromExternal()
             }
             effective == "onnx" && splitOnnxSharp.isModelReady() -> {
                 LogUtil.d(TAG, "Preloading Split ONNX sessions (all 4 parts)...")
@@ -306,52 +297,13 @@ class SharpService private constructor(private val context: Context) {
             }
         }
 
-        if (effectiveBackend == "executorch") {
-            LogUtil.d(TAG, "ExecuTorch backend selected in settings")
-            if (executorchSharp.isModelReady()) {
-                if (executorchSharp.initialize()) {
-                    isInitialized = true
-                    useExecutorch = true
-                    LogUtil.d(TAG, "ExecuTorch SHARP initialized successfully")
-                    return true
-                } else {
-                    LogUtil.e(TAG, "ExecuTorch SHARP init failed")
-                    return false
-                }
-            } else {
-                LogUtil.e(TAG, "ExecuTorch SHARP model not found. Push sharp.pte to device.")
-                return false
-            }
-        }
-
-        if (effectiveBackend == "executorch_fp16") {
-            LogUtil.d(TAG, "ExecuTorch FP16 backend selected in settings")
-            if (executorchFp16Sharp.isModelReady()) {
-                if (executorchFp16Sharp.initialize()) {
-                    isInitialized = true
-                    useExecutorchFp16 = true
-                    currentBackendId = "executorch_fp16"
-                    LogUtil.d(TAG, "ExecuTorch FP16 SHARP initialized successfully")
-                    return true
-                } else {
-                    LogUtil.e(TAG, "ExecuTorch FP16 SHARP init failed")
-                    return false
-                }
-            } else {
-                val missing = executorchFp16Sharp.getMissingFiles()
-                LogUtil.e(TAG, "ExecuTorch FP16 models not found, missing: $missing")
-                lastInitFailureMessage = "FP16 .pte models not found. Push sharp_split_part*_fp16.pte to ${executorchFp16Sharp.getModelsDirPath()}"
-                return false
-            }
-        }
-
-        // ExecuTorch INT8 backend
-        if (effectiveBackend == "executorch_int8") {
-            LogUtil.d(TAG, "ExecuTorch INT8 backend selected in settings")
+        // ExecuTorch INT8: Settings chooses CPU vs Vulkan model layout; C++ logs useVulkan= accordingly.
+        if (effectiveBackend == "executorch" || effectiveBackend == "executorch_fp16" || effectiveBackend == "executorch_int8") {
+            LogUtil.d(TAG, "ExecuTorch backend selected (INT8 SHARP; CPU vs GPU per Settings → ExecutorchInt8Sharp)")
             if (executorchInt8Sharp.initialize()) {
                 isInitialized = true
                 useExecutorchInt8 = true
-                currentBackendId = "executorch_int8"
+                currentBackendId = effectiveBackend
                 LogUtil.d(TAG, "ExecuTorch INT8 SHARP initialized successfully")
                 return true
             } else {

@@ -14,15 +14,21 @@ import android.content.res.ColorStateList
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
 import com.furnit.android.models.QualitySettings
 import com.furnit.android.services.BackendConfig
 import com.furnit.android.utils.DebugLogger
+import com.furnit.android.utils.Part1OnlyTest
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
     private lateinit var authManager: AuthenticationManager
+    private lateinit var part1WarmupStatusView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -224,351 +230,98 @@ class SettingsActivity : AppCompatActivity() {
         }
         developerSection.addView(backendTitle)
 
-        // Migrate old boolean pref to new string pref
-        val currentBackend = migrateBackendPref()
-
-        val backendRadioGroup = RadioGroup(this).apply {
-            orientation = RadioGroup.VERTICAL
-        }
-
-        val onnxRadioId = View.generateViewId()
-        val onnxFp16RadioId = View.generateViewId()
-        val onnxInt8RadioId = View.generateViewId()
-        val ncnnRadioId = View.generateViewId()
-        val executorchRadioId = View.generateViewId()
-        val executorchFp16RadioId = View.generateViewId()
-        val executorchInt8RadioId = View.generateViewId()
-        val litertRadioId = View.generateViewId()
-
-        val onnxRadio = RadioButton(this).apply {
-            id = onnxRadioId
-            text = getString(R.string.settings_onnx_default)
+        migrateBackendPref()
+        // Choice: ExecuTorch INT8 (Vulkan) vs CPU ExecuTorch INT8 — both C++, single Part4b
+        val executorchChoiceLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 8, 0, 16) }
+        val executorchChoiceRg = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL; setPadding(0, 8, 0, 0) }
+        val vulkanId = View.generateViewId()
+        val cpuId = View.generateViewId()
+        val useCpuExecutorch = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
+        val vulkanRb = RadioButton(this).apply {
+            id = vulkanId
+            text = "ExecuTorch INT8 (Vulkan)"
             setTextColor(Color.parseColor("#333333"))
         }
-        val onnxRadioDesc = TextView(this).apply {
-            text = getString(R.string.settings_onnx_description)
+        val cpuRb = RadioButton(this).apply {
+            id = cpuId
+            text = "CPU ExecuTorch INT8"
+            setTextColor(Color.parseColor("#333333"))
+        }
+        executorchChoiceRg.addView(vulkanRb)
+        executorchChoiceRg.addView(cpuRb)
+        if (useCpuExecutorch) executorchChoiceRg.check(cpuId) else executorchChoiceRg.check(vulkanId)
+        executorchChoiceRg.setOnCheckedChangeListener { _, checkedId ->
+            prefs.edit().putBoolean("executorch_int8_use_cpu_stable", checkedId == cpuId).apply()
+        }
+        executorchChoiceLayout.addView(executorchChoiceRg)
+        val executorchChoiceDesc = TextView(this).apply {
+            text = "Vulkan = GPU; CPU = portable Part1/2/3/4. Both C++ only."
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
+            setPadding(0, 8, 0, 0)
         }
-
-        val onnxFp16Radio = RadioButton(this).apply {
-            id = onnxFp16RadioId
-            text = if (BackendConfig.ENABLE_ONNX_FP16) "ONNX FP16" else "ONNX FP16 (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_ONNX_FP16
-            alpha = if (BackendConfig.ENABLE_ONNX_FP16) 1.0f else 0.5f
+        executorchChoiceLayout.addView(executorchChoiceDesc)
+        // Part4b: when ON, prefer single decoder if sharp_split_part4b_int8/fp16/.pte is on device (with v2, also push tile_b4); avoids INT8 tiled "foggy squares". OFF = tiled tile_b4 / tile_00 first.
+        val stablePart4b = prefs.getBoolean("executorch_int8_stable_part4b", true)
+        val stablePart4bLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val stablePart4bLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        stablePart4bLabel.addView(TextView(this).apply { text = getString(R.string.settings_stable_part4b); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
+        stablePart4bLabel.addView(TextView(this).apply { text = getString(R.string.settings_stable_part4b_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
+        val stablePart4bSwitch = createStyledSwitch(stablePart4b) { isChecked ->
+            prefs.edit().putBoolean("executorch_int8_stable_part4b", isChecked).apply()
         }
-        val onnxFp16RadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_ONNX_FP16) {
-                "FP16 split (50% smaller, faster on ARM)"
-            } else {
-                "Disabled in this build"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_ONNX_FP16) 1.0f else 0.5f
+        stablePart4bLayout.addView(stablePart4bLabel)
+        stablePart4bLayout.addView(stablePart4bSwitch)
+        executorchChoiceLayout.addView(stablePart4bLayout)
+        // Part4b single on CPU: use FP32 single decoder for clean output (slower).
+        val part4bSingleOnCpu = prefs.getBoolean("executorch_int8_part4b_single_on_cpu", true)
+        val part4bSingleOnCpuLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val part4bSingleOnCpuLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        part4bSingleOnCpuLabel.addView(TextView(this).apply { text = getString(R.string.settings_part4b_single_on_cpu); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
+        part4bSingleOnCpuLabel.addView(TextView(this).apply { text = getString(R.string.settings_part4b_single_on_cpu_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
+        val part4bSingleOnCpuSwitch = createStyledSwitch(part4bSingleOnCpu) { isChecked ->
+            prefs.edit().putBoolean("executorch_int8_part4b_single_on_cpu", isChecked).apply()
         }
-
-        val onnxInt8Radio = RadioButton(this).apply {
-            id = onnxInt8RadioId
-            text = if (BackendConfig.ENABLE_ONNX_INT8) "ONNX INT8" else "ONNX INT8 (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_ONNX_INT8
-            alpha = if (BackendConfig.ENABLE_ONNX_INT8) 1.0f else 0.5f
+        part4bSingleOnCpuLayout.addView(part4bSingleOnCpuLabel)
+        part4bSingleOnCpuLayout.addView(part4bSingleOnCpuSwitch)
+        executorchChoiceLayout.addView(part4bSingleOnCpuLayout)
+        // Part1+2: single-patch only avoids batch-4 SIGSEGV on some devices.
+        val part12SingleOnly = prefs.getBoolean("executorch_int8_part12_single_only", true)
+        val part12SingleLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val part12SingleLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        part12SingleLabel.addView(TextView(this).apply { text = getString(R.string.settings_part12_single_only); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
+        part12SingleLabel.addView(TextView(this).apply { text = getString(R.string.settings_part12_single_only_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
+        val part12SingleSwitch = createStyledSwitch(part12SingleOnly) { isChecked ->
+            prefs.edit().putBoolean("executorch_int8_part12_single_only", isChecked).apply()
         }
-        val onnxInt8RadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_ONNX_INT8) {
-                "Single INT8 model (~700 MB, experimental quality)"
-            } else {
-                "Disabled in this build"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_ONNX_INT8) 1.0f else 0.5f
+        part12SingleLayout.addView(part12SingleLabel)
+        part12SingleLayout.addView(part12SingleSwitch)
+        executorchChoiceLayout.addView(part12SingleLayout)
+        // Part1+2: 25 patches only skips 0.5x+0.25x to avoid SIGSEGV at patch 25/35.
+        val part12_25Only = prefs.getBoolean("executorch_int8_part12_25_only", true)
+        val part12_25Layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val part12_25Label = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        part12_25Label.addView(TextView(this).apply { text = getString(R.string.settings_part12_25_only); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
+        part12_25Label.addView(TextView(this).apply { text = getString(R.string.settings_part12_25_only_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
+        val part12_25Switch = createStyledSwitch(part12_25Only) { isChecked ->
+            prefs.edit().putBoolean("executorch_int8_part12_25_only", isChecked).apply()
         }
-
-        val ncnnRadio = RadioButton(this).apply {
-            id = ncnnRadioId
-            text = if (BackendConfig.ENABLE_NCNN) "NCNN" else "NCNN (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_NCNN
-            alpha = if (BackendConfig.ENABLE_NCNN) 1.0f else 0.5f
-        }
-        val ncnnRadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_NCNN) {
-                "Faster room generation (requires NCNN model files)"
-            } else {
-                "Disabled in this build (wrappers kept, ONNX only)"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_NCNN) 1.0f else 0.5f
-        }
-
-        val executorchRadio = RadioButton(this).apply {
-            id = executorchRadioId
-            text = if (BackendConfig.ENABLE_EXECUTORCH) "ExecuTorch" else "ExecuTorch (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_EXECUTORCH
-            alpha = if (BackendConfig.ENABLE_EXECUTORCH) 1.0f else 0.5f
-        }
-        val executorchRadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_EXECUTORCH) {
-                "ExecuTorch full model (recommended for >8GB RAM devices)"
-            } else {
-                "Disabled in this build (wrappers kept, ONNX only)"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_EXECUTORCH) 1.0f else 0.5f
-        }
-
-        val executorchFp16Radio = RadioButton(this).apply {
-            id = executorchFp16RadioId
-            text = if (BackendConfig.ENABLE_EXECUTORCH_FP16) "ExecuTorch FP16" else "ExecuTorch FP16 (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_EXECUTORCH_FP16
-            alpha = if (BackendConfig.ENABLE_EXECUTORCH_FP16) 1.0f else 0.5f
-        }
-        val executorchFp16RadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_EXECUTORCH_FP16) {
-                "FP16 split (50% smaller, XNNPACK)"
-            } else {
-                "Disabled in this build"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_EXECUTORCH_FP16) 1.0f else 0.5f
-        }
-
-        val executorchInt8Radio = RadioButton(this).apply {
-            id = executorchInt8RadioId
-            text = if (BackendConfig.ENABLE_EXECUTORCH_INT8) "ExecuTorch INT8" else "ExecuTorch INT8 (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_EXECUTORCH_INT8
-            alpha = if (BackendConfig.ENABLE_EXECUTORCH_INT8) 1.0f else 0.5f
-        }
-        val executorchInt8RadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_EXECUTORCH_INT8) {
-                "ExecuTorch INT8 split pipeline (recommended for ≤8GB RAM devices)"
-            } else {
-                "Disabled in this build"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_EXECUTORCH_INT8) 1.0f else 0.5f
-        }
-
-        val litertRadio = RadioButton(this).apply {
-            id = litertRadioId
-            text = if (BackendConfig.ENABLE_LITERT) "LiteRT" else "LiteRT (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_LITERT
-            alpha = if (BackendConfig.ENABLE_LITERT) 1.0f else 0.5f
-        }
-        val litertRadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_LITERT) {
-                "TFLite FP16 + GPU delegate (best quality, GPU-accelerated)"
-            } else {
-                "Disabled in this build (wrappers kept, ONNX only)"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_LITERT) 1.0f else 0.5f
-        }
-
-        backendRadioGroup.addView(onnxRadio)
-        backendRadioGroup.addView(onnxRadioDesc)
-        backendRadioGroup.addView(onnxFp16Radio)
-        backendRadioGroup.addView(onnxFp16RadioDesc)
-        backendRadioGroup.addView(onnxInt8Radio)
-        backendRadioGroup.addView(onnxInt8RadioDesc)
-        backendRadioGroup.addView(ncnnRadio)
-        backendRadioGroup.addView(ncnnRadioDesc)
-        backendRadioGroup.addView(executorchRadio)
-        backendRadioGroup.addView(executorchRadioDesc)
-        backendRadioGroup.addView(executorchFp16Radio)
-        backendRadioGroup.addView(executorchFp16RadioDesc)
-        backendRadioGroup.addView(executorchInt8Radio)
-        backendRadioGroup.addView(executorchInt8RadioDesc)
-        backendRadioGroup.addView(litertRadio)
-        backendRadioGroup.addView(litertRadioDesc)
-
-        val pythonRadioId = View.generateViewId()
-        val pythonRadio = RadioButton(this).apply {
-            id = pythonRadioId
-            text = if (BackendConfig.ENABLE_PYTHON) "Python (PyTorch)" else "Python (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_PYTHON
-            alpha = if (BackendConfig.ENABLE_PYTHON) 1.0f else 0.5f
-        }
-        val pythonRadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_PYTHON) {
-                "Native PyTorch via Chaquopy — same code as Mac/PC, no conversion"
-            } else {
-                "Disabled in this build"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_PYTHON) 1.0f else 0.5f
-        }
-        backendRadioGroup.addView(pythonRadio)
-        backendRadioGroup.addView(pythonRadioDesc)
-
-        val torchMobileRadioId = View.generateViewId()
-        val torchMobileRadio = RadioButton(this).apply {
-            id = torchMobileRadioId
-            text = if (BackendConfig.ENABLE_TORCH_MOBILE) "PyTorch Mobile" else "PyTorch Mobile (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_TORCH_MOBILE
-            alpha = if (BackendConfig.ENABLE_TORCH_MOBILE) 1.0f else 0.5f
-        }
-        val torchMobileRadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_TORCH_MOBILE) {
-                "Direct .ptl model — same weights as Python, no conversion"
-            } else {
-                "Disabled in this build"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_TORCH_MOBILE) 1.0f else 0.5f
-        }
-        backendRadioGroup.addView(torchMobileRadio)
-        backendRadioGroup.addView(torchMobileRadioDesc)
-
-        val nativePtRadioId = View.generateViewId()
-        val nativePtRadio = RadioButton(this).apply {
-            id = nativePtRadioId
-            text = if (BackendConfig.ENABLE_NATIVE_PT) "Native .pt" else "Native .pt (disabled)"
-            setTextColor(Color.parseColor("#333333"))
-            isEnabled = BackendConfig.ENABLE_NATIVE_PT
-            alpha = if (BackendConfig.ENABLE_NATIVE_PT) 1.0f else 0.5f
-        }
-        val nativePtRadioDesc = TextView(this).apply {
-            text = if (BackendConfig.ENABLE_NATIVE_PT) {
-                "TorchScript + LibTorch native — FP32, internal storage, no fallback"
-            } else {
-                "Disabled in this build"
-            }
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-            setPadding(48, 0, 0, 8)
-            alpha = if (BackendConfig.ENABLE_NATIVE_PT) 1.0f else 0.5f
-        }
-        backendRadioGroup.addView(nativePtRadio)
-        backendRadioGroup.addView(nativePtRadioDesc)
-
-        when (currentBackend) {
-            "onnx" -> backendRadioGroup.check(onnxRadioId)
-            "onnx_fp16" -> backendRadioGroup.check(onnxFp16RadioId)
-            "onnx_int8" -> backendRadioGroup.check(onnxInt8RadioId)
-            "ncnn" -> backendRadioGroup.check(ncnnRadioId)
-            "executorch" -> backendRadioGroup.check(executorchRadioId)
-            "executorch_fp16" -> backendRadioGroup.check(executorchFp16RadioId)
-            "executorch_int8" -> backendRadioGroup.check(executorchInt8RadioId)
-            "litert" -> backendRadioGroup.check(litertRadioId)
-            "python" -> backendRadioGroup.check(pythonRadioId)
-            "torch_mobile" -> backendRadioGroup.check(torchMobileRadioId)
-            "native_pt" -> backendRadioGroup.check(nativePtRadioId)
-            else -> backendRadioGroup.check(executorchInt8RadioId)
-        }
-
-        backendRadioGroup.setOnCheckedChangeListener { _, checkedId ->
-            val backend = when (checkedId) {
-                onnxRadioId -> "onnx"
-                onnxFp16RadioId -> "onnx_fp16"
-                onnxInt8RadioId -> "onnx_int8"
-                ncnnRadioId -> "ncnn"
-                executorchRadioId -> "executorch"
-                executorchFp16RadioId -> "executorch_fp16"
-                executorchInt8RadioId -> "executorch_int8"
-                litertRadioId -> "litert"
-                pythonRadioId -> "python"
-                torchMobileRadioId -> "torch_mobile"
-                nativePtRadioId -> "native_pt"
-                else -> "executorch_int8"
-            }
-            prefs.edit().putString("inference_backend", backend).apply()
-        }
-
-        developerSection.addView(backendRadioGroup)
-
-        // Decoder mode: Stable (single Part4b) vs Split/tiled decoder
-        val preferSinglePart4b = prefs.getBoolean("executorch_int8_prefer_single_part4b", false)
-        val usePart4bTiledPref = prefs.getBoolean("executorch_int8_use_part4b_tiled", false)
-        // Decoder mode: Stable (single Part4b) vs Split/tiled decoder
-        val decoderModeLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
-        val decoderModeTitle = TextView(this).apply {
-            text = getString(R.string.settings_stable_part4b)
-            textSize = 16f
-            setTextColor(Color.parseColor("#333333"))
-        }
-        val decoderModeDesc = TextView(this).apply {
-            text = getString(R.string.settings_stable_part4b_description)
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-        }
-        decoderModeLayout.addView(decoderModeTitle)
-        decoderModeLayout.addView(decoderModeDesc)
-
-        val decoderModeRg = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL; setPadding(0, 8, 0, 0) }
-        val stableDecoderId = View.generateViewId()
-        val splitDecoderId = View.generateViewId()
-        val stableDecoderRb = RadioButton(this).apply {
-            id = stableDecoderId
-            text = "Stable (single Part4b)"
-            setTextColor(Color.parseColor("#333333"))
-        }
-        val splitDecoderRb = RadioButton(this).apply {
-            id = splitDecoderId
-            text = "Split / tiled Part4b"
-            setTextColor(Color.parseColor("#333333"))
-        }
-        decoderModeRg.addView(stableDecoderRb)
-        decoderModeRg.addView(splitDecoderRb)
-
-        when {
-            preferSinglePart4b -> decoderModeRg.check(stableDecoderId)
-            usePart4bTiledPref -> decoderModeRg.check(splitDecoderId)
-            else -> decoderModeRg.clearCheck()
-        }
-        decoderModeRg.setOnCheckedChangeListener { _, checkedId ->
-            when (checkedId) {
-                stableDecoderId -> prefs.edit()
-                    .putBoolean("executorch_int8_prefer_single_part4b", true)
-                    .putBoolean("executorch_int8_use_part4b_tiled", false)
-                    .apply()
-                splitDecoderId -> prefs.edit()
-                    .putBoolean("executorch_int8_prefer_single_part4b", false)
-                    .putBoolean("executorch_int8_use_part4b_tiled", true)
-                    .apply()
-            }
-        }
-        decoderModeLayout.addView(decoderModeRg)
-        developerSection.addView(decoderModeLayout)
-
-        val swapNdcLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val swapNdcLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        val swapNdcTitle = TextView(this).apply { text = getString(R.string.settings_swap_tile_ndc_xy); textSize = 14f; setTextColor(Color.parseColor("#222222")) }
-        val swapNdcDesc = TextView(this).apply { text = getString(R.string.settings_swap_tile_ndc_xy_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) }
-        swapNdcLabel.addView(swapNdcTitle)
-        swapNdcLabel.addView(swapNdcDesc)
-        val swapNdcSwitch = createStyledSwitch(prefs.getBoolean("executorch_int8_swap_tile_ndc_xy", false)) { isChecked ->
+        part12_25Layout.addView(part12_25Label)
+        part12_25Layout.addView(part12_25Switch)
+        executorchChoiceLayout.addView(part12_25Layout)
+        // Tiled Part4b NDC: try ON if output shows misaligned 4×4 patches (transposed export).
+        val swapTileNdc = prefs.getBoolean("executorch_int8_swap_tile_ndc_xy", false)
+        val swapTileNdcLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, 12) }
+        val swapTileNdcLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        swapTileNdcLabel.addView(TextView(this).apply { text = getString(R.string.settings_swap_tile_ndc_xy); textSize = 14f; setTextColor(Color.parseColor("#222222")) })
+        swapTileNdcLabel.addView(TextView(this).apply { text = getString(R.string.settings_swap_tile_ndc_xy_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) })
+        val swapTileNdcSwitch = createStyledSwitch(swapTileNdc) { isChecked ->
             prefs.edit().putBoolean("executorch_int8_swap_tile_ndc_xy", isChecked).apply()
         }
-        swapNdcLayout.addView(swapNdcLabel)
-        swapNdcLayout.addView(swapNdcSwitch)
-        developerSection.addView(swapNdcLayout)
+        swapTileNdcLayout.addView(swapTileNdcLabel)
+        swapTileNdcLayout.addView(swapTileNdcSwitch)
+        executorchChoiceLayout.addView(swapTileNdcLayout)
+        developerSection.addView(executorchChoiceLayout)
 
         // Max Gaussians (splat count limit)
         val maxGaussLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
@@ -588,11 +341,12 @@ class SettingsActivity : AppCompatActivity() {
         maxGaussRg.addView(mg300k)
         maxGaussRg.addView(mg500k)
 
-        val currentMaxG = prefs.getInt("executorch_int8_max_gaussians", 0)
+        val currentMaxG = prefs.getInt("executorch_int8_max_gaussians", 500000)
         when (currentMaxG) {
             300000 -> maxGaussRg.check(mg300kId)
             500000 -> maxGaussRg.check(mg500kId)
-            else -> maxGaussRg.check(mgUnlimitedId)
+            0 -> maxGaussRg.check(mgUnlimitedId)
+            else -> maxGaussRg.check(mg500kId)
         }
         maxGaussRg.setOnCheckedChangeListener { _, checkedId ->
             val v = when (checkedId) {
@@ -605,48 +359,168 @@ class SettingsActivity : AppCompatActivity() {
         maxGaussLayout.addView(maxGaussRg)
         developerSection.addView(maxGaussLayout)
 
-        // Implementation: Kotlin vs C++ full pipeline
-        val useCppFullPipeline = prefs.getBoolean("executorch_int8_use_cpp_full_pipeline", false)
         val implLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
-        val implTitle = TextView(this).apply { text = getString(R.string.settings_cpp_executorch_int8); textSize = 14f; setTextColor(Color.parseColor("#222222")) }
-        val implDesc = TextView(this).apply {
-            text = getString(R.string.settings_cpp_executorch_int8_description)
+        // Use 1280×1280 as intermediate then upscale to 1536 (may help Vulkan / reduce memory)
+        val use1280 = prefs.getBoolean("executorch_int8_use_1280", false)
+        val use1280Layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val use1280Label = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        val use1280Title = TextView(this).apply { text = "Use 1280×1280"; textSize = 14f; setTextColor(Color.parseColor("#222222")) }
+        val use1280Desc = TextView(this).apply { text = "Process at 1280 then upscale to 1536 (may help Vulkan on some devices)"; textSize = 12f; setTextColor(Color.parseColor("#666666")) }
+        use1280Label.addView(use1280Title)
+        use1280Label.addView(use1280Desc)
+        val use1280Switch = createStyledSwitch(use1280) { isChecked ->
+            prefs.edit().putBoolean("executorch_int8_use_1280", isChecked).apply()
+        }
+        use1280Layout.addView(use1280Label)
+        use1280Layout.addView(use1280Switch)
+        implLayout.addView(use1280Layout)
+
+        // Vulkan 1536x1536 support test (logs to logcat)
+        val vulkanTestLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val vulkanTestLabel = TextView(this).apply {
+            text = "Run Vulkan 1536 test"
+            textSize = 14f
+            setTextColor(Color.parseColor("#222222"))
+            setPadding(0, 0, 0, 0)
+        }
+        val vulkanTestBtn = TextView(this).apply {
+            text = "Run"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(24, 0, 0, 0)
+            setOnClickListener {
+                com.furnit.android.utils.Vulkan1536Test.runAndLog()
+                android.widget.Toast.makeText(this@SettingsActivity, "Check logcat tag Vulkan1536Test", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+        vulkanTestLayout.addView(vulkanTestLabel)
+        vulkanTestLayout.addView(vulkanTestBtn)
+        implLayout.addView(vulkanTestLayout)
+
+        // Vulkan & ExecuTorch diagnostics: device, extensions, sync (synchronization2), shader note
+        val vulkanDiagLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val vulkanDiagLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        val vulkanDiagTitle = TextView(this).apply { text = "Vulkan & ExecuTorch diagnostics"; textSize = 14f; setTextColor(Color.parseColor("#222222")) }
+        val vulkanDiagDesc = TextView(this).apply { text = "Log device, extensions, sync (VK_KHR_synchronization2), shader note. See logcat tag VulkanDiag."; textSize = 12f; setTextColor(Color.parseColor("#666666")) }
+        vulkanDiagLabel.addView(vulkanDiagTitle)
+        vulkanDiagLabel.addView(vulkanDiagDesc)
+        val vulkanDiagBtn = TextView(this).apply {
+            text = "Run"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(24, 0, 0, 0)
+            setOnClickListener {
+                val adbCmd = com.furnit.android.utils.Vulkan1536Test.runDiagnosticsAndLog()
+                android.widget.Toast.makeText(this@SettingsActivity, "Logged. To see: $adbCmd", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+        vulkanDiagLayout.addView(vulkanDiagLabel)
+        vulkanDiagLayout.addView(vulkanDiagBtn)
+        implLayout.addView(vulkanDiagLayout)
+
+        // Part1 warmup (manual): run one forward first; status line updates when done (prefs + Part1Warmup logcat)
+        val part1WarmupVertical = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 0) }
+        val part1WarmupRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val part1WarmupLabelCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        part1WarmupLabelCol.addView(TextView(this).apply {
+            text = "Part1 warmup"
+            textSize = 14f
+            setTextColor(Color.parseColor("#222222"))
+        })
+        part1WarmupLabelCol.addView(TextView(this).apply {
+            text = "Load Part1 once + 2× forward (Vulkan cache). Keep app open (same PID). Then Run reuses Module."
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        })
+        val part1WarmupBtn = TextView(this).apply {
+            text = "Warmup"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(24, 0, 0, 0)
+            setOnClickListener {
+                part1WarmupStatusView.text = "Warmup status: starting…"
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val result = Part1OnlyTest.runWarmupFromSettings(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        part1WarmupStatusView.text = Part1OnlyTest.getWarmupStatusSummary(this@SettingsActivity)
+                        Toast.makeText(this@SettingsActivity, result.userMessage, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+        part1WarmupRow.addView(part1WarmupLabelCol)
+        part1WarmupRow.addView(part1WarmupBtn)
+        part1WarmupVertical.addView(part1WarmupRow)
+        part1WarmupStatusView = TextView(this).apply {
+            text = Part1OnlyTest.getWarmupStatusSummary(this@SettingsActivity)
+            textSize = 12f
+            setTextColor(Color.parseColor("#333333"))
+            setPadding(0, 8, 0, 0)
+        }
+        part1WarmupVertical.addView(part1WarmupStatusView)
+        part1WarmupVertical.addView(TextView(this).apply {
+            text = "Release Part1 cache"
+            textSize = 12f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 4, 0, 0)
+            setOnClickListener {
+                Part1OnlyTest.releaseCachedPart1Module()
+                part1WarmupStatusView.text = Part1OnlyTest.getWarmupStatusSummary(this@SettingsActivity)
+                Toast.makeText(this@SettingsActivity, "Part1 Module released from memory", Toast.LENGTH_SHORT).show()
+            }
+        })
+        implLayout.addView(part1WarmupVertical)
+
+        // Part1 only test: load part1_test_patch_f32.bin, run sharp_split_part1.pte, log outputs (tag Part1Test)
+        val part1OnlyLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val part1OnlyLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        val part1OnlyTitle = TextView(this).apply { text = "Part1 only test"; textSize = 14f; setTextColor(Color.parseColor("#222222")) }
+        val part1OnlyDesc = TextView(this).apply {
+            text = "Run: one forward + golden stats. Benchmark 3×: same Module, same patch, logs P1_BENCH durations (Vulkan perf). " +
+                "Portable .pte = fast CPU baseline. adb: adb logcat -d | grep P1_BENCH"
             textSize = 12f
             setTextColor(Color.parseColor("#666666"))
         }
-        implLayout.addView(implTitle)
-        implLayout.addView(implDesc)
-
-        val implRg = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL; setPadding(0, 8, 0, 0) }
-        val implKotlinId = View.generateViewId()
-        val implCppId = View.generateViewId()
-        val implKotlinRb = RadioButton(this).apply { id = implKotlinId; text = "Kotlin"; setTextColor(Color.parseColor("#333333")) }
-        val implCppRb = RadioButton(this).apply { id = implCppId; text = "C++"; setTextColor(Color.parseColor("#333333")) }
-        implRg.addView(implKotlinRb)
-        implRg.addView(implCppRb)
-
-        if (useCppFullPipeline) implRg.check(implCppId) else implRg.check(implKotlinId)
-        implRg.setOnCheckedChangeListener { _, checkedId ->
-            val useCpp = (checkedId == implCppId)
-            prefs.edit().putBoolean("executorch_int8_use_cpp_full_pipeline", useCpp).apply()
+        part1OnlyLabel.addView(part1OnlyTitle)
+        part1OnlyLabel.addView(part1OnlyDesc)
+        val part1OnlyButtons = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 0, 0, 0)
         }
+        part1OnlyButtons.addView(TextView(this).apply {
+            text = "Run"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 0, 0, 8)
+            setOnClickListener {
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val msg = Part1OnlyTest.run(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        })
+        part1OnlyButtons.addView(TextView(this).apply {
+            text = "Benchmark 3×"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setOnClickListener {
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val msg = Part1OnlyTest.runTripleForwardBenchmark(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        })
+        part1OnlyLayout.addView(part1OnlyLabel)
+        part1OnlyLayout.addView(part1OnlyButtons)
+        implLayout.addView(part1OnlyLayout)
 
-        implLayout.addView(implRg)
-
-        // Part1/Part2 batch=4 (C++ only): disable if B4 causes crash
-        val useB4 = prefs.getBoolean("executorch_int8_use_b4", true)
-        val b4Layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val b4Label = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        val b4Title = TextView(this).apply { text = getString(R.string.settings_executorch_int8_use_b4); textSize = 14f; setTextColor(Color.parseColor("#222222")) }
-        val b4Desc = TextView(this).apply { text = getString(R.string.settings_executorch_int8_use_b4_description); textSize = 12f; setTextColor(Color.parseColor("#666666")) }
-        b4Label.addView(b4Title)
-        b4Label.addView(b4Desc)
-        val b4Switch = createStyledSwitch(useB4) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_use_b4", isChecked).apply()
-        }
-        b4Layout.addView(b4Label)
-        b4Layout.addView(b4Switch)
-        implLayout.addView(b4Layout)
         developerSection.addView(implLayout)
 
         // Developer section footer
@@ -826,6 +700,13 @@ class SettingsActivity : AppCompatActivity() {
                 )
             )
             setOnCheckedChangeListener { _, isChecked -> onChanged(isChecked) }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::part1WarmupStatusView.isInitialized) {
+            part1WarmupStatusView.text = Part1OnlyTest.getWarmupStatusSummary(this)
         }
     }
 }

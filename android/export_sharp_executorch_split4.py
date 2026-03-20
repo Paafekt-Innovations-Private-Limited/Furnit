@@ -2,11 +2,8 @@
 """
 Export SHARP as 4 split ExecuTorch .pte parts (mirroring LiteRT split).
 
-Backend: XNNPACK ONLY (CPU optimized, stable on Android). No Vulkan or hybrid.
-
-Ultralytics recommendations for Part4b latency: (1) Use torch.nn.functional.scaled_dot_product_attention
-(SDPA) in the model so ExecuTorch can lower to XNNPACK/Core ML kernels; (2) AOT memory planning (we use
-MemoryPlanningPass below); (3) XNNPACK quantizer for INT8 (see export_sharp_executorch_int8_split4.py).
+Backend: Vulkan (default) or portable only. XNNPACK is disabled — it causes SIGSEGV
+(XNNWeightsCache::look_up_or_insert) on Android for large parts.
 
 Same 4-part architecture as export_sharp_litert_split.py:
   Part 1: Single-Patch Encoder A (blocks 0-11)  ~582MB FP32
@@ -21,16 +18,23 @@ Android pipeline (same as LiteRT):
   4. Run Part 3 on full image -> image_tokens  (1 run)
   5. Run Part 4 -> packed [1, N, 14] Gaussians  (1 run)
 
-Part 4 is exported with greedy memory planning (same as single memory_optimized .pte) to reduce
-peak RAM during the decoder pass. Runtime uses mmap load + zero-copy output for Part 4.
+Part 4 is exported with greedy memory planning (portable) or Vulkan AOT (vulkan).
+Runtime uses mmap load + zero-copy output for Part 4.
 
-CORRECT EXPORT COMMANDS (run from android/ directory):
+Export (Vulkan, recommended):
   cd android
-  python export_sharp_executorch_split4.py --weights /path/to/sharp.pt --backend xnnpack --output-dir executorch_models
-  ./push_sharp_executorch_models.sh executorch_models
+  ./export_sharp_vulkan_only.sh
+  ./push_sharp_vulkan_only.sh
 
-Verify export: ls -lh executorch_models/
-  Expected: sharp_split_part1.pte ~500-600MB, part2 ~500-600MB, part3 ~500-600MB, part4 ~700-800MB
+Or manually:
+  python export_sharp_executorch_split4.py --backend vulkan --chunked-part4 --dtype fp16 --output-dir sharp_vulkan_only
+
+Vulkan optional fixes (opt-in; default export uses strict=False, no IR check, Part4 FP32 so export succeeds):
+  --strict-export       strict=True in torch.export (can surface graph/side-effect issues; may fail).
+  --check-ir-validity   Enable IR validity in EdgeCompileConfig.
+  --unify-fp16          Export Part4 and chunked Part4 as FP16 with Vulkan FP16 (dtype mismatch risk in Part4).
+  --vulkan-aar-compat   Export Vulkan with FP32 + force_fp16=False so .pte only uses shaders in executorch-android-vulkan 1.1.0 AAR (avoids missing view_convert_buffer_float_half). Use same ExecuTorch version as AAR when exporting.
+Each Vulkan export prints [Partition] Vulkan string count for diagnostics.
 """
 
 import argparse
@@ -78,7 +82,7 @@ def fuse_conv_bn(model):
 
 def parse_args():
     pa = argparse.ArgumentParser(
-        description="Export SHARP 4-part split to ExecuTorch .pte (XNNPACK backend recommended)."
+        description="Export SHARP 4-part split to ExecuTorch .pte (Vulkan or portable; XNNPACK removed)."
     )
     pa.add_argument("--sharp-src",
         default=str(Path(__file__).resolve().parent / "third_party/ml-sharp/src"))
@@ -87,20 +91,39 @@ def parse_args():
     pa.add_argument("--output-dir",
         default=str(Path(__file__).resolve().parent / "executorch_models"),
         help="Output directory (default: executorch_models)")
-    pa.add_argument("--backend", choices=("xnnpack", "vulkan", "portable"), default="xnnpack",
-        help="Backend: xnnpack (CPU optimized, 1-2min), vulkan (GPU, 20-60s), portable (CPU fallback, 10min+). Default: xnnpack")
-    pa.add_argument("--xnnpack", action="store_true",
-        help="Use XNNPACK backend (same as --backend xnnpack)")
+    pa.add_argument("--backend", choices=("vulkan", "portable"), default="vulkan",
+        help="Backend: vulkan (GPU, recommended; avoids XNNPACK SIGSEGV), portable (CPU fallback). Default: vulkan")
     pa.add_argument("--vulkan", action="store_true",
-        help="Use Vulkan GPU backend (fastest on Mali/Adreno). Same as --backend vulkan")
+        help="Use Vulkan GPU backend (same as --backend vulkan)")
     pa.add_argument("--no-xnnpack", action="store_true",
-        help="Disable XNNPACK (same as --backend portable)")
+        help="Use portable CPU backend (same as --backend portable). Kept for backward compat.")
     pa.add_argument("--chunked-part4", action="store_true",
         help="Also export chunked Part 4 (4a_chunk_512, 4a_chunk_65, 4b) for lower peak RAM on decoder.")
+    pa.add_argument("--chunked-part4-only", action="store_true",
+        help="Export ONLY chunked Part4 (sharp_split_part4a_chunk_512/65 + sharp_split_part4b.pte). "
+             "Skips Part1–3 and monolithic part4. Use with --backend portable to generate missing Part4b for etCpu. "
+             "Implies --chunked-part4. Still loads SHARP weights and runs split validation (needs RAM + time for Part4b export).")
     pa.add_argument("--dtype", choices=("fp32", "fp16"), default="fp32",
         help="Export dtype: fp32 (default) or fp16. FP16 Vulkan avoids INT8 staging crashes on many devices.")
     pa.add_argument("--patch-batch-size", type=int, choices=(1, 2, 4), default=1,
         help="Export Part1/Part2 with this patch batch size (2 or 4). B2 Vulkan FP16 = 95%% success; B4 can crash.")
+    pa.add_argument("--part12-only-portable", action="store_true",
+        help="Export only Part1 and Part2 as portable (CPU): sharp_split_part1.pte, sharp_split_part2.pte.")
+    pa.add_argument("--part1-only", action="store_true",
+        help="Export only Part 1; also save one fixed test patch and Python golden outputs for app comparison.")
+    pa.add_argument("--strict-export", action="store_true",
+        help="Use strict=True in torch.export (may fail on side effects or dynamo; use to debug).")
+    pa.add_argument("--check-ir-validity", action="store_true",
+        help="Enable IR validity checks in EdgeCompileConfig (use to debug Vulkan).")
+    pa.add_argument("--unify-fp16", action="store_true",
+        help="Export Part4 and chunked Part4 as FP16 when Vulkan FP16 (risk: dtype mismatch in Part4).")
+    pa.add_argument("--verify-delegate", action="store_true",
+        help="After export, run delegate inspector on Part1 .pte to verify Vulkan/portable backend.")
+    pa.add_argument("--image-size", type=int, choices=(1536, 1280), default=1536,
+        help="Full image size for Part3/Part4 export (1536 default; 1280 for reduced memory). Part1/Part2 use 384 patches.")
+    pa.add_argument("--vulkan-aar-compat", action="store_true",
+        help="Vulkan export compatible with executorch-android-vulkan 1.1.0 AAR: FP32 + force_fp16=False to avoid "
+             "missing view_convert_buffer_float_half shader. Use same ExecuTorch version as AAR when exporting.")
     return pa.parse_args()
 
 
@@ -248,7 +271,8 @@ class ImageEncoderPartBFromTokens(nn.Module):
         h, w = self.grid_size
         if self.num_prefix_tokens:
             embeddings = embeddings[:, self.num_prefix_tokens:, :]
-        return embeddings.reshape(batch, h, w, channel).permute(0, 3, 1, 2)
+        # .contiguous() so ExecuTorch cat(x2_up, x_lowres_up) sees same dim order (avoids "2 input tensors have different dim orders").
+        return embeddings.reshape(batch, h, w, channel).permute(0, 3, 1, 2).contiguous()
 
     def forward(self, tokens_after_blocks, image, latent0, latent1, x0_feat, x1_feat, x2_feat):
         x_lowres = self._reshape_feature(tokens_after_blocks)
@@ -324,7 +348,8 @@ class ImageEncoderPartBFull(nn.Module):
         h, w = self.grid_size
         if self.num_prefix_tokens:
             embeddings = embeddings[:, self.num_prefix_tokens:, :]
-        return embeddings.reshape(batch, h, w, channel).permute(0, 3, 1, 2)
+        # .contiguous() so ExecuTorch cat(x2_up, x_lowres_up) sees same dim order (avoids "2 input tensors have different dim orders").
+        return embeddings.reshape(batch, h, w, channel).permute(0, 3, 1, 2).contiguous()
 
     def forward(self, image, image_tokens, latent0, latent1, x0_feat, x1_feat, x2_feat):
         x = image_tokens
@@ -452,8 +477,9 @@ def get_part4b_tile_sample_inputs(batch_size=1):
     return (img_tile, lat_tile, lat_tile.clone(), lat_tile.clone(), x1_tile, x2_tile, x2_tile.clone())
 
 
-def split_patches_list(image, overlap_ratio, patch_size):
-    patch_stride = int(patch_size * (1 - overlap_ratio))
+def split_patches_list(image, overlap_ratio, patch_size, patch_stride=None):
+    if patch_stride is None:
+        patch_stride = int(patch_size * (1 - overlap_ratio))
     image_size = image.shape[-1]
     steps = int(math.ceil((image_size - patch_size) / patch_stride)) + 1
     patches = []
@@ -546,17 +572,24 @@ def _apply_greedy_memory_planning(edge):
     return edge.to_executorch()
 
 
-def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend="xnnpack", use_greedy_memory_planning=False):
+def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend="vulkan", use_greedy_memory_planning=False,
+              strict_export=False, check_ir_validity=False, vulkan_compile_options=None):
     """Export a single part to .pte format.
-    backend: "xnnpack" (CPU optimized, 1-2min), "vulkan" (GPU, 20-60s), "portable" (CPU fallback, 10min+)
+    backend: "vulkan" (GPU, 20-60s) or "portable" (CPU fallback, 10min+)
     use_greedy_memory_planning: use ExecuTorch greedy memory planner (reuse buffers, lower peak RAM). Recommended for Part 4.
+    strict_export: use strict=True in torch.export (catches graph issues).
+    check_ir_validity: enable IR validity checks in EdgeCompileConfig (recommended when debugging Vulkan).
+    vulkan_compile_options: dict for VulkanPartitioner (e.g. {"force_fp16": False}) for AAR shader compatibility.
     """
     from executorch.exir import EdgeCompileConfig
 
-    backend_label = {"xnnpack": "+ XNNPACK", "vulkan": "+ Vulkan GPU", "portable": "(portable only)"}[backend]
+    backend_label = {"vulkan": "+ Vulkan GPU", "portable": "(portable only)"}.get(backend, "+ Vulkan GPU")
     planning_label = " + greedy memory planning" if use_greedy_memory_planning else ""
+    strict_label = " [strict export]" if strict_export else ""
+    ir_label = " [IR validity ON]" if check_ir_validity else ""
+    aar_label = " [Vulkan AAR compat]" if (backend == "vulkan" and vulkan_compile_options) else ""
     print(f"\n{'='*60}")
-    print(f"Exporting {name} {backend_label}{planning_label}")
+    print(f"Exporting {name} {backend_label}{planning_label}{strict_label}{ir_label}{aar_label}")
     print(f"{'='*60}")
 
     if use_fp16:
@@ -566,26 +599,21 @@ def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend
         )
 
     start = time.time()
-    exported = torch.export.export(wrapper, sample_inputs, strict=False)
-    if backend == "xnnpack":
-        from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
-        from executorch.exir import to_edge_transform_and_lower
-        edge = to_edge_transform_and_lower(
-            exported,
-            compile_config=EdgeCompileConfig(_check_ir_validity=False),
-            partitioner=[XnnpackPartitioner()],
-        )
-    elif backend == "vulkan":
+    exported = torch.export.export(wrapper, sample_inputs, strict=strict_export)
+    # XNNPACK removed: XNNWeightsCache::look_up_or_insert causes SIGSEGV on Android for large parts.
+    compile_config = EdgeCompileConfig(_check_ir_validity=check_ir_validity)
+    if backend == "vulkan":
         from executorch.backends.vulkan.partitioner.vulkan_partitioner import VulkanPartitioner
         from executorch.exir import to_edge_transform_and_lower
+        opts = vulkan_compile_options if vulkan_compile_options else {}
         edge = to_edge_transform_and_lower(
             exported,
-            compile_config=EdgeCompileConfig(_check_ir_validity=False),
-            partitioner=[VulkanPartitioner()],
+            compile_config=compile_config,
+            partitioner=[VulkanPartitioner(opts)],
         )
     else:
         from executorch.exir import to_edge
-        edge = to_edge(exported, compile_config=EdgeCompileConfig(_check_ir_validity=False))
+        edge = to_edge(exported, compile_config=compile_config)
 
     # Greedy memory planning: use alloc_graph_input=False, alloc_graph_output=False so I/O
     # buffers are caller-managed and don't inflate the plan (fixes "Misallocate graph input: False v.s. True").
@@ -631,6 +659,13 @@ def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend
         et_program = edge.to_executorch()
     export_time = time.time() - start
 
+    # Partition diagnostics (Vulkan): help spot fragmented/many subgraphs
+    if backend == "vulkan" and hasattr(et_program, "buffer"):
+        buf = et_program.buffer
+        n_vulkan = buf.count(b"vulkan") + buf.count(b"Vulkan")
+        n_backend = buf.count(b"VulkanBackend")
+        print(f"  [Partition] Vulkan strings in .pte: {n_vulkan}, VulkanBackend id: {n_backend}")
+
     with open(output_path, "wb") as f:
         f.write(et_program.buffer)
 
@@ -645,28 +680,46 @@ def main():
     overall_start = time.time()
     args = parse_args()
 
-    # Backend: --vulkan > --xnnpack > --no-xnnpack > --backend
+    # Backend: vulkan (default) or portable. XNNPACK removed — causes SIGSEGV (XNNWeightsCache) on Android.
     if args.vulkan:
         backend = "vulkan"
     elif args.no_xnnpack:
         backend = "portable"
-    elif args.xnnpack:
-        backend = "xnnpack"
     else:
         backend = args.backend
+    if backend not in ("vulkan", "portable"):
+        backend = "vulkan"
+        print("WARNING: XNNPACK disabled (SIGSEGV on Android). Using Vulkan.")
 
-    use_fp16_export = (args.dtype == "fp16")
+    # --vulkan-aar-compat: FP32 + force_fp16=False so .pte only uses shaders in executorch-android-vulkan 1.1.0 AAR (avoids view_convert_buffer_float_half).
+    vulkan_aar_compat = getattr(args, "vulkan_aar_compat", False)
+    use_fp16_export = (args.dtype == "fp16") and not vulkan_aar_compat
     patch_batch = getattr(args, "patch_batch_size", 1)
     vulkan_fp16 = (backend == "vulkan" and use_fp16_export)
-    suffix = "_vulkan_fp16" if vulkan_fp16 else ""
+    # Keep _vulkan_fp16 suffix in filenames so the app finds them (Part1/2/3/4 vulkan); content may be FP32 when aar-compat.
+    suffix = "_vulkan_fp16" if (backend == "vulkan") else ""
+    vulkan_opts = {"force_fp16": False, "skip_memory_planning": False} if (backend == "vulkan" and vulkan_aar_compat) else None
+    # Vulkan optional fixes: opt-in (defaults keep export working: strict=False, no IR check, Part4 FP32)
+    strict_export = getattr(args, "strict_export", False)
+    check_ir = getattr(args, "check_ir_validity", False)
+    unify_fp16 = getattr(args, "unify_fp16", False)
+    part4_use_fp16 = use_fp16_export if (vulkan_fp16 and unify_fp16) else False
 
-    backend_labels = {"xnnpack": "XNNPACK (CPU, 1-2min)", "vulkan": "Vulkan GPU (20-60s)", "portable": "Portable (CPU fallback, 10min+)"}
+    backend_labels = {"vulkan": "Vulkan GPU (20-60s)", "portable": "Portable (CPU fallback, 10min+)"}
     print("=" * 60)
     print("Export 4-Part Split SHARP to ExecuTorch .pte (" + (args.dtype or "fp32").upper() + ")")
     print("Same architecture as LiteRT split - Android runs same pipeline")
     print("Backend: " + backend_labels.get(backend, backend))
     if vulkan_fp16:
         print("Vulkan FP16: avoids INT8 staging crashes; patch_batch=%d" % patch_batch)
+    if vulkan_aar_compat:
+        print("Vulkan AAR compat: FP32 + force_fp16=False (shaders in executorch-android-vulkan 1.1.0 AAR only)")
+    if strict_export or check_ir or unify_fp16:
+        print("Options: strict_export=%s, check_ir_validity=%s, unify_fp16=%s" % (strict_export, check_ir, unify_fp16))
+    image_size = getattr(args, "image_size", 1536)
+    if image_size != IMAGE_SIZE:
+        print("WARNING: --image-size 1280 requested but Part3/Part4 decoder is fixed to 1536; exporting at 1536.")
+        image_size = IMAGE_SIZE
     print("=" * 60)
 
     sharp_src = Path(args.sharp_src)
@@ -706,7 +759,7 @@ def main():
 
     # Validate split pipeline matches full model
     print("\nValidating split pipeline...")
-    sample_image = torch.rand(1, 3, IMAGE_SIZE, IMAGE_SIZE)
+    sample_image = torch.rand(1, 3, image_size, image_size)
 
     with torch.no_grad():
         x0_raw = sample_image
@@ -747,67 +800,167 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     sizes = {}
 
-    sample_patch = torch.rand(1, 3, PATCH_SIZE, PATCH_SIZE)
-    part1_name = "sharp_split_part1" + suffix + ".pte"
-    sizes["part1"] = export_pte(
-        "Part 1: Single-Patch Encoder A (blocks 0-11)",
-        part1, (sample_patch,),
-        output_dir / part1_name,
-        use_fp16=use_fp16_export,
-        backend=backend,
-        use_greedy_memory_planning=(backend != "vulkan"),
-    )
+    chunked_part4_only = getattr(args, "chunked_part4_only", False)
+    if chunked_part4_only:
+        args.chunked_part4 = True
+        print("\n--chunked-part4-only: will export only Part4a (512/65) + Part4b single; skipping Part1–3 monolithic exports.\n")
 
-    sample_tokens = torch.rand(1, 577, 1024)
-    part2_name = "sharp_split_part2" + suffix + ".pte"
-    sizes["part2"] = export_pte(
-        "Part 2: Single-Patch Encoder B (blocks 12-23)",
-        part2, (sample_tokens,),
-        output_dir / part2_name,
-        use_fp16=use_fp16_export,
-        backend=backend,
-        use_greedy_memory_planning=(backend != "vulkan"),
-    )
-
-    part3_name = "sharp_split_part3" + suffix + ".pte"
-    sizes["part3"] = export_pte(
-        "Part 3: Image Encoder A (blocks 0-11)",
-        part3, (sample_image,),
-        output_dir / part3_name,
-        use_fp16=use_fp16_export,
-        backend=backend,
-        use_greedy_memory_planning=(backend != "vulkan"),
-    )
-
-    sizes["part4"] = export_pte(
-        "Part 4: Image Encoder B + Full Decoder + Gaussians",
-        part4, (sample_image, image_tokens, latent0, latent1, x0_feat, x1_feat, x2_feat),
-        output_dir / "sharp_split_part4.pte",
-        use_fp16=False,
-        backend=backend,
-        use_greedy_memory_planning=(backend != "vulkan"),
-    )
-
-    # Vulkan FP16 batch-2 Part1/Part2: B2 avoids INT8 staging crash, 95% success rate.
-    if vulkan_fp16 and patch_batch >= 2:
-        batch_sz = min(patch_batch, 4)
-        sample_patch_b = torch.rand(batch_sz, 3, PATCH_SIZE, PATCH_SIZE)
-        sample_tokens_b = torch.rand(batch_sz, 577, 1024)
-        sizes["part1_b%d" % batch_sz] = export_pte(
-            "Part 1 batch=%d (patch encoder A, Vulkan FP16)" % batch_sz,
-            part1, (sample_patch_b,),
-            output_dir / ("sharp_split_part1_b%d_vulkan_fp16.pte" % batch_sz),
-            use_fp16=True,
-            backend=backend,
+    part12_only_portable = getattr(args, "part12_only_portable", False)
+    if part12_only_portable:
+        strict_export = False
+        check_ir = False
+        print("Exporting Part1+Part2 only as portable (CPU) FP32: sharp_split_part1.pte, sharp_split_part2.pte (app feeds Float)")
+        sample_patch = torch.rand(1, 3, PATCH_SIZE, PATCH_SIZE)
+        sample_tokens = torch.rand(1, 577, 1024)
+        sizes["part1"] = export_pte(
+            "Part 1 (portable CPU)",
+            part1, (sample_patch,),
+            output_dir / "sharp_split_part1.pte",
+            use_fp16=False,
+            backend="portable",
+            use_greedy_memory_planning=True,
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
         )
-        sizes["part2_b%d" % batch_sz] = export_pte(
-            "Part 2 batch=%d (patch encoder B, Vulkan FP16)" % batch_sz,
-            part2, (sample_tokens_b,),
-            output_dir / ("sharp_split_part2_b%d_vulkan_fp16.pte" % batch_sz),
-            use_fp16=True,
-            backend=backend,
+        sizes["part2"] = export_pte(
+            "Part 2 (portable CPU)",
+            part2, (sample_tokens,),
+            output_dir / "sharp_split_part2.pte",
+            use_fp16=False,
+            backend="portable",
+            use_greedy_memory_planning=True,
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
         )
-        print("  Part1/Part2 batch=%d Vulkan FP16 exported (use in C++ when useVulkan)" % batch_sz)
+        print("Done. Push sharp_split_part1.pte and sharp_split_part2.pte to device; app uses them for Part1/Part2.")
+        return 0
+
+    # Part-1-only export: one .pte + fixed test patch + golden outputs (for app-side compare).
+    if getattr(args, "part1_only", False):
+        torch.manual_seed(42)
+        sample_patch = torch.rand(1, 3, PATCH_SIZE, PATCH_SIZE, dtype=torch.float32)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # Save test input for app
+        torch.save(sample_patch, output_dir / "part1_test_patch.pt")
+        sample_patch.numpy().tofile(output_dir / "part1_test_patch_f32.bin")
+        if use_fp16_export:
+            sample_patch.half().numpy().tofile(output_dir / "part1_test_patch_f16.bin")
+        # Output filename
+        if backend == "vulkan":
+            out_name = "sharp_split_part1_vulkan_fp16.pte" if use_fp16_export else "sharp_split_part1_vulkan_fp32.pte"
+        else:
+            out_name = "sharp_split_part1.pte"
+        print("Exporting Part 1 only")
+        export_pte(
+            "Part 1 only",
+            part1, (sample_patch,),
+            output_dir / out_name,
+            use_fp16=use_fp16_export,
+            backend=backend,
+            use_greedy_memory_planning=(backend != "vulkan"),
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
+            vulkan_compile_options=vulkan_opts,
+        )
+        # Golden outputs: run eager with same dtype as export, save as f32 for app compare
+        with torch.no_grad():
+            patch_eval = sample_patch.half() if use_fp16_export else sample_patch
+            model_eval = part1.half() if use_fp16_export else part1
+            tokens, block5 = model_eval(patch_eval)
+        tokens_f32 = tokens.cpu().float()
+        block5_f32 = block5.cpu().float()
+        tokens_f32.numpy().tofile(output_dir / "part1_tokens_golden_f32.bin")
+        block5_f32.numpy().tofile(output_dir / "part1_block5_golden_f32.bin")
+        print("Part 1 golden outputs (eager, same input as export):")
+        print("  tokens ", tokens_f32.shape, tokens_f32.dtype, "min={:.6f} max={:.6f} mean={:.6f}".format(
+            tokens_f32.min().item(), tokens_f32.max().item(), tokens_f32.mean().item()))
+        print("  tokens first 8:", tokens_f32.flatten()[:8].tolist())
+        print("  block5 ", block5_f32.shape, block5_f32.dtype, "min={:.6f} max={:.6f} mean={:.6f}".format(
+            block5_f32.min().item(), block5_f32.max().item(), block5_f32.mean().item()))
+        print("  block5 first 8:", block5_f32.flatten()[:8].tolist())
+        print(f"Done. Exported {out_name}; saved part1_test_patch*.pt/bin, part1_*_golden_f32.bin")
+        return 0
+
+    if not chunked_part4_only:
+        sample_patch = torch.rand(1, 3, PATCH_SIZE, PATCH_SIZE)
+        part1_name = "sharp_split_part1" + suffix + ".pte"
+        sizes["part1"] = export_pte(
+            "Part 1: Single-Patch Encoder A (blocks 0-11)",
+            part1, (sample_patch,),
+            output_dir / part1_name,
+            use_fp16=use_fp16_export,
+            backend=backend,
+            use_greedy_memory_planning=(backend != "vulkan"),
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
+            vulkan_compile_options=vulkan_opts,
+        )
+
+        sample_tokens = torch.rand(1, 577, 1024)
+        part2_name = "sharp_split_part2" + suffix + ".pte"
+        sizes["part2"] = export_pte(
+            "Part 2: Single-Patch Encoder B (blocks 12-23)",
+            part2, (sample_tokens,),
+            output_dir / part2_name,
+            use_fp16=use_fp16_export,
+            backend=backend,
+            use_greedy_memory_planning=(backend != "vulkan"),
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
+            vulkan_compile_options=vulkan_opts,
+        )
+
+        part3_name = "sharp_split_part3" + suffix + ".pte"
+        sizes["part3"] = export_pte(
+            "Part 3: Image Encoder A (blocks 0-11)",
+            part3, (sample_image,),
+            output_dir / part3_name,
+            use_fp16=use_fp16_export,
+            backend=backend,
+            use_greedy_memory_planning=(backend != "vulkan"),
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
+            vulkan_compile_options=vulkan_opts,
+        )
+
+        sizes["part4"] = export_pte(
+            "Part 4: Image Encoder B + Full Decoder + Gaussians",
+            part4, (sample_image, image_tokens, latent0, latent1, x0_feat, x1_feat, x2_feat),
+            output_dir / "sharp_split_part4.pte",
+            use_fp16=part4_use_fp16,
+            backend=backend,
+            use_greedy_memory_planning=(backend != "vulkan"),
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
+            vulkan_compile_options=vulkan_opts,
+        )
+
+        # Vulkan FP16 batch-2 Part1/Part2: B2 avoids INT8 staging crash, 95% success rate.
+        if vulkan_fp16 and patch_batch >= 2:
+            batch_sz = min(patch_batch, 4)
+            sample_patch_b = torch.rand(batch_sz, 3, PATCH_SIZE, PATCH_SIZE)
+            sample_tokens_b = torch.rand(batch_sz, 577, 1024)
+            sizes["part1_b%d" % batch_sz] = export_pte(
+                "Part 1 batch=%d (patch encoder A, Vulkan FP16)" % batch_sz,
+                part1, (sample_patch_b,),
+                output_dir / ("sharp_split_part1_b%d_vulkan_fp16.pte" % batch_sz),
+                use_fp16=True,
+                backend=backend,
+                strict_export=strict_export,
+                check_ir_validity=check_ir,
+                vulkan_compile_options=vulkan_opts,
+            )
+            sizes["part2_b%d" % batch_sz] = export_pte(
+                "Part 2 batch=%d (patch encoder B, Vulkan FP16)" % batch_sz,
+                part2, (sample_tokens_b,),
+                output_dir / ("sharp_split_part2_b%d_vulkan_fp16.pte" % batch_sz),
+                use_fp16=True,
+                backend=backend,
+                strict_export=strict_export,
+                check_ir_validity=check_ir,
+                vulkan_compile_options=vulkan_opts,
+            )
+            print("  Part1/Part2 batch=%d Vulkan FP16 exported (use in C++ when useVulkan)" % batch_sz)
 
     # Chunked Part 4: run ViT 12-23 on token slices (512 + 65), then single decoder pass. Reduces peak RAM.
     if getattr(args, "chunked_part4", False):
@@ -827,24 +980,33 @@ def main():
         sizes["part4a_chunk_512"] = export_pte(
             "Part 4a chunk (512 tokens): ViT blocks 12-23",
             part4a_512, (sample_tokens_512,),
-            output_dir / "sharp_split_part4a_chunk_512.pte",
-            use_fp16=False,
+            output_dir / ("sharp_split_part4a_chunk_512%s.pte" % ("_vulkan" if backend == "vulkan" else "")),
+            use_fp16=part4_use_fp16,
             backend=backend,
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
+            vulkan_compile_options=vulkan_opts,
         )
         sizes["part4a_chunk_65"] = export_pte(
             "Part 4a chunk (65 tokens): ViT blocks 12-23",
             part4a_65, (sample_tokens_65,),
-            output_dir / "sharp_split_part4a_chunk_65.pte",
-            use_fp16=False,
+            output_dir / ("sharp_split_part4a_chunk_65%s.pte" % ("_vulkan" if backend == "vulkan" else "")),
+            use_fp16=part4_use_fp16,
             backend=backend,
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
+            vulkan_compile_options=vulkan_opts,
         )
         sizes["part4b"] = export_pte(
             "Part 4b: From tokens (577) + decoder + Gaussians",
             part4b, (tokens_after_blocks, sample_image, latent0, latent1, x0_feat, x1_feat, x2_feat),
-            output_dir / "sharp_split_part4b.pte",
-            use_fp16=False,
+            output_dir / ("sharp_split_part4b%s.pte" % ("_vulkan" if backend == "vulkan" else "")),
+            use_fp16=part4_use_fp16,
             backend=backend,
             use_greedy_memory_planning=(backend != "vulkan"),
+            strict_export=strict_export,
+            check_ir_validity=check_ir,
+            vulkan_compile_options=vulkan_opts,
         )
         # Validate chunked pipeline runs and shape matches (numerical diff expected: chunked attention is per-slice)
         with torch.no_grad():
@@ -862,9 +1024,27 @@ def main():
         print(f"  {name}: {size:.0f} MB")
     print(f"  Total: {total_mb:.0f} MB")
     print(f"  Gaussians: {gaussianCount:,}")
-    print(f"\nPush to device:")
+    print(f"\nPush to device (match APK flavor):")
+    print("  etCpu:    adb shell mkdir -p /sdcard/Android/data/com.furnit.android/files/models_cpu")
+    print("  etVulkan: adb shell mkdir -p /sdcard/Android/data/com.furnit.android/files/models_vulkan")
+    sub = "models_vulkan" if backend == "vulkan" else "models_cpu"
     for pte in sorted(output_dir.glob("sharp_split_part*.pte")):
-        print(f"  adb push {pte} /sdcard/Android/data/com.furnit.android/files/models/")
+        print(f"  adb push {pte} /sdcard/Android/data/com.furnit.android/files/{sub}/")
+
+    if getattr(args, "verify_delegate", False):
+        part1_candidates = sorted(output_dir.glob("sharp_split_part1*.pte"))
+        part1_pte = part1_candidates[0] if part1_candidates else None
+        if part1_pte and part1_pte.exists():
+            print(f"\nVerify delegate: {part1_pte.name}")
+            script_dir = Path(__file__).resolve().parent
+            inspect_script = script_dir / "inspect_pte_delegates.py"
+            if inspect_script.exists():
+                import subprocess
+                subprocess.run([sys.executable, str(inspect_script), str(part1_pte)], cwd=script_dir)
+            else:
+                print(f"  Run: python inspect_pte_delegates.py {part1_pte}")
+        else:
+            print("\nVerify delegate: no Part1 .pte found to inspect.")
 
 
 if __name__ == "__main__":

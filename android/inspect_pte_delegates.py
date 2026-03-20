@@ -4,8 +4,9 @@ Inspect a .pte file to see if XNNPACK/Vulkan delegates are used.
 
 Usage:
   python inspect_pte_delegates.py executorch_models/sharp_split_part1.pte
+  python inspect_pte_delegates.py sharp_vulkan_only/sharp_split_part1_vulkan_fp16.pte
 
-This helps answer: "Is XNNPACK really being used?"
+Verifies that Part1/Part2 were exported with the Vulkan delegate (for BackendFailed/error 32 debugging).
 """
 
 import sys
@@ -27,13 +28,16 @@ def inspect_pte(path: Path) -> None:
     xnnpack_hits = data.count(b"xnnpack") + data.count(b"XNNPACK")
     vulkan_hits = data.count(b"vulkan") + data.count(b"Vulkan")
     portable_hits = data.count(b"portable") + data.count(b"Portable")
-    # Backend IDs in ExecuTorch flatbuffer
+    # Backend IDs in ExecuTorch flatbuffer / serialized program
     backend_ids = [
         (b"xnnpack_backend", "XNNPACK backend"),
         (b"XnnpackBackend", "XNNPACK backend (camelCase)"),
         (b"vulkan_backend", "Vulkan backend"),
         (b"VulkanBackend", "Vulkan backend"),
     ]
+    vulkan_found = any(needle in data for needle in (b"vulkan_backend", b"VulkanBackend", b"Vulkan"))
+    xnnpack_found = any(needle in data for needle in (b"xnnpack_backend", b"XnnpackBackend"))
+
     print("\nBinary string search:")
     for needle, label in backend_ids:
         if needle in data:
@@ -43,7 +47,19 @@ def inspect_pte(path: Path) -> None:
     if vulkan_hits > 0:
         print(f"  'vulkan'/'Vulkan' occurrences: {vulkan_hits}")
     if xnnpack_hits == 0 and vulkan_hits == 0:
-        print("  No obvious XNNPACK/Vulkan strings in binary (may be normal)")
+        print("  No obvious XNNPACK/Vulkan strings in binary (may be portable-only)")
+
+    # Delegate verification summary (for Part1 Vulkan / BackendFailed debugging)
+    print("\n" + "=" * 60)
+    print("DELEGATE VERIFICATION:")
+    if vulkan_found:
+        print("  VERIFIED: Vulkan delegate is present in this .pte (exported with --backend vulkan).")
+        print("  If runtime still fails with forward_error=32 (BackendFailed), the issue is device/driver.")
+    elif xnnpack_found:
+        print("  VERIFIED: XNNPACK delegate present. (Not Vulkan.)")
+    else:
+        print("  NOT VERIFIED as Vulkan: no Vulkan backend strings found (likely portable/CPU-only).")
+        print("  For Part1 Vulkan FP16, re-export with: --backend vulkan --dtype fp16")
 
     # Method 2: Load with ExecuTorch runtime and try to dump program
     try:
@@ -82,12 +98,9 @@ def inspect_pte(path: Path) -> None:
     # Method 3: Export script reminder
     print("\n" + "=" * 60)
     print("Reminder: Backend is chosen at EXPORT time:")
-    print("  python export_sharp_executorch_split4.py --backend xnnpack   # XNNPACK")
-    print("  python export_sharp_executorch_split4.py --backend vulkan    # Vulkan GPU")
-    print("  python export_sharp_executorch_split4.py --backend portable  # CPU fallback")
-    print("\nIf you exported with --backend xnnpack, the .pte contains XNNPACK")
-    print("partitioned subgraphs. ViT attention ops may still run on portable")
-    print("(CPU), so ~2s/patch can mean partial XNNPACK usage.")
+    print("  python export_sharp_executorch_split4.py --backend vulkan --dtype fp16   # Part1 Vulkan FP16")
+    print("  python export_sharp_executorch_split4.py --backend portable              # CPU fallback")
+    print("  (XNNPACK removed for Android; use vulkan or portable.)")
 
 
 def main():

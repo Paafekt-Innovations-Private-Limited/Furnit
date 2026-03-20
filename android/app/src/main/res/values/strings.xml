@@ -107,8 +107,14 @@
     <string name="settings_height">Height: %.1fm</string>
     <string name="settings_developer">Developer</string>
     <string name="settings_developer_footer">Enable debug mode to see detailed detection information and performance metrics. Adjust thresholds to control detection sensitivity and filtering behavior.</string>
-    <string name="settings_stable_part4b">Stable mode (single Part4b only)</string>
-    <string name="settings_stable_part4b_description">Use single decoder to avoid OOM or black screen on some devices. Slower but more reliable.</string>
+    <string name="settings_stable_part4b">Stable mode (prefer single Part4b)</string>
+    <string name="settings_stable_part4b_description">ON: use one Part4b .pte when present (Vulkan build only; on CPU build tiled is always used). OFF: use tiled models (lower RAM, may show seams).</string>
+    <string name="settings_part4b_single_on_cpu">Part4b single on CPU (clearer, slower)</string>
+    <string name="settings_part4b_single_on_cpu_description">ON (default): use sharp_split_part4b.pte (FP32) for clean output (~5+ min). OFF: use tiled Part4b (faster, may be foggy).</string>
+    <string name="settings_part12_single_only">Part1+2 single-patch only</string>
+    <string name="settings_part12_single_only_description">ON (default): process patches one-by-one — avoids SIGSEGV on some devices. OFF: use batch-4 when available (faster, may crash).</string>
+    <string name="settings_part12_25_only">Part1+2: 25 patches only</string>
+    <string name="settings_part12_25_only_description">ON (default): skip 0.5x and 0.25x patches — avoids SIGSEGV at patch 25/35 on some devices. OFF: full 35 patches (higher quality, may crash).</string>
     <string name="settings_part4b_tiled">Part4b tiled (experimental)</string>
     <string name="settings_part4b_tiled_description">Use window-tiled Part4b to reduce memory. Requires tiled .pte models on device.</string>
     <string name="settings_swap_tile_ndc_xy">Swap tile NDC X/Y</string>

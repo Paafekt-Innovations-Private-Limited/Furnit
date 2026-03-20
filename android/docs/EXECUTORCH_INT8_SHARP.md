@@ -4,7 +4,9 @@ This backend runs the full SHARP room-generation pipeline using **ExecuTorch INT
 
 ### Models and files
 
-The ExecuTorch INT8 backend expects the following files under the app’s `models` directory:
+The ExecuTorch INT8 backend expects split `.pte` files under the app’s **`models_cpu`** directory (etCpu flavor): internal and external `files/models_cpu/`. See **`docs/EXECUTORCH_CPU_MODELS_SYNC.md`** for clear + push scripts and Part4b mismatch (error 18).
+
+Legacy layouts may still resolve under `files/models/`; prefer **`models_cpu`** for the native full pipeline.
 
 - **Encoder / feature stages (INT8):**
   - `sharp_split_part1_int8.pte`
@@ -16,7 +18,7 @@ The ExecuTorch INT8 backend expects the following files under the app’s `model
   - `sharp_split_part4b.pte` (FP32, required fallback)
   - `sharp_split_part4b_int8.pte` (INT8, **optional**; when present, the C++ full pipeline prefers this over the FP32 file for Part 4b)
 
-The code searches first in the app’s **internal models dir** (`context.filesDir/models`) and then in the **external models dir** (`context.getExternalFilesDir("models")`).
+`ExecutorchInt8Sharp` searches **`filesDir/models_cpu`** then **`getExternalFilesDir("models_cpu")`**, then legacy **`models`** paths. External `sharp_split*.pte` are synced into internal `models_cpu` for fast mmap.
 
 ### High‑level pipeline
 
@@ -39,6 +41,8 @@ The core implementation lives in `ExecutorchInt8Sharp`:
 
 - **Image encoder (Part 3)**
   - **Part 3 (`sharp_split_part3_int8.pte`)** takes the full‑resolution image tensor `[1, 3, 1536, 1536]` and produces image tokens `[1, 577, 1024]`.
+
+- **Part4b single vs 16-tile (CPU / C++):** By default **Settings → Stable mode (prefer single Part4b)** is **ON**, so if `sharp_split_part4b_int8.pte` or `sharp_split_part4b.pte` is on device, the pipeline uses **one** Part4b forward even when tiled `.pte` files are packaged — this avoids common **INT8 + 16-tile** “foggy square” artifacts. Turn Stable **OFF** to force the tiled path when tile models exist (lower RAM). See `docs/TEST_INT8_IN_APP.md`.
 
 - **Chunked decoder (Part 4)**
   - To avoid a single ~4 GB decoder activation peak, the decoder is split:

@@ -31,11 +31,10 @@ if [ ! -f "$WEIGHTS" ]; then
   echo "Override with: export WEIGHTS=/path/to/sharp.pt"
 fi
 
-# FP16 + B2 = 95% Vulkan success (avoids INT8 staging crash). Example:
-#   WEIGHTS=/path/to/sharp.pt DTYPE=fp16 PATCH_BATCH=2 ./export_sharp_executorch_vulkan_full.sh
-DTYPE="${DTYPE:-fp32}"
-PATCH_BATCH="${PATCH_BATCH:-1}"
-[ "$DTYPE" = "fp16" ] && PATCH_BATCH="${PATCH_BATCH:-2}"
+# Default to FP16 + B2 (95% Vulkan success). Override if needed:
+#   DTYPE=fp32 PATCH_BATCH=1 ./export_sharp_executorch_vulkan_full.sh
+DTYPE="${DTYPE:-fp16}"
+PATCH_BATCH="${PATCH_BATCH:-2}"
 
 echo "=============================================="
 echo "Export SHARP ExecuTorch — FULL VULKAN + memory optimization"

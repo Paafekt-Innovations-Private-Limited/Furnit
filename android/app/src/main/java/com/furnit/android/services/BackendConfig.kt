@@ -7,22 +7,22 @@ package com.furnit.android.services
  * that never attempts to initialize or run experimental backends.
  */
 object BackendConfig {
-    const val ENABLE_NCNN: Boolean = true
-    const val ENABLE_EXECUTORCH: Boolean = true
-    const val ENABLE_LITERT: Boolean = true
-    const val ENABLE_PYTHON: Boolean = true
-    const val ENABLE_TORCH_MOBILE: Boolean = true
-    const val ENABLE_NATIVE_PT: Boolean = true
+    const val ENABLE_NCNN: Boolean = false
+    const val ENABLE_EXECUTORCH: Boolean = false
+    const val ENABLE_LITERT: Boolean = false
+    const val ENABLE_PYTHON: Boolean = false
+    const val ENABLE_TORCH_MOBILE: Boolean = false
+    const val ENABLE_NATIVE_PT: Boolean = false
     const val ENABLE_LITERT_GPU: Boolean = false
     const val ENABLE_LITERT_NNAPI: Boolean = false
-    const val ENABLE_ONNX_INT8: Boolean = true
-    const val ENABLE_ONNX_FP16: Boolean = true
-    const val ENABLE_EXECUTORCH_FP16: Boolean = true
+    const val ENABLE_ONNX_INT8: Boolean = false
+    const val ENABLE_ONNX_FP16: Boolean = false
+    const val ENABLE_EXECUTORCH_FP16: Boolean = false
     const val ENABLE_EXECUTORCH_INT8: Boolean = true
 
     fun isEnabled(backendId: String): Boolean {
         return when (backendId) {
-            "onnx" -> true
+            "onnx" -> false
             "onnx_int8" -> ENABLE_ONNX_INT8
             "onnx_fp16" -> ENABLE_ONNX_FP16
             "ncnn" -> ENABLE_NCNN
@@ -38,10 +38,10 @@ object BackendConfig {
     }
 
     /**
-     * If a persisted preference points at a disabled backend, normalize to ONNX.
+     * If a persisted preference points at a disabled backend, normalize to ExecuTorch INT8.
      */
     fun normalize(backendId: String?): String {
-        val id = backendId ?: "onnx"
-        return if (isEnabled(id)) id else "onnx"
+        val id = backendId ?: "executorch_int8"
+        return if (isEnabled(id)) id else "executorch_int8"
     }
 }

@@ -12,14 +12,15 @@ The default build embeds **ExecuTorch SHARP .pte models** (~1.9 GB) in assets, s
    ```
    Output: `app/build/outputs/apk/arm64-v8a/debug/app-arm64-v8a-debug.apk`
 
-2. **On the device**, SHARP (AI room from photo) will need the models pushed once. From your machine (with the model files in `android/executorch_int8_models/` and `android/executorch_models/`):
+2. **On the device**, SHARP (AI room from photo) will need the models pushed once. **etCpu** APK uses **`files/models_cpu/`**; **etVulkan** uses **`files/models_vulkan/`** (see `docs/TEST_INT8_IN_APP.md`). Stage copies under repo **`android/models_cpu/`** (see `models_cpu/README.md`) then push. Example for **CPU** / portable `.pte`:
    ```bash
-   adb push executorch_int8_models/*.pte /sdcard/Android/data/com.furnit.android/files/models/
-   adb push executorch_models/sharp_split_part4a_chunk_512.pte /sdcard/Android/data/com.furnit.android/files/models/
-   adb push executorch_models/sharp_split_part4a_chunk_65.pte /sdcard/Android/data/com.furnit.android/files/models/
-   adb push executorch_models/sharp_split_part4b.pte /sdcard/Android/data/com.furnit.android/files/models/
-   # Optional: ExecuTorch INT8 Part 4b (C++ full pipeline prefers this when present)
-   adb push executorch_models/sharp_split_part4b_int8.pte /sdcard/Android/data/com.furnit.android/files/models/
+   adb shell mkdir -p /sdcard/Android/data/com.furnit.android/files/models_cpu
+   adb push executorch_int8_models/*.pte /sdcard/Android/data/com.furnit.android/files/models_cpu/
+   adb push executorch_models/sharp_split_part4a_chunk_512.pte /sdcard/Android/data/com.furnit.android/files/models_cpu/
+   adb push executorch_models/sharp_split_part4a_chunk_65.pte /sdcard/Android/data/com.furnit.android/files/models_cpu/
+   adb push executorch_models/sharp_split_part4b.pte /sdcard/Android/data/com.furnit.android/files/models_cpu/
+   # Optional: INT8 Part4b (C++ prefers when present)
+   adb push executorch_models/sharp_split_part4b_int8.pte /sdcard/Android/data/com.furnit.android/files/models_cpu/
    ```
    Or copy the same files onto the device into that path (e.g. via file manager). Without these, the app runs but “Create room from photo” (AI) will report missing models.
 
