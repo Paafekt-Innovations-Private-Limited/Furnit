@@ -142,43 +142,62 @@ android {
     }
 }
 
-// Package ExecuTorch INT8 models in APK for testing (copy only the 6 required .pte files)
-// Use -PskipExecutorchAssets to build without embedding (e.g. when disk full); then push models to device.
+// Package SHARP / ExecuTorch .pte into assets/models for test APKs (sideload to friends). Prod: use -PskipExecutorchAssets + adb push.
+// Full android/sharp_vulkan_only is ~5+ GB — huge APK; backup before relying on this (see android/docs/MODELS_APK_BUNDLE_TESTING.md).
 def execInt8Dir = project.file("../executorch_int8_models")
 def execChunkedDir = project.file("../executorch_models")
+def sharpVulkanOnlyDir = project.file("sharp_vulkan_only")
 def assetsModelsDir = project.file("src/main/assets/models")
 def skipExecutorchAssets = project.hasProperty("skipExecutorchAssets")
-// Part4b 16 tiles are large; packing them in main assets can push APK over Zip32 4GB limit.
-// Use -PincludePart4bTilesInAssets to pack tiles (very large APK), or use on-demand: push to device or Play Asset Delivery.
+// Part4b 16 tiles from int8/chunked dirs only (when present). sharp_vulkan_only exports usually include tiles already.
 def includePart4bTilesInAssets = project.hasProperty("includePart4bTilesInAssets")
+// Omit ~5GB Vulkan folder for faster local builds: ./gradlew ... -PskipSharpVulkanOnlyInAssets
+def skipSharpVulkanOnlyInAssets = project.hasProperty("skipSharpVulkanOnlyInAssets")
 
 tasks.register("copyExecutorchModelsIntoAssets", Copy) {
-    description = "Copy ExecuTorch INT8 .pte models into assets/models. Add -PincludePart4bTilesInAssets to also pack 16 Part4b tiles (APK may exceed 4GB)."
+    description = "Copy .pte to assets/models from executorch_* dirs and sharp_vulkan_only (unless -PskipSharpVulkanOnlyInAssets)."
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
     into assetsModelsDir
-    from(execInt8Dir) {
-        include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte"
-        if (includePart4bTilesInAssets) {
-            include "sharp_split_part4b_tile_full.pte"
-            include "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte"
-            include "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte"
-            include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
-            include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
+    // Only add from() for dirs that exist — avoids Gradle errors when only sharp_vulkan_only is present.
+    if (execInt8Dir.exists()) {
+        from(execInt8Dir) {
+            include "sharp_split_part1_int8.pte", "sharp_split_part2_int8.pte", "sharp_split_part3_int8.pte"
+            if (includePart4bTilesInAssets) {
+                include "sharp_split_part4b_tile_full.pte"
+                include "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte"
+                include "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte"
+                include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
+                include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
+            }
         }
     }
-    from(execChunkedDir) {
-        include "sharp_split_part4a_chunk_512.pte", "sharp_split_part4a_chunk_65.pte", "sharp_split_part4b.pte"
-        // Optional INT8 decoder for C++ full pipeline; when present next to sharp_split_part4b.pte,
-        // native code prefers this file for Part 4b and falls back to FP32 otherwise.
-        include "sharp_split_part4b_int8.pte"
-        if (includePart4bTilesInAssets) {
-            include "sharp_split_part4b_tile_full.pte"
-            include "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte"
-            include "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte"
-            include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
-            include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
+    if (execChunkedDir.exists()) {
+        from(execChunkedDir) {
+            include "sharp_split_part4a_chunk_512.pte", "sharp_split_part4a_chunk_65.pte", "sharp_split_part4b.pte"
+            // Optional INT8 decoder for C++ full pipeline; when present next to sharp_split_part4b.pte,
+            // native code prefers this file for Part 4b and falls back to FP32 otherwise.
+            include "sharp_split_part4b_int8.pte"
+            if (includePart4bTilesInAssets) {
+                include "sharp_split_part4b_tile_full.pte"
+                include "sharp_split_part4b_tile_00.pte", "sharp_split_part4b_tile_01.pte", "sharp_split_part4b_tile_02.pte", "sharp_split_part4b_tile_03.pte"
+                include "sharp_split_part4b_tile_04.pte", "sharp_split_part4b_tile_05.pte", "sharp_split_part4b_tile_06.pte", "sharp_split_part4b_tile_07.pte"
+                include "sharp_split_part4b_tile_08.pte", "sharp_split_part4b_tile_09.pte", "sharp_split_part4b_tile_10.pte", "sharp_split_part4b_tile_11.pte"
+                include "sharp_split_part4b_tile_12.pte", "sharp_split_part4b_tile_13.pte", "sharp_split_part4b_tile_14.pte", "sharp_split_part4b_tile_15.pte"
+            }
         }
     }
-    onlyIf { !skipExecutorchAssets && (execInt8Dir.exists() || execChunkedDir.exists()) }
+    if (!skipSharpVulkanOnlyInAssets && sharpVulkanOnlyDir.exists()) {
+        from(sharpVulkanOnlyDir) {
+            include "*.pte"
+        }
+    }
+    onlyIf {
+        !skipExecutorchAssets && (
+                execInt8Dir.exists() ||
+                execChunkedDir.exists() ||
+                (!skipSharpVulkanOnlyInAssets && sharpVulkanOnlyDir.exists())
+        )
+    }
 }
 if (!skipExecutorchAssets) preBuild.dependsOn copyExecutorchModelsIntoAssets
 

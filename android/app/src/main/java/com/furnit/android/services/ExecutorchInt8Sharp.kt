@@ -321,12 +321,32 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         }
     }
 
-    /** Copy packaged .pte from assets/models/ to filesDir/models so Module.load can use them. Loads all 16 Part4b tiles from assets when present (ODR-style: packaged in APK, extracted on first use). */
+    /**
+     * Copy packaged .pte from `assets/models/` into flavor internal dir (`files/models_vulkan` or `models_cpu`)
+     * so mmap loads work. Discovers every `sharp_split*.pte` in assets (not only the static list) so test APKs
+     * that bundle `android/sharp_vulkan_only` extract the full set on first run.
+     */
     private fun ensureModelsFromAssets() {
+        val filenamesFromAssets = try {
+            context.assets.list(ASSET_MODELS_SUBDIR)
+                ?.asSequence()
+                ?.filter { name ->
+                    name.endsWith(".pte", ignoreCase = true) && name.startsWith("sharp_split")
+                }
+                ?.toList()
+                .orEmpty()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val filenamesToCopy = if (filenamesFromAssets.isNotEmpty()) {
+            (filenamesFromAssets + ASSET_MODEL_FILENAMES.asList()).distinct()
+        } else {
+            ASSET_MODEL_FILENAMES.toList()
+        }
 
         var tilesCopied = 0
         var tilesMissing = 0
-        for (filename in ASSET_MODEL_FILENAMES) {
+        for (filename in filenamesToCopy) {
             val dest = File(internalModelsDir, filename)
             if (dest.exists() && dest.length() > 0L) {
                 if (filename.startsWith("sharp_split_part4b_tile_")) tilesCopied++
