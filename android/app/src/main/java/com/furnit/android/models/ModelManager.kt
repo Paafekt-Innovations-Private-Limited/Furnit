@@ -2,6 +2,7 @@ package com.furnit.android.models
 
 import android.content.Context
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomFolderMetadata
 import java.io.File
 
 class ModelManager(private val context: Context) {
@@ -56,7 +57,6 @@ class ModelManager(private val context: Context) {
             val thumbnail = File(folder, "thumbnail.png")
             val glbFile = File(folder, "room.glb")
             val plyFile = File(folder, "room.ply")
-            val metadataFile = File(folder, "metadata.txt")
 
             if (frontWall.exists() || glbFile.exists() || plyFile.exists()) {
                 // Read room name and created timestamp from metadata
@@ -73,37 +73,18 @@ class ModelManager(private val context: Context) {
                 var photoOrientation = "portrait"
                 var photoWideAngle = false
 
-                if (metadataFile.exists()) {
-                    try {
-                        val lines = metadataFile.readLines()
-                        lines.firstOrNull { it.startsWith("name=") }
-                            ?.substringAfter("name=")?.let { roomName = it }
-                        lines.firstOrNull { it.startsWith("created=") }
-                            ?.substringAfter("created=")?.toLongOrNull()?.let { createdAt = it }
-                        // Load room dimensions from metadata
-                        lines.firstOrNull { it.startsWith("roomWidth=") }
-                            ?.substringAfter("roomWidth=")?.toFloatOrNull()?.let { roomWidth = it }
-                        lines.firstOrNull { it.startsWith("roomHeight=") }
-                            ?.substringAfter("roomHeight=")?.toFloatOrNull()?.let { roomHeight = it }
-                        lines.firstOrNull { it.startsWith("roomDepth=") }
-                            ?.substringAfter("roomDepth=")?.toFloatOrNull()?.let { roomDepth = it }
-                        lines.firstOrNull { it.startsWith("roomCenterX=") }
-                            ?.substringAfter("roomCenterX=")?.toFloatOrNull()?.let { roomCenterX = it }
-                        lines.firstOrNull { it.startsWith("roomCenterY=") }
-                            ?.substringAfter("roomCenterY=")?.toFloatOrNull()?.let { roomCenterY = it }
-                        lines.firstOrNull { it.startsWith("roomCenterZ=") }
-                            ?.substringAfter("roomCenterZ=")?.toFloatOrNull()?.let { roomCenterZ = it }
-                        lines.firstOrNull { it.startsWith("photoOrientation=") }
-                            ?.substringAfter("photoOrientation=")?.trim()?.lowercase()?.let { raw ->
-                                photoOrientation = if (raw == "landscape") "landscape" else "portrait"
-                            }
-                        lines.firstOrNull { it.startsWith("photoWideAngle=") }
-                            ?.substringAfter("photoWideAngle=")?.trim()?.lowercase()?.let { raw ->
-                                photoWideAngle = raw == "true"
-                            }
-                    } catch (e: Exception) {
-                        LogUtil.w(TAG, "Failed to read metadata for ${folder.name}", e)
-                    }
+                val disk = RoomFolderMetadata.readFromFolder(folder)
+                if (disk != null) {
+                    disk.name?.takeIf { it.isNotBlank() }?.let { roomName = it }
+                    disk.createdAt?.let { createdAt = it }
+                    roomWidth = disk.roomWidth
+                    roomHeight = disk.roomHeight
+                    roomDepth = disk.roomDepth
+                    roomCenterX = disk.roomCenterX
+                    roomCenterY = disk.roomCenterY
+                    roomCenterZ = disk.roomCenterZ
+                    photoOrientation = disk.normalizedOrientation()
+                    photoWideAngle = disk.photoWideAngle
                 }
 
                 // Use GLB/PLY file path if it exists, otherwise use folder path

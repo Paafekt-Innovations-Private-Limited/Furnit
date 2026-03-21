@@ -653,7 +653,10 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiGenerationResult = null
         aiGenerationRunning = true
         val sharpService = SharpService.getInstance(this)
-        aiGenerationHandle = sharpService.startGenerationInBackground(bitmap, object : SharpService.ProgressCallback {
+        val orientationForMetadata = if (detectedOrientation.isLandscape) "landscape" else "portrait"
+        aiGenerationHandle = sharpService.startGenerationInBackground(
+            bitmap,
+            object : SharpService.ProgressCallback {
             override fun onProgress(progress: Float, message: String) {
                 runOnUiThread {
                     logProgress0("SinglePhotoRoomActivity.kt:onProgress", "callback", mapOf(
@@ -692,7 +695,10 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     LogUtil.e("SinglePhotoRoom", "AI generation failed: $message")
                 }
             }
-        })
+        },
+            viewerPhotoOrientation = orientationForMetadata,
+            viewerPhotoWideAngle = photoWideAngle
+        )
     }
 
     /** Cancel AI generation and release model memory. Call when user chooses Manual/Back/Change. */

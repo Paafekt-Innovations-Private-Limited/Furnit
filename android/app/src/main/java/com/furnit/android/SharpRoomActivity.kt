@@ -38,6 +38,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import com.furnit.android.models.Model
 import com.furnit.android.models.ModelManager
+import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.services.FurnitureFitManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -157,28 +158,22 @@ class SharpRoomActivity : AppCompatActivity() {
         var rawOrientation = intent.getStringExtra("photo_orientation")?.trim()?.lowercase()
         photoWideAngle = intent.getBooleanExtra(EXTRA_PHOTO_WIDE_ANGLE, false)
 
-        // Fallback: if list didn't pass dimensions/orientation, read from room folder metadata.txt (e.g. old list or first open)
-        if ((savedWidth <= 0f || savedHeight <= 0f) && roomFolder != null) {
-            val metaFile = File(roomFolder, "metadata.txt")
-            if (metaFile.exists()) {
-                try {
-                    metaFile.readLines().forEach { line ->
-                        when {
-                            line.startsWith("roomWidth=") -> savedWidth = line.substringAfter("roomWidth=").toFloatOrNull() ?: savedWidth
-                            line.startsWith("roomHeight=") -> savedHeight = line.substringAfter("roomHeight=").toFloatOrNull() ?: savedHeight
-                            line.startsWith("roomDepth=") -> {
-                                roomDepth = line.substringAfter("roomDepth=").toFloatOrNull() ?: roomDepth
-                            }
-                            line.startsWith("roomCenterX=") -> roomCenterX = line.substringAfter("roomCenterX=").toFloatOrNull() ?: roomCenterX
-                            line.startsWith("roomCenterY=") -> roomCenterY = line.substringAfter("roomCenterY=").toFloatOrNull() ?: roomCenterY
-                            line.startsWith("roomCenterZ=") -> roomCenterZ = line.substringAfter("roomCenterZ=").toFloatOrNull() ?: roomCenterZ
-                            line.startsWith("photoOrientation=") -> rawOrientation = line.substringAfter("photoOrientation=").trim().lowercase()
-                        }
-                    }
-                    LogUtil.d(TAG, "Loaded from metadata.txt: ${savedWidth}x${savedHeight}x${roomDepth} orientation=$rawOrientation")
-                } catch (e: Exception) {
-                    LogUtil.w(TAG, "Failed to read metadata.txt", e)
-                }
+        // Single disk source: room_meta.json (or legacy metadata.txt via RoomFolderMetadata). Same parser as home list.
+        roomFolder?.let { folderPath ->
+            val disk = RoomFolderMetadata.readFromFolder(File(folderPath))
+            if (disk != null) {
+                disk.roomWidth?.takeIf { it > 0f }?.let { savedWidth = it }
+                disk.roomHeight?.takeIf { it > 0f }?.let { savedHeight = it }
+                disk.roomDepth?.takeIf { it > 0f }?.let { roomDepth = it }
+                disk.roomCenterX?.let { roomCenterX = it }
+                disk.roomCenterY?.let { roomCenterY = it }
+                disk.roomCenterZ?.let { roomCenterZ = it }
+                rawOrientation = disk.normalizedOrientation()
+                photoWideAngle = disk.photoWideAngle
+                LogUtil.d(
+                    TAG,
+                    "RoomFolderMetadata: ${savedWidth}x${savedHeight}x${roomDepth} orientation=${disk.normalizedOrientation()} wide=$photoWideAngle"
+                )
             }
         }
 
@@ -276,6 +271,16 @@ class SharpRoomActivity : AppCompatActivity() {
                     }
                     LogUtil.d(TAG, "shouldInterceptRequest: $url")
                     return assetLoader.shouldInterceptRequest(url)
+                }
+            }
+
+            // Forward console.log from the WebGL page to Logcat (filter: SharpRoomActivity JSConsole)
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
+                    message?.let { m ->
+                        LogUtil.d(TAG, "JSConsole: ${m.message()} -- ${m.sourceId()}:${m.lineNumber()}")
+                    }
+                    return true
                 }
             }
 
@@ -921,7 +926,9 @@ class SharpRoomActivity : AppCompatActivity() {
         // Use isPortrait like iOS for consistency
         val isPortrait = photoOrientation != "landscape"
         LogUtil.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait photoWideAngle=$photoWideAngle (this activity = PLY/splat room)")
-        // Camera Z entrance: false = iOS-style (outside max-Z face); true = Android default (outside min-Z face).
+        // Which end of the room slab we place the camera on Z (camera + target only; room mesh is not moved).
+        // true = outside min-Z (camera at minZ - dist, target minZ, look +Z). false = outside max-Z (Swift-style).
+        // To zoom in/out: edit distInFront in frameFromWorldBox() in the JS below — not this flag.
         val webglEntranceMinZ = true
         val fallbackW = roomWidth.toDouble()
         val fallbackH = roomHeight.toDouble()
@@ -1089,17 +1096,18 @@ class SharpRoomActivity : AppCompatActivity() {
                     setTimeout(autoFrameRoom, 600);
                 }
             });
-            // Portrait: 180° Y = 90° Y (photo) + 90° Y so room depth faces the camera (Z framing); 90° Y alone left the room perpendicular.
-            // Landscape: 180° X matches SharpRoomView / upright room.
-            splatMesh.rotation.z = 0;
+            // Match Furnit/SharpRoomView.swift (SparkJS): classic PLY = 180° about X; portrait adds 90° about Z.
+            // Android portrait used Y=π + X=0 which does NOT match that basis; landscape used X=π only like iOS but
+            // WebView GL often shows floor/ceiling inverted — landscape uses X=0 (no classic X flip) so "up" reads correctly.
+            splatMesh.rotation.y = 0;
             if (isPortrait) {
-                splatMesh.rotation.x = 0;
-                splatMesh.rotation.y = Math.PI;
-                console.log('[WebGL] SplatMesh: portrait 180° Y (depth toward camera)');
-            } else {
                 splatMesh.rotation.x = Math.PI;
-                splatMesh.rotation.y = 0;
-                console.log('[WebGL] SplatMesh: landscape 180° X');
+                splatMesh.rotation.z = Math.PI / 2;
+                console.log('[WebGL] SplatMesh: portrait X=π + Z=π/2 (match iOS)');
+            } else {
+                splatMesh.rotation.x = 0;
+                splatMesh.rotation.z = 0;
+                console.log('[WebGL] SplatMesh: landscape X=0 Z=0 (fix upside-down vs WebView; iOS uses X=π only)');
             }
             scene.add(splatMesh);
             setTimeout(autoFrameRoom, 500);
@@ -1134,11 +1142,17 @@ class SharpRoomActivity : AppCompatActivity() {
         }
 
         /**
-         * Mesh at origin + rotations only. Camera sits just outside one Z face of the inner AABB (fog shrink, caps).
-         * Android uses min-Z entrance (camera at minZ-dist, target minZ); iOS uses max-Z — WebView/Spark splats match min-Z.
+         * ROOM: splatMesh position stays (0,0,0) + load-time rotation only — we do NOT slide the room for framing.
+         * CAMERA: position + OrbitControls.target are set here (just outside inner AABB on Z).
+         * Zoom / step back along view: change distInFront (metres). Smaller = closer to wall; larger = farther in front.
          */
         function frameFromWorldBox(box, frameSource) {
-            if (framingComplete) return;
+            if (framingComplete) {
+                if (window.Android && window.Android.log) {
+                    window.Android.log('[SharpRoom] frameFromWorldBox SKIPPED (framingComplete already true) source=' + frameSource);
+                }
+                return;
+            }
             framingComplete = true; // block duplicate onLoad + poll (recenter clears this first)
 
             const size = box.getSize(new THREE.Vector3());
@@ -1164,15 +1178,23 @@ class SharpRoomActivity : AppCompatActivity() {
             const fogFactor = 0.15;
             const shrinkX = roomWidth * fogFactor * 0.5;
             const shrinkY = roomHeight * fogFactor * 0.5;
-            const shrinkZ = roomDepth * fogFactor * 0.5;
-            const backWallInset = 0.02;
+            // Spark AABB can be paper-thin on Z after rotation (~9mm). Fixed 20mm back inset made minZ > maxZ.
+            const zSpanRaw = Math.max(1e-6, rawMaxZ - rawMinZ);
+            const shrinkZ = Math.min(roomDepth * fogFactor * 0.5, zSpanRaw * 0.2);
+            const backWallInset = Math.min(0.02, zSpanRaw * 0.12);
 
             const minX = rawMinX + shrinkX;
             const maxX = rawMaxX - shrinkX;
             const minY = rawMinY + shrinkY;
             const maxY = rawMaxY - shrinkY;
-            const minZ = rawMinZ + shrinkZ;
-            const maxZ = rawMaxZ - backWallInset;
+            let minZ = rawMinZ + shrinkZ;
+            let maxZ = rawMaxZ - backWallInset;
+            if (minZ >= maxZ) {
+                const midZ = (rawMinZ + rawMaxZ) * 0.5;
+                const halfZ = zSpanRaw * 0.45;
+                minZ = midZ - halfZ;
+                maxZ = midZ + halfZ;
+            }
 
             const innerCenterX = (minX + maxX) / 2;
             const innerCenterY = (minY + maxY) / 2;
@@ -1187,17 +1209,38 @@ class SharpRoomActivity : AppCompatActivity() {
             currentRoomH = roomHeight;
             currentRoomD = roomDepth;
 
-            const distInFront = Math.max(0.012, Math.min(roomDepth * 0.28, 1.2));
-            // entranceUseMinZ from Kotlin: Android default true (min-Z face); set false to match iOS max-Z.
+            // Initial camera: thin Z slab (rotated splat AABB) needs distance from floor span, not 9mm depth.
+            const thinZSlab = zSpanRaw < 0.08;
             let entranceZ, cameraZ;
-            const wallSide = entranceUseMinZ ? 'minZ' : 'maxZ';
-            if (entranceUseMinZ) {
-                entranceZ = minZ;
-                cameraZ = minZ - distInFront;
+            let wallSide;
+            let distInFront;
+            if (thinZSlab) {
+                // Same idea as manual orbit in logs: target ~innerZ, camera ~0.8–1.3m back along -Z (look +Z).
+                wallSide = 'thinZ_centerRail';
+                const roomSpan = Math.max(roomWidth, roomHeight, fallbackRoomWidth, fallbackRoomHeight);
+                distInFront = Math.max(0.75, Math.min(2.0, 0.56 * roomSpan));
+                const targetZ = innerCenterZ + Math.min(0.12, Math.max(zSpanRaw, 0.02));
+                entranceZ = targetZ;
+                cameraZ = targetZ - distInFront;
             } else {
-                entranceZ = maxZ;
-                cameraZ = maxZ + distInFront;
+                const FRONT_DIST_K = 0.28;
+                const FRONT_DIST_CAP = 1.2;
+                const depthForStandoff = Math.max(roomDepth, fallbackRoomDepth, zSpanRaw, 0.15);
+                const depthProduct = depthForStandoff * FRONT_DIST_K;
+                distInFront = Math.max(0.012, Math.min(depthProduct, FRONT_DIST_CAP));
+                wallSide = entranceUseMinZ ? 'minZ' : 'maxZ';
+                if (entranceUseMinZ) {
+                    entranceZ = minZ;
+                    cameraZ = minZ - distInFront;
+                } else {
+                    entranceZ = maxZ;
+                    cameraZ = maxZ + distInFront;
+                }
             }
+            const distDbg = '[SharpRoom_DIST] src=' + frameSource + ' thinZ=' + (thinZSlab ? 1 : 0) + ' sizeXYZ=' + size.x.toFixed(3) + ',' + size.y.toFixed(3) + ',' + size.z.toFixed(3) + ' zSpanRaw=' + zSpanRaw.toFixed(4) + ' distInFront=' + distInFront.toFixed(4) + ' minZ=' + minZ.toFixed(4) + ' maxZ=' + maxZ.toFixed(4) + ' innerZ=' + innerCenterZ.toFixed(4) + ' wallSide=' + wallSide + ' targetZ=' + entranceZ.toFixed(4) + ' cameraZ=' + cameraZ.toFixed(4);
+            console.log(distDbg);
+            if (window.Android && window.Android.log) window.Android.log(distDbg);
+
             const newCamPos = new THREE.Vector3(innerCenterX, innerCenterY, cameraZ);
             const newTarget = new THREE.Vector3(innerCenterX, innerCenterY, entranceZ);
 
@@ -1226,7 +1269,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 ' target=' + tgt.x.toFixed(2) + ',' + tgt.y.toFixed(2) + ',' + tgt.z.toFixed(2) +
                 ' innerZ=' + innerCenterZ.toFixed(3) + ' minZ=' + minZ.toFixed(3) + ' maxZ=' + maxZ.toFixed(3));
 
-            console.log('[WebGL] Camera outside ' + wallSide + ' face distInFront=' + distInFront.toFixed(3));
+            console.log('[WebGL] Camera framed wallSide=' + wallSide + ' dist=' + distInFront.toFixed(3));
             cameraFramedAt = performance.now();
             needsRender = true;
 
@@ -1493,6 +1536,22 @@ class SharpRoomActivity : AppCompatActivity() {
             metadata.append("photoOrientation=${if (photoOrientation == "landscape") "landscape" else "portrait"}\n")
             metadata.append("photoWideAngle=$photoWideAngle\n")
             metadataFile.writeText(metadata.toString())
+            RoomFolderMetadata.writeToFolder(
+                File(folder),
+                RoomFolderMetadata.Snapshot(
+                    name = name,
+                    createdAt = System.currentTimeMillis(),
+                    type = "sharp",
+                    photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
+                    photoWideAngle = photoWideAngle,
+                    roomWidth = roomWidth,
+                    roomHeight = roomHeight,
+                    roomDepth = roomDepth,
+                    roomCenterX = roomCenterX,
+                    roomCenterY = roomCenterY,
+                    roomCenterZ = roomCenterZ,
+                )
+            )
 
             Toast.makeText(this, getString(R.string.sharp_room_saved, name), Toast.LENGTH_SHORT).show()
             LogUtil.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
@@ -1609,3 +1668,4 @@ class SharpRoomActivity : AppCompatActivity() {
         super.onDestroy()
     }
 }
+

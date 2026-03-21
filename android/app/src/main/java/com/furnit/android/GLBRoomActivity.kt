@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.util.Base64
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -663,13 +664,26 @@ class GLBRoomActivity : AppCompatActivity() {
 
                 val metadataFile = File(savedRoomFolder, "metadata.txt")
                 val metadata = StringBuilder()
+                val createdAtMillis = System.currentTimeMillis()
                 metadata.append("name=$name\n")
-                metadata.append("created=${System.currentTimeMillis()}\n")
+                metadata.append("created=$createdAtMillis\n")
                 metadata.append("type=manual\n")
                 metadata.append("roomWidth=$roomWidth\n")
                 metadata.append("roomHeight=$roomHeight\n")
                 metadata.append("photoOrientation=$photoOrientation\n")
                 metadataFile.writeText(metadata.toString())
+                RoomFolderMetadata.writeToFolder(
+                    savedRoomFolder,
+                    RoomFolderMetadata.Snapshot(
+                        name = name,
+                        createdAt = createdAtMillis,
+                        type = "manual",
+                        photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
+                        photoWideAngle = false,
+                        roomWidth = roomWidth,
+                        roomHeight = roomHeight,
+                    )
+                )
 
                 previewRoomFolder.parentFile?.deleteRecursively()
 
