@@ -241,8 +241,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             syncExternalCpuSharpSplitPteToInternal()
             if (NATIVE_FULL_AVAILABLE) {
                 val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+                ExecutorchFixedSettings.syncToPrefs(prefs)
                 val useCpuStable = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
-                val preferVulkanFp16Requested = prefs.getBoolean("executorch_vulkan_prefer_fp16", false)
+                val preferVulkanFp16Requested = ExecutorchFixedSettings.PREFER_VULKAN_FP16
                 val preferVulkanFp16 = effectivePreferVulkanFp16(preferVulkanFp16Requested)
                 if (preferVulkanFp16Requested && !preferVulkanFp16) {
                     LogUtil.w(
@@ -792,8 +793,9 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             ensureModelsFromAssets()
 
             val prefs = context.getSharedPreferences("furnit_prefs", Context.MODE_PRIVATE)
+            ExecutorchFixedSettings.syncToPrefs(prefs)
             val useCpuStable = prefs.getBoolean("executorch_int8_use_cpu_stable", false)
-            val preferVulkanFp16Requested = prefs.getBoolean("executorch_vulkan_prefer_fp16", false)
+            val preferVulkanFp16Requested = ExecutorchFixedSettings.PREFER_VULKAN_FP16
             val preferVulkanFp16 = effectivePreferVulkanFp16(preferVulkanFp16Requested)
             if (preferVulkanFp16Requested && !preferVulkanFp16) {
                 LogUtil.w(
@@ -876,7 +878,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
             val part4bSatisfied = part4bFile != null || hasPart4bTiled
             // Vulkan: keep tiled Part4b when tiled exports exist to avoid the single-decoder memory peak.
             // CPU stable mode can still force the single decoder because the CPU tiled path is much slower on some devices.
-            val preferSinglePart4bExplicit = prefs.getBoolean("executorch_prefer_single_part4b", false)
+            val preferSinglePart4bExplicit = ExecutorchFixedSettings.PREFER_SINGLE_PART4B
             val forceTiledPart4bOnVulkan = !useCpuStable && hasPart4bTiled && preferSinglePart4bExplicit
             if (forceTiledPart4bOnVulkan) {
                 LogUtil.w(
@@ -974,8 +976,8 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 else if (availMem < minAvailForCpp) LogUtil.d(TAG, "[C++ FULL] Low memory: avail=${availMem / (1024 * 1024)}MB")
                 return@withContext null
             }
-            val use1280Requested = prefs.getBoolean("executorch_int8_use_1280", false)
-            val use1280 = false
+            val use1280Requested = ExecutorchFixedSettings.USE_TRUE_1280
+            val use1280 = ExecutorchFixedSettings.USE_TRUE_1280
             if (use1280Requested) {
                 LogUtil.w(
                     TAG,
