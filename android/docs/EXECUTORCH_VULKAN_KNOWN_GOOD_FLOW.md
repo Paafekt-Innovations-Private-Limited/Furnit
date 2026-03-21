@@ -27,6 +27,86 @@ This is the flow that currently gives:
   - modified hot-path layers: `43`
   - estimated touched hot-path parameter reduction: `74.95%`
 
+## Part4 technical problem solved
+
+The Part4 work solved **two different technical problems**, not just a generic “decoder was slow” issue.
+
+### 1. Vulkan-unsafe shape path in old Part4b routing
+
+The older Vulkan Part4b paths were brittle because some late decoder / packing paths created tensor shapes that the Vulkan delegate did not handle safely.
+
+The clearest bad case in this repo is the legacy `tile_full` path:
+
+- Vulkan graph init could abort inside `libexecutorch.so` with `sizes_.size() <= 4` failures from `Tensor.cpp` during concat-related lowering.
+- That means the delegate/lowered graph hit tensor-size metadata outside the backend’s expected shape envelope.
+- This was a Vulkan backend / lowered-graph problem, not a Furnit JNI problem.
+
+That is why the current working route does **not** try to keep all of Part4b inside one monolithic Vulkan graph.
+
+### 2. The real hot path was concentrated in `decoder_head`
+
+Even after moving away from the unsafe monolithic route, the remaining tiled Part4 path was still too slow because one subgraph dominated tile latency:
+
+- `stage_pre` was relatively small
+- `init_base` and `compose` were small
+- `decoder_head` was the heavy conv/upsample/fusion block and the main per-tile cost center
+- `raw_heads` was the second major cost center
+
+The logs from the current known-good run still show that shape clearly:
+
+- `stage_pre`: about `120-127ms`
+- `decoder_head`: about `780-788ms`
+- `raw_heads`: about `418-427ms`
+- `compose`: about `51-69ms`
+
+### What the fix actually was
+
+The current Part4 solution is a **fine split `tile_00` route**, not a single-model “optimize everything” export.
+
+The split does this on purpose:
+
+- `stage_pre` stays on Vulkan
+- `decoder_head` stays on Vulkan
+- `raw_heads` stays on Vulkan
+- `init_base` stays portable
+- `compose` stays portable
+
+The reason `init_base` and `compose` stay portable is that these paths create **rank-5 tensors** / shape-sensitive packing logic that are not safe to push through the current Vulkan delegate path in this app. The split keeps Vulkan on the conv-heavy parts and keeps the shape-fragile packing stages off Vulkan.
+
+The native C++ tiled route also does explicit stage-to-stage handoff:
+
+- each stage output is copied into owned CPU buffers
+- expected shapes are validated before the next stage runs
+- the next stage is invoked from fresh `from_blob(...)` tensors
+
+That avoids relying on fragile cross-stage reuse of delegate-owned tensors across Vulkan and portable subgraphs.
+
+### Hot-path-lite optimization on top of the split
+
+Once the route was stable, the heavy `decoder_head` hot path was optimized directly:
+
+- grouped-conv simplification was applied to the conv-heavy decoder hot path
+- `43` hot-path layers were modified
+- the hot-path surgery used `groups=4`
+- the estimated touched hot-path parameter reduction was `74.95%`
+
+This did not change the overall room-creation routing. It reduced compute inside the hottest Part4 tile path.
+
+### Net result
+
+So the Part4 solution was:
+
+1. stop trying to run the wrong Part4b shape path as one Vulkan blob
+2. split the tile route around the Vulkan-unsafe tensor-shape boundary
+3. keep only the conv-heavy subgraphs on Vulkan
+4. then optimize the real hotspot (`decoder_head`) inside that stable route
+
+That is why the current flow is both:
+
+- stable enough to finish
+- much faster on Part4 than the older route
+- still visually strong, because the final packing / compose logic stayed on the safer path
+
 ## Settings to use
 
 Open `Profile -> Settings -> Developer` and use:
@@ -96,6 +176,27 @@ Steady-state Part4b per-tile timings from the same run:
 - `raw_heads`: about `418-427ms`
 - `compose`: about `51-69ms`
 - tiles `2-16`: about `1.45-1.47s` each
+
+## March 21, 2026 runtime cleanup note
+
+A small app-native Part1+2 cleanup was applied after the main Vulkan path was already working:
+
+- skip `0.5x` / `0.25x` image downsample prep when the app is in the fixed `part12_25_only` room-creation path
+- remove extra steady-state per-patch Part1+2 debug logs
+
+This solved wasted runtime work in the encoder path. It did **not** change ExecuTorch, model exports, or the Part1/Part2 graph itself.
+
+From the later verified run with this cleanup:
+
+- `runFullPipelineInt8` start: `10:17:53.658`
+- `JNI RETURN` validated: `10:19:20.625`
+- total: `86.967s`
+- Part1+2: `30.478s`
+- Part3: `15.982s`
+- Part4a total: `16.109s`
+- Part4b tiled: `24.250s`
+
+That later run also shows `part12OnCpu=1`, so the current verified flow was still **hybrid** for Part1+2.
 
 ## Performance benefit
 

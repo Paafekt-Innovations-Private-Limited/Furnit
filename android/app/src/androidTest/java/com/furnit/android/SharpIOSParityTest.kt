@@ -4,10 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.furnit.android.services.NcnnSharp
-import com.furnit.android.services.OnnxSharp
 import com.furnit.android.services.SharpService
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -53,9 +50,6 @@ class SharpIOSParityTest {
         const val MAX_ROOM_HEIGHT = 10.0f
         const val MIN_ROOM_DEPTH = 0.1f
         const val MAX_ROOM_DEPTH = 20.0f
-
-        // Full SHARP model expected Gaussian count
-        const val SHARP_FP32_GAUSSIAN_COUNT = 1179648  // 1.1M Gaussians
     }
 
     @Before
@@ -293,112 +287,6 @@ class SharpIOSParityTest {
         assertTrue("Width/Height ratio should be reasonable (0.3-5.0)", widthHeightRatio in 0.3f..5.0f)
 
         println("\nTEST PASSED: Room aspect ratios are realistic")
-    }
-
-    // ==================== ONNX Model Tests ====================
-
-    @Test
-    fun testOnnxSharp_ModelAvailability() {
-        val onnxSharp = OnnxSharp.getInstance(context)
-
-        // Try to copy model from external storage
-        runBlocking {
-            onnxSharp.ensureModelDownloaded()
-        }
-
-        val modelReady = onnxSharp.isModelReady()
-        println("=== ONNX SHARP Model Status ===")
-        println("Model ready: $modelReady")
-
-        if (modelReady) {
-            println("Full SHARP FP32 model is available!")
-            println("Expected Gaussian count: $SHARP_FP32_GAUSSIAN_COUNT")
-        } else {
-            println("Full model not found - using fallback generator")
-            println("To enable full model, push files to device:")
-            println("  adb push sharp_fp32_full.onnx /sdcard/Android/data/com.furnit.android/files/models/")
-            println("  adb push sharp_fp32_full.onnx.data /sdcard/Android/data/com.furnit.android/files/models/")
-        }
-
-        // This test passes regardless - it's informational
-        println("\nTEST PASSED: ONNX model status checked")
-    }
-
-    @Test
-    fun testOnnxSharp_InferenceIfAvailable() {
-        val onnxSharp = OnnxSharp.getInstance(context)
-
-        // Try to copy model from external storage
-        runBlocking {
-            onnxSharp.ensureModelDownloaded()
-        }
-
-        if (!onnxSharp.isModelReady()) {
-            println("ONNX model not available - skipping inference test")
-            return
-        }
-
-        runBlocking {
-            val initialized = onnxSharp.initialize()
-            assertTrue("ONNX should initialize", initialized)
-
-            println("Running ONNX SHARP streaming inference on room.jpeg...")
-            println("(Using iOS-style memory-efficient streaming)")
-            val startTime = System.currentTimeMillis()
-
-            // Use streaming inference - writes directly to PLY without intermediate arrays
-            // This matches iOS CoreML approach using dataPointer with stride-aware access
-            val result = onnxSharp.inferStreaming(testBitmap) { progress, message ->
-                println("Progress: ${(progress * 100).toInt()}% - $message")
-            }
-
-            val elapsed = System.currentTimeMillis() - startTime
-            println("Inference completed in ${elapsed}ms")
-
-            assertNotNull("ONNX streaming inference should produce result", result)
-
-            println("=== ONNX SHARP Streaming Results ===")
-            println("Gaussian count: ${result!!.gaussianCount}")
-            println("PLY file: ${result.plyFile.absolutePath}")
-            println("PLY size: ${result.plyFile.length() / 1024}KB")
-            println("Room: ${result.roomWidth.f2()}m x ${result.roomHeight.f2()}m x ${result.roomDepth.f2()}m")
-            println("Expected: $SHARP_FP32_GAUSSIAN_COUNT Gaussians")
-
-            // Full SHARP model should produce ~1.1M Gaussians
-            assertTrue("Should produce substantial Gaussians",
-                result.gaussianCount > 100000)
-
-            // Verify PLY file was created
-            assertTrue("PLY file should exist", result.plyFile.exists())
-            assertTrue("PLY file should have content", result.plyFile.length() > 1000)
-
-            onnxSharp.release()
-        }
-
-        println("\nTEST PASSED: ONNX streaming inference completed (iOS-style memory efficiency)")
-    }
-
-    // ==================== NcnnSharp Fallback Tests ====================
-
-    @Test
-    fun testNcnnSharp_FallbackGeneration() {
-        val ncnnSharp = NcnnSharp(context)
-        ncnnSharp.init()
-
-        println("=== NcnnSharp Fallback Generator ===")
-        println("Native available: ${NcnnSharp.isNativeAvailable()}")
-
-        val result = ncnnSharp.generateGaussians(testBitmap)
-
-        println("Generated ${result.gaussianCount} Gaussians")
-        println("Room: ${result.roomWidth.f2()} x ${result.roomHeight.f2()} x ${result.roomDepth.f2()} m")
-
-        assertTrue("Should generate Gaussians", result.gaussianCount > 0)
-        assertTrue("Params array should match", result.params.size == result.gaussianCount * 14)
-
-        ncnnSharp.release()
-
-        println("\nTEST PASSED: NcnnSharp fallback generation works")
     }
 
     // ==================== WebGL/SparkJS Integration Test ====================

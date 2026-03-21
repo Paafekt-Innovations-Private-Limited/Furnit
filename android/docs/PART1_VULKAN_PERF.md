@@ -2,6 +2,66 @@
 
 Focus **only Part1** (`sharp_split_part1.pte`) until forward time is acceptable. Registration and “keep Module alive” are necessary but **not sufficient** if each `forward()` still costs many minutes: that usually means **per-inference** cost (layout churn, attention on Vulkan, repacking), not a missing warmup.
 
+## March 21, 2026 runtime cleanup: problem solved
+
+The technical problem fixed in app native code was **dead encoder prep work in the current fixed 25-only path**, plus **excess hot-loop logging**.
+
+Problem:
+
+- The Android full pipeline currently forces `part12_25_only=true` for room creation.
+- In that mode, the app does **not** run the `0.5x` or `0.25x` Part1+2 patch passes.
+- Even so, native code was still downsampling the full input image to `0.5x` and `0.25x` buffers before Part1+2 started.
+- The steady-state Part1+2 loop also emitted extra per-patch debug logs around readback and Part2 calls.
+
+Why that was bad:
+
+- The image downsample work consumed CPU time and memory bandwidth on every run, but its outputs were never used in `25-only` mode.
+- The extra logging added avoidable overhead in the hottest encoder loop.
+- This was runtime overhead, not model math.
+
+What changed:
+
+- `sharp_executorch_full_vulkan.cpp` now skips `0.5x` / `0.25x` image downsample prep when `part12_25_only` is active.
+- `sharp_executorch_full.cpp` does the same for CPU / hybrid Part1+2 runs.
+- The hottest per-patch Part1+2 debug logs were removed, while first-patch crash-triage logs and all error logs were kept.
+
+What this did **not** solve:
+
+- It did **not** change ExecuTorch itself.
+- It did **not** change exported `.pte` files or Part1/Part2 graph partitioning.
+- It did **not** remove the real remaining encoder bottleneck: Part1/Part2 forward cost is still dominated by model/backend work.
+
+Current verified result from a real run after this cleanup:
+
+- `part12OnCpu=1` in the log, so this was the current **hybrid** flow: Part1+2 on CPU, Part3/4 on Vulkan.
+- `runFullPipelineInt8` start: `10:17:53.658`
+- `JNI RETURN` validated: `10:19:20.625`
+- Native pipeline total: `86.967s`
+- Part1+2 patches: `30.478s`
+
+So the cleanup removed waste, but Part1+2 is still a major stage and still needs deeper model/export-side work for a large next gain.
+
+## Concrete next profiling plan
+
+Use this order:
+
+1. Check the room log first.
+   If it says `part12OnCpu=1`, that run is hybrid and does **not** tell you about Vulkan Part1+2 speed.
+
+2. Benchmark standalone Part1 in-app.
+   Use `Warmup` then `Benchmark 3×`, and capture `P1_BENCH`, `PART1_RUN`, and `PART1_ARTIFACT`.
+
+3. Compare Vulkan Part1 vs portable Part1 on the same patch.
+   This tells you whether Vulkan is helping at all before you spend time on room-level tuning.
+
+4. If standalone Vulkan Part1 is still bad, collect ETDump for standalone Part1 and Part2 with `executor_runner`.
+   Read the Inspector output as:
+   - big math ops dominate -> split / repartition around attention-heavy blocks
+   - many `view` / `permute` / `concat` / `texture3d` ops dominate -> layout/storage churn is the problem
+   - many graph breaks / fallback -> delegated region is too ambitious
+
+See `docs/EXECUTORCH_VULKAN_PROFILING.md` for the concrete ETDump workflow and interpretation rules.
+
 ## On-device: three timed forwards (same PID)
 
 1. Install/run the app; **do not force-stop** (same process).
