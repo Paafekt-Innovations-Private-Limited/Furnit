@@ -35,21 +35,23 @@ Open `Profile -> Settings -> Developer` and use:
 |---|---|
 | `Inference Backend` | `ExecuTorch INT8 (Vulkan)` |
 | `Max Gaussians` | `All` |
-| `Use true 1280x1280` | `OFF` |
-| `Prefer Vulkan FP16 models` | `ON` |
-| `Prefer single Part4b` | `OFF` |
+| `Use true 1280x1280` | `Fixed OFF` |
+| `Prefer Vulkan FP16 models` | `Fixed ON` |
+| `Prefer single Part4b` | `Fixed OFF` |
 | `Record ETDump on next room creation` | `OFF` for normal runs |
 
 Notes:
 
 - `Prefer single Part4b = OFF` is intentional. The current known-good Vulkan path is the fine-split `tile_00` route, not the old single-decoder route.
 - `Use true 1280x1280 = OFF` keeps the currently validated `1536` hybrid split path.
+- Those three values are now fixed in the Android app and hidden from the Settings UI.
+- That cleanup did not modify ExecuTorch itself; it was limited to app-layer settings handling.
 
 ## Working flow
 
 1. Build and install the `etVulkan` APK.
 2. Push the Vulkan SHARP model pack to `models_vulkan`.
-3. Set the toggles above in Settings.
+3. In Settings, select the backend and confirm `Max Gaussians`. The three hidden ExecuTorch values above are already fixed by the app.
 4. Create a room from a single photo as usual in the app.
 5. Let the pipeline complete without changing backend toggles mid-run.
 

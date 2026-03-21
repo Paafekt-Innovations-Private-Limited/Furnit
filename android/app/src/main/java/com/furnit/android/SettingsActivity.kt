@@ -22,6 +22,7 @@ import com.furnit.android.auth.AuthenticationManager
 import com.furnit.android.auth.LoginActivity
 import com.furnit.android.models.QualitySettings
 import com.furnit.android.services.BackendConfig
+import com.furnit.android.services.ExecutorchFixedSettings
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.Part1OnlyTest
 import com.furnit.android.utils.Part4OnlyTest
@@ -34,6 +35,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
+        ExecutorchFixedSettings.syncToPrefs(prefs)
         authManager = AuthenticationManager.getInstance(this)
 
         val scrollView = ScrollView(this).apply {
@@ -302,74 +304,6 @@ class SettingsActivity : AppCompatActivity() {
         developerSection.addView(maxGaussLayout)
 
         val implLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
-        // True 1280 needs a dedicated model set; do not advertise the old fake 1280->1536 path.
-        val use1280 = prefs.getBoolean("executorch_int8_use_1280", false)
-        val use1280Layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val use1280Label = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        val use1280Title = TextView(this).apply { text = "Use true 1280×1280"; textSize = 14f; setTextColor(Color.parseColor("#222222")) }
-        val use1280Desc = TextView(this).apply {
-            text = "Experimental. Requires dedicated 1280 Part3/Part4 exports; current hybrid split pipeline keeps 1536 until that model set is wired end-to-end."
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-        }
-        use1280Label.addView(use1280Title)
-        use1280Label.addView(use1280Desc)
-        val use1280Switch = createStyledSwitch(use1280) { isChecked ->
-            prefs.edit().putBoolean("executorch_int8_use_1280", isChecked).apply()
-        }
-        use1280Layout.addView(use1280Label)
-        use1280Layout.addView(use1280Switch)
-        implLayout.addView(use1280Layout)
-
-        val preferFp16 = prefs.getBoolean("executorch_vulkan_prefer_fp16", false)
-        val preferFp16Layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val preferFp16Label = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val preferFp16Title = TextView(this).apply {
-            text = "Prefer Vulkan FP16 models"
-            textSize = 14f
-            setTextColor(Color.parseColor("#222222"))
-        }
-        val preferFp16Desc = TextView(this).apply {
-            text = "Use *_vulkan_fp16.pte before FP32 when both exist. Lowers memory pressure, but only works if the Vulkan runtime/export stack supports those shaders."
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-        }
-        preferFp16Label.addView(preferFp16Title)
-        preferFp16Label.addView(preferFp16Desc)
-        val preferFp16Switch = createStyledSwitch(preferFp16) { isChecked ->
-            prefs.edit().putBoolean("executorch_vulkan_prefer_fp16", isChecked).apply()
-        }
-        preferFp16Layout.addView(preferFp16Label)
-        preferFp16Layout.addView(preferFp16Switch)
-        implLayout.addView(preferFp16Layout)
-
-        val preferSinglePart4b = prefs.getBoolean("executorch_prefer_single_part4b", false)
-        val preferSinglePart4bLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
-        val preferSinglePart4bLabel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val preferSinglePart4bTitle = TextView(this).apply {
-            text = "Prefer single Part4b"
-            textSize = 14f
-            setTextColor(Color.parseColor("#222222"))
-        }
-        val preferSinglePart4bDesc = TextView(this).apply {
-            text = "Use one Part4b decoder instead of tiled path. Mainly applies to CPU stable mode; Vulkan ignores this when tiled Part4b exports are present because the single decoder can trigger memory kills."
-            textSize = 12f
-            setTextColor(Color.parseColor("#666666"))
-        }
-        preferSinglePart4bLabel.addView(preferSinglePart4bTitle)
-        preferSinglePart4bLabel.addView(preferSinglePart4bDesc)
-        val preferSinglePart4bSwitch = createStyledSwitch(preferSinglePart4b) { isChecked ->
-            prefs.edit().putBoolean("executorch_prefer_single_part4b", isChecked).apply()
-        }
-        preferSinglePart4bLayout.addView(preferSinglePart4bLabel)
-        preferSinglePart4bLayout.addView(preferSinglePart4bSwitch)
-        implLayout.addView(preferSinglePart4bLayout)
 
         // Record ETDump on next room creation (Vulkan Part4b profiling; pull .etdp and run inspector_cli.py)
         val recordEtdump = prefs.getBoolean("executorch_record_etdump_next_run", false)
