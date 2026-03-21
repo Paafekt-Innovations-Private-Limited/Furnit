@@ -262,17 +262,30 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     private var primaryBboxInView: CGRect = .zero
 
     /// When true, apply final mask overlap containment (intersection-only check). Set to false to skip this filter.
-    private var useMaskOverlapContainment = true
+    private var useMaskOverlapContainment = false
 
     /// When true, exclude detections whose bbox center is outside primary bbox extended by 30% (bag on chair edge survives). Set to false to skip.
-    private var usePrimaryBboxExtensionFilter = true
+    private var usePrimaryBboxExtensionFilter = false
 
     /// Containment: when true, keep candidate if IoU (inter/union) ≥ 20%.
-    private var useContainmentIoU = true
+    private var useContainmentIoU = false
     /// Containment: when true, keep by intersection-frac: small (area<primary) ≥7%; similar size (area≤primary×1.5) ≥12% so handbag stable, cabinet/bottle excluded.
-    private var useContainmentIntersectionFrac = true
+    private var useContainmentIntersectionFrac = false
     /// Containment: when true, do only union (IoU) check at 20%. Off.
     private var useContainmentUnionOnly20 = false
+
+    /// STAGE 3b: NMS on raw YOLO boxes. Off = use all raw detections for primary pick (no NMS).
+    private var usePostDetectionNMS = false
+
+    /// STAGE 5a–5c: prune / bbox dedupe / mask-overlap gate for extra furniture. Off = primary detection only in `kept2`.
+    private var useMultiCandidateStage5 = true
+
+    /// When true: STAGE 15c zeros `maskFull` outside **union** (green) bbox; fused shader uses union clip if `clipUnionMaskToPrimaryBbox` is false.
+    /// Does **not** enable primary (red) clipping — that is only `clipUnionMaskToPrimaryBbox`. Default off (union clip caused holes for some rooms).
+    private var useMaskClipToUnionBbox = false
+
+    /// **true** (default): anything **outside** the primary detection’s bbox is **transparent** — same box as the **red** outline when debug is on. Inside the box you still see the combined (union) mask from all kept detections.
+    private var clipUnionMaskToPrimaryBbox = true
 
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
@@ -1051,22 +1064,27 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
 
-        // STAGE 3b: Apply NMS to reduce redundant detections
+        // STAGE 3b: Apply NMS to reduce redundant detections (optional)
         let t3b = Date()
-        let iouThreshold: Float = 0.5
-        let boxes: [CGRect] = allDets.map { d in
-            CGRect(x: CGFloat(d.x - d.w * 0.5),
-                   y: CGFloat(d.y - d.h * 0.5),
-                   width: CGFloat(d.w),
-                   height: CGFloat(d.h))
+        let candidates: [UnionDet]
+        if usePostDetectionNMS {
+            let iouThreshold: Float = 0.5
+            let boxes: [CGRect] = allDets.map { d in
+                CGRect(x: CGFloat(d.x - d.w * 0.5),
+                       y: CGFloat(d.y - d.h * 0.5),
+                       width: CGFloat(d.w),
+                       height: CGFloat(d.h))
+            }
+            let scores: [Float] = allDets.map { $0.confidence }
+            let keptIdx = applyNMS(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
+            candidates = keptIdx.map { allDets[$0] }
+        } else {
+            candidates = allDets
         }
-        let scores: [Float] = allDets.map { $0.confidence }
-        let keptIdx = applyNMS(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
-        let candidates: [UnionDet] = keptIdx.map { allDets[$0] }
         let t3bEnd = Date()
         if debugMode {
             let nmsMs = String(format: "%.2f", t3bEnd.timeIntervalSince(t3b) * 1000)
-            logDebug("⏱️ STAGE 3b - NMS: \(nmsMs) ms, \(allDets.count) → \(candidates.count)")
+            logDebug("⏱️ STAGE 3b - NMS: \(usePostDetectionNMS ? "ON" : "OFF") \(nmsMs) ms, \(allDets.count) → \(candidates.count)")
         }
 
         setProgress(0.60, text: "Parsing prototypes…")
@@ -1174,7 +1192,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             self.onFurnitureSizeEstimated?(estimatedWidth, estimatedHeight)
         }
 
-        // STAGE 5: Filter candidates by mask overlap with primary
+        // STAGE 5: Filter candidates by mask overlap with primary (5a prune, 5b bbox dedupe, 5c mask overlap).
+        // When disabled, composite uses primary detection only (same as early single-object behavior).
+        var kept2: [UnionDet]
+        if !useMultiCandidateStage5 {
+            kept2 = [primary]
+            if debugMode {
+                logDebug("⏱️ STAGE 5 SKIPPED (useMultiCandidateStage5=false), kept2=primary only")
+            }
+        } else {
+
         let t5 = Date()
 
         // Primary bbox edges for encompasses check
@@ -1348,7 +1375,7 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
         }
 
         // Final result container: always include primary; add candidates that pass mask-overlap gate
-        var kept2: [UnionDet] = [primary]
+        kept2 = [primary]
 
         if !bboxKept.isEmpty {
             // Scratch buffer for candidate logits (reused per candidate)
@@ -1426,6 +1453,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ STAGE 5b/5c - Filter (bbox+mask): \(filterMs) ms, kept=\(kept2.count)")
             logMemory("AFTER STAGE 5b/5c")
         }
+
+        } // end useMultiCandidateStage5
 
         // 1) Primary bbox extension filter (runs first): exclude anything whose bbox center is outside primary bbox + margin. 30% so bag on chair edge survives.
         if usePrimaryBboxExtensionFilter, kept2.count > 1 {
@@ -1760,49 +1789,86 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logMemory("AFTER BUILD MASK")
         }
 
-        // STAGE 15c: Clip mask to bbox (zero out pixels outside bbox)
-        // OPTIMIZED: Use memset for entire rows/regions instead of per-pixel checks
-        let t15c = Date()
-        let clipBx1 = bx1
-        let clipBy1 = by1
-        let clipBx2 = bx2
-        let clipBy2 = by2
+        // STAGE 15c: Clip mask to union bbox (DISABLED by default — tight bbox + rounding caused holes in furniture mask)
+        if useMaskClipToUnionBbox {
+            let t15c = Date()
+            let clipBx1 = bx1
+            let clipBy1 = by1
+            let clipBx2 = bx2
+            let clipBy2 = by2
 
-        // Zero top rows (y < clipBy1) using memset - much faster than per-pixel
-        if clipBy1 > 0 {
-            let topBytes = clipBy1 * origW
-            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
-                memset(ptr.baseAddress!, 0, topBytes)
+            if clipBy1 > 0 {
+                let topBytes = clipBy1 * origW
+                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                    memset(ptr.baseAddress!, 0, topBytes)
+                }
             }
-        }
 
-        // Zero bottom rows (y >= clipBy2) using memset
-        if clipBy2 < origH {
-            let bottomStart = clipBy2 * origW
-            let bottomBytes = (origH - clipBy2) * origW
-            _ = maskFull.withUnsafeMutableBufferPointer { ptr in
-                memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
+            if clipBy2 < origH {
+                let bottomStart = clipBy2 * origW
+                let bottomBytes = (origH - clipBy2) * origW
+                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                    memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
+                }
             }
-        }
 
-        // Zero left and right columns in middle rows
-        if clipBx1 > 0 || clipBx2 < origW {
-            maskFull.withUnsafeMutableBufferPointer { ptr in
-                for y in clipBy1..<clipBy2 {
-                    let rowStart = y * origW
-                    if clipBx1 > 0 {
-                        memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipBx1)
-                    }
-                    if clipBx2 < origW {
-                        memset(ptr.baseAddress!.advanced(by: rowStart + clipBx2), 0, origW - clipBx2)
+            if clipBx1 > 0 || clipBx2 < origW {
+                maskFull.withUnsafeMutableBufferPointer { ptr in
+                    for y in clipBy1..<clipBy2 {
+                        let rowStart = y * origW
+                        if clipBx1 > 0 {
+                            memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipBx1)
+                        }
+                        if clipBx2 < origW {
+                            memset(ptr.baseAddress!.advanced(by: rowStart + clipBx2), 0, origW - clipBx2)
+                        }
                     }
                 }
             }
+
+            if debugMode {
+                let clipMs = String(format: "%.2f", Date().timeIntervalSince(t15c) * 1000)
+                logDebug("⏱️ STAGE 15c - Clip to bbox (memset): \(clipMs) ms")
+            }
+        } else if debugMode {
+            logDebug("⏱️ STAGE 15c - SKIPPED (useMaskClipToUnionBbox=false), full-frame mask retained")
         }
 
-        if debugMode {
-            let clipMs = String(format: "%.2f", Date().timeIntervalSince(t15c) * 1000)
-            logDebug("⏱️ STAGE 15c - Clip to bbox (memset): \(clipMs) ms")
+        // Outside the red primary rectangle: clear the mask so those pixels are transparent.
+        if clipUnionMaskToPrimaryBbox {
+            let clipPx1 = primaryBx1
+            let clipPy1 = primaryBy1
+            let clipPx2 = primaryBx2
+            let clipPy2 = primaryBy2
+            if clipPy1 > 0 {
+                let topBytes = clipPy1 * origW
+                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                    memset(ptr.baseAddress!, 0, topBytes)
+                }
+            }
+            if clipPy2 < origH {
+                let bottomStart = clipPy2 * origW
+                let bottomBytes = (origH - clipPy2) * origW
+                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                    memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
+                }
+            }
+            if clipPx1 > 0 || clipPx2 < origW {
+                maskFull.withUnsafeMutableBufferPointer { ptr in
+                    for y in clipPy1..<clipPy2 {
+                        let rowStart = y * origW
+                        if clipPx1 > 0 {
+                            memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipPx1)
+                        }
+                        if clipPx2 < origW {
+                            memset(ptr.baseAddress!.advanced(by: rowStart + clipPx2), 0, origW - clipPx2)
+                        }
+                    }
+                }
+            }
+            if debugMode {
+                logDebug("⏱️ STAGE 15d - Mask cleared outside primary (red) rect [\(clipPx1),\(clipPy1)]→[\(clipPx2),\(clipPy2)]")
+            }
         }
 
         // Prepare flattened coeffs for fused GPU path
@@ -1904,17 +1970,27 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         enc.setBytes(&resizeGain_f, length: MemoryLayout<Float>.size, index: 8)
                         enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 9)
                         enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 10)
-                        // Use UNION bbox to clip mask (includes all overlapping detections)
-                        // TODO: To test with PRIMARY bbox, change bx1/by1/bx2/by2 to primaryBx1/etc
-                        var bx1_u = UInt32(bx1)  // union bbox
-                        var by1_u = UInt32(by1)
-                        var bx2_u = UInt32(bx2)
-                        var by2_u = UInt32(by2)
-                        // UNCOMMENT BELOW TO USE PRIMARY BBOX INSTEAD:
-                        // var bx1_u = UInt32(primaryBx1)
-                        // var by1_u = UInt32(primaryBy1)
-                        // var bx2_u = UInt32(primaryBx2)
-                        // var by2_u = UInt32(primaryBy2)
+                        // Same rule as mask: outside red primary rect → GPU outputs transparent (inside can still be union of detections).
+                        var bx1_u: UInt32
+                        var by1_u: UInt32
+                        var bx2_u: UInt32
+                        var by2_u: UInt32
+                        if clipUnionMaskToPrimaryBbox {
+                            bx1_u = UInt32(primaryBx1)
+                            by1_u = UInt32(primaryBy1)
+                            bx2_u = UInt32(primaryBx2)
+                            by2_u = UInt32(primaryBy2)
+                        } else if useMaskClipToUnionBbox {
+                            bx1_u = UInt32(bx1)
+                            by1_u = UInt32(by1)
+                            bx2_u = UInt32(bx2)
+                            by2_u = UInt32(by2)
+                        } else {
+                            bx1_u = 0
+                            by1_u = 0
+                            bx2_u = UInt32(origW)
+                            by2_u = UInt32(origH)
+                        }
                         enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 11)
                         enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 12)
                         enc.setBytes(&bx2_u, length: MemoryLayout<UInt32>.size, index: 13)
@@ -2002,9 +2078,12 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 let origRow = y * CVPixelBufferGetBytesPerRow(processBuffer)
                 for x in 0..<origW {
                     let outIdx = outRow + x * 4
-                    if x < primaryBx1 || x >= primaryBx2 || y < primaryBy1 || y >= primaryBy2 {
-                        outBase[outIdx+3] = 0
-                        continue
+                    // Same rule: outside the red primary rectangle, output is transparent.
+                    if clipUnionMaskToPrimaryBbox {
+                        if x < primaryBx1 || x >= primaryBx2 || y < primaryBy1 || y >= primaryBy2 {
+                            outBase[outIdx+3] = 0
+                            continue
+                        }
                     }
                     let m = maskFull[y * origW + x]
                     if m > 0 {
