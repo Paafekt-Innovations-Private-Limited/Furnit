@@ -1,5 +1,5 @@
 // FurnitureFitView.swift
-// Single-stage: detect → primary selection → mask overlap filter → union mask → cutout
+// Single-stage: detect → primary selection → optional multi-candidate (5a–5c) → union mask → clip to primary bbox → cutout
 // With timing at every stage
 
 import SwiftUI
@@ -261,28 +261,8 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// Primary furniture bounding box in view coordinates (for gesture hit testing)
     private var primaryBboxInView: CGRect = .zero
 
-    /// When true, apply final mask overlap containment (intersection-only check). Set to false to skip this filter.
-    private var useMaskOverlapContainment = false
-
-    /// When true, exclude detections whose bbox center is outside primary bbox extended by 30% (bag on chair edge survives). Set to false to skip.
-    private var usePrimaryBboxExtensionFilter = false
-
-    /// Containment: when true, keep candidate if IoU (inter/union) ≥ 20%.
-    private var useContainmentIoU = false
-    /// Containment: when true, keep by intersection-frac: small (area<primary) ≥7%; similar size (area≤primary×1.5) ≥12% so handbag stable, cabinet/bottle excluded.
-    private var useContainmentIntersectionFrac = false
-    /// Containment: when true, do only union (IoU) check at 20%. Off.
-    private var useContainmentUnionOnly20 = false
-
-    /// STAGE 3b: NMS on raw YOLO boxes. Off = use all raw detections for primary pick (no NMS).
-    private var usePostDetectionNMS = false
-
     /// STAGE 5a–5c: prune / bbox dedupe / mask-overlap gate for extra furniture. Off = primary detection only in `kept2`.
     private var useMultiCandidateStage5 = true
-
-    /// When true: STAGE 15c zeros `maskFull` outside **union** (green) bbox; fused shader uses union clip if `clipUnionMaskToPrimaryBbox` is false.
-    /// Does **not** enable primary (red) clipping — that is only `clipUnionMaskToPrimaryBbox`. Default off (union clip caused holes for some rooms).
-    private var useMaskClipToUnionBbox = false
 
     /// **true** (default): anything **outside** the primary detection’s bbox is **transparent** — same box as the **red** outline when debug is on. Inside the box you still see the combined (union) mask from all kept detections.
     private var clipUnionMaskToPrimaryBbox = true
@@ -1064,27 +1044,10 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             return
         }
 
-        // STAGE 3b: Apply NMS to reduce redundant detections (optional)
-        let t3b = Date()
-        let candidates: [UnionDet]
-        if usePostDetectionNMS {
-            let iouThreshold: Float = 0.5
-            let boxes: [CGRect] = allDets.map { d in
-                CGRect(x: CGFloat(d.x - d.w * 0.5),
-                       y: CGFloat(d.y - d.h * 0.5),
-                       width: CGFloat(d.w),
-                       height: CGFloat(d.h))
-            }
-            let scores: [Float] = allDets.map { $0.confidence }
-            let keptIdx = applyNMS(boxes: boxes, scores: scores, iouThreshold: iouThreshold)
-            candidates = keptIdx.map { allDets[$0] }
-        } else {
-            candidates = allDets
-        }
-        let t3bEnd = Date()
+        // STAGE 3b: No NMS — use all raw detections for primary / multi-candidate stages.
+        let candidates = allDets
         if debugMode {
-            let nmsMs = String(format: "%.2f", t3bEnd.timeIntervalSince(t3b) * 1000)
-            logDebug("⏱️ STAGE 3b - NMS: \(usePostDetectionNMS ? "ON" : "OFF") \(nmsMs) ms, \(allDets.count) → \(candidates.count)")
+            logDebug("⏱️ STAGE 3b - candidates: \(candidates.count) (no NMS)")
         }
 
         setProgress(0.60, text: "Parsing prototypes…")
@@ -1456,116 +1419,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
 
         } // end useMultiCandidateStage5
 
-        // 1) Primary bbox extension filter (runs first): exclude anything whose bbox center is outside primary bbox + margin. 30% so bag on chair edge survives.
-        if usePrimaryBboxExtensionFilter, kept2.count > 1 {
-            let countBefore = kept2.count
-            let primary = kept2[0]
-            let px1 = primary.x - primary.w * 0.5
-            let py1 = primary.y - primary.h * 0.5
-            let px2 = primary.x + primary.w * 0.5
-            let py2 = primary.y + primary.h * 0.5
-            let marginW = primary.w * 0.30
-            let marginH = primary.h * 0.30
-            let extPx1 = px1 - marginW
-            let extPy1 = py1 - marginH
-            let extPx2 = px2 + marginW
-            let extPy2 = py2 + marginH
-            let rest = kept2.dropFirst().filter { d in
-                let inX = d.x >= extPx1 && d.x <= extPx2
-                let inY = d.y >= extPy1 && d.y <= extPy2
-                return inX && inY
-            }
-            kept2 = [primary] + rest
-            if debugMode, kept2.count < countBefore {
-                logDebug("📌 Primary bbox +30%% extension filter: kept \(kept2.count)/\(countBefore) (excluded \(countBefore - kept2.count) outside extended primary)")
-            }
-        }
-
-        // 2) Mask overlap containment (runs after primary bbox extension). Flags: useContainmentIoU, useContainmentIntersectionFrac (small-on-primary), useContainmentUnionOnly20.
-        if useMaskOverlapContainment, kept2.count > 1 {
-            var primaryMaskArea = 0
-            scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
-                for px in 0..<planeSize {
-                    if pPtr[px] > 0 { primaryMaskArea += 1 }
-                }
-            }
-            if debugMode {
-                logDebug("📌 Final containment: checking \(kept2.count - 1) candidates, primary_mask=\(primaryMaskArea). Union-only 20%=\(useContainmentUnionOnly20), IoU flag=\(useContainmentIoU), intersection flag=\(useContainmentIntersectionFrac)")
-            }
-            ensureFloatCapacity(&scratchCandidateLogits, count: planeSize)
-            var contained: [UnionDet] = [kept2[0]]
-            let unionCheckThreshold: Float = 0.20  // for union-only path
-            let containmentIoUMin: Float = 0.20
-            let containmentIntersectionMin: Float = 0.07   // 7%; strictly small-on-primary (pillow, handkerchief)
-            let containmentIntersectionMinSimilar: Float = 0.12  // 12%; similar/larger than primary (handbag on chair). Avoid 15%—caused intermittent hole; cabinet/bottle typically <10%.
-            planes.withUnsafeBufferPointer { planesPtr in
-                scratchPrimaryLogits.withUnsafeBufferPointer { pPtr in
-                    for d in kept2.dropFirst() {
-                        scratchCandidateLogits.withUnsafeMutableBufferPointer { yPtr in
-                            d.coeffs.withUnsafeBufferPointer { xPtr in
-                                blas_sgemv_rowmajor_trans(m: BLASInt(32), n: BLASInt(planeSize), alpha: 1.0,
-                                                          A: planesPtr.baseAddress!, lda: BLASInt(planeSize),
-                                                          x: xPtr.baseAddress!, incx: 1,
-                                                          beta: 0.0, y: yPtr.baseAddress!, incy: 1)
-                            }
-                        }
-                        var area = 0
-                        var inter = 0
-                        scratchCandidateLogits.withUnsafeBufferPointer { cPtr in
-                            for px in 0..<planeSize {
-                                if cPtr[px] > 0 {
-                                    area &+= 1
-                                    if pPtr[px] > 0 { inter &+= 1 }
-                                }
-                            }
-                        }
-                        let objName = className(d.classIdx)
-                        let confStr = String(format: "%.3f", d.confidence)
-                        if area == 0 {
-                            if debugMode {
-                                logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=0 → excluded")
-                            }
-                            continue
-                        }
-                        let union = area + primaryMaskArea - inter
-                        let iou: Float = union > 0 ? Float(inter) / Float(union) : 0
-                        let intersectionFrac: Float = Float(inter) / Float(area)
-                        let keepByUnionOnly = useContainmentUnionOnly20 && iou >= unionCheckThreshold
-                        // Large candidates (area > primary×1.5) need higher IoU so cabinet/bottle/doormat don’t slip in with ~20% overlap.
-                        let isLargeVsPrimary = primaryMaskArea > 0 && area > Int(Float(primaryMaskArea) * 1.5)
-                        let iouMinRequired: Float = isLargeVsPrimary ? 0.35 : containmentIoUMin
-                        let keepByIou = useContainmentIoU && iou >= iouMinRequired
-                        // Tiered intersection-frac: (1) strictly small (area < primary) → 7% min. (2) similar size (area <= primary*1.5) → 15% min so cabinet/bottle/doormat (low overlap) excluded, handbag (high overlap) kept.
-                        let maxAreaForFrac = primaryMaskArea > 0 ? Int(Float(primaryMaskArea) * 1.5) : 0
-                        let isSmallOnPrimary = primaryMaskArea > 0 && area < primaryMaskArea
-                        let isSimilarSizeOnPrimary = primaryMaskArea > 0 && area >= primaryMaskArea && area <= maxAreaForFrac
-                        let keepByFracSmall = useContainmentIntersectionFrac && isSmallOnPrimary && intersectionFrac >= containmentIntersectionMin
-                        let keepByFracSimilar = useContainmentIntersectionFrac && isSimilarSizeOnPrimary && intersectionFrac >= containmentIntersectionMinSimilar
-                        let keepByIntersection = keepByFracSmall || keepByFracSimilar
-                        if keepByUnionOnly || keepByIou || keepByIntersection {
-                            contained.append(d)
-                            if debugMode {
-                                let iouPct = String(format: "%.1f", iou * 100)
-                                let fracPct = String(format: "%.1f", intersectionFrac * 100)
-                                let reason = keepByUnionOnly ? "union20" : (keepByIou ? "IoU" : (keepByFracSimilar ? "frac_similar" : "frac"))
-                                logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) union=\(union) IoU=\(iouPct)% frac=\(fracPct)% (\(reason)) → kept")
-                            }
-                        } else if debugMode {
-                            let iouPct = String(format: "%.1f", iou * 100)
-                            let fracPct = String(format: "%.1f", intersectionFrac * 100)
-                            logDebug("   📌 [containment] \(objName) (id:\(d.classIdx)) conf=\(confStr) mask_area=\(area) inter=\(inter) IoU=\(iouPct)% frac=\(fracPct)% → excluded")
-                        }
-                    }
-                }
-            }
-            kept2 = contained
-        }
-        if debugMode, useMaskOverlapContainment {
-            logDebug("⏱️ Final containment: kept=\(kept2.count)")
-        }
-
         if kept2.isEmpty {
-            if debugMode { logDebug("⚠️ No detections after containment") }
+            if debugMode { logDebug("⚠️ No kept detections") }
             DispatchQueue.main.async { self.maskImageView.image = nil }
             resetProcessingFlag()
             return
@@ -1789,51 +1644,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logMemory("AFTER BUILD MASK")
         }
 
-        // STAGE 15c: Clip mask to union bbox (DISABLED by default — tight bbox + rounding caused holes in furniture mask)
-        if useMaskClipToUnionBbox {
-            let t15c = Date()
-            let clipBx1 = bx1
-            let clipBy1 = by1
-            let clipBx2 = bx2
-            let clipBy2 = by2
-
-            if clipBy1 > 0 {
-                let topBytes = clipBy1 * origW
-                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
-                    memset(ptr.baseAddress!, 0, topBytes)
-                }
-            }
-
-            if clipBy2 < origH {
-                let bottomStart = clipBy2 * origW
-                let bottomBytes = (origH - clipBy2) * origW
-                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
-                    memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
-                }
-            }
-
-            if clipBx1 > 0 || clipBx2 < origW {
-                maskFull.withUnsafeMutableBufferPointer { ptr in
-                    for y in clipBy1..<clipBy2 {
-                        let rowStart = y * origW
-                        if clipBx1 > 0 {
-                            memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipBx1)
-                        }
-                        if clipBx2 < origW {
-                            memset(ptr.baseAddress!.advanced(by: rowStart + clipBx2), 0, origW - clipBx2)
-                        }
-                    }
-                }
-            }
-
-            if debugMode {
-                let clipMs = String(format: "%.2f", Date().timeIntervalSince(t15c) * 1000)
-                logDebug("⏱️ STAGE 15c - Clip to bbox (memset): \(clipMs) ms")
-            }
-        } else if debugMode {
-            logDebug("⏱️ STAGE 15c - SKIPPED (useMaskClipToUnionBbox=false), full-frame mask retained")
-        }
-
         // Outside the red primary rectangle: clear the mask so those pixels are transparent.
         if clipUnionMaskToPrimaryBbox {
             let clipPx1 = primaryBx1
@@ -1971,25 +1781,16 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 9)
                         enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 10)
                         // Same rule as mask: outside red primary rect → GPU outputs transparent (inside can still be union of detections).
-                        var bx1_u: UInt32
-                        var by1_u: UInt32
-                        var bx2_u: UInt32
-                        var by2_u: UInt32
+                        // `var` required: `setBytes(_:length:)` takes inout pointers.
+                        var bx1_u: UInt32 = 0
+                        var by1_u: UInt32 = 0
+                        var bx2_u: UInt32 = UInt32(origW)
+                        var by2_u: UInt32 = UInt32(origH)
                         if clipUnionMaskToPrimaryBbox {
                             bx1_u = UInt32(primaryBx1)
                             by1_u = UInt32(primaryBy1)
                             bx2_u = UInt32(primaryBx2)
                             by2_u = UInt32(primaryBy2)
-                        } else if useMaskClipToUnionBbox {
-                            bx1_u = UInt32(bx1)
-                            by1_u = UInt32(by1)
-                            bx2_u = UInt32(bx2)
-                            by2_u = UInt32(by2)
-                        } else {
-                            bx1_u = 0
-                            by1_u = 0
-                            bx2_u = UInt32(origW)
-                            by2_u = UInt32(origH)
                         }
                         enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 11)
                         enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 12)
@@ -2283,24 +2084,6 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             }
         }
         return (protoPlanes, count, h, w)
-    }
-
-    // MARK: - NMS
-    func applyNMS(boxes: [CGRect], scores: [Float], iouThreshold: Float) -> [Int] {
-        var indices = scores.enumerated().sorted(by: { $0.element > $1.element }).map { $0.offset }
-        var keep = [Int]()
-
-        while !indices.isEmpty {
-            let current = indices.removeFirst()
-            keep.append(current)
-
-            indices.removeAll { next in
-                let intersection = boxes[current].intersection(boxes[next])
-                let iou = intersection.area / (boxes[current].area + boxes[next].area - intersection.area)
-                return iou > CGFloat(iouThreshold)
-            }
-        }
-        return keep
     }
 
     // MARK: - Upscale Mask
