@@ -2,35 +2,73 @@
  * SHARP full pipeline — Vulkan Part1+2 (optional hybrid Part12-on-CPU) + Vulkan Part3–4 .pte names.
  */
 #include "sharp_executorch_full_internal.h"
+#if defined(EXECUTORCH_HAS_ETDUMP)
+#include <executorch/devtools/etdump/etdump_flatcc.h>
+#endif
 
+namespace {
+
+bool fileExists(const std::string& path) {
+    std::ifstream f(path);
+    return f.good();
+}
+
+/**
+ * Prefer explicit FP32 Vulkan exports first, then fall back to FP16.
+ *
+ * The current Android Vulkan AAR build shipped in this app does not bundle all FP16 conversion shaders
+ * (for example view_convert_buffer_float_half), so FP16-first resolution can abort during delegate init.
+ * Keep runtime resolution FP32-first until the app ships a Vulkan runtime that fully supports these shaders.
+ */
+std::string resolveVulkanSplitPte(const std::string& dir, const char* stem) {
+    const std::string candidates[] = {
+        std::string(stem) + "_vulkan_fp32.pte",
+        std::string(stem) + "_vulkan_fp16.pte",
+    };
+    for (const auto& name : candidates) {
+        std::string full = pathJoin(dir, name);
+        if (fileExists(full)) {
+            return full;
+        }
+    }
+    return {};
+}
+
+}  // namespace
 
 bool moduleCacheLoadPart12Vulkan(ModuleCache& cache, const std::string& dir) {
-    std::string p1vk = pathJoin(dir, "sharp_split_part1_vulkan_fp16.pte");
-    std::string p2vk = pathJoin(dir, "sharp_split_part2_vulkan_fp16.pte");
-    std::ifstream f1(p1vk), f2(p2vk);
-    if (f1.good() && f2.good()) {
-        f1.close(); f2.close();
-        cache.mod1 = std::make_unique<ETModule>(p1vk, ETModule::LoadMode::Mmap);
-        cache.mod2 = std::make_unique<ETModule>(p2vk, ETModule::LoadMode::Mmap);
-        if (cache.mod1->load() == Error::Ok && cache.mod2->load() == Error::Ok) {
-            LOGD("ModuleCache: Part1+Part2 Vulkan FP16 loaded");
-            std::string p1b2 = pathJoin(dir, "sharp_split_part1_b2_vulkan_fp16.pte");
-            std::string p2b2 = pathJoin(dir, "sharp_split_part2_b2_vulkan_fp16.pte");
-            std::ifstream b1(p1b2), b2(p2b2);
-            if (b1.good() && b2.good()) {
-                b1.close(); b2.close();
-                cache.mod1_b2 = std::make_unique<ETModule>(p1b2, ETModule::LoadMode::Mmap);
-                cache.mod2_b2 = std::make_unique<ETModule>(p2b2, ETModule::LoadMode::Mmap);
-                if (cache.mod1_b2->load() == Error::Ok && cache.mod2_b2->load() == Error::Ok)
-                    LOGD("ModuleCache: Part1+Part2 batch=2 Vulkan FP16 loaded");
-                else
-                    cache.mod1_b2.reset(), cache.mod2_b2.reset();
-            }
-            return true;
-        }
-        cache.mod1.reset(); cache.mod2.reset();
+    std::string p1vk = resolveVulkanSplitPte(dir, "sharp_split_part1");
+    std::string p2vk = resolveVulkanSplitPte(dir, "sharp_split_part2");
+    if (p1vk.empty() || p2vk.empty()) {
+        LOGE("ModuleCache: Vulkan Part1/2 path resolve failed under %s (expected *_vulkan_fp16.pte or *_vulkan_fp32.pte)",
+             dir.c_str());
+        return false;
     }
-    LOGE("ModuleCache: Vulkan FP16 not found");
+    LOGD("ModuleCache: loading Vulkan Part1=%s Part2=%s", p1vk.c_str(), p2vk.c_str());
+    cache.mod1 = std::make_unique<ETModule>(p1vk, ETModule::LoadMode::Mmap);
+    cache.mod2 = std::make_unique<ETModule>(p2vk, ETModule::LoadMode::Mmap);
+    if (cache.mod1->load() == Error::Ok && cache.mod2->load() == Error::Ok) {
+        LOGD("ModuleCache: Part1+Part2 Vulkan split loaded");
+        std::string p1b2 = resolveVulkanSplitPte(dir, "sharp_split_part1_b2");
+        std::string p2b2 = resolveVulkanSplitPte(dir, "sharp_split_part2_b2");
+        if (!p1b2.empty() && !p2b2.empty()) {
+            cache.mod1_b2 = std::make_unique<ETModule>(p1b2, ETModule::LoadMode::Mmap);
+            cache.mod2_b2 = std::make_unique<ETModule>(p2b2, ETModule::LoadMode::Mmap);
+            if (cache.mod1_b2->load() == Error::Ok && cache.mod2_b2->load() == Error::Ok) {
+                LOGD("ModuleCache: Part1+Part2 batch=2 Vulkan split loaded");
+            } else {
+                LOGW("ModuleCache: Vulkan batch=2 load failed p1=%s p2=%s; using single-patch path",
+                     p1b2.c_str(), p2b2.c_str());
+                cache.mod1_b2.reset();
+                cache.mod2_b2.reset();
+            }
+        }
+        return true;
+    }
+    LOGE("ModuleCache: Vulkan Part1/2 load failed p1=%s p2=%s", p1vk.c_str(), p2vk.c_str());
+    cache.mod1.reset();
+    cache.mod2.reset();
+    LOGE("ModuleCache: Vulkan Part1/2 unavailable (expected *_vulkan_fp16.pte or *_vulkan_fp32.pte)");
     return false;
 }
 
@@ -50,7 +88,8 @@ jfloatArray runSharpFullPipeline_Vulkan(
         jint part12Chunk05x,
         jint part12YieldMsBetweenChunks,
         jboolean swapTileNdcXY,
-        jobject progressReporter) {
+        jobject progressReporter,
+        jstring etdumpOutputPath) {
 if (!modelDirPath || !imageNCHW) {
         LOGE("runFullPipelineInt8: null modelDir or image");
         return nullptr;
@@ -77,6 +116,15 @@ if (!modelDirPath || !imageNCHW) {
     std::string modelDir(dirC ? dirC : "");
     env->ReleaseStringUTFChars(modelDirPath, dirC);
     if (modelDir.empty()) { LOGE("empty model dir"); return nullptr; }
+
+    std::string etdumpPath;
+    if (etdumpOutputPath) {
+        const char* ep = env->GetStringUTFChars(etdumpOutputPath, nullptr);
+        if (ep) {
+            etdumpPath = ep;
+            env->ReleaseStringUTFChars(etdumpOutputPath, ep);
+        }
+    }
 
     const int limit1x = (part1MaxPatches1x > 0) ? std::min(25, part1MaxPatches1x) : 25;
     // When in test mode (limit1x < 25), allow 0 at 0.5x (minimal 1+0+1). Otherwise 0 means full 9.
@@ -116,6 +164,7 @@ if (!modelDirPath || !imageNCHW) {
         return nullptr;
     }
     g_workspace.zero();
+    logProcessMemory("after workspace allocate");
 
     jfloat* imageData = env->GetFloatArrayElements(imageNCHW, nullptr);
     if (!imageData) return nullptr;
@@ -129,10 +178,10 @@ if (!modelDirPath || !imageNCHW) {
     // ── Part1 + Part2 (singleton cache) ──────────────────────────────────────
     // When part12OnCpu we load portable Part1+2; only require Vulkan Part1 file when useVulkanForPart12.
     if (useVulkanForPart12) {
-        std::string path1_vk = pathJoin(modelDir, "sharp_split_part1_vulkan_fp16.pte");
-        std::ifstream f2(path1_vk);
-        if (!f2.good()) {
-            LOGE("Part1 not found: %s", path1_vk.c_str());
+        std::string path1_vk = resolveVulkanSplitPte(modelDir, "sharp_split_part1");
+        if (path1_vk.empty()) {
+            LOGE("Part1 Vulkan .pte not found under %s (try sharp_split_part1_vulkan_fp32.pte or _fp16.pte)",
+                 modelDir.c_str());
             env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
             return nullptr;
         }
@@ -152,20 +201,139 @@ if (!modelDirPath || !imageNCHW) {
     const size_t patchSz = (size_t)(3 * PATCH_SIZE * PATCH_SIZE);
     const size_t tokenSliceSz = (size_t)TOKENS_577 * FEATURE_DIM;
     const size_t featSliceSz = (size_t)FEATURE_DIM * SPATIAL_HW;
-
-    // ── 1x patches (5x5 = 25): batch-2 Vulkan FP16 or batch-4 INT8 when available ─
-    long long t1x = nowMs();
     ETModule* m1 = g_moduleCache.mod1.get();
     ETModule* m2 = g_moduleCache.mod2.get();
     ETModule* m1_b4 = g_moduleCache.mod1_b4.get();
     ETModule* m2_b4 = g_moduleCache.mod2_b4.get();
     ETModule* m1_b2 = g_moduleCache.mod1_b2.get();
     ETModule* m2_b2 = g_moduleCache.mod2_b2.get();
+    const bool part12ForceSingle = (part12ForceSinglePatch == JNI_TRUE);
+    bool usedTwoPassVulkan25Only = false;
 
+    // In the common Vulkan 25-only path, avoid keeping Part1 and Part2 live across each patch.
+    // Run all Part1 patches first, cache token outputs, release Part1 modules, then run Part2.
+    if (useVulkanForPart12 && skip05xAnd025x && limit05x == 0) {
+        usedTwoPassVulkan25Only = true;
+        long long t1x = nowMs();
+        std::vector<float> cachedTokens((size_t)limit1x * tokenSliceSz);
+        for (int patchIdx = 0; patchIdx < limit1x; ++patchIdx) {
+            const int ii = patchIdx / GRID_1X;
+            const int jj = patchIdx % GRID_1X;
+            cropNCHW(imageData, imageSize, imageSize, 3,
+                     ii * stride1x, jj * stride1x, PATCH_SIZE, PATCH_SIZE,
+                     ws_patch);
+            auto pTensor = from_blob(ws_patch, {1, 3, PATCH_SIZE, PATCH_SIZE});
+            std::vector<EValue> in1 = {*pTensor};
+            const auto& inTensor = in1[0].toTensor();
+            const int64_t inputNumel = inTensor.numel();
+            const int64_t expectedPart1Numel = (int64_t)1 * 3 * PATCH_SIZE * PATCH_SIZE;
+            if (inputNumel != expectedPart1Numel || inTensor.dim() != 4) {
+                LOGE("Part1 input shape check failed: numel=%lld (expected %lld) dim=%d (expected 4)",
+                     (long long)inputNumel, (long long)expectedPart1Numel, (int)inTensor.dim());
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            if (ii == 0 && jj == 0) {
+                const size_t inputNbytes = (size_t)inputNumel * sizeof(float);
+                LOGD("BEFORE_PART1_FORWARD 1x (0,0) useCache=1 inputNumel=%lld nbytes=%zu dims=[1,3,%d,%d] OK",
+                     (long long)inputNumel, inputNbytes, PATCH_SIZE, PATCH_SIZE);
+                LOGD("BEFORE_PART1_FORWARD input[0..2]=%.6g %.6g %.6g", (double)ws_patch[0], (double)ws_patch[1], (double)ws_patch[2]);
+                LOGD("Part1 1x (0,0): calling m1->forward (Vulkan GPU — crash here = timeout/device-lost)");
+            }
+            auto out1 = m1->forward(in1);
+            if (ii == 0 && jj == 0) {
+                LOGD("AFTER_PART1_FORWARD 1x (0,0) status=%s", out1.ok() ? "ok" : "fail");
+                if (!out1.ok()) LOGD("AFTER_PART1_FORWARD forward_error=%d", static_cast<int>(out1.error()));
+                else if (!out1->empty()) LOGD("AFTER_PART1_FORWARD output_size=%zu out0_numel=%lld", out1->size(), (long long)(*out1)[0].toTensor().numel());
+            }
+            if (!out1.ok()) {
+                int err = static_cast<int>(out1.error());
+                LOGE("Part1 fail 1x (%d,%d): forward error %d %s. CPU path: use Part1/Part2 exported with --backend portable (no Vulkan).", ii, jj, err, executorchErrorStr(err));
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            if (out1->size() < 2) {
+                LOGE("Part1 fail 1x (%d,%d): expected >=2 outputs, got %zu", ii, jj, out1->size());
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            LOGD("Part1 1x (%d,%d): getting output tensors (readback may sync Vulkan fence)", ii, jj);
+            const auto& tokT = (*out1)[0].toTensor();
+            const auto& spaT = (*out1)[1].toTensor();
+            const float* tokPtr = tokT.const_data_ptr<float>();
+            LOGD("Part1 1x (%d,%d): tokPtr=%p (after token readback)", ii, jj, (const void*)tokPtr);
+            const float* spaPtr = spaT.const_data_ptr<float>();
+            LOGD("Part1 1x (%d,%d): spaPtr=%p (after spatial readback)", ii, jj, (const void*)spaPtr);
+            if (!tokPtr || !spaPtr) {
+                LOGE("Part1 1x (%d,%d): token/spatial output ptr null (Vulkan?)", ii, jj);
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            reshapeToSpatial(spaPtr, spaT.numel(), ws_temp);
+            mergeCrop(g_workspace.latent0, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+            reshapeToSpatial(tokPtr, tokT.numel(), ws_temp);
+            mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+            std::memcpy(cachedTokens.data() + (size_t)patchIdx * tokenSliceSz, tokPtr, tokenSliceSz * sizeof(float));
+        }
+        LOGD("1x Part1 pass (%d): %lldms", limit1x, nowMs() - t1x);
+
+        g_moduleCache.mod1.reset();
+        g_moduleCache.mod1_b2.reset();
+        g_moduleCache.mod1_b4.reset();
+        LOGD("Released Vulkan Part1 modules before Part2 pass to reduce encoder overlap");
+        ETModule* m2_only = g_moduleCache.mod2.get();
+        if (!m2_only) {
+            LOGE("Part2 unavailable after releasing Part1 modules");
+            env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+            return nullptr;
+        }
+
+        long long t2_1x = nowMs();
+        for (int patchIdx = 0; patchIdx < limit1x; ++patchIdx) {
+            const int ii = patchIdx / GRID_1X;
+            const int jj = patchIdx % GRID_1X;
+            const float* tokSlice = cachedTokens.data() + (size_t)patchIdx * tokenSliceSz;
+            std::memcpy(ws_tokens, tokSlice, tokenSliceSz * sizeof(float));
+            auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
+            std::vector<EValue> in2 = {*tokInput};
+            LOGD("Part1 1x (%d,%d): calling Part2 forward", ii, jj);
+            auto out2 = m2_only->forward(in2);
+            LOGD("Part1 1x (%d,%d): Part2 forward returned", ii, jj);
+            if (!out2.ok() || out2->empty()) {
+                LOGE("Part2 fail 1x (%d,%d)", ii, jj);
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            const float* featPtr = (*out2)[0].toTensor().const_data_ptr<float>();
+            if (!featPtr) {
+                LOGE("Part2 1x (%d,%d): feat output ptr null (Vulkan?)", ii, jj);
+                env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                return nullptr;
+            }
+            reshapeToSpatial(featPtr, (*out2)[0].toTensor().numel(), ws_temp);
+            mergeCrop(g_workspace.x0Feat, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+            if (progressReporter && reportProgressMethodId) {
+                const int totalPart1Patches = limit1x + limit05x + 1;
+                const int patchesDone = patchIdx + 1;
+                float p = (patchesDone / (float)totalPart1Patches) * 0.5f;
+                char buf[64];
+                snprintf(buf, sizeof(buf), "Part 1+2: patch %d/%d…", patchesDone, totalPart1Patches);
+                reportProgress(env, progressReporter, reportProgressMethodId, p, buf);
+            }
+        }
+        LOGD("1x Part2 pass (%d): %lldms", limit1x, nowMs() - t2_1x);
+        LOGD("1x patches (%d): %lldms", limit1x, nowMs() - t1x);
+        downsample2x(g_workspace.x0Feat, M_1X, M_1X, FEATURE_DIM, g_workspace.x1Feat);
+        downsample4x(g_workspace.x0Feat, M_1X, M_1X, FEATURE_DIM, g_workspace.x2Feat);
+        LOGD("Skipped 0.5x+0.25x (part12_25_only); filled x1Feat,x2Feat from downsampled x0Feat");
+    }
+
+    if (!usedTwoPassVulkan25Only) {
+    // ── 1x patches (5x5 = 25): batch-2 Vulkan FP16 or batch-4 INT8 when available ─
+    long long t1x = nowMs();
     int batchSize1x = 1;
     ETModule* m1_batch = nullptr;
     ETModule* m2_batch = nullptr;
-    const bool part12ForceSingle = (part12ForceSinglePatch == JNI_TRUE);
     // Vulkan batch-2 triggers write_attribute outside boundary in ExecuTorch Tensor.cpp; use single-patch.
     if (!part12ForceSingle && false && useVulkanForPart12 && m1_b2 && m2_b2) {
         batchSize1x = PATCH_BATCH_2;
@@ -193,39 +361,45 @@ if (!modelDirPath || !imageNCHW) {
             auto pTensor = from_blob(g_workspace.patchBuf4, {n, 3, PATCH_SIZE, PATCH_SIZE});
             std::vector<EValue> in1 = {*pTensor};
             if (start == 0) LOGD("1x batch-%d: Part1 forward (start=0)", n);
-            auto out1 = m1_batch->forward(in1);
             const size_t needTokenNumel = (size_t)n * tokenSliceSz;
             const size_t needFeatNumel = (size_t)n * featSliceSz;
-            if (out1.ok() && out1->size() >= 2) {
-                const auto& tokT = (*out1)[0].toTensor();
-                const auto& spaT = (*out1)[1].toTensor();
-                const float* tokBase = tokT.const_data_ptr<float>();
-                const float* spaBase = spaT.const_data_ptr<float>();
-                if (tokBase && spaBase && tokT.numel() >= (int64_t)needTokenNumel && spaT.numel() >= (int64_t)needTokenNumel) {
-                    for (int b = 0; b < n; ++b) {
-                        const int ii = (start + b) / GRID_1X;
-                        const int jj = (start + b) % GRID_1X;
-                        reshapeToSpatial(spaBase + b * tokenSliceSz, tokenSliceSz, ws_temp);
-                        mergeCrop(g_workspace.latent0, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
-                        reshapeToSpatial(tokBase + b * tokenSliceSz, tokenSliceSz, ws_temp);
-                        mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
-                    }
-                    std::memcpy(g_workspace.tokensCopy4, tokBase, n * tokenSliceSz * sizeof(float));
-                    auto tokInput = from_blob(g_workspace.tokensCopy4, {n, TOKENS_577, FEATURE_DIM});
-                    std::vector<EValue> in2 = {*tokInput};
-                    auto out2 = m2_batch->forward(in2);
-                    if (out2.ok() && !out2->empty()) {
-                        const auto& featT = (*out2)[0].toTensor();
-                        const float* featBase = featT.const_data_ptr<float>();
-                        if (featBase && featT.numel() >= (int64_t)needFeatNumel) {
-                            for (int b = 0; b < n; ++b) {
-                                const int ii = (start + b) / GRID_1X;
-                                const int jj = (start + b) % GRID_1X;
-                                reshapeToSpatial(featBase + b * featSliceSz, featSliceSz, ws_temp);
-                                mergeCrop(g_workspace.x0Feat, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
-                            }
-                            batchOk = true;
+            bool batchTokensReady = false;
+            {
+                auto out1 = m1_batch->forward(in1);
+                if (out1.ok() && out1->size() >= 2) {
+                    const auto& tokT = (*out1)[0].toTensor();
+                    const auto& spaT = (*out1)[1].toTensor();
+                    const float* tokBase = tokT.const_data_ptr<float>();
+                    const float* spaBase = spaT.const_data_ptr<float>();
+                    if (tokBase && spaBase && tokT.numel() >= (int64_t)needTokenNumel && spaT.numel() >= (int64_t)needTokenNumel) {
+                        for (int b = 0; b < n; ++b) {
+                            const int ii = (start + b) / GRID_1X;
+                            const int jj = (start + b) % GRID_1X;
+                            reshapeToSpatial(spaBase + b * tokenSliceSz, tokenSliceSz, ws_temp);
+                            mergeCrop(g_workspace.latent0, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+                            reshapeToSpatial(tokBase + b * tokenSliceSz, tokenSliceSz, ws_temp);
+                            mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
                         }
+                        std::memcpy(g_workspace.tokensCopy4, tokBase, n * tokenSliceSz * sizeof(float));
+                        batchTokensReady = true;
+                    }
+                }
+            }
+            if (batchTokensReady) {
+                auto tokInput = from_blob(g_workspace.tokensCopy4, {n, TOKENS_577, FEATURE_DIM});
+                std::vector<EValue> in2 = {*tokInput};
+                auto out2 = m2_batch->forward(in2);
+                if (out2.ok() && !out2->empty()) {
+                    const auto& featT = (*out2)[0].toTensor();
+                    const float* featBase = featT.const_data_ptr<float>();
+                    if (featBase && featT.numel() >= (int64_t)needFeatNumel) {
+                        for (int b = 0; b < n; ++b) {
+                            const int ii = (start + b) / GRID_1X;
+                            const int jj = (start + b) % GRID_1X;
+                            reshapeToSpatial(featBase + b * featSliceSz, featSliceSz, ws_temp);
+                            mergeCrop(g_workspace.x0Feat, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+                        }
+                        batchOk = true;
                     }
                 }
             }
@@ -268,40 +442,49 @@ if (!modelDirPath || !imageNCHW) {
                     LOGD("Part1 1x (0,0): calling m1->forward (%s)",
                          useVulkanForPart12 ? "Vulkan GPU — crash here = timeout/device-lost" : "CPU/XNNPACK INT8");
                 }
-                auto out1 = m1->forward(in1);
-                if (ii == 0 && jj == 0) {
-                    LOGD("AFTER_PART1_FORWARD 1x (0,0) status=%s", out1.ok() ? "ok" : "fail");
-                    if (!out1.ok()) LOGD("AFTER_PART1_FORWARD forward_error=%d", static_cast<int>(out1.error()));
-                    else if (!out1->empty()) LOGD("AFTER_PART1_FORWARD output_size=%zu out0_numel=%lld", out1->size(), (long long)(*out1)[0].toTensor().numel());
+                bool part1Prepared = false;
+                {
+                    auto out1 = m1->forward(in1);
+                    if (ii == 0 && jj == 0) {
+                        LOGD("AFTER_PART1_FORWARD 1x (0,0) status=%s", out1.ok() ? "ok" : "fail");
+                        if (!out1.ok()) LOGD("AFTER_PART1_FORWARD forward_error=%d", static_cast<int>(out1.error()));
+                        else if (!out1->empty()) LOGD("AFTER_PART1_FORWARD output_size=%zu out0_numel=%lld", out1->size(), (long long)(*out1)[0].toTensor().numel());
+                    }
+                    if (!out1.ok()) {
+                        int err = static_cast<int>(out1.error());
+                        LOGE("Part1 fail 1x (%d,%d): forward error %d %s. CPU path: use Part1/Part2 exported with --backend portable (no Vulkan).", ii, jj, err, executorchErrorStr(err));
+                        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                        return nullptr;
+                    }
+                    if (out1->size() < 2) {
+                        LOGE("Part1 fail 1x (%d,%d): expected >=2 outputs, got %zu", ii, jj, out1->size());
+                        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                        return nullptr;
+                    }
+                    LOGD("Part1 1x (%d,%d): getting output tensors (readback may sync Vulkan fence)", ii, jj);
+                    const auto& tokT = (*out1)[0].toTensor();
+                    const auto& spaT = (*out1)[1].toTensor();
+                    const float* tokPtr = tokT.const_data_ptr<float>();
+                    LOGD("Part1 1x (%d,%d): tokPtr=%p (after token readback)", ii, jj, (const void*)tokPtr);
+                    const float* spaPtr = spaT.const_data_ptr<float>();
+                    LOGD("Part1 1x (%d,%d): spaPtr=%p (after spatial readback)", ii, jj, (const void*)spaPtr);
+                    if (!tokPtr || !spaPtr) {
+                        LOGE("Part1 1x (%d,%d): token/spatial output ptr null (Vulkan?)", ii, jj);
+                        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                        return nullptr;
+                    }
+                    reshapeToSpatial(spaPtr, spaT.numel(), ws_temp);
+                    mergeCrop(g_workspace.latent0, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+                    reshapeToSpatial(tokPtr, tokT.numel(), ws_temp);
+                    mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
+                    std::memcpy(ws_tokens, tokPtr, tokenSliceSz * sizeof(float));
+                    part1Prepared = true;
                 }
-                if (!out1.ok()) {
-                    int err = static_cast<int>(out1.error());
-                    LOGE("Part1 fail 1x (%d,%d): forward error %d %s. CPU path: use Part1/Part2 exported with --backend portable (no Vulkan).", ii, jj, err, executorchErrorStr(err));
+                if (!part1Prepared) {
+                    LOGE("Part1 1x (%d,%d): did not produce tokens for Part2", ii, jj);
                     env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                     return nullptr;
                 }
-                if (out1->size() < 2) {
-                    LOGE("Part1 fail 1x (%d,%d): expected >=2 outputs, got %zu", ii, jj, out1->size());
-                    env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-                    return nullptr;
-                }
-                LOGD("Part1 1x (%d,%d): getting output tensors (readback may sync Vulkan fence)", ii, jj);
-                const auto& tokT = (*out1)[0].toTensor();
-                const auto& spaT = (*out1)[1].toTensor();
-                const float* tokPtr = tokT.const_data_ptr<float>();
-                LOGD("Part1 1x (%d,%d): tokPtr=%p (after token readback)", ii, jj, (const void*)tokPtr);
-                const float* spaPtr = spaT.const_data_ptr<float>();
-                LOGD("Part1 1x (%d,%d): spaPtr=%p (after spatial readback)", ii, jj, (const void*)spaPtr);
-                if (!tokPtr || !spaPtr) {
-                    LOGE("Part1 1x (%d,%d): token/spatial output ptr null (Vulkan?)", ii, jj);
-                    env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-                    return nullptr;
-                }
-                reshapeToSpatial(spaPtr, spaT.numel(), ws_temp);
-                mergeCrop(g_workspace.latent0, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
-                reshapeToSpatial(tokPtr, tokT.numel(), ws_temp);
-                mergeCrop(g_workspace.latent1, M_1X, ws_temp, jj, ii, GRID_1X, PADDING_1X, ROW_OFFS_1X, COL_OFFS_1X);
-                std::memcpy(ws_tokens, tokPtr, tokenSliceSz * sizeof(float));
                 LOGD("Part1 1x (%d,%d): calling Part2 forward", ii, jj);
                 auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
                 std::vector<EValue> in2 = {*tokInput};
@@ -400,25 +583,34 @@ if (!modelDirPath || !imageNCHW) {
                          ws_patch);
                 auto pTensor = from_blob(ws_patch, {1, 3, PATCH_SIZE, PATCH_SIZE});
                 std::vector<EValue> in1 = {*pTensor};
-                auto out1 = m1->forward(in1);
-                if (!out1.ok()) {
-                    int err = static_cast<int>(out1.error());
-                    LOGE("Part1 fail 0.5x (%d,%d): forward error %d %s", ii, jj, err, executorchErrorStr(err));
+                bool part1Prepared = false;
+                {
+                    auto out1 = m1->forward(in1);
+                    if (!out1.ok()) {
+                        int err = static_cast<int>(out1.error());
+                        LOGE("Part1 fail 0.5x (%d,%d): forward error %d %s", ii, jj, err, executorchErrorStr(err));
+                        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                        return nullptr;
+                    }
+                    if (out1->size() < 1) {
+                        LOGE("Part1 fail 0.5x (%d,%d): expected >=1 output, got %zu", ii, jj, out1->size());
+                        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                        return nullptr;
+                    }
+                    const float* tokPtr = (*out1)[0].toTensor().const_data_ptr<float>();
+                    if (!tokPtr) {
+                        LOGE("Part1 0.5x (%d,%d): token output ptr null (Vulkan?)", ii, jj);
+                        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+                        return nullptr;
+                    }
+                    std::memcpy(ws_tokens, tokPtr, tokenSliceSz * sizeof(float));
+                    part1Prepared = true;
+                }
+                if (!part1Prepared) {
+                    LOGE("Part1 0.5x (%d,%d): did not produce tokens for Part2", ii, jj);
                     env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                     return nullptr;
                 }
-                if (out1->size() < 1) {
-                    LOGE("Part1 fail 0.5x (%d,%d): expected >=1 output, got %zu", ii, jj, out1->size());
-                    env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-                    return nullptr;
-                }
-                const float* tokPtr = (*out1)[0].toTensor().const_data_ptr<float>();
-                if (!tokPtr) {
-                    LOGE("Part1 0.5x (%d,%d): token output ptr null (Vulkan?)", ii, jj);
-                    env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-                    return nullptr;
-                }
-                std::memcpy(ws_tokens, tokPtr, tokenSliceSz * sizeof(float));
                 auto tokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
                 std::vector<EValue> in2 = {*tokInput};
                 auto out2 = m2->forward(in2);
@@ -458,25 +650,34 @@ if (!modelDirPath || !imageNCHW) {
     long long t025 = nowMs();
     auto qTensor = from_blob(g_workspace.quarterImg, {1, 3, PATCH_SIZE, PATCH_SIZE});
     std::vector<EValue> inQ = {*qTensor};
-    auto outQ = g_moduleCache.mod1->forward(inQ);
-    if (!outQ.ok()) {
-        int err = static_cast<int>(outQ.error());
-        LOGE("Part1 fail 0.25x: forward error %d %s", err, executorchErrorStr(err));
+    bool qPrepared = false;
+    {
+        auto outQ = g_moduleCache.mod1->forward(inQ);
+        if (!outQ.ok()) {
+            int err = static_cast<int>(outQ.error());
+            LOGE("Part1 fail 0.25x: forward error %d %s", err, executorchErrorStr(err));
+            env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+            return nullptr;
+        }
+        if (outQ->size() < 1) {
+            LOGE("Part1 fail 0.25x: expected >=1 output, got %zu", outQ->size());
+            env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+            return nullptr;
+        }
+        const float* qTokPtr = (*outQ)[0].toTensor().const_data_ptr<float>();
+        if (!qTokPtr) {
+            LOGE("Part1 0.25x: token output ptr null (Vulkan?)");
+            env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+            return nullptr;
+        }
+        std::memcpy(ws_tokens, qTokPtr, (size_t)TOKENS_577 * FEATURE_DIM * sizeof(float));
+        qPrepared = true;
+    }
+    if (!qPrepared) {
+        LOGE("Part1 0.25x: did not produce tokens for Part2");
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
         return nullptr;
     }
-    if (outQ->size() < 1) {
-        LOGE("Part1 fail 0.25x: expected >=1 output, got %zu", outQ->size());
-        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-        return nullptr;
-    }
-    const float* qTokPtr = (*outQ)[0].toTensor().const_data_ptr<float>();
-    if (!qTokPtr) {
-        LOGE("Part1 0.25x: token output ptr null (Vulkan?)");
-        env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
-        return nullptr;
-    }
-    std::memcpy(ws_tokens, qTokPtr, (size_t)TOKENS_577 * FEATURE_DIM * sizeof(float));
     auto qTokInput = from_blob(ws_tokens, {1, TOKENS_577, FEATURE_DIM});
     std::vector<EValue> inQ2 = {*qTokInput};
     auto outQ2 = g_moduleCache.mod2->forward(inQ2);
@@ -505,12 +706,18 @@ if (!modelDirPath || !imageNCHW) {
         downsample4x(g_workspace.x0Feat, M_1X, M_1X, FEATURE_DIM, g_workspace.x2Feat);
         LOGD("Skipped 0.5x+0.25x (part12_25_only); filled x1Feat,x2Feat from downsampled x0Feat");
     }
+    }
 
     // ── Part3 + Part4a paths (fixed names per export; no .pte delegate scanning) ──
     long long tP3 = nowMs();
     std::string path3;
     if (useVulkanBackend) {
-        path3 = pathJoin(modelDir, "sharp_split_part3_vulkan_fp16.pte");
+        path3 = resolveVulkanSplitPte(modelDir, "sharp_split_part3");
+        if (path3.empty()) {
+            LOGE("Part3 Vulkan .pte not found (expected sharp_split_part3_vulkan_fp32.pte or _fp16.pte)");
+            env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
+            return nullptr;
+        }
     } else {
         path3 = pathJoin(modelDir, "sharp_split_part3_int8.pte");
         std::ifstream ft(path3);
@@ -554,6 +761,8 @@ if (!modelDirPath || !imageNCHW) {
          path4a512.c_str(),
          path4a65.c_str(),
          path4bSingle.empty() ? "(none yet / tiled path)" : path4bSingle.c_str());
+    LOGD("[MEM] combinedTokens planned ~%zuMB image=%dx%d", ((size_t)TOKENS_577 * FEATURE_DIM * sizeof(float)) / (1024 * 1024), imageSize, imageSize);
+    logProcessMemory("before Part3 load");
 
     auto mod3 = std::make_unique<ETModule>(path3, ETModule::LoadMode::Mmap);
     if (mod3->load() != Error::Ok) {
@@ -581,6 +790,10 @@ if (!modelDirPath || !imageNCHW) {
     std::memcpy(combinedTokens.data(), imgTokensPtr, imgTokensNumel * sizeof(float));
     mod3.reset();
     LOGD("Part3: %lldms (numel=%zu)", nowMs() - tP3, imgTokensNumel);
+    logProcessMemory("after Part3 reset");
+
+    g_workspace.releaseEncoderScratch();
+    logProcessMemory("after releasing encoder scratch before Part4");
 
     // ── Part4a chunk 512 ─────────────────────────────────────────────────────
     long long tP4a = nowMs();
@@ -595,6 +808,7 @@ if (!modelDirPath || !imageNCHW) {
         LOGW("Part4a/512: CPU INT8 ViT is often many minutes on phone SoCs. For ~2–3 min total, use etVulkan build + "
              "Vulkan Part3/4 .pte in models_vulkan (logcat showed 400s+ on one device before OMP tuning).");
     }
+    logProcessMemory("before Part4a/512 load");
     long long tLoad512 = nowMs();
     auto mod4a512 = std::make_unique<ETModule>(path4a512, ETModule::LoadMode::Mmap);
     if (mod4a512->load() != Error::Ok) {
@@ -635,6 +849,7 @@ if (!modelDirPath || !imageNCHW) {
     std::memcpy(combinedTokens.data(), out512Ptr, out512Len * sizeof(float));
     mod4a512.reset();
     LOGD("Part4a/512: %lldms (out=%zu)", nowMs() - tP4a, out512Len);
+    logProcessMemory("after Part4a/512 reset");
 
     // ── Part4a chunk 65 ──────────────────────────────────────────────────────
     long long tP4a65 = nowMs();
@@ -644,6 +859,7 @@ if (!modelDirPath || !imageNCHW) {
     if (!useVulkanBackend) {
         LOGI("Part4a/65: portable CPU/XNNPACK…");
     }
+    logProcessMemory("before Part4a/65 load");
     long long tLoad65 = nowMs();
     auto mod4a65 = std::make_unique<ETModule>(path4a65, ETModule::LoadMode::Mmap);
     if (mod4a65->load() != Error::Ok) {
@@ -684,10 +900,12 @@ if (!modelDirPath || !imageNCHW) {
     std::memcpy(combinedTokens.data() + 512 * FEATURE_DIM, out65Ptr, out65Len * sizeof(float));
     mod4a65.reset();
     LOGD("Part4a/65: %lldms. Part4a total: %lldms", nowMs() - tP4a65, nowMs() - tP4a);
+    logProcessMemory("after Part4a/65 reset");
 
     // ── Part4b: Stable ON → single in modelDir first; else tiled → seq tiled → single fallback
     g_moduleCache.release();
     LOGD("Released Part1+Part2 cache before Part4b to free memory");
+    logProcessMemory("before Part4b routing");
 
     bool part4bSingleEarlyAttempted = false;
     if (useSinglePart4bOnly && !path4bSingle.empty()) {
@@ -712,12 +930,20 @@ if (!modelDirPath || !imageNCHW) {
                 reportProgress(env, progressReporter, reportProgressMethodId, 0.75f, msg);
             }
             LOGI("Part4b single (Stable, try first): %s", path4b.c_str());
+            logProcessMemory("Part4b single early: before module load");
             long long tLoad4b = nowMs();
+#if defined(EXECUTORCH_HAS_ETDUMP)
+            std::unique_ptr<ETModule> mod4b = (!etdumpPath.empty())
+                ? std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap, std::make_unique<executorch::etdump::ETDumpGen>())
+                : std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap);
+#else
             auto mod4b = std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap);
+#endif
             if (mod4b->load() != Error::Ok) {
                 LOGE("Part4b single load fail: %s — trying tiled", path4b.c_str());
             } else {
                 LOGI("Part4b: load OK in %lldms; forward(7 inputs) starting…", nowMs() - tLoad4b);
+                logProcessMemory("Part4b single early: after module load");
                 auto tokens4b = from_blob(combinedTokens.data(), {1, TOKENS_577, FEATURE_DIM});
                 auto img4b    = from_blob(imageData, {1, 3, imageSize, imageSize});
                 auto lat0_4b  = from_blob(g_workspace.latent0, {1, FEATURE_DIM, M_1X, M_1X});
@@ -738,6 +964,21 @@ if (!modelDirPath || !imageNCHW) {
                 LOGI("Part4b forward running (single decoder)…");
                 auto out4b = mod4b->forward(in4b);
                 LOGI("Part4b forward finished in %lldms", nowMs() - tFwd4b);
+#if defined(EXECUTORCH_HAS_ETDUMP)
+                if (!etdumpPath.empty()) {
+                    if (auto* etdump = dynamic_cast<executorch::etdump::ETDumpGen*>(mod4b->event_tracer())) {
+                        executorch::etdump::ETDumpResult result = etdump->get_etdump_data();
+                        if (result.buf != nullptr && result.size > 0) {
+                            std::ofstream f(etdumpPath, std::ios::binary);
+                            if (f) {
+                                f.write(static_cast<const char*>(result.buf), static_cast<std::streamsize>(result.size));
+                                LOGI("ETDump written to %s (%zu bytes)", etdumpPath.c_str(), result.size);
+                            }
+                            free(result.buf);
+                        }
+                    }
+                }
+#endif
                 if (!out4b.ok() || out4b->empty()) {
                     if (!out4b.ok()) {
                         int err = static_cast<int>(out4b.error());
@@ -779,6 +1020,7 @@ if (!modelDirPath || !imageNCHW) {
                                         long long tTotal = nowMs() - t0;
                                         LOGD("Part4b (single Stable): %lldms. TOTAL pipeline: %lldms. Gaussians=%d",
                                              nowMs() - tP4b, tTotal, numFloats / PARAMS_PER_GAUSSIAN);
+                                        logProcessMemory("Part4b single early: completed");
                                         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
                                         jfloatArray jResult = env->NewFloatArray(numFloats);
                                         if (!jResult) { LOGE("result array alloc fail"); return nullptr; }
@@ -821,6 +1063,7 @@ if (!modelDirPath || !imageNCHW) {
         return jResult;
     }
 
+    tiledGaussians.clear();
     if (runPart4bTiledFullPipeline(modelDir,
                                    imageData,
                                    g_workspace.latent0,
@@ -873,14 +1116,22 @@ if (!modelDirPath || !imageNCHW) {
         reportProgress(env, progressReporter, reportProgressMethodId, 0.75f, msg);
     }
     LOGI("Part4b single load: %s", path4b.c_str());
+    logProcessMemory("Part4b single fallback: before module load");
     long long tLoad4b = nowMs();
+#if defined(EXECUTORCH_HAS_ETDUMP)
+    std::unique_ptr<ETModule> mod4b = (!etdumpPath.empty())
+        ? std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap, std::make_unique<executorch::etdump::ETDumpGen>())
+        : std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap);
+#else
     auto mod4b = std::make_unique<ETModule>(path4b, ETModule::LoadMode::Mmap);
+#endif
     if (mod4b->load() != Error::Ok) {
         LOGE("Part4b load fail: %s", path4b.c_str());
         env->ReleaseFloatArrayElements(imageNCHW, imageData, JNI_ABORT);
         return nullptr;
     }
     LOGI("Part4b: load OK in %lldms; forward(7 inputs) starting…", nowMs() - tLoad4b);
+    logProcessMemory("Part4b single fallback: after module load");
 
     auto tokens4b = from_blob(combinedTokens.data(), {1, TOKENS_577, FEATURE_DIM});
     auto img4b    = from_blob(imageData, {1, 3, imageSize, imageSize});
@@ -904,6 +1155,22 @@ if (!modelDirPath || !imageNCHW) {
     LOGI("Part4b forward running (single decoder)…");
     auto out4b = mod4b->forward(in4b);
     LOGI("Part4b forward finished in %lldms", nowMs() - tFwd4b);
+    logProcessMemory("Part4b single fallback: after forward");
+#if defined(EXECUTORCH_HAS_ETDUMP)
+    if (!etdumpPath.empty()) {
+        if (auto* etdump = dynamic_cast<executorch::etdump::ETDumpGen*>(mod4b->event_tracer())) {
+            executorch::etdump::ETDumpResult result = etdump->get_etdump_data();
+            if (result.buf != nullptr && result.size > 0) {
+                std::ofstream f(etdumpPath, std::ios::binary);
+                if (f) {
+                    f.write(static_cast<const char*>(result.buf), static_cast<std::streamsize>(result.size));
+                    LOGI("ETDump written to %s (%zu bytes)", etdumpPath.c_str(), result.size);
+                }
+                free(result.buf);
+            }
+        }
+    }
+#endif
 
     if (!out4b.ok() || out4b->empty()) {
         if (!out4b.ok()) {
@@ -964,4 +1231,3 @@ if (!modelDirPath || !imageNCHW) {
     LOGD("JNI RETURN: size=%d validated", numFloats);
     return jResult;
 }
-

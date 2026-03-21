@@ -18,7 +18,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FURNIT_LIB="${FURNIT_LIB:-${SCRIPT_DIR}/app/src/main/cpp/executorch_lib}"
+# etVulkan flavor uses executorch_lib_etVulkan
+FURNIT_LIB="${FURNIT_LIB:-${SCRIPT_DIR}/app/src/main/cpp/executorch_lib_etVulkan}"
 EXECUTORCH_SOURCE_DIR="${EXECUTORCH_SOURCE_DIR:-}"
 ANDROID_ABIS="${ANDROID_ABIS:-arm64-v8a}"
 
@@ -58,12 +59,34 @@ if [[ ! -f "${EXECUTORCH_SOURCE_DIR}/scripts/build_android_library.sh" ]]; then
   exit 1
 fi
 
-# Build with Vulkan enabled (full GLSL shader set); arm64-v8a only to save time
+# Build with Vulkan enabled (full GLSL shader set incl. view_convert_buffer_float_half for FP16); arm64-v8a only
 export EXECUTORCH_BUILD_VULKAN=ON
 export ANDROID_ABIS=arm64-v8a
+# Enable event tracer and ETDump so the app can record Part4b Vulkan profiling (see android/docs/EXECUTORCH_VULKAN_PROFILING.md)
+export EXECUTORCH_ENABLE_EVENT_TRACER=ON
+export EXECUTORCH_BUILD_DEVTOOLS=ON
+
+# Optional: FP16 shader flags (fixes Error 0x20 / view_convert_buffer_float_half). Pass to ExecuTorch cmake.
+# If ExecuTorch's build_android_library.sh doesn't support these, build may fail — then try without.
+EXTRA_VK_FLAGS="${EXTRA_VK_FLAGS:--DEXECUTORCH_VULKAN_FP16_ENABLED=ON -DEXECUTORCH_VULKAN_INCLUDE_ALL_SHADERS=ON}"
+echo "Extra Vulkan CMake flags: ${EXTRA_VK_FLAGS}"
 
 echo "Building ExecuTorch Android with EXECUTORCH_BUILD_VULKAN=ON..."
-(cd "${EXECUTORCH_SOURCE_DIR}" && sh scripts/build_android_library.sh)
+# Inject FP16 shader flags into ExecuTorch cmake (fixes view_convert_buffer_float_half / Error 0x20).
+# If cmake rejects unknown options, set EXTRA_VK_FLAGS="" and re-run.
+BUILD_SCRIPT="${EXECUTORCH_SOURCE_DIR}/scripts/build_android_library.sh"
+PATCHED="${EXECUTORCH_SOURCE_DIR}/scripts/build_android_library.furnit_patched"
+# Inject FP16 + event tracer/devtools into cmake line
+PROFILING_FLAGS="-DEXECUTORCH_ENABLE_EVENT_TRACER=ON -DEXECUTORCH_BUILD_DEVTOOLS=ON"
+sed "s|-DCMAKE_BUILD_TYPE=\"\${EXECUTORCH_CMAKE_BUILD_TYPE}\" |-DCMAKE_BUILD_TYPE=\"\${EXECUTORCH_CMAKE_BUILD_TYPE}\" ${EXTRA_VK_FLAGS} ${PROFILING_FLAGS} |" "${BUILD_SCRIPT}" > "${PATCHED}"
+chmod +x "${PATCHED}"
+if (cd "${EXECUTORCH_SOURCE_DIR}" && sh scripts/build_android_library.furnit_patched); then
+  :
+else
+  echo "Build with extra flags failed. Retrying without (EXECUTORCH_BUILD_VULKAN=ON only)..."
+  (cd "${EXECUTORCH_SOURCE_DIR}" && sh scripts/build_android_library.sh)
+fi
+rm -f "${PATCHED}"
 
 # Copy built lib(s) into Furnit
 BUILT_SO="${EXECUTORCH_SOURCE_DIR}/cmake-out-android-so/arm64-v8a/libexecutorch.so"
@@ -90,8 +113,8 @@ for core in "${CMAKE_OUT}/extension/android/libexecutorch_core.so" \
 done
 
 echo ""
-echo "Done. Build Furnit with the local ExecuTorch lib (so Gradle does not overwrite it):"
+echo "Done. Build Furnit etVulkan with the local lib (so Gradle does not overwrite it):"
 echo "  cd ${SCRIPT_DIR}"
-echo "  ./gradlew assembleDebug -PexecutorchUseLocalLib"
+echo "  ./gradlew assembleEtVulkanDebug -PexecutorchUseLocalLib"
 echo ""
-echo "Then install and test: ./gradlew installDebug"
+echo "Then install: ./gradlew installEtVulkanDebug"

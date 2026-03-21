@@ -3,70 +3,86 @@
  */
 #include "sharp_executorch_full_internal.h"
 
+namespace {
+
+std::vector<std::string> candidatePart12CpuDirs(const std::string& dir) {
+    std::vector<std::string> dirs;
+    dirs.push_back(dir);
+    const std::string suffix = "/models_vulkan";
+    if (dir.size() >= suffix.size() && dir.compare(dir.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        dirs.push_back(dir.substr(0, dir.size() - suffix.size()) + "/models_cpu");
+    }
+    return dirs;
+}
+
+}
 
 bool moduleCacheLoadPart12Cpu(ModuleCache& cache, const std::string& dir) {
-    std::string p1 = pathJoin(dir, "sharp_split_part1_int8.pte");
-    std::string p2 = pathJoin(dir, "sharp_split_part2_int8.pte");
-    std::ifstream f1(p1), f2(p2);
-    if (f1.good() && f2.good()) {
-        f1.close();
-        f2.close();
-        LOGD("ModuleCache: loading CPU Part1+Part2 INT8 (main branch style): %s", p1.c_str());
-        cache.mod1 = std::make_unique<ETModule>(p1, ETModule::LoadMode::Mmap);
-        cache.mod2 = std::make_unique<ETModule>(p2, ETModule::LoadMode::Mmap);
-        if (cache.mod1->load() == Error::Ok && cache.mod2->load() == Error::Ok) {
-            std::string p1b4 = pathJoin(dir, "sharp_split_part1_b4_int8.pte");
-            std::string p2b4 = pathJoin(dir, "sharp_split_part2_b4_int8.pte");
-            std::ifstream b1(p1b4), b2(p2b4);
-            if (b1.good() && b2.good()) {
-                b1.close(); b2.close();
-                cache.mod1_b4 = std::make_unique<ETModule>(p1b4, ETModule::LoadMode::Mmap);
-                cache.mod2_b4 = std::make_unique<ETModule>(p2b4, ETModule::LoadMode::Mmap);
-                if (cache.mod1_b4->load() == Error::Ok && cache.mod2_b4->load() == Error::Ok)
-                    LOGD("ModuleCache: Part1+Part2 INT8 batch=4 loaded");
-                else
-                    cache.mod1_b4.reset(), cache.mod2_b4.reset();
+    for (const std::string& candidateDir : candidatePart12CpuDirs(dir)) {
+        std::string p1 = pathJoin(candidateDir, "sharp_split_part1_int8.pte");
+        std::string p2 = pathJoin(candidateDir, "sharp_split_part2_int8.pte");
+        std::ifstream f1(p1), f2(p2);
+        if (f1.good() && f2.good()) {
+            f1.close();
+            f2.close();
+            LOGD("ModuleCache: loading CPU Part1+Part2 INT8 from %s", candidateDir.c_str());
+            cache.mod1 = std::make_unique<ETModule>(p1, ETModule::LoadMode::Mmap);
+            cache.mod2 = std::make_unique<ETModule>(p2, ETModule::LoadMode::Mmap);
+            if (cache.mod1->load() == Error::Ok && cache.mod2->load() == Error::Ok) {
+                std::string p1b4 = pathJoin(candidateDir, "sharp_split_part1_b4_int8.pte");
+                std::string p2b4 = pathJoin(candidateDir, "sharp_split_part2_b4_int8.pte");
+                std::ifstream b1(p1b4), b2(p2b4);
+                if (b1.good() && b2.good()) {
+                    b1.close(); b2.close();
+                    cache.mod1_b4 = std::make_unique<ETModule>(p1b4, ETModule::LoadMode::Mmap);
+                    cache.mod2_b4 = std::make_unique<ETModule>(p2b4, ETModule::LoadMode::Mmap);
+                    if (cache.mod1_b4->load() == Error::Ok && cache.mod2_b4->load() == Error::Ok)
+                        LOGD("ModuleCache: Part1+Part2 INT8 batch=4 loaded");
+                    else
+                        cache.mod1_b4.reset(), cache.mod2_b4.reset();
+                }
+                LOGD("ModuleCache: Part1+Part2 INT8 (CPU) loaded");
+                return true;
             }
-            LOGD("ModuleCache: Part1+Part2 INT8 (CPU) loaded");
-            return true;
+            cache.mod1.reset();
+            cache.mod2.reset();
         }
-        cache.mod1.reset();
-        cache.mod2.reset();
-    }
-    p1 = pathJoin(dir, "sharp_split_part1.pte");
-    p2 = pathJoin(dir, "sharp_split_part2.pte");
-    f1.open(p1);
-    f2.open(p2);
-    if (!f1.good() || !f2.good()) {
-        p1 = pathJoin(dir, "sharp_split_part1_fp16.pte");
-        p2 = pathJoin(dir, "sharp_split_part2_fp16.pte");
+
+        p1 = pathJoin(candidateDir, "sharp_split_part1.pte");
+        p2 = pathJoin(candidateDir, "sharp_split_part2.pte");
         f1.open(p1);
         f2.open(p2);
-    }
-    if (f1.good() && f2.good()) {
-        f1.close();
-        f2.close();
-        LOGD("ModuleCache: loading portable Part1=%s Part2=%s", p1.c_str(), p2.c_str());
-        cache.mod1 = std::make_unique<ETModule>(p1, ETModule::LoadMode::Mmap);
-        cache.mod2 = std::make_unique<ETModule>(p2, ETModule::LoadMode::Mmap);
-        if (cache.mod1->load() == Error::Ok && cache.mod2->load() == Error::Ok) {
-            std::string p1b4 = pathJoin(dir, "sharp_split_part1_b4.pte");
-            std::string p2b4 = pathJoin(dir, "sharp_split_part2_b4.pte");
-            std::ifstream b1(p1b4), b2(p2b4);
-            if (b1.good() && b2.good()) {
-                b1.close(); b2.close();
-                cache.mod1_b4 = std::make_unique<ETModule>(p1b4, ETModule::LoadMode::Mmap);
-                cache.mod2_b4 = std::make_unique<ETModule>(p2b4, ETModule::LoadMode::Mmap);
-                if (cache.mod1_b4->load() == Error::Ok && cache.mod2_b4->load() == Error::Ok)
-                    LOGD("ModuleCache: Part1+Part2 portable batch=4 loaded");
-                else
-                    cache.mod1_b4.reset(), cache.mod2_b4.reset();
-            }
-            LOGD("ModuleCache: Part1+Part2 portable (CPU) loaded");
-            return true;
+        if (!f1.good() || !f2.good()) {
+            p1 = pathJoin(candidateDir, "sharp_split_part1_fp16.pte");
+            p2 = pathJoin(candidateDir, "sharp_split_part2_fp16.pte");
+            f1.open(p1);
+            f2.open(p2);
         }
-        cache.mod1.reset();
-        cache.mod2.reset();
+        if (f1.good() && f2.good()) {
+            f1.close();
+            f2.close();
+            LOGD("ModuleCache: loading portable Part1=%s Part2=%s", p1.c_str(), p2.c_str());
+            cache.mod1 = std::make_unique<ETModule>(p1, ETModule::LoadMode::Mmap);
+            cache.mod2 = std::make_unique<ETModule>(p2, ETModule::LoadMode::Mmap);
+            if (cache.mod1->load() == Error::Ok && cache.mod2->load() == Error::Ok) {
+                std::string p1b4 = pathJoin(candidateDir, "sharp_split_part1_b4.pte");
+                std::string p2b4 = pathJoin(candidateDir, "sharp_split_part2_b4.pte");
+                std::ifstream b1(p1b4), b2(p2b4);
+                if (b1.good() && b2.good()) {
+                    b1.close(); b2.close();
+                    cache.mod1_b4 = std::make_unique<ETModule>(p1b4, ETModule::LoadMode::Mmap);
+                    cache.mod2_b4 = std::make_unique<ETModule>(p2b4, ETModule::LoadMode::Mmap);
+                    if (cache.mod1_b4->load() == Error::Ok && cache.mod2_b4->load() == Error::Ok)
+                        LOGD("ModuleCache: Part1+Part2 portable batch=4 loaded");
+                    else
+                        cache.mod1_b4.reset(), cache.mod2_b4.reset();
+                }
+                LOGD("ModuleCache: Part1+Part2 portable (CPU) loaded");
+                return true;
+            }
+            cache.mod1.reset();
+            cache.mod2.reset();
+        }
     }
     LOGE("ModuleCache: CPU Part1/Part2 not found (try sharp_split_part1_int8.pte or sharp_split_part1.pte)");
     return false;
@@ -940,4 +956,3 @@ if (!modelDirPath || !imageNCHW) {
     LOGD("JNI RETURN: size=%d validated", numFloats);
     return jResult;
 }
-

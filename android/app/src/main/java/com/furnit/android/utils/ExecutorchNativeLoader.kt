@@ -27,14 +27,21 @@ object ExecutorchNativeLoader {
             } catch (e: UnsatisfiedLinkError) {
                 Log.d(TAG, "executorch_core skipped: ${e.message}")
             }
+            var executorchLoaded = false
             try {
                 System.loadLibrary("executorch")
                 Log.d(TAG, "executorch loaded OK (backend registration runs in this .so)")
+                executorchLoaded = true
             } catch (e: UnsatisfiedLinkError) {
                 Log.w(TAG, "executorch preload failed: ${e.message}")
             }
-            System.loadLibrary("executorch_jni")
-            Log.d(TAG, "executorch_jni loaded OK")
+            try {
+                System.loadLibrary("executorch_jni")
+                Log.d(TAG, "executorch_jni loaded OK")
+            } catch (e: UnsatisfiedLinkError) {
+                if (!executorchLoaded) throw e
+                Log.d(TAG, "executorch_jni skipped: ${e.message} (JNI is provided by libexecutorch.so in this build)")
+            }
             loaded = true
         }
     }

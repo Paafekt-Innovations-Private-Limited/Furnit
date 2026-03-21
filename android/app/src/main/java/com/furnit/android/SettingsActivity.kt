@@ -24,6 +24,7 @@ import com.furnit.android.models.QualitySettings
 import com.furnit.android.services.BackendConfig
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.Part1OnlyTest
+import com.furnit.android.utils.Part4OnlyTest
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
@@ -301,12 +302,16 @@ class SettingsActivity : AppCompatActivity() {
         developerSection.addView(maxGaussLayout)
 
         val implLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12, 0, 12) }
-        // Use 1280×1280 as intermediate then upscale to 1536 (may help Vulkan / reduce memory)
+        // True 1280 needs a dedicated model set; do not advertise the old fake 1280->1536 path.
         val use1280 = prefs.getBoolean("executorch_int8_use_1280", false)
         val use1280Layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
         val use1280Label = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-        val use1280Title = TextView(this).apply { text = "Use 1280×1280"; textSize = 14f; setTextColor(Color.parseColor("#222222")) }
-        val use1280Desc = TextView(this).apply { text = "Process at 1280 then upscale to 1536 (may help Vulkan on some devices)"; textSize = 12f; setTextColor(Color.parseColor("#666666")) }
+        val use1280Title = TextView(this).apply { text = "Use true 1280×1280"; textSize = 14f; setTextColor(Color.parseColor("#222222")) }
+        val use1280Desc = TextView(this).apply {
+            text = "Experimental. Requires dedicated 1280 Part3/Part4 exports; current hybrid split pipeline keeps 1536 until that model set is wired end-to-end."
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
         use1280Label.addView(use1280Title)
         use1280Label.addView(use1280Desc)
         val use1280Switch = createStyledSwitch(use1280) { isChecked ->
@@ -315,6 +320,82 @@ class SettingsActivity : AppCompatActivity() {
         use1280Layout.addView(use1280Label)
         use1280Layout.addView(use1280Switch)
         implLayout.addView(use1280Layout)
+
+        val preferFp16 = prefs.getBoolean("executorch_vulkan_prefer_fp16", false)
+        val preferFp16Layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val preferFp16Label = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val preferFp16Title = TextView(this).apply {
+            text = "Prefer Vulkan FP16 models"
+            textSize = 14f
+            setTextColor(Color.parseColor("#222222"))
+        }
+        val preferFp16Desc = TextView(this).apply {
+            text = "Use *_vulkan_fp16.pte before FP32 when both exist. Lowers memory pressure, but only works if the Vulkan runtime/export stack supports those shaders."
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        preferFp16Label.addView(preferFp16Title)
+        preferFp16Label.addView(preferFp16Desc)
+        val preferFp16Switch = createStyledSwitch(preferFp16) { isChecked ->
+            prefs.edit().putBoolean("executorch_vulkan_prefer_fp16", isChecked).apply()
+        }
+        preferFp16Layout.addView(preferFp16Label)
+        preferFp16Layout.addView(preferFp16Switch)
+        implLayout.addView(preferFp16Layout)
+
+        val preferSinglePart4b = prefs.getBoolean("executorch_prefer_single_part4b", false)
+        val preferSinglePart4bLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val preferSinglePart4bLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val preferSinglePart4bTitle = TextView(this).apply {
+            text = "Prefer single Part4b"
+            textSize = 14f
+            setTextColor(Color.parseColor("#222222"))
+        }
+        val preferSinglePart4bDesc = TextView(this).apply {
+            text = "Use one Part4b decoder instead of tiled path. Mainly applies to CPU stable mode; Vulkan ignores this when tiled Part4b exports are present because the single decoder can trigger memory kills."
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        preferSinglePart4bLabel.addView(preferSinglePart4bTitle)
+        preferSinglePart4bLabel.addView(preferSinglePart4bDesc)
+        val preferSinglePart4bSwitch = createStyledSwitch(preferSinglePart4b) { isChecked ->
+            prefs.edit().putBoolean("executorch_prefer_single_part4b", isChecked).apply()
+        }
+        preferSinglePart4bLayout.addView(preferSinglePart4bLabel)
+        preferSinglePart4bLayout.addView(preferSinglePart4bSwitch)
+        implLayout.addView(preferSinglePart4bLayout)
+
+        // Record ETDump on next room creation (Vulkan Part4b profiling; pull .etdp and run inspector_cli.py)
+        val recordEtdump = prefs.getBoolean("executorch_record_etdump_next_run", false)
+        val recordEtdumpLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val recordEtdumpLabel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val recordEtdumpTitle = TextView(this).apply {
+            text = "Record ETDump on next room creation"
+            textSize = 14f
+            setTextColor(Color.parseColor("#222222"))
+        }
+        val recordEtdumpDesc = TextView(this).apply {
+            text = "Writes sharp_part4b.etdp to app storage for Part4b Vulkan profiling. Requires ExecuTorch built with EVENT_TRACER. Pull with adb pull, then: python devtools/inspector/inspector_cli.py --etdump_path sharp_part4b.etdp"
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        recordEtdumpLabel.addView(recordEtdumpTitle)
+        recordEtdumpLabel.addView(recordEtdumpDesc)
+        val recordEtdumpSwitch = createStyledSwitch(recordEtdump) { isChecked ->
+            prefs.edit().putBoolean("executorch_record_etdump_next_run", isChecked).apply()
+        }
+        recordEtdumpLayout.addView(recordEtdumpLabel)
+        recordEtdumpLayout.addView(recordEtdumpSwitch)
+        implLayout.addView(recordEtdumpLayout)
 
         // Vulkan 1536x1536 support test (logs to logcat)
         val vulkanTestLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
@@ -461,6 +542,116 @@ class SettingsActivity : AppCompatActivity() {
         part1OnlyLayout.addView(part1OnlyLabel)
         part1OnlyLayout.addView(part1OnlyButtons)
         implLayout.addView(part1OnlyLayout)
+
+        val part4OnlyLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 12, 0, 12) }
+        val part4OnlyLabel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        val part4OnlyTitle = TextView(this).apply { text = "Part4 tile_00 fine split test"; textSize = 14f; setTextColor(Color.parseColor("#222222")) }
+        val part4OnlyDesc = TextView(this).apply {
+            text = "Run tile_00 through stage_pre (Vulkan) -> decoder_head (Vulkan) -> init_base (portable) -> raw_heads (Vulkan) -> compose (portable). " +
+                "Compare decoder_head runs the same stage_pre outputs through Vulkan and portable decoder_head artifacts. " +
+                "Compare latent0 halves runs Vulkan vs portable on the final latent0 prefuse/postfuse pair. " +
+                "Benchmark decoder chunks times the decoder stack stages separately and, when present, splits the final latent0 fusion into prefuse/postfuse timings. " +
+                "Inspect reads .manifest.json sidecars to show the active model variant, delegate/kernel graph breaks, and layout-transition hints. " +
+                "Benchmark 3x reuses the same Modules. adb: adb logcat -d | grep ${Part4OnlyTest.P4_BENCH_MARKER}"
+            textSize = 12f
+            setTextColor(Color.parseColor("#666666"))
+        }
+        part4OnlyLabel.addView(part4OnlyTitle)
+        part4OnlyLabel.addView(part4OnlyDesc)
+        val part4OnlyButtons = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 0, 0, 0)
+        }
+        part4OnlyButtons.addView(TextView(this).apply {
+            text = "Run"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 0, 0, 8)
+            setOnClickListener {
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val msg = Part4OnlyTest.run(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        })
+        part4OnlyButtons.addView(TextView(this).apply {
+            text = "Benchmark 3×"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 0, 0, 8)
+            setOnClickListener {
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val msg = Part4OnlyTest.runTripleForwardBenchmark(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        })
+        part4OnlyButtons.addView(TextView(this).apply {
+            text = "Inspect"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 0, 0, 8)
+            setOnClickListener {
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val msg = Part4OnlyTest.inspectDiagnostics(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        AlertDialog.Builder(this@SettingsActivity)
+                            .setTitle("Part4 Diagnostics")
+                            .setMessage(msg)
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
+                }
+            }
+        })
+        part4OnlyButtons.addView(TextView(this).apply {
+            text = "Compare decoder_head"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 0, 0, 8)
+            setOnClickListener {
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val msg = Part4OnlyTest.compareDecoderHeadBackends(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        })
+        part4OnlyButtons.addView(TextView(this).apply {
+            text = "Compare latent0 halves"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setPadding(0, 0, 0, 8)
+            setOnClickListener {
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val msg = Part4OnlyTest.compareLatent0MergeBackends(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        })
+        part4OnlyButtons.addView(TextView(this).apply {
+            text = "Benchmark decoder chunks"
+            textSize = 14f
+            setTextColor(Color.parseColor("#007AFF"))
+            setOnClickListener {
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val msg = Part4OnlyTest.benchmarkDecoderHeadChunks(this@SettingsActivity)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@SettingsActivity, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        })
+        part4OnlyLayout.addView(part4OnlyLabel)
+        part4OnlyLayout.addView(part4OnlyButtons)
+        implLayout.addView(part4OnlyLayout)
 
         developerSection.addView(implLayout)
 

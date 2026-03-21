@@ -60,6 +60,10 @@ android {
                 cmake {
                     def libDir = file("src/main/cpp/executorch_lib_etVulkan").absolutePath.replace('\\', '/')
                     arguments "-DEXECUTORCH_LIB_DIR=${libDir}"
+                    // Enable in-app ETDump only when using local ExecuTorch built with DEVTOOLS (AAR has no ETDumpGen)
+                    if (project.hasProperty("executorchUseLocalLib")) {
+                        arguments "-DEXECUTORCH_PROFILING_ETDUMP=ON"
+                    }
                 }
             }
         }
@@ -84,10 +88,17 @@ android {
         }
     }
 
-    if (enableNative) {
-        sourceSets {
-            main {
-                jniLibs.srcDirs = ['src/main/jniLibs']
+    sourceSets {
+        main {
+            jniLibs {
+                srcDirs = enableNative ? ['src/main/jniLibs'] : []
+                // Keep bundled NCNN libs, but do not let stale vendored ExecuTorch binaries override
+                // the flavor-selected AAR/runtime used by etCpu vs etVulkan.
+                exclude "arm64-v8a/libexecutorch.so"
+                exclude "arm64-v8a/libexecutorch_core.so"
+                exclude "arm64-v8a/libexecutorch_jni.so"
+                exclude "arm64-v8a/libextension_*.so"
+                exclude "arm64-v8a/libabsl_*.so"
             }
         }
     }

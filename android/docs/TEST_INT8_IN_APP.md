@@ -2,6 +2,12 @@
 
 Do this **after** you have built and installed the app and (if not using packaged assets) pushed models to the device.
 
+For the current output-validated Vulkan room-creation path, see
+[`EXECUTORCH_VULKAN_KNOWN_GOOD_FLOW.md`](EXECUTORCH_VULKAN_KNOWN_GOOD_FLOW.md).
+
+The guidance below is broader and includes older single-Part4b and CPU-oriented test paths.
+For the current working Vulkan room-creation setup, treat the known-good flow document above as the source of truth.
+
 **Which ExecuTorch native AAR is in this APK?**
 
 - **`BuildConfig.EXECUTORCH_USE_VULKAN_AAR`** (Kotlin) and manifest meta-data **`com.furnit.executorch.USE_VULKAN_AAR`** match the **Gradle product flavor** (`etVulkan` vs `etCpu`), not a Settings toggle.
@@ -36,7 +42,7 @@ To split an old `files/models/` tree in place on a device: `android/migrate_lega
 - **Part4b** can be **INT8 or FP32**: the C++ code loads **INT8** when `sharp_split_part4b_int8.pte` exists on device, otherwise it uses **FP32** (`sharp_split_part4b.pte`). So "single Part4b" = one decoder run; that run is INT8 if you have the INT8 Part4b file, else FP32.
 - Right now almost everyone runs Part4b as **FP32** because the repo doesn’t export `sharp_split_part4b_int8.pte`. To actually run Part4b in INT8 you need to add that file to the models dir (export it from your pipeline and push, or drop it into `executorch_models/` and rebuild/push). Logcat will show `Part4b single: INT8` or `Part4b single: FP32` so you can confirm.
 
-## Settings screen — what to set (INT8 C++ full pipeline)
+## Settings screen — general INT8 test options
 
 | Setting | Value | Notes |
 |--------|--------|--------|

@@ -31,15 +31,25 @@ if [ ! -f "$WEIGHTS" ]; then
   exit 1
 fi
 
-# Vulkan FP16 + batch=2 = 95% success (avoids INT8 staging crash)
+# Vulkan FP16 uses view_convert_buffer_float_half shader — prebuilt AAR lacks it (Error 0x20).
+# Use vulkan-aar-compat (FP32) so .pte only uses shaders in executorch-android-vulkan 1.1.0 AAR.
+# Pin Python to match Maven: pip install 'executorch==1.1.0' (newer pip + old AAR → Error 0x20 on forward).
+VULKAN_AAR_COMPAT="${VULKAN_AAR_COMPAT:-true}"
 DTYPE="${DTYPE:-fp16}"
 PATCH_BATCH="${PATCH_BATCH:-2}"
+IMAGE_SIZE="${IMAGE_SIZE:-1536}"
+UNIFY_FP16="${UNIFY_FP16:-}"
+PART4_HOTPATH_LITE="${PART4_HOTPATH_LITE:-1}"
+PART4_HOTPATH_GROUPS="${PART4_HOTPATH_GROUPS:-4}"
 
 echo "=============================================="
 echo "Export SHARP ExecuTorch — VULKAN ONLY (no XNNPACK)"
 echo "  Output: $OUTPUT_DIR"
-echo "  Backend: Vulkan (GPU)  dtype=${DTYPE}  patch_batch=${PATCH_BATCH}"
-echo "  Chunked Part 4: part4a_chunk_512_vulkan, part4a_chunk_65_vulkan, part4b_vulkan"
+echo "  Backend: Vulkan (GPU)  dtype=${DTYPE}  image_size=${IMAGE_SIZE}  patch_batch=${PATCH_BATCH}  vulkan_aar_compat=${VULKAN_AAR_COMPAT}"
+echo "  Part4 hot-path lite: ${PART4_HOTPATH_LITE}  groups=${PART4_HOTPATH_GROUPS}"
+echo "  Chunked Part 4: part4a_chunk_512_vulkan, part4a_chunk_65_vulkan, part4b_vulkan,"
+echo "                  part4b_tile_00 / part4b_tile_b2 / part4b_tile_b4 / part4b_tile_full"
+echo "                  plus split tile_00 + tile_b2 Vulkan-safe stage_a/raw_heads + portable init_base/compose"
 echo "=============================================="
 echo ""
 
@@ -47,14 +57,31 @@ echo ""
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
-python3 "${SCRIPT_DIR}/export_sharp_executorch_split4.py" \
-  --backend vulkan \
-  --chunked-part4 \
-  --dtype "${DTYPE}" \
-  --patch-batch-size "${PATCH_BATCH}" \
-  --sharp-src "${SHARP_SRC}" \
-  --weights "${WEIGHTS}" \
+VULKAN_ARGS=(
+  --backend vulkan
+  --chunked-part4
+  --dtype "${DTYPE}"
+  --image-size "${IMAGE_SIZE}"
+  --patch-batch-size "${PATCH_BATCH}"
+  --sharp-src "${SHARP_SRC}"
+  --weights "${WEIGHTS}"
   --output-dir "${OUTPUT_DIR}"
+)
+[ "$VULKAN_AAR_COMPAT" = "true" ] && VULKAN_ARGS+=(--vulkan-aar-compat)
+VULKAN_ARGS+=(--vulkan-safe-part4b-tile)
+[ "$PART4_HOTPATH_LITE" = "1" ] && VULKAN_ARGS+=(--part4-hotpath-lite --part4-hotpath-groups "${PART4_HOTPATH_GROUPS}")
+# Optional (see EXECUTORCH_VULKAN_EXAMPLE_ALIGNMENT.md): ETRecord dir, small texture limits, bundled .bpte, run Vulkan test per part
+[ -n "${ETRECORD_DIR:-}" ] && VULKAN_ARGS+=(-r "${ETRECORD_DIR}")
+[ "${SMALL_TEXTURE_LIMITS:-0}" = "1" ] && VULKAN_ARGS+=(--small-texture-limits)
+[ "${BUNDLED:-0}" = "1" ] && VULKAN_ARGS+=(-b)
+[ "${RUN_TEST:-0}" = "1" ] && VULKAN_ARGS+=(-t)
+if [ -n "$UNIFY_FP16" ]; then
+  VULKAN_ARGS+=(--unify-fp16)
+elif [ "$DTYPE" = "fp16" ] && [ "$VULKAN_AAR_COMPAT" != "true" ]; then
+  VULKAN_ARGS+=(--unify-fp16)
+fi
+
+python3 "${SCRIPT_DIR}/export_sharp_executorch_split4.py" "${VULKAN_ARGS[@]}"
 
 echo ""
 echo "Export done. Vulkan-only models in: $OUTPUT_DIR"

@@ -21,6 +21,7 @@
 #include <vector>
 #include <chrono>
 #include <atomic>
+#include <condition_variable>
 #include <thread>
 #include <unistd.h>
 #include <android/log.h>
@@ -96,6 +97,7 @@ struct Workspace {
 
     bool allocate();
     void zero();
+    void releaseEncoderScratch();
     void release();
 };
 
@@ -153,6 +155,8 @@ int pruneGaussiansFromPtr(const float* src, int totalGaussians, int maxGaussians
 long long nowMs();
 void ensureRuntimeInit();
 void configureCpuInferenceThreadsOnce();
+std::string processMemorySummary();
+void logProcessMemory(const char* stage);
 
 void cpuForwardHeartbeatLoop(std::atomic<bool>* keepGoing, const char* stageTag, int intervalSec);
 void reportProgress(JNIEnv* env, jobject reporter, jmethodID methodId, float progress, const char* message);
@@ -177,4 +181,5 @@ jfloatArray runSharpFullPipeline_Vulkan(JNIEnv* env, jobject thiz, jstring model
                                         jint part1MaxPatches1x, jint part1MaxPatches05x,
                                         jint part12Chunk1x, jint part12Chunk05x,
                                         jint part12YieldMsBetweenChunks, jboolean swapTileNdcXY,
-                                        jobject progressReporter);
+                                        jobject progressReporter,
+                                        jstring etdumpOutputPath);
