@@ -716,8 +716,8 @@ class FurnitureFitFragment : Fragment() {
                     val h = bboxExtents.y
                     val d = bboxExtents.z
                     boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
-                    LogUtil.d("FurnitureFit", "[FurnitureFit] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
-                    val cameraSetup = boundaryManager.getCameraAtBackCenter()
+                    LogUtil.d("FurnitureFit", "[FurnitureFit] getCameraCenteredView CALLED (bbox ${w}x${h}x${d})")
+                    val cameraSetup = boundaryManager.getCameraCenteredView()
                     initialCameraSetup = cameraSetup
                     roomSceneView.cameraNode.apply {
                         position = cameraSetup.position
@@ -793,7 +793,7 @@ class FurnitureFitFragment : Fragment() {
         )
     }
 
-    /** Minimal SparkJS splat viewer for PLY background. Camera framing matches SharpRoomActivity (back-center, depth-adaptive) so the room is not displaced when brain is clicked. */
+    /** Minimal SparkJS splat viewer for PLY background with a centered, straight-on front-wall camera. */
     private fun buildPlyViewerHtml(isPortrait: Boolean, roomWidth: Float, roomHeight: Float, roomDepth: Float): String {
         val w = roomWidth.toDouble()
         val h = roomHeight.toDouble()
@@ -827,23 +827,14 @@ const isPortrait = ${isPortrait};
 const fallbackW = $w;
 const fallbackH = $h;
 const fallbackD = $d;
-// depthAlongView = room depth (portrait: along X; landscape: along Z). Matches SharpRoom Box3 mapping.
-const depthAlongView = fallbackD;
-const t = Math.min(1, depthAlongView / 6);
-const insetFraction = 0.18 + 0.32 * t;
-const insetFromBack = Math.max(0.25, depthAlongView * insetFraction);
-const floorY = -fallbackH * 0.5;
-const eyeHeight = floorY + Math.min(1.6, fallbackH * 0.4);
 if (isPortrait) {
-    const backWall = fallbackD * 0.5;
     const frontWall = -fallbackD * 0.5;
-    camera.position.set(backWall - insetFromBack, eyeHeight, 0);
-    camera.lookAt(new THREE.Vector3(frontWall, eyeHeight, 0));
+    camera.position.set(0, 0, 0);
+    camera.lookAt(new THREE.Vector3(frontWall, 0, 0));
 } else {
-    const backWallZ = fallbackD * 0.5;
     const frontWallZ = -fallbackD * 0.5;
-    camera.position.set(0, eyeHeight, backWallZ - insetFromBack);
-    camera.lookAt(new THREE.Vector3(0, eyeHeight, frontWallZ));
+    camera.position.set(0, 0, 0);
+    camera.lookAt(new THREE.Vector3(0, 0, frontWallZ));
 }
 const plyURL = 'https://appassets.androidplatform.net/files/room.ply';
 const splatMesh = new SplatMesh({ url: plyURL, maxSh: 0 });
