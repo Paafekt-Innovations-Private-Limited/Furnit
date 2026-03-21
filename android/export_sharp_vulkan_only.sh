@@ -39,11 +39,14 @@ DTYPE="${DTYPE:-fp16}"
 PATCH_BATCH="${PATCH_BATCH:-2}"
 IMAGE_SIZE="${IMAGE_SIZE:-1536}"
 UNIFY_FP16="${UNIFY_FP16:-}"
+PART4_HOTPATH_LITE="${PART4_HOTPATH_LITE:-1}"
+PART4_HOTPATH_GROUPS="${PART4_HOTPATH_GROUPS:-4}"
 
 echo "=============================================="
 echo "Export SHARP ExecuTorch — VULKAN ONLY (no XNNPACK)"
 echo "  Output: $OUTPUT_DIR"
 echo "  Backend: Vulkan (GPU)  dtype=${DTYPE}  image_size=${IMAGE_SIZE}  patch_batch=${PATCH_BATCH}  vulkan_aar_compat=${VULKAN_AAR_COMPAT}"
+echo "  Part4 hot-path lite: ${PART4_HOTPATH_LITE}  groups=${PART4_HOTPATH_GROUPS}"
 echo "  Chunked Part 4: part4a_chunk_512_vulkan, part4a_chunk_65_vulkan, part4b_vulkan,"
 echo "                  part4b_tile_00 / part4b_tile_b2 / part4b_tile_b4 / part4b_tile_full"
 echo "                  plus split tile_00 + tile_b2 Vulkan-safe stage_a/raw_heads + portable init_base/compose"
@@ -66,6 +69,7 @@ VULKAN_ARGS=(
 )
 [ "$VULKAN_AAR_COMPAT" = "true" ] && VULKAN_ARGS+=(--vulkan-aar-compat)
 VULKAN_ARGS+=(--vulkan-safe-part4b-tile)
+[ "$PART4_HOTPATH_LITE" = "1" ] && VULKAN_ARGS+=(--part4-hotpath-lite --part4-hotpath-groups "${PART4_HOTPATH_GROUPS}")
 # Optional (see EXECUTORCH_VULKAN_EXAMPLE_ALIGNMENT.md): ETRecord dir, small texture limits, bundled .bpte, run Vulkan test per part
 [ -n "${ETRECORD_DIR:-}" ] && VULKAN_ARGS+=(-r "${ETRECORD_DIR}")
 [ "${SMALL_TEXTURE_LIMITS:-0}" = "1" ] && VULKAN_ARGS+=(--small-texture-limits)

@@ -15,7 +15,7 @@ import com.google.firebase.FirebaseApp
  * FurnitApplication - Application class for initializing Firebase and crash reporting.
  * Production: no logging; on crash, user can send report (email) or copy details.
  * Registers onTrimMemory to release ML native caches and reduce OOM / CoroutineScheduler kills.
- * At startup: loads ExecuTorch native libs and schedules optional Part1 Vulkan warmup (logcat ExecuTorchWarmup).
+ * At startup: loads ExecuTorch native libs; background Part1 warmup is opt-in only (logcat ExecuTorchWarmup).
  */
 class FurnitApplication : Application() {
 
@@ -29,7 +29,7 @@ class FurnitApplication : Application() {
         DebugLogger.init(this)
         LogUtil.init(this)
 
-        // ExecuTorch: register Vulkan/backend early; warmup Part1 forward in background if models exist (see ExecuTorchWarmup logcat).
+        // ExecuTorch: register Vulkan/backend early. Background Part1 warmup is opt-in and disabled by default.
         try {
             ExecutorchNativeLoader.loadForJavaModule()
             LogUtil.d(TAG, "ExecuTorch native libs loaded at startup (core → executorch → executorch_jni)")

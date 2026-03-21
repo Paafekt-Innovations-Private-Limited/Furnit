@@ -1,5 +1,6 @@
 package com.furnit.android.utils
 
+import com.furnit.android.BuildConfig
 import android.content.Context
 import android.os.Process
 import android.os.SystemClock
@@ -42,9 +43,11 @@ object Part1OnlyTest {
     private const val KEY_WARMUP_DURATION_MS = "part1_warmup_duration_ms"
     private const val KEY_WARMUP_DETAIL = "part1_warmup_detail"
     private const val KEY_WARMUP_TIME_EPOCH_MS = "part1_warmup_time_epoch_ms"
+    private const val KEY_STARTUP_WARMUP_ENABLED = "executorch_part1_startup_warmup_enabled"
 
     private val manualWarmupInProgress = AtomicBoolean(false)
     private val tripleBenchmarkInProgress = AtomicBoolean(false)
+    private val startupWarmupSuppressed = AtomicBoolean(false)
 
     /** Same-process cache: survives Warmup → Run; lost on new PID or [releaseCachedPart1Module]. */
     private val sessionLock = Any()
@@ -108,12 +111,57 @@ object Part1OnlyTest {
         }
     }
 
+    @JvmStatic
+    fun suppressStartupWarmupForCurrentProcess(reason: String) {
+        if (startupWarmupSuppressed.compareAndSet(false, true)) {
+            Log.i(WARMUP_TAG, "startup warmup suppressed for current process reason=$reason")
+        }
+    }
+
+    private fun isStartupWarmupEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_STARTUP_WARMUP_ENABLED, false)
+    }
+
     private fun modelsDirs(context: Context): List<File> {
         val list = mutableListOf<File>()
+        // etVulkan: models_vulkan first (push Vulkan .pte there via push_sharp_vulkan_only.sh)
+        if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
+            list.add(File(context.filesDir, "models_vulkan").also { it.mkdirs() })
+            context.getExternalFilesDir("models_vulkan")?.let { list.add(it) }
+        } else {
+            // etCpu: models_cpu first (push via push_sharp_executorch_cpu_models.sh)
+            list.add(File(context.filesDir, "models_cpu").also { it.mkdirs() })
+            context.getExternalFilesDir("models_cpu")?.let { list.add(it) }
+        }
         list.add(File(context.filesDir, "models").also { it.mkdirs() })
         context.getExternalFilesDir("models")?.let { list.add(it) }
         list.add(File("/data/local/tmp/furnit"))
         return list
+    }
+
+    /** Preferred Part1 filenames in order (first existing file is attempted first). */
+    private fun part1PteCandidateNames(): List<String> {
+        return if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) {
+            listOf("sharp_split_part1_vulkan_fp32.pte", "sharp_split_part1_vulkan_fp16.pte", "sharp_split_part1.pte")
+        } else {
+            listOf("sharp_split_part1.pte", "sharp_split_part1_fp16.pte", "sharp_split_part1_int8.pte")
+        }
+    }
+
+    /**
+     * All existing Part1 .pte candidates (deduped by absolute path) in priority order.
+     * Used to try multiple exports when runtime/export versions drift (common cause of 0x20 Resource not found).
+     */
+    private fun findPart1PteCandidates(context: Context): List<File> {
+        val out = mutableListOf<File>()
+        val seen = HashSet<String>()
+        for (name in part1PteCandidateNames()) {
+            val f = findFile(context, name) ?: continue
+            val key = f.absolutePath
+            if (seen.add(key)) out.add(f)
+        }
+        return out
     }
 
     private fun findFile(context: Context, filename: String): File? {
@@ -122,6 +170,37 @@ object Part1OnlyTest {
             if (f.exists() && f.length() > 0) return f
         }
         return null
+    }
+
+    /**
+     * Classify ExecuTorch/Vulkan failure for diagnostics. Log kind= in warmup/run paths.
+     * No fallbacks — purely for clearer error messages and logcat filtering.
+     */
+    private fun classifyExecutorchFailure(e: Throwable): String {
+        val msg = buildString {
+            append(e.message ?: "")
+            append(" ")
+            append(e.cause?.message ?: "")
+        }.lowercase()
+        return when {
+            "resource not found" in msg || "0x20" in msg -> "resource_not_found"
+            "could not find shaderinfo" in msg ||
+                "shaderregistry" in msg ||
+                "get_shader_info" in msg -> "missing_vulkan_shader"
+            "backend not found" in msg ||
+                "failed to find backend" in msg ||
+                "not registered" in msg -> "backend_missing"
+            "vkcreate" in msg || "vk_error" in msg || "vulkanbackend" in msg ||
+                "backendfailed" in msg || "backend failed" in msg ||
+                "delegate init failed" in msg -> "vulkan_runtime_failure"
+            else -> "unknown"
+        }
+    }
+
+    private fun expectedPart1PteHint(): String {
+        val names = part1PteCandidateNames().joinToString(" | ")
+        val dirHint = if (BuildConfig.EXECUTORCH_USE_VULKAN_AAR) "models_vulkan (or models)" else "models_cpu (or models)"
+        return "$names in $dirHint"
     }
 
     /** First matching path wins ([modelsDirs] order); log so we never debug the wrong artifact. */
@@ -157,6 +236,55 @@ object Part1OnlyTest {
         return arr
     }
 
+    /**
+     * Try each candidate .pte until one successfully loads + runs 2x warmup forward.
+     * Keeps the winning [Module] cached for subsequent Run / benchmark.
+     */
+    private fun ensureSessionLoadedAndDoubleWarmupWithFallback(
+        context: Context,
+        patchBin: File,
+        logLabel: String
+    ): File {
+        val candidates = findPart1PteCandidates(context)
+        if (candidates.isEmpty()) {
+            throw IllegalStateException("No Part1 .pte found (expected ${expectedPart1PteHint()})")
+        }
+
+        var lastError: Throwable? = null
+        for (pte in candidates) {
+            try {
+                logPart1Artifacts(logLabel, pte, patchBin)
+                ensureSessionLoadedAndDoubleWarmup(pte, patchBin, Module.LOAD_MODE_MMAP)
+                return pte
+            } catch (e: Throwable) {
+                lastError = e
+                if (e is UnsatisfiedLinkError) throw e
+                val kind = classifyExecutorchFailure(e)
+                if (kind == "resource_not_found") {
+                    try {
+                        Log.w(TAG, "Part1 retry with LOAD_MODE_FILE after resource_not_found pte=${pte.name}")
+                        ensureSessionLoadedAndDoubleWarmup(pte, patchBin, Module.LOAD_MODE_FILE)
+                        return pte
+                    } catch (e2: Throwable) {
+                        lastError = e2
+                        val kind2 = classifyExecutorchFailure(e2)
+                        Log.e(
+                            TAG,
+                            "Part1 retry failed kind=$kind2 pte=${pte.name} path=${pte.absolutePath} err=${e2.message ?: e2}",
+                            e2
+                        )
+                    }
+                }
+                Log.e(
+                    TAG,
+                    "Part1 warmup candidate failed kind=$kind pte=${pte.name} path=${pte.absolutePath} err=${e.message ?: e}",
+                    e
+                )
+            }
+        }
+        throw (lastError ?: IllegalStateException("Part1 warmup failed (no error captured)"))
+    }
+
     private fun tensorStats(arr: FloatArray, name: String): String {
         if (arr.isEmpty()) return "$name: empty"
         var min = arr[0]
@@ -180,7 +308,7 @@ object Part1OnlyTest {
      * Load [Module] once per [pteFile] path, run **two** [forward] passes (driver / Vulkan cache).
      * Cache hit: no disk read. Cache miss: read patch once outside lock, then load + warm under lock.
      */
-    private fun ensureSessionLoadedAndDoubleWarmup(pteFile: File, patchBin: File) {
+    private fun ensureSessionLoadedAndDoubleWarmup(pteFile: File, patchBin: File, loadMode: Int = Module.LOAD_MODE_MMAP) {
         val path = pteFile.absolutePath
         synchronized(sessionLock) {
             if (cachedModule != null && cachedPtePath == path) {
@@ -202,19 +330,25 @@ object Part1OnlyTest {
             cachedPtePath = null
 
             ExecutorchNativeLoader.loadForJavaModule()
-            Log.d(TAG, "session: Module.load($path)…")
-            val loadedModule = Module.load(path, Module.LOAD_MODE_MMAP)
-            repeat(2) { warmupIndex ->
-                Log.d(TAG, "session: warmup forward ${warmupIndex + 1}/2…")
-                val out = loadedModule.forward(EValue.from(buildPatchTensor(patchDataForWarmup)))
-                if (out == null || out.size < 2) {
-                    loadedModule.destroy()
-                    throw IllegalStateException("warmup forward returned ${out?.size ?: 0} outputs")
+            Log.d(TAG, "session: Module.load($path, load_mode=$loadMode)…")
+            val loadedModule = Module.load(path, loadMode)
+            try {
+                repeat(2) { warmupIndex ->
+                    Log.d(TAG, "session: warmup forward ${warmupIndex + 1}/2…")
+                    val out = loadedModule.forward(EValue.from(buildPatchTensor(patchDataForWarmup)))
+                    if (out == null || out.size < 2) {
+                        throw IllegalStateException("warmup forward returned ${out?.size ?: 0} outputs")
+                    }
                 }
+                cachedModule = loadedModule
+                cachedPtePath = path
+                Log.d(TAG, "session: double warmup done; Module kept alive for Run")
+            } catch (e: Throwable) {
+                try {
+                    loadedModule.destroy()
+                } catch (_: Throwable) { }
+                throw e
             }
-            cachedModule = loadedModule
-            cachedPtePath = path
-            Log.d(TAG, "session: double warmup done; Module kept alive for Run")
         }
     }
 
@@ -268,21 +402,20 @@ object Part1OnlyTest {
         }
         try {
             val app = context.applicationContext
-            val part1Pte = findFile(app, "sharp_split_part1.pte")
+            val candidates = findPart1PteCandidates(app)
             val patchBin = findFile(app, "part1_test_patch_f32.bin")
-            if (part1Pte == null) {
-                Log.e(TAG, "$P1_BENCH_MARKER missing sharp_split_part1.pte")
-                return "Part1 benchmark: sharp_split_part1.pte not found"
+            if (candidates.isEmpty()) {
+                val expected = expectedPart1PteHint()
+                Log.e(TAG, "$P1_BENCH_MARKER missing $expected")
+                return "Part1 benchmark: $expected not found"
             }
             if (patchBin == null) {
                 Log.e(TAG, "$P1_BENCH_MARKER missing part1_test_patch_f32.bin")
                 return "Part1 benchmark: part1_test_patch_f32.bin not found"
             }
-
-            logPart1Artifacts("benchmark", part1Pte, patchBin)
             ExecutorchNativeLoader.loadForJavaModule()
             val pid = Process.myPid()
-            Log.i(TAG, "$P1_BENCH_MARKER pid=$pid pte=${part1Pte.name} path=${part1Pte.absolutePath}")
+            Log.i(TAG, "$P1_BENCH_MARKER pid=$pid pte_candidates=${candidates.joinToString { it.name }}")
             Log.i(TAG, "$P1_BENCH_MARKER shape=[1,3,$PATCH_SIZE,$PATCH_SIZE] dtype=float32 same_patch_blob=1 timed_forwards=3")
             Log.i(
                 TAG,
@@ -290,8 +423,9 @@ object Part1OnlyTest {
             )
 
             val tEnsure = SystemClock.elapsedRealtime()
-            ensureSessionLoadedAndDoubleWarmup(part1Pte, patchBin)
+            val chosenPte = ensureSessionLoadedAndDoubleWarmupWithFallback(app, patchBin, "benchmark")
             val ensureMs = SystemClock.elapsedRealtime() - tEnsure
+            Log.i(TAG, "$P1_BENCH_MARKER using_pte=${chosenPte.name}")
             Log.i(TAG, "$P1_BENCH_MARKER session_ensure_ms=$ensureMs (includes_load_2x_warmup_if_cold)")
 
             val patchData = readF32Bin(patchBin, PATCH_FLOATS)
@@ -336,30 +470,30 @@ object Part1OnlyTest {
             writeWarmupPrefs(app, "running", 0L, "In progress…")
             Log.i(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=running source=settings")
 
-            val part1Pte = findFile(app, "sharp_split_part1.pte")
+            val candidates = findPart1PteCandidates(app)
             val patchBin = findFile(app, "part1_test_patch_f32.bin")
-            if (part1Pte == null || patchBin == null) {
-                val msg = "missing sharp_split_part1.pte and/or part1_test_patch_f32.bin"
+            if (candidates.isEmpty() || patchBin == null) {
+                val msg = "missing ${expectedPart1PteHint()} and/or part1_test_patch_f32.bin"
                 writeWarmupPrefs(app, "skipped", 0L, msg)
                 Log.w(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=skipped reason=$msg")
                 return WarmupResult(false, 0L, "Warmup skipped: $msg")
             }
 
-            logPart1Artifacts("settings_warmup", part1Pte, patchBin)
             val t0 = SystemClock.elapsedRealtime()
             return try {
                 Log.i(WARMUP_TAG, "settings warmup: load + 2x forward (Module stays in memory)…")
-                ensureSessionLoadedAndDoubleWarmup(part1Pte, patchBin)
+                val chosenPte = ensureSessionLoadedAndDoubleWarmupWithFallback(app, patchBin, "settings_warmup")
                 val ms = SystemClock.elapsedRealtime() - t0
                 writeWarmupPrefs(app, "completed", ms, "OK")
-                Log.i(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=completed duration_ms=$ms source=settings session=cached")
+                Log.i(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=completed duration_ms=$ms source=settings session=cached pte=${chosenPte.name}")
                 Log.i(WARMUP_TAG, "settings Part1 warmup OK in ${ms}ms (Module cached for Run)")
                 WarmupResult(true, ms, "Warmup completed in ${ms / 1000}s — Module cached until Release or app kill (same PID).")
             } catch (e: Throwable) {
                 val ms = SystemClock.elapsedRealtime() - t0
+                val kind = classifyExecutorchFailure(e)
                 val err = e.message ?: e.toString()
                 writeWarmupPrefs(app, "failed", ms, err)
-                Log.e(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=failed duration_ms=$ms error=$err", e)
+                Log.e(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=failed kind=$kind duration_ms=$ms error=$err", e)
                 WarmupResult(false, ms, "Warmup failed: $err")
             }
         } finally {
@@ -370,28 +504,48 @@ object Part1OnlyTest {
     @JvmStatic
     fun scheduleStartupWarmup(context: Context) {
         val app = context.applicationContext
+        if (!isStartupWarmupEnabled(app)) {
+            Log.d(WARMUP_TAG, "skip startup warmup (disabled; enable via pref $KEY_STARTUP_WARMUP_ENABLED)")
+            Log.d(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=skipped source=startup reason=disabled")
+            return
+        }
+        if (startupWarmupSuppressed.get()) {
+            Log.d(WARMUP_TAG, "skip startup warmup (suppressed by full inference)")
+            Log.d(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=skipped source=startup reason=suppressed")
+            return
+        }
         Thread(
             {
-                val part1Pte = findFile(app, "sharp_split_part1.pte")
+                if (startupWarmupSuppressed.get()) {
+                    Log.d(WARMUP_TAG, "skip startup warmup thread (suppressed by full inference)")
+                    Log.d(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=skipped source=startup reason=suppressed")
+                    return@Thread
+                }
+                val candidates = findPart1PteCandidates(app)
                 val patchBin = findFile(app, "part1_test_patch_f32.bin")
-                if (part1Pte == null || patchBin == null) {
+                if (candidates.isEmpty() || patchBin == null) {
                     Log.d(WARMUP_TAG, "skip startup warmup (no models on device)")
                     Log.d(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=skipped source=startup reason=no_models_on_device")
                     return@Thread
                 }
-                logPart1Artifacts("startup_warmup", part1Pte, patchBin)
+                if (startupWarmupSuppressed.get()) {
+                    Log.d(WARMUP_TAG, "abort startup warmup before load (suppressed by full inference)")
+                    Log.d(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=skipped source=startup reason=suppressed")
+                    return@Thread
+                }
                 val t0 = SystemClock.elapsedRealtime()
                 try {
                     Log.i(WARMUP_TAG, "startup: Part1 load + 2x forward (session cache)…")
-                    ensureSessionLoadedAndDoubleWarmup(part1Pte, patchBin)
+                    val chosenPte = ensureSessionLoadedAndDoubleWarmupWithFallback(app, patchBin, "startup_warmup")
                     val ms = SystemClock.elapsedRealtime() - t0
                     Log.i(WARMUP_TAG, "startup Part1 session ready in ${ms}ms")
-                    Log.i(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=completed duration_ms=$ms source=startup session=cached")
+                    Log.i(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=completed duration_ms=$ms source=startup session=cached pte=${chosenPte.name}")
                 } catch (e: Throwable) {
                     val ms = SystemClock.elapsedRealtime() - t0
-                    Log.e(WARMUP_TAG, "startup warmup failed after ${ms}ms", e)
+                    val kind = classifyExecutorchFailure(e)
                     val err = e.message ?: e.toString()
-                    Log.e(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=failed duration_ms=$ms source=startup error=$err")
+                    Log.e(WARMUP_TAG, "startup warmup failed after ${ms}ms", e)
+                    Log.e(PART1_WARMUP_LOG_TAG, "WARMUP_STATUS state=failed kind=$kind duration_ms=$ms source=startup error=$err")
                 }
             },
             "ExecuTorchPart1Warmup"
@@ -409,17 +563,17 @@ object Part1OnlyTest {
      */
     @JvmStatic
     fun run(context: Context): String {
-        val part1Pte = findFile(context, "sharp_split_part1.pte")
+        val candidates = findPart1PteCandidates(context)
         val patchBin = findFile(context, "part1_test_patch_f32.bin")
-        if (part1Pte == null) {
-            Log.e(TAG, "sharp_split_part1.pte not found")
-            return "Part1 test: sharp_split_part1.pte not found"
+        if (candidates.isEmpty()) {
+            val expected = expectedPart1PteHint()
+            Log.e(TAG, "$expected not found")
+            return "Part1 test: $expected not found"
         }
         if (patchBin == null) {
             Log.e(TAG, "part1_test_patch_f32.bin not found")
             return "Part1 test: part1_test_patch_f32.bin not found"
         }
-        logPart1Artifacts("run", part1Pte, patchBin)
         return try {
             val patchData = readF32Bin(patchBin, PATCH_FLOATS)
             val pid = Process.myPid()
@@ -433,10 +587,10 @@ object Part1OnlyTest {
                     "Use PART1_RUN forward_only_ms + P1_BENCH; portable .pte for CPU baseline."
             )
             val tSession = SystemClock.elapsedRealtime()
-            ensureSessionLoadedAndDoubleWarmup(part1Pte, patchBin)
+            val chosenPte = ensureSessionLoadedAndDoubleWarmupWithFallback(context, patchBin, "run")
             val sessionEnsureMs = SystemClock.elapsedRealtime() - tSession
             Log.d(TAG, "session ensure finished in ${sessionEnsureMs}ms (0 if already cached)")
-            Log.i(TAG, "PART1_RUN session_ensure_ms=$sessionEnsureMs pid=$pid")
+            Log.i(TAG, "PART1_RUN session_ensure_ms=$sessionEnsureMs pid=$pid pte=${chosenPte.name}")
 
             val tFwd = SystemClock.elapsedRealtime()
             val outputs = forwardWithCachedModule(patchData)
@@ -475,33 +629,20 @@ object Part1OnlyTest {
             if (e is UnsatisfiedLinkError) {
                 return "Part1 test: native load failed (${e.message}). Reinstall APK / check ABI."
             }
+            val kind = classifyExecutorchFailure(e)
             val msg = e.message ?: ""
             val causeMsg = e.cause?.message ?: ""
             val combined = "$msg $causeMsg".lowercase()
-            val backendMissing =
-                combined.contains("not registered") ||
-                    combined.contains("backend not found") ||
-                    combined.contains("failed to find backend") ||
-                    combined.contains("could not find backend") ||
-                    combined.contains("missing backend")
-            val vulkanRuntimeFailed =
-                combined.contains("backendfailed") ||
-                    combined.contains("backend failed") ||
-                    combined.contains("vulkanbackend") ||
-                    combined.contains("vk_error") ||
-                    combined.contains("vkallocate") ||
-                    combined.contains("vkcreate") ||
-                    combined.contains("delegate init failed") ||
-                    combined.contains("0x20")
-            when {
-                backendMissing -> {
-                    Log.e(TAG, "PART1_ERROR class=backend_missing msg=$combined")
-                    "Part1 test: Vulkan (or delegate) backend not registered / not found. Check AAR and load order."
-                }
-                vulkanRuntimeFailed -> {
-                    Log.e(TAG, "PART1_ERROR class=vulkan_runtime_failure msg=$combined")
-                    "Part1 test: Vulkan runtime failed after load (not the same as missing registration). See logcat."
-                }
+            Log.e(TAG, "PART1_ERROR kind=$kind msg=$combined")
+            return when (kind) {
+                "resource_not_found" ->
+                    "Part1 test: ExecuTorch/Vulkan resource not found during forward. Usually export/runtime mismatch or missing Vulkan shader in AAR. Rebuild ExecuTorch from source with EXECUTORCH_BUILD_VULKAN=ON, or re-export .pte from same ExecuTorch commit as runtime."
+                "missing_vulkan_shader" ->
+                    "Part1 test: Vulkan shader missing (ShaderRegistry). Build ExecuTorch from source with EXECUTORCH_BUILD_VULKAN=ON."
+                "backend_missing" ->
+                    "Part1 test: Vulkan backend not registered / not found. Check AAR and load order."
+                "vulkan_runtime_failure" ->
+                    "Part1 test: Vulkan runtime failed during forward. See logcat."
                 else -> "Part1 test failed: $msg"
             }
         }

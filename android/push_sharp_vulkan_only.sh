@@ -34,14 +34,20 @@ echo ""
 
 adb shell "mkdir -p $DEST"
 
-for pte in "$MODEL_DIR"/sharp_split_part*.pte; do
-  if [ -f "$pte" ]; then
-    file="$(basename "$pte")"
-    size="$(ls -lh "$pte" | awk '{print $5}')"
+for artifact in "$MODEL_DIR"/sharp_split_part*.pte "$MODEL_DIR"/sharp_split_part*.pte.manifest.json; do
+  if [ -f "$artifact" ]; then
+    file="$(basename "$artifact")"
+    size="$(ls -lh "$artifact" | awk '{print $5}')"
     echo "Pushing $file ($size)..."
-    adb push "$pte" "$DEST/$file"
+    adb push "$artifact" "$DEST/$file"
   fi
 done
 
+# Part1 warmup needs part1_test_patch_f32.bin (from export_sharp_executorch_split4.py --part1-only)
+if [ -f "$MODEL_DIR/part1_test_patch_f32.bin" ]; then
+  echo "Pushing part1_test_patch_f32.bin (for Part1 warmup)..."
+  adb push "$MODEL_DIR/part1_test_patch_f32.bin" "$DEST/part1_test_patch_f32.bin"
+fi
+
 echo ""
-echo "Done! Vulkan-only models pushed."
+echo "Done! Vulkan-only models pushed to $DEST"

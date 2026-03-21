@@ -232,13 +232,18 @@ android/sharp_ncnn_models_backup/
 *.bin
 *.param
 
-# ML model binaries (too large for git)
+# ML model binaries (too large for git; backup to external HD — see scripts/backup_large_files_to_external.sh)
 android/executorch_models/
 android/executorch_fp16_models/
 android/executorch_models_vulkan/
 android/sharp_litert_models/
 android/sharp_onnx_models/
+# Vulkan / portable export trees (full .pte + manifests; backup off-machine)
+android/sharp_vulkan_only/
+android/sharp_portable_latent0/
+android/sharp_vulkan_only_latent0/
 *.pte
+*.pte.manifest.json
 *.pt
 *.ptl
 *.onnx
@@ -274,4 +279,8 @@ ShanjeevRAG-new/
 # Export logs, test logs, backup files
 android/export_log*.txt
 android/part1_test_logcat.txt
+android/logcat_vulkan*.txt
+
+# Local Gradle home under repo (do not commit)
+android/.gradle-local/
 *.bak

@@ -26,6 +26,10 @@ set(EXECUTORCH_INCLUDE_DIR ${EXECUTORCH_BASE})
 if(NOT EXECUTORCH_LIB_DIR)
     set(EXECUTORCH_LIB_DIR "${CMAKE_SOURCE_DIR}/executorch_lib")
 endif()
+# ETDump in-app profiling: set ON only when linking a local ExecuTorch build with DEVTOOLS (AAR has no ETDumpGen).
+if(NOT DEFINED EXECUTORCH_PROFILING_ETDUMP)
+    set(EXECUTORCH_PROFILING_ETDUMP OFF)
+endif()
 
 # When using a split ExecuTorch build (libexecutorch.so + libexecutorch_core.so), both must be
 # linked so runtime/extension symbols (e.g. _get_log_timestamp, make_tensor_ptr) resolve.
@@ -76,6 +80,12 @@ if(EXISTS "${EXECUTORCH_LIB_DIR}/libexecutorch.so" AND EXISTS "${EXECUTORCH_ROOT
         ${EXECUTORCH_INCLUDE_DIR}
         ${EXECUTORCH_ROOT}/runtime/core/portable_type/c10
     )
+    # ETDump profiling: opt-in only. The AAR's libexecutorch.so is built without devtools, so
+    # ETDumpGen symbols are undefined if we compile the ETDump path. Enable only when linking
+    # against a local ExecuTorch build with EXECUTORCH_BUILD_DEVTOOLS=ON (see EXECUTORCH_VULKAN_PROFILING.md).
+    if(EXISTS "${EXECUTORCH_ROOT}/devtools/etdump/etdump_flatcc.h" AND EXECUTORCH_PROFILING_ETDUMP)
+      target_compile_definitions(sharp_executorch_full PRIVATE EXECUTORCH_HAS_ETDUMP=1)
+    endif()
     target_compile_definitions(sharp_executorch_full PRIVATE C10_USING_CUSTOM_GENERATED_MACROS)
     set_target_properties(sharp_executorch_full PROPERTIES COMPILE_FLAGS "-frtti -fexceptions -O3 -ffast-math")
     target_link_libraries(sharp_executorch_full ${EXECUTORCH_LIBS} ${log-lib})

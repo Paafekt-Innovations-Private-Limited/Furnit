@@ -31,6 +31,13 @@ cp -R "${CLONE_DIR}/runtime/core" "${EXECUTORCH_DEST}/runtime/"
 cp -R "${CLONE_DIR}/runtime/executor" "${EXECUTORCH_DEST}/runtime/"
 cp -R "${CLONE_DIR}/runtime/platform" "${EXECUTORCH_DEST}/runtime/"
 
+# Optional: devtools/etdump for ETDump profiling (Part4b Vulkan). Enables EXECUTORCH_HAS_ETDUMP in CMake.
+if [[ -d "${CLONE_DIR}/devtools/etdump" ]]; then
+  mkdir -p "${EXECUTORCH_DEST}/devtools"
+  cp -R "${CLONE_DIR}/devtools/etdump" "${EXECUTORCH_DEST}/devtools/"
+  echo "Copied devtools/etdump for ETDump profiling."
+fi
+
 if [[ ! -f "${EXECUTORCH_DEST}/extension/module/module.h" ]]; then
   echo "ERROR: module.h not found after copy"
   exit 1

@@ -38,7 +38,11 @@ Each Vulkan export prints [Partition] Vulkan string count for diagnostics.
 """
 
 import argparse
+import contextlib
+import io
+import json
 import math
+import re
 import sys
 import time
 from pathlib import Path
@@ -50,6 +54,84 @@ import torch.nn.functional as F
 IMAGE_SIZE = 1536
 PATCH_SIZE = 384
 VIT_SPLIT_BLOCK = 12
+
+
+class _TeeTextIO(io.TextIOBase):
+    def __init__(self, *streams):
+        self._streams = streams
+
+    def write(self, text):
+        for stream in self._streams:
+            stream.write(text)
+        return len(text)
+
+    def flush(self):
+        for stream in self._streams:
+            stream.flush()
+
+
+def _summarize_export_log(export_log: str) -> dict:
+    transition_lines = []
+    inserted_transition_lines = []
+    buffer_texture_lines = []
+    layout_pairs = []
+    pair_pattern = re.compile(r"([A-Z_]+)\s*->\s*([A-Z_]+)")
+
+    for raw_line in export_log.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lower = line.lower()
+        if "transition" in lower or "width_packed" in line or "channels_packed" in line:
+            transition_lines.append(line)
+        if "inserting transition" in lower:
+            inserted_transition_lines.append(line)
+        if "buffer" in lower and "texture" in lower:
+            buffer_texture_lines.append(line)
+        layout_pairs.extend([" -> ".join(match) for match in pair_pattern.findall(line)])
+
+    return {
+        "transition_line_count": len(transition_lines),
+        "inserted_transition_count": len(inserted_transition_lines),
+        "buffer_texture_line_count": len(buffer_texture_lines),
+        "width_packed_hits": export_log.count("WIDTH_PACKED"),
+        "channels_packed_hits": export_log.count("CHANNELS_PACKED"),
+        "layout_pairs": layout_pairs[:12],
+        "sample_transition_lines": transition_lines[:12],
+        "high_layout_churn_suspected": bool(
+            inserted_transition_lines
+            or export_log.count("WIDTH_PACKED")
+            or export_log.count("CHANNELS_PACKED")
+            or buffer_texture_lines
+        ),
+    }
+
+
+def _write_pte_manifest(output_path, *, backend, use_fp16, strict_export, check_ir_validity,
+                        use_greedy_memory_planning, export_log, extra_metadata=None):
+    script_dir = Path(__file__).resolve().parent
+    if str(script_dir) not in sys.path:
+        sys.path.insert(0, str(script_dir))
+    from inspect_pte_delegates import collect_pte_diagnostics
+
+    diagnostics = collect_pte_diagnostics(output_path)
+    diagnostics["schema_version"] = 1
+    diagnostics["export"] = {
+        "backend": backend,
+        "dtype": "fp16" if use_fp16 else "fp32",
+        "strict_export": strict_export,
+        "check_ir_validity": check_ir_validity,
+        "use_greedy_memory_planning": use_greedy_memory_planning,
+    }
+    diagnostics["export_log"] = _summarize_export_log(export_log)
+    if extra_metadata:
+        diagnostics.update(extra_metadata)
+
+    manifest_path = output_path.with_name(output_path.name + ".manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(diagnostics, f, indent=2, sort_keys=True)
+    print(f"  Diagnostics manifest: {manifest_path.name}")
+    return manifest_path
 
 
 def _cast_like(value, ref_tensor):
@@ -88,6 +170,229 @@ def fuse_conv_bn(model):
             except Exception as e:
                 print(f"  [warn] Could not fuse {pairs} in {name}: {e}")
     return model
+
+
+def _module_param_count(module: nn.Module) -> int:
+    return int(sum(parameter.numel() for parameter in module.parameters()))
+
+
+def _groupify_conv2d_block_diagonal(conv: nn.Conv2d, groups: int) -> nn.Conv2d:
+    if conv.groups != 1:
+        raise ValueError("Only dense Conv2d layers can be converted to grouped Conv2d.")
+    if conv.in_channels % groups != 0 or conv.out_channels % groups != 0:
+        raise ValueError(
+            f"Conv2d channels ({conv.in_channels}->{conv.out_channels}) are not divisible by groups={groups}."
+        )
+
+    grouped = nn.Conv2d(
+        in_channels=conv.in_channels,
+        out_channels=conv.out_channels,
+        kernel_size=conv.kernel_size,
+        stride=conv.stride,
+        padding=conv.padding,
+        dilation=conv.dilation,
+        groups=groups,
+        bias=conv.bias is not None,
+        padding_mode=conv.padding_mode,
+    )
+    grouped.to(dtype=conv.weight.dtype, device=conv.weight.device)
+
+    in_per_group = conv.in_channels // groups
+    out_per_group = conv.out_channels // groups
+    with torch.no_grad():
+        grouped.weight.zero_()
+        for group_idx in range(groups):
+            out_slice = slice(group_idx * out_per_group, (group_idx + 1) * out_per_group)
+            in_slice = slice(group_idx * in_per_group, (group_idx + 1) * in_per_group)
+            grouped.weight[out_slice].copy_(conv.weight[out_slice, in_slice, :, :])
+        if conv.bias is not None and grouped.bias is not None:
+            grouped.bias.copy_(conv.bias)
+    return grouped
+
+
+def _groupify_convtranspose2d_block_diagonal(conv: nn.ConvTranspose2d, groups: int) -> nn.ConvTranspose2d:
+    if conv.groups != 1:
+        raise ValueError("Only dense ConvTranspose2d layers can be converted to grouped ConvTranspose2d.")
+    if conv.in_channels % groups != 0 or conv.out_channels % groups != 0:
+        raise ValueError(
+            f"ConvTranspose2d channels ({conv.in_channels}->{conv.out_channels}) are not divisible by groups={groups}."
+        )
+
+    grouped = nn.ConvTranspose2d(
+        in_channels=conv.in_channels,
+        out_channels=conv.out_channels,
+        kernel_size=conv.kernel_size,
+        stride=conv.stride,
+        padding=conv.padding,
+        output_padding=conv.output_padding,
+        groups=groups,
+        bias=conv.bias is not None,
+        dilation=conv.dilation,
+    )
+    grouped.to(dtype=conv.weight.dtype, device=conv.weight.device)
+
+    in_per_group = conv.in_channels // groups
+    out_per_group = conv.out_channels // groups
+    with torch.no_grad():
+        grouped.weight.zero_()
+        for group_idx in range(groups):
+            in_slice = slice(group_idx * in_per_group, (group_idx + 1) * in_per_group)
+            out_slice = slice(group_idx * out_per_group, (group_idx + 1) * out_per_group)
+            grouped.weight[in_slice].copy_(conv.weight[in_slice, out_slice, :, :])
+        if conv.bias is not None and grouped.bias is not None:
+            grouped.bias.copy_(conv.bias)
+    return grouped
+
+
+def _record_surgery(report: dict, *, name: str, kind: str, original_params: int, new_params: int):
+    report["modified_layers"].append(
+        {
+            "name": name,
+            "kind": kind,
+            "original_params": original_params,
+            "new_params": new_params,
+            "param_ratio": round(new_params / max(original_params, 1), 4),
+        }
+    )
+
+
+def _record_surgery_skip(report: dict, *, name: str, kind: str, reason: str):
+    report["skipped_layers"].append({"name": name, "kind": kind, "reason": reason})
+
+
+def _replace_conv2d_with_grouped(parent, key, groups: int, report: dict, name: str) -> bool:
+    conv = parent[key] if isinstance(parent, (nn.Sequential, nn.ModuleList)) else getattr(parent, key)
+    if not isinstance(conv, nn.Conv2d):
+        _record_surgery_skip(report, name=name, kind=type(conv).__name__, reason="not_conv2d")
+        return False
+    if conv.groups != 1:
+        _record_surgery_skip(report, name=name, kind="Conv2d", reason=f"already_grouped_{conv.groups}")
+        return False
+    if conv.in_channels % groups != 0 or conv.out_channels % groups != 0:
+        _record_surgery_skip(
+            report,
+            name=name,
+            kind="Conv2d",
+            reason=f"channels_not_divisible_{conv.in_channels}x{conv.out_channels}_g{groups}",
+        )
+        return False
+
+    original_params = _module_param_count(conv)
+    grouped = _groupify_conv2d_block_diagonal(conv, groups)
+    if isinstance(parent, (nn.Sequential, nn.ModuleList)):
+        parent[key] = grouped
+    else:
+        setattr(parent, key, grouped)
+    _record_surgery(report, name=name, kind="Conv2d", original_params=original_params, new_params=_module_param_count(grouped))
+    return True
+
+
+def _replace_convtranspose2d_with_grouped(parent, key, groups: int, report: dict, name: str) -> bool:
+    conv = parent[key] if isinstance(parent, (nn.Sequential, nn.ModuleList)) else getattr(parent, key)
+    if not isinstance(conv, nn.ConvTranspose2d):
+        _record_surgery_skip(report, name=name, kind=type(conv).__name__, reason="not_convtranspose2d")
+        return False
+    if conv.groups != 1:
+        _record_surgery_skip(report, name=name, kind="ConvTranspose2d", reason=f"already_grouped_{conv.groups}")
+        return False
+    if conv.in_channels % groups != 0 or conv.out_channels % groups != 0:
+        _record_surgery_skip(
+            report,
+            name=name,
+            kind="ConvTranspose2d",
+            reason=f"channels_not_divisible_{conv.in_channels}x{conv.out_channels}_g{groups}",
+        )
+        return False
+
+    original_params = _module_param_count(conv)
+    grouped = _groupify_convtranspose2d_block_diagonal(conv, groups)
+    if isinstance(parent, (nn.Sequential, nn.ModuleList)):
+        parent[key] = grouped
+    else:
+        setattr(parent, key, grouped)
+    _record_surgery(
+        report,
+        name=name,
+        kind="ConvTranspose2d",
+        original_params=original_params,
+        new_params=_module_param_count(grouped),
+    )
+    return True
+
+
+def _groupify_residual_block(residual_block: nn.Module, groups: int, report: dict, prefix: str):
+    residual = getattr(residual_block, "residual", None)
+    if not isinstance(residual, nn.Sequential):
+        _record_surgery_skip(report, name=prefix, kind=type(residual_block).__name__, reason="missing_residual_sequential")
+        return
+    for index, layer in enumerate(residual):
+        if isinstance(layer, nn.Conv2d):
+            _replace_conv2d_with_grouped(residual, index, groups, report, f"{prefix}.residual[{index}]")
+
+
+def _groupify_feature_fusion_block(fusion: nn.Module, groups: int, report: dict, prefix: str):
+    _groupify_residual_block(fusion.resnet1, groups, report, f"{prefix}.resnet1")
+    _groupify_residual_block(fusion.resnet2, groups, report, f"{prefix}.resnet2")
+    if isinstance(fusion.deconv, nn.ConvTranspose2d):
+        _replace_convtranspose2d_with_grouped(fusion, "deconv", groups, report, f"{prefix}.deconv")
+    elif not isinstance(fusion.deconv, nn.Sequential):
+        _record_surgery_skip(report, name=f"{prefix}.deconv", kind=type(fusion.deconv).__name__, reason="unsupported_deconv_type")
+    _replace_conv2d_with_grouped(fusion, "out_conv", groups, report, f"{prefix}.out_conv")
+
+
+def _groupify_monodepth_head(head: nn.Sequential, groups: int, report: dict, prefix: str):
+    for index, layer in enumerate(head):
+        if isinstance(layer, nn.Conv2d):
+            _replace_conv2d_with_grouped(head, index, groups, report, f"{prefix}[{index}]")
+        elif isinstance(layer, nn.ConvTranspose2d):
+            _replace_convtranspose2d_with_grouped(head, index, groups, report, f"{prefix}[{index}]")
+
+
+def _groupify_gaussian_head(head: nn.Sequential, groups: int, report: dict, prefix: str):
+    if len(head) >= 1:
+        _groupify_residual_block(head[0], groups, report, f"{prefix}[0]")
+    if len(head) >= 2:
+        _groupify_residual_block(head[1], groups, report, f"{prefix}[1]")
+    for index, layer in enumerate(head):
+        if isinstance(layer, nn.Conv2d):
+            _replace_conv2d_with_grouped(head, index, groups, report, f"{prefix}[{index}]")
+
+
+def apply_part4_hotpath_lite_surgery(predictor: nn.Module, groups: int = 4) -> dict:
+    """Reduce the hottest Part4 Vulkan convolutions while keeping tensor shapes unchanged."""
+    report = {
+        "variant": "part4_vulkan_hotpath_lite_v1",
+        "groups": groups,
+        "modified_layers": [],
+        "skipped_layers": [],
+    }
+
+    mono = predictor.monodepth_model.monodepth_predictor
+    _replace_conv2d_with_grouped(mono.decoder.convs, 1, groups, report, "monodepth.decoder.convs[1]")
+    _groupify_feature_fusion_block(mono.decoder.fusions[1], groups, report, "monodepth.decoder.fusions[1]")
+    _groupify_feature_fusion_block(mono.decoder.fusions[0], groups, report, "monodepth.decoder.fusions[0]")
+    _groupify_monodepth_head(mono.head, groups, report, "monodepth.head")
+
+    gaussian = predictor.feature_model
+    _replace_conv2d_with_grouped(gaussian.decoder.convs, 0, groups, report, "gaussian_decoder.decoder.convs[0]")
+    _replace_conv2d_with_grouped(gaussian.decoder.convs, 1, groups, report, "gaussian_decoder.decoder.convs[1]")
+    _groupify_feature_fusion_block(gaussian.decoder.fusions[1], groups, report, "gaussian_decoder.decoder.fusions[1]")
+    _groupify_feature_fusion_block(gaussian.decoder.fusions[0], groups, report, "gaussian_decoder.decoder.fusions[0]")
+    _groupify_feature_fusion_block(gaussian.fusion, groups, report, "gaussian_decoder.fusion")
+    _groupify_gaussian_head(gaussian.texture_head, groups, report, "gaussian_decoder.texture_head")
+    _groupify_gaussian_head(gaussian.geometry_head, groups, report, "gaussian_decoder.geometry_head")
+
+    original_params = sum(entry["original_params"] for entry in report["modified_layers"])
+    new_params = sum(entry["new_params"] for entry in report["modified_layers"])
+    report["modified_layer_count"] = len(report["modified_layers"])
+    report["skipped_layer_count"] = len(report["skipped_layers"])
+    report["touched_params_before"] = original_params
+    report["touched_params_after"] = new_params
+    report["touched_param_ratio"] = round(new_params / max(original_params, 1), 4)
+    report["estimated_hotpath_param_reduction_pct"] = round(
+        100.0 * (1.0 - (new_params / max(original_params, 1))), 2
+    )
+    return report
 
 
 def parse_args():
@@ -137,6 +442,10 @@ def parse_args():
     pa.add_argument("--vulkan-safe-part4b-tile", action="store_true",
         help="Also export a Vulkan-safe split for Part4b tile_00: Vulkan stage A + Vulkan raw heads, "
              "with portable init/base and compose stages for the rank-5 portions.")
+    pa.add_argument("--part4-hotpath-lite", action="store_true",
+        help="Apply grouped-conv surgery to the hottest Part4 monodepth/gaussian decoder blocks while keeping public tensor shapes unchanged.")
+    pa.add_argument("--part4-hotpath-groups", type=int, choices=(2, 4, 8), default=4,
+        help="Grouping factor for --part4-hotpath-lite. Higher groups reduce more compute but are more aggressive.")
     # Optional features from ExecuTorch examples/vulkan (see docs/EXECUTORCH_VULKAN_EXAMPLE_ALIGNMENT.md)
     pa.add_argument("--small-texture-limits", action="store_true",
         help="Vulkan: use small texture limits (2048,2048,2048) for desktop/laptop GPU compatibility.")
@@ -568,8 +877,8 @@ class Part4bTileStagePreVulkan(nn.Module):
         return latent0_up, latent1_up, x0_up, x1_up, x_fused
 
 
-class Part4bTileDecoderHeadPortable(nn.Module):
-    """Portable decoder/head stage for tiled Part4b.
+class Part4bTileDecoderHeadVulkan(nn.Module):
+    """Vulkan-safe decoder/head stage for tiled Part4b.
 
     Input: latent0_up, latent1_up, x0_up, x1_up, x_fused (all 4D)
     Output: disparity, decoder_features (both 4D).
@@ -592,6 +901,157 @@ class Part4bTileDecoderHeadPortable(nn.Module):
             second_layer = disparity.min(dim=1, keepdims=True).values
             disparity = torch.cat([first_layer, second_layer], dim=1)
         return disparity, decoder_features
+
+
+class Part4bTileDecoderOnlyVulkan(nn.Module):
+    """Vulkan-safe decoder-only stage for tiled Part4b.
+
+    Input: latent0_up, latent1_up, x0_up, x1_up, x_fused (all 4D)
+    Output: decoder_features (4D).
+    """
+
+    def __init__(self, predictor):
+        super().__init__()
+        mono = predictor.monodepth_model
+        self.decoder = mono.monodepth_predictor.decoder
+
+    def forward(self, latent0_up, latent1_up, x0_up, x1_up, x_fused):
+        encoder_features = [latent0_up, latent1_up, x0_up, x1_up, x_fused]
+        return self.decoder(encoder_features)
+
+
+class Part4bTileDisparityHeadVulkan(nn.Module):
+    """Vulkan-safe disparity-head stage for tiled Part4b.
+
+    Input: decoder_features (4D)
+    Output: disparity (4D).
+    """
+
+    def __init__(self, predictor):
+        super().__init__()
+        mono = predictor.monodepth_model
+        self.head = mono.monodepth_predictor.head
+        self.num_monodepth_layers = mono.num_monodepth_layers
+        self.sorting_monodepth = mono.sorting_monodepth
+
+    def forward(self, decoder_features):
+        disparity = self.head(decoder_features)
+        if self.num_monodepth_layers == 2 and self.sorting_monodepth:
+            first_layer = disparity.max(dim=1, keepdims=True).values
+            second_layer = disparity.min(dim=1, keepdims=True).values
+            disparity = torch.cat([first_layer, second_layer], dim=1)
+        return disparity
+
+
+class Part4bTileDecoderSeedVulkan(nn.Module):
+    """Vulkan-safe seed stage for tiled Part4b decoder.
+
+    Input: x_fused [B,1024,12,12]
+    Output: decoder seed feature [B,256,24,24].
+    """
+
+    def __init__(self, predictor):
+        super().__init__()
+        decoder = predictor.monodepth_model.monodepth_predictor.decoder
+        self.conv = decoder.convs[4]
+        self.fusion = decoder.fusions[4]
+
+    def forward(self, x_fused):
+        features = self.conv(x_fused)
+        return self.fusion(features)
+
+
+class Part4bTileDecoderMergeX1Vulkan(nn.Module):
+    """Vulkan-safe decoder stage that merges x1_up into the seed feature."""
+
+    def __init__(self, predictor):
+        super().__init__()
+        decoder = predictor.monodepth_model.monodepth_predictor.decoder
+        self.conv = decoder.convs[3]
+        self.fusion = decoder.fusions[3]
+
+    def forward(self, decoder_seed, x1_up):
+        x1_features = self.conv(x1_up)
+        return self.fusion(decoder_seed, x1_features)
+
+
+class Part4bTileDecoderMergeX0Vulkan(nn.Module):
+    """Vulkan-safe decoder stage that merges x0_up into the 48x48 decoder feature."""
+
+    def __init__(self, predictor):
+        super().__init__()
+        decoder = predictor.monodepth_model.monodepth_predictor.decoder
+        self.conv = decoder.convs[2]
+        self.fusion = decoder.fusions[2]
+
+    def forward(self, decoder_48, x0_up):
+        x0_features = self.conv(x0_up)
+        return self.fusion(decoder_48, x0_features)
+
+
+class Part4bTileDecoderMergeLatent1Vulkan(nn.Module):
+    """Vulkan-safe decoder stage that merges latent1_up into the 96x96 decoder feature."""
+
+    def __init__(self, predictor):
+        super().__init__()
+        decoder = predictor.monodepth_model.monodepth_predictor.decoder
+        self.conv = decoder.convs[1]
+        self.fusion = decoder.fusions[1]
+
+    def forward(self, decoder_96, latent1_up):
+        latent1_features = self.conv(latent1_up)
+        return self.fusion(decoder_96, latent1_features)
+
+
+class Part4bTileDecoderMergeLatent0Vulkan(nn.Module):
+    """Vulkan-safe decoder stage that merges latent0_up into the final decoder feature."""
+
+    def __init__(self, predictor):
+        super().__init__()
+        decoder = predictor.monodepth_model.monodepth_predictor.decoder
+        self.conv = decoder.convs[0]
+        self.fusion = decoder.fusions[0]
+
+    def forward(self, decoder_192, latent0_up):
+        latent0_features = self.conv(latent0_up)
+        return self.fusion(decoder_192, latent0_features)
+
+
+class Part4bTileDecoderMergeLatent0PreFuseVulkan(nn.Module):
+    """Vulkan-safe pre-fuse stage for the final latent0 merge.
+
+    Input: decoder_192 [B,256,192,192], latent0_up [B,256,192,192]
+    Output: fused 192x192 feature before the final refinement block.
+    """
+
+    def __init__(self, predictor):
+        super().__init__()
+        decoder = predictor.monodepth_model.monodepth_predictor.decoder
+        self.conv = decoder.convs[0]
+        fusion = decoder.fusions[0]
+        self.resnet1 = fusion.resnet1
+        self.skip_add = fusion.skip_add
+
+    def forward(self, decoder_192, latent0_up):
+        latent0_features = self.conv(latent0_up)
+        residual = self.resnet1(latent0_features)
+        return self.skip_add.add(decoder_192, residual)
+
+
+class Part4bTileDecoderMergeLatent0PostFuseVulkan(nn.Module):
+    """Vulkan-safe post-fuse refinement stage for the final latent0 merge."""
+
+    def __init__(self, predictor):
+        super().__init__()
+        fusion = predictor.monodepth_model.monodepth_predictor.decoder.fusions[0]
+        self.resnet2 = fusion.resnet2
+        self.deconv = fusion.deconv
+        self.out_conv = fusion.out_conv
+
+    def forward(self, decoder_192_prefused):
+        features = self.resnet2(decoder_192_prefused)
+        features = self.deconv(features)
+        return self.out_conv(features)
 
 
 class Part4bTileInitBasePortable(nn.Module):
@@ -809,7 +1269,7 @@ def _apply_greedy_memory_planning(edge):
 
 def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend="vulkan", use_greedy_memory_planning=False,
               strict_export=False, check_ir_validity=False, vulkan_compile_options=None,
-              etrecord_path=None, create_bundled=False, run_test=False):
+              etrecord_path=None, create_bundled=False, run_test=False, manifest_extra=None):
     """Export a single part to .pte format.
     backend: "vulkan" (GPU, 20-60s) or "portable" (CPU fallback, 10min+)
     use_greedy_memory_planning: use ExecuTorch greedy memory planner (reuse buffers, lower peak RAM). Recommended for Part 4.
@@ -827,59 +1287,49 @@ def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend
     strict_label = " [strict export]" if strict_export else ""
     ir_label = " [IR validity ON]" if check_ir_validity else ""
     aar_label = " [Vulkan AAR compat]" if (backend == "vulkan" and vulkan_compile_options) else ""
-    print(f"\n{'='*60}")
-    print(f"Exporting {name} {backend_label}{planning_label}{strict_label}{ir_label}{aar_label}")
-    print(f"{'='*60}")
+    capture_stdout = io.StringIO()
+    capture_stderr = io.StringIO()
+    tee_stdout = _TeeTextIO(sys.stdout, capture_stdout)
+    tee_stderr = _TeeTextIO(sys.stderr, capture_stderr)
+    with contextlib.redirect_stdout(tee_stdout), contextlib.redirect_stderr(tee_stderr):
+        print(f"\n{'='*60}")
+        print(f"Exporting {name} {backend_label}{planning_label}{strict_label}{ir_label}{aar_label}")
+        print(f"{'='*60}")
 
-    if use_fp16:
-        wrapper = wrapper.half()
-        sample_inputs = tuple(
-            inp.half() if inp.is_floating_point() else inp for inp in sample_inputs
-        )
-
-    start = time.time()
-    exported = torch.export.export(wrapper, sample_inputs, strict=strict_export)
-    # XNNPACK removed: XNNWeightsCache::look_up_or_insert causes SIGSEGV on Android for large parts.
-    compile_config = EdgeCompileConfig(_check_ir_validity=check_ir_validity)
-    if backend == "vulkan":
-        from executorch.backends.vulkan.partitioner.vulkan_partitioner import VulkanPartitioner
-        from executorch.exir import to_edge_transform_and_lower
-        opts = dict(vulkan_compile_options) if vulkan_compile_options else {}
-        edge = to_edge_transform_and_lower(
-            exported,
-            compile_config=compile_config,
-            partitioner=[VulkanPartitioner(opts)],
-            generate_etrecord=str(etrecord_path) if etrecord_path else None,
-        )
-    else:
-        from executorch.exir import to_edge
-        edge = to_edge(exported, compile_config=compile_config)
-
-    # Greedy memory planning: use alloc_graph_input=False, alloc_graph_output=False so I/O
-    # buffers are caller-managed and don't inflate the plan (fixes "Misallocate graph input: False v.s. True").
-    # Export must use static shapes (no torch.export.Dim).
-    # Skip greedy for Vulkan: VulkanPartitioner does its own AOT memory planning; our greedy pass
-    # can fail with "TensorSpec(...) should have specified memory offset" on Vulkan-partitioned graphs.
-    if use_greedy_memory_planning and backend != "vulkan":
-        try:
-            from executorch.exir.capture._config import ExecutorchBackendConfig
-            from executorch.exir.memory_planning import greedy
-            from executorch.exir.passes.memory_planning_pass import MemoryPlanningPass
-            et_program = edge.to_executorch(
-                ExecutorchBackendConfig(
-                    memory_planning_pass=MemoryPlanningPass(
-                        memory_planning_algo=greedy,
-                        alloc_graph_input=False,
-                        alloc_graph_output=False,
-                    ),
-                )
+        if use_fp16:
+            wrapper = wrapper.half()
+            sample_inputs = tuple(
+                inp.half() if inp.is_floating_point() else inp for inp in sample_inputs
             )
-            print("  Greedy memory planning applied (caller-managed I/O)")
-        except Exception as e:
+
+        start = time.time()
+        exported = torch.export.export(wrapper, sample_inputs, strict=strict_export)
+        # XNNPACK removed: XNNWeightsCache::look_up_or_insert causes SIGSEGV on Android for large parts.
+        compile_config = EdgeCompileConfig(_check_ir_validity=check_ir_validity)
+        if backend == "vulkan":
+            from executorch.backends.vulkan.partitioner.vulkan_partitioner import VulkanPartitioner
+            from executorch.exir import to_edge_transform_and_lower
+            opts = dict(vulkan_compile_options) if vulkan_compile_options else {}
+            edge = to_edge_transform_and_lower(
+                exported,
+                compile_config=compile_config,
+                partitioner=[VulkanPartitioner(opts)],
+                generate_etrecord=str(etrecord_path) if etrecord_path else None,
+            )
+        else:
+            from executorch.exir import to_edge
+            edge = to_edge(exported, compile_config=compile_config)
+
+        # Greedy memory planning: use alloc_graph_input=False, alloc_graph_output=False so I/O
+        # buffers are caller-managed and don't inflate the plan (fixes "Misallocate graph input: False v.s. True").
+        # Export must use static shapes (no torch.export.Dim).
+        # Skip greedy for Vulkan: VulkanPartitioner does its own AOT memory planning; our greedy pass
+        # can fail with "TensorSpec(...) should have specified memory offset" on Vulkan-partitioned graphs.
+        if use_greedy_memory_planning and backend != "vulkan":
             try:
-                from executorch.exir import ExecutorchBackendConfig
+                from executorch.exir.capture._config import ExecutorchBackendConfig
                 from executorch.exir.memory_planning import greedy
-                from executorch.exir.passes import MemoryPlanningPass
+                from executorch.exir.passes.memory_planning_pass import MemoryPlanningPass
                 et_program = edge.to_executorch(
                     ExecutorchBackendConfig(
                         memory_planning_pass=MemoryPlanningPass(
@@ -889,88 +1339,118 @@ def export_pte(name, wrapper, sample_inputs, output_path, use_fp16=True, backend
                         ),
                     )
                 )
-                print("  Greedy memory planning applied (alt API, caller-managed I/O)")
-            except Exception as e2:
-                print(f"  Greedy memory planning not available: {e2}, using default planning")
-                et_program = edge.to_executorch()
-    else:
-        if backend == "vulkan":
-            print("  Vulkan: using default planning (VulkanPartitioner AOT handles memory)")
-        et_program = edge.to_executorch()
-    export_time = time.time() - start
-
-    # Partition diagnostics (Vulkan): help spot fragmented/many subgraphs
-    if backend == "vulkan" and hasattr(et_program, "buffer"):
-        buf = et_program.buffer
-        n_vulkan = buf.count(b"vulkan") + buf.count(b"Vulkan")
-        n_backend = buf.count(b"VulkanBackend")
-        print(f"  [Partition] Vulkan strings in .pte: {n_vulkan}, VulkanBackend id: {n_backend}")
-
-    with open(output_path, "wb") as f:
-        f.write(et_program.buffer)
-
-    # Save ETRecord if requested (for debugging / Inspector)
-    if etrecord_path and hasattr(et_program, "get_etrecord"):
-        try:
-            et_program.get_etrecord().save(str(etrecord_path))
-            print(f"  ETRecord saved: {etrecord_path}")
-        except Exception as e:
-            print(f"  [warn] ETRecord save failed: {e}")
-
-    # Bundled .bpte with one test case (for correctness checking)
-    if create_bundled:
-        try:
-            from executorch.devtools import BundledProgram
-            from executorch.devtools.bundled_program.config import MethodTestCase, MethodTestSuite
-            from executorch.devtools.bundled_program.serialize import serialize_from_bundled_program_to_flatbuffer
-            from executorch.extension.pytree import tree_flatten
-            with torch.no_grad():
-                raw_expected = wrapper(*sample_inputs)
-            inputs_flattened, _ = tree_flatten(sample_inputs)
-            expected_flattened, _ = tree_flatten(raw_expected)
-            test_suites = [
-                MethodTestSuite(
-                    method_name="forward",
-                    test_cases=[
-                        MethodTestCase(
-                            inputs=inputs_flattened,
-                            expected_outputs=expected_flattened,
+                print("  Greedy memory planning applied (caller-managed I/O)")
+            except Exception as e:
+                try:
+                    from executorch.exir import ExecutorchBackendConfig
+                    from executorch.exir.memory_planning import greedy
+                    from executorch.exir.passes import MemoryPlanningPass
+                    et_program = edge.to_executorch(
+                        ExecutorchBackendConfig(
+                            memory_planning_pass=MemoryPlanningPass(
+                                memory_planning_algo=greedy,
+                                alloc_graph_input=False,
+                                alloc_graph_output=False,
+                            ),
                         )
-                    ],
+                    )
+                    print("  Greedy memory planning applied (alt API, caller-managed I/O)")
+                except Exception as e2:
+                    print(f"  Greedy memory planning not available: {e2}, using default planning")
+                    et_program = edge.to_executorch()
+        else:
+            if backend == "vulkan":
+                print("  Vulkan: using default planning (VulkanPartitioner AOT handles memory)")
+            et_program = edge.to_executorch()
+        export_time = time.time() - start
+
+        # Partition diagnostics (Vulkan): help spot fragmented/many subgraphs
+        if backend == "vulkan" and hasattr(et_program, "buffer"):
+            buf = et_program.buffer
+            n_vulkan = buf.count(b"vulkan") + buf.count(b"Vulkan")
+            n_backend = buf.count(b"VulkanBackend")
+            print(f"  [Partition] Vulkan strings in .pte: {n_vulkan}, VulkanBackend id: {n_backend}")
+
+        with open(output_path, "wb") as f:
+            f.write(et_program.buffer)
+
+        # Save ETRecord if requested (for debugging / Inspector)
+        if etrecord_path and hasattr(et_program, "get_etrecord"):
+            try:
+                et_program.get_etrecord().save(str(etrecord_path))
+                print(f"  ETRecord saved: {etrecord_path}")
+            except Exception as e:
+                print(f"  [warn] ETRecord save failed: {e}")
+
+        # Bundled .bpte with one test case (for correctness checking)
+        if create_bundled:
+            try:
+                from executorch.devtools import BundledProgram
+                from executorch.devtools.bundled_program.config import MethodTestCase, MethodTestSuite
+                from executorch.devtools.bundled_program.serialize import serialize_from_bundled_program_to_flatbuffer
+                from executorch.extension.pytree import tree_flatten
+                with torch.no_grad():
+                    raw_expected = wrapper(*sample_inputs)
+                inputs_flattened, _ = tree_flatten(sample_inputs)
+                expected_flattened, _ = tree_flatten(raw_expected)
+                test_suites = [
+                    MethodTestSuite(
+                        method_name="forward",
+                        test_cases=[
+                            MethodTestCase(
+                                inputs=inputs_flattened,
+                                expected_outputs=expected_flattened,
+                            )
+                        ],
+                    )
+                ]
+                bp = BundledProgram(et_program, test_suites)
+                bp_buffer = serialize_from_bundled_program_to_flatbuffer(bp)
+                bpte_path = Path(output_path).with_suffix(".bpte")
+                with open(bpte_path, "wb") as f:
+                    f.write(bp_buffer)
+                print(f"  Bundled program saved: {bpte_path.name}")
+            except Exception as e:
+                print(f"  [warn] Bundled .bpte save failed: {e}")
+
+        # Vulkan correctness test (requires Vulkan SDK + executorch built with Vulkan)
+        if run_test and backend == "vulkan":
+            try:
+                from executorch.backends.vulkan.test import utils as test_utils
+                atol, rtol = (2e-2, 1e-1) if use_fp16 else (1e-4, 1e-4)
+                test_ok = test_utils.run_and_check_output(
+                    reference_model=wrapper,
+                    executorch_program=et_program,
+                    sample_inputs=sample_inputs,
+                    atol=atol,
+                    rtol=rtol,
                 )
-            ]
-            bp = BundledProgram(et_program, test_suites)
-            bp_buffer = serialize_from_bundled_program_to_flatbuffer(bp)
-            bpte_path = Path(output_path).with_suffix(".bpte")
-            with open(bpte_path, "wb") as f:
-                f.write(bp_buffer)
-            print(f"  Bundled program saved: {bpte_path.name}")
-        except Exception as e:
-            print(f"  [warn] Bundled .bpte save failed: {e}")
+                if test_ok:
+                    print("  ✓ Model test PASSED - outputs match reference within tolerance")
+                else:
+                    print("  ✗ Model test FAILED - outputs do not match reference")
+            except Exception as e:
+                print(f"  [warn] Vulkan test skipped or failed: {e}")
 
-    # Vulkan correctness test (requires Vulkan SDK + executorch built with Vulkan)
-    if run_test and backend == "vulkan":
-        try:
-            from executorch.backends.vulkan.test import utils as test_utils
-            atol, rtol = (2e-2, 1e-1) if use_fp16 else (1e-4, 1e-4)
-            test_ok = test_utils.run_and_check_output(
-                reference_model=wrapper,
-                executorch_program=et_program,
-                sample_inputs=sample_inputs,
-                atol=atol,
-                rtol=rtol,
-            )
-            if test_ok:
-                print("  ✓ Model test PASSED - outputs match reference within tolerance")
-            else:
-                print("  ✗ Model test FAILED - outputs do not match reference")
-        except Exception as e:
-            print(f"  [warn] Vulkan test skipped or failed: {e}")
+        size_mb = output_path.stat().st_size / (1024 * 1024)
+        precision = "FP16" if use_fp16 else "FP32"
+        print(f"  {precision} export: {export_time:.0f}s")
+        print(f"  Saved: {output_path.name} ({size_mb:.0f} MB)")
 
-    size_mb = output_path.stat().st_size / (1024 * 1024)
-    precision = "FP16" if use_fp16 else "FP32"
-    print(f"  {precision} export: {export_time:.0f}s")
-    print(f"  Saved: {output_path.name} ({size_mb:.0f} MB)")
+    export_log = capture_stdout.getvalue() + capture_stderr.getvalue()
+    try:
+        _write_pte_manifest(
+            output_path,
+            backend=backend,
+            use_fp16=use_fp16,
+            strict_export=strict_export,
+            check_ir_validity=check_ir_validity,
+            use_greedy_memory_planning=use_greedy_memory_planning,
+            export_log=export_log,
+            extra_metadata=manifest_extra,
+        )
+    except Exception as e:
+        print(f"  [warn] Diagnostics manifest write failed: {e}")
     return size_mb
 
 
@@ -1060,6 +1540,24 @@ def main():
     predictor.eval()
     del state_dict
 
+    model_surgery_metadata = None
+    if getattr(args, "part4_hotpath_lite", False):
+        print(
+            "  Applying Part4 hot-path lite surgery "
+            f"(grouped hot decoder/gaussian blocks, groups={args.part4_hotpath_groups})..."
+        )
+        model_surgery_metadata = apply_part4_hotpath_lite_surgery(
+            predictor, groups=args.part4_hotpath_groups
+        )
+        print(
+            "  Part4 hot-path lite: "
+            f"{model_surgery_metadata['modified_layer_count']} modified / "
+            f"{model_surgery_metadata['skipped_layer_count']} skipped layers, "
+            f"touched-param ratio={model_surgery_metadata['touched_param_ratio']:.4f}, "
+            f"estimated hot-path param reduction="
+            f"{model_surgery_metadata['estimated_hotpath_param_reduction_pct']:.2f}%"
+        )
+
     print("  Fusing Conv+BN layers...")
     fuse_conv_bn(predictor)
 
@@ -1124,6 +1622,14 @@ def main():
             "etrecord_path": (etrecord_dir / f"{p.stem}.etrecord") if etrecord_dir is not None else None,
             "create_bundled": getattr(args, "bundled", False),
             "run_test": getattr(args, "test", False),
+            "manifest_extra": {
+                "model_variant": (
+                    model_surgery_metadata["variant"]
+                    if model_surgery_metadata
+                    else "baseline"
+                ),
+                "model_surgery": model_surgery_metadata,
+            },
         }
 
     sizes = {}
@@ -1323,7 +1829,16 @@ def main():
         part4b_tile = ImageEncoderPartBFromTileInputs(predictor).eval()
         part4b_tile_stage_a = ImageEncoderPartBTileStageA(predictor).eval()
         part4b_tile_stage_pre = Part4bTileStagePreVulkan(predictor).eval()
-        part4b_tile_decoder_head = Part4bTileDecoderHeadPortable(predictor).eval()
+        part4b_tile_decoder_head = Part4bTileDecoderHeadVulkan(predictor).eval()
+        part4b_tile_decoder_only = Part4bTileDecoderOnlyVulkan(predictor).eval()
+        part4b_tile_disparity_head = Part4bTileDisparityHeadVulkan(predictor).eval()
+        part4b_tile_decoder_seed = Part4bTileDecoderSeedVulkan(predictor).eval()
+        part4b_tile_decoder_merge_x1 = Part4bTileDecoderMergeX1Vulkan(predictor).eval()
+        part4b_tile_decoder_merge_x0 = Part4bTileDecoderMergeX0Vulkan(predictor).eval()
+        part4b_tile_decoder_merge_latent1 = Part4bTileDecoderMergeLatent1Vulkan(predictor).eval()
+        part4b_tile_decoder_merge_latent0 = Part4bTileDecoderMergeLatent0Vulkan(predictor).eval()
+        part4b_tile_decoder_merge_latent0_prefuse = Part4bTileDecoderMergeLatent0PreFuseVulkan(predictor).eval()
+        part4b_tile_decoder_merge_latent0_postfuse = Part4bTileDecoderMergeLatent0PostFuseVulkan(predictor).eval()
         part4b_tile_init_base = Part4bTileInitBasePortable(predictor).eval()
         part4b_tile_raw_heads = Part4bTileRawHeadsVulkan(predictor).eval()
         part4b_tile_compose = Part4bTileComposePortable(predictor).eval()
@@ -1344,6 +1859,15 @@ def main():
             part4b_tile_stage_a = part4b_tile_stage_a.half()
             part4b_tile_stage_pre = part4b_tile_stage_pre.half()
             part4b_tile_decoder_head = part4b_tile_decoder_head.half()
+            part4b_tile_decoder_only = part4b_tile_decoder_only.half()
+            part4b_tile_disparity_head = part4b_tile_disparity_head.half()
+            part4b_tile_decoder_seed = part4b_tile_decoder_seed.half()
+            part4b_tile_decoder_merge_x1 = part4b_tile_decoder_merge_x1.half()
+            part4b_tile_decoder_merge_x0 = part4b_tile_decoder_merge_x0.half()
+            part4b_tile_decoder_merge_latent1 = part4b_tile_decoder_merge_latent1.half()
+            part4b_tile_decoder_merge_latent0 = part4b_tile_decoder_merge_latent0.half()
+            part4b_tile_decoder_merge_latent0_prefuse = part4b_tile_decoder_merge_latent0_prefuse.half()
+            part4b_tile_decoder_merge_latent0_postfuse = part4b_tile_decoder_merge_latent0_postfuse.half()
             part4b_tile_init_base = part4b_tile_init_base.half()
             part4b_tile_raw_heads = part4b_tile_raw_heads.half()
             part4b_tile_compose = part4b_tile_compose.half()
@@ -1467,9 +1991,25 @@ def main():
                             stage_a_outputs[5],
                             stage_a_outputs[6],
                         )
-                        if tile_suffix == "b2":
-                            stage_pre_outputs = part4b_tile_stage_pre(*tile_stage_a_inputs)
-                            decoder_head_outputs = part4b_tile_decoder_head(*stage_pre_outputs)
+                        stage_pre_outputs = part4b_tile_stage_pre(*tile_stage_a_inputs)
+                        decoder_seed_output = part4b_tile_decoder_seed(stage_pre_outputs[4])
+                        decoder_merge_x1_output = part4b_tile_decoder_merge_x1(decoder_seed_output, stage_pre_outputs[3])
+                        decoder_merge_x0_output = part4b_tile_decoder_merge_x0(decoder_merge_x1_output, stage_pre_outputs[2])
+                        decoder_merge_latent1_output = part4b_tile_decoder_merge_latent1(
+                            decoder_merge_x0_output, stage_pre_outputs[1]
+                        )
+                        decoder_merge_latent0_prefuse_output = part4b_tile_decoder_merge_latent0_prefuse(
+                            decoder_merge_latent1_output, stage_pre_outputs[0]
+                        )
+                        decoder_merge_latent0_postfuse_output = part4b_tile_decoder_merge_latent0_postfuse(
+                            decoder_merge_latent0_prefuse_output
+                        )
+                        decoder_merge_latent0_output = part4b_tile_decoder_merge_latent0(
+                            decoder_merge_latent1_output, stage_pre_outputs[0]
+                        )
+                        decoder_only_output = part4b_tile_decoder_only(*stage_pre_outputs)
+                        disparity_head_output = part4b_tile_disparity_head(decoder_only_output)
+                        decoder_head_outputs = part4b_tile_decoder_head(*stage_pre_outputs)
                     stage_a_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_stage_a_vulkan.pte"
                     init_base_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_init_base.pte"
                     sizes[f"part4b_tile_{tile_suffix}_stage_a_vulkan"] = export_pte(
@@ -1494,31 +2034,174 @@ def main():
                         check_ir_validity=False,
                         **_pte_extra_opts(init_base_path),
                     )
-                    if tile_suffix == "b2":
-                        stage_pre_path = output_dir / "sharp_split_part4b_tile_b2_stage_pre_vulkan.pte"
-                        decoder_head_path = output_dir / "sharp_split_part4b_tile_b2_decoder_head.pte"
-                        sizes["part4b_tile_b2_stage_pre_vulkan"] = export_pte(
-                            "Part 4b tile_b2 stage pre: upsample + lowres fuse (Vulkan-safe 4D outputs, batch=2)",
-                            part4b_tile_stage_pre, tile_stage_a_inputs,
-                            stage_pre_path,
-                            use_fp16=part4_use_fp16,
-                            backend="vulkan",
-                            strict_export=strict_export,
-                            check_ir_validity=check_ir,
-                            vulkan_compile_options=vulkan_opts,
-                            **_pte_extra_opts(stage_pre_path),
-                        )
-                        sizes["part4b_tile_b2_decoder_head"] = export_pte(
-                            "Part 4b tile_b2 decoder/head: decoder + monodepth head (portable, batch=2)",
-                            part4b_tile_decoder_head, stage_pre_outputs,
-                            decoder_head_path,
-                            use_fp16=part4_use_fp16,
-                            backend="portable",
-                            use_greedy_memory_planning=True,
-                            strict_export=False,
-                            check_ir_validity=False,
-                            **_pte_extra_opts(decoder_head_path),
-                        )
+                    stage_pre_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_stage_pre_vulkan.pte"
+                    decoder_seed_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_seed.pte"
+                    decoder_merge_x1_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_merge_x1.pte"
+                    decoder_merge_x0_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_merge_x0.pte"
+                    decoder_merge_latent1_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_merge_latent1.pte"
+                    decoder_merge_latent0_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_merge_latent0.pte"
+                    decoder_merge_latent0_prefuse_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_merge_latent0_prefuse.pte"
+                    decoder_merge_latent0_postfuse_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_merge_latent0_postfuse.pte"
+                    decoder_merge_latent0_prefuse_portable_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_merge_latent0_prefuse_portable.pte"
+                    decoder_merge_latent0_postfuse_portable_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_merge_latent0_postfuse_portable.pte"
+                    decoder_only_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_only.pte"
+                    disparity_head_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_disparity_head.pte"
+                    decoder_head_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_head.pte"
+                    decoder_head_portable_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_decoder_head_portable.pte"
+                    sizes[f"part4b_tile_{tile_suffix}_stage_pre_vulkan"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} stage pre: upsample + lowres fuse (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_stage_pre, tile_stage_a_inputs,
+                        stage_pre_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(stage_pre_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_seed"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder seed: x_fused -> 24x24 decoder feature (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_decoder_seed, (stage_pre_outputs[4],),
+                        decoder_seed_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(decoder_seed_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_merge_x1"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder merge x1: 24x24 -> 48x48 (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_decoder_merge_x1, (decoder_seed_output, stage_pre_outputs[3]),
+                        decoder_merge_x1_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(decoder_merge_x1_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_merge_x0"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder merge x0: 48x48 -> 96x96 (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_decoder_merge_x0, (decoder_merge_x1_output, stage_pre_outputs[2]),
+                        decoder_merge_x0_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(decoder_merge_x0_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_merge_latent1"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder merge latent1: 96x96 -> 192x192 (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_decoder_merge_latent1, (decoder_merge_x0_output, stage_pre_outputs[1]),
+                        decoder_merge_latent1_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(decoder_merge_latent1_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_merge_latent0"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder merge latent0: final 192x192 decoder feature (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_decoder_merge_latent0, (decoder_merge_latent1_output, stage_pre_outputs[0]),
+                        decoder_merge_latent0_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(decoder_merge_latent0_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_merge_latent0_prefuse"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder merge latent0 prefuse: residual add at 192x192 (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_decoder_merge_latent0_prefuse, (decoder_merge_latent1_output, stage_pre_outputs[0]),
+                        decoder_merge_latent0_prefuse_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(decoder_merge_latent0_prefuse_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_merge_latent0_postfuse"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder merge latent0 postfuse: final refinement at 192x192 (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_decoder_merge_latent0_postfuse, (decoder_merge_latent0_prefuse_output,),
+                        decoder_merge_latent0_postfuse_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(decoder_merge_latent0_postfuse_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_merge_latent0_prefuse_portable"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder merge latent0 prefuse: residual add at 192x192 (portable compare artifact, batch={batch_size})",
+                        part4b_tile_decoder_merge_latent0_prefuse, (decoder_merge_latent1_output, stage_pre_outputs[0]),
+                        decoder_merge_latent0_prefuse_portable_path,
+                        use_fp16=part4_use_fp16,
+                        backend="portable",
+                        use_greedy_memory_planning=True,
+                        strict_export=False,
+                        check_ir_validity=False,
+                        **_pte_extra_opts(decoder_merge_latent0_prefuse_portable_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_merge_latent0_postfuse_portable"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder merge latent0 postfuse: final refinement at 192x192 (portable compare artifact, batch={batch_size})",
+                        part4b_tile_decoder_merge_latent0_postfuse, (decoder_merge_latent0_prefuse_output,),
+                        decoder_merge_latent0_postfuse_portable_path,
+                        use_fp16=part4_use_fp16,
+                        backend="portable",
+                        use_greedy_memory_planning=True,
+                        strict_export=False,
+                        check_ir_validity=False,
+                        **_pte_extra_opts(decoder_merge_latent0_postfuse_portable_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_only"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder only: multires decoder (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_decoder_only, stage_pre_outputs,
+                        decoder_only_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(decoder_only_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_disparity_head"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} disparity head: monodepth head only (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_disparity_head, (decoder_only_output,),
+                        disparity_head_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(disparity_head_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_head"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder/head: decoder + monodepth head (Vulkan-safe 4D outputs, batch={batch_size})",
+                        part4b_tile_decoder_head, stage_pre_outputs,
+                        decoder_head_path,
+                        use_fp16=part4_use_fp16,
+                        backend="vulkan",
+                        strict_export=strict_export,
+                        check_ir_validity=check_ir,
+                        vulkan_compile_options=vulkan_opts,
+                        **_pte_extra_opts(decoder_head_path),
+                    )
+                    sizes[f"part4b_tile_{tile_suffix}_decoder_head_portable"] = export_pte(
+                        f"Part 4b tile_{tile_suffix} decoder/head: decoder + monodepth head (portable compare path, batch={batch_size})",
+                        part4b_tile_decoder_head, stage_pre_outputs,
+                        decoder_head_portable_path,
+                        use_fp16=part4_use_fp16,
+                        backend="portable",
+                        use_greedy_memory_planning=True,
+                        strict_export=False,
+                        check_ir_validity=False,
+                        **_pte_extra_opts(decoder_head_portable_path),
+                    )
                     raw_heads_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_raw_heads_vulkan.pte"
                     compose_path = output_dir / f"sharp_split_part4b_tile_{tile_suffix}_compose.pte"
                     sizes[f"part4b_tile_{tile_suffix}_raw_heads_vulkan"] = export_pte(
