@@ -17,23 +17,25 @@
 
 ---
 
-## 2. Settings to use for SHARP (ExecuTorch INT8)
+## 2. Settings to use for SHARP Vulkan room creation
+
+For the current known-good Vulkan room-creation recipe, see
+[`EXECUTORCH_VULKAN_KNOWN_GOOD_FLOW.md`](EXECUTORCH_VULKAN_KNOWN_GOOD_FLOW.md).
 
 In the app: **Profile → Settings** (or the gear icon), then scroll to the **Developer** section.
 
 | Setting | What to set | Why |
 |--------|-------------|-----|
-| **Inference Backend** | **ExecuTorch INT8** | Uses the native C++ INT8 pipeline (Part1–Part4b) and the `.pte` models you pushed. |
-| **C++ ExecuTorch INT8** (Kotlin vs C++) | **C++** | Runs the full pipeline in native code; usually faster and lower overhead. |
-| **Part1/Part2 batch=4** | **ON** | Uses batch-4 models for Part1/Part2 (faster). Turn **OFF** if the app crashes right after “Part1+Part2 ready”. |
-| **Stable (single Part4b)** vs **Split / tiled Part4b** | **Stable (single Part4b)** | Single Part4b run; simpler and often more stable. Use Split/tiled only if you need tiled decoding. |
+| **Inference Backend** | **ExecuTorch INT8 (Vulkan)** | Uses the active Vulkan SHARP path. |
+| **Max Gaussians** | **All** | Matches the validated reference run. |
+| **Use true 1280x1280** | **OFF** | Keep the currently validated `1536` hybrid split pipeline. |
+| **Prefer Vulkan FP16 models** | **ON** | Use FP16 Vulkan exports when present. |
+| **Prefer single Part4b** | **OFF** | The current known-good Vulkan path is the fine-split `tile_00` route, not the old single-decoder path. |
+| **Record ETDump on next room creation** | **OFF** | Leave profiling off for normal runs. |
 
 Optional:
 
-- **Max Gaussians**: **All** (default), or **300k** / **500k** to cap splat count.
 - **Swap tile NDC X/Y**: Leave **OFF** unless you’ve been told to enable it for a specific device.
-
-There is **no separate “Vulkan” toggle**. Vulkan is used automatically when the loaded `.pte` files were exported with `--backend vulkan`. If you only have XNNPACK-exported models, the app uses CPU (XNNPACK); push Vulkan-exported `.pte` files to use the GPU.
 
 ---
 
@@ -42,10 +44,11 @@ There is **no separate “Vulkan” toggle**. Vulkan is used automatically when 
 - [ ] Project opened as `android` folder in Android Studio  
 - [ ] Gradle sync and build succeeded  
 - [ ] Device selected and app installed via Run  
-- [ ] **Settings → Inference Backend** = **ExecuTorch INT8**  
-- [ ] **C++** selected for ExecuTorch INT8  
-- [ ] **Part1/Part2 batch=4** ON (turn off if it crashes)  
-- [ ] **Stable (single Part4b)** selected  
+- [ ] **Settings → Inference Backend** = **ExecuTorch INT8 (Vulkan)**  
+- [ ] **Max Gaussians** = **All**  
+- [ ] **Use true 1280x1280** = **OFF**  
+- [ ] **Prefer Vulkan FP16 models** = **ON**  
+- [ ] **Prefer single Part4b** = **OFF**  
 - [ ] Models pushed to device (e.g. `./push_sharp_executorch_int8_models.sh`), or already present in app storage  
 
 After that, use the SHARP / “New room” flow in the app; inference will use the above backend and options.
