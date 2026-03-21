@@ -39,10 +39,30 @@
 #include <executorch/runtime/platform/runtime.h>
 
 #define TAG "sharp_executorch_full"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+/** Set from Kotlin (DebugLogger: debuggable + debug_mode) via JNI before native SHARP calls. */
+bool sharpExecNativeVerboseLogsEnabled();
+
+#define LOGD(...)                                                                                  \
+    do {                                                                                           \
+        if (sharpExecNativeVerboseLogsEnabled())                                                   \
+            __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__);                              \
+    } while (0)
+#define LOGI(...)                                                                                  \
+    do {                                                                                           \
+        if (sharpExecNativeVerboseLogsEnabled())                                                   \
+            __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__);                               \
+    } while (0)
+#define LOGW(...)                                                                                  \
+    do {                                                                                           \
+        if (sharpExecNativeVerboseLogsEnabled())                                                   \
+            __android_log_print(ANDROID_LOG_WARN, TAG, __VA_ARGS__);                               \
+    } while (0)
+#define LOGE(...)                                                                                  \
+    do {                                                                                           \
+        if (sharpExecNativeVerboseLogsEnabled())                                                   \
+            __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__);                              \
+    } while (0)
 
 const char* executorchErrorStr(int err);
 

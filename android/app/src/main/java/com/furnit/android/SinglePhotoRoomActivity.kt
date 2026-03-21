@@ -12,7 +12,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
-import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.DebugLogger
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -74,11 +74,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            LogUtil.d("SinglePhotoRoom", "Image selected: $uri")
+            DebugLogger.d("SinglePhotoRoom", "Image selected: $uri")
             selectedImageUri = uri
             loadImageFromUri(uri)
         } else {
-            LogUtil.d("SinglePhotoRoom", "No image selected")
+            DebugLogger.d("SinglePhotoRoom", "No image selected")
         }
     }
 
@@ -86,11 +86,11 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         ActivityResultContracts.TakePicture()
     ) { success: Boolean ->
         if (success && cameraPhotoUri != null) {
-            LogUtil.d("SinglePhotoRoom", "Photo captured: $cameraPhotoUri")
+            DebugLogger.d("SinglePhotoRoom", "Photo captured: $cameraPhotoUri")
             selectedImageUri = cameraPhotoUri
             loadImageFromUri(cameraPhotoUri!!)
         } else {
-            LogUtil.d("SinglePhotoRoom", "Camera capture cancelled or failed")
+            DebugLogger.d("SinglePhotoRoom", "Camera capture cancelled or failed")
         }
     }
 
@@ -98,10 +98,10 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
-            LogUtil.d("SinglePhotoRoom", "Camera permission granted")
+            DebugLogger.d("SinglePhotoRoom", "Camera permission granted")
             launchCamera()
         } else {
-            LogUtil.d("SinglePhotoRoom", "Camera permission denied")
+            DebugLogger.d("SinglePhotoRoom", "Camera permission denied")
             Toast.makeText(this, "Camera permission is required to take photos", Toast.LENGTH_SHORT).show()
         }
     }
@@ -110,7 +110,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK) {
-            LogUtil.d("SinglePhotoRoom", "Boundary adjustment completed")
+            DebugLogger.d("SinglePhotoRoom", "Boundary adjustment completed")
             // TODO: Get boundaries from result and process room
             // val boundaries = result.data?.getSerializableExtra(RoomBoundaryActivity.RESULT_BOUNDARIES) as? RoomStructure
         }
@@ -365,7 +365,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 setOnClickListener {
                     detectedOrientation = if (detectedOrientation.isLandscape) PhotoOrientation.PORTRAIT else PhotoOrientation.LANDSCAPE
                     updateOrientationIndicator()
-                    LogUtil.d("SinglePhotoRoom", "User overrode orientation to: ${detectedOrientation.value}")
+                    DebugLogger.d("SinglePhotoRoom", "User overrode orientation to: ${detectedOrientation.value}")
                 }
 
                 orientationIcon = TextView(this@SinglePhotoRoomActivity).apply {
@@ -398,7 +398,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 setOnClickListener {
                     photoWideAngle = !photoWideAngle
                     updateWideAngleIndicator(this)
-                    LogUtil.d("SinglePhotoRoom", "Wide angle (0.5x): $photoWideAngle")
+                    DebugLogger.d("SinglePhotoRoom", "Wide angle (0.5x): $photoWideAngle")
                 }
                 val wideIcon = TextView(this@SinglePhotoRoomActivity).apply {
                     text = "\uD83D\uDCF8"
@@ -451,7 +451,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 title = "AI Room",
                 subtitle = "AI-powered 3D generation",
                 bgColor = "#F3E5F5",
-                borderColor = "#9C27B0",
                 onSubtitleCreated = { view -> aiOptionSubtitleView = view }
             ) {
                 onAIRoomSelected()
@@ -463,8 +462,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 icon = "\uD83D\uDCCF", // Ruler
                 title = "Manual Setup",
                 subtitle = "Adjust room boundaries manually",
-                bgColor = "#FFF3E0",
-                borderColor = "#FF9800"
+                bgColor = "#FFF3E0"
             ) {
                 onManualSetupSelected()
             }
@@ -490,7 +488,6 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         title: String,
         subtitle: String,
         bgColor: String,
-        borderColor: String,
         onSubtitleCreated: ((TextView) -> Unit)? = null,
         onClick: () -> Unit
     ): LinearLayout {
@@ -550,18 +547,18 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun openImagePicker() {
-        LogUtil.d("SinglePhotoRoom", "Opening image picker")
+        DebugLogger.d("SinglePhotoRoom", "Opening image picker")
         imagePickerLauncher.launch("image/*")
     }
 
     private fun checkCameraPermissionAndLaunch() {
         when {
             ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
-                LogUtil.d("SinglePhotoRoom", "Camera permission already granted")
+                DebugLogger.d("SinglePhotoRoom", "Camera permission already granted")
                 launchCamera()
             }
             else -> {
-                LogUtil.d("SinglePhotoRoom", "Requesting camera permission")
+                DebugLogger.d("SinglePhotoRoom", "Requesting camera permission")
                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
         }
@@ -575,10 +572,10 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                 "${packageName}.fileprovider",
                 photoFile
             )
-            LogUtil.d("SinglePhotoRoom", "Launching camera with URI: $cameraPhotoUri")
+            DebugLogger.d("SinglePhotoRoom", "Launching camera with URI: $cameraPhotoUri")
             cameraLauncher.launch(cameraPhotoUri)
         } catch (e: Exception) {
-            LogUtil.e("SinglePhotoRoom", "Error launching camera", e)
+            DebugLogger.eDebugMode("SinglePhotoRoom", "Error launching camera", e)
             Toast.makeText(this, "Error opening camera: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
@@ -591,7 +588,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             ".jpg",
             storageDir
         ).also {
-            LogUtil.d("SinglePhotoRoom", "Created temp file: ${it.absolutePath}")
+            DebugLogger.d("SinglePhotoRoom", "Created temp file: ${it.absolutePath}")
         }
     }
 
@@ -611,20 +608,20 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
 
                 // Auto-detect orientation from EXIF or dimensions
                 detectedOrientation = PhotoOrientation.detect(this, uri)
-                LogUtil.d("SinglePhotoRoom", "Detected orientation: ${detectedOrientation.value}")
+                DebugLogger.d("SinglePhotoRoom", "Detected orientation: ${detectedOrientation.value}")
                 updateOrientationIndicator()
 
                 // Start AI generation in background immediately (ONNX or Native Pt)
                 startAIGenerationInBackground(bitmap)
 
                 showMethodPicker()
-                LogUtil.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, AI started in background")
+                DebugLogger.d("SinglePhotoRoom", "Image loaded: ${bitmap.width}x${bitmap.height}, AI started in background")
             } else {
-                LogUtil.e("SinglePhotoRoom", "Failed to decode image")
+                DebugLogger.eDebugMode("SinglePhotoRoom", "Failed to decode image")
                 Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
-            LogUtil.e("SinglePhotoRoom", "Error loading image", e)
+            DebugLogger.eDebugMode("SinglePhotoRoom", "Error loading image", e)
             Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
@@ -680,7 +677,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                         aiRoomOverlayRequested = false
                         openSharpRoomWithResult(result)
                     }
-                    LogUtil.d("SinglePhotoRoom", "AI generation completed in background")
+                    DebugLogger.d("SinglePhotoRoom", "AI generation completed in background")
                 }
             }
             override fun onError(message: String) {
@@ -692,7 +689,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
                     updateAIOptionProgress(0f, "Failed")
                     hideProgressOverlay()
                     Toast.makeText(this@SinglePhotoRoomActivity, message, Toast.LENGTH_LONG).show()
-                    LogUtil.e("SinglePhotoRoom", "AI generation failed: $message")
+                    DebugLogger.eDebugMode("SinglePhotoRoom", "AI generation failed: $message")
                 }
             }
         },
@@ -708,7 +705,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         aiGenerationRunning = false
         aiGenerationResult = null
         SharpService.getInstance(this).release()
-        LogUtil.d("SinglePhotoRoom", "AI cancelled and memory released")
+        DebugLogger.d("SinglePhotoRoom", "AI cancelled and memory released")
     }
 
     private var aiOptionSubtitleView: TextView? = null
@@ -725,7 +722,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun onAIRoomSelected() {
-        LogUtil.d("SinglePhotoRoom", "AI Room selected")
+        DebugLogger.d("SinglePhotoRoom", "AI Room selected")
         if (selectedBitmap == null) {
             Toast.makeText(this, "No image selected", Toast.LENGTH_SHORT).show()
             return
@@ -734,7 +731,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
         // Use result from background generation if already done
         val result = aiGenerationResult
         if (result != null) {
-            LogUtil.d("SinglePhotoRoom", "Using cached AI result")
+            DebugLogger.d("SinglePhotoRoom", "Using cached AI result")
             openSharpRoomWithResult(result)
             return
         }
@@ -776,7 +773,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
     }
 
     private fun onManualSetupSelected() {
-        LogUtil.d("SinglePhotoRoom", "Manual Setup selected")
+        DebugLogger.d("SinglePhotoRoom", "Manual Setup selected")
         cancelAndReleaseAI()
         val uri = selectedImageUri
         if (uri == null) {
@@ -927,7 +924,7 @@ class SinglePhotoRoomActivity : AppCompatActivity() {
             put("timestamp", System.currentTimeMillis())
             data.forEach { (k, v) -> if (v != null) put(k, v) }
         }
-        LogUtil.d("Progress0", payload.toString())
+        DebugLogger.d("Progress0", payload.toString())
         try {
             val dir = getExternalFilesDir(null) ?: filesDir
             File(dir, "debug_progress.ndjson").appendText(payload.toString() + "\n")

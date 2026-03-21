@@ -1,5 +1,11 @@
 #include "sharp_executorch_full_internal.h"
 
+static std::atomic<int> g_sharp_exec_verbose{0};
+
+bool sharpExecNativeVerboseLogsEnabled() {
+    return g_sharp_exec_verbose.load(std::memory_order_relaxed) != 0;
+}
+
 // ExecuTorch Error enum values are hex-sized (see executorch/runtime/core/error.h): e.g. 18 = 0x12.
 const char* executorchErrorStr(int err) {
     switch (err) {
@@ -1889,6 +1895,12 @@ bool warmupCachedPart12Modules() {
 
 // ── JNI: preload Part1+Part2 (call from Kotlin on init for warm start) ───────
 extern "C" {
+
+JNIEXPORT void JNICALL
+Java_com_furnit_android_services_ExecutorchInt8Sharp_nativeSetSharpExecVerboseLogging(
+        JNIEnv*, jclass, jboolean enabled) {
+    g_sharp_exec_verbose.store(enabled == JNI_TRUE ? 1 : 0, std::memory_order_relaxed);
+}
 
 JNIEXPORT jboolean JNICALL
 Java_com_furnit_android_services_ExecutorchInt8Sharp_preloadCppModules(

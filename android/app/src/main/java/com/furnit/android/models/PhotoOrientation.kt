@@ -1,21 +1,20 @@
 package com.furnit.android.models
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.net.Uri
 import android.content.Context
-import android.os.Build
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 
 /**
- * Photo orientation enum matching Ultralytics YOLO / exif_size logic:
- * Orientation is determined by the **display** dimensions (width vs height).
- * - Landscape: width > height (aspect_ratio > 1)
- * - Portrait: height > width (aspect_ratio <= 1 for non-square)
- * - Square: width == height
+ * Photo orientation for room capture: **how the user held the phone** (portrait vs landscape).
  *
- * When EXIF rotation is 5, 6, 7, or 8 (90° or 270°), width and height are swapped
- * so the comparison reflects the true visual orientation (see ultralytics.data.utils.exif_size).
+ * Uses encoded JPEG width/height plus [ExifInterface.getRotationDegrees] so portrait shots stored
+ * as a landscape sensor buffer (common) still classify as portrait when EXIF is present.
+ *
+ * **Portrait-first bias:** If there is no EXIF rotation (0°) but pixels are stored landscape
+ * (width > height), we still treat as **portrait** — typical for upright phone captures when OEM/camera
+ * strips or omits orientation. Users can tap the indicator to switch (SinglePhotoRoom). True landscape
+ * shots without EXIF can be corrected with the same tap.
  */
 enum class PhotoOrientation(val value: String) {
     PORTRAIT("portrait"),
@@ -23,32 +22,29 @@ enum class PhotoOrientation(val value: String) {
     SQUARE("square");
 
     companion object {
-        // EXIF orientation constants (same as Android ExifInterface)
-        private const val ORIENTATION_NORMAL = 1
-        private const val ORIENTATION_FLIP_HORIZONTAL = 2
-        private const val ORIENTATION_ROTATE_180 = 3
-        private const val ORIENTATION_FLIP_VERTICAL = 4
-        private const val ORIENTATION_TRANSPOSE = 5
-        private const val ORIENTATION_ROTATE_90 = 6
-        private const val ORIENTATION_TRANSVERSE = 7
-        private const val ORIENTATION_ROTATE_270 = 8
-
-        /** EXIF values that require swapping width/height to get display dimensions (like exif_size). */
-        private val EXIF_SWAP_DIMENSIONS = setOf(
-            ORIENTATION_TRANSPOSE, ORIENTATION_ROTATE_90,
-            ORIENTATION_TRANSVERSE, ORIENTATION_ROTATE_270
-        )
 
         /**
-         * Detect orientation using Ultralytics-style logic:
-         * 1) Read raw width/height (decode bounds).
-         * 2) If EXIF orientation is 5, 6, 7, or 8, swap width and height (display dimensions).
-         * 3) Compare: width > height → LANDSCAPE, height > width → PORTRAIT, else SQUARE.
+         * Display width/height after applying EXIF rotation (90/270 swap dimensions; 0/180 keep order).
+         */
+        private fun displayDimensions(rawWidth: Int, rawHeight: Int, rotationDegrees: Int): Pair<Int, Int> {
+            val r = ((rotationDegrees % 360) + 360) % 360
+            return if (r == 90 || r == 270) {
+                rawHeight to rawWidth
+            } else {
+                rawWidth to rawHeight
+            }
+        }
+
+        /**
+         * 1) Bounds-decode width/height.
+         * 2) Read [ExifInterface.getRotationDegrees] (AndroidX; reliable on all app minSdk levels).
+         * 3) Derive display aspect; if still landscape-encoded with **no** rotation, prefer **portrait**
+         *    for this app’s primary use case (phone held straight).
          */
         fun detect(context: Context, uri: Uri): PhotoOrientation {
             var rawWidth = 0
             var rawHeight = 0
-            var exifOrientation = ORIENTATION_NORMAL
+            var rotationDegrees = 0
 
             try {
                 val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -57,14 +53,9 @@ enum class PhotoOrientation(val value: String) {
                     rawWidth = options.outWidth
                     rawHeight = options.outHeight
                 }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                        val exif = android.media.ExifInterface(inputStream)
-                        exifOrientation = exif.getAttributeInt(
-                            android.media.ExifInterface.TAG_ORIENTATION,
-                            android.media.ExifInterface.ORIENTATION_NORMAL
-                        )
-                    }
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val exif = ExifInterface(inputStream)
+                    rotationDegrees = exif.rotationDegrees
                 }
             } catch (_: Exception) {
                 return PORTRAIT
@@ -72,10 +63,12 @@ enum class PhotoOrientation(val value: String) {
 
             if (rawWidth <= 0 || rawHeight <= 0) return PORTRAIT
 
-            val (displayWidth, displayHeight) = if (exifOrientation in EXIF_SWAP_DIMENSIONS) {
-                rawHeight to rawWidth
-            } else {
-                rawWidth to rawHeight
+            var (displayWidth, displayHeight) = displayDimensions(rawWidth, rawHeight, rotationDegrees)
+
+            // No EXIF rotation but file is stored as landscape buffer → assume portrait (upright phone).
+            if (rotationDegrees == 0 && rawWidth > rawHeight) {
+                displayWidth = rawHeight
+                displayHeight = rawWidth
             }
 
             return when {
@@ -85,38 +78,6 @@ enum class PhotoOrientation(val value: String) {
             }
         }
 
-        /**
-         * Fallback using raw dimensions only (no EXIF; e.g. when EXIF not available).
-         * Landscape: width > height, Portrait: height > width, Square: equal.
-         */
-        private fun detectFromDimensions(context: Context, uri: Uri): PhotoOrientation {
-            try {
-                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    BitmapFactory.decodeStream(inputStream, null, options)
-                    val w = options.outWidth
-                    val h = options.outHeight
-                    return when {
-                        w > h -> LANDSCAPE
-                        h > w -> PORTRAIT
-                        else -> SQUARE
-                    }
-                }
-            } catch (_: Exception) { }
-            return PORTRAIT
-        }
-
-        /**
-         * Detect from a bitmap (e.g. already decoded). Uses width vs height only.
-         * Use detect(uri) when EXIF correction is needed for the source image.
-         */
-        fun detectFromBitmap(bitmap: Bitmap): PhotoOrientation {
-            return when {
-                bitmap.width > bitmap.height -> LANDSCAPE
-                bitmap.height > bitmap.width -> PORTRAIT
-                else -> SQUARE
-            }
-        }
     }
 
     val isLandscape: Boolean

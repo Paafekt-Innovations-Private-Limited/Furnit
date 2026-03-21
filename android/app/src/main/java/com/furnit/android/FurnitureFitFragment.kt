@@ -1,5 +1,6 @@
 package com.furnit.android
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -9,6 +10,7 @@ import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
@@ -431,8 +433,10 @@ class FurnitureFitFragment : Fragment() {
         val cameraProvider = cameraProvider ?: return
         cameraProvider.unbindAll()
 
+        val rotation = requireContext().displayRotationForCameraX()
         val analysis = ImageAnalysis.Builder()
             .setTargetResolution(android.util.Size(768, 768))
+            .setTargetRotation(rotation)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
 
@@ -448,9 +452,12 @@ class FurnitureFitFragment : Fragment() {
                 cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
             } else {
                 // No room: show live camera + analysis
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
+                val preview = Preview.Builder()
+                    .setTargetRotation(rotation)
+                    .build()
+                    .also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                    }
                 cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
             }
             activity?.runOnUiThread {
@@ -855,6 +862,22 @@ animate();
 </body>
 </html>
         """.trimIndent()
+    }
+}
+
+/**
+ * Current [android.view.Display.getRotation] as [Surface.ROTATION_*] for CameraX
+ * [androidx.camera.core.ImageAnalysis.Builder.setTargetRotation] /
+ * [androidx.camera.core.Preview.Builder.setTargetRotation].
+ * Without this, buffers stay sensor-native (often landscape) while the UI is portrait → 90° tilt
+ * after [ImageProxy.toBitmapSafe] rotation metadata can be wrong vs locked activity orientation.
+ */
+fun Context.displayRotationForCameraX(): Int {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        display?.rotation ?: Surface.ROTATION_0
+    } else {
+        @Suppress("DEPRECATION")
+        (getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
     }
 }
 

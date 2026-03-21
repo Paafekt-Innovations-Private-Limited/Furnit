@@ -23,6 +23,7 @@ import com.furnit.android.auth.LoginActivity
 import com.furnit.android.models.QualitySettings
 import com.furnit.android.services.BackendConfig
 import com.furnit.android.services.ExecutorchFixedSettings
+import com.furnit.android.services.ExecutorchInt8Sharp
 import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.Part1OnlyTest
 import com.furnit.android.utils.Part4OnlyTest
@@ -217,6 +218,7 @@ class SettingsActivity : AppCompatActivity() {
 
         val debugSwitch = createStyledSwitch(DebugLogger.isDebugMode) { isChecked ->
             DebugLogger.setDebugMode(isChecked)
+            ExecutorchInt8Sharp.syncSharpNativeVerboseLogging()
         }
 
         debugLayout.addView(debugLabel)

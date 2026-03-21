@@ -7,6 +7,7 @@
  */
 
 #include <jni.h>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -22,8 +23,19 @@
 #include <executorch/runtime/platform/runtime.h>
 
 #define TAG "ExecTorchTilesJNI"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+static std::atomic<int> g_sharp_tiles_verbose{0};
+
+#define LOGD(...)                                                                                  \
+    do {                                                                                           \
+        if (g_sharp_tiles_verbose.load(std::memory_order_relaxed) != 0)                           \
+            __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__);                              \
+    } while (0)
+#define LOGE(...)                                                                                  \
+    do {                                                                                           \
+        if (g_sharp_tiles_verbose.load(std::memory_order_relaxed) != 0)                           \
+            __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__);                              \
+    } while (0)
 
 using ETModule = executorch::extension::Module;
 using executorch::extension::from_blob;
@@ -138,6 +150,12 @@ static int runOneTile(
 }
 
 extern "C"
+JNIEXPORT void JNICALL
+Java_com_furnit_android_services_ExecutorchInt8Sharp_nativeSetSharpTilesVerboseLogging(
+        JNIEnv*, jclass, jboolean enabled) {
+    g_sharp_tiles_verbose.store(enabled == JNI_TRUE ? 1 : 0, std::memory_order_relaxed);
+}
+
 JNIEXPORT jfloatArray JNICALL
 Java_com_furnit_android_services_ExecutorchInt8Sharp_runTiledPart4bNative(
         JNIEnv* env, jobject /* this */,

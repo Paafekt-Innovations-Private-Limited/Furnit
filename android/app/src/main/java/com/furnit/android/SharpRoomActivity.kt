@@ -11,8 +11,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Environment
-import android.util.Base64
-import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.DebugLogger
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -36,8 +35,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
-import com.furnit.android.models.Model
-import com.furnit.android.models.ModelManager
 import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.services.FurnitureFitManager
 import kotlinx.coroutines.Dispatchers
@@ -98,10 +95,6 @@ class SharpRoomActivity : AppCompatActivity() {
     private var photoWideAngle: Boolean = false
     private var hasSavedDimensions: Boolean = false  // True if dimensions were passed from saved room
 
-    // Calibration state
-    private var showCalibrationOverlay = false
-    private var detectedFurnitureHeight: Float? = null
-
     // Brain (SmartyPants) overlay: show progress in same Activity so room stays visible
     private var brainOverlayVisible = false
     private var furnitureFitManager: FurnitureFitManager? = null
@@ -114,12 +107,12 @@ class SharpRoomActivity : AppCompatActivity() {
     private val cameraPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        LogUtil.d(TAG, "Brain: camera permission result isGranted=$isGranted")
+        DebugLogger.d(TAG, "Brain: camera permission result isGranted=$isGranted")
         if (isGranted) {
             showBrainProgressOverlay()
             startBrainDetection()
         } else {
-            LogUtil.d(TAG, "Brain: camera permission denied")
+            DebugLogger.d(TAG, "Brain: camera permission denied")
             Toast.makeText(this, getString(R.string.camera_permission_required), Toast.LENGTH_LONG).show()
         }
     }
@@ -170,7 +163,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 disk.roomCenterZ?.let { roomCenterZ = it }
                 rawOrientation = disk.normalizedOrientation()
                 photoWideAngle = disk.photoWideAngle
-                LogUtil.d(
+                DebugLogger.d(
                     TAG,
                     "RoomFolderMetadata: ${savedWidth}x${savedHeight}x${roomDepth} orientation=${disk.normalizedOrientation()} wide=$photoWideAngle"
                 )
@@ -197,10 +190,10 @@ class SharpRoomActivity : AppCompatActivity() {
             hasSavedDimensions = false
         }
 
-        LogUtil.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation, photoWideAngle: $photoWideAngle")
-        LogUtil.d(TAG, "SharpRoom intent roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle")
+        DebugLogger.d(TAG, "Opening SharpRoomActivity with PLY: $plyPath, dims: ${roomWidth}x${roomHeight}x${roomDepth}, hasSaved: $hasSavedDimensions, photoOrientation: $photoOrientation, photoWideAngle: $photoWideAngle")
+        DebugLogger.d(TAG, "SharpRoom intent roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth isPortrait=${photoOrientation != "landscape"} wideAngle=$photoWideAngle")
         val isPortraitReceived = photoOrientation != "landscape"
-        LogUtil.d(TAG, "VIEWER_RECEIVED isPortrait=$isPortraitReceived roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth path=$roomFolder")
+        DebugLogger.d(TAG, "VIEWER_RECEIVED isPortrait=$isPortraitReceived roomWidth=$roomWidth roomHeight=$roomHeight roomDepth=$roomDepth path=$roomFolder")
 
         if (plyPath == null) {
             Toast.makeText(this, getString(R.string.sharp_room_no_ply), Toast.LENGTH_SHORT).show()
@@ -218,7 +211,7 @@ class SharpRoomActivity : AppCompatActivity() {
         val internalPlyFile = File(internalPlyDir, "room.ply")
         if (plyFile.exists()) {
             plyFile.copyTo(internalPlyFile, overwrite = true)
-            LogUtil.d(TAG, "Copied PLY to internal storage: ${internalPlyFile.absolutePath}")
+            DebugLogger.d(TAG, "Copied PLY to internal storage: ${internalPlyFile.absolutePath}")
         }
 
         // WebViewAssetLoader serves files from internal storage via https:// URL
@@ -238,17 +231,10 @@ class SharpRoomActivity : AppCompatActivity() {
             settings.mediaPlaybackRequiresUserGesture = false
             setBackgroundColor(Color.TRANSPARENT)
 
-            webChromeClient = object : WebChromeClient() {
-                override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
-                    LogUtil.d(TAG, "WebGL: ${message?.message()}")
-                    return true
-                }
-            }
-
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    LogUtil.d(TAG, "WebView page loaded")
+                    DebugLogger.d(TAG, "WebView page loaded")
                     // Hide loading after a delay for splat rendering
                     postDelayed({
                         loadingOverlay.visibility = View.GONE
@@ -258,7 +244,7 @@ class SharpRoomActivity : AppCompatActivity() {
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                     // Don't log favicon as error (we intercept it; this is a fallback if something else fails)
                     if (request?.url?.toString()?.contains("favicon") == true) return
-                    LogUtil.e(TAG, "WebView error: ${error?.description}")
+                    DebugLogger.eDebugMode(TAG, "WebView error: ${error?.description}")
                 }
 
                 // Use WebViewAssetLoader to serve files
@@ -269,16 +255,16 @@ class SharpRoomActivity : AppCompatActivity() {
                     if (urlString.endsWith("/favicon.ico") || urlString.contains("favicon.ico")) {
                         return WebResourceResponse("image/png", null, ByteArrayInputStream(ByteArray(0)))
                     }
-                    LogUtil.d(TAG, "shouldInterceptRequest: $url")
+                    DebugLogger.d(TAG, "shouldInterceptRequest: $url")
                     return assetLoader.shouldInterceptRequest(url)
                 }
             }
 
-            // Forward console.log from the WebGL page to Logcat (filter: SharpRoomActivity JSConsole)
+            // WebGL console → logcat only when Settings → Debug Mode is ON (DebugLogger)
             webChromeClient = object : WebChromeClient() {
                 override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
                     message?.let { m ->
-                        LogUtil.d(TAG, "JSConsole: ${m.message()} -- ${m.sourceId()}:${m.lineNumber()}")
+                        DebugLogger.d(TAG, "JSConsole: ${m.message()} -- ${m.sourceId()}:${m.lineNumber()}")
                     }
                     return true
                 }
@@ -567,13 +553,13 @@ class SharpRoomActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(size, size)
                 setOnClickListener {
                     val roomId = roomFolder?.let { File(it).name }
-                    LogUtil.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
+                    DebugLogger.d(TAG, "Brain click: ROOM_ID=$roomId ROOM_FOLDER=$roomFolder")
                     if (ContextCompat.checkSelfPermission(this@SharpRoomActivity, Manifest.permission.CAMERA)
                         != PackageManager.PERMISSION_GRANTED) {
-                        LogUtil.d(TAG, "Brain: requesting CAMERA permission")
+                        DebugLogger.d(TAG, "Brain: requesting CAMERA permission")
                         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     } else {
-                        LogUtil.d(TAG, "Brain: permission OK, showing progress and starting detection")
+                        DebugLogger.d(TAG, "Brain: permission OK, showing progress and starting detection")
                         showBrainProgressOverlay()
                         startBrainDetection()
                     }
@@ -694,7 +680,7 @@ class SharpRoomActivity : AppCompatActivity() {
             }
 
             Toast.makeText(this, getString(R.string.sharp_room_screenshot_saved, fileName), Toast.LENGTH_SHORT).show()
-            LogUtil.d(TAG, "Screenshot saved: ${file.absolutePath}")
+            DebugLogger.d(TAG, "Screenshot saved: ${file.absolutePath}")
 
             // Share the screenshot
             val uri: android.net.Uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
@@ -706,7 +692,7 @@ class SharpRoomActivity : AppCompatActivity() {
             startActivity(Intent.createChooser(shareIntent, "Share Screenshot"))
 
         } catch (e: Exception) {
-            LogUtil.e(TAG, "Failed to take screenshot", e)
+            DebugLogger.eDebugMode(TAG, "Failed to take screenshot", e)
             Toast.makeText(this, getString(R.string.sharp_room_screenshot_failed), Toast.LENGTH_SHORT).show()
         }
     }
@@ -802,28 +788,28 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun hideBrainDetectionOverlay() {
-        LogUtil.d(TAG, "Brain: hideBrainDetectionOverlay() - user Done or Back, stopping camera")
+        DebugLogger.d(TAG, "Brain: hideBrainDetectionOverlay() - user Done or Back, stopping camera")
         brainOverlayVisible = false
         brainDetectionOverlay.visibility = View.GONE
         stopBrainDetection()
     }
 
     private fun startBrainDetection() {
-        LogUtil.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
+        DebugLogger.d(TAG, "Brain: startBrainDetection() - initializing SmartyPants on IO thread")
         lifecycleScope.launch {
             val manager = withContext(Dispatchers.IO) {
                 val m = FurnitureFitManager(this@SharpRoomActivity)
                 if (m.initializeAuto()) m else null
             }
             if (manager == null) {
-                LogUtil.e(TAG, "Brain: SmartyPants failed to initialize")
+                DebugLogger.eDebugMode(TAG, "Brain: SmartyPants failed to initialize")
                 runOnUiThread {
                     hideBrainProgressOverlay()
                     Toast.makeText(this@SharpRoomActivity, getString(R.string.sharp_room_smartypants_failed), Toast.LENGTH_SHORT).show()
                 }
                 return@launch
             }
-            LogUtil.d(TAG, "Brain: SmartyPants OK, binding camera on UI thread")
+            DebugLogger.d(TAG, "Brain: SmartyPants OK, binding camera on UI thread")
             furnitureFitManager = manager
             runOnUiThread { bindBrainCamera(manager) }
         }
@@ -831,15 +817,17 @@ class SharpRoomActivity : AppCompatActivity() {
 
     @SuppressLint("UnsafeOptInUsageError")
     private fun bindBrainCamera(manager: FurnitureFitManager) {
-        LogUtil.d(TAG, "Brain: bindBrainCamera() - getting ProcessCameraProvider")
+        DebugLogger.d(TAG, "Brain: bindBrainCamera() - getting ProcessCameraProvider")
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             val provider = providerFuture.get()
             cameraProvider = provider
             provider.unbindAll()
-            LogUtil.d(TAG, "Brain: building ImageAnalysis and binding to BACK_CAMERA")
+            DebugLogger.d(TAG, "Brain: building ImageAnalysis and binding to BACK_CAMERA")
             val analysis = ImageAnalysis.Builder()
                 .setTargetResolution(android.util.Size(768, 768))
+                // Match display so ImageProxy.rotationDegrees + toBitmapSafe() align mask with portrait/landscape UI
+                .setTargetRotation(displayRotationForCameraX())
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
             var frameCount = 0
@@ -854,14 +842,14 @@ class SharpRoomActivity : AppCompatActivity() {
                     isBrainInferenceRunning.set(true)
                     frameCount++
                     if (frameCount == 1 || frameCount % 30 == 0) {
-                        LogUtil.d(TAG, "Brain: analysis frame $frameCount (camera active)")
+                        DebugLogger.d(TAG, "Brain: analysis frame $frameCount (camera active)")
                     }
                     manager.segmentWithDetectionsAsync(bitmap) { result ->
                         runOnUiThread {
                             isBrainInferenceRunning.set(false)
                             if (!hasFirstResult[0]) {
                                 hasFirstResult[0] = true
-                                LogUtil.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
+                                DebugLogger.d(TAG, "Brain: first result - hiding progress, showing detection overlay")
                                 hideBrainProgressOverlay()
                                 brainDetectionOverlay.visibility = View.VISIBLE
                             }
@@ -877,9 +865,9 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             try {
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
-                LogUtil.d(TAG, "Brain: camera bound successfully - live segmentation running")
+                DebugLogger.d(TAG, "Brain: camera bound successfully - live segmentation running")
             } catch (e: Exception) {
-                LogUtil.e(TAG, "Brain camera bind failed", e)
+                DebugLogger.eDebugMode(TAG, "Brain camera bind failed", e)
                 runOnUiThread {
                     hideBrainProgressOverlay()
                     Toast.makeText(this@SharpRoomActivity, getString(R.string.sharp_room_camera_error, e.message ?: ""), Toast.LENGTH_SHORT).show()
@@ -889,7 +877,7 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun stopBrainDetection() {
-        LogUtil.d(TAG, "Brain: stopBrainDetection() - unbinding camera")
+        DebugLogger.d(TAG, "Brain: stopBrainDetection() - unbinding camera")
         try {
             cameraProvider?.unbindAll()
         } catch (_: Exception) { }
@@ -899,13 +887,13 @@ class SharpRoomActivity : AppCompatActivity() {
     private fun loadWebGLViewer() {
         val plyFile = File(plyPath!!)
         if (!plyFile.exists()) {
-            LogUtil.e(TAG, "PLY file not found: $plyPath")
+            DebugLogger.eDebugMode(TAG, "PLY file not found: $plyPath")
             Toast.makeText(this, getString(R.string.sharp_room_ply_not_found), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        LogUtil.d(TAG, "Loading PLY file: ${plyFile.name} (${plyFile.length()} bytes)")
+        DebugLogger.d(TAG, "Loading PLY file: ${plyFile.name} (${plyFile.length()} bytes)")
 
         // Load HTML using WebViewAssetLoader base URL
         // SparkJS will fetch PLY from https://appassets.androidplatform.net/files/room.ply
@@ -920,12 +908,13 @@ class SharpRoomActivity : AppCompatActivity() {
     }
 
     private fun generateWebGLHTML(): String {
-        // Check auto-orbit setting from SharedPreferences
+        // Check auto-orbit + debug logging (same keys as Settings / DebugLogger)
         val prefs = getSharedPreferences("furnit_prefs", MODE_PRIVATE)
         val autoOrbitEnabled = prefs.getBoolean("auto_orbit_enabled", false)
+        val sharpJsBool = if (prefs.getBoolean("debug_mode", false)) "true" else "false"
         // Use isPortrait like iOS for consistency
         val isPortrait = photoOrientation != "landscape"
-        LogUtil.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait photoWideAngle=$photoWideAngle (this activity = PLY/splat room)")
+        DebugLogger.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait photoWideAngle=$photoWideAngle (this activity = PLY/splat room)")
         // Which end of the room slab we place the camera on Z (camera + target only; room mesh is not moved).
         // true = outside min-Z (camera at minZ - dist, target minZ, look +Z). false = outside max-Z (Swift-style).
         // To zoom in/out: edit distInFront in frameFromWorldBox() in the JS below — not this flag.
@@ -979,6 +968,13 @@ class SharpRoomActivity : AppCompatActivity() {
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { SplatMesh, SparkRenderer } from '@sparkjsdev/spark';
+
+        const SHARP_ROOM_DEBUG = $sharpJsBool;
+        const _sharpConsoleLog = console.log.bind(console);
+        console.log = function() { if (SHARP_ROOM_DEBUG) _sharpConsoleLog.apply(console, arguments); };
+        function sharpAndroidLog(msg) {
+            if (SHARP_ROOM_DEBUG && window.Android && window.Android.log) window.Android.log(msg);
+        }
 
         console.log('[WebGL] SparkJS Gaussian Splat viewer initializing...');
         // Orientation and fallback dimensions from Kotlin (module scope so autoFrameRoom can use them)
@@ -1148,9 +1144,7 @@ class SharpRoomActivity : AppCompatActivity() {
          */
         function frameFromWorldBox(box, frameSource) {
             if (framingComplete) {
-                if (window.Android && window.Android.log) {
-                    window.Android.log('[SharpRoom] frameFromWorldBox SKIPPED (framingComplete already true) source=' + frameSource);
-                }
+                sharpAndroidLog('[SharpRoom] frameFromWorldBox SKIPPED (framingComplete already true) source=' + frameSource);
                 return;
             }
             framingComplete = true; // block duplicate onLoad + poll (recenter clears this first)
@@ -1239,7 +1233,7 @@ class SharpRoomActivity : AppCompatActivity() {
             }
             const distDbg = '[SharpRoom_DIST] src=' + frameSource + ' thinZ=' + (thinZSlab ? 1 : 0) + ' sizeXYZ=' + size.x.toFixed(3) + ',' + size.y.toFixed(3) + ',' + size.z.toFixed(3) + ' zSpanRaw=' + zSpanRaw.toFixed(4) + ' distInFront=' + distInFront.toFixed(4) + ' minZ=' + minZ.toFixed(4) + ' maxZ=' + maxZ.toFixed(4) + ' innerZ=' + innerCenterZ.toFixed(4) + ' wallSide=' + wallSide + ' targetZ=' + entranceZ.toFixed(4) + ' cameraZ=' + cameraZ.toFixed(4);
             console.log(distDbg);
-            if (window.Android && window.Android.log) window.Android.log(distDbg);
+            sharpAndroidLog(distDbg);
 
             const newCamPos = new THREE.Vector3(innerCenterX, innerCenterY, cameraZ);
             const newTarget = new THREE.Vector3(innerCenterX, innerCenterY, entranceZ);
@@ -1554,7 +1548,7 @@ class SharpRoomActivity : AppCompatActivity() {
             )
 
             Toast.makeText(this, getString(R.string.sharp_room_saved, name), Toast.LENGTH_SHORT).show()
-            LogUtil.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
+            DebugLogger.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
 
             // Go to room list screen (same as GLBRoomActivity / ModelDetailActivity after save)
             val intent = Intent(this, ContentActivity::class.java)
@@ -1563,7 +1557,7 @@ class SharpRoomActivity : AppCompatActivity() {
             finish()
 
         } catch (e: Exception) {
-            LogUtil.e(TAG, "Failed to save room", e)
+            DebugLogger.eDebugMode(TAG, "Failed to save room", e)
             Toast.makeText(this, getString(R.string.sharp_room_save_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
@@ -1598,10 +1592,10 @@ class SharpRoomActivity : AppCompatActivity() {
             }
 
             startActivity(Intent.createChooser(shareIntent, "Share PLY File"))
-            LogUtil.d(TAG, "Sharing PLY file: ${plyFile.name}")
+            DebugLogger.d(TAG, "Sharing PLY file: ${plyFile.name}")
 
         } catch (e: Exception) {
-            LogUtil.e(TAG, "Failed to share PLY file", e)
+            DebugLogger.eDebugMode(TAG, "Failed to share PLY file", e)
             Toast.makeText(this, getString(R.string.sharp_room_share_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
         }
     }
@@ -1612,7 +1606,7 @@ class SharpRoomActivity : AppCompatActivity() {
         fun onLoaded() {
             runOnUiThread {
                 loadingOverlay.visibility = View.GONE
-                LogUtil.d(TAG, "WebGL viewer reported loaded")
+                DebugLogger.d(TAG, "WebGL viewer reported loaded")
             }
         }
 
@@ -1625,16 +1619,16 @@ class SharpRoomActivity : AppCompatActivity() {
                     roomHeight = height
                     // Update title
                     titleView.text = String.format("%.1f × %.1f m", roomWidth, roomHeight)
-                    LogUtil.d(TAG, "WebGL dimensions measured (using): ${roomWidth}x${roomHeight}")
+                    DebugLogger.d(TAG, "WebGL dimensions measured (using): ${roomWidth}x${roomHeight}")
                 } else {
-                    LogUtil.d(TAG, "WebGL dimensions measured (ignored, using saved): ${width}x${height}")
+                    DebugLogger.d(TAG, "WebGL dimensions measured (ignored, using saved): ${width}x${height}")
                 }
             }
         }
 
         @JavascriptInterface
         fun log(message: String) {
-            LogUtil.d(TAG, "WebGL: $message")
+            DebugLogger.d(TAG, "WebGL: $message")
         }
     }
 

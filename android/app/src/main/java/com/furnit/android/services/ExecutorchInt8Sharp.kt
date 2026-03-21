@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import com.furnit.android.BuildConfig
+import com.furnit.android.utils.DebugLogger
 import com.furnit.android.utils.LogUtil
 import com.furnit.android.utils.Part1OnlyTest
 import kotlinx.coroutines.Dispatchers
@@ -158,6 +159,28 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
         @JvmField
         var NATIVE_FULL_AVAILABLE: Boolean = false
 
+        @JvmStatic
+        private external fun nativeSetSharpExecVerboseLogging(enabled: Boolean)
+
+        @JvmStatic
+        private external fun nativeSetSharpTilesVerboseLogging(enabled: Boolean)
+
+        /**
+         * Sync Settings debug_mode + debuggable APK to native `LOGD`/`LOGE` in `sharp_executorch_full` and
+         * `sharp_executorch_tiles`. Call after changing the pref and before pipeline JNI.
+         */
+        fun syncSharpNativeVerboseLogging() {
+            val on = DebugLogger.isSharpNativeVerboseEnabled
+            try {
+                if (NATIVE_FULL_AVAILABLE) nativeSetSharpExecVerboseLogging(on)
+            } catch (_: Throwable) {
+            }
+            try {
+                if (NATIVE_TILES_AVAILABLE) nativeSetSharpTilesVerboseLogging(on)
+            } catch (_: Throwable) {
+            }
+        }
+
         init {
             // Load libexecutorch before JNI so Vulkan (and other) backends register; then sharp_* link same runtime.
             try {
@@ -270,6 +293,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                         ?: findFile("sharp_split_part4b_vulkan.pte")?.parent
                 } ?: modelsDir?.absolutePath ?: internalModelsDir.absolutePath
                 val useVulkanForPart12 = !useCpuStable && !effectivePart12OnCpu
+                syncSharpNativeVerboseLogging()
                 val preloaded = preloadCppModules(cppModelDir, useVulkanForPart12)
                 LogUtil.d(TAG, "[C++ FULL] Preload Part1+Part2 cache: ${if (preloaded) "OK" else "failed"} (dir=$cppModelDir useVulkan=${!useCpuStable} part12OnCpu=$effectivePart12OnCpu)")
                 if (!useCpuStable && effectivePart12OnCpu) {
@@ -1054,6 +1078,7 @@ class ExecutorchInt8Sharp private constructor(private val context: Context) {
                 val part12YieldMs = 0
                 val swapTileNdcXY = false
                 val etdumpPath = getAndClearEtdumpOutputPath()
+                syncSharpNativeVerboseLogging()
                 val cppResult = safeJniFloatArrayResult {
                     runFullPipelineInt8Native(
                         cppModelDir,
