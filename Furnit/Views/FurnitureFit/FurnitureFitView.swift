@@ -280,9 +280,12 @@ final class FurnitureFitContainerView: UIView, AVCaptureVideoDataOutputSampleBuf
     /// STAGE 5a–5c: prune / bbox dedupe / mask-overlap gate for extra furniture. Off = primary detection only in `kept2`.
     private var useMultiCandidateStage5 = true
 
-    /// When true: STAGE 15c + fused-shader bbox clip + CPU fallback primary-bbox gate (segmentation PRs — can carve holes if bbox is tight).
-    /// **false** = legacy-style full-frame mask use (no extra zeroing outside bbox).
+    /// When true: STAGE 15c zeros `maskFull` outside **union** (green) bbox; fused shader uses union clip if `clipUnionMaskToPrimaryBbox` is false.
+    /// Does **not** enable primary (red) clipping — that is only `clipUnionMaskToPrimaryBbox`. Default off (union clip caused holes for some rooms).
     private var useMaskClipToUnionBbox = false
+
+    /// **true** (default): anything **outside** the primary detection’s bbox is **transparent** — same box as the **red** outline when debug is on. Inside the box you still see the combined (union) mask from all kept detections.
+    private var clipUnionMaskToPrimaryBbox = true
 
     // MARK: - Metal (FIXED: stored properties instead of computed to prevent resource leak)
     private var metalDevice: MTLDevice?
@@ -1831,6 +1834,43 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
             logDebug("⏱️ STAGE 15c - SKIPPED (useMaskClipToUnionBbox=false), full-frame mask retained")
         }
 
+        // Outside the red primary rectangle: clear the mask so those pixels are transparent.
+        if clipUnionMaskToPrimaryBbox {
+            let clipPx1 = primaryBx1
+            let clipPy1 = primaryBy1
+            let clipPx2 = primaryBx2
+            let clipPy2 = primaryBy2
+            if clipPy1 > 0 {
+                let topBytes = clipPy1 * origW
+                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                    memset(ptr.baseAddress!, 0, topBytes)
+                }
+            }
+            if clipPy2 < origH {
+                let bottomStart = clipPy2 * origW
+                let bottomBytes = (origH - clipPy2) * origW
+                _ = maskFull.withUnsafeMutableBufferPointer { ptr in
+                    memset(ptr.baseAddress!.advanced(by: bottomStart), 0, bottomBytes)
+                }
+            }
+            if clipPx1 > 0 || clipPx2 < origW {
+                maskFull.withUnsafeMutableBufferPointer { ptr in
+                    for y in clipPy1..<clipPy2 {
+                        let rowStart = y * origW
+                        if clipPx1 > 0 {
+                            memset(ptr.baseAddress!.advanced(by: rowStart), 0, clipPx1)
+                        }
+                        if clipPx2 < origW {
+                            memset(ptr.baseAddress!.advanced(by: rowStart + clipPx2), 0, origW - clipPx2)
+                        }
+                    }
+                }
+            }
+            if debugMode {
+                logDebug("⏱️ STAGE 15d - Mask cleared outside primary (red) rect [\(clipPx1),\(clipPy1)]→[\(clipPx2),\(clipPy2)]")
+            }
+        }
+
         // Prepare flattened coeffs for fused GPU path
         let detCountFused = kept2.count
         var coeffFlatFused = [Float](repeating: 0, count: detCountFused * 32)
@@ -1930,11 +1970,27 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                         enc.setBytes(&resizeGain_f, length: MemoryLayout<Float>.size, index: 8)
                         enc.setBytes(&padX_f, length: MemoryLayout<Float>.size, index: 9)
                         enc.setBytes(&padY_f, length: MemoryLayout<Float>.size, index: 10)
-                        // Union bbox clip in shader (off = full frame — avoids holes from tight union bbox)
-                        var bx1_u = UInt32(useMaskClipToUnionBbox ? bx1 : 0)
-                        var by1_u = UInt32(useMaskClipToUnionBbox ? by1 : 0)
-                        var bx2_u = UInt32(useMaskClipToUnionBbox ? bx2 : origW)
-                        var by2_u = UInt32(useMaskClipToUnionBbox ? by2 : origH)
+                        // Same rule as mask: outside red primary rect → GPU outputs transparent (inside can still be union of detections).
+                        var bx1_u: UInt32
+                        var by1_u: UInt32
+                        var bx2_u: UInt32
+                        var by2_u: UInt32
+                        if clipUnionMaskToPrimaryBbox {
+                            bx1_u = UInt32(primaryBx1)
+                            by1_u = UInt32(primaryBy1)
+                            bx2_u = UInt32(primaryBx2)
+                            by2_u = UInt32(primaryBy2)
+                        } else if useMaskClipToUnionBbox {
+                            bx1_u = UInt32(bx1)
+                            by1_u = UInt32(by1)
+                            bx2_u = UInt32(bx2)
+                            by2_u = UInt32(by2)
+                        } else {
+                            bx1_u = 0
+                            by1_u = 0
+                            bx2_u = UInt32(origW)
+                            by2_u = UInt32(origH)
+                        }
                         enc.setBytes(&bx1_u, length: MemoryLayout<UInt32>.size, index: 11)
                         enc.setBytes(&by1_u, length: MemoryLayout<UInt32>.size, index: 12)
                         enc.setBytes(&bx2_u, length: MemoryLayout<UInt32>.size, index: 13)
@@ -2022,8 +2078,8 @@ private lazy var metalMaskLogic: MetalMaskLogic? = {
                 let origRow = y * CVPixelBufferGetBytesPerRow(processBuffer)
                 for x in 0..<origW {
                     let outIdx = outRow + x * 4
-                    // Primary-bbox pre-gate caused holes when mask extended past bbox (disabled with clip flag)
-                    if useMaskClipToUnionBbox {
+                    // Same rule: outside the red primary rectangle, output is transparent.
+                    if clipUnionMaskToPrimaryBbox {
                         if x < primaryBx1 || x >= primaryBx2 || y < primaryBy1 || y >= primaryBy2 {
                             outBase[outIdx+3] = 0
                             continue
