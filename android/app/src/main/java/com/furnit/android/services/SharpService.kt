@@ -3,6 +3,7 @@ package com.furnit.android.services
 import android.content.Context
 import android.graphics.Bitmap
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomFolderMetadata
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -128,7 +129,16 @@ class SharpService private constructor(private val context: Context) {
 
     private val generationCancelled = AtomicBoolean(false)
 
-    fun startGenerationInBackground(image: Bitmap, callback: ProgressCallback): GenerationHandle {
+    /**
+     * @param viewerPhotoOrientation "portrait" / "landscape" from SinglePhoto (EXIF display); when null, falls back to bitmap width/height.
+     * @param viewerPhotoWideAngle matches viewer / SharpRoom framing.
+     */
+    fun startGenerationInBackground(
+        image: Bitmap,
+        callback: ProgressCallback,
+        viewerPhotoOrientation: String? = null,
+        viewerPhotoWideAngle: Boolean = false
+    ): GenerationHandle {
         generationCancelled.set(false)
         val handle = object : GenerationHandle {
             override fun cancel() {
@@ -137,19 +147,36 @@ class SharpService private constructor(private val context: Context) {
             }
         }
         Thread {
-            generateGaussiansInternal(image, callback) { generationCancelled.get() }
+            generateGaussiansInternal(
+                image,
+                callback,
+                { generationCancelled.get() },
+                viewerPhotoOrientation,
+                viewerPhotoWideAngle
+            )
         }.start()
         return handle
     }
 
-    fun generateGaussians(image: Bitmap, callback: ProgressCallback) {
+    fun generateGaussians(
+        image: Bitmap,
+        callback: ProgressCallback,
+        viewerPhotoOrientation: String? = null,
+        viewerPhotoWideAngle: Boolean = false
+    ) {
         generationCancelled.set(false)
         Thread {
-            generateGaussiansInternal(image, callback) { false }
+            generateGaussiansInternal(image, callback, { false }, viewerPhotoOrientation, viewerPhotoWideAngle)
         }.start()
     }
 
-    private fun generateGaussiansInternal(image: Bitmap, callback: ProgressCallback, isCancelled: () -> Boolean) {
+    private fun generateGaussiansInternal(
+        image: Bitmap,
+        callback: ProgressCallback,
+        isCancelled: () -> Boolean,
+        viewerPhotoOrientation: String? = null,
+        viewerPhotoWideAngle: Boolean = false
+    ) {
         LogUtil.d(TAG, "Starting generation: ${image.width}x${image.height}")
 
         try {
@@ -231,7 +258,9 @@ class SharpService private constructor(private val context: Context) {
         roomDepth: Float? = null,
         roomCenterX: Float? = null,
         roomCenterY: Float? = null,
-        roomCenterZ: Float? = null
+        roomCenterZ: Float? = null,
+        viewerPhotoOrientation: String? = null,
+        viewerPhotoWideAngle: Boolean = false
     ) {
         val thumbnailFile = File(roomFolder, "thumbnail.png")
         FileOutputStream(thumbnailFile).use { out ->
@@ -241,12 +270,19 @@ class SharpService private constructor(private val context: Context) {
         val metadataFile = File(roomFolder, "metadata.txt")
         val dateFormat = SimpleDateFormat("MMM d", Locale.getDefault())
         val roomName = "AI Room ${dateFormat.format(Date())}"
-        val photoOrientation = if (image.height > image.width) "portrait" else "landscape"
+        val normalizedViewer = viewerPhotoOrientation?.trim()?.lowercase()
+        val photoOrientation = when (normalizedViewer) {
+            "landscape" -> "landscape"
+            "portrait" -> "portrait"
+            else -> if (image.height > image.width) "portrait" else "landscape"
+        }
+        val createdAtMillis = System.currentTimeMillis()
         val sb = StringBuilder()
         sb.append("name=$roomName\n")
-        sb.append("created=${System.currentTimeMillis()}\n")
+        sb.append("created=$createdAtMillis\n")
         sb.append("type=$modelType\n")
         sb.append("photoOrientation=$photoOrientation\n")
+        sb.append("photoWideAngle=$viewerPhotoWideAngle\n")
         roomWidth?.let { sb.append("roomWidth=$it\n") }
         roomHeight?.let { sb.append("roomHeight=$it\n") }
         roomDepth?.let { sb.append("roomDepth=$it\n") }
@@ -254,6 +290,22 @@ class SharpService private constructor(private val context: Context) {
         roomCenterY?.let { sb.append("roomCenterY=$it\n") }
         roomCenterZ?.let { sb.append("roomCenterZ=$it\n") }
         metadataFile.writeText(sb.toString())
+        RoomFolderMetadata.writeToFolder(
+            roomFolder,
+            RoomFolderMetadata.Snapshot(
+                name = roomName,
+                createdAt = createdAtMillis,
+                type = modelType,
+                photoOrientation = photoOrientation,
+                photoWideAngle = viewerPhotoWideAngle,
+                roomWidth = roomWidth,
+                roomHeight = roomHeight,
+                roomDepth = roomDepth,
+                roomCenterX = roomCenterX,
+                roomCenterY = roomCenterY,
+                roomCenterZ = roomCenterZ,
+            )
+        )
         LogUtil.d(TAG, "Room saved: name='$roomName' type=$modelType path=${roomFolder.absolutePath} dims=${roomWidth}x${roomHeight}x${roomDepth} orientation=$photoOrientation")
     }
 

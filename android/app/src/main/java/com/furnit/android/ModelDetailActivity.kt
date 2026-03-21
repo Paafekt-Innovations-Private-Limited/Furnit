@@ -474,8 +474,8 @@ class ModelDetailActivity : AppCompatActivity() {
                 val h = bboxExtents.y
                 val d = bboxExtents.z
                 boundaryManager.initializeFromDimensions(width = w, depth = d, height = h)
-                LogUtil.d(TAG, "[ModelDetail] getCameraAtBackCenter CALLED (bbox ${w}x${h}x${d})")
-                val cameraSetup = boundaryManager.getCameraAtBackCenter()
+                LogUtil.d(TAG, "[ModelDetail] getCameraCenteredView CALLED (bbox ${w}x${h}x${d})")
+                val cameraSetup = boundaryManager.getCameraCenteredView()
                 LogUtil.d(TAG, "[ModelDetail] camera SET pos=(${cameraSetup.position.x}, ${cameraSetup.position.y}, ${cameraSetup.position.z}) lookAt=(${cameraSetup.lookAt.x}, ${cameraSetup.lookAt.y}, ${cameraSetup.lookAt.z})")
 
                 // Position camera IMMEDIATELY after adding model

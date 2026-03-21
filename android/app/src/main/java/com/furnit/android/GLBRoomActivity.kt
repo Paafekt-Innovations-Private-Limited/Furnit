@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.util.Base64
 import com.furnit.android.utils.LogUtil
+import com.furnit.android.utils.RoomFolderMetadata
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -565,22 +566,19 @@ class GLBRoomActivity : AppCompatActivity() {
                 model.position.z = -center.z;
                 model.position.y = -box.min.y;
 
-                // Match iOS RealityKitBoundaryManager: camera at back-left corner inside room, looking at front wall center
+                // Centered Android room view: camera in the middle of the room, looking straight at the front wall
                 const roomWidth = size.x;
                 const roomHeight = size.y;
                 const roomDepth = size.z;
-                const halfWidth = roomWidth * 0.5;
                 const halfDepth = roomDepth * 0.5;
-                const padding = 0.3;
-
-                const eyeHeight = roomHeight * 0.5 + 0.4;
-                const camX = -halfWidth + padding;
-                const camZ = halfDepth - padding;
+                const camX = 0;
+                const camY = roomHeight * 0.5;
+                const camZ = 0;
                 const targetX = 0;
-                const targetY = eyeHeight;
+                const targetY = camY;
                 const targetZ = -halfDepth;
 
-                camera.position.set(camX, eyeHeight, camZ);
+                camera.position.set(camX, camY, camZ);
                 controls.target.set(targetX, targetY, targetZ);
                 controls.update();
 
@@ -589,7 +587,7 @@ class GLBRoomActivity : AppCompatActivity() {
                 initialControlsTarget = controls.target.clone();
 
                 console.log('[GLBViewer] Room size:', roomWidth.toFixed(2), 'x', roomHeight.toFixed(2), 'x', roomDepth.toFixed(2));
-                console.log('[GLBViewer] Camera (Swift back-left): (', camX.toFixed(2), ',', eyeHeight.toFixed(2), ',', camZ.toFixed(2), ') lookAt (0,', targetY.toFixed(2), ',', targetZ.toFixed(2), ')');
+                console.log('[GLBViewer] Camera (center/front-wall): (', camX.toFixed(2), ',', camY.toFixed(2), ',', camZ.toFixed(2), ') lookAt (0,', targetY.toFixed(2), ',', targetZ.toFixed(2), ')');
 
                 // Notify Android that we're loaded
                 if (window.Android) {
@@ -666,13 +664,26 @@ class GLBRoomActivity : AppCompatActivity() {
 
                 val metadataFile = File(savedRoomFolder, "metadata.txt")
                 val metadata = StringBuilder()
+                val createdAtMillis = System.currentTimeMillis()
                 metadata.append("name=$name\n")
-                metadata.append("created=${System.currentTimeMillis()}\n")
+                metadata.append("created=$createdAtMillis\n")
                 metadata.append("type=manual\n")
                 metadata.append("roomWidth=$roomWidth\n")
                 metadata.append("roomHeight=$roomHeight\n")
                 metadata.append("photoOrientation=$photoOrientation\n")
                 metadataFile.writeText(metadata.toString())
+                RoomFolderMetadata.writeToFolder(
+                    savedRoomFolder,
+                    RoomFolderMetadata.Snapshot(
+                        name = name,
+                        createdAt = createdAtMillis,
+                        type = "manual",
+                        photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
+                        photoWideAngle = false,
+                        roomWidth = roomWidth,
+                        roomHeight = roomHeight,
+                    )
+                )
 
                 previewRoomFolder.parentFile?.deleteRecursively()
 

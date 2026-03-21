@@ -406,7 +406,10 @@ class ContentActivity : AppCompatActivity() {
                     clickedModel.roomCenterX?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, it) }
                     clickedModel.roomCenterY?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
                     clickedModel.roomCenterZ?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
-                    intent.putExtra("photo_orientation", clickedModel.photoOrientation)
+                    intent.putExtra(
+                        "photo_orientation",
+                        clickedModel.photoOrientation.trim().lowercase().takeIf { it == "landscape" } ?: "portrait"
+                    )
                     intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
                     LogUtil.d("ContentActivity", "Opening SharpRoomActivity photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
                     startActivity(intent)
@@ -445,7 +448,10 @@ class ContentActivity : AppCompatActivity() {
                             clickedModel.roomCenterX?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_X, it) }
                             clickedModel.roomCenterY?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Y, it) }
                             clickedModel.roomCenterZ?.let { intent.putExtra(SharpRoomActivity.EXTRA_ROOM_CENTER_Z, it) }
-                            intent.putExtra("photo_orientation", clickedModel.photoOrientation)
+                            intent.putExtra(
+                                "photo_orientation",
+                                clickedModel.photoOrientation.trim().lowercase().takeIf { it == "landscape" } ?: "portrait"
+                            )
                             intent.putExtra(SharpRoomActivity.EXTRA_PHOTO_WIDE_ANGLE, clickedModel.photoWideAngle)
                             LogUtil.d("ContentActivity", "Opening SharpRoomActivity (folder) photo_orientation=${clickedModel.photoOrientation} photoWideAngle=${clickedModel.photoWideAngle} roomId=${clickedModel.id}")
                             startActivity(intent)

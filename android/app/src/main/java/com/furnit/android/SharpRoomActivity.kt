@@ -38,6 +38,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewAssetLoader
 import com.furnit.android.models.Model
 import com.furnit.android.models.ModelManager
+import com.furnit.android.utils.RoomFolderMetadata
 import com.furnit.android.services.FurnitureFitManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -157,28 +158,22 @@ class SharpRoomActivity : AppCompatActivity() {
         var rawOrientation = intent.getStringExtra("photo_orientation")?.trim()?.lowercase()
         photoWideAngle = intent.getBooleanExtra(EXTRA_PHOTO_WIDE_ANGLE, false)
 
-        // Fallback: if list didn't pass dimensions/orientation, read from room folder metadata.txt (e.g. old list or first open)
-        if ((savedWidth <= 0f || savedHeight <= 0f) && roomFolder != null) {
-            val metaFile = File(roomFolder, "metadata.txt")
-            if (metaFile.exists()) {
-                try {
-                    metaFile.readLines().forEach { line ->
-                        when {
-                            line.startsWith("roomWidth=") -> savedWidth = line.substringAfter("roomWidth=").toFloatOrNull() ?: savedWidth
-                            line.startsWith("roomHeight=") -> savedHeight = line.substringAfter("roomHeight=").toFloatOrNull() ?: savedHeight
-                            line.startsWith("roomDepth=") -> {
-                                roomDepth = line.substringAfter("roomDepth=").toFloatOrNull() ?: roomDepth
-                            }
-                            line.startsWith("roomCenterX=") -> roomCenterX = line.substringAfter("roomCenterX=").toFloatOrNull() ?: roomCenterX
-                            line.startsWith("roomCenterY=") -> roomCenterY = line.substringAfter("roomCenterY=").toFloatOrNull() ?: roomCenterY
-                            line.startsWith("roomCenterZ=") -> roomCenterZ = line.substringAfter("roomCenterZ=").toFloatOrNull() ?: roomCenterZ
-                            line.startsWith("photoOrientation=") -> rawOrientation = line.substringAfter("photoOrientation=").trim().lowercase()
-                        }
-                    }
-                    LogUtil.d(TAG, "Loaded from metadata.txt: ${savedWidth}x${savedHeight}x${roomDepth} orientation=$rawOrientation")
-                } catch (e: Exception) {
-                    LogUtil.w(TAG, "Failed to read metadata.txt", e)
-                }
+        // Single disk source: room_meta.json (or legacy metadata.txt via RoomFolderMetadata). Same parser as home list.
+        roomFolder?.let { folderPath ->
+            val disk = RoomFolderMetadata.readFromFolder(File(folderPath))
+            if (disk != null) {
+                disk.roomWidth?.takeIf { it > 0f }?.let { savedWidth = it }
+                disk.roomHeight?.takeIf { it > 0f }?.let { savedHeight = it }
+                disk.roomDepth?.takeIf { it > 0f }?.let { roomDepth = it }
+                disk.roomCenterX?.let { roomCenterX = it }
+                disk.roomCenterY?.let { roomCenterY = it }
+                disk.roomCenterZ?.let { roomCenterZ = it }
+                rawOrientation = disk.normalizedOrientation()
+                photoWideAngle = disk.photoWideAngle
+                LogUtil.d(
+                    TAG,
+                    "RoomFolderMetadata: ${savedWidth}x${savedHeight}x${roomDepth} orientation=${disk.normalizedOrientation()} wide=$photoWideAngle"
+                )
             }
         }
 
@@ -276,6 +271,16 @@ class SharpRoomActivity : AppCompatActivity() {
                     }
                     LogUtil.d(TAG, "shouldInterceptRequest: $url")
                     return assetLoader.shouldInterceptRequest(url)
+                }
+            }
+
+            // Forward console.log from the WebGL page to Logcat (filter: SharpRoomActivity JSConsole)
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
+                    message?.let { m ->
+                        LogUtil.d(TAG, "JSConsole: ${m.message()} -- ${m.sourceId()}:${m.lineNumber()}")
+                    }
+                    return true
                 }
             }
 
@@ -921,7 +926,10 @@ class SharpRoomActivity : AppCompatActivity() {
         // Use isPortrait like iOS for consistency
         val isPortrait = photoOrientation != "landscape"
         LogUtil.d(TAG, "[SharpRoom] Building WebView HTML: photoOrientation=$photoOrientation isPortrait=$isPortrait photoWideAngle=$photoWideAngle (this activity = PLY/splat room)")
-        // Pass known room dimensions and bbox center so camera can be framed when Box3 is not yet valid (SparkJS mesh bounds update async)
+        // Which end of the room slab we place the camera on Z (camera + target only; room mesh is not moved).
+        // true = outside min-Z (camera at minZ - dist, target minZ, look +Z). false = outside max-Z (Swift-style).
+        // To zoom in/out: edit distInFront in frameFromWorldBox() in the JS below — not this flag.
+        val webglEntranceMinZ = true
         val fallbackW = roomWidth.toDouble()
         val fallbackH = roomHeight.toDouble()
         val fallbackD = roomDepth.toDouble()
@@ -975,6 +983,7 @@ class SharpRoomActivity : AppCompatActivity() {
         console.log('[WebGL] SparkJS Gaussian Splat viewer initializing...');
         // Orientation and fallback dimensions from Kotlin (module scope so autoFrameRoom can use them)
         const isPortrait = $isPortrait;
+        const entranceUseMinZ = $webglEntranceMinZ;
         const usedWideLens = $usedWideLens;
         const fallbackRoomWidth = $fallbackW;
         const fallbackRoomHeight = $fallbackH;
@@ -1016,7 +1025,7 @@ class SharpRoomActivity : AppCompatActivity() {
         controls.dampingFactor = 0.25;   // Settle quickly so orbit does not oscillate
         controls.rotateSpeed = 0.25;     // Slow rotation for touch so room does not move too fast
         controls.screenSpacePanning = false;
-        // Portrait: allow zooming much closer (0.001) so user can zoom into wall; landscape 0.01 is enough
+        // Match SharpRoomView.swift: portrait allows closer zoom than landscape
         controls.minDistance = isPortrait ? 0.001 : 0.01;
         // Limit zoom-out so the room stays a reasonable size (max ~2.5× largest room dimension, cap 6–25m)
         const roomMaxDim = Math.max(fallbackRoomWidth, fallbackRoomHeight, fallbackRoomDepth);
@@ -1049,6 +1058,8 @@ class SharpRoomActivity : AppCompatActivity() {
         let cameraFramedAt = 0;
         // Current room dims for benchmark log (set when framing; used when user stops moving)
         let currentRoomW = fallbackRoomWidth, currentRoomH = fallbackRoomHeight, currentRoomD = fallbackRoomDepth;
+        /** Tightened bounds after autoFrame (matches iOS joystick / zoom clamping). */
+        let roomBoundsForClamping = null;
 
         let benchmarkLogTimeout = null;
         controls.addEventListener('change', function() {
@@ -1068,6 +1079,8 @@ class SharpRoomActivity : AppCompatActivity() {
         // Auto-frame when mesh has valid bounds (called from onLoad when PLY ready, or by polling)
         let frameAttempts = 0;
         const maxFrameAttempts = 150;  // 150 * 200ms = 30s for large PLY (e.g. 292MB)
+        /** Stops duplicate work when multiple setTimeout(autoFrameRoom) chains run (onLoad + initial poll). */
+        let framingComplete = false;
 
         // Load PLY using SparkJS SplatMesh (matching iOS exactly)
         // URL served by WebViewAssetLoader; onLoad runs when PLY is loaded and decoded
@@ -1077,176 +1090,189 @@ class SharpRoomActivity : AppCompatActivity() {
         try {
             splatMesh = new SplatMesh({
                 url: plyURL,
-                maxSh: 0,  // Disable spherical harmonics for cleaner look
+                maxSh: 0,
                 onLoad: function(mesh) {
-                    console.log('[WebGL] SplatMesh onLoad - PLY loaded, framing camera (delay 600ms for bounds)');
+                    console.log('[WebGL] SplatMesh onLoad — scheduling autoFrameRoom');
                     setTimeout(autoFrameRoom, 600);
                 }
             });
+            // Match Furnit/SharpRoomView.swift (SparkJS): classic PLY = 180° about X; portrait adds 90° about Z.
+            // Android portrait used Y=π + X=0 which does NOT match that basis; landscape used X=π only like iOS but
+            // WebView GL often shows floor/ceiling inverted — landscape uses X=0 (no classic X flip) so "up" reads correctly.
+            splatMesh.rotation.y = 0;
             if (isPortrait) {
-                splatMesh.rotation.y = Math.PI / 2;
-                console.log('[WebGL] SplatMesh: portrait - applied 90° Y rotation so room aspect matches photo');
+                splatMesh.rotation.x = Math.PI;
+                splatMesh.rotation.z = Math.PI / 2;
+                console.log('[WebGL] SplatMesh: portrait X=π + Z=π/2 (match iOS)');
             } else {
-                console.log('[WebGL] SplatMesh: landscape - no rotation');
+                splatMesh.rotation.x = 0;
+                splatMesh.rotation.z = 0;
+                console.log('[WebGL] SplatMesh: landscape X=0 Z=0 (fix upside-down vs WebView; iOS uses X=π only)');
             }
             scene.add(splatMesh);
-
-            // Fallback: start polling in case onLoad is slow or not supported
             setTimeout(autoFrameRoom, 500);
         } catch (err) {
             console.error('[WebGL] Failed to create SplatMesh:', err);
         }
 
-        function autoFrameRoom() {
-            frameAttempts++;
-            console.log('[WebGL] autoFrameRoom() called, attempt:', frameAttempts);
+        function giveUpDefaultCamera() {
+            framingComplete = true;
+            camera.position.set(0, 0, 4);
+            controls.target.set(0, 0, 0);
+            controls.update();
+            needsRender = true;
+            if (window.Android) window.Android.onLoaded();
+        }
 
-            if (!splatMesh) {
-                if (frameAttempts < maxFrameAttempts) {
-                    setTimeout(autoFrameRoom, 200);
-                } else {
-                    console.error('[WebGL] Gave up waiting for splatMesh');
+        function tryMetadataFallbackBox() {
+            const metaMax = Math.max(fallbackRoomWidth, fallbackRoomHeight, fallbackRoomDepth);
+            if (metaMax < 0.05) return false;
+            if (splatMesh) {
+                splatMesh.position.set(0, 0, 0);
+                splatMesh.updateMatrixWorld(true);
+            }
+            const cx = fallbackRoomCenterX, cy = fallbackRoomCenterY, cz = fallbackRoomCenterZ;
+            const hw = fallbackRoomWidth * 0.5, hh = fallbackRoomHeight * 0.5, hd = fallbackRoomDepth * 0.5;
+            const b = new THREE.Box3(
+                new THREE.Vector3(cx - hw, cy - hh, cz - hd),
+                new THREE.Vector3(cx + hw, cy + hh, cz + hd)
+            );
+            frameFromWorldBox(b, 'metadata_fallback');
+            return true;
+        }
+
+        /**
+         * ROOM: splatMesh position stays (0,0,0) + load-time rotation only — we do NOT slide the room for framing.
+         * CAMERA: position + OrbitControls.target are set here (just outside inner AABB on Z).
+         * Zoom / step back along view: change distInFront (metres). Smaller = closer to wall; larger = farther in front.
+         */
+        function frameFromWorldBox(box, frameSource) {
+            if (framingComplete) {
+                if (window.Android && window.Android.log) {
+                    window.Android.log('[SharpRoom] frameFromWorldBox SKIPPED (framingComplete already true) source=' + frameSource);
                 }
                 return;
             }
+            framingComplete = true; // block duplicate onLoad + poll (recenter clears this first)
 
-            // Coordinate sync: ensure world matrix is updated (rotation applied) before Box3
-            splatMesh.updateMatrixWorld(true);
-            let box = new THREE.Box3().setFromObject(splatMesh);
-            let size = box.getSize(new THREE.Vector3());
-
-            if (size.length() < 0.01) {
-                // Use Kotlin-provided dimensions when Box3 is not yet valid (e.g. SparkJS). Center mesh so benchmark formula is in room space.
-                if (fallbackRoomWidth > 0.1 && fallbackRoomHeight > 0.1 && fallbackRoomDepth > 0.1) {
-                    try {
-                        // Portrait only: center mesh at origin so benchmark formula is in room space (mesh has 90° Y rotation).
-                        // Landscape: do not move mesh — it was already correct before; centering broke the view (grey).
-                        const cx = fallbackRoomCenterX, cy = fallbackRoomCenterY, cz = fallbackRoomCenterZ;
-                        if (isPortrait) {
-                            splatMesh.position.set(cz, -cy, -cx);
-                            splatMesh.updateMatrixWorld(true);
-                        }
-                        // Portrait benchmark Feb 28: pos 0.114,-0.58,0 tgt -0.742,-0.58,0 dist=0.856. In portrait we moved mesh to (cz,-cy,-cx) so camera/target must be in world space = mesh position + room offset.
-                        const W = fallbackRoomWidth, H = fallbackRoomHeight, D = fallbackRoomDepth;
-                        if (isPortrait) {
-                            const P_CAM_D = 0.076, P_CAM_Y = -0.133, P_TGT_D = -0.494;
-                            camera.position.set(cz + P_CAM_D * D, -cy + P_CAM_Y * H, -cx);
-                            controls.target.set(cz + P_TGT_D * D, -cy + P_CAM_Y * H, -cx);
-                        } else {
-                            const L_CAM_X = 0, L_CAM_Y = 0.00207, L_CAM_Z = -0.130, L_TGT_Z = -0.444;
-                            camera.position.set(L_CAM_X * W, L_CAM_Y * H, L_CAM_Z * D);
-                            controls.target.set(L_CAM_X * W, 0, L_TGT_Z * D);
-                        }
-                        controls.update();
-                        currentRoomW = fallbackRoomWidth;
-                        currentRoomH = fallbackRoomHeight;
-                        currentRoomD = fallbackRoomDepth;
-                        initialCameraPosition.copy(camera.position);
-                        initialControlsTarget.copy(controls.target);
-                        const camPos = camera.position;
-                        console.log('[SharpRoom] CAMERA_FRAME fallback=1 benchmark isPortrait=' + (isPortrait ? 1 : 0) + ' fallbackW=' + fallbackRoomWidth.toFixed(2) + ' fallbackH=' + fallbackRoomHeight.toFixed(2) + ' fallbackD=' + fallbackRoomDepth.toFixed(2) + ' camPos=' + camPos.x.toFixed(3) + ',' + camPos.y.toFixed(3) + ',' + camPos.z.toFixed(3));
-                        if (window.Android) window.Android.onLoaded();
-                    } catch (err) {
-                        console.error('[SharpRoom] fallback camera error:', err);
-                        camera.position.set(0, 0, 3);
-                        controls.target.set(0, 0, 0);
-                        controls.update();
-                        if (window.Android) window.Android.onLoaded();
-                    }
-                    // Retry once mesh bounds are ready so we can use Box3 and center mesh (attempts 2–4)
-                    if (frameAttempts <= 4) {
-                        setTimeout(autoFrameRoom, 1200);
-                    }
-                    return;
-                }
-                if (frameAttempts < maxFrameAttempts) {
-                    console.log('[WebGL] Box3 too small, waiting for splatMesh to load...');
-                    setTimeout(autoFrameRoom, 200);
-                } else {
-                    console.error('[WebGL] Gave up - mesh has no geometry');
-                    camera.position.set(0, 0, 5);
-                    controls.target.set(0, 0, 0);
-                    controls.update();
-                    if (window.Android) window.Android.onLoaded();
-                }
-                return;
-            }
-
-            // Ultralytics: center mesh at origin so camera framing is consistent (model may output offset origin)
-            const boxCenterBefore = box.getCenter(new THREE.Vector3());
-            splatMesh.position.sub(boxCenterBefore);
-            splatMesh.updateMatrixWorld(true);
-            box = new THREE.Box3().setFromObject(splatMesh);
-            size = box.getSize(new THREE.Vector3());
-            const center = box.getCenter(new THREE.Vector3());
-
-            // Box3 axis mapping: portrait has 90° Y rotation so depth is along X; landscape depth along Z.
-            // Use same semantic: roomWidth, roomHeight, roomDepth; depthAxis = axis from back wall to front wall.
+            const size = box.getSize(new THREE.Vector3());
             let roomWidth, roomHeight, roomDepth;
-            let depthAxisMin, depthAxisMax;  // same formula for both orientations (like portrait)
             if (isPortrait) {
-                roomWidth = size.z;
-                roomHeight = size.y;
-                roomDepth = size.x;
-                depthAxisMin = box.min.x;
-                depthAxisMax = box.max.x;
-            } else {
                 roomWidth = size.x;
                 roomHeight = size.y;
-                roomDepth = size.z;
-                depthAxisMin = box.min.z;
-                depthAxisMax = box.max.z;
+            } else {
+                roomWidth = size.y;
+                roomHeight = size.x;
             }
+            roomDepth = size.z;
 
-            // Cap to realistic room dimensions (fog makes bounds too large) - matching iOS
             const maxRealisticWidth = isPortrait ? 5.0 : 8.0;
             const maxRealisticHeight = isPortrait ? 3.5 : 3.2;
             if (roomWidth > maxRealisticWidth) roomWidth = maxRealisticWidth;
             if (roomHeight > maxRealisticHeight) roomHeight = maxRealisticHeight;
 
-            // Portrait benchmark Feb 28: pos 0.114,-0.58,0 tgt -0.742,-0.58,0 dist=0.856. Landscape from benchmarks.
-            if (isPortrait) {
-                const P_CAM_D = 0.076, P_CAM_Y = -0.133, P_TGT_D = -0.494;
-                camera.position.set(center.x + P_CAM_D * roomDepth, center.y + P_CAM_Y * roomHeight, center.z);
-                controls.target.set(center.x + P_TGT_D * roomDepth, center.y + P_CAM_Y * roomHeight, center.z);
-            } else {
-                const L_CAM_X = 0, L_CAM_Y = 0.00207, L_CAM_Z = -0.130, L_TGT_Z = -0.444;
-                camera.position.set(center.x + L_CAM_X * roomWidth, center.y + L_CAM_Y * roomHeight, center.z + L_CAM_Z * roomDepth);
-                controls.target.set(center.x + L_CAM_X * roomWidth, center.y, center.z + L_TGT_Z * roomDepth);
+            const rawMinX = box.min.x, rawMaxX = box.max.x;
+            const rawMinY = box.min.y, rawMaxY = box.max.y;
+            const rawMinZ = box.min.z, rawMaxZ = box.max.z;
+
+            const fogFactor = 0.15;
+            const shrinkX = roomWidth * fogFactor * 0.5;
+            const shrinkY = roomHeight * fogFactor * 0.5;
+            // Spark AABB can be paper-thin on Z after rotation (~9mm). Fixed 20mm back inset made minZ > maxZ.
+            const zSpanRaw = Math.max(1e-6, rawMaxZ - rawMinZ);
+            const shrinkZ = Math.min(roomDepth * fogFactor * 0.5, zSpanRaw * 0.2);
+            const backWallInset = Math.min(0.02, zSpanRaw * 0.12);
+
+            const minX = rawMinX + shrinkX;
+            const maxX = rawMaxX - shrinkX;
+            const minY = rawMinY + shrinkY;
+            const maxY = rawMaxY - shrinkY;
+            let minZ = rawMinZ + shrinkZ;
+            let maxZ = rawMaxZ - backWallInset;
+            if (minZ >= maxZ) {
+                const midZ = (rawMinZ + rawMaxZ) * 0.5;
+                const halfZ = zSpanRaw * 0.45;
+                minZ = midZ - halfZ;
+                maxZ = midZ + halfZ;
             }
+
+            const innerCenterX = (minX + maxX) / 2;
+            const innerCenterY = (minY + maxY) / 2;
+            const innerCenterZ = (minZ + maxZ) / 2;
+
+            roomBoundsForClamping = {
+                minX, maxX, minY, maxY, minZ, maxZ,
+                centerX: innerCenterX, centerY: innerCenterY, centerZ: innerCenterZ
+            };
 
             currentRoomW = roomWidth;
             currentRoomH = roomHeight;
             currentRoomD = roomDepth;
 
-            // Single-line structured log for logcat (WebView console -> Log.d SharpRoomActivity)
-            const camPos = camera.position;
-            const tgt = controls.target;
-            const dist = camera.position.distanceTo(controls.target);
-            console.log('[SharpRoom] CAMERA_FRAME benchmark isPortrait=' + (isPortrait ? 1 : 0) + ' roomW=' + roomWidth.toFixed(2) + ' roomH=' + roomHeight.toFixed(2) + ' roomD=' + roomDepth.toFixed(2) + ' distance=' + dist.toFixed(2) + ' camPos=' + camPos.x.toFixed(2) + ',' + camPos.y.toFixed(2) + ',' + camPos.z.toFixed(2) + ' target=' + tgt.x.toFixed(2) + ',' + tgt.y.toFixed(2) + ',' + tgt.z.toFixed(2));
-            // Essential: sync OrbitControls after manual position/target change (prevents override)
+            // Initial camera: thin Z slab (rotated splat AABB) needs distance from floor span, not 9mm depth.
+            const thinZSlab = zSpanRaw < 0.08;
+            let entranceZ, cameraZ;
+            let wallSide;
+            let distInFront;
+            if (thinZSlab) {
+                // Same idea as manual orbit in logs: target ~innerZ, camera ~0.8–1.3m back along -Z (look +Z).
+                wallSide = 'thinZ_centerRail';
+                const roomSpan = Math.max(roomWidth, roomHeight, fallbackRoomWidth, fallbackRoomHeight);
+                distInFront = Math.max(0.75, Math.min(2.0, 0.56 * roomSpan));
+                const targetZ = innerCenterZ + Math.min(0.12, Math.max(zSpanRaw, 0.02));
+                entranceZ = targetZ;
+                cameraZ = targetZ - distInFront;
+            } else {
+                const FRONT_DIST_K = 0.28;
+                const FRONT_DIST_CAP = 1.2;
+                const depthForStandoff = Math.max(roomDepth, fallbackRoomDepth, zSpanRaw, 0.15);
+                const depthProduct = depthForStandoff * FRONT_DIST_K;
+                distInFront = Math.max(0.012, Math.min(depthProduct, FRONT_DIST_CAP));
+                wallSide = entranceUseMinZ ? 'minZ' : 'maxZ';
+                if (entranceUseMinZ) {
+                    entranceZ = minZ;
+                    cameraZ = minZ - distInFront;
+                } else {
+                    entranceZ = maxZ;
+                    cameraZ = maxZ + distInFront;
+                }
+            }
+            const distDbg = '[SharpRoom_DIST] src=' + frameSource + ' thinZ=' + (thinZSlab ? 1 : 0) + ' sizeXYZ=' + size.x.toFixed(3) + ',' + size.y.toFixed(3) + ',' + size.z.toFixed(3) + ' zSpanRaw=' + zSpanRaw.toFixed(4) + ' distInFront=' + distInFront.toFixed(4) + ' minZ=' + minZ.toFixed(4) + ' maxZ=' + maxZ.toFixed(4) + ' innerZ=' + innerCenterZ.toFixed(4) + ' wallSide=' + wallSide + ' targetZ=' + entranceZ.toFixed(4) + ' cameraZ=' + cameraZ.toFixed(4);
+            console.log(distDbg);
+            if (window.Android && window.Android.log) window.Android.log(distDbg);
+
+            const newCamPos = new THREE.Vector3(innerCenterX, innerCenterY, cameraZ);
+            const newTarget = new THREE.Vector3(innerCenterX, innerCenterY, entranceZ);
+
+            camera.position.copy(newCamPos);
+            controls.target.copy(newTarget);
             controls.update();
 
             initialCameraPosition.copy(camera.position);
             initialControlsTarget.copy(controls.target);
 
-            // Setup auto-orbit parameters (matches iOS)
-            const cameraDistance = camera.position.distanceTo(controls.target);
-            autoOrbitRadius = cameraDistance;
+            autoOrbitRadius = camera.position.distanceTo(controls.target);
             autoOrbitBaseAngle = Math.atan2(
                 camera.position.x - controls.target.x,
                 camera.position.z - controls.target.z
             );
 
-            // Store measured dimensions
             measuredRoomWidth = roomWidth;
             measuredRoomHeight = roomHeight;
 
-            console.log('[WebGL] Camera positioned at distance:', cameraDistance.toFixed(2));
+            const camPos = camera.position;
+            const tgt = controls.target;
+            const dist = camPos.distanceTo(tgt);
+            console.log('[SharpRoom] CAMERA_FRAME wallSide=' + wallSide + ' source=' + frameSource + ' isPortrait=' + (isPortrait ? 1 : 0) +
+                ' roomW=' + roomWidth.toFixed(2) + ' roomH=' + roomHeight.toFixed(2) + ' roomD=' + roomDepth.toFixed(2) +
+                ' distance=' + dist.toFixed(2) + ' camPos=' + camPos.x.toFixed(2) + ',' + camPos.y.toFixed(2) + ',' + camPos.z.toFixed(2) +
+                ' target=' + tgt.x.toFixed(2) + ',' + tgt.y.toFixed(2) + ',' + tgt.z.toFixed(2) +
+                ' innerZ=' + innerCenterZ.toFixed(3) + ' minZ=' + minZ.toFixed(3) + ' maxZ=' + maxZ.toFixed(3));
+
+            console.log('[WebGL] Camera framed wallSide=' + wallSide + ' dist=' + distInFront.toFixed(3));
             cameraFramedAt = performance.now();
             needsRender = true;
 
-            // Send dimensions to Android (multiple times to ensure delivery)
             function sendDimensionsToAndroid() {
                 if (window.Android && window.Android.onDimensionsMeasured) {
                     window.Android.onDimensionsMeasured(measuredRoomWidth, measuredRoomHeight);
@@ -1258,13 +1284,81 @@ class SharpRoomActivity : AppCompatActivity() {
             setTimeout(sendDimensionsToAndroid, 1500);
             setTimeout(sendDimensionsToAndroid, 3000);
 
-            if (window.Android) {
-                window.Android.onLoaded();
-            }
+            if (window.Android) window.Android.onLoaded();
         }
+
+        function autoFrameRoom(fromRecenter) {
+            if (fromRecenter) {
+                framingComplete = false;
+                frameAttempts = 0;
+            }
+            if (framingComplete) return;
+            frameAttempts++;
+            console.log('[WebGL] autoFrameRoom() attempt:', frameAttempts, 'fromRecenter=', !!fromRecenter);
+
+            if (!splatMesh) {
+                if (frameAttempts < maxFrameAttempts) {
+                    setTimeout(autoFrameRoom, 200);
+                } else {
+                    console.error('[WebGL] Gave up waiting for splatMesh');
+                    tryMetadataFallbackBox() || giveUpDefaultCamera();
+                }
+                return;
+            }
+
+            // Measure PLY at identity position; frameFromWorldBox applies mesh translation for viewer-centric framing.
+            splatMesh.position.set(0, 0, 0);
+            splatMesh.updateMatrixWorld(true);
+
+            const metaMaxDim = Math.max(fallbackRoomWidth, fallbackRoomHeight, fallbackRoomDepth);
+
+            if (typeof splatMesh.isInitialized === 'boolean' && !splatMesh.isInitialized) {
+                if (frameAttempts >= 10 && metaMaxDim > 0.05 && tryMetadataFallbackBox()) return;
+                if (frameAttempts < maxFrameAttempts) {
+                    console.log('[WebGL] SplatMesh not initialized yet, retry...');
+                    setTimeout(autoFrameRoom, 200);
+                } else {
+                    tryMetadataFallbackBox() || giveUpDefaultCamera();
+                }
+                return;
+            }
+
+            splatMesh.updateMatrixWorld(true);
+            let box;
+            try {
+                const localBox = splatMesh.getBoundingBox(true);
+                box = localBox.clone().applyMatrix4(splatMesh.matrixWorld);
+            } catch (e) {
+                console.warn('[WebGL] getBoundingBox failed:', e);
+                if (frameAttempts >= 8 && metaMaxDim > 0.05 && tryMetadataFallbackBox()) return;
+                if (frameAttempts < maxFrameAttempts) {
+                    setTimeout(autoFrameRoom, 300);
+                } else {
+                    tryMetadataFallbackBox() || giveUpDefaultCamera();
+                }
+                return;
+            }
+
+            const size = box.getSize(new THREE.Vector3());
+            if (size.length() < 0.01) {
+                if (frameAttempts >= 8 && metaMaxDim > 0.05 && tryMetadataFallbackBox()) return;
+                if (frameAttempts < maxFrameAttempts) {
+                    console.log('[WebGL] Box3 size near zero after getBoundingBox, retry...');
+                    setTimeout(autoFrameRoom, 200);
+                } else {
+                    tryMetadataFallbackBox() || giveUpDefaultCamera();
+                }
+                return;
+            }
+
+            frameFromWorldBox(box, 'spark_getBoundingBox');
+        }
+
+        window.autoFrameRoom = autoFrameRoom;
 
         // Camera controls (called from Android)
         window.orbitCamera = function(deltaX, deltaY) {
+            autoOrbitEnabled = false;
             const rotateSpeed = 0.002;   // Slow rotation so touch does not move room too fast
             const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
             const spherical = new THREE.Spherical().setFromVector3(offset);
@@ -1277,36 +1371,57 @@ class SharpRoomActivity : AppCompatActivity() {
             needsRender = true;
         };
 
-        // dx = horizontal (left/right), dy = forward/back. Portrait room has 90° Y rotation: depth=X, width=Z so left/right is Z.
+        // Joystick: same mapping as SharpRoomView.swift (dx → world X, dy → world Z) + room clamping
         window.moveCamera = function(dx, dy) {
-            const moveSpeed = 0.05;
-            if (isPortrait) {
-                camera.position.x += dy * moveSpeed;
-                camera.position.z += dx * moveSpeed;
-                controls.target.x += dy * moveSpeed;
-                controls.target.z += dx * moveSpeed;
-            } else {
-                camera.position.x += dx * moveSpeed;
-                camera.position.z -= dy * moveSpeed;
-                controls.target.x += dx * moveSpeed;
-                controls.target.z -= dy * moveSpeed;
+            autoOrbitEnabled = false;
+            const moveSpeed = 0.03;
+            let newX = camera.position.x + dx * moveSpeed;
+            let newZ = camera.position.z + dy * moveSpeed;
+            if (roomBoundsForClamping) {
+                const marginSide = 0.05;
+                const marginBack = 0.02;
+                newX = Math.max(roomBoundsForClamping.minX + marginSide,
+                    Math.min(roomBoundsForClamping.maxX - marginSide, newX));
+                newZ = Math.max(roomBoundsForClamping.minZ + marginSide,
+                    Math.min(roomBoundsForClamping.maxZ - marginBack, newZ));
             }
+            const actualDx = newX - camera.position.x;
+            const actualDz = newZ - camera.position.z;
+            camera.position.x = newX;
+            camera.position.z = newZ;
+            controls.target.x += actualDx;
+            controls.target.z += actualDz;
+            controls.update();
             needsRender = true;
         };
 
         window.moveCameraUp = function(dy) {
+            autoOrbitEnabled = false;
             if (typeof dy !== 'number' || !isFinite(dy)) return;
             camera.position.y += dy;
             controls.target.y += dy;
+            if (roomBoundsForClamping) {
+                const m = 0.05;
+                camera.position.y = Math.max(roomBoundsForClamping.minY + m,
+                    Math.min(roomBoundsForClamping.maxY - m, camera.position.y));
+                controls.target.y = Math.max(roomBoundsForClamping.minY + m,
+                    Math.min(roomBoundsForClamping.maxY - m, controls.target.y));
+            }
             controls.update();
             needsRender = true;
         };
 
         window.recenterCamera = function() {
-            camera.position.copy(initialCameraPosition);
-            controls.target.copy(initialControlsTarget);
-            controls.update();
+            if (typeof autoFrameRoom === 'function') {
+                autoFrameRoom(true);
+            } else {
+                camera.position.copy(initialCameraPosition);
+                controls.target.copy(initialControlsTarget);
+                controls.update();
+            }
             needsRender = true;
+            setTimeout(function() { needsRender = true; }, 0);
+            setTimeout(function() { needsRender = true; }, 50);
         };
 
         window.addEventListener('resize', () => {
@@ -1344,12 +1459,16 @@ class SharpRoomActivity : AppCompatActivity() {
                 const speed = 0.35;
                 const t = controls.target;
 
-                // Circular arc oscillation ±30°
-                const amplitude = Math.PI / 6;
-                const angle = autoOrbitBaseAngle + amplitude * Math.sin(autoOrbitTime * speed);
-
-                camera.position.x = t.x + autoOrbitRadius * Math.sin(angle);
-                camera.position.z = t.z + autoOrbitRadius * Math.cos(angle);
+                if (isPortrait) {
+                    const amplitude = Math.PI / 6;
+                    const angle = autoOrbitBaseAngle + amplitude * Math.sin(autoOrbitTime * speed);
+                    camera.position.x = t.x + autoOrbitRadius * Math.sin(angle);
+                    camera.position.z = t.z + autoOrbitRadius * Math.cos(angle);
+                } else {
+                    const sweepAmount = autoOrbitRadius * 0.3 * Math.sin(autoOrbitTime * speed);
+                    camera.position.x = initialCameraPosition.x + sweepAmount;
+                    camera.position.z = initialCameraPosition.z;
+                }
 
                 if (currentTime - lastRenderTime >= IDLE_FRAME_TIME) {
                     shouldRender = true;
@@ -1417,6 +1536,22 @@ class SharpRoomActivity : AppCompatActivity() {
             metadata.append("photoOrientation=${if (photoOrientation == "landscape") "landscape" else "portrait"}\n")
             metadata.append("photoWideAngle=$photoWideAngle\n")
             metadataFile.writeText(metadata.toString())
+            RoomFolderMetadata.writeToFolder(
+                File(folder),
+                RoomFolderMetadata.Snapshot(
+                    name = name,
+                    createdAt = System.currentTimeMillis(),
+                    type = "sharp",
+                    photoOrientation = if (photoOrientation == "landscape") "landscape" else "portrait",
+                    photoWideAngle = photoWideAngle,
+                    roomWidth = roomWidth,
+                    roomHeight = roomHeight,
+                    roomDepth = roomDepth,
+                    roomCenterX = roomCenterX,
+                    roomCenterY = roomCenterY,
+                    roomCenterZ = roomCenterZ,
+                )
+            )
 
             Toast.makeText(this, getString(R.string.sharp_room_saved, name), Toast.LENGTH_SHORT).show()
             LogUtil.d(TAG, "Room saved: $name at $folder with dims: ${roomWidth}x${roomHeight}x${roomDepth}")
@@ -1533,3 +1668,4 @@ class SharpRoomActivity : AppCompatActivity() {
         super.onDestroy()
     }
 }
+

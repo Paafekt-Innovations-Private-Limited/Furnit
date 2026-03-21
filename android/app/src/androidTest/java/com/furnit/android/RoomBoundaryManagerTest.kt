@@ -107,11 +107,14 @@ class RoomBoundaryManagerTest {
 
         val cameraSetup = manager.getCameraCenteredView()
 
-        // Should be centered at back wall
+        // Should be centered in the room
         assertEquals("Camera X should be centered", 0.0f, cameraSetup.position.x)
-        assertTrue("Camera Y above room center", cameraSetup.position.y > 2.8f)
+        assertEquals("Camera Y should be room center", 2.8f, cameraSetup.position.y, 0.01f)
+        assertEquals("Camera Z should be room center", 0.0f, cameraSetup.position.z, 0.01f)
 
-        // Should look at front wall
+        // Should look straight at the front wall center
+        assertEquals("Target X should be room center", 0.0f, cameraSetup.lookAt.x, 0.01f)
+        assertEquals("Target Y should be room center", 2.8f, cameraSetup.lookAt.y, 0.01f)
         assertEquals("Target Z should be front wall", -4.5f, cameraSetup.lookAt.z)
     }
 

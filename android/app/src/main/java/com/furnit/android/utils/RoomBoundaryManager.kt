@@ -173,9 +173,8 @@ class RoomBoundaryManager {
     }
 
     /**
-     * Get camera position matching iOS RealityKitBoundaryManager.getOptimalCameraPosition():
-     * Camera INSIDE room at back-left corner (near left wall, near back wall), looking at front wall center.
-     * This gives the same "standing in the back corner" view as Swift.
+     * Get a centered, straight-on room view.
+     * Camera sits at the room center and looks directly at the center of the front wall.
      */
     fun getCameraCenteredView(): CameraSetup {
         val bounds = roomBounds ?: run {
@@ -183,17 +182,16 @@ class RoomBoundaryManager {
             roomBounds!!
         }
 
-        val wallPadding = CAMERA_PADDING  // 0.3f - match Swift wallPadding
-        val camX = bounds.minX + wallPadding   // Near left wall (Swift: bounds.min.x + wallPadding)
-        val camY = bounds.centerY + 0.4f       // Eye level above center (Swift: roomCenter.y + 0.4)
-        val camZ = bounds.backWallZ - wallPadding  // Near back wall, inside room (Swift: bounds.max.z - wallPadding)
+        val camX = bounds.centerX
+        val camY = bounds.centerY
+        val camZ = bounds.centerZ
 
-        val targetX = bounds.centerX   // Look at front wall center
+        val targetX = bounds.centerX
         val targetY = bounds.centerY
-        val targetZ = bounds.frontWallZ  // Front wall (where photo is)
+        val targetZ = bounds.frontWallZ
 
         LogUtil.d(TAG, "  Room position/bounds: min=(${bounds.minX}, ${bounds.minY}, ${bounds.minZ}) max=(${bounds.maxX}, ${bounds.maxY}, ${bounds.maxZ}) center=(${bounds.centerX}, ${bounds.centerY}, ${bounds.centerZ})")
-        LogUtil.d(TAG, "  Camera (Swift-style back-left): pos=($camX, $camY, $camZ) lookAt=($targetX, $targetY, $targetZ)")
+        LogUtil.d(TAG, "  Camera (centered front-wall view): pos=($camX, $camY, $camZ) lookAt=($targetX, $targetY, $targetZ)")
         return CameraSetup(
             position = Position(camX, camY, camZ),
             lookAt = Position(targetX, targetY, targetZ)
